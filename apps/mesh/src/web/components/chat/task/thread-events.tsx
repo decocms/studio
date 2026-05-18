@@ -1,6 +1,6 @@
 /**
  * ThreadEventsBridge — single SSE → cache patcher for thread-list queries
- * and THREAD_MESSAGES invalidation.
+ * and ThreadConnection.refresh() trigger.
  *
  * Mount once near the app root (inside ProjectContext + QueryClientProvider).
  * Replaces useTasksAutoRefresh, useStreamManager, and the thread-list
@@ -9,18 +9,17 @@
  * Contract:
  *   • thread-list rows are surgically patched via setQueriesData
  *     (no invalidations — refetch storms eliminated by design).
- *   • THREAD_MESSAGES caches are invalidated for the affected taskId on
- *     onFinish + onTaskStatus(in_progress) — regardless of which thread is
- *     active. This is what fixes the "switch-away then come back" bug:
- *     before this bridge owned the invalidation, only the active thread's
- *     useStreamManager invalidated, so background-finished threads stayed
- *     stale until refresh.
+ *   • The matching ThreadConnection (if any) is asked to refresh() on
+ *     onFinish + onTaskStatus(in_progress). The conn re-fetches the
+ *     server snapshot itself; no React Query intermediary. refresh()
+ *     no-ops while a local submit POST is in flight, so the optimistic
+ *     local patch isn't briefly overwritten by stale server state.
  */
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { useDecopilotEvents } from "../../../hooks/use-decopilot-events";
 import { KEYS } from "../../../lib/query-keys";
-import { invalidateThreadMessages } from "./invalidate-thread-messages";
+import { getActiveConn } from "../hooks/thread-connection";
 import type { Task, TasksQueryData } from "./types";
 
 export interface RowPatch {
@@ -117,20 +116,15 @@ export function ThreadEventsBridge(): null {
         }),
       });
 
-      // Refresh the messages cache for this thread when its run starts —
-      // this is when the server has just persisted the user message and
-      // the cache should pick it up regardless of which thread is active.
+      // Refresh the active thread's snapshot when its run starts.
+      // getActiveConn returns null for inactive threads — they'll fetch
+      // fresh on next mount.
       if (event.data.status === "in_progress") {
-        invalidateThreadMessages(queryClient, event.subject);
+        void getActiveConn(org.slug, event.subject)?.refresh();
       }
     },
     onFinish: (event) => {
-      // Refresh the messages cache for this thread when its run finishes —
-      // this is the fix for the "switch-away then come back" bug. Before
-      // this bridge owned the invalidation, only the active thread's
-      // useStreamManager invalidated; if the run finished while the user
-      // was on a different thread, the cache stayed stale.
-      invalidateThreadMessages(queryClient, event.subject);
+      void getActiveConn(org.slug, event.subject)?.refresh();
     },
   });
 

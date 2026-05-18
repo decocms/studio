@@ -445,7 +445,10 @@ function AgentInsetProvider() {
                 onToggleMain={layout.toggleMain}
                 onNewTask={layout.createNewTask}
               />
-              <Chat.ActiveTaskProvider taskId={layout.taskId}>
+              <Chat.ActiveTaskProvider
+                key={layout.taskId}
+                taskId={layout.taskId}
+              >
                 <Suspense fallback={<Chat.Skeleton />}>
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {layout.mainOpen ? (
@@ -518,7 +521,7 @@ function AgentInsetProvider() {
               onNewTaskRef={onNewTask}
               createNewTask={layout.createNewTask}
             />
-            <Chat.ActiveTaskProvider taskId={layout.taskId}>
+            <Chat.ActiveTaskProvider key={layout.taskId} taskId={layout.taskId}>
               <Suspense fallback={<Chat.Skeleton />}>
                 <ChatMainPanelGroup
                   virtualMcpId={virtualMcpId}

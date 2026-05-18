@@ -20,19 +20,25 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type PropsWithChildren,
 } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import type { UseChatHelpers } from "@ai-sdk/react";
 import {
   AUTOSEND_QUERY_VALUE,
   claimStoredAutosend,
   clearStoredAutosend,
   writeStoredAutosend,
 } from "@/web/lib/autosend";
-import { useChatThread } from "./hooks/use-chat-thread";
-import type { RequestOptions } from "./hooks/thread-stream-registry";
+import {
+  getOrOpenStream,
+  type ConnStatus,
+  type RequestOptions,
+  type Store,
+  type SubmitAction,
+  type ThreadObserver,
+} from "./hooks/thread-connection";
 import {
   pickSimpleModeDefaults,
   useProjectContext,
@@ -61,6 +67,19 @@ import { track } from "../../lib/posthog-client";
 // re-firing when the user switches tasks.
 const openedChats = new Set<string>();
 
+/** Subscribe a React component to a connection Store via useSyncExternalStore. */
+function useStore<T>(store: Store<T>): T {
+  return useSyncExternalStore(store.subscribe, store.get, store.get);
+}
+
+/** Map the conn's discriminated `ConnStatus` onto the public string status.
+ *  "loading" is collapsed to "ready" — bootstrap is short and the UI treats
+ *  pre-snapshot the same as ready-but-empty. */
+function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
+  if (s.kind === "loading") return "ready";
+  return s.kind;
+}
+
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useThreadActions, useThreads, type RowPatch } from "./task";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
@@ -85,20 +104,10 @@ export interface ChatStreamContextValue {
     params: SendMessageParams | Metadata["tiptapDoc"],
   ) => Promise<void>;
   stop: () => void;
-  setMessages: UseChatHelpers<ChatMessage>["setMessages"];
-  addToolOutput: (
-    args: {
-      toolCallId: string;
-      output?: unknown;
-      state?: "output-available" | "output-error";
-      errorText?: string;
-    },
-    opts: RequestOptions,
-  ) => void;
-  addToolApprovalResponse: (
-    args: { id: string; approved: boolean; reason?: string },
-    opts: RequestOptions,
-  ) => void;
+  /** Single mutator entry point — new user message, tool output, or approval
+   *  response. Patches local messages, clears finishReason, POSTs to /messages.
+   *  Throws if a toolOutput / approval target isn't found in current messages. */
+  submit: (action: SubmitAction, opts: RequestOptions) => Promise<void>;
   error: Error | null;
   clearError: () => void;
   finishReason: string | null;
@@ -855,83 +864,90 @@ export function ActiveTaskProvider({
 
   const { org, locator } = useProjectContext();
 
-  const [finishReason, setFinishReason] = useState<string | null>(null);
   const [chatError, setChatError] = useState<Error | null>(null);
 
   const onToolCall = useInvalidateCollectionsOnToolCall();
   const queryClient = useQueryClient();
 
-  // Subscribe model: persistent /stream + POST /messages. No useChat.
-  const chat = useChatThread<ChatMessage>({
-    threadId: taskId,
-    orgSlug: org.slug,
-    onFinish: (payload) => {
-      setFinishReason(payload.finishReason ?? null);
+  // The connection owns SSE subscription, POSTs, and message state. The
+  // provider is keyed by taskId at the layout level, so this resolves to a
+  // fresh conn per thread mount.
+  const conn = getOrOpenStream(org.slug, taskId);
+  const messages = useStore(conn.messages) as ChatMessage[];
+  const connStatus = useStore(conn.status);
+  const finishReason = useStore(conn.finishReason);
 
-      // Refresh download chips only when this turn actually produced a
-      // shared file. AI SDK v5 surfaces tool invocations as `tool-<name>`
-      // parts; filter on `output-available` to skip denied/cancelled calls.
-      // (Cast: VM tools — including share_with_user — are added to the
-      // built-in tool set at runtime but aren't reflected in the
-      // BuiltInToolSet return-type cast, so the part union lacks this
-      // member at compile time.)
-      const sharedFile = payload.message.parts?.some((p) => {
-        const part = p as { type: string; state?: string };
-        return (
-          part.type === "tool-share_with_user" &&
-          part.state === "output-available"
-        );
-      });
-      if (taskId && sharedFile) {
-        queryClient.invalidateQueries({
-          queryKey: KEYS.threadOutputs(taskId),
-        });
-      }
-
-      const serverThreadId = (payload.message.metadata as Metadata | undefined)
-        ?.thread_id;
-
-      // Handle server thread_id reassignment
-      if (serverThreadId && serverThreadId !== taskId) {
-        rawNavigateToTask(serverThreadId);
-      }
-
-      // Note: in the subscribe model the persistent /stream delivers
-      // assistant chunks to every observer on the thread, so onFinish
-      // fires on each tab — including passive ones whose local snapshot
-      // doesn't include the originating user message. Writing
-      // payload.messages straight to the cache from here would clobber
-      // the sender's full conversation with the passive tab's partial
-      // one. Skip the direct cache update and let ThreadEventsBridge.onFinish
-      // invalidate THREAD_MESSAGES instead — every tab refetches the
-      // authoritative server snapshot.
-    },
-    onToolCall: onToolCall as never,
-    onError: (error: Error) => {
-      setChatError(error);
-      console.error("[chat] Error", error);
-    },
-    onData: (chunk) => {
-      if (chunk.type === "data-thread-title") {
-        const { title } = (chunk as { data: { title?: string } }).data;
-        if (!title) return;
-        // Server has already persisted the title (see dispatch-run.ts) —
-        // patch the cache directly instead of issuing a redundant
-        // COLLECTION_THREADS_UPDATE round-trip via renameTask.
-        taskManager.patchTask({
-          id: taskId,
-          title,
-          updated_at: new Date().toISOString(),
-        });
-      }
-    },
+  // Stable callback ref so the observer wrapper sees the latest consumer
+  // callbacks without re-running the effect on every render.
+  const cbRef = useRef({
+    onToolCall,
+    queryClient,
+    rawNavigateToTask,
+    taskManager,
+    taskId,
   });
+  cbRef.current = {
+    onToolCall,
+    queryClient,
+    rawNavigateToTask,
+    taskManager,
+    taskId,
+  };
 
-  // Derived state. useChatThread already composes server + optimistic +
-  // streaming messages internally — chat.messages is the live view.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
+  useEffect(() => {
+    const observer: ThreadObserver = {
+      onFinish: (message) => {
+        const cb = cbRef.current;
+        // Refresh download chips only when this turn actually produced a
+        // shared file. AI SDK v5 surfaces tool invocations as `tool-<name>`
+        // parts; filter on `output-available` to skip denied/cancelled calls.
+        const sharedFile = message.parts?.some((p) => {
+          const part = p as { type: string; state?: string };
+          return (
+            part.type === "tool-share_with_user" &&
+            part.state === "output-available"
+          );
+        });
+        if (cb.taskId && sharedFile) {
+          cb.queryClient.invalidateQueries({
+            queryKey: KEYS.threadOutputs(cb.taskId),
+          });
+        }
+
+        const serverThreadId = (message.metadata as Metadata | undefined)
+          ?.thread_id;
+        if (serverThreadId && serverThreadId !== cb.taskId) {
+          cb.rawNavigateToTask(serverThreadId);
+        }
+      },
+      onData: (chunk) => {
+        const cb = cbRef.current;
+        if (chunk.type === "data-thread-title") {
+          const { title } = (chunk as { data: { title?: string } }).data;
+          if (!title) return;
+          cb.taskManager.patchTask({
+            id: cb.taskId,
+            title,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      },
+      onError: (error) => {
+        setChatError(error);
+        console.error("[chat] Error", error);
+      },
+      onToolCall: (event) => cbRef.current.onToolCall(event as never),
+    };
+    conn.observer = observer;
+    return () => {
+      if (conn.observer === observer) conn.observer = null;
+    };
+  }, [conn]);
+
+  // Derived state.
   const isStreaming =
-    chat.status === "submitted" || chat.status === "streaming";
-  const messages = chat.messages;
+    connStatus.kind === "submitted" || connStatus.kind === "streaming";
   const isChatEmpty = messages.length === 0;
   const lastMessage = messages.at(-1);
   const isWaitingForApprovals =
@@ -943,7 +959,7 @@ export function ActiveTaskProvider({
   const thread = tasks.find((t) => t.id === taskId);
   const isRunInProgress =
     (thread?.status === "in_progress" || thread?.status === "expired") &&
-    chat.status === "ready" &&
+    connStatus.kind === "ready" &&
     messages.length > 0;
 
   // sendMessage — captures context at call time
@@ -955,10 +971,10 @@ export function ActiveTaskProvider({
     const capturedTaskId = taskId;
     const capturedVirtualMcpId = virtualMcpId;
 
-    setFinishReason(null);
     // Drop any error banner from a prior turn — explicitly sending a new
     // message means the user has moved on and a stale "network error"
-    // toast on top of a fresh request is just noise.
+    // toast on top of a fresh request is just noise. (finishReason is
+    // cleared inside conn.submit synchronously.)
     setChatError(null);
     setTiptapDoc(undefined);
 
@@ -1008,21 +1024,24 @@ export function ActiveTaskProvider({
       metadata: messageMetadata,
     };
 
-    await chat.sendMessage(userMessage, {
-      tier: activeTier,
-      mode: modeToSend,
-      toolApprovalLevel:
-        preferences.toolApprovalLevel ?? readToolApprovalLevel(),
-      system: system || undefined,
-      agent: { id: capturedVirtualMcpId },
-      thread_id: capturedTaskId,
-      branch: currentBranch,
-    });
+    await conn.submit(
+      { kind: "message", message: userMessage },
+      {
+        tier: activeTier,
+        mode: modeToSend,
+        toolApprovalLevel:
+          preferences.toolApprovalLevel ?? readToolApprovalLevel(),
+        system: system || undefined,
+        agent: { id: capturedVirtualMcpId },
+        thread_id: capturedTaskId,
+        branch: currentBranch,
+      },
+    );
   }
 
   // Cancel run
   const cancelRun = async () => {
-    chat.stop();
+    conn.stop();
     try {
       const res = await fetch(`/api/${org.slug}/decopilot/cancel/${taskId}`, {
         method: "POST",
@@ -1076,16 +1095,14 @@ export function ActiveTaskProvider({
 
   const streamValue: ChatStreamContextValue = {
     messages,
-    status: chat.status,
+    status: statusToString(connStatus),
     sendMessage: sendMessagePublic,
     stop: () => void cancelRun(),
-    setMessages: chat.setMessages,
-    addToolOutput: chat.addToolOutput,
-    addToolApprovalResponse: chat.addToolApprovalResponse,
+    submit: (action, opts) => conn.submit(action, opts),
     error: chatError,
     clearError: () => setChatError(null),
     finishReason,
-    clearFinishReason: () => setFinishReason(null),
+    clearFinishReason: () => conn.finishReason.set(null),
     isStreaming,
     isChatEmpty,
     isWaitingForApprovals: isWaitingForApprovals ?? false,

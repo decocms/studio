@@ -6,7 +6,7 @@ import {
   type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
 import { useChatPrefs, useChatStream, useChatTask } from "../context";
-import type { RequestOptions } from "../hooks/thread-stream-registry";
+import type { RequestOptions } from "../hooks/thread-connection";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
@@ -103,8 +103,7 @@ export function ChatHighlight() {
     messages,
     isStreaming,
     isWaitingForApprovals,
-    addToolOutput,
-    addToolApprovalResponse,
+    submit,
     sendMessage,
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
@@ -190,8 +189,9 @@ export function ChatHighlight() {
   };
 
   const handleUserAskSubmit = (part: UserAskToolPart, response: string) => {
-    addToolOutput(
+    void submit(
       {
+        kind: "toolOutput",
         toolCallId: part.toolCallId,
         output: { response },
       },
@@ -223,9 +223,10 @@ export function ChatHighlight() {
     reason: string | undefined,
     toolApprovalLevel: ToolApprovalLevel,
   ) => {
-    addToolApprovalResponse(
+    void submit(
       {
-        id: approvalId,
+        kind: "approval",
+        approvalId,
         approved,
         ...(reason ? { reason } : {}),
       },
