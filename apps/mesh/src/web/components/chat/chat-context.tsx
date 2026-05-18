@@ -2,7 +2,7 @@
  * Chat Provider — split architecture with Suspense boundary support.
  *
  * TaskProvider (outer)
- *   Contexts: ChatTaskContext, ChatPrefsContext, ChatBridgeContext
+ *   Contexts: ChatTaskContext, ChatPrefsContext
  *   Owns: task list, navigation, preferences, transport, pending messages
  *
  * ActiveTaskProvider (inner, inside Suspense)
@@ -172,11 +172,6 @@ export interface ChatPrefsContextValue {
   setSimpleModeTier: (tier: SimpleTier) => void;
 }
 
-export interface ChatBridgeValue {
-  sendMessage: (params: SendMessageParams) => Promise<void>;
-  isStreaming: boolean;
-}
-
 // ============================================================================
 // Model resolution helpers (shared across chat / image / deep-research paths)
 // ============================================================================
@@ -270,15 +265,6 @@ function pickFallbackChatModel(
 const MAX_APP_CONTEXT_LENGTH = 10_000;
 const MAX_APP_CONTEXT_SOURCES = 10;
 
-const BRIDGE_NOOP: ChatBridgeValue = {
-  sendMessage: async () => {
-    console.warn(
-      "[ChatBridge] sendMessage called but ActiveTaskProvider not mounted",
-    );
-  },
-  isStreaming: false,
-};
-
 /** Internal-only type for cross-provider communication */
 interface TaskProviderInternals {
   user: { image?: string | null; name?: string } | null;
@@ -291,7 +277,6 @@ interface TaskProviderInternals {
     patchTask: (patch: RowPatch) => void;
   };
   rawNavigateToTask: (taskId: string) => void;
-  bridgeRef: React.RefObject<ChatBridgeValue>;
 }
 
 // ============================================================================
@@ -301,15 +286,6 @@ interface TaskProviderInternals {
 const ChatStreamCtx = createContext<ChatStreamContextValue | null>(null);
 const ChatTaskCtx = createContext<ChatTaskContextValue | null>(null);
 const ChatPrefsCtx = createContext<ChatPrefsContextValue | null>(null);
-/**
- * ChatBridgeCtx holds a RefObject (not a value) so consumers outside
- * ActiveTaskProvider always read the latest sendMessage/isStreaming via
- * `.current` at call time — avoids stale closures when ActiveTaskProvider
- * mutates the ref after initial render.
- */
-const ChatBridgeCtx = createContext<React.RefObject<ChatBridgeValue>>({
-  current: BRIDGE_NOOP,
-});
 
 /** Internal context for passing TaskProvider internals to ActiveTaskProvider */
 const TaskInternalsCtx = createContext<TaskProviderInternals | null>(null);
@@ -358,7 +334,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   );
 
   const [chatMode, setChatMode] = useState<ChatMode>("default");
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   chatModeForTransportRef.current = chatMode;
 
   // Simple Model Mode
@@ -477,7 +452,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   tiptapDocRef.current = tiptapDoc;
 
   const value: ChatPrefsContextValue = {
@@ -561,7 +535,6 @@ export function ChatContextProvider({
   );
 
   const [chatMode, setChatMode] = useState<ChatMode>("default");
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   chatModeForTransportRef.current = chatMode;
 
   // Simple Model Mode — org-level config.
@@ -705,11 +678,7 @@ export function ChatContextProvider({
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   tiptapDocRef.current = tiptapDoc;
-
-  // Bridge ref — ActiveTaskProvider registers sendMessage here
-  const bridgeRef = useRef<ChatBridgeValue>(BRIDGE_NOOP);
 
   const navigateToTask = (
     taskId: string,
@@ -861,17 +830,14 @@ export function ChatContextProvider({
       patchTask: taskManager.patchTask,
     },
     rawNavigateToTask,
-    bridgeRef,
   };
 
   return (
     <ChatTaskCtx.Provider value={taskValue}>
       <ChatPrefsCtx.Provider value={prefsValue}>
-        <ChatBridgeCtx.Provider value={bridgeRef}>
-          <TaskInternalsCtx.Provider value={internals}>
-            {children}
-          </TaskInternalsCtx.Provider>
-        </ChatBridgeCtx.Provider>
+        <TaskInternalsCtx.Provider value={internals}>
+          {children}
+        </TaskInternalsCtx.Provider>
       </ChatPrefsCtx.Provider>
     </ChatTaskCtx.Provider>
   );
@@ -911,14 +877,8 @@ export function ActiveTaskProvider({
     );
   }
 
-  const {
-    user,
-    contextPrompt,
-    preferences,
-    taskManager,
-    rawNavigateToTask,
-    bridgeRef,
-  } = internals;
+  const { user, contextPrompt, preferences, taskManager, rawNavigateToTask } =
+    internals;
 
   const { org, locator } = useProjectContext();
 
@@ -1122,13 +1082,6 @@ export function ActiveTaskProvider({
     return sendMessageInternal(params as SendMessageParams);
   };
 
-  // Register sendMessage on the bridge so TaskProvider-level code can call it
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  bridgeRef.current = {
-    sendMessage: sendMessageInternal,
-    isStreaming: chat.status === "submitted" || chat.status === "streaming",
-  };
-
   // Autosend consumer: the URL carries only `autosend=true`; the message
   // body lives in sessionStorage keyed by locator + taskId. It only boots empty
   // threads, and the stored status gates duplicate sends across remounts.
@@ -1208,18 +1161,4 @@ export function useOptionalChatPrefs(): ChatPrefsContextValue | null {
 
 export function useOptionalChatTask(): ChatTaskContextValue | null {
   return useContext(ChatTaskCtx);
-}
-
-export function useChatBridge(): ChatBridgeValue {
-  const ref = useContext(ChatBridgeCtx);
-  // Return wrappers that read .current at call time. Destructuring
-  // `{ sendMessage }` still sees the latest implementation even when the
-  // ref is mutated after this hook call (which is the case when
-  // ActiveTaskProvider registers sendMessage after the consumer mounts).
-  return {
-    sendMessage: (params) => ref.current.sendMessage(params),
-    get isStreaming() {
-      return ref.current.isStreaming;
-    },
-  };
 }

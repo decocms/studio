@@ -11,7 +11,6 @@ export {
   ChatContextProvider as ChatProvider,
   ChatPrefsProvider,
   ActiveTaskProvider,
-  useChatBridge,
   useChatTask,
   useOptionalChatTask,
   useChatStream,
@@ -21,5 +20,4 @@ export {
   type ChatStreamContextValue,
   type ChatTaskContextValue,
   type ChatPrefsContextValue,
-  type ChatBridgeValue,
 } from "./chat-context";
