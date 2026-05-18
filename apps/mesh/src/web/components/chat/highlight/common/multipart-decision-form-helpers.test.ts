@@ -80,6 +80,14 @@ describe("findNextUnansweredKey", () => {
       null,
     );
   });
+
+  test("returns the first unanswered when fromKey is not in parts", () => {
+    const parts: Part[] = [{ id: "a" }, { id: "b" }];
+    const values = { a: undefined, b: { decided: true } };
+    expect(findNextUnansweredKey(parts, partKey, values, hasAnswer, "z")).toBe(
+      "a",
+    );
+  });
 });
 
 describe("canSubmit", () => {

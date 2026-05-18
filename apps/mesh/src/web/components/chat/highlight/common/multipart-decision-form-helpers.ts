@@ -22,8 +22,9 @@ export function isAllAnswered<T>(
 }
 
 /**
- * Find the next unanswered part after `fromKey`. Wraps around the part list
- * but skips `fromKey` itself. Returns null if every part is answered.
+ * Find the next unanswered part after `fromKey`. Wraps around the part
+ * list but skips `fromKey` itself. Returns null if every part is answered.
+ * If `fromKey` is not present in `parts`, scans from the first part.
  */
 export function findNextUnansweredKey<T>(
   parts: T[],
@@ -33,8 +34,7 @@ export function findNextUnansweredKey<T>(
   fromKey: string,
 ): string | null {
   if (parts.length === 0) return null;
-  const fromIdx = findIndexByKey(parts, partKey, fromKey);
-  const start = fromIdx >= 0 ? fromIdx : -1;
+  const start = findIndexByKey(parts, partKey, fromKey);
   for (let i = 1; i <= parts.length; i++) {
     const candidate = parts[(start + i) % parts.length];
     if (!candidate) continue;
