@@ -92,7 +92,7 @@ export function useTaskExpandedTools(taskId: string) {
       return { previous };
     },
     onSuccess: () => {
-      // Thread update will materialize from the next SSE event via ThreadEventsBridge
+      // Thread update materializes from the next SSE event via ThreadManagerStore
       queryClient.invalidateQueries({
         queryKey: KEYS.ensureTask(org.id, taskId),
       });

@@ -307,10 +307,6 @@ export class ThreadConnection {
     if (s.kind === "error") this.status.set({ kind: "ready" });
   }
 
-  /** Snapshot now arrives as the first /stream SSE event on every reconnect.
-   *  This stub stays until thread-events.tsx is deleted in Phase 6. */
-  async refresh(): Promise<void> {}
-
   // ── Internal: bootstrap ─────────────────────────────────────────────────
 
   private async bootstrap(): Promise<void> {
@@ -658,8 +654,8 @@ export function getOrOpenStream(
   return current;
 }
 
-/** ThreadEventsBridge handle: look up the active conn by thread id without
- *  forcing a new construction. Returns null if no conn matches. */
+/** Look up the active conn by thread id without forcing a new construction.
+ *  Returns null if no conn matches. */
 export function getActiveConn(
   orgSlug: string,
   threadId: string,

@@ -44,10 +44,13 @@ export type TasksPage = {
 };
 
 /**
- * Cache shape for thread-list queries. Stored as paged data by
- * `useSuspenseInfiniteQuery` — every page-aware reader/writer (event
- * bridge, infinite scroll, helpers like `readCachedLastThread`) must
- * walk `pages` rather than reading a flat `items` array.
+ * Cache shape for legacy thread-list queries. Still imported by
+ * `read-cached-last-thread.ts` / `read-cached-task-branch.ts`, which peek
+ * into the RQ cache populated by the old infinite-query writers. With the
+ * chat data layer migrated to `ThreadManagerStore`, those caches are no
+ * longer written — these readers return null in practice. Keeping the
+ * type definition so the helpers compile until they're migrated to read
+ * from the store directly (follow-up).
  */
 export type TasksQueryData = {
   pages: TasksPage[];
@@ -55,15 +58,7 @@ export type TasksQueryData = {
 };
 
 /**
- * The two shapes a thread-list cache key can carry. `org` is the unscoped
- * view; `agent` narrows by `virtualMcpId`. Used both by `useThreads` (as
- * the query argument) and by the event bridge (as the parsed shape of a
- * `KEYS.threads(…)` cache key).
- */
-export type ThreadScope = "org" | { kind: "agent"; virtualMcpId: string };
-
-/**
- * Partial Task patch — every cache write goes through one of these. `id`
+ * Partial Task patch — every store update goes through one of these. `id`
  * pins the row; the rest are optional overrides applied via spread.
  */
 export type RowPatch = Pick<Task, "id"> &
