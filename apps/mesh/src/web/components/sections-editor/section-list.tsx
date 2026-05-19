@@ -46,7 +46,7 @@ interface RawSection {
 
 // ─── parsing helpers ───────────────────────────────────────────────────────────
 
-export const LAZY_SUFFIXES = [
+const LAZY_SUFFIXES = [
   "website/sections/Rendering/Lazy.tsx",
   "website/sections/Rendering/SingleDeferred.tsx",
 ];

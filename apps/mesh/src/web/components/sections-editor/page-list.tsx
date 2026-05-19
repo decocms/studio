@@ -44,7 +44,7 @@ export function extractPages(decofile: Record<string, unknown>): PageEntry[] {
   return pages;
 }
 
-export function PageList({
+function PageList({
   pages,
   selectedKey,
   onSelect,
