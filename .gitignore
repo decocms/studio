@@ -73,6 +73,9 @@ studio-demo/
 .worktrees
 .claude/worktrees
 
+# Claude runtime state (loop schedule lock, etc.)
+.claude/*.lock
+
 # Playwright
 apps/mesh/test-results/
 apps/mesh/playwright-report/

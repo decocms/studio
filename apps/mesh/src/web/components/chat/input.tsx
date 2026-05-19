@@ -16,7 +16,6 @@ import {
   Image01,
   Lock01,
   Microphone01,
-  Plus,
   Stop,
   Upload01,
   X,
@@ -35,7 +34,6 @@ import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
 import { SimpleModeTierDropdown } from "./simple-mode-tier-dropdown";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
-  FileUploadButton,
   UnsupportedFileDialog,
   useUnsupportedFileDialog,
   processFile,
@@ -305,9 +303,12 @@ export function ChatInput({
 
   // Reset input when switching tasks (TiptapProvider also remounts via key)
   const prevTaskRef = useRef(taskId);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (prevTaskRef.current !== taskId) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevTaskRef.current = taskId;
     setTiptapDocLocal(undefined);
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     tiptapDocRef.current = undefined;
   }
 
@@ -440,7 +441,7 @@ export function ChatInput({
               </div>
 
               {/* Bottom Actions Row */}
-              <div className="flex items-center justify-between p-2.5 gap-1">
+              <div className="@container/chat-bottom flex items-center justify-between p-2.5 gap-1">
                 {voice.status === "recording" ? (
                   <>
                     {/* Spacer */}
@@ -471,12 +472,6 @@ export function ChatInput({
                   <>
                     {/* Left Actions (+, Tools, active tool pills, stats) */}
                     <div className="flex items-center gap-1.5 min-w-0 shrink-0">
-                      <FileUploadButton
-                        selectedModel={selectedModel}
-                        isStreaming={isStreaming}
-                        icon={<Plus size={16} />}
-                        onUnsupportedFile={onUnsupportedFile}
-                      />
                       <ToolsPopover
                         disabled={isStreaming}
                         onOpenConnections={() => {
@@ -487,6 +482,9 @@ export function ChatInput({
                           setConnectionsOpen(true);
                         }}
                         virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
+                        selectedModel={selectedModel}
+                        isStreaming={isStreaming}
+                        onUnsupportedFile={onUnsupportedFile}
                       />
                       {isPlanMode && (
                         <button
@@ -500,10 +498,14 @@ export function ChatInput({
                             });
                             setChatMode("default");
                           }}
+                          title="Plan mode"
+                          aria-label="Plan mode"
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group whitespace-nowrap animate-in fade-in duration-200"
                         >
                           <BookOpen01 size={14} className="shrink-0" />
-                          Plan mode
+                          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-32 @[496px]/chat-bottom:opacity-100">
+                            Plan mode
+                          </span>
                           <X
                             size={14}
                             className="shrink-0 hidden group-hover:block group-disabled:hidden"
@@ -523,10 +525,12 @@ export function ChatInput({
                             });
                             setChatMode("default");
                           }}
+                          title="Create image"
+                          aria-label="Create image"
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group whitespace-nowrap animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Image01 size={14} className="shrink-0" />
-                          <span className="max-w-[120px] truncate">
+                          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-[120px] @[496px]/chat-bottom:opacity-100">
                             Create image
                           </span>
                           <X
@@ -548,10 +552,12 @@ export function ChatInput({
                             });
                             setChatMode("default");
                           }}
+                          title="Web search"
+                          aria-label="Web search"
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group whitespace-nowrap animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Globe02 size={14} className="shrink-0" />
-                          <span className="max-w-[120px] truncate">
+                          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-[120px] @[496px]/chat-bottom:opacity-100">
                             Web search
                           </span>
                           <X

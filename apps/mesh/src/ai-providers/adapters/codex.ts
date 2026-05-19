@@ -8,9 +8,20 @@ const CODEX_LOGO =
 export const CODEX_MODELS: ModelInfo[] = [
   {
     providerId: "codex",
+    modelId: "codex:gpt-5.5",
+    title: "GPT-5.5",
+    description:
+      "Frontier model for complex coding, research, and real-world work",
+    capabilities: ["text", "reasoning"],
+    logo: CODEX_LOGO,
+    limits: null,
+    costs: null,
+  },
+  {
+    providerId: "codex",
     modelId: "codex:gpt-5.4",
     title: "GPT-5.4",
-    description: "Latest frontier agentic coding model",
+    description: "Strong model for everyday coding",
     capabilities: ["text", "reasoning"],
     logo: CODEX_LOGO,
     limits: null,
@@ -20,7 +31,8 @@ export const CODEX_MODELS: ModelInfo[] = [
     providerId: "codex",
     modelId: "codex:gpt-5.4-mini",
     title: "GPT-5.4 Mini",
-    description: "Latest frontier agentic coding model",
+    description:
+      "Small, fast, and cost-efficient model for simpler coding tasks",
     capabilities: ["text", "reasoning"],
     logo: CODEX_LOGO,
     limits: null,
@@ -30,7 +42,7 @@ export const CODEX_MODELS: ModelInfo[] = [
     providerId: "codex",
     modelId: "codex:gpt-5.3-codex",
     title: "GPT-5.3 Codex",
-    description: "Frontier Codex-optimized agentic coding model",
+    description: "Coding-optimized model",
     capabilities: ["text", "reasoning"],
     logo: CODEX_LOGO,
     limits: null,
@@ -38,30 +50,10 @@ export const CODEX_MODELS: ModelInfo[] = [
   },
   {
     providerId: "codex",
-    modelId: "codex:gpt-5.2-codex",
-    title: "GPT-5.2 Codex",
+    modelId: "codex:gpt-5.2",
+    title: "GPT-5.2",
     description: "Optimized for professional work and long-running agents",
     capabilities: ["text", "reasoning"],
-    logo: CODEX_LOGO,
-    limits: null,
-    costs: null,
-  },
-  {
-    providerId: "codex",
-    modelId: "codex:gpt-5.1-codex-max",
-    title: "GPT-5.1 Codex Max",
-    description: "Deep and fast reasoning",
-    capabilities: ["text", "reasoning"],
-    logo: CODEX_LOGO,
-    limits: null,
-    costs: null,
-  },
-  {
-    providerId: "codex",
-    modelId: "codex:gpt-5.1-codex-mini",
-    title: "GPT-5.1 Codex Mini",
-    description: "Cheaper, faster, but less capable",
-    capabilities: ["text"],
     logo: CODEX_LOGO,
     limits: null,
     costs: null,
@@ -70,12 +62,11 @@ export const CODEX_MODELS: ModelInfo[] = [
 
 /** Map composite model IDs to SDK model names. */
 const CODEX_SDK_MODELS: Record<string, string> = {
+  "codex:gpt-5.5": "gpt-5.5",
   "codex:gpt-5.4": "gpt-5.4",
   "codex:gpt-5.4-mini": "gpt-5.4-mini",
   "codex:gpt-5.3-codex": "gpt-5.3-codex",
-  "codex:gpt-5.2-codex": "gpt-5.2-codex",
-  "codex:gpt-5.1-codex-max": "gpt-5.1-codex-max",
-  "codex:gpt-5.1-codex-mini": "gpt-5.1-codex-mini",
+  "codex:gpt-5.2": "gpt-5.2",
 };
 
 /** Resolve a composite codex model ID to the SDK model name. */

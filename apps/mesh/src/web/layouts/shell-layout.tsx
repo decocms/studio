@@ -6,7 +6,11 @@ import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { PostHogGroupSync } from "@/web/providers/posthog-group-sync";
-import { ProjectContextProvider, useProjectContext } from "@decocms/mesh-sdk";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  ProjectContextProvider,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import {
   Outlet,
@@ -17,7 +21,7 @@ import {
 } from "@tanstack/react-router";
 import { KEYS } from "../lib/query-keys";
 import { readCachedTaskBranch } from "../lib/read-cached-task-branch";
-import { useTaskActions } from "../hooks/use-tasks";
+import { useThreadActions } from "@/web/components/chat/task";
 import { useOrganizationSettingsSuspense } from "../hooks/use-organization-settings";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
@@ -67,8 +71,8 @@ function ShellProjectProvider({
 export function usePanelActions() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const taskActions = useTaskActions();
-  const { locator } = useProjectContext();
+  const taskActions = useThreadActions();
+  const { org, locator } = useProjectContext();
 
   const params = useParams({ strict: false }) as {
     org?: string;
@@ -121,14 +125,19 @@ export function usePanelActions() {
   // new thread lands on the same warm sandbox. Server picks from vmMap when
   // no branch is provided. Awaiting the create avoids the route loader's
   // create-on-404 fallback firing without a branch hint.
+  //
+  // virtual_mcp_id is required by COLLECTION_THREADS_CREATE. Fall back to the
+  // well-known Decopilot agent when the URL doesn't carry ?virtualmcpid= —
+  // matches the same fallback in agent-shell-layout's createNewTask.
   const createNewTask = async () => {
     const newId = crypto.randomUUID();
     const branch = readCachedTaskBranch(queryClient, locator, currentTaskId);
-    const targetVmcp = search.virtualmcpid;
+    const targetVmcp =
+      search.virtualmcpid ?? getWellKnownDecopilotVirtualMCP(org.id).id;
     try {
       await taskActions.create.mutateAsync({
         id: newId,
-        ...(targetVmcp ? { virtual_mcp_id: targetVmcp } : {}),
+        virtual_mcp_id: targetVmcp,
         ...(branch ? { branch } : {}),
       });
     } catch {

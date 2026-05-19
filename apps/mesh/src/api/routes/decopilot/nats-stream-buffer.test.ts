@@ -260,6 +260,28 @@ describe("NatsStreamBuffer", () => {
       expect(stream).toBeNull();
     });
 
+    it("closes on the {done} sentinel when closeOnDone is set", async () => {
+      // Used by `dispatchRunAndWait` to block on a single run's completion.
+      // The default cross-run behavior must NOT apply here.
+      const { sub, push } = createControlledSubscription();
+      const buffer = bufferWith(() => Promise.resolve(sub));
+
+      const stream = await buffer.createTailStream("task-1", undefined, {
+        closeOnDone: true,
+      });
+
+      push(encodeMsg({ p: "chunk-1" }));
+      push(encodeMsg({ p: "chunk-2" }));
+      push(encodeMsg({ done: true }));
+      // Any chunk published after `done` must not be observed by this
+      // subscriber — the stream is already terminating.
+      push(encodeMsg({ p: "after-done" }));
+
+      const chunks = await readAll(stream!);
+      expect(chunks).toEqual(["chunk-1", "chunk-2"]);
+      expect(sub.unsubscribe).toHaveBeenCalled();
+    });
+
     it("swallows the {done} sentinel and keeps tailing across runs", async () => {
       // Subscribe-model behavior: one connection covers multiple runs in
       // the thread. The producer's {done} marker between runs must not

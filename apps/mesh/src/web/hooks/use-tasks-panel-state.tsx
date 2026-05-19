@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useTasks } from "@/web/components/chat/task/use-task-manager";
+import { useThreads } from "@/web/components/chat/task";
 import { resolveTasksOpen } from "@/web/hooks/use-layout-state";
 
 interface TasksPanelState {
@@ -14,39 +14,31 @@ const TasksPanelStateContext = createContext<TasksPanelState | null>(null);
 /**
  * Provider for the tasks-panel open/closed state.
  *
- * Flow:
- *   url → state   (init only, when the provider first mounts)
- *   state → url   (on every change, via effect)
- *
- * URL model: `?tasks=0|1`. When absent on first mount the panel defaults
- * to open iff there are open tasks. The URL is always kept in sync so a
- * refresh restores the last state the user chose.
+ * The URL is the single source of truth: `?tasks=0|1`. When the param is
+ * absent the panel defaults to open iff we are on a task route with open
+ * threads — see `resolveTasksOpen`. `toggleTasks` writes the flipped value
+ * back into the URL search; consumers re-render off the URL.
  */
 export function TasksPanelStateProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { tasks?: number };
   const params = useParams({ strict: false }) as { taskId?: string };
-  const { tasks } = useTasks({ owner: "all", status: "open" });
+  const { threads } = useThreads("org", "open");
 
-  // Auto-open based on task count only when on a task route; on home the
-  // panel starts closed (user opens it via the toggle button).
-  const [tasksOpen, setTasksOpen] = useState<boolean>(() =>
-    resolveTasksOpen(search.tasks, Boolean(params.taskId) && tasks.length > 0),
+  const tasksOpen = resolveTasksOpen(
+    search.tasks,
+    Boolean(params.taskId) && threads.length > 0,
   );
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
+  const toggleTasks = () =>
     navigate({
       // biome-ignore lint/suspicious/noExplicitAny: tanstack router search-reducer signature
       search: ((prev: Record<string, unknown>) => ({
         ...prev,
-        tasks: tasksOpen ? 1 : 0,
+        tasks: tasksOpen ? 0 : 1,
       })) as any,
       replace: true,
     });
-  }, [tasksOpen, navigate]);
-
-  const toggleTasks = () => setTasksOpen((prev) => !prev);
 
   return (
     <TasksPanelStateContext.Provider value={{ tasksOpen, toggleTasks }}>

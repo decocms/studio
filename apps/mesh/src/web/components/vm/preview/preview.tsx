@@ -50,7 +50,6 @@ import {
 import { computePreviewState, type PreviewState } from "./preview-state";
 import { VmStateCard } from "./state-card";
 import { derivePhaseProgress } from "./derive-phase-progress";
-import { isRestartRequired } from "./restart-required";
 import {
   PreviewDrawer,
   readPersistedDrawerOpen,
@@ -131,12 +130,16 @@ export function PreviewContent() {
     url: "",
     value: false,
   });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (previewUrl && htmlSupportRef.current.url !== previewUrl) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     htmlSupportRef.current = { url: previewUrl, value: false };
   }
   if (vmEvents.lifecycle.phase === "running") {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     htmlSupportRef.current.value = vmEvents.lifecycle.htmlSupport;
   }
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   const hasHtmlPreview = htmlSupportRef.current.value;
   const upstreamStatus: "booting" | "online" | "offline" =
     lifecyclePhase === "running"
@@ -197,33 +200,6 @@ export function PreviewContent() {
     userStopped,
   });
 
-  // Restart-required strip: surfaces when Settings has saved any
-  // `metadata.runtime` field (selected/port/path) that differs from the
-  // value the running daemon was started with (`vmEntry.startedWith`).
-  // Only shows while the VM is actually running so we don't nag during
-  // boot/error/idle.
-  const liveRuntime = {
-    selected: metadata?.runtime?.selected ?? null,
-    port: metadata?.runtime?.port ?? null,
-    path: metadata?.runtime?.path ?? null,
-  };
-  const startedWith = vmEntry?.startedWith;
-  const startedRuntime = startedWith
-    ? {
-        packageManager: startedWith.packageManager ?? null,
-        port: startedWith.port ?? null,
-        path: startedWith.path ?? null,
-      }
-    : undefined;
-  const isRunning =
-    previewState.kind === "iframe" || previewState.kind === "no-html";
-  const restartRequired = isRestartRequired({
-    liveRuntime,
-    startedRuntime,
-    hasEntry: !!vmEntry,
-    isRunning,
-  });
-
   // ref-latest pattern: effects below depend only on upstream signals, not
   // on this closure's churning captures (branch, mutation, setter).
   const triggerStart = (reason: "auto-start" | "self-heal") => {
@@ -241,13 +217,16 @@ export function PreviewContent() {
     });
   };
   const triggerStartRef = useRef(triggerStart);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   triggerStartRef.current = triggerStart;
 
   // Auto-start = "arrive → provision one", NOT "always ensure exists". Once
   // a vmEntry is seen for this taskId, explicit stop must NOT re-trigger (or
   // it races the user's manual Start). Mark ref on first-sight, BEFORE
   // evaluating shouldAutoStart, so a transient null can't sneak through.
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (taskId && vmEntry && autoStartedForTaskRef.current !== taskId) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     autoStartedForTaskRef.current = taskId;
   }
   // Branch must be resolved before firing: VmEventsBridge keys auto-start on
@@ -265,6 +244,7 @@ export function PreviewContent() {
     !lastStartError &&
     !userStopped &&
     !startVm.isPending &&
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     autoStartedForTaskRef.current !== taskId;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — bridges external state (vmEntry derived from query cache, taskId from router) into a one-shot mutation; no render-time equivalent
   useEffect(() => {
@@ -308,7 +288,9 @@ export function PreviewContent() {
   // in this codebase (useEffect is banned for this).
   const [drawerOpen, setDrawerOpen] = useState<boolean | null>(null);
   const lastHydratedKeyRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (lastHydratedKeyRef.current !== drawerStorageKey) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     lastHydratedKeyRef.current = drawerStorageKey;
     setDrawerOpen(readPersistedDrawerOpen(drawerStorageKey));
   }
@@ -429,16 +411,6 @@ export function PreviewContent() {
 
   return (
     <div className="flex flex-col w-full h-full">
-      {restartRequired && (
-        <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-amber-500/40 bg-amber-500/10 px-4 text-xs">
-          <span className="text-amber-700">
-            ⓘ Settings changed — restart to apply
-          </span>
-          <Button size="sm" onClick={handleRestart}>
-            <RefreshCw01 className="size-3.5" /> Restart now
-          </Button>
-        </div>
-      )}
       {previewState.kind === "iframe" && (
         <div className="flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
           {/* Group 1: view mode toggle */}
@@ -448,7 +420,7 @@ export function PreviewContent() {
               onValueChange={handleViewModeChange}
               options={VIEW_MODE_OPTIONS}
               size="sm"
-              className="shrink-0 bg-foreground/[0.045]"
+              className="shrink-0 bg-foreground/4.5"
             />
           )}
 

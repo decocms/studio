@@ -28,7 +28,8 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 function PersistentChatPanel({
   children,
   defaultSize,
-}: PropsWithChildren<{ defaultSize: number }>) {
+  chatOpen,
+}: PropsWithChildren<{ defaultSize: number; chatOpen: boolean }>) {
   const [_isPending, startTransition] = useTransition();
   const [storedChatPanelWidth, setChatPanelWidth] = useLocalStorage(
     LOCALSTORAGE_KEYS.decoChatPanelWidth(),
@@ -48,7 +49,10 @@ function PersistentChatPanel({
       minSize={20}
       collapsible={true}
       collapsedSize={0}
-      className="min-w-0 overflow-hidden bg-sidebar"
+      className={cn(
+        "overflow-hidden bg-sidebar",
+        chatOpen ? "min-w-[348px]" : "min-w-0",
+      )}
       onResize={handleResize}
       order={1}
     >
@@ -102,7 +106,7 @@ export function ChatMainPanelGroup({
       className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0"
       style={{ overflow: "visible" }}
     >
-      <PersistentChatPanel defaultSize={sizes.chat}>
+      <PersistentChatPanel defaultSize={sizes.chat} chatOpen={chatOpen}>
         <div className="h-full p-0.5 pt-0.25">
           <div className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow">
             {chatContent ?? <ChatCenterPanel />}

@@ -148,6 +148,7 @@ export function ImageLightbox({
               className="max-w-[min(800px,85vw)] max-h-[80vh] object-contain select-none"
               style={{
                 transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+                // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
                 transition: dragRef.current?.active
                   ? "none"
                   : "transform 200ms ease-out",

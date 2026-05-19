@@ -2,7 +2,7 @@
  * Build Stream Request
  *
  * Converts a stored Automation row into a DispatchRunInput suitable for passing
- * to dispatchRun(). The caller is expected to resolve the automation's tier via
+ * to dispatchRunAndWait(). The caller is expected to resolve the automation's tier via
  * resolveTier() first; the resolved model is passed in here. The automation's
  * stored `models` JSON is no longer read for credential or model info — after
  * migration 077 it carries only `{ tier }`.

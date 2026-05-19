@@ -1,8 +1,5 @@
-import {
-  type VmMap,
-  useMCPClient,
-  useMCPToolCallQuery,
-} from "@decocms/mesh-sdk";
+import { KEYS, type VmMap, useMCPClient } from "@decocms/mesh-sdk";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 export interface Branch {
   name: string;
@@ -16,6 +13,13 @@ export interface UseBranchesResult {
   defaultBase: string | null;
   isLoading: boolean;
   isError: boolean;
+  hasMore: boolean;
+  isFetchingMore: boolean;
+  fetchMore: () => void;
+  fetchUntilMatch: (
+    search: string,
+    shouldContinue?: () => boolean,
+  ) => Promise<void>;
 }
 
 interface UseBranchesArgs {
@@ -44,6 +48,44 @@ type RawBranchesResponse =
       branches?: RawBranch[];
       default_branch?: string;
     };
+
+interface BranchesPage {
+  branches: RawBranch[];
+  default_branch: string | null;
+  page: number;
+}
+
+const BRANCHES_PER_PAGE = 100;
+
+function pageHasBranchMatch(
+  pages: BranchesPage[] | undefined,
+  search: string,
+  excludedNames: Set<string>,
+): boolean {
+  const normalizedSearch = search.trim().toLowerCase();
+  if (!normalizedSearch) return true;
+
+  return (pages ?? []).some((page) =>
+    page.branches.some(
+      (branch) =>
+        typeof branch.name === "string" &&
+        !excludedNames.has(branch.name) &&
+        branch.name.toLowerCase().includes(normalizedSearch),
+    ),
+  );
+}
+
+function branchNamesHaveMatch(
+  branchNames: Set<string>,
+  search: string,
+): boolean {
+  const normalizedSearch = search.trim().toLowerCase();
+  if (!normalizedSearch) return true;
+
+  return [...branchNames].some((branchName) =>
+    branchName.toLowerCase().includes(normalizedSearch),
+  );
+}
 
 /**
  * github-mcp-server may return either:
@@ -93,25 +135,64 @@ export function useBranches({
     orgSlug,
   });
 
-  const { data, isLoading, isError } = useMCPToolCallQuery<RawBranchesResponse>(
-    {
-      client,
-      toolName: "list_branches",
-      toolArguments: { owner, repo },
-      enabled: enabled && !!connectionId && !!owner && !!repo,
-      staleTime: 30_000,
-      select: (r) => extractBranches(r),
+  const {
+    data,
+    isLoading,
+    isError,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery<BranchesPage>({
+    queryKey: KEYS.githubBranches(orgId, orgSlug, connectionId, owner, repo),
+    enabled: enabled && !!connectionId && !!owner && !!repo,
+    staleTime: 30_000,
+    retry: false,
+    initialPageParam: 1,
+    queryFn: async ({ pageParam, signal }) => {
+      const page = Number(pageParam);
+      const result = await client.callTool(
+        {
+          name: "list_branches",
+          arguments: { owner, repo, page, perPage: BRANCHES_PER_PAGE },
+        },
+        undefined,
+        { signal },
+      );
+      const parsed = extractBranches(result);
+      const branches = Array.isArray(parsed) ? parsed : (parsed.branches ?? []);
+
+      return {
+        branches,
+        default_branch: Array.isArray(parsed)
+          ? null
+          : (parsed.default_branch ?? null),
+        page,
+      };
     },
-  );
+    getNextPageParam: (lastPage) => {
+      if (lastPage.branches.length < BRANCHES_PER_PAGE) {
+        return undefined;
+      }
+
+      return lastPage.page + 1;
+    },
+  });
 
   const yourBranchNames = new Set(Object.keys(vmMap?.[userId] ?? {}));
   const yours: Branch[] = [...yourBranchNames]
     .sort()
     .map((name) => ({ name, source: "yours" as const }));
 
-  const rawBranches: RawBranch[] = Array.isArray(data)
-    ? data
-    : (data?.branches ?? []);
+  const branchesByName = new Map<string, RawBranch>();
+  for (const page of data?.pages ?? []) {
+    for (const branch of page.branches) {
+      if (typeof branch.name === "string") {
+        branchesByName.set(branch.name, branch);
+      }
+    }
+  }
+
+  const rawBranches: RawBranch[] = [...branchesByName.values()];
 
   const others: Branch[] = rawBranches
     .filter(
@@ -127,9 +208,37 @@ export function useBranches({
           : (b.commit?.author?.login ?? null),
     }));
 
-  const defaultBase = Array.isArray(data)
-    ? null
-    : (data?.default_branch ?? null);
+  const defaultBase =
+    data?.pages.find((page) => page.default_branch)?.default_branch ?? null;
+  const fetchUntilMatch = async (
+    search: string,
+    shouldContinue = () => true,
+  ) => {
+    if (
+      !shouldContinue() ||
+      branchNamesHaveMatch(yourBranchNames, search) ||
+      isFetchingNextPage
+    ) {
+      return;
+    }
+
+    let pages = data?.pages ?? [];
+    while (
+      shouldContinue() &&
+      !pageHasBranchMatch(pages, search, yourBranchNames) &&
+      (pages.at(-1)?.branches.length ?? BRANCHES_PER_PAGE) >= BRANCHES_PER_PAGE
+    ) {
+      const result = await fetchNextPage();
+      if (!shouldContinue()) {
+        break;
+      }
+      const nextPages = result.data?.pages ?? pages;
+      if (nextPages.length === pages.length) {
+        break;
+      }
+      pages = nextPages;
+    }
+  };
 
   return {
     yours,
@@ -137,5 +246,13 @@ export function useBranches({
     defaultBase,
     isLoading,
     isError,
+    hasMore: hasNextPage ?? false,
+    isFetchingMore: isFetchingNextPage,
+    fetchMore: () => {
+      if (hasNextPage && !isFetchingNextPage) {
+        void fetchNextPage();
+      }
+    },
+    fetchUntilMatch,
   };
 }

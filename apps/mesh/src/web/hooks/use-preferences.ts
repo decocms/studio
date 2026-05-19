@@ -21,6 +21,15 @@ const DEFAULT_PREFERENCES: Preferences = {
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
 
+export const APPROVAL_LEVEL_OPTIONS: {
+  value: ToolApprovalLevel;
+  label: string;
+  short: string;
+}[] = [
+  { value: "readonly", label: "Ask before edit", short: "Ask" },
+  { value: "auto", label: "Auto approve", short: "Auto" },
+];
+
 const VALID_THEME_MODES: ThemeMode[] = ["light", "dark", "system"];
 
 /**

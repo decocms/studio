@@ -180,6 +180,7 @@ export function SessionStats({
         <button
           type="button"
           onClick={onOpenContextPanel}
+          aria-label={`Context usage: ${pct.toFixed(0)}%${cost > 0 ? `, $${cost.toFixed(2)}` : ""}`}
           className={cn(
             "flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-6 px-1 shrink-0",
             onOpenContextPanel ? "cursor-pointer" : "cursor-default",
@@ -214,7 +215,7 @@ export function SessionStats({
               )}
             />
           </svg>
-          <span className="text-[11px] font-mono tabular-nums">
+          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-32 @[496px]/chat-bottom:opacity-100 text-[11px] font-mono tabular-nums">
             {pct.toFixed(0)}%{cost > 0 ? ` · $${cost.toFixed(2)}` : ""}
           </span>
         </button>

@@ -56,10 +56,20 @@ export interface CollapsibleHighlightProps {
   onClose?: () => void;
 }
 
+// Tint is applied via an ::after pseudo-element instead of a `bg-*` utility so
+// it layers over `bg-background` rather than colliding with it under twMerge
+// (which would otherwise strip the solid background and leave the card
+// translucent).
+// `isolate` on the card creates a stacking context so `after:-z-10` keeps the
+// tint behind every child (including buttons with their own backgrounds).
+// Without it, the absolutely-positioned ::after layers on top of static
+// siblings and bleeds red/amber through `bg-background` buttons.
 const VARIANT_OVERLAY: Record<HighlightVariant, string> = {
   default: "",
-  error: "bg-destructive/5",
-  warning: "bg-amber-500/5",
+  error:
+    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-destructive/5 after:pointer-events-none after:-z-10",
+  warning:
+    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-amber-500/5 after:pointer-events-none after:-z-10",
 };
 
 const VARIANT_BORDER: Record<HighlightVariant, string> = {
@@ -101,7 +111,7 @@ export function CollapsibleHighlight({
       data-testid="collapsible-highlight"
       data-variant={variant}
       className={cn(
-        "flex flex-col rounded-xl bg-background border shadow-md",
+        "relative flex flex-col rounded-xl bg-background border shadow-md",
         "w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2",
         VARIANT_BORDER[variant],
         VARIANT_OVERLAY[variant],

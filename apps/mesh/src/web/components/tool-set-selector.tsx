@@ -252,6 +252,7 @@ export function ToolSetSelector({
       })
     : allConnections;
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   const initialOrderSet = initialOrder.current;
 
   // selected first

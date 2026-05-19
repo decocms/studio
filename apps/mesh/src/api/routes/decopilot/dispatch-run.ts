@@ -1,20 +1,16 @@
 /**
  * Dispatch Run
  *
- * The agent loop, decoupled from any transport. Two public entry points:
- *
- *   dispatchRun(input, ctx, deps)
- *     Fire-and-forget. Claims the run, starts the JetStream pump, returns
- *     `{ taskId }`. Subscribers receive chunks via
- *     `streamBuffer.createTailStream(taskId)` (the `/attach` endpoint).
- *     Requires `deps.streamBuffer`. Used by every HTTP route that
- *     initiates work.
+ * The agent loop, decoupled from any transport.
  *
  *   dispatchRunAndWait(input, ctx, deps)
- *     Same lifecycle, but drains `uiStream` internally until the run
- *     terminates and resolves once it's done. Used by automation paths
- *     (DBOS workflow steps, pod-death recovery) that need to await
- *     completion. Does not require a `streamBuffer`.
+ *     Claims the run, drains `uiStream` internally until the run
+ *     terminates, and resolves once it's done. Used by every entry point
+ *     that initiates work (the per-thread DBOS workflow step that backs
+ *     POST /messages, automation fires, pod-death recovery). When a
+ *     `streamBuffer` is configured the run also pumps into JetStream so
+ *     `/stream` tails see chunks live; without one the run still
+ *     completes but its chunks are dropped.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -212,51 +208,21 @@ function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
 }
 
 /**
- * Fire-and-forget: claim the run, start the JetStream pump, return
- * `{ taskId }`. Subscribers receive chunks via
- * `streamBuffer.createTailStream` (the `/attach` endpoint). Requires
- * `deps.streamBuffer` to be configured; routes that need an SSE response
- * call `createTailStream` themselves after this returns.
+ * Drain-to-completion: claim the run, await the run's chunks until the
+ * `{done: true}` sentinel arrives, return `{ taskId }`. Used by callers
+ * that need to block on the agent's completion (DBOS workflow steps).
  *
- * Used by every HTTP route that initiates work (`POST /messages`,
- * `/attach` orphan-resume, the deprecated `POST /stream`).
- */
-export async function dispatchRun(
-  input: DispatchRunInput,
-  ctx: MeshContext,
-  deps: DispatchRunDeps,
-): Promise<DispatchRunResult> {
-  const buffer = deps.streamBuffer;
-  if (!buffer) {
-    throw new Error(
-      "dispatchRun: deps.streamBuffer is required for HTTP-initiated runs. " +
-        "Use dispatchRunAndWait for automation flows that need to await completion.",
-    );
-  }
-  return traced(
-    "decopilot.dispatchRun",
-    async (rootSpan) => {
-      const { taskId, uiStream, registrySignal } = await prepareRun(
-        input,
-        ctx,
-        deps,
-        rootSpan,
-      );
-      buffer.pump(uiStream, taskId, registrySignal);
-      return { taskId };
-    },
-    dispatchRunSpanAttrs(input),
-  );
-}
-
-/**
- * Drain-to-completion: claim the run, drain `uiStream` internally until
- * the run finishes, return `{ taskId }`. The caller awaits the returned
- * promise to know the run is done.
+ * When `deps.streamBuffer` is configured and the JetStream tail is
+ * available, the run pumps into JetStream like a normal HTTP run and this
+ * function drains the tail with `closeOnDone: true`. That gives the
+ * unification benefit: a queued user message and an automation share the
+ * same wire-level path, and any UI tailing the per-thread subject sees
+ * automation chunks too.
  *
- * Used by automations (DBOS workflow steps) that need to block on the
- * agent's completion. Does not require a `streamBuffer` — automations
- * don't have a subscriber to fan out to.
+ * If streamBuffer is unavailable (test mode, NATS down), falls back to
+ * reading `uiStream` directly so the function remains usable. The
+ * fallback drops chunks (no subscriber sees them) but the run still
+ * completes.
  */
 export async function dispatchRunAndWait(
   input: DispatchRunInput,
@@ -266,16 +232,55 @@ export async function dispatchRunAndWait(
   return traced(
     "decopilot.dispatchRunAndWait",
     async (rootSpan) => {
-      const { taskId, uiStream } = await prepareRun(input, ctx, deps, rootSpan);
-      const reader = uiStream.getReader();
-      try {
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
+      const { taskId, uiStream, registrySignal } = await prepareRun(
+        input,
+        ctx,
+        deps,
+        rootSpan,
+      );
+
+      const buffer = deps.streamBuffer;
+      // `deliverPolicy: "new"` here, not "all". The subscription is set
+      // up before `pump()` runs, so every chunk for *this* run lands in
+      // the "new" window. Replaying "all" could surface a stale
+      // `{done:true}` left on the subject by an earlier run that shared
+      // the same `taskId` (DBOS crash-recovery replay; later, user
+      // messages reusing the per-thread subject) and close the tail
+      // before this run produces any output.
+      const tail = buffer
+        ? await buffer.createTailStream(taskId, input.abortSignal, {
+            deliverPolicy: "new",
+            closeOnDone: true,
+          })
+        : null;
+
+      if (buffer && tail) {
+        buffer.pump(uiStream, taskId, registrySignal);
+        const reader = tail.getReader();
+        try {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        } finally {
+          reader.releaseLock();
         }
-      } finally {
-        reader.releaseLock();
+      } else {
+        // Fallback: no JetStream tail available — drain uiStream directly.
+        // Preserves the previous behavior for test environments and any
+        // deployment without NATS. No chunks are observable to tailers in
+        // this mode.
+        const reader = uiStream.getReader();
+        try {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        } finally {
+          reader.releaseLock();
+        }
       }
+
       return { taskId };
     },
     dispatchRunSpanAttrs(input),
@@ -354,7 +359,7 @@ async function prepareRun(
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
 
     if (!input.taskId) {
-      throw new Error("dispatchRun: taskId is required");
+      throw new Error("dispatchRunAndWait: taskId is required");
     }
 
     // 2. Load entities and create/load memory in parallel
@@ -375,10 +380,11 @@ async function prepareRun(
     ]);
 
     // Diagnostic (resume only): record whether the provider activated and
-    // whether the optional model slots are present. Paired with the log in
-    // routes.ts:/attach orphan-resume; together they pinpoint whether tool
-    // dropout on resume is a persistence-side or provider-activation issue.
-    // Drop once the resume-tool-dropout issue is root-caused.
+    // whether the optional model slots are present. `isResume` is only set
+    // by the heartbeat-watcher pod-death recovery in app.ts now, so this
+    // log helps pinpoint whether tool dropout on resume is a
+    // persistence-side or provider-activation issue. Drop once the
+    // resume-tool-dropout issue is root-caused.
     if (input.isResume) {
       console.log("[decopilot:stream] resume — runtime state", {
         taskId: input.taskId,
@@ -1382,18 +1388,6 @@ async function prepareRun(
           messageMetadata: ({ part }) => {
             if (part.type === "start") {
               return {
-                agent: {
-                  id: input.agent.id ?? null,
-                },
-                models: {
-                  credentialId: input.models.credentialId,
-                  thinking: {
-                    ...input.models.thinking,
-                    title:
-                      input.models.thinking.title ?? input.models.thinking.id,
-                    provider: input.models.thinking.provider ?? undefined,
-                  },
-                },
                 created_at: new Date(),
                 _request: {
                   systemSections: systemPrompts.map((p) => ({
@@ -1712,15 +1706,10 @@ async function prepareRun(
       },
     });
 
-    // Setup complete — hand the uiStream back to the dispatch variant.
-    // The caller (`dispatchRun` or `dispatchRunAndWait`) picks the
-    // consumption strategy:
-    //   - `dispatchRun` → `streamBuffer.pump(uiStream, taskId, registrySignal)`
-    //     fans the chunks out via JetStream so /attach subscribers can tail
-    //     them across runs and across tabs.
-    //   - `dispatchRunAndWait` → drains `uiStream` directly with a reader
-    //     loop and resolves when the run finishes. Used by automations
-    //     that need to await completion.
+    // Setup complete — hand the uiStream back to dispatchRunAndWait,
+    // which drains it with a reader loop and (when a streamBuffer is
+    // configured) also pumps the chunks into JetStream so /stream
+    // subscribers can tail them across runs and across tabs.
     return {
       taskId: mem.thread.id,
       uiStream,

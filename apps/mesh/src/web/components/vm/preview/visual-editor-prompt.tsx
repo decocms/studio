@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useChatBridge } from "@/web/components/chat/context";
+import { useChatStream } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import type { VisualEditorPayload } from "./visual-editor-script";
 
@@ -90,7 +90,7 @@ export function VisualEditorPrompt({
 }: VisualEditorPromptProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const { sendMessage } = useChatBridge();
+  const { sendMessage } = useChatStream();
   const { setChatOpen } = usePanelActions();
 
   const handleSend = () => {

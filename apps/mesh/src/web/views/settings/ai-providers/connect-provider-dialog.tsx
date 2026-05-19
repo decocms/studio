@@ -278,8 +278,10 @@ export function ConnectProviderDialog({
 
   // When initialProvider is set, auto-trigger selection once the dialog opens to grid state.
   const handleSelectRef = useRef(handleSelect);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   handleSelectRef.current = handleSelect;
   const initialProviderRef = useRef(initialProvider);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   initialProviderRef.current = initialProvider;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {

@@ -5,6 +5,7 @@
  * Uses Memory and ModelProvider abstractions.
  */
 
+import { createHash } from "node:crypto";
 import type { MeshContext } from "@/core/mesh-context";
 import { TierUnavailableError, resolveTier } from "@/core/resolve-tier";
 import type { SimpleModeTier } from "@/tools/organization/schema";
@@ -32,13 +33,33 @@ import {
   fetchModelPermissions,
   parseModelsToMap,
 } from "./model-permissions";
-import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import { dispatchRun, type DispatchRunInput } from "./dispatch-run";
+import type { DispatchRunInput } from "./dispatch-run";
+import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
-import type { SqlThreadStorage } from "@/storage/threads";
-import { getPodId } from "@/core/pod-identity";
+
+// ============================================================================
+// Idempotency
+// ============================================================================
+
+/**
+ * Derive the workflowID idempotency key from the last request message.
+ *
+ * - User messages have a fresh id per turn, so the id itself is unique.
+ * - Assistant messages are re-POSTed with the same id across approval /
+ *   tool-output rounds in a single logical turn. Hashing the serialized
+ *   message makes each round produce a distinct key while still letting
+ *   a genuine network retry of an identical POST collapse onto the same
+ *   workflow.
+ */
+export function computeIdempotencyKey(
+  lastMsg: ChatMessage | undefined,
+): string | undefined {
+  if (!lastMsg) return undefined;
+  if (lastMsg.role === "user" && lastMsg.id) return lastMsg.id;
+  return createHash("sha1").update(JSON.stringify(lastMsg)).digest("hex");
+}
 
 // ============================================================================
 // Request Validation
@@ -137,18 +158,12 @@ async function resolvePerRequestModels(
 }
 
 // ============================================================================
-// Shared dispatch path: validate → dispatchAndTrack
+// Shared validate path
 // ============================================================================
-
-interface DispatchDeps {
-  runRegistry: RunRegistry;
-  streamBuffer: StreamBuffer;
-  cancelBroadcast: CancelBroadcast;
-}
 
 /**
  * Parse + permission-check an HTTP request into a `DispatchRunInput`
- * ready to hand to `dispatchAndTrack` (or directly to `dispatchRun`).
+ * ready to hand to `enqueueThreadRun` (POST /messages).
  *
  * Pure-ish: reads `c` for the request body and auth context, but no
  * downstream side effects. Throws `HTTPException` / `TierUnavailableError`
@@ -227,39 +242,6 @@ async function validate(
   };
 }
 
-/**
- * Run an HTTP-initiated dispatch and emit the `chat_message_started`
- * posthog event for it. Pairs with `validate` for the standard
- * route-handler flow:
- *
- *   const input = await validate(c, c.req.param("threadId"));
- *   const { taskId } = await dispatchAndTrack(input, ctx, deps);
- *
- * Telemetry lives here (not inside `dispatchRun`) so orphan-resume and
- * automation paths — which call `dispatchRun` directly without a fresh
- * user message — don't double-count `chat_message_started`.
- */
-async function dispatchAndTrack(
-  input: DispatchRunInput,
-  ctx: MeshContext,
-  deps: DispatchDeps,
-): Promise<{ taskId: string }> {
-  const { taskId } = await dispatchRun(input, ctx, deps);
-  posthog.capture({
-    distinctId: input.userId,
-    event: "chat_message_started",
-    groups: { organization: input.organizationId },
-    properties: {
-      organization_id: input.organizationId,
-      agent_id: input.agent,
-      mode: input.mode,
-      thread_id: taskId,
-      credential_id: input.models.credentialId,
-    },
-  });
-  return { taskId };
-}
-
 // ============================================================================
 // Route Handler
 // ============================================================================
@@ -268,11 +250,10 @@ export interface DecopilotDeps {
   cancelBroadcast: CancelBroadcast;
   streamBuffer: StreamBuffer;
   runRegistry: RunRegistry;
-  threadStorage: SqlThreadStorage;
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
-  const { cancelBroadcast, streamBuffer, runRegistry, threadStorage } = deps;
+  const { cancelBroadcast, streamBuffer, runRegistry } = deps;
   const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
 
   // ============================================================================
@@ -301,29 +282,59 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Messages Endpoint — fire-and-forget run creation
+  // Messages Endpoint — enqueue a run on the per-thread gate queue
   // ============================================================================
   //
   // POST /:org/decopilot/threads/:threadId/messages
   //
-  // Claims the run, starts the JetStream pump, and returns
-  // `202 { taskId }` in milliseconds. The response carries no SSE body —
-  // the client is expected to be listening on
-  // `GET /:org/decopilot/attach/:threadId` to receive the run's chunks.
+  // Enqueues the run on `threadGateWorkflow` (partition=threadId,
+  // concurrency=1) and returns `202 { taskId }` in milliseconds. The
+  // response carries no SSE body — the client is expected to be listening
+  // on `GET /:org/decopilot/threads/:threadId/stream` to receive chunks once the
+  // workflow dequeues and dispatches.
   //
-  // Decouples message submission from the long-lived stream connection,
-  // so a slow proxy / tab close / mobile network blip on the subscribe
-  // side never affects the producer, and multiple clients can observe
-  // the same thread without coordinating.
+  // If another run on this thread is already executing, the new message
+  // queues behind it and dispatches only after that run completes.
+  //
+  // Idempotency: a retried POST collapses onto the existing workflow
+  // handle. The key is derived from the last message:
+  //   - user turn: the message id (unique per turn).
+  //   - approval / tool-output continuation: SHA1 of the serialized
+  //     message. The assistant message id is reused across approval
+  //     rounds in the same logical turn, so the id alone would dedupe
+  //     two distinct accepts onto the first workflow and leave the
+  //     second round's state unsaved (bricked approval prompt). Hashing
+  //     the message contents gives each round a fresh workflowID while
+  //     still collapsing genuine network retries of the same POST.
 
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
       const input = await validate(c, c.req.param("threadId"));
-      const { taskId } = await dispatchAndTrack(input, c.get("meshContext"), {
-        runRegistry,
-        streamBuffer,
-        cancelBroadcast,
-      });
+      const taskId = input.taskId;
+      if (!taskId) {
+        // validate() always sets taskId from the URL param, so this is
+        // a structural invariant rather than a user-facing error.
+        throw new HTTPException(400, { message: "threadId is required" });
+      }
+
+      const { abortSignal: _ignored, ...serializableRequest } = input;
+      const lastMsg = input.messages[input.messages.length - 1];
+      const idempotencyKey = computeIdempotencyKey(lastMsg);
+      const workflowID = idempotencyKey
+        ? `thread-run:${taskId}:${idempotencyKey}`
+        : undefined;
+
+      // The workflow body emits `chat_message_started` inside a DBOS step,
+      // so idempotent retries that collapse onto an existing workflowID
+      // don't double-count in PostHog. Don't add a duplicate emit here.
+      await enqueueThreadRun(
+        {
+          threadId: taskId,
+          request: serializableRequest,
+          source: "user-message",
+        },
+        { workflowID },
+      );
       return c.json({ taskId }, 202);
     } catch (err) {
       console.error("[decopilot:messages] Error", err);
@@ -389,156 +400,65 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Attach Endpoint — replay JetStream-buffered stream for late-joining clients
+  // Stream Endpoint — tail the per-thread JetStream subject
   // ============================================================================
+  //
+  // Pure watch endpoint. The persistent connection stays open across runs —
+  // JetStream-level `{done}` sentinels are skipped on the server, and
+  // clients detect run boundaries from the AI-SDK `{type: "finish"}` chunk
+  // in the stream. One open stream per (tab, thread) covers every run.
+  //
+  // Recovery for in-flight runs whose owning pod died is handled out of
+  // band: the thread-gate workflow step is restarted by the DBOS recovery
+  // executor on a healthy pod, and the heartbeat watcher in `app.ts`
+  // resurrects orphaned runs explicitly. Either way, chunks land back on
+  // this thread's JetStream subject and the existing stream tail picks
+  // them up — no client-triggered resume is needed here.
 
-  app.get("/:org/decopilot/attach/:threadId", async (c) => {
+  app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
-      const { taskId, thread, organization } = await validateThreadAccess(c);
+      const { taskId, thread } = await validateThreadAccess(c);
 
-      const activeRun = runRegistry.isRunning(taskId);
-
-      // The persistent connection stays open across runs — JetStream-level
-      // `{done}` sentinels are skipped on the server, and clients detect
-      // run boundaries from the AI-SDK `{type: "finish"}` chunk in the
-      // stream. One open /attach per (tab, thread) covers every run.
-      const serveTail = async (deliverPolicy: "all" | "new") => {
-        const tailChunkStream = await streamBuffer.createTailStream(
-          taskId,
-          c.req.raw.signal,
-          { deliverPolicy },
-        );
-        if (!tailChunkStream) {
-          return c.body(null, 204);
-        }
-
-        const tailStream = createUIMessageStream({
-          execute: async ({ writer }) => {
-            const reader = tailChunkStream.getReader();
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                writer.write(value);
-              }
-            } finally {
-              reader.releaseLock();
-            }
-          },
-        });
-
-        return wrapWithSseKeepalive(
-          createUIMessageStreamResponse({
-            stream: tailStream,
-            consumeSseStream: consumeStream,
-          }),
-        );
-      };
-
-      // ── Fast path: run is active on this pod → tail JetStream ──
-      if (activeRun) {
-        return await serveTail("all");
-      }
-
-      // ── Orphan resume path ──
-      const ctx = c.get("meshContext");
-      const userId = ctx.auth?.user?.id;
-
-      // Not in_progress → no run to resume. Attach anyway from "new" so
-      // the client picks up the next POST /messages on this thread
-      // without having to reconnect.
-      if (thread.status !== "in_progress") {
-        return await serveTail("new");
-      }
-
-      // Only the thread owner can trigger orphan resume
-      if (thread.created_by !== userId) {
-        return c.body(null, 204);
-      }
-
-      // No persisted config → can't resume; force-fail so user can retry
-      if (!thread.run_config) {
-        await threadStorage.forceFailIfInProgress(taskId, organization.id);
-        return c.body(null, 204);
-      }
-
-      // Validate stored config (schema drift protection)
-      const parsed = PersistedRunConfigSchema.safeParse(thread.run_config);
-      if (!parsed.success) {
-        await threadStorage.forceFailIfInProgress(taskId, organization.id);
-        return c.body(null, 204);
-      }
-      const config = parsed.data;
-
-      // Diagnostic: report which optional model slots survived persistence.
-      // Helps trace cases where a resumed run loses conditional tools like
-      // `web_search` / `generate_image` (gated by `models.deepResearch` and
-      // `models.image` in built-in-tools/index.ts). Drop once the
-      // resume-tool-dropout issue is root-caused.
-      console.log("[decopilot:attach] orphan resume — persisted config", {
+      // Use the DB's view, not pod-local registry state. A client attached
+      // to a non-owner pod (any multi-pod deployment, including mid-deploy
+      // and after a DBOS replay rehome) needs `"all"` to catch chunks the
+      // owning pod has already pumped to the shared JetStream subject.
+      // The buffer is purged on terminal events (run-reactor), so `"all"`
+      // only ever replays the current in-flight run.
+      const deliverPolicy = thread.status === "in_progress" ? "all" : "new";
+      const tailChunkStream = await streamBuffer.createTailStream(
         taskId,
-        thinkingModelId: config.models.thinking.id,
-        hasFast: !!config.models.fast,
-        hasCoding: !!config.models.coding,
-        hasImage: !!config.models.image,
-        hasDeepResearch: !!config.models.deepResearch,
-        mode: config.mode,
+        c.req.raw.signal,
+        { deliverPolicy },
+      );
+      if (!tailChunkStream) {
+        return c.body(null, 204);
+      }
+
+      const tailStream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          const reader = tailChunkStream.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              writer.write(value);
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        },
       });
 
-      // Re-check model permissions with CURRENT user role
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
+      return wrapWithSseKeepalive(
+        createUIMessageStreamResponse({
+          stream: tailStream,
+          consumeSseStream: consumeStream,
+        }),
       );
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          config.models.credentialId,
-          config.models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
-      }
-
-      // Atomic CAS claim — succeeds for null or stale run_owner_pod
-      const claimed = await threadStorage.claimOrphanedRun(
-        taskId,
-        organization.id,
-        getPodId(),
-      );
-      if (!claimed) {
-        return c.body(null, 204);
-      }
-
-      // Resume the run — identity from auth context, NOT stored config.
-      // Fire-and-forget: the resumed run pumps into JetStream, and the
-      // tail subscription created below is what we serve to this request.
-      await dispatchRun(
-        {
-          messages: [],
-          models: toModelsConfig(config.models),
-          agent: config.agent,
-          temperature: config.temperature,
-          toolApprovalLevel: config.toolApprovalLevel,
-          mode: config.mode,
-          organizationId: organization.id,
-          userId,
-          taskId,
-          windowSize: config.windowSize,
-          isResume: true,
-        },
-        ctx,
-        { runRegistry, streamBuffer, cancelBroadcast },
-      );
-
-      return await serveTail("all");
     } catch (err) {
       if (err instanceof HTTPException) throw err;
-      console.error("[decopilot:attach] Error", err);
+      console.error("[decopilot:stream] Error", err);
       return c.body(null, 500);
     }
   });

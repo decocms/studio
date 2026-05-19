@@ -338,7 +338,9 @@ function CategorySelect({
 
   // Sync internal input when value changes externally (e.g. AI suggestion)
   const prevValue = useRef(value);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (prevValue.current !== value) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevValue.current = value;
     setInput(value);
   }
@@ -571,6 +573,7 @@ export function RegistryItemDialog({
   const lastDiscoveredUrlRef = useRef<string>("");
   // Keep a ref to remoteType so the debounced callback always reads the latest value
   const remoteTypeRef = useRef(remoteType);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   remoteTypeRef.current = remoteType;
 
   const handleOpenChange = (next: boolean) => {

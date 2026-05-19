@@ -51,7 +51,9 @@ export function MonitorConfiguration() {
   const [showDefaultPrompt, setShowDefaultPrompt] = useState(false);
 
   // Sync draft when external settings change (replaces useEffect)
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (prevSettingsRef.current !== settings) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevSettingsRef.current = settings;
     setDraft(settings);
   }

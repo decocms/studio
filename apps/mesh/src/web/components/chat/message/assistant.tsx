@@ -608,9 +608,28 @@ export function MessageAssistant({
 
   // Determine whether to collapse intermediate parts.
   // Only collapse when not streaming and there are enough tool calls.
+  // For the last message, also require the turn not to be paused on a
+  // pending tool call (awaiting approval / user_ask / propose_plan / still
+  // executing) — collapsing now would hide work about to grow further.
+  // Derived from the message's parts rather than the session-scoped
+  // `finishReason`, so server-loaded threads collapse too.
+  const isTerminallyDone =
+    !isLast ||
+    !message ||
+    !message.parts.some((part) => {
+      const type = part.type;
+      if (type !== "dynamic-tool" && !type?.startsWith("tool-")) return false;
+      const state = (part as { state?: string }).state;
+      return (
+        state === "input-streaming" ||
+        state === "input-available" ||
+        state === "approval-requested"
+      );
+    });
   const shouldCollapse =
     !isLoading &&
     hasContent &&
+    isTerminallyDone &&
     (() => {
       let toolCallCount = 0;
       for (const item of renderOrder) {
