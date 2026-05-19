@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { ArrowLeft, Loading01 } from "@untitledui/icons";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { cn } from "@deco/ui/lib/utils.js";
 import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
@@ -11,6 +12,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema } from "./resolve-schema";
+import { MatcherPicker, extractMatchers } from "./matcher-picker";
 
 interface RawSection {
   __resolveType: string;
@@ -23,6 +25,199 @@ interface RawSection {
 }
 
 const AUTOSAVE_DELAY = 700;
+
+interface PageVariant {
+  label: string;
+  sections: RawSection[];
+  rule?: Record<string, unknown>;
+}
+
+const capitalize = (s: string) =>
+  s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
+function labelFromResolveType(rt: string): string {
+  const segments = rt.split("/");
+  const filename = segments[segments.length - 1] ?? rt;
+  return (
+    filename
+      .replace(/\.(tsx?|jsx?)$/, "")
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
+  );
+}
+
+function formatMatcher(rule: Record<string, unknown> | undefined): string {
+  if (!rule) return "Default";
+  const rt = (rule.__resolveType as string) ?? "";
+
+  const alwaysTypes = [
+    "website/matchers/always.ts",
+    "$live/matchers/MatchAlways.ts",
+  ];
+  if (alwaysTypes.includes(rt) || rt === "") return "Default";
+
+  switch (rt) {
+    case "website/matchers/never.ts":
+      return "Hidden";
+
+    case "website/matchers/device.ts":
+    case "$live/matchers/MatchDevice.ts": {
+      const {
+        mobile,
+        tablet,
+        desktop,
+        devices: devList = [],
+      } = rule as {
+        mobile?: boolean;
+        tablet?: boolean;
+        desktop?: boolean;
+        devices?: string[];
+      };
+      const devices = [...(devList as string[])];
+      if (mobile) devices.push("Mobile");
+      if (tablet) devices.push("Tablet");
+      if (desktop) devices.push("Desktop");
+      return devices.length > 0
+        ? devices.map(capitalize).join(" & ")
+        : labelFromResolveType(rt);
+    }
+
+    case "website/matchers/date.ts":
+    case "$live/matchers/MatchDate.ts": {
+      const { start, end } = rule as { start?: string; end?: string };
+      if (!start && !end) return labelFromResolveType(rt);
+      const fmt = new Intl.DateTimeFormat("en", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      if (start && end) {
+        try {
+          return `${fmt.format(new Date(start))} \u2192 ${fmt.format(new Date(end))}`;
+        } catch {
+          return labelFromResolveType(rt);
+        }
+      }
+      if (start) {
+        try {
+          return `From ${fmt.format(new Date(start))}`;
+        } catch {
+          return labelFromResolveType(rt);
+        }
+      }
+      if (end) {
+        try {
+          return `Until ${fmt.format(new Date(end))}`;
+        } catch {
+          return labelFromResolveType(rt);
+        }
+      }
+      return labelFromResolveType(rt);
+    }
+
+    case "website/matchers/random.ts":
+    case "$live/matchers/MatchRandom.ts": {
+      const { traffic } = rule as { traffic?: number };
+      if (typeof traffic === "number") {
+        return `${Math.ceil(traffic * 100)}% of sessions`;
+      }
+      return labelFromResolveType(rt);
+    }
+
+    case "website/matchers/host.ts":
+    case "$live/matchers/MatchHost.ts": {
+      const { includes, match } = rule as {
+        includes?: string;
+        match?: string;
+      };
+      const parts: string[] = [];
+      if (includes) parts.push(includes);
+      if (match) parts.push(match);
+      return parts.length > 0 ? parts.join(" - ") : labelFromResolveType(rt);
+    }
+
+    case "website/matchers/pathname.ts": {
+      const caseObj = rule.case as
+        | { type?: string; pathname?: string }
+        | undefined;
+      const { type, pathname } = caseObj ?? {};
+      if (type && pathname) return `Pathname ${type} ${pathname}`;
+      return labelFromResolveType(rt);
+    }
+
+    case "website/matchers/location.ts":
+    case "$live/matchers/MatchLocation.ts": {
+      const { includeLocations, excludeLocations } = rule as {
+        includeLocations?: Array<{
+          city?: string;
+          regionCode?: string;
+          country?: string;
+        }>;
+        excludeLocations?: Array<{
+          city?: string;
+          regionCode?: string;
+          country?: string;
+        }>;
+      };
+      const fmtLoc = (loc: {
+        city?: string;
+        regionCode?: string;
+        country?: string;
+      }) => [loc.city, loc.regionCode, loc.country].filter(Boolean).join(" - ");
+      const first = includeLocations?.[0];
+      if (first) {
+        const rest = (includeLocations?.length ?? 0) - 1;
+        return `${fmtLoc(first)}${rest > 0 ? ` +${rest}` : ""}`;
+      }
+      const firstEx = excludeLocations?.[0];
+      if (firstEx) {
+        const rest = (excludeLocations?.length ?? 0) - 1;
+        return `Except ${fmtLoc(firstEx)}${rest > 0 ? ` +${rest}` : ""}`;
+      }
+      return "Any location";
+    }
+
+    case "website/matchers/multi.ts":
+    case "$live/matchers/MatchMulti.ts": {
+      const { matchers, op = "AND" } = rule as {
+        matchers?: Array<Record<string, unknown>>;
+        op?: string;
+      };
+      if (matchers && matchers.length > 0) {
+        return matchers.map(formatMatcher).join(` ${op} `);
+      }
+      return labelFromResolveType(rt);
+    }
+
+    default:
+      return labelFromResolveType(rt) || "Default";
+  }
+}
+
+/**
+ * Parse page-level `sections` into an array of variants.
+ * - Plain array → single variant labelled "Default"
+ * - Multivariate flag object → one variant per entry in `variants`
+ */
+function parsePageVariants(sections: unknown): PageVariant[] {
+  if (Array.isArray(sections)) {
+    return [{ label: "Default", sections }];
+  }
+  if (sections && typeof sections === "object") {
+    const obj = sections as Record<string, unknown>;
+    if (Array.isArray(obj.variants)) {
+      const raw = obj.variants as Array<{
+        rule?: Record<string, unknown>;
+        value?: unknown;
+      }>;
+      return raw.map((v, i) => ({
+        label: formatMatcher(v.rule) || `Variant ${i + 1}`,
+        sections: Array.isArray(v.value) ? (v.value as RawSection[]) : [],
+        rule: v.rule,
+      }));
+    }
+  }
+  return [];
+}
 
 /**
  * Editable page name + path inputs that hold local state to prevent
@@ -174,6 +369,12 @@ export function SectionsEditor({
   const [activeResolveType, setActiveResolveType] = useState<string | null>(
     null,
   );
+  const [activeVariantIndex, setActiveVariantIndex] = useState(0);
+  const [ruleFormValue, setRuleFormValue] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [ruleResolveType, setRuleResolveType] = useState<string | null>(null);
 
   // Reset form state when the active page changes
   const [prevPath, setPrevPath] = useState(currentPath);
@@ -182,11 +383,15 @@ export function SectionsEditor({
     setSelectedSectionIndex(null);
     setFormValue(null);
     setActiveResolveType(null);
+    setActiveVariantIndex(0);
+    setRuleFormValue(null);
+    setRuleResolveType(null);
   }
 
   const saveBlock = useSaveBlock({ previewUrl, orgSlug, virtualMcpId, branch });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Accumulates pending page header field changes to avoid losing edits
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
 
@@ -197,11 +402,15 @@ export function SectionsEditor({
     parsedSections: ParsedSection[];
     decofile: Record<string, unknown>;
     activePageKey: string | null;
+    pageVariants: PageVariant[];
+    variantIndex: number;
   }>({
     rawSections: [],
     parsedSections: [],
     decofile: {},
     activePageKey: null,
+    pageVariants: [],
+    variantIndex: 0,
   });
 
   if (decofileLoading || metaLoading) {
@@ -227,14 +436,28 @@ export function SectionsEditor({
 
   const pageData =
     activePageKey && decofile[activePageKey]
-      ? (decofile[activePageKey] as { sections?: RawSection[] })
+      ? (decofile[activePageKey] as Record<string, unknown>)
       : null;
-  const rawSections: RawSection[] = pageData?.sections ?? [];
+  const pageVariants = parsePageVariants(pageData?.sections);
+  const hasMultipleVariants = pageVariants.length > 1;
+  const safeVariantIndex = Math.min(
+    activeVariantIndex,
+    pageVariants.length - 1,
+  );
+  const activeVariant = pageVariants[safeVariantIndex];
+  const rawSections: RawSection[] = activeVariant?.sections ?? [];
   const parsedSections = parseSections(rawSections, decofile);
 
   // Sync ref so debounced callbacks always see the latest values.
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref is only read in setTimeout callbacks, not during render
-  latestRef.current = { rawSections, parsedSections, decofile, activePageKey };
+  latestRef.current = {
+    rawSections,
+    parsedSections,
+    decofile,
+    activePageKey,
+    pageVariants,
+    variantIndex: safeVariantIndex,
+  };
 
   const activeSchema =
     activeResolveType && meta ? resolveSchema(activeResolveType, meta) : null;
@@ -251,6 +474,8 @@ export function SectionsEditor({
         parsedSections: latestParsedSections,
         decofile: latestDecofile,
         activePageKey: latestPageKey,
+        pageVariants: latestVariants,
+        variantIndex: latestVariantIndex,
       } = latestRef.current;
       const rawSection = latestRawSections[sectionIndex];
       if (!rawSection) return;
@@ -311,7 +536,27 @@ export function SectionsEditor({
         updatedSections[sectionIndex] = nextValue as RawSection;
       }
 
-      fullPageData.sections = updatedSections;
+      // Write back into the correct variant or directly
+      if (latestVariants.length > 1) {
+        // Multivariate page: update the specific variant's value
+        const currentSections = fullPageData.sections as Record<
+          string,
+          unknown
+        >;
+        const variants = [
+          ...((currentSections?.variants as Array<Record<string, unknown>>) ??
+            []),
+        ];
+        if (variants[latestVariantIndex]) {
+          variants[latestVariantIndex] = {
+            ...variants[latestVariantIndex],
+            value: updatedSections,
+          };
+        }
+        fullPageData.sections = { ...currentSections, variants };
+      } else {
+        fullPageData.sections = updatedSections;
+      }
       saveBlock.mutate(
         { blockKey: latestPageKey, data: fullPageData },
         {
@@ -376,8 +621,23 @@ export function SectionsEditor({
     const reordered = arrayMove([...rawSections], fromIndex, toIndex);
     const fullPageData = {
       ...(decofile[activePageKey] as Record<string, unknown>),
-      sections: reordered,
     };
+    if (hasMultipleVariants) {
+      const currentSections = fullPageData.sections as Record<string, unknown>;
+      const variants = [
+        ...((currentSections?.variants as Array<Record<string, unknown>>) ??
+          []),
+      ];
+      if (variants[safeVariantIndex]) {
+        variants[safeVariantIndex] = {
+          ...variants[safeVariantIndex],
+          value: reordered,
+        };
+      }
+      fullPageData.sections = { ...currentSections, variants };
+    } else {
+      fullPageData.sections = reordered;
+    }
     saveBlock.mutate(
       { blockKey: activePageKey, data: fullPageData },
       {
@@ -385,6 +645,81 @@ export function SectionsEditor({
         onError: (err) => toast.error(`Reorder failed: ${err.message}`),
       },
     );
+  };
+
+  // Sync rule form state when variant changes
+  const activeRule = activeVariant?.rule;
+  const activeRuleRt = (activeRule?.__resolveType as string) ?? "";
+  // Initialize rule form state when switching variants
+  if (
+    hasMultipleVariants &&
+    selectedSectionIndex === null &&
+    ruleResolveType === null &&
+    activeRule
+  ) {
+    setRuleResolveType(activeRuleRt);
+    const { __resolveType: _, ...ruleData } = activeRule;
+    setRuleFormValue(ruleData);
+  }
+
+  const availableMatchers = meta ? extractMatchers(meta) : [];
+
+  const ruleSchema =
+    ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
+
+  const scheduleRuleSave = (newRule: Record<string, unknown>) => {
+    if (ruleDebounceRef.current) clearTimeout(ruleDebounceRef.current);
+    ruleDebounceRef.current = setTimeout(() => {
+      const {
+        activePageKey: latestPageKey,
+        decofile: latestDecofile,
+        variantIndex: latestVariantIndex,
+      } = latestRef.current;
+      if (!latestPageKey) return;
+
+      const fullPageData = {
+        ...(latestDecofile[latestPageKey] as Record<string, unknown>),
+      };
+      const mv = {
+        ...(fullPageData.sections as Record<string, unknown>),
+      };
+      const variants = [
+        ...((mv.variants as Array<Record<string, unknown>>) ?? []),
+      ];
+      if (variants[latestVariantIndex]) {
+        variants[latestVariantIndex] = {
+          ...variants[latestVariantIndex],
+          rule: newRule,
+        };
+      }
+      fullPageData.sections = { ...mv, variants };
+
+      saveBlock.mutate(
+        { blockKey: latestPageKey, data: fullPageData },
+        {
+          onSuccess: () => onSaved?.(),
+          onError: (err) => toast.error(`Save failed: ${err.message}`),
+        },
+      );
+    }, AUTOSAVE_DELAY);
+  };
+
+  const handleMatcherTypeChange = (newRt: string) => {
+    setRuleResolveType(newRt);
+    const newRule: Record<string, unknown> = newRt
+      ? { __resolveType: newRt }
+      : {};
+    setRuleFormValue({});
+    scheduleRuleSave(newRule);
+  };
+
+  const handleRuleFormChange = (val: unknown) => {
+    const next = val as Record<string, unknown>;
+    setRuleFormValue(next);
+    const newRule: Record<string, unknown> = ruleResolveType
+      ? { __resolveType: ruleResolveType, ...next }
+      : { ...next };
+    scheduleRuleSave(newRule);
   };
 
   if (!activePage) {
@@ -429,6 +764,42 @@ export function SectionsEditor({
         )}
       </div>
 
+      {/* Variant selector (when page sections are multivariate) */}
+      {hasMultipleVariants && !isEditing && (
+        <div className="flex gap-1 px-3 py-1.5 border-b shrink-0 overflow-x-auto">
+          {pageVariants.map((variant, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setActiveVariantIndex(i);
+                setSelectedSectionIndex(null);
+                setFormValue(null);
+                setActiveResolveType(null);
+                const variantRule = pageVariants[i]?.rule;
+                const variantRuleRt =
+                  (variantRule?.__resolveType as string) ?? "";
+                setRuleResolveType(variantRuleRt);
+                if (variantRule) {
+                  const { __resolveType: _, ...ruleData } = variantRule;
+                  setRuleFormValue(ruleData);
+                } else {
+                  setRuleFormValue(null);
+                }
+              }}
+              className={cn(
+                "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                i === safeVariantIndex
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {variant.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Drill-down: section list OR section form */}
       {isEditing ? (
         <ScrollArea className="flex-1 min-h-0">
@@ -446,6 +817,30 @@ export function SectionsEditor({
         </ScrollArea>
       ) : (
         <ScrollArea className="flex-1 min-h-0">
+          {/* Variant rule editor */}
+          {hasMultipleVariants && ruleResolveType !== null && (
+            <div className="px-3 py-3 border-b space-y-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Rule
+              </span>
+              <MatcherPicker
+                currentRt={ruleResolveType}
+                currentLabel={formatMatcher(activeVariant?.rule)}
+                matchers={availableMatchers}
+                onSelect={handleMatcherTypeChange}
+              />
+              {ruleSchema && ruleFormValue && (
+                <div className="pt-1">
+                  <SchemaForm
+                    schema={ruleSchema}
+                    value={ruleFormValue}
+                    onChange={handleRuleFormChange}
+                    basePath=""
+                  />
+                </div>
+              )}
+            </div>
+          )}
           <div className="p-2">
             <SectionList
               sections={parsedSections}

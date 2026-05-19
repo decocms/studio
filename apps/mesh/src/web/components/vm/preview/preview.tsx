@@ -124,6 +124,7 @@ export function PreviewContent() {
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
+  const [pagesSearch, setPagesSearch] = useState("");
   const pagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Current iframe path (for sections editor)
@@ -138,7 +139,9 @@ export function PreviewContent() {
 
   // Decofile pages for the URL bar dropdown
   const { data: decofile } = useDecofile(previewUrl);
-  const pages = decofile ? extractPages(decofile) : [];
+  const pages = decofile
+    ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
+    : [];
 
   // "reload" fires on config edits framework HMR won't catch (.ts/.tsx use HMR).
   const vmEvents = useVmEvents();
@@ -391,8 +394,10 @@ export function PreviewContent() {
   useEffect(() => {
     if (!pagesOpen) return;
     const handler = (e: PointerEvent) => {
-      if (!pagesContainerRef.current?.contains(e.target as Node))
+      if (!pagesContainerRef.current?.contains(e.target as Node)) {
         setPagesOpen(false);
+        setPagesSearch("");
+      }
     };
     document.addEventListener("pointerdown", handler);
     return () => document.removeEventListener("pointerdown", handler);
@@ -486,7 +491,8 @@ export function PreviewContent() {
     if (!previewUrl) return "No server running";
     try {
       const url = new URL(previewUrl);
-      return `${url.host}${url.pathname === "/" ? "" : url.pathname}`;
+      const path = currentPath === "/" ? "" : currentPath;
+      return `${url.host}${path}`;
     } catch {
       return previewUrl;
     }
@@ -507,18 +513,20 @@ export function PreviewContent() {
                 className="shrink-0 bg-foreground/4.5"
               />
             )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={sectionsOpen ? "secondary" : "ghost"}
-                  size="icon"
-                  onClick={() => setSectionsOpen((prev) => !prev)}
-                >
-                  <TextInput size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Sections Editor</TooltipContent>
-            </Tooltip>
+            {pages.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={sectionsOpen ? "secondary" : "ghost"}
+                    size="icon"
+                    onClick={() => setSectionsOpen((prev) => !prev)}
+                  >
+                    <TextInput size={14} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Sections Editor</TooltipContent>
+              </Tooltip>
+            )}
           </div>
 
           {/* Group 2: nav + url */}
@@ -581,31 +589,66 @@ export function PreviewContent() {
 
               {pagesOpen && pages.length > 0 && (
                 <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
-                  <ScrollArea className="max-h-80">
+                  <div className="px-2 pt-2 pb-1">
+                    <input
+                      type="text"
+                      value={pagesSearch}
+                      onChange={(e) => setPagesSearch(e.target.value)}
+                      placeholder="Search pages..."
+                      className="w-full rounded-md border border-input bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
+                      autoFocus
+                    />
+                  </div>
+                  <ScrollArea className="max-h-[60vh]">
                     <div className="p-1.5">
-                      {pages.map((page) => (
-                        <button
-                          key={page.key}
-                          type="button"
-                          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                          onClick={() => {
-                            setPagesOpen(false);
-                            setCurrentPath(page.path);
-                            // Navigate the iframe
-                            const iframe = previewIframeRef.current;
-                            if (iframe && previewUrl) {
-                              iframe.src = new URL(page.path, previewUrl).href;
-                            }
-                          }}
-                        >
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {page.name}
-                          </span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {page.path}
-                          </span>
-                        </button>
-                      ))}
+                      {pages
+                        .filter((page) => {
+                          if (!pagesSearch) return true;
+                          const q = pagesSearch.toLowerCase();
+                          return (
+                            page.name.toLowerCase().includes(q) ||
+                            page.path.toLowerCase().includes(q)
+                          );
+                        })
+                        .map((page) => (
+                          <button
+                            key={page.key}
+                            type="button"
+                            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                            onClick={() => {
+                              setPagesOpen(false);
+                              setPagesSearch("");
+                              setCurrentPath(page.path);
+                              // Navigate the iframe
+                              const iframe = previewIframeRef.current;
+                              if (iframe && previewUrl) {
+                                iframe.src = new URL(
+                                  page.path,
+                                  previewUrl,
+                                ).href;
+                              }
+                            }}
+                          >
+                            <span className="min-w-0 flex-1 truncate font-medium">
+                              {page.name}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {page.path}
+                            </span>
+                          </button>
+                        ))}
+                      {pagesSearch &&
+                        pages.every((page) => {
+                          const q = pagesSearch.toLowerCase();
+                          return (
+                            !page.name.toLowerCase().includes(q) &&
+                            !page.path.toLowerCase().includes(q)
+                          );
+                        }) && (
+                          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                            No pages match "{pagesSearch}"
+                          </div>
+                        )}
                     </div>
                   </ScrollArea>
                 </div>

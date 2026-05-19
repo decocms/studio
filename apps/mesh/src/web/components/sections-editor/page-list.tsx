@@ -1,5 +1,3 @@
-import { cn } from "@deco/ui/lib/utils.js";
-
 interface PageEntry {
   key: string;
   name: string;
@@ -27,58 +25,28 @@ function parsePageName(key: string): string {
   }
 }
 
+const PAGE_RESOLVE_TYPES = new Set([
+  "website/pages/Page.tsx",
+  "$live/pages/LivePage.tsx",
+]);
+
 export function extractPages(decofile: Record<string, unknown>): PageEntry[] {
   const pages: PageEntry[] = [];
   for (const [key, val] of Object.entries(decofile)) {
     if (val && typeof val === "object" && !Array.isArray(val)) {
       const obj = val as Record<string, unknown>;
-      if (typeof obj.path === "string" && Array.isArray(obj.sections)) {
+      if (
+        typeof obj.__resolveType === "string" &&
+        PAGE_RESOLVE_TYPES.has(obj.__resolveType) &&
+        typeof obj.path === "string"
+      ) {
         pages.push({
           key,
-          name: parsePageName(key),
+          name: typeof obj.name === "string" ? obj.name : parsePageName(key),
           path: obj.path,
         });
       }
     }
   }
   return pages;
-}
-
-function PageList({
-  pages,
-  selectedKey,
-  onSelect,
-}: {
-  pages: PageEntry[];
-  selectedKey: string | null;
-  onSelect: (key: string) => void;
-}) {
-  if (pages.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground px-2 py-3">No pages found.</p>
-    );
-  }
-
-  return (
-    <div className="space-y-0.5">
-      {pages.map((page) => (
-        <button
-          key={page.key}
-          type="button"
-          onClick={() => onSelect(page.key)}
-          className={cn(
-            "w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors",
-            selectedKey === page.key
-              ? "bg-accent text-accent-foreground"
-              : "hover:bg-muted",
-          )}
-        >
-          <div className="font-medium truncate">{page.name}</div>
-          <div className="text-xs text-muted-foreground truncate">
-            {page.path}
-          </div>
-        </button>
-      ))}
-    </div>
-  );
 }
