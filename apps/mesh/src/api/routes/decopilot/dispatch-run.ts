@@ -11,55 +11,35 @@
  *     `streamBuffer` is configured the run also pumps into JetStream so
  *     `/stream` tails see chunks live; without one the run still
  *     completes but its chunks are dropped.
+ *
+ * Architecture: dispatch-run owns the shared infrastructure (run-registry
+ * lifecycle, memory load, JetStream buffering, registry FINISH dispatch,
+ * posthog events). The actual streamText loop + tool assembly +
+ * system-prompt construction is delegated to a Harness via
+ * `localDispatch(harnessId, harnessInput, ctx)`. The three in-tree harnesses
+ * (`decopilot`, `claude-code`, `codex`) each produce `UIMessageChunk`
+ * streams that get merged into the outer `createUIMessageStream` writer;
+ * the drain reader consumes the result.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
 import { posthog } from "@/posthog";
-import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
-import { monitorLlmCall } from "@/monitoring/emit-llm-call";
-import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
+import { type UIMessageChunk, createUIMessageStream } from "ai";
+import { localDispatch } from "../../../harnesses";
+import type {
+  HarnessId,
+  HarnessProcessLocal,
+  HarnessStreamInput,
+} from "../../../harnesses/types";
 import {
-  type GithubRepo,
-  isDecopilot,
-  sanitizeProviderMetadata,
-} from "@decocms/mesh-sdk";
-import { SpanStatusCode } from "@opentelemetry/api";
-import {
-  type ToolSet,
-  createUIMessageStream,
-  stepCountIs,
-  streamText,
-} from "ai";
-import { getBuiltInTools, type PendingImage } from "./built-in-tools";
-import { createEnableToolTool } from "./built-in-tools/enable-tool";
-import { buildAgentsBlock } from "./agents-block";
-import { buildPromptsBlock } from "./prompts-block";
-import {
-  addCacheStep,
-  emptyCacheAccumulator,
-  OPENROUTER_CACHE_PROVIDER_OPTIONS,
-} from "./cache-instrumentation";
-import { buildSystemMessages } from "./system-prompt";
-import {
-  buildConnectionsBlock,
-  type ConnectionsBlockTool,
-} from "./connections-block";
-import {
-  buildBasePlatformPrompt,
-  buildDecopilotAgentPrompt,
-  buildRepoEnvironmentPrompt,
-  buildTodoWritePrompt,
-  DEFAULT_MAX_TOKENS,
-  DEFAULT_THREAD_TITLE,
-  DEFAULT_WINDOW_SIZE,
-  generateMessageId,
-  PARENT_STEP_LIMIT,
-} from "./constants";
-import { loadAndMergeMessages, processConversation } from "./conversation";
+  sanitizeStreamError,
+  stringifyError,
+} from "../../../harnesses/decopilot/stream-error";
+import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
+import { loadAndMergeMessages } from "./conversation";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
-import { toolsFromMCP } from "./helpers";
 import type { ToolApprovalLevel } from "./helpers";
-import { type ChatMode, resolveModeConfig } from "./mode-config";
+import { type ChatMode } from "./mode-config";
 
 export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
@@ -71,35 +51,13 @@ import {
 import type { RunRegistry } from "./run-registry";
 import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
-import { genTitle } from "./title-generator";
-import type { ChatMessage, ModelInfo, ModelsConfig } from "./types";
+import type { ChatMessage, ModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
-import { ThreadMessage } from "@/storage/types";
-import type { MeshProvider } from "@/ai-providers/types";
-import {
-  createClaudeCodeModel,
-  resolveClaudeCodeModelId,
-} from "@/ai-providers/adapters/claude-code";
-import {
-  createCodexModel,
-  resolveCodexModelId,
-} from "@/ai-providers/adapters/codex";
+import type { ThreadMessage } from "@/storage/types";
+import type { PendingImage } from "../../../harnesses/decopilot/built-in-tools";
 import { getInternalUrl } from "@/core/server-constants";
-import { traced, tracer } from "@/observability";
+import { traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
-import { getSharedRunner } from "@/sandbox/lifecycle";
-
-function stringifyError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "object" && error !== null) {
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return "[unserializable object]";
-    }
-  }
-  return String(error);
-}
 
 /**
  * Classify a stream error into a small, stable taxonomy for analytics.
@@ -140,19 +98,109 @@ function classifyStreamError(
 }
 
 /**
- * Creates a language model from the provider, enabling reasoning when the
- * model advertises the "reasoning" capability (e.g. OpenRouter thinking models).
+ * Pick the harness id from the resolved credential's provider id.
+ *
+ * Anything that isn't a recognized CLI agent provider id maps to
+ * decopilot — the native in-tree harness. The CLI agent providers each
+ * own their own harness (see `apps/mesh/src/harnesses/{claude-code,codex}`).
  */
-export function createLanguageModel(provider: MeshProvider, model: ModelInfo) {
-  if (model.capabilities?.reasoning !== false) {
-    // Provider-specific settings (e.g. OpenRouter reasoning) are not part of
-    // the generic ProviderV3 interface, so we cast to pass them through.
-    const lm = (provider.aiSdk.languageModel as Function)(model.id, {
-      reasoning: { enabled: true, effort: "medium" },
-    });
-    return lm as ReturnType<typeof provider.aiSdk.languageModel>;
+function resolveHarnessId(providerId: string | undefined): HarnessId {
+  if (providerId === "claude-code") return "claude-code";
+  if (providerId === "codex") return "codex";
+  return "decopilot";
+}
+
+/**
+ * Adapt an AsyncIterable<UIMessageChunk> (the harness output) into a
+ * ReadableStream<UIMessageChunk> so it can flow through `writer.merge()`.
+ */
+function asReadableStream(
+  source: AsyncIterable<UIMessageChunk>,
+): ReadableStream<UIMessageChunk> {
+  const iter = source[Symbol.asyncIterator]();
+  return new ReadableStream<UIMessageChunk>({
+    async pull(controller) {
+      try {
+        const { value, done } = await iter.next();
+        if (done) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+    async cancel(reason) {
+      // Best-effort: notify the source so a generator can run its
+      // `finally` block (e.g. closing the codex provider subprocess).
+      if (typeof iter.return === "function") {
+        await iter.return(reason).catch(() => {});
+      }
+    },
+  });
+}
+
+/**
+ * Find the last coding-agent session id stored on a prior assistant
+ * message. Today only claude-code uses this — codex spawns a new process
+ * per request, so its threadId can't be resumed. The provider filter
+ * guards against picking up a codex threadId when the user switches
+ * provider mid-thread.
+ */
+function lookupResumeSessionRef(
+  messages: ChatMessage[],
+  harnessId: HarnessId,
+): string | undefined {
+  if (harnessId !== "claude-code") return undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    const meta = msg?.metadata as {
+      codingAgentSessionId?: string;
+      codingAgentProvider?: string;
+    };
+    if (
+      msg?.role === "assistant" &&
+      meta?.codingAgentSessionId &&
+      meta?.codingAgentProvider === "claude-code"
+    ) {
+      return meta.codingAgentSessionId;
+    }
   }
-  return provider.aiSdk.languageModel(model.id);
+  return undefined;
+}
+
+/**
+ * Mint a 1h-TTL API key + return the MCP endpoint URL/headers a CLI
+ * harness will use to talk to mesh's virtual-MCP gateway over HTTP. Only
+ * called for harnesses that actually open an HTTP MCP connection
+ * (claude-code, codex); decopilot's in-process passthrough doesn't need
+ * this.
+ */
+async function mintMcpEndpoint(
+  ctx: MeshContext,
+  agentId: string,
+  organization: { id: string; slug?: string; name?: string },
+  apiKeyName: string,
+): Promise<{ url: string; headers: Record<string, string> }> {
+  const apiKey = await ctx.boundAuth.apiKey.create({
+    name: apiKeyName,
+    expiresIn: 3600,
+    metadata: {
+      organization: {
+        id: organization.id,
+        slug: organization.slug,
+        name: organization.name,
+      },
+    },
+  });
+  return {
+    url: `${getInternalUrl()}/mcp/virtual-mcp/${agentId}`,
+    headers: {
+      Authorization: `Bearer ${apiKey.key}`,
+      "x-org-id": organization.id,
+    },
+  };
 }
 
 // ============================================================================
@@ -295,10 +343,10 @@ interface PreparedRun {
 
 /**
  * Setup phase shared by both dispatch variants. Claims the run, loads
- * conversation history, builds tools / system prompts, and constructs
- * `uiStream` from the AI SDK pipeline. Returns the stream to whoever
- * called it; the caller decides how to consume it (pump for fan-out,
- * drain for direct await).
+ * conversation history, dispatches through the harness registry, and
+ * constructs `uiStream` from the AI SDK pipeline. Returns the stream to
+ * whoever called it; the caller decides how to consume it (pump for
+ * fan-out, drain for direct await).
  *
  * Setup-phase errors propagate out of here with the run already
  * force-FINISHED to "failed" in the registry. Consumption-phase errors
@@ -321,24 +369,20 @@ async function prepareRun(
     ),
   };
 
-  let closeClients: (() => void) | undefined;
   let runStarted = false;
   let taskId: string | undefined;
-  let llmCallStartTime: number | undefined;
-  let llmCallLogged = false;
 
   try {
     const credentialKey = await ctx.storage.aiProviderKeys
       .findById(input.models.credentialId, input.organizationId)
       .catch(() => null);
-    const isClaudeCode = credentialKey?.providerId === "claude-code";
-    const isCodex = credentialKey?.providerId === "codex";
-    const isCliAgent = isClaudeCode || isCodex;
-    rootSpan.setAttribute("decopilot.isCliAgent", isCliAgent);
-    rootSpan.setAttribute("decopilot.isCodex", isCodex);
+    const harnessId = resolveHarnessId(credentialKey?.providerId);
+    rootSpan.setAttribute("decopilot.harnessId", harnessId);
 
-    // 1. Check model permissions (skip for Claude Code in local mode)
-    if (!isCliAgent) {
+    // 1. Check model permissions (decopilot-only; CLI harnesses run with
+    //    the user's own provider credential / local CLI binary, which is
+    //    already vetted at credential-creation time).
+    if (harnessId === "decopilot") {
       const allowedModels = await fetchModelPermissions(
         ctx.db,
         input.organizationId,
@@ -365,12 +409,12 @@ async function prepareRun(
     // 2. Load entities and create/load memory in parallel
     const [virtualMcp, provider, mem] = await Promise.all([
       ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
-      isCliAgent
-        ? Promise.resolve(null)
-        : ctx.aiProviders.activate(
+      harnessId === "decopilot"
+        ? ctx.aiProviders.activate(
             input.models.credentialId,
             input.organizationId,
-          ),
+          )
+        : Promise.resolve(null),
       createMemory(ctx.storage.threads, {
         organization_id: input.organizationId,
         thread_id: input.taskId,
@@ -380,15 +424,14 @@ async function prepareRun(
     ]);
 
     // Diagnostic (resume only): record whether the provider activated and
-    // whether the optional model slots are present. `isResume` is only set
-    // by the heartbeat-watcher pod-death recovery in app.ts now, so this
-    // log helps pinpoint whether tool dropout on resume is a
-    // persistence-side or provider-activation issue. Drop once the
-    // resume-tool-dropout issue is root-caused.
+    // whether the optional model slots are present. Paired with the log in
+    // routes.ts:/attach orphan-resume; together they pinpoint whether tool
+    // dropout on resume is a persistence-side or provider-activation issue.
+    // Drop once the resume-tool-dropout issue is root-caused.
     if (input.isResume) {
       console.log("[decopilot:stream] resume — runtime state", {
         taskId: input.taskId,
-        isCliAgent,
+        harnessId,
         providerActivated: !!provider,
         thinkingModelId: input.models.thinking.id,
         hasImage: !!input.models.image,
@@ -539,14 +582,6 @@ async function prepareRun(
       await saveMessagesToThread(materializedRequestMessage);
     }
 
-    // Close MCP clients on abort
-    registrySignal.addEventListener("abort", () => {
-      closeClients?.();
-    });
-
-    const maxOutputTokens =
-      input.models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS;
-
     let streamFinished = false;
     const pendingOps: Promise<void>[] = [];
 
@@ -560,31 +595,8 @@ async function prepareRun(
       windowSize,
     );
 
-    // Find the last coding agent session ID for session resume.
-    // Currently only Claude Code supports resume (Codex spawns a new process per request).
-    // We filter by codingAgentProvider to avoid using a Codex thread ID as a
-    // Claude Code resume session (possible when the user switches providers mid-thread).
-    let resumeSessionId: string | undefined;
-    if (isClaudeCode) {
-      for (let i = allMessages.length - 1; i >= 0; i--) {
-        const msg = allMessages[i];
-        const meta = msg?.metadata as {
-          codingAgentSessionId?: string;
-          codingAgentProvider?: string;
-        };
-        if (
-          msg?.role === "assistant" &&
-          meta?.codingAgentSessionId &&
-          meta?.codingAgentProvider === "claude-code"
-        ) {
-          resumeSessionId = meta.codingAgentSessionId;
-          break;
-        }
-      }
-    }
+    const resumeSessionRef = lookupResumeSessionRef(allMessages, harnessId);
 
-    const toolOutputMap = new Map<string, string>();
-    const pendingImages: PendingImage[] = [];
     const organization = ctx.organization!;
     const streamStartAt = Date.now();
     let aggregatedUsage: {
@@ -592,985 +604,101 @@ async function prepareRun(
       outputTokens: number;
       totalTokens: number;
     } = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
-    let titleHandle: ReturnType<typeof genTitle> | null = null;
 
     const uiStream = createUIMessageStream({
       originalMessages: allMessages,
       execute: async ({ writer }) => {
-        const modeConfig = resolveModeConfig(input.mode, { isCliAgent });
-
-        // superUser=true: the user is already authenticated as an org member,
-        // the virtual MCP enforces which connections are in scope, and the
-        // per-tool AuthTransport check would block every non-public connection
-        // tool (GitHub, Slack, etc.) for users who don't have explicit per-tool
-        // permissions configured — the wrong enforcement layer for chat.
-        const passthroughClient = await createVirtualClientFrom(
-          virtualMcp,
-          ctx,
-          "passthrough",
-          true,
-          { listTimeoutMs: 1_000 },
-        );
-
-        // Declared here (before closeClients) to avoid Temporal Dead Zone
-        // if the abort signal fires before the codex branch is reached.
-        let codexProvider: { close(): Promise<void> } | undefined;
-
-        closeClients = () => {
-          passthroughClient.close().catch(() => {});
-          codexProvider?.close().catch(() => {});
-        };
-
-        const { tools: passthroughTools, nameMap: passthroughNameMap } =
-          isCliAgent
-            ? { tools: {} as ToolSet, nameMap: new Map<string, string>() }
-            : await toolsFromMCP(
-                passthroughClient,
-                toolOutputMap,
-                writer,
-                input.toolApprovalLevel,
-                { ctx, isPlanMode: modeConfig.isPlanMode },
-              );
-
-        // VM file tools bind to (virtualMcpId, branch, userId). The VM is
-        // provisioned lazily on the first tool call inside getBuiltInTools.
-        //
-        // Two keying regimes:
-        // - GitHub-linked agents (githubRepo set) need per-branch isolation
-        //   so PR/branch workflows don't trample each other. Falls back to a
-        //   `thread:<taskId>` synthetic branch when no explicit branch is
-        //   supplied yet.
-        // - Ephemeral agents (no githubRepo) share one VM per (user, agent)
-        //   across threads. The skills work is mostly read-heavy and
-        //   sharing a sandbox cuts the VM count linearly with thread count.
-        //   Tradeoff: concurrent threads share /app, /home/sandbox, /tmp —
-        //   parallel writes to overlapping filenames can race. Fine for
-        //   reads and scoped outputs; revisit if it bites.
-        const vmMetadata = virtualMcp.metadata as {
-          githubRepo?: GithubRepo | null;
-        };
-        const isEphemeralAgent = !vmMetadata.githubRepo;
-        const vmContext = input.userId
-          ? {
-              virtualMcpId: input.agent.id,
-              branch: isEphemeralAgent
-                ? "ephemeral"
-                : (input.branch ?? `thread:${mem.thread.id}`),
-              userId: input.userId,
-              // Used by share_with_user to scope artifacts under
-              // model-outputs/<threadId>/. Cannot be derived from the
-              // sandbox row since one ephemeral sandbox serves many threads.
-              threadId: mem.thread.id,
-            }
-          : null;
-
-        const builtInTools = isCliAgent
-          ? {}
-          : await getBuiltInTools(
-              writer,
-              {
-                provider,
-                organization,
-                models: input.models,
-                toolApprovalLevel: input.toolApprovalLevel,
-                isPlanMode: modeConfig.isPlanMode,
-                toolOutputMap,
-                pendingImages,
-                passthroughClient,
-                vmContext,
-                taskId: mem.thread.id,
-              },
-              ctx,
-            );
-
-        // Progressive tool disclosure: enable_tool + prepareStep
-        const passthroughToolNames = new Set(Object.keys(passthroughTools));
-        const builtInToolNames = Object.keys(builtInTools);
-        const enabledTools = reconstructEnabledTools(
-          allMessages,
-          passthroughToolNames,
-        );
-
-        // Collect (rawName, safeName, connectionId) triples for the
-        // connections block, the set of connection ids for enable_tool
-        // short-name resolution, and the per-tool annotations used for
-        // plan-mode gating — all from a single listTools() round-trip.
-        const passthroughToolList = isCliAgent
-          ? []
-          : (await passthroughClient.listTools()).tools;
-        const connectionsBlockTools: ConnectionsBlockTool[] = [];
-        const connectionIds = new Set<string>();
-        const toolAnnotations = new Map<string, { readOnlyHint?: boolean }>();
-        for (const t of passthroughToolList) {
-          const safeName = passthroughNameMap.get(t.name);
-          if (!safeName) continue;
-          // _meta.gatewayClientId is set by the gateway when the tool is
-          // proxied from a non-virtual connection; the "unknown" fallback
-          // only fires for tools that didn't traverse the gateway, which
-          // currently means none in the passthrough flow — it's defense
-          // in depth rather than a real case.
-          const connectionId =
-            typeof t._meta?.gatewayClientId === "string"
-              ? t._meta.gatewayClientId
-              : "unknown";
-          connectionsBlockTools.push({
-            rawName: t.name,
-            safeName,
-            connectionId,
-          });
-          connectionIds.add(connectionId);
-          if (modeConfig.isPlanMode) {
-            toolAnnotations.set(safeName, {
-              readOnlyHint: t.annotations?.readOnlyHint,
-            });
-          }
-        }
-
-        const connectionTitleMap = isCliAgent
-          ? new Map<string, string>()
-          : passthroughClient.getConnectionTitleMap();
-
-        // Anthropic prompt-cache invariant: the cache key for our system
-        // block markers is hash(tools + system_prefix), so the serialized
-        // `tools` JSON must be byte-stable across calls that should hit the
-        // cache. We rely on object-spread insertion order being deterministic
-        // here. `withCachedToolPrefix` (which sorts + marks) is intentionally
-        // NOT applied because `enable_tool` mutates the toolset across
-        // subsequent LLM calls in the same turn — any tool-prefix marker
-        // would invalidate on the next call anyway.
-        const tools = isCliAgent
-          ? {}
-          : {
-              ...passthroughTools,
-              ...builtInTools,
-              ...(connectionsBlockTools.length > 0
-                ? {
-                    enable_tool: createEnableToolTool(
-                      enabledTools,
-                      passthroughToolNames,
-                      {
-                        isPlanMode: modeConfig.isPlanMode,
-                        toolAnnotations,
-                        connectionIds: [...connectionIds],
-                      },
-                    ),
-                  }
-                : {}),
-            };
-
-        // Build composable system prompt array
-        const basePrompt = buildBasePlatformPrompt();
-
-        const [virtualMcpList, promptList] = await Promise.all([
-          ctx.storage.virtualMcps.list(organization.id),
-          (async () => {
-            if (isCliAgent) return [];
-            const { prompts } = await passthroughClient.listPrompts();
-            return prompts;
-          })(),
-        ]);
-
-        const agentsBlock = isCliAgent
-          ? null
-          : buildAgentsBlock(
-              virtualMcpList.map((vm) => ({
-                id: vm.id,
-                name: vm.title,
-                description: vm.description,
-                status: vm.status,
-              })),
-              input.agent.id,
-            );
-
-        const promptsBlock = isCliAgent
-          ? null
-          : buildPromptsBlock(
-              promptList.map((p) => ({
-                name: p.name,
-                description: p.description ?? null,
-                arguments: (p.arguments ?? []).map((a) => ({
-                  name: a.name,
-                  required: a.required,
-                })),
-              })),
-            );
-
-        const connectionsBlock = isCliAgent
-          ? null
-          : buildConnectionsBlock(connectionsBlockTools, connectionTitleMap);
-
-        // Agent prompt: decopilot-specific or custom agent instructions
-        const serverInstructions = passthroughClient.getInstructions();
-        const agentPrompt = isDecopilot(input.agent.id)
-          ? buildDecopilotAgentPrompt()
-          : serverInstructions;
-
-        const planModePrompt = modeConfig.planPrompt;
-
-        const webSearchPrompt =
-          modeConfig.webSearchInstructionPrompt && "web_search" in tools
-            ? modeConfig.webSearchInstructionPrompt
-            : null;
-
-        const repoEnvironmentPrompt = vmMetadata?.githubRepo
-          ? buildRepoEnvironmentPrompt(vmMetadata.githubRepo)
-          : null;
-
-        // The blocks are stable for the entire request, so we include
-        // them in every step's system prompt — this keeps the prompt
-        // prefix identical across steps and lets prompt caching kick in.
-        const systemPrompts = [
-          basePrompt,
-          planModePrompt,
-          webSearchPrompt,
-          repoEnvironmentPrompt,
-          promptsBlock,
-          agentsBlock,
-          connectionsBlock,
-          buildTodoWritePrompt(),
-          agentPrompt,
-        ].filter((s): s is string => Boolean(s?.trim()));
-
         // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
         // Also handles legacy data: URLs from threads predating this pipeline.
+        // `processConversation` (which depends on the harness-owned tool
+        // set for `toModelOutput` handlers) runs inside the decopilot
+        // harness itself; we forward materialized UIMessages so each
+        // harness decides how to convert them.
         const materializedMessages = await resolveStorageRefs(allMessages, ctx);
 
-        const {
-          systemMessages: processedSystemMessages,
-          messages: processedMessages,
-          originalMessages,
-        } = await processConversation(materializedMessages, {
-          windowSize,
-          models: input.models,
-          tools,
-        });
+        ensureModelCompatibility(input.models, materializedMessages);
 
-        ensureModelCompatibility(input.models, originalMessages);
-
-        const shouldGenerateTitle =
-          mem.thread.title === DEFAULT_THREAD_TITLE && !isCliAgent;
-        if (shouldGenerateTitle) {
-          const titleInput = JSON.stringify(processedMessages[0]?.content);
-          titleHandle = genTitle({
-            abortSignal: registrySignal,
-            model: createLanguageModel(
-              provider!,
-              input.models.fast ?? input.models.thinking,
-            ),
-            userMessage: titleInput,
-          });
-          const titleOp = titleHandle.promise
-            .then(async (title) => {
-              if (!title) return;
-
-              await ctx.storage.threads
-                .update(mem.thread.id, { title })
-                .catch((error) => {
-                  console.error(
-                    "[decopilot:stream] Error updating thread title",
-                    error,
-                  );
-                });
-
-              if (!streamFinished) {
-                writer.write({
-                  type: "data-thread-title",
-                  data: { title },
-                  transient: true,
-                });
-                console.log(
-                  "[decopilot:title-debug] SSE title event sent threadId=%s",
-                  mem.thread.id,
-                );
-              } else {
-                console.warn(
-                  "[decopilot:title-debug] Stream already finished, title SSE NOT sent threadId=%s title=%j",
-                  mem.thread.id,
-                  title,
-                );
-              }
-            })
-            .catch((error) => {
-              console.warn(
-                "[decopilot:stream] Title generation failed:",
-                error,
+        // Build the MCP endpoint for CLI harnesses. Decopilot doesn't
+        // open an HTTP MCP connection (its passthrough client works
+        // in-process), so we skip the API-key mint for that path.
+        const mcp =
+          harnessId === "decopilot"
+            ? { url: "", headers: {} as Record<string, string> }
+            : await mintMcpEndpoint(
+                ctx,
+                input.agent.id,
+                organization,
+                harnessId === "claude-code"
+                  ? "claude-code-session"
+                  : "codex-session",
               );
-            });
-          pendingOps.push(titleOp);
-        }
 
-        let reasoningStartAt: Date | null = null;
-        let lastProviderMetadata: Record<string, unknown> | undefined;
-        let codingAgentSessionId: string | undefined;
-        let codingAgentProvider: string | undefined;
-        let stepAccumulatedUsage = {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
+        // Build the in-process extras that decopilot needs to participate
+        // in the surrounding `createUIMessageStream` scope. CLI harnesses
+        // ignore this field.
+        const toolOutputMap = new Map<string, string>();
+        const pendingImages: PendingImage[] = [];
+        const processLocal: HarnessProcessLocal = {
+          writer,
+          toolOutputMap,
+          pendingImages,
+          threadId: mem.thread.id,
+          currentThreadTitle: mem.thread.title,
+          registrySignal,
+          runRegistry,
+          provider,
+          registerPendingOp: (op) => {
+            pendingOps.push(op);
+          },
+          isStreamFinished: () => streamFinished,
+          onUsageAggregated: (totalUsage) => {
+            aggregatedUsage = {
+              inputTokens: aggregatedUsage.inputTokens + totalUsage.inputTokens,
+              outputTokens:
+                aggregatedUsage.outputTokens + totalUsage.outputTokens,
+              totalTokens: aggregatedUsage.totalTokens + totalUsage.totalTokens,
+            };
+          },
         };
-        const stepCacheAcc = emptyCacheAccumulator();
-        let stepAccumulatedCost = 0;
-        llmCallStartTime = Date.now();
 
-        // Build language model based on provider type
-        let languageModel;
+        const harnessInput: HarnessStreamInput = {
+          threadId: mem.thread.id,
+          runId: mem.thread.id, // RunRegistry keys runs by taskId today
+          resumeSessionRef,
+          messages: materializedMessages,
+          models: input.models,
+          mcp,
+          mode: input.mode,
+          temperature: input.temperature,
+          toolApprovalLevel: input.toolApprovalLevel,
+          user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
+          organizationId: input.organizationId,
+          projectSlug: organization.slug,
+          virtualMcp,
+          agent: { id: input.agent.id },
+          branch: input.branch,
+          taskId: input.taskId,
+          triggerId: input.triggerId,
+          currentThreadTitle: mem.thread.title,
+          signal: registrySignal,
+          processLocal,
+        };
 
-        if (isClaudeCode) {
-          // Mint a short-lived API key for Claude Code to auth with the MCP endpoint
-          const apiKey = await ctx.boundAuth.apiKey.create({
-            name: "claude-code-session",
-            expiresIn: 3600,
-            metadata: {
-              organization: {
-                id: organization.id,
-                slug: organization.slug,
-                name: organization.name,
-              },
-            },
-          });
+        // Dispatch through the registry. The harness produces a stream
+        // of UIMessageChunk; we adapt it to a ReadableStream so it can
+        // flow through writer.merge(). When a streamBuffer is wired, its
+        // JetStream pump reads the merged uiStream output and publishes
+        // every chunk into the per-task subject — that's what /stream
+        // tails. We do NOT pipe through the buffer here; the pump is
+        // detached and consumes uiStream directly after prepareRun
+        // returns.
+        const harnessChunks = localDispatch(harnessId, harnessInput, ctx);
+        const harnessStream = asReadableStream(harnessChunks);
 
-          const mcpUrl = `${getInternalUrl()}/mcp/virtual-mcp/${input.agent.id}`;
-
-          let claudeCodeCwd: string | undefined;
-          if (vmContext && vmMetadata.githubRepo) {
-            const runner = await getSharedRunner(ctx);
-            if (runner.kind === "host") {
-              const { computeHandle, composeSandboxRef } = await import(
-                "@decocms/sandbox/runner"
-              );
-              const projectRef = composeSandboxRef({
-                orgId: organization.id,
-                virtualMcpId: vmContext.virtualMcpId,
-                branch: vmContext.branch,
-              });
-              const handle = computeHandle(
-                { userId: vmContext.userId, projectRef },
-                vmContext.branch,
-              );
-              const hostRunner = runner as unknown as {
-                localWorkdir(h: string): Promise<string | null>;
-              };
-              claudeCodeCwd =
-                (await hostRunner.localWorkdir(handle)) ?? undefined;
-            }
-          }
-
-          languageModel = createClaudeCodeModel(
-            resolveClaudeCodeModelId(input.models.thinking.id),
-            {
-              mcpServers: {
-                cms: {
-                  type: "http",
-                  url: mcpUrl,
-                  headers: {
-                    Authorization: `Bearer ${apiKey.key}`,
-                    "x-org-id": input.organizationId,
-                  },
-                },
-              },
-              toolApprovalLevel: input.toolApprovalLevel,
-              isPlanMode: modeConfig.isPlanMode,
-              resume: resumeSessionId,
-              cwd: claudeCodeCwd,
-            },
-          );
-        } else if (isCodex) {
-          const apiKey = await ctx.boundAuth.apiKey.create({
-            name: "codex-session",
-            expiresIn: 3600,
-            metadata: {
-              organization: {
-                id: organization.id,
-                slug: organization.slug,
-                name: organization.name,
-              },
-            },
-          });
-
-          const mcpUrl = `${getInternalUrl()}/mcp/virtual-mcp/${input.agent.id}`;
-          const codexResult = createCodexModel(
-            resolveCodexModelId(input.models.thinking.id),
-            {
-              mcpServers: {
-                cms: {
-                  transport: "http",
-                  url: mcpUrl,
-                  headers: {
-                    Authorization: `Bearer ${apiKey.key}`,
-                    "x-org-id": input.organizationId,
-                  },
-                },
-              },
-              toolApprovalLevel: input.toolApprovalLevel,
-              isPlanMode: modeConfig.isPlanMode,
-            },
-          );
-          languageModel = codexResult.model;
-          codexProvider = codexResult.provider;
-        } else {
-          languageModel = createLanguageModel(provider!, input.models.thinking);
-        }
-
-        // Span for the LLM streaming call — manually managed because it starts
-        // here but ends asynchronously in the onFinish/onError callbacks.
-        const llmSpan = tracer.startSpan("decopilot.streamText", {
-          attributes: {
-            "decopilot.model.id": input.models.thinking.id,
-            "decopilot.credential.id": input.models.credentialId,
-            "decopilot.isCliAgent": isCliAgent,
-            "decopilot.isCodex": isCodex,
-          },
-        });
-
-        const systemPromptMessages = buildSystemMessages(
-          systemPrompts,
-          new Date(),
-        );
-
-        let result;
-        try {
-          result = streamText({
-            model: languageModel,
-            system: [...systemPromptMessages, ...processedSystemMessages],
-            messages: processedMessages,
-            tools,
-            providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
-            // Note: Codex thread resume is not supported because each request
-            // spawns a new codexAppServer process. Thread IDs are local to a
-            // process and cannot be resumed by a different one.
-            ...(isCliAgent
-              ? {}
-              : {
-                  prepareStep: (() => {
-                    const forcedFirstStepToolName =
-                      modeConfig.forcedFirstStepTool &&
-                      modeConfig.forcedFirstStepTool in tools
-                        ? modeConfig.forcedFirstStepTool
-                        : null;
-                    let stepIndex = 0;
-
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    return (stepArgs: any) => {
-                      const stepMessages = stepArgs.messages;
-                      const isFirstStep = stepIndex === 0;
-                      stepIndex++;
-
-                      // Inject pending screenshot images as a user message.
-                      // Images in tool result messages aren't supported by all
-                      // providers (e.g. OpenRouter), so we append them as user
-                      // content which is universally supported.
-                      // biome-ignore lint: complex AI SDK generic types
-                      let withImages: any = stepMessages;
-                      if (pendingImages.length > 0) {
-                        const imageParts = pendingImages.splice(
-                          0,
-                          pendingImages.length,
-                        );
-                        const content: unknown[] = [];
-                        for (const img of imageParts) {
-                          content.push({
-                            type: "text",
-                            text:
-                              img.label ??
-                              (img.pageUrl
-                                ? `[Screenshot of ${img.pageUrl}]`
-                                : "[Image]"),
-                          });
-                          if (img.url.startsWith("data:")) {
-                            // data URI → send as inline image
-                            const match = img.url.match(
-                              /^data:([^;]+);base64,(.+)$/s,
-                            );
-                            if (match) {
-                              content.push({
-                                type: "image",
-                                image: match[2],
-                                mimeType: match[1],
-                              });
-                            }
-                          } else {
-                            // Presigned URL → send as image URL
-                            content.push({
-                              type: "image",
-                              image: new URL(img.url),
-                            });
-                          }
-                        }
-                        withImages = [
-                          ...stepMessages,
-                          { role: "user", content },
-                        ];
-                      }
-
-                      // The agent sees its own todo_write tool calls live inside
-                      // the loop — no per-step manipulation. Cross-turn pruning
-                      // (keeping only the latest todo_write) happens once at
-                      // HTTP-request entry in `processConversation`.
-                      const messagesForStep = withImages;
-
-                      const hasEnableTool = connectionsBlockTools.length > 0;
-                      let activeToolNames = [
-                        ...builtInToolNames,
-                        ...(hasEnableTool ? ["enable_tool"] : []),
-                        ...enabledTools,
-                      ];
-
-                      // Layer 2: In plan mode, filter out any non-read-only tools that
-                      // somehow got enabled (safety net for Layer 1 in enable_tool)
-                      if (modeConfig.isPlanMode) {
-                        activeToolNames = activeToolNames.filter((name) => {
-                          // Built-in tools and enable_tool are always allowed
-                          if (
-                            builtInToolNames.includes(name) ||
-                            (hasEnableTool && name === "enable_tool")
-                          ) {
-                            return true;
-                          }
-                          // Only allow passthrough tools with readOnlyHint
-                          const annotations = toolAnnotations.get(name);
-                          return annotations?.readOnlyHint === true;
-                        });
-                      }
-
-                      const forcedToolName =
-                        forcedFirstStepToolName && isFirstStep
-                          ? forcedFirstStepToolName
-                          : null;
-
-                      return {
-                        activeTools: activeToolNames as (keyof typeof tools)[],
-                        messages: messagesForStep,
-                        ...(forcedToolName && {
-                          toolChoice: {
-                            type: "tool" as const,
-                            toolName: forcedToolName as never,
-                          },
-                        }),
-                      };
-                    };
-                  })(),
-                  temperature: input.temperature,
-                  maxOutputTokens,
-                  stopWhen: stepCountIs(PARENT_STEP_LIMIT),
-                }),
-            abortSignal: registrySignal,
-            onFinish: async ({
-              usage,
-              totalUsage,
-              finishReason,
-              request,
-              response,
-            }) => {
-              llmSpan.setAttribute(
-                "decopilot.llm.inputTokens",
-                totalUsage.inputTokens ?? 0,
-              );
-              llmSpan.setAttribute(
-                "decopilot.llm.outputTokens",
-                totalUsage.outputTokens ?? 0,
-              );
-              llmSpan.setAttribute("decopilot.llm.finishReason", finishReason);
-              llmSpan.setAttribute(
-                "decopilot.cache.read_tokens",
-                stepCacheAcc.read,
-              );
-              llmSpan.setAttribute(
-                "decopilot.cache.write_tokens",
-                stepCacheAcc.write,
-              );
-              const hitRatio =
-                stepCacheAcc.input > 0
-                  ? stepCacheAcc.read / stepCacheAcc.input
-                  : 0;
-              llmSpan.setAttribute("decopilot.cache.hit_ratio", hitRatio);
-              llmSpan.setStatus({ code: SpanStatusCode.OK });
-              llmSpan.end();
-
-              // Always record usage even on abort — tokens were already consumed.
-              const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
-              llmCallLogged = true;
-              recordLlmCallMetrics({
-                ctx,
-                organizationId: input.organizationId,
-                modelId: input.models.thinking.id,
-                durationMs,
-                isError: false,
-                inputTokens: totalUsage.inputTokens,
-                outputTokens: totalUsage.outputTokens,
-                cacheReadTokens: stepCacheAcc.read,
-                cacheWriteTokens: stepCacheAcc.write,
-              });
-              aggregatedUsage = {
-                inputTokens:
-                  aggregatedUsage.inputTokens + (totalUsage.inputTokens ?? 0),
-                outputTokens:
-                  aggregatedUsage.outputTokens + (totalUsage.outputTokens ?? 0),
-                totalTokens:
-                  aggregatedUsage.totalTokens + (totalUsage.totalTokens ?? 0),
-              };
-              monitorLlmCall({
-                ctx,
-                organizationId: input.organizationId,
-                agentId: input.agent.id,
-                modelId: input.models.thinking.id,
-                modelTitle:
-                  input.models.thinking.title ?? input.models.thinking.id,
-                credentialId: input.models.credentialId,
-                taskId: mem.thread.id,
-                durationMs,
-                isError: false,
-                finishReason,
-                usage: {
-                  inputTokens: usage.inputTokens ?? 0,
-                  outputTokens: usage.outputTokens ?? 0,
-                  totalTokens: usage.totalTokens ?? 0,
-                },
-                totalUsage: {
-                  inputTokens: totalUsage.inputTokens ?? 0,
-                  outputTokens: totalUsage.outputTokens ?? 0,
-                  totalTokens: totalUsage.totalTokens ?? 0,
-                },
-                request,
-                response,
-                userId: input.userId,
-                requestId: ctx.metadata.requestId,
-                userAgent: ctx.metadata.userAgent ?? null,
-              });
-
-              if (registrySignal.aborted) return;
-            },
-            onError: async (error) => {
-              const err =
-                error instanceof Error
-                  ? error
-                  : new Error(stringifyError(error));
-              llmSpan.setStatus({
-                code: SpanStatusCode.ERROR,
-                message: err.message,
-              });
-              llmSpan.recordException(err);
-              llmSpan.end();
-
-              console.error("[decopilot:stream] Error", error);
-              if (registrySignal.aborted) {
-                throw error;
-              }
-              if (!llmCallLogged) {
-                const durationMs =
-                  Date.now() - (llmCallStartTime ?? Date.now());
-                llmCallLogged = true;
-                recordLlmCallMetrics({
-                  ctx,
-                  organizationId: input.organizationId,
-                  modelId: input.models.thinking.id,
-                  durationMs,
-                  isError: true,
-                  errorType: error instanceof Error ? error.name : "Error",
-                });
-                monitorLlmCall({
-                  ctx,
-                  organizationId: input.organizationId,
-                  agentId: input.agent.id,
-                  modelId: input.models.thinking.id,
-                  modelTitle:
-                    input.models.thinking.title ?? input.models.thinking.id,
-                  credentialId: input.models.credentialId,
-                  taskId: mem.thread.id,
-                  durationMs,
-                  isError: true,
-                  errorMessage:
-                    error instanceof Error
-                      ? error.message
-                      : stringifyError(error),
-                  userId: input.userId,
-                  requestId: ctx.metadata.requestId,
-                  userAgent: ctx.metadata.userAgent ?? null,
-                });
-              }
-              throw error;
-            },
-            onAbort: async ({ steps }) => {
-              if (!steps.length || llmCallLogged) return;
-              llmCallLogged = true;
-              const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
-              const abortTotalUsage = steps.reduce(
-                (acc, s) => ({
-                  inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
-                  outputTokens: acc.outputTokens + (s.usage.outputTokens ?? 0),
-                  totalTokens: acc.totalTokens + (s.usage.totalTokens ?? 0),
-                }),
-                { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-              );
-              const lastStepUsage = steps[steps.length - 1]!.usage;
-              recordLlmCallMetrics({
-                ctx,
-                organizationId: input.organizationId,
-                modelId: input.models.thinking.id,
-                durationMs,
-                isError: false,
-                inputTokens: abortTotalUsage.inputTokens,
-                outputTokens: abortTotalUsage.outputTokens,
-                cacheReadTokens: stepCacheAcc.read,
-                cacheWriteTokens: stepCacheAcc.write,
-              });
-              monitorLlmCall({
-                ctx,
-                organizationId: input.organizationId,
-                agentId: input.agent.id,
-                modelId: input.models.thinking.id,
-                modelTitle:
-                  input.models.thinking.title ?? input.models.thinking.id,
-                credentialId: input.models.credentialId,
-                taskId: mem.thread.id,
-                durationMs,
-                isError: false,
-                finishReason: "abort",
-                usage: {
-                  inputTokens: lastStepUsage.inputTokens ?? 0,
-                  outputTokens: lastStepUsage.outputTokens ?? 0,
-                  totalTokens: lastStepUsage.totalTokens ?? 0,
-                },
-                totalUsage: abortTotalUsage,
-                request: undefined,
-                response: undefined,
-                userId: input.userId,
-                requestId: ctx.metadata.requestId,
-                userAgent: ctx.metadata.userAgent ?? null,
-              });
-
-              // Re-push accumulated usage to the client. On abort the SDK
-              // resets message.metadata to its pre-stream state, so we
-              // explicitly write it here before the stream closes.
-              if (abortTotalUsage.totalTokens > 0) {
-                writer.write({
-                  type: "message-metadata",
-                  messageMetadata: {
-                    usage: {
-                      inputTokens: abortTotalUsage.inputTokens,
-                      outputTokens: abortTotalUsage.outputTokens,
-                      totalTokens: abortTotalUsage.totalTokens,
-                      cachedInputTokens: stepCacheAcc.read,
-                      inputTokenDetails: {
-                        cacheReadTokens: stepCacheAcc.read,
-                        cacheWriteTokens: stepCacheAcc.write,
-                        noCacheTokens:
-                          abortTotalUsage.inputTokens -
-                          stepCacheAcc.read -
-                          stepCacheAcc.write,
-                      },
-                      ...(stepAccumulatedCost > 0 && {
-                        providerMetadata: {
-                          openrouter: {
-                            usage: { cost: stepAccumulatedCost },
-                          },
-                        },
-                      }),
-                    },
-                  },
-                });
-              }
-            },
-          });
-        } catch (err) {
-          llmSpan.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: err instanceof Error ? err.message : stringifyError(err),
-          });
-          if (err instanceof Error) llmSpan.recordException(err);
-          llmSpan.end();
-          throw err;
-        }
-
-        const uiMessageStream = result.toUIMessageStream({
-          originalMessages,
-          generateMessageId,
-          onError: (error) => sanitizeStreamError(error),
-          messageMetadata: ({ part }) => {
-            if (part.type === "start") {
-              return {
-                created_at: new Date(),
-                _request: {
-                  systemSections: systemPrompts.map((p) => ({
-                    chars: p.length,
-                    preview: p.slice(0, 80).replace(/\s+/g, " "),
-                  })),
-                  tools: Object.keys(tools).length,
-                  activeTools:
-                    builtInToolNames.length +
-                    ("enable_tool" in tools ? 1 : 0) +
-                    enabledTools.size,
-                },
-                thread_id: mem.thread.id,
-              };
-            }
-            if (part.type === "reasoning-start") {
-              if (reasoningStartAt === null) {
-                reasoningStartAt = new Date();
-              }
-              return { reasoning_start_at: reasoningStartAt };
-            }
-            if (part.type === "reasoning-end") {
-              return { reasoning_end_at: new Date() };
-            }
-
-            if (part.type === "finish-step") {
-              lastProviderMetadata = part.providerMetadata;
-              if (isClaudeCode && part.providerMetadata?.["claude-code"]) {
-                codingAgentSessionId = (
-                  part.providerMetadata["claude-code"] as {
-                    sessionId?: string;
-                  }
-                ).sessionId;
-                codingAgentProvider = "claude-code";
-              }
-              if (isCodex && part.providerMetadata?.["codex-app-server"]) {
-                codingAgentSessionId = (
-                  part.providerMetadata["codex-app-server"] as {
-                    threadId?: string;
-                  }
-                ).threadId;
-                codingAgentProvider = "codex";
-              }
-              stepAccumulatedUsage = {
-                inputTokens:
-                  stepAccumulatedUsage.inputTokens +
-                  (part.usage?.inputTokens ?? 0),
-                outputTokens:
-                  stepAccumulatedUsage.outputTokens +
-                  (part.usage?.outputTokens ?? 0),
-                totalTokens:
-                  stepAccumulatedUsage.totalTokens +
-                  (part.usage?.totalTokens ?? 0),
-              };
-              // Cache tokens: shared accumulator reads AI SDK's
-              // provider-agnostic usage.inputTokenDetails.
-              addCacheStep(stepCacheAcc, part.usage);
-              // Cost: only providers that authoritatively report it
-              // (OpenRouter today) contribute. For Anthropic-direct /
-              // OpenAI / Gemini the field is absent and stepCost stays
-              // 0 — the UI then shows tokens instead of a dollar amount.
-              const stepCost =
-                (
-                  part.providerMetadata?.openrouter as
-                    | { usage?: { cost?: number } }
-                    | undefined
-                )?.usage?.cost ?? 0;
-              stepAccumulatedCost += stepCost;
-              return {
-                usage: {
-                  inputTokens: stepAccumulatedUsage.inputTokens,
-                  outputTokens: stepAccumulatedUsage.outputTokens,
-                  totalTokens: stepAccumulatedUsage.totalTokens,
-                  // Forward AI-SDK normalized cache token details so the
-                  // frontend's tooltip can read them. Without this our
-                  // explicit usage shape replaces the SDK's default and
-                  // drops these fields.
-                  cachedInputTokens: stepCacheAcc.read,
-                  inputTokenDetails: {
-                    cacheReadTokens: stepCacheAcc.read,
-                    cacheWriteTokens: stepCacheAcc.write,
-                    noCacheTokens:
-                      stepAccumulatedUsage.inputTokens -
-                      stepCacheAcc.read -
-                      stepCacheAcc.write,
-                  },
-                  ...(stepAccumulatedCost > 0 && {
-                    providerMetadata: {
-                      openrouter: {
-                        usage: { cost: stepAccumulatedCost },
-                      },
-                    },
-                  }),
-                },
-              };
-            }
-
-            if (part.type === "finish") {
-              const provider = input.models.thinking.provider;
-              const totalUsage = part.totalUsage;
-              const providerMeta =
-                lastProviderMetadata ??
-                (part as { providerMetadata?: Record<string, unknown> })
-                  .providerMetadata;
-              // Merge accumulated per-step cost into the final provider metadata.
-              // Per-step cost is tracked in stepAccumulatedCost from finish-step events.
-              const finalProviderMeta =
-                stepAccumulatedCost > 0 && providerMeta
-                  ? {
-                      ...providerMeta,
-                      openrouter: {
-                        ...((providerMeta.openrouter as Record<
-                          string,
-                          unknown
-                        >) ?? {}),
-                        usage: {
-                          ...(((
-                            providerMeta.openrouter as Record<string, unknown>
-                          )?.usage as Record<string, unknown>) ?? {}),
-                          cost: stepAccumulatedCost,
-                        },
-                      },
-                    }
-                  : providerMeta;
-              // On abort the SDK emits finish with totalUsage = 0.
-              // Fall back to stepAccumulatedUsage so we don't overwrite the
-              // per-step metadata that was already sent to the client.
-              const effectiveUsage =
-                totalUsage &&
-                ((totalUsage.inputTokens ?? 0) > 0 ||
-                  (totalUsage.outputTokens ?? 0) > 0)
-                  ? totalUsage
-                  : stepAccumulatedUsage.totalTokens > 0
-                    ? stepAccumulatedUsage
-                    : totalUsage;
-              const usage = effectiveUsage
-                ? {
-                    inputTokens: effectiveUsage.inputTokens ?? 0,
-                    outputTokens: effectiveUsage.outputTokens ?? 0,
-                    reasoningTokens:
-                      (totalUsage as { reasoningTokens?: number } | null)
-                        ?.reasoningTokens ?? undefined,
-                    totalTokens: effectiveUsage.totalTokens ?? 0,
-                    // Forward AI-SDK normalized cache token details so the
-                    // frontend's tooltip can read them. Our explicit usage
-                    // shape replaces the SDK's default, so without this the
-                    // detail fields would be dropped on the way to the UI.
-                    cachedInputTokens: stepCacheAcc.read,
-                    inputTokenDetails: {
-                      cacheReadTokens: stepCacheAcc.read,
-                      cacheWriteTokens: stepCacheAcc.write,
-                      noCacheTokens:
-                        (effectiveUsage.inputTokens ?? 0) -
-                        stepCacheAcc.read -
-                        stepCacheAcc.write,
-                    },
-                    providerMetadata: sanitizeProviderMetadata(
-                      provider && finalProviderMeta
-                        ? {
-                            ...finalProviderMeta,
-                            [provider]: {
-                              ...((finalProviderMeta[provider] as object) ??
-                                {}),
-                              reasoning_details: undefined,
-                            },
-                          }
-                        : finalProviderMeta,
-                    ),
-                  }
-                : undefined;
-
-              return {
-                ...(usage && { usage }),
-                ...(codingAgentSessionId && { codingAgentSessionId }),
-                ...(codingAgentProvider && { codingAgentProvider }),
-              };
-            }
-
-            return;
-          },
-        });
-
-        writer.merge(uiMessageStream);
+        // Cast: the outer createUIMessageStream is typed via ChatMessage so
+        // writer.merge expects ChatMessage-shaped chunks, but the harness
+        // emits the structurally-equivalent generic UIMessageChunk shape.
+        writer.merge(harnessStream as Parameters<typeof writer.merge>[0]);
       },
       onFinish: async ({ responseMessage, finishReason }) => {
         console.log(
@@ -1579,10 +707,6 @@ async function prepareRun(
           pendingOps.length,
         );
         streamFinished = true;
-        closeClients?.();
-
-        // Stream done — start grace period for title generation
-        titleHandle?.finish();
 
         await Promise.allSettled(pendingOps);
         await saveMessagesToThread(responseMessage);
@@ -1650,8 +774,6 @@ async function prepareRun(
       },
       onError: (error) => {
         streamFinished = true;
-        closeClients?.();
-        titleHandle?.finish();
         if (registrySignal.aborted) {
           // User cancelled (frontend stop button), tab closed mid-stream, or
           // run was force-failed. Frontend chat_message_stopped covers the
@@ -1673,7 +795,6 @@ async function prepareRun(
           return sanitizeStreamError(error);
         }
         console.error("[decopilot] stream error:", error);
-
         posthog.capture({
           distinctId: input.userId,
           event: "chat_message_failed",
@@ -1706,18 +827,16 @@ async function prepareRun(
       },
     });
 
-    // Setup complete — hand the uiStream back to dispatchRunAndWait,
-    // which drains it with a reader loop and (when a streamBuffer is
-    // configured) also pumps the chunks into JetStream so /stream
-    // subscribers can tail them across runs and across tabs.
+    // Setup complete — hand the uiStream back to `dispatchRunAndWait`,
+    // which drains it with a reader loop and resolves when the run
+    // finishes. When a streamBuffer is configured the run also pumps into
+    // JetStream so `/stream` tails see chunks live across runs and tabs.
     return {
       taskId: mem.thread.id,
       uiStream,
       registrySignal,
     };
   } catch (err) {
-    closeClients?.();
-
     if (runStarted && taskId) {
       runRegistry
         .execute({
@@ -1732,83 +851,4 @@ async function prepareRun(
 
     throw err;
   }
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function stripProviderSpecificDetails(message: string): string {
-  const sentences = message.split(/\.\s+/);
-  const cleaned = sentences.filter(
-    (s) => !/https?:\/\//i.test(s) && !/openrouter/i.test(s),
-  );
-  if (cleaned.length === 0) return message;
-  const result = cleaned.join(". ").trim();
-  return result.endsWith(".") ? result : `${result}.`;
-}
-
-/**
- * Returns a sanitized, user-facing error message.
- * Provider-specific URLs and branding are stripped so they are never
- * surfaced to the client.
- */
-// TODO @pedrofrxncx: remove this code in favor of a better solution
-function sanitizeStreamError(error: unknown): string {
-  if (error instanceof Error) {
-    const statusCode = (error as { statusCode?: number }).statusCode;
-    const msg = error.message.toLowerCase();
-    if (
-      statusCode === 402 ||
-      msg.includes("credit") ||
-      msg.includes("insufficient funds") ||
-      msg.includes("insufficient balance") ||
-      msg.includes("billing") ||
-      msg.includes("quota exceeded") ||
-      msg.includes("payment required")
-    ) {
-      // Prefix with [CREDITS] so the frontend can detect credit errors
-      // without fragile string matching on provider-specific messages.
-      return `[CREDITS] ${stripProviderSpecificDetails(error.message)}`;
-    }
-    return error.message;
-  }
-  return stringifyError(error);
-}
-
-/**
- * Reconstruct the set of enabled tools from conversation history.
- * Scans for prior `enable_tools` calls and re-adds their tool names.
- */
-function reconstructEnabledTools(
-  messages: ChatMessage[],
-  availableToolNames: Set<string>,
-): Set<string> {
-  const enabled = new Set<string>();
-  for (const msg of messages) {
-    if (msg.role !== "assistant") continue;
-    for (const part of msg.parts) {
-      if (
-        "toolName" in part &&
-        (part.toolName === "enable_tool" || part.toolName === "enable_tools") &&
-        "result" in part &&
-        part.result
-      ) {
-        const result = part.result as { enabled?: string[] };
-        if (Array.isArray(result.enabled)) {
-          for (const name of result.enabled) {
-            // Normalize stored names: old threads may have hyphenated names
-            // (e.g. conn-togsm0..._tool) while current safe names use underscores.
-            const normalized = name.replace(/[^a-zA-Z0-9_]/g, "_");
-            if (availableToolNames.has(normalized)) {
-              enabled.add(normalized);
-            } else if (availableToolNames.has(name)) {
-              enabled.add(name);
-            }
-          }
-        }
-      }
-    }
-  }
-  return enabled;
 }
