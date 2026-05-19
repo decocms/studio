@@ -53,3 +53,53 @@ describe("ThreadManagerStore /watch snapshot", () => {
     store.dispose();
   });
 });
+
+describe("ThreadManagerStore thread.* event patching", () => {
+  it("updates an existing row via thread.status event", async () => {
+    const snapshot = JSON.stringify({
+      threads: [
+        {
+          id: "t-1",
+          title: "A",
+          status: "idle",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+    const ev = JSON.stringify({
+      type: "com.deco.decopilot.thread.status",
+      subject: "t-1",
+      time: "2026-01-02T00:00:00Z",
+      data: { status: "in_progress" },
+    });
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: ${snapshot}\n\n`,
+      `event: com.deco.decopilot.thread.status\ndata: ${ev}\n\n`,
+    ]) as unknown as typeof fetch;
+
+    const store = new ThreadManagerStore("acme", "loc-1");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.threads.get()[0]?.status).toBe("in_progress");
+    expect(store.threads.get()[0]?.updated_at).toBe("2026-01-02T00:00:00Z");
+    store.dispose();
+  });
+
+  it("inserts an unknown row at the top from a thread.* event", async () => {
+    const snapshot = JSON.stringify({ threads: [] });
+    const ev = JSON.stringify({
+      type: "com.deco.decopilot.thread.status",
+      subject: "t-new",
+      time: "2026-01-02T00:00:00Z",
+      data: { status: "in_progress", virtual_mcp_id: "vm-x" },
+    });
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: ${snapshot}\n\n`,
+      `event: com.deco.decopilot.thread.status\ndata: ${ev}\n\n`,
+    ]) as unknown as typeof fetch;
+
+    const store = new ThreadManagerStore("acme", "loc-1");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.threads.get().map((t) => t.id)).toEqual(["t-new"]);
+    store.dispose();
+  });
+});

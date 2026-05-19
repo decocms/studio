@@ -1,4 +1,4 @@
-import type { Task } from "../task/types";
+import type { RowPatch, Task } from "../task/types";
 import { Store } from "./store-primitive";
 
 export type ThreadsStatus =
@@ -8,6 +8,24 @@ export type ThreadsStatus =
 
 const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
+
+function applyPatch(list: Task[], patch: RowPatch): Task[] {
+  const idx = list.findIndex((t) => t.id === patch.id);
+  if (idx === -1) {
+    const now = patch.updated_at ?? new Date().toISOString();
+    const synthetic: Task = {
+      created_at: now,
+      updated_at: now,
+      ...patch,
+      title: patch.title ?? "New chat",
+      branch: patch.branch ?? null,
+    };
+    return [synthetic, ...list];
+  }
+  const next = [...list];
+  next[idx] = { ...next[idx]!, ...patch };
+  return next;
+}
 
 export class ThreadManagerStore {
   readonly threads = new Store<Task[]>([]);
@@ -102,7 +120,46 @@ export class ThreadManagerStore {
       } catch {
         // ignore malformed snapshot
       }
+      return;
     }
-    // `message` (CloudEvent) handling lands in Task 5.
+    if (event.startsWith("com.deco.decopilot.thread.")) {
+      try {
+        const parsed = JSON.parse(data) as {
+          subject: string;
+          time?: string;
+          data: {
+            status?: Task["status"];
+            created_by?: string;
+            trigger_id?: string;
+            virtual_mcp_id?: string;
+            title?: string;
+            branch?: string | null;
+          };
+        };
+        const patch: RowPatch = {
+          id: parsed.subject,
+          updated_at: parsed.time,
+          ...(parsed.data.status !== undefined && {
+            status: parsed.data.status,
+          }),
+          ...(parsed.data.created_by !== undefined && {
+            created_by: parsed.data.created_by,
+          }),
+          ...(parsed.data.trigger_id !== undefined && {
+            trigger_id: parsed.data.trigger_id,
+          }),
+          ...(parsed.data.virtual_mcp_id !== undefined && {
+            virtual_mcp_id: parsed.data.virtual_mcp_id,
+          }),
+          ...(parsed.data.title !== undefined && { title: parsed.data.title }),
+          ...(parsed.data.branch !== undefined && {
+            branch: parsed.data.branch,
+          }),
+        };
+        this.threads.update((list) => applyPatch(list, patch));
+      } catch {
+        // ignore malformed
+      }
+    }
   }
 }
