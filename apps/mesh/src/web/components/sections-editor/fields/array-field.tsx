@@ -15,8 +15,19 @@ export function ArrayField({
   const itemSchema = schema.items;
 
   const addItem = () => {
+    const t = itemSchema?.type;
     const defaultVal =
-      itemSchema?.type === "object" ? {} : (itemSchema?.default ?? "");
+      itemSchema?.default !== undefined
+        ? itemSchema.default
+        : t === "object"
+          ? {}
+          : t === "number" || t === "integer"
+            ? 0
+            : t === "boolean"
+              ? false
+              : t === "array"
+                ? []
+                : "";
     onChange([...items, defaultVal]);
   };
 
@@ -43,7 +54,10 @@ export function ArrayField({
         <p className="text-xs text-muted-foreground">{schema.description}</p>
       )}
       {items.map((item, i) => (
-        <div key={`${path}.${i}`} className="border rounded-md p-3 relative">
+        <div
+          key={`${path}.${i}.${items.length}`}
+          className="border rounded-md p-3 relative"
+        >
           <Button
             type="button"
             variant="ghost"

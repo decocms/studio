@@ -19,7 +19,6 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
-  arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -47,12 +46,12 @@ interface RawSection {
 
 // ─── parsing helpers ───────────────────────────────────────────────────────────
 
-const LAZY_SUFFIXES = [
+export const LAZY_SUFFIXES = [
   "website/sections/Rendering/Lazy.tsx",
   "website/sections/Rendering/SingleDeferred.tsx",
 ];
 
-function isLazyResolveType(rt: string): boolean {
+export function isLazyResolveType(rt: string): boolean {
   return LAZY_SUFFIXES.some((suffix) => rt.endsWith(suffix));
 }
 
@@ -219,11 +218,8 @@ function SortableSectionItem({
       ref={setNodeRef}
       style={style}
       onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onSelect();
-      }}
       className={cn(
-        "group flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2.5 touch-none transition-colors active:cursor-grabbing",
+        "group flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2.5 transition-colors active:cursor-grabbing",
         selected
           ? "bg-accent text-accent-foreground"
           : saved
@@ -234,6 +230,12 @@ function SortableSectionItem({
       )}
       {...attributes}
       {...listeners}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        listeners?.onKeyDown?.(e);
+        if (e.key === "Enter" || e.key === " ") onSelect();
+      }}
     >
       <DotsGrid className="h-4 w-4 shrink-0 text-muted-foreground/40" />
 

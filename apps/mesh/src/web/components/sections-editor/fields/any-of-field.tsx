@@ -52,6 +52,21 @@ export function AnyOfField({
     );
   }
 
-  // No variants available
-  return null;
+  // ── Fallback: render a basic text input for unresolved anyOf fields ──
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={path}>{label}</Label>
+      <input
+        id={path}
+        type="text"
+        value={value != null ? String(value) : ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+        placeholder={schema.description ?? ""}
+      />
+      {schema.description && (
+        <p className="text-xs text-muted-foreground">{schema.description}</p>
+      )}
+    </div>
+  );
 }

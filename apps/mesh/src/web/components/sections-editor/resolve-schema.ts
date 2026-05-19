@@ -99,6 +99,14 @@ export function resolveSchema(
       props = { ...props, ...(s.properties as RawSchema) };
     }
 
+    // Merge required arrays from allOf/anyOf/oneOf members
+    if (Array.isArray(s.required)) {
+      const existing = Array.isArray(props.__required)
+        ? (props.__required as string[])
+        : [];
+      props.__required = [...existing, ...(s.required as string[])];
+    }
+
     for (const k of ["allOf", "anyOf", "oneOf"] as const) {
       const arr = (s as Record<string, unknown>)[k];
       if (!Array.isArray(arr)) continue;
@@ -154,7 +162,7 @@ export function resolveSchema(
     let type: string | undefined;
     if (resolved.type) {
       type = Array.isArray(resolved.type)
-        ? String(resolved.type[0])
+        ? String(resolved.type.find((t) => t !== "null") ?? resolved.type[0])
         : String(resolved.type);
     } else if (typeof v.$ref === "string") {
       type = "object";

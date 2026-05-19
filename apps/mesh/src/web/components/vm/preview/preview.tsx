@@ -72,6 +72,9 @@ const SectionsEditor = lazy(() =>
   })),
 );
 
+/** Delay before reloading the preview iframe after a save, giving the dev server time to pick up file changes. */
+const DEV_SERVER_SETTLE_MS = 500;
+
 function drawerStatusFromPreview(
   state: PreviewState,
   vmStartPending: boolean,
@@ -543,8 +546,7 @@ export function PreviewContent() {
                           key={page.key}
                           type="button"
                           className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
+                          onClick={() => {
                             setPagesOpen(false);
                             setCurrentPath(page.path);
                             // Navigate the iframe
@@ -626,7 +628,6 @@ export function PreviewContent() {
                 branch={branch}
                 currentPath={currentPath}
                 onSaved={() => {
-                  // Wait for the dev server to pick up the file change before reloading
                   setTimeout(() => {
                     const iframe = previewIframeRef.current;
                     if (!iframe) return;
@@ -653,7 +654,7 @@ export function PreviewContent() {
                     };
                     iframe.addEventListener("load", restore);
                     setTimeout(restore, 3000);
-                  }, 500);
+                  }, DEV_SERVER_SETTLE_MS);
                 }}
               />
             </Suspense>
@@ -758,6 +759,15 @@ export function PreviewContent() {
                   // Intentionally excluding the full previewUrl — it can contain
                   // ephemeral tokens / user data in the query string.
                 });
+                // Sync currentPath with the iframe's actual location so the
+                // sections editor always reflects the displayed page.
+                try {
+                  const iframePath =
+                    previewIframeRef.current?.contentWindow?.location?.pathname;
+                  if (iframePath) setCurrentPath(iframePath);
+                } catch {
+                  // Cross-origin — can't read, keep current value
+                }
                 if (viewMode === "visual") {
                   injectVisualEditor();
                 }

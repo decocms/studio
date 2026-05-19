@@ -16,7 +16,6 @@ export function EnumField({
   label,
 }: FieldProps) {
   const options = schema.enum ?? [];
-  const names: string[] = [];
   const strValue = value != null ? String(value) : "";
 
   return (
@@ -25,14 +24,21 @@ export function EnumField({
       {schema.description && (
         <p className="text-xs text-muted-foreground">{schema.description}</p>
       )}
-      <Select value={strValue} onValueChange={(v) => onChange(v)}>
+      <Select
+        value={strValue}
+        onValueChange={(v) => {
+          // Map the string back to the original enum value to preserve type
+          const original = options.find((opt) => String(opt) === v);
+          onChange(original !== undefined ? original : v);
+        }}
+      >
         <SelectTrigger>
           <SelectValue placeholder="Select..." />
         </SelectTrigger>
         <SelectContent>
           {options.map((opt, i) => (
             <SelectItem key={String(opt)} value={String(opt)}>
-              {names[i] ?? String(opt)}
+              {String(opt)}
             </SelectItem>
           ))}
         </SelectContent>

@@ -6,7 +6,7 @@ import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useSaveBlock } from "./use-save-block";
 import { extractPages } from "./page-list";
-import { SectionList, parseSections } from "./section-list";
+import { SectionList, parseSections, isLazyResolveType } from "./section-list";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
@@ -74,15 +74,6 @@ function PageHeaderInputs({
       />
     </div>
   );
-}
-
-const LAZY_SUFFIXES = [
-  "website/sections/Rendering/Lazy.tsx",
-  "website/sections/Rendering/SingleDeferred.tsx",
-];
-
-function isLazyResolveType(rt: string): boolean {
-  return LAZY_SUFFIXES.some((suffix) => rt.endsWith(suffix));
 }
 
 /**
@@ -184,9 +175,34 @@ export function SectionsEditor({
     null,
   );
 
+  // Reset form state when the active page changes
+  const prevPathRef = useRef(currentPath);
+  if (prevPathRef.current !== currentPath) {
+    prevPathRef.current = currentPath;
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+  }
+
   const saveBlock = useSaveBlock({ previewUrl, orgSlug, virtualMcpId, branch });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Accumulates pending page header field changes to avoid losing edits
+  const pendingPageFieldsRef = useRef<Record<string, string>>({});
+
+  // Keep a ref to the latest render-scope values so debounced callbacks
+  // always read fresh data instead of a stale closure.
+  const latestRef = useRef<{
+    rawSections: RawSection[];
+    parsedSections: ParsedSection[];
+    decofile: Record<string, unknown>;
+    activePageKey: string | null;
+  }>({
+    rawSections: [],
+    parsedSections: [],
+    decofile: {},
+    activePageKey: null,
+  });
 
   if (decofileLoading || metaLoading) {
     return (
@@ -216,6 +232,9 @@ export function SectionsEditor({
   const rawSections: RawSection[] = pageData?.sections ?? [];
   const parsedSections = parseSections(rawSections, decofile);
 
+  // Sync ref so debounced callbacks always see the latest values.
+  latestRef.current = { rawSections, parsedSections, decofile, activePageKey };
+
   const activeSchema =
     activeResolveType && meta ? resolveSchema(activeResolveType, meta) : null;
 
@@ -226,9 +245,15 @@ export function SectionsEditor({
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(() => {
-      const rawSection = rawSections[sectionIndex];
+      const {
+        rawSections: latestRawSections,
+        parsedSections: latestParsedSections,
+        decofile: latestDecofile,
+        activePageKey: latestPageKey,
+      } = latestRef.current;
+      const rawSection = latestRawSections[sectionIndex];
       if (!rawSection) return;
-      const parsed = parsedSections[sectionIndex];
+      const parsed = latestParsedSections[sectionIndex];
       if (!parsed) return;
 
       // Saved block: write the block entry directly
@@ -248,11 +273,11 @@ export function SectionsEditor({
       }
 
       // Inline section (possibly wrapped): rebuild the full wrapper structure
-      if (!activePageKey) return;
+      if (!latestPageKey) return;
       const fullPageData = {
-        ...(decofile[activePageKey] as Record<string, unknown>),
+        ...(latestDecofile[latestPageKey] as Record<string, unknown>),
       };
-      const updatedSections = [...rawSections];
+      const updatedSections = [...latestRawSections];
 
       if (parsed.isHidden) {
         // Re-wrap into multivariate+never structure
@@ -287,7 +312,7 @@ export function SectionsEditor({
 
       fullPageData.sections = updatedSections;
       saveBlock.mutate(
-        { blockKey: activePageKey, data: fullPageData },
+        { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
           onError: (err) => toast.error(`Save failed: ${err.message}`),
@@ -324,11 +349,16 @@ export function SectionsEditor({
 
   const savePageField = (field: "name" | "path", value: string) => {
     if (!activePageKey) return;
+    // Accumulate all pending field changes so rapid edits to name+path
+    // are merged into a single save instead of overwriting each other.
+    pendingPageFieldsRef.current[field] = value;
     if (pageDebounceRef.current) clearTimeout(pageDebounceRef.current);
     pageDebounceRef.current = setTimeout(() => {
+      const pending = pendingPageFieldsRef.current;
+      pendingPageFieldsRef.current = {};
       const fullPageData = {
         ...(decofile[activePageKey] as Record<string, unknown>),
-        [field]: value,
+        ...pending,
       };
       // No onSaved/iframe reload — name/path don't affect the visual preview
       saveBlock.mutate(

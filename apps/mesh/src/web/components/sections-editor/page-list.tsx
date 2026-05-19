@@ -16,11 +16,15 @@ function parsePageName(key: string): string {
   if (lastDash > 0) {
     const suffix = name.slice(lastDash + 1);
     // Only strip if suffix looks like a hash (hex or short number)
-    if (/^[a-f0-9]+$/i.test(suffix) && suffix.length >= 4) {
+    if (/^[a-f0-9]+$/i.test(suffix) && suffix.length >= 8) {
       name = name.slice(0, lastDash);
     }
   }
-  return decodeURIComponent(name);
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
 }
 
 export function extractPages(decofile: Record<string, unknown>): PageEntry[] {
