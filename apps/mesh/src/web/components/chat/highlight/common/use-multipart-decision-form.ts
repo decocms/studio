@@ -117,6 +117,7 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
   // Always-fresh closure for the auto-flush effect so it never invokes
   // stale `parts` / `onSubmit` captured at the moment the intent was set.
   const flushRef = useRef(flush);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   flushRef.current = flush;
 
   const submit = () => {
