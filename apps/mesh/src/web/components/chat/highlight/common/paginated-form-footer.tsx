@@ -32,13 +32,13 @@ export function PaginatedFormFooterLeft({
 }: PaginatedFormFooterLeftProps) {
   return (
     <div className="flex items-center gap-2">
-      {extraLeft}
       <Pagination
         current={currentIndex}
         total={total}
         onPrev={onPrev}
         onNext={onNext}
       />
+      {extraLeft}
     </div>
   );
 }
