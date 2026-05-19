@@ -277,15 +277,6 @@ function BatchedApprovalPrompt({
           }
           footerRight={
             <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 px-2.5 text-xs"
-                onClick={fillAndSubmit}
-              >
-                Accept All
-              </Button>
               {current ? (
                 <ApprovalDecisionButtons
                   approvalId={current.approvalId}
