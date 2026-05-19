@@ -323,6 +323,10 @@ export const KEYS = {
   // Web search blob content (fetched from object storage)
   webSearchBlob: (url: string) => ["web-search-blob", url] as const,
 
+  // Deco sections editor (sandbox preview)
+  decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
+  liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
+
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>
     ["github-user-orgs", orgId, connectionId] as const,

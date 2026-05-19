@@ -516,12 +516,12 @@ function AgentInsetProvider() {
             hasActiveGithubRepo={hasActiveGithubRepo}
             vmMap={entity?.metadata?.vmMap}
           >
-            <VirtualMcpHeaderInfo virtualMcp={entity} />
             <NewTaskBridge
               onNewTaskRef={onNewTask}
               createNewTask={layout.createNewTask}
             />
             <Chat.ActiveTaskProvider key={layout.taskId} taskId={layout.taskId}>
+              <VirtualMcpHeaderInfo virtualMcp={entity} />
               <Suspense fallback={<Chat.Skeleton />}>
                 <ChatMainPanelGroup
                   virtualMcpId={virtualMcpId}
