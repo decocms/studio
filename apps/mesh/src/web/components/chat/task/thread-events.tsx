@@ -20,11 +20,9 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useDecopilotEvents } from "../../../hooks/use-decopilot-events";
 import { KEYS } from "../../../lib/query-keys";
 import { getActiveConn } from "../hooks/thread-connection";
-import type { Task, TasksQueryData } from "./types";
+import type { RowPatch, Task, TasksQueryData, ThreadScope } from "./types";
 
-export type ThreadScopeFromKey =
-  | "org"
-  | { kind: "agent"; virtualMcpId: string };
+export type { RowPatch } from "./types";
 
 /**
  * Recover the scope a `KEYS.threads(locator, scope)` cache entry was created
@@ -36,7 +34,7 @@ export type ThreadScopeFromKey =
  */
 export function getThreadScopeFromKey(
   key: readonly unknown[],
-): ThreadScopeFromKey | null {
+): ThreadScope | null {
   if (key[2] === "org") return "org";
   if (key[2] === "agent" && typeof key[3] === "string") {
     return { kind: "agent", virtualMcpId: key[3] };
@@ -52,25 +50,11 @@ export function getThreadScopeFromKey(
  * correctly if they do belong.
  */
 export function scopeAcceptsRow(
-  scope: ThreadScopeFromKey,
+  scope: ThreadScope,
   virtualMcpId: string | undefined,
 ): boolean {
   if (scope === "org") return true;
   return virtualMcpId === scope.virtualMcpId;
-}
-
-export interface RowPatch {
-  id: string;
-  status?: Task["status"];
-  updated_at?: string;
-  title?: string;
-  branch?: string | null;
-  /** Owner of the thread — needed so ownerUserId filter matches synthetic rows. */
-  created_by?: string;
-  /** Automation trigger id; `null` = human-initiated; `undefined` = no opinion. */
-  trigger_id?: string | null;
-  /** Virtual MCP (agent) this task was initiated with — needed so the agent icon renders on SSE-inserted rows. */
-  virtual_mcp_id?: string;
 }
 
 export function applyPatch(
@@ -86,18 +70,13 @@ export function applyPatch(
     // loaded). Insert at the top with a minimal synthetic row; the next
     // refetch fills missing optional fields.
     if (options.canInsert === false) return data;
+    const now = patch.updated_at ?? new Date().toISOString();
     const synthetic: Task = {
-      id: patch.id,
+      created_at: now,
+      updated_at: now,
+      ...patch,
       title: patch.title ?? "New chat",
-      created_at: patch.updated_at ?? new Date().toISOString(),
-      updated_at: patch.updated_at ?? new Date().toISOString(),
-      status: patch.status,
       branch: patch.branch ?? null,
-      ...(patch.created_by !== undefined && { created_by: patch.created_by }),
-      ...("trigger_id" in patch && { trigger_id: patch.trigger_id ?? null }),
-      ...(patch.virtual_mcp_id !== undefined && {
-        virtual_mcp_id: patch.virtual_mcp_id,
-      }),
     };
     return { ...data, items: [synthetic, ...data.items] };
   }
@@ -105,21 +84,7 @@ export function applyPatch(
   const current = data.items[idx];
   if (!current) return data;
 
-  const next: Task = {
-    ...current,
-    title: patch.title ?? current.title,
-    updated_at: patch.updated_at ?? current.updated_at,
-    status: patch.status ?? current.status,
-    branch: "branch" in patch ? (patch.branch ?? null) : current.branch,
-    created_by:
-      patch.created_by !== undefined ? patch.created_by : current.created_by,
-    trigger_id:
-      "trigger_id" in patch ? (patch.trigger_id ?? null) : current.trigger_id,
-    virtual_mcp_id:
-      patch.virtual_mcp_id !== undefined
-        ? patch.virtual_mcp_id
-        : current.virtual_mcp_id,
-  };
+  const next: Task = { ...current, ...patch };
   const items = [...data.items];
   items[idx] = next;
   return { ...data, items };
@@ -147,6 +112,51 @@ export function patchThreadCaches(
     const next = applyPatch(data, patch, { canInsert });
     if (next !== data) queryClient.setQueryData(key, next);
   }
+}
+
+/**
+ * Remove a row from every matching thread-list cache for `locator`.
+ * Used by archive/hide flows where the row leaves the "open" view.
+ */
+export function removeRowFromThreadCaches(
+  queryClient: QueryClient,
+  locator: string,
+  id: string,
+): void {
+  const entries = queryClient.getQueriesData<TasksQueryData>({
+    queryKey: KEYS.threadsPrefix(locator),
+  });
+  for (const [key, data] of entries) {
+    if (!data) continue;
+    const idx = data.items.findIndex((t) => t.id === id);
+    if (idx === -1) continue;
+    const items = [...data.items];
+    items.splice(idx, 1);
+    queryClient.setQueryData(key, { ...data, items });
+  }
+}
+
+export type ThreadCacheSnapshots = ReadonlyArray<
+  [readonly unknown[], TasksQueryData | undefined]
+>;
+
+/** Snapshot every thread-list cache entry for `locator` so an optimistic
+ *  mutation can be rolled back per-key on error. */
+export function snapshotThreadCaches(
+  queryClient: QueryClient,
+  locator: string,
+): ThreadCacheSnapshots {
+  return queryClient.getQueriesData<TasksQueryData>({
+    queryKey: KEYS.threadsPrefix(locator),
+  });
+}
+
+/** Restore the exact snapshots captured by `snapshotThreadCaches`. */
+export function rollbackThreadCaches(
+  queryClient: QueryClient,
+  snapshots: ThreadCacheSnapshots,
+): void {
+  for (const [key, data] of snapshots) queryClient.setQueryData(key, data);
 }
 
 /**

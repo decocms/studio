@@ -42,3 +42,29 @@ export type TasksQueryData = {
   hasMore: boolean;
   totalCount?: number;
 };
+
+/**
+ * The two shapes a thread-list cache key can carry. `org` is the unscoped
+ * view; `agent` narrows by `virtualMcpId`. Used both by `useThreads` (as
+ * the query argument) and by the event bridge (as the parsed shape of a
+ * `KEYS.threads(…)` cache key).
+ */
+export type ThreadScope = "org" | { kind: "agent"; virtualMcpId: string };
+
+/**
+ * Partial Task patch — every cache write goes through one of these. `id`
+ * pins the row; the rest are optional overrides applied via spread.
+ */
+export type RowPatch = Pick<Task, "id"> &
+  Partial<
+    Pick<
+      Task,
+      | "status"
+      | "updated_at"
+      | "title"
+      | "branch"
+      | "created_by"
+      | "trigger_id"
+      | "virtual_mcp_id"
+    >
+  >;

@@ -128,41 +128,31 @@ export function ChatHighlight() {
     preferences.toolApprovalLevel ?? readToolApprovalLevel();
 
   const lastMessage = messages.at(-1);
+  const assistantParts =
+    lastMessage?.role === "assistant" ? lastMessage.parts : [];
 
-  const userAskParts =
-    lastMessage?.role === "assistant"
-      ? lastMessage.parts.filter((part) => part.type === "tool-user_ask")
-      : null;
-
+  const userAskParts = assistantParts.filter(
+    (part) => part.type === "tool-user_ask",
+  );
   // Coerce to boolean — `.length` is a number, and concurrent JSX renders
   // `{0 && <X/>}` as the literal text "0" (unlike the prior priority cascade,
   // where `if (0) { return … }` was control flow). After every user_ask
   // resolves to `output-available`, the unfiltered count is 0, which would
   // otherwise stamp a stray "0" between the highlight stack and the input.
-  const isWaitingForUserInput = !!userAskParts?.filter(
+  const isWaitingForUserInput = !!userAskParts.filter(
     (p) => p.state !== "output-available",
-  )?.length;
-
-  // Collect pending plan proposals from the last assistant message
-  const pendingPlans =
-    lastMessage?.role === "assistant"
-      ? extractPendingPlans(lastMessage.parts)
-      : [];
-
-  // Collect pending approval parts from the last assistant message
-  const pendingApprovals =
-    lastMessage?.role === "assistant"
-      ? extractPendingApprovals(
-          lastMessage.parts as Array<{
-            type: string;
-            state?: string;
-            approval?: { id: string };
-            toolCallId?: string;
-            toolName?: string;
-            input?: unknown;
-          }>,
-        )
-      : [];
+  ).length;
+  const pendingPlans = extractPendingPlans(assistantParts);
+  const pendingApprovals = extractPendingApprovals(
+    assistantParts as Array<{
+      type: string;
+      state?: string;
+      approval?: { id: string };
+      toolCallId?: string;
+      toolName?: string;
+      input?: unknown;
+    }>,
+  );
 
   const handleFixInChat = () => {
     if (error) {
@@ -263,7 +253,7 @@ export function ChatHighlight() {
     finishReason !== "stop" &&
     !isToolCallsWaitingOnClient &&
     !showError;
-  const userAskKey = userAskParts?.map((p) => p.toolCallId).join("|") ?? "";
+  const userAskKey = userAskParts.map((p) => p.toolCallId).join("|");
   const planKey = pendingPlans[0]?.toolCallId ?? "";
   const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
 
@@ -303,7 +293,7 @@ export function ChatHighlight() {
           onDismiss={handlePlanDismiss}
         />
       )}
-      {isWaitingForUserInput && userAskParts && (
+      {isWaitingForUserInput && (
         <UserAskQuestionHighlight
           key={userAskKey}
           userAskParts={userAskParts}

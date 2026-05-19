@@ -303,8 +303,12 @@ function BatchedApprovalPrompt({
 
 // ============================================================================
 // ApprovalDecisionButtons — Deny / Accept pair for the current approval,
-// driven by react-hook-form. Click toggles the form value; both buttons can
-// be flipped freely before final Submit.
+// driven by react-hook-form. Each click writes the decision to form state and
+// then calls `submitOrAdvance`: if other approvals remain unanswered the form
+// advances to the next one, otherwise the whole batch flushes to `onRespond`.
+// There is no explicit Submit step — answering the last pending approval
+// commits the batch immediately, including any earlier decisions buffered
+// during this pass.
 // ============================================================================
 
 function ApprovalDecisionButtons({

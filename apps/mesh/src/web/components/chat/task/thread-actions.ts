@@ -19,63 +19,18 @@ import {
 } from "@decocms/mesh-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { KEYS } from "../../../lib/query-keys";
+import type { ThreadUpdateData } from "@/tools/thread/schema.ts";
 import { callUpdateTaskTool } from "./helpers";
 import {
   patchThreadCaches,
   prependRowToThreadCaches,
+  removeRowFromThreadCaches,
+  rollbackThreadCaches,
+  snapshotThreadCaches,
   type RowPatch,
 } from "./thread-events";
-import type { ChatMessage, Task, TasksQueryData } from "./types";
+import type { ChatMessage, Task } from "./types";
 import { updateMessagesCache } from "./cache-operations";
-
-// A patcher returns the replacement row, or `null` to remove the row from
-// the cached list (used by archive/hide where the row leaves the "open" view).
-type RowPatcher = (row: Task) => Task | null;
-type Snapshot = [readonly unknown[], TasksQueryData | undefined];
-
-function snapshotAndPatch(
-  queryClient: ReturnType<typeof useQueryClient>,
-  locator: string,
-  threadId: string,
-  patch: RowPatcher,
-): Snapshot[] {
-  // Take an exact snapshot of every matching cache entry BEFORE mutating,
-  // so we can roll back per-key on error.
-  const snapshots = queryClient.getQueriesData<TasksQueryData>({
-    queryKey: KEYS.threadsPrefix(locator),
-  });
-
-  queryClient.setQueriesData<TasksQueryData>(
-    { queryKey: KEYS.threadsPrefix(locator) },
-    (data) => {
-      if (!data) return data;
-      const idx = data.items.findIndex((t) => t.id === threadId);
-      if (idx === -1) return data;
-      const current = data.items[idx];
-      if (!current) return data;
-      const patched = patch(current);
-      const items = [...data.items];
-      if (patched === null) {
-        items.splice(idx, 1);
-      } else {
-        items[idx] = patched;
-      }
-      return { ...data, items };
-    },
-  );
-
-  return snapshots;
-}
-
-function rollback(
-  queryClient: ReturnType<typeof useQueryClient>,
-  snapshots: Snapshot[],
-) {
-  for (const [key, data] of snapshots) {
-    queryClient.setQueryData(key, data);
-  }
-}
 
 /**
  * Return shape: the spread of `useCollectionActions<Task>(…, "THREADS", …)`
@@ -109,31 +64,47 @@ export function useThreadActions() {
     ...originalCreate,
     mutateAsync: async (data, options) => {
       const row = await originalCreate.mutateAsync(data, options);
-      if (row) {
-        prependRowToThreadCaches(queryClient, locator, row);
-      }
+      if (row) prependRowToThreadCaches(queryClient, locator, row);
       return row;
     },
   };
 
   const withOptimistic = async (
-    id: string,
-    patch: RowPatcher,
-    fn: () => Promise<Task | null>,
-    onErrorMsg: string,
-    onSuccessMsg: string,
+    applyOptimistic: () => void,
+    call: () => Promise<unknown>,
+    okMsg: string,
+    errMsg: string,
   ): Promise<void> => {
-    const snapshots = snapshotAndPatch(queryClient, locator, id, patch);
+    const snapshots = snapshotThreadCaches(queryClient, locator);
+    applyOptimistic();
     try {
-      await fn();
-      toast.success(onSuccessMsg);
+      await call();
+      toast.success(okMsg);
     } catch (error) {
-      rollback(queryClient, snapshots);
+      rollbackThreadCaches(queryClient, snapshots);
       const err = error as Error;
-      toast.error(`${onErrorMsg}: ${err.message}`);
-      console.error(`[threads] ${onErrorMsg}:`, error);
+      toast.error(`${errMsg}: ${err.message}`);
+      console.error(`[threads] ${errMsg}:`, error);
     }
   };
+
+  const updateThread = (
+    id: string,
+    patch: ThreadUpdateData,
+    okMsg: string,
+    errMsg: string,
+  ): Promise<void> =>
+    withOptimistic(
+      () =>
+        patchThreadCaches(queryClient, locator, {
+          ...(patch as RowPatch),
+          id,
+          updated_at: new Date().toISOString(),
+        }),
+      () => callUpdateTaskTool(client, id, patch),
+      okMsg,
+      errMsg,
+    );
 
   return {
     // Low-level surface (preserved from legacy useTaskActions):
@@ -142,53 +113,27 @@ export function useThreadActions() {
 
     // High-level helpers with optimistic patches:
     renameThread: (id: string, title: string) =>
-      withOptimistic(
-        id,
-        (row) => ({
-          ...row,
-          title,
-          updated_at: new Date().toISOString(),
-        }),
-        () => callUpdateTaskTool(client, id, { title }),
-        "Failed to rename task",
-        "Task renamed",
-      ),
+      updateThread(id, { title }, "Task renamed", "Failed to rename task"),
     hideThread: (id: string) =>
       withOptimistic(
-        id,
-        // Open-list caches do not carry hidden=true rows; remove the row
-        // entirely rather than flipping a flag that filterThreads ignores.
-        () => null,
+        () => removeRowFromThreadCaches(queryClient, locator, id),
         () => callUpdateTaskTool(client, id, { hidden: true }),
-        "Failed to archive task",
         "Task archived",
+        "Failed to archive task",
       ),
     setStatus: (id: string, status: Task["status"]) =>
-      withOptimistic(
+      updateThread(
         id,
-        (row) => ({
-          ...row,
-          status,
-          updated_at: new Date().toISOString(),
-        }),
-        () =>
-          callUpdateTaskTool(client, id, {
-            status: status as
-              | "requires_action"
-              | "failed"
-              | "in_progress"
-              | "completed",
-          }),
-        "Failed to update task status",
+        { status: status as ThreadUpdateData["status"] },
         "Task status updated",
+        "Failed to update task status",
       ),
     setBranch: (id: string, branch: string | null) =>
-      withOptimistic(
+      updateThread(
         id,
-        (row) => ({ ...row, branch }),
-        () => callUpdateTaskTool(client, id, { branch }),
-        "Failed to update branch",
+        { branch },
         "Task branch updated",
+        "Failed to update branch",
       ),
     updateMessages: (id: string, messages: ChatMessage[]): void =>
       updateMessagesCache(queryClient, client, org.id, id, messages),

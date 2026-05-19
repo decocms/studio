@@ -18,9 +18,14 @@ import {
 import type { CollectionListOutput } from "@decocms/bindings/collections";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { KEYS } from "../../../lib/query-keys";
-import { TASK_CONSTANTS, type Task, type TasksQueryData } from "./types";
+import {
+  TASK_CONSTANTS,
+  type Task,
+  type TasksQueryData,
+  type ThreadScope,
+} from "./types";
 
-export type ThreadScope = "org" | { kind: "agent"; virtualMcpId: string };
+export type { ThreadScope } from "./types";
 export type ThreadStatusFilter = "open" | "archived";
 
 export interface UseThreadsResult {

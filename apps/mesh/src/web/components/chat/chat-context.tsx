@@ -303,13 +303,12 @@ const TaskInternalsCtx = createContext<TaskProviderInternals | null>(null);
  * a decopilot fallback, matching `useChatNavigation` — so the same
  * provider works on `/$org/` and `/$org/$taskId`.
  *
- * On routes that mount `ChatContextProvider`, that wrapper internally
- * mounts its own `ChatPrefsCtx.Provider` for backwards compatibility; the
- * inner mount shadows this one. Persistent state still syncs via
- * localStorage; transient state (chatMode, tiptapDoc, appContexts) is
- * scoped to whichever mount the consumer is reading from — fine for our
- * flows because home submit clears the editor and the task page starts
- * fresh.
+ * `ChatContextProvider` composes this provider, so routes that mount the
+ * full chat context get the prefs context via the same code path. If a
+ * parent layout has already mounted `ChatPrefsProvider`, the inner mount
+ * shadows it — persistent state still syncs via localStorage; transient
+ * state (chatMode, tiptapDoc, appContexts) is scoped to whichever mount
+ * the consumer reads from.
  */
 export function ChatPrefsProvider({ children }: PropsWithChildren) {
   const { locator } = useProjectContext();
@@ -515,112 +514,6 @@ export function ChatContextProvider({
   const [preferences] = usePreferences();
   const { markTaskRead } = useTaskReadState();
 
-  // Model selection (localStorage-backed) — image and deep research only;
-  // chat model is always tier-driven.
-  const [storedImageRef, setStoredImageRef] = useLocalStorage<ModelRef | null>(
-    LOCALSTORAGE_KEYS.chatSelectedImageModel(locator),
-    null,
-  );
-  const [storedDeepResearchRef, setStoredDeepResearchRef] =
-    useLocalStorage<ModelRef | null>(
-      LOCALSTORAGE_KEYS.chatSelectedDeepResearchModel(locator),
-      null,
-    );
-
-  // Session-only credential override. Lets the picker browse models for a
-  // different credential before the user commits via setModel. Resets on
-  // reload — not persisted.
-  const [sessionCredentialId, setSessionCredentialId] = useState<string | null>(
-    null,
-  );
-
-  const [chatMode, setChatMode] = useState<ChatMode>("default");
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  chatModeForTransportRef.current = chatMode;
-
-  // Simple Model Mode — org-level config.
-  const simpleMode = useSimpleMode();
-  const [storedTier, setStoredTier] = useLocalStorage<SimpleTier | null>(
-    LOCALSTORAGE_KEYS.chatSimpleModeTier(locator),
-    null,
-  );
-  const activeTier = resolveActiveTier(storedTier);
-
-  // AI provider keys and models.
-  const keys = useAiProviderKeys();
-  // Simple Mode slots can reference any credential, not just effectiveKeyId.
-  // Fetch models for each slot's keyId directly so findModel returns real
-  // AiProviderModel objects with full capabilities (file upload, etc).
-  // Each useAiProviderModels call is a separate, cached React Query — no
-  // duplicate requests when a keyId is reused across slots.
-  const activeChatSlot = simpleMode.tiers[activeTier];
-  const effectiveKeyId =
-    sessionCredentialId && keys.some((k) => k.id === sessionCredentialId)
-      ? sessionCredentialId
-      : (activeChatSlot?.keyId ?? keys[0]?.id ?? null);
-  // Always fetch models — React Query (staleTime 60s) caches across consumers.
-  const { models: allKeyModels, isLoading: isModelsQueryLoading } =
-    useAiProviderModels(effectiveKeyId ?? undefined);
-
-  const { models: simpleChatModels } = useAiProviderModels(
-    activeChatSlot?.keyId,
-  );
-  const { models: simpleImageModels } = useAiProviderModels(
-    simpleMode.tiers.image?.keyId,
-  );
-  const { models: simpleWebResearchModels } = useAiProviderModels(
-    simpleMode.tiers.web_research?.keyId,
-  );
-
-  // Resolve the chat model from the active tier slot, falling back to a
-  // tier-aware pick from the effective key's catalog when no slot is set —
-  // mirrors backend resolveTier so capabilities (file upload, vision) are
-  // accurate without waiting for the first stream response.
-  const selectedModel: AiProviderModel | null =
-    findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title) ??
-    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels);
-  const isModelsLoading = isModelsQueryLoading;
-
-  // Image model — tier-driven, fall back to stored/defaults.
-  const imageModels = allKeyModels.filter((m) =>
-    m.capabilities?.includes("image"),
-  );
-  const validatedStoredImage = findModel(storedImageRef, keys, imageModels);
-  const resolvedImageModel: AiProviderModel | null =
-    findModel(
-      simpleMode.tiers.image,
-      keys,
-      simpleImageModels,
-      simpleMode.tiers.image?.title,
-    ) ??
-    validatedStoredImage ??
-    imageModels[0] ??
-    null;
-
-  // Deep research model — tier-driven, fall back to stored/defaults.
-  const deepResearchModels = allKeyModels.filter((m) => {
-    const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
-    return n.includes("sonar") || n.includes("deepresearch");
-  });
-  const validatedStoredDeepResearch = findModel(
-    storedDeepResearchRef,
-    keys,
-    deepResearchModels,
-  );
-  const defaultDeepResearchModel =
-    deepResearchModels.find((m) => m.modelId === "perplexity/sonar") ??
-    deepResearchModels[0] ??
-    null;
-  const resolvedDeepResearchModel: AiProviderModel | null =
-    findModel(
-      simpleMode.tiers.web_research,
-      keys,
-      simpleWebResearchModels,
-      simpleMode.tiers.web_research?.title,
-    ) ??
-    validatedStoredDeepResearch ??
-    defaultDeepResearchModel;
-
   // Thread list — agent-scoped, open status. Consumers of `useChatTask().tasks`
   // only look up the active thread by id, so no client-side filtering is needed.
   const { threads: tasks } = useThreads(
@@ -635,56 +528,8 @@ export function ChatContextProvider({
   // Effective agent: URL param ?? prop (thread owner)
   const effectiveVirtualMcpId = urlVirtualMcpId;
 
-  // Single-item fetch for the selected virtual MCP (no full list needed)
-  const selectedVirtualMcpData = useVirtualMCP(effectiveVirtualMcpId);
-  const selectedVirtualMcp: VirtualMCPInfo = selectedVirtualMcpData ?? {
-    id: effectiveVirtualMcpId,
-    title: "",
-    description: null,
-    icon: null,
-  };
-
   // Context prompt (uses effective agent)
   const contextPrompt = useContextHook(effectiveVirtualMcpId);
-
-  // App contexts
-  const [appContexts, setAppContextsState] = useState<Record<string, string>>(
-    {},
-  );
-  const setAppContext = (sourceId: string, params: SetAppContextParams) => {
-    const textParts: string[] = [];
-    for (const block of params.content ?? []) {
-      if (block.type === "text" && block.text?.trim()) {
-        textParts.push(block.text.trim());
-      }
-    }
-    const text = textParts.join("\n");
-    if (!text) {
-      clearAppContext(sourceId);
-      return;
-    }
-    if (new TextEncoder().encode(text).length > MAX_APP_CONTEXT_LENGTH) return;
-    setAppContextsState((prev) => {
-      if (
-        Object.keys(prev).length >= MAX_APP_CONTEXT_SOURCES &&
-        !(sourceId in prev)
-      )
-        return prev;
-      return { ...prev, [sourceId]: text };
-    });
-  };
-  const clearAppContext = (sourceId: string) => {
-    setAppContextsState((prev) => {
-      const { [sourceId]: _, ...rest } = prev;
-      return rest;
-    });
-  };
-
-  // Tiptap doc (transient UI state)
-  const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
-  const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  tiptapDocRef.current = tiptapDoc;
 
   const navigateToTask = (
     taskId: string,
@@ -774,39 +619,6 @@ export function ChatContextProvider({
     },
   };
 
-  const prefsValue: ChatPrefsContextValue = {
-    selectedModel,
-    setModel: () => {},
-    credentialId: effectiveKeyId,
-    setCredentialId: setSessionCredentialId,
-    allModelsConnections: keys,
-    isModelsLoading,
-    selectedVirtualMcp,
-    imageModel: resolvedImageModel,
-    setImageModel: (model: AiProviderModel | null) => {
-      setStoredImageRef(
-        model?.keyId ? { keyId: model.keyId, modelId: model.modelId } : null,
-      );
-    },
-    deepResearchModel: resolvedDeepResearchModel,
-    setDeepResearchModel: (model: AiProviderModel | null) => {
-      setStoredDeepResearchRef(
-        model?.keyId ? { keyId: model.keyId, modelId: model.modelId } : null,
-      );
-    },
-    chatMode,
-    setChatMode,
-    appContexts,
-    setAppContext,
-    clearAppContext,
-    tiptapDoc,
-    setTiptapDoc,
-    tiptapDocRef,
-    resetInteraction: () => {},
-    simpleModeTier: activeTier,
-    setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
-  };
-
   const internals: TaskProviderInternals = {
     user,
     contextPrompt,
@@ -820,11 +632,11 @@ export function ChatContextProvider({
 
   return (
     <ChatTaskCtx.Provider value={taskValue}>
-      <ChatPrefsCtx.Provider value={prefsValue}>
+      <ChatPrefsProvider>
         <TaskInternalsCtx.Provider value={internals}>
           {children}
         </TaskInternalsCtx.Provider>
-      </ChatPrefsCtx.Provider>
+      </ChatPrefsProvider>
     </ChatTaskCtx.Provider>
   );
 }
