@@ -4,19 +4,19 @@
  * ⚠️ Currently `.skip`ped — see "Architectural finding" below.
  *
  * Intended scenario: when the pod owning a run dies mid-stream, recovery
- * should resume the run on a survivor pod so /attach tails continue to
+ * should resume the run on a survivor pod so /stream tails continue to
  * receive chunks without the client reconnecting.
  *
  * Test shape:
  *
  *   1. Send a SLOW message (20 chunks × 500ms ≈ 10s window for kill).
- *   2. Open /attach on all three pods so at least two survive the kill
+ *   2. Open /stream on all three pods so at least two survive the kill
  *      no matter which pod owns the run.
  *   3. Wait for "chunk-2" on any watcher (proof the run started).
  *   4. Read the actual owner from `threads.run_owner_pod` and SIGKILL
  *      that pod (POD_NAME on each compose service matches the service
  *      name, so the value maps directly to a `pod.kill()` target).
- *   5. Assert one surviving /attach receives "chunk-20".
+ *   5. Assert one surviving /stream receives "chunk-20".
  *
  * ── Architectural finding (2026-05-17, revised) ──────────────────────
  *
@@ -111,7 +111,7 @@ function openAttachWatcher(
     try {
       for await (const payload of sse(
         pod,
-        `/api/${orgSlug}/decopilot/attach/${threadId}`,
+        `/api/${orgSlug}/decopilot/threads/${threadId}/stream`,
         { auth: { apiKey }, signal: abort.signal },
       )) {
         watcher.joined += payload;

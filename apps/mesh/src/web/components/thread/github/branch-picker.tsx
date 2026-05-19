@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type UIEvent, useRef, useState } from "react";
 import type { VmMap } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -47,8 +47,20 @@ export function BranchPicker({
   onChange,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [isSearchingRemote, setIsSearchingRemote] = useState(false);
+  const searchRequestId = useRef(0);
 
-  const { yours, others, isLoading, isError } = useBranches({
+  const {
+    yours,
+    others,
+    isLoading,
+    isError,
+    hasMore,
+    isFetchingMore,
+    fetchMore,
+    fetchUntilMatch,
+  } = useBranches({
     orgId,
     orgSlug,
     userId,
@@ -65,6 +77,37 @@ export function BranchPicker({
   };
 
   const label = value ?? "Select branch…";
+  const handleSearchChange = (nextSearch: string) => {
+    setSearch(nextSearch);
+    searchRequestId.current += 1;
+
+    const requestId = searchRequestId.current;
+    const trimmedSearch = nextSearch.trim();
+    if (!trimmedSearch) {
+      setIsSearchingRemote(false);
+      return;
+    }
+
+    setIsSearchingRemote(true);
+    void fetchUntilMatch(
+      trimmedSearch,
+      () => requestId === searchRequestId.current,
+    ).finally(() => {
+      if (requestId === searchRequestId.current) {
+        setIsSearchingRemote(false);
+      }
+    });
+  };
+
+  const onListScroll = (event: UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    const distanceFromBottom =
+      target.scrollHeight - target.scrollTop - target.clientHeight;
+
+    if (distanceFromBottom < 48) {
+      fetchMore();
+    }
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -83,8 +126,12 @@ export function BranchPicker({
         align="start"
       >
         <Command>
-          <div className="flex items-center border-b pr-2 [&>[data-slot=command-input-wrapper]]:flex-1 [&>[data-slot=command-input-wrapper]]:border-b-0">
-            <CommandInput placeholder="Search branches…" />
+          <div className="*:data-[slot=command-input-wrapper]:flex-1 *:data-[slot=command-input-wrapper]:border-b-0 flex items-center border-b pr-2">
+            <CommandInput
+              placeholder="Search loaded branches…"
+              value={search}
+              onValueChange={handleSearchChange}
+            />
             <Button
               variant="outline"
               size="sm"
@@ -94,19 +141,20 @@ export function BranchPicker({
               New
             </Button>
           </div>
-          <CommandList>
+          <CommandList onScroll={onListScroll}>
             {isError && (
               <div className="p-3 text-xs text-muted-foreground">
                 Couldn't load branches from GitHub. You can still pick from your
                 branches.
               </div>
             )}
-            {!isError &&
-              !isLoading &&
-              yours.length === 0 &&
-              others.length === 0 && (
-                <CommandEmpty>No branches found.</CommandEmpty>
-              )}
+            {!isError && !isLoading && (
+              <CommandEmpty>
+                {hasMore
+                  ? "Looking through more branches..."
+                  : "No branches found."}
+              </CommandEmpty>
+            )}
             {yours.length > 0 && (
               <CommandGroup heading="Your branches">
                 {yours.map((b) => (
@@ -142,6 +190,26 @@ export function BranchPicker({
                   ))}
                 </CommandGroup>
               </>
+            )}
+            {hasMore && (
+              <div className="border-t p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-full text-xs"
+                  disabled={isFetchingMore}
+                  onClick={fetchMore}
+                >
+                  {isFetchingMore || isSearchingRemote
+                    ? "Loading more…"
+                    : "Load more branches"}
+                </Button>
+              </div>
+            )}
+            {!hasMore && others.length > 0 && (
+              <div className="border-t p-2 text-center text-xs text-muted-foreground">
+                All loaded
+              </div>
             )}
           </CommandList>
         </Command>

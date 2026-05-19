@@ -78,7 +78,7 @@ import { StudioPackRecruitModal } from "@/web/components/home/studio-pack-recrui
 import { LeanCanvasRecruitModal } from "@/web/components/home/lean-canvas-recruit-modal.tsx";
 import { AiImageRecruitModal } from "@/web/components/home/ai-image-recruit-modal.tsx";
 import { AiResearchRecruitModal } from "@/web/components/home/ai-research-recruit-modal.tsx";
-import { useTaskActions } from "@/web/hooks/use-tasks";
+import { useThreadActions } from "@/web/components/chat/task";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thread";
 
@@ -96,7 +96,7 @@ import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thre
 function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const taskActions = useTaskActions();
+  const taskActions = useThreadActions();
   const { locator } = useProjectContext();
   const params = useParams({ strict: false }) as { taskId?: string };
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
@@ -145,11 +145,16 @@ function AgentListItem({
   const xRef = useRef<HTMLButtonElement>(null);
   const showTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDraggingRef = useRef(false);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   isDraggingRef.current = !!isDragging;
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (isDragging && (buttonRect || showTimeoutRef.current)) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     if (showTimeoutRef.current) {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       clearTimeout(showTimeoutRef.current);
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       showTimeoutRef.current = null;
     }
     if (buttonRect) setButtonRect(null);

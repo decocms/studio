@@ -1,89 +1,68 @@
 /**
  * TasksPanel — left-panel entry point. Org-wide (not scoped to a virtualMCP).
- * Renders all open tasks in a single list, sorted by updated_at.
+ * Renders all open tasks in a single list, sorted by created_at.
  * Automation-triggered tasks are distinguished by a badge on their avatar.
  */
 
 import { Suspense } from "react";
-import { useParams } from "@tanstack/react-router";
-import {
-  useMCPClient,
-  useProjectContext,
-  SELF_MCP_ALIAS_ID,
-} from "@decocms/mesh-sdk";
-import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { ClipboardCheck } from "@untitledui/icons";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Chat } from "@/web/components/chat";
 import { EmptyState } from "@/web/components/empty-state";
-import { useTasks } from "@/web/components/chat/task/use-task-manager";
-import { callUpdateTaskTool } from "@/web/components/chat/task/helpers";
+import {
+  useThreads,
+  filterThreads,
+  useThreadActions,
+} from "@/web/components/chat/task";
 import type { Task } from "@/web/components/chat/task/types";
-import { useTasksAutoRefresh } from "@/web/hooks/use-tasks-auto-refresh";
 import { usePanelActions } from "@/web/layouts/shell-layout";
-import { KEYS } from "@/web/lib/query-keys";
-import { toast } from "sonner";
 import { authClient } from "@/web/lib/auth-client";
 import { TasksSection } from "./tasks-section";
 
 function TasksPanelContent() {
-  useTasksAutoRefresh();
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
-  const {
-    tasks: myTasks,
-    fetchNextPage: fetchMoreMyTasks,
-    hasNextPage: hasMoreMyTasks,
-    isFetchingNextPage: isFetchingMoreMyTasks,
-  } = useTasks({
-    owner: "me",
-    status: "open",
+  const { threads, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useThreads("org", "open");
+  const { hideThread } = useThreadActions();
+
+  const myTasks = filterThreads(threads, {
+    ownerUserId: currentUserId,
     hasTrigger: false,
   });
-  const {
-    tasks: automationTasks,
-    fetchNextPage: fetchMoreAutomationTasks,
-    hasNextPage: hasMoreAutomationTasks,
-    isFetchingNextPage: isFetchingMoreAutomationTasks,
-  } = useTasks({
-    owner: "all",
-    status: "open",
-    hasTrigger: true,
-  });
+  const automationTasks = filterThreads(threads, { hasTrigger: true });
+
   const { setTaskId, createNewTask } = usePanelActions();
-  const params = useParams({ strict: false }) as { taskId?: string };
-  const { locator, org } = useProjectContext();
-  const queryClient = useQueryClient();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const navigate = useNavigate();
+  const params = useParams({ strict: false }) as {
+    org?: string;
+    taskId?: string;
+  };
 
   const activeTaskId = params.taskId ?? null;
 
-  const allTasks = [
-    ...myTasks,
-    ...automationTasks.map((t) => ({ ...t, fromAutomation: true as const })),
-  ].sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+  const allTasks = [...myTasks, ...automationTasks].sort((a, b) =>
+    (b.created_at ?? "").localeCompare(a.created_at ?? ""),
+  );
 
-  const hasMore = hasMoreMyTasks || hasMoreAutomationTasks;
-  const isFetchingMore = isFetchingMoreMyTasks || isFetchingMoreAutomationTasks;
-  const handleLoadMore = () => {
-    if (hasMoreMyTasks && !isFetchingMoreMyTasks) fetchMoreMyTasks();
-    if (hasMoreAutomationTasks && !isFetchingMoreAutomationTasks)
-      fetchMoreAutomationTasks();
-  };
+  const handleArchive = (task: Task) => {
+    const wasActive = task.id === activeTaskId;
+    hideThread(task.id);
 
-  const handleArchive = async (task: Task) => {
-    try {
-      await callUpdateTaskTool(client, task.id, { hidden: true });
-      queryClient.invalidateQueries({
-        queryKey: KEYS.tasksPrefix(locator),
+    if (!wasActive) return;
+
+    // Active thread archived — redirect to the next open thread, or fall
+    // back to the org home when no threads remain.
+    const next = allTasks.find((t) => t.id !== task.id);
+    if (next) {
+      setTaskId(next.id, next.virtual_mcp_id);
+    } else if (params.org) {
+      navigate({
+        to: "/$org",
+        params: { org: params.org },
+        search: { tasks: 0 },
       });
-    } catch (error) {
-      const err = error as Error;
-      toast.error(`Failed to archive task: ${err.message}`);
     }
   };
 
@@ -110,9 +89,9 @@ function TasksPanelContent() {
         onNew={createNewTask}
         showNewButton
         currentUserId={currentUserId}
-        hasMore={hasMore}
-        isFetchingMore={isFetchingMore}
-        onLoadMore={handleLoadMore}
+        hasMore={hasNextPage}
+        isFetchingMore={isFetchingNextPage}
+        onLoadMore={fetchNextPage}
       />
     </div>
   );

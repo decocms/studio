@@ -132,7 +132,9 @@ function FiltersPopover({
     serializePropertyFilters(propertyFilters),
   );
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (prevToolRef.current !== tool) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevToolRef.current = tool;
     if (localTool !== tool) {
       setLocalTool(tool);
@@ -140,7 +142,9 @@ function FiltersPopover({
   }
 
   const currentSerialized = serializePropertyFilters(propertyFilters);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (prevPropertyFiltersRef.current !== currentSerialized) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevPropertyFiltersRef.current = currentSerialized;
     setLocalPropertyFilters(propertyFilters);
     setLocalRawFilters(propertyFiltersToRaw(propertyFilters));

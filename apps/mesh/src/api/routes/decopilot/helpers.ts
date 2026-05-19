@@ -370,7 +370,7 @@ export async function toolsFromMCP(
 /**
  * Validate that a thread exists and belongs to the org.
  * Does NOT enforce ownership — any authenticated org member can access.
- * Use this for read-only / observability endpoints (e.g. attach).
+ * Use this for read-only / observability endpoints (e.g. stream).
  */
 export async function validateThreadAccess(
   c: Context<{ Variables: { meshContext: MeshContext } }>,

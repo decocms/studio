@@ -149,6 +149,13 @@ export const KEYS = {
     owner: string | null | undefined,
     repo: string | null | undefined,
   ) => ["github-readme", owner, repo] as const,
+  githubBranches: (
+    orgId: string,
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+  ) => ["github-branches", orgId, orgSlug, connectionId, owner, repo] as const,
 
   // Monitoring queries
   monitoringStats: () => ["monitoring", "stats"] as const,

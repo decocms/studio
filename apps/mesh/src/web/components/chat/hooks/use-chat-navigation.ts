@@ -49,6 +49,7 @@ export function useChatNavigation(): ChatNavigation {
   // On other routes (e.g. settings) Chat.Provider still mounts but taskId is
   // absent — fall back to a stable generated ID so the provider works everywhere.
   const fallbackRef = useRef(crypto.randomUUID());
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   const taskId = routeParams.taskId ?? fallbackRef.current;
 
   return { virtualMcpId, taskId, navigateToTask };

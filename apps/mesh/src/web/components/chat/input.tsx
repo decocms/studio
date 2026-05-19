@@ -303,9 +303,12 @@ export function ChatInput({
 
   // Reset input when switching tasks (TiptapProvider also remounts via key)
   const prevTaskRef = useRef(taskId);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (prevTaskRef.current !== taskId) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevTaskRef.current = taskId;
     setTiptapDocLocal(undefined);
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     tiptapDocRef.current = undefined;
   }
 

@@ -19,7 +19,7 @@ export function readCachedTaskBranch(
 ): string | null {
   if (!taskId) return null;
   const queries = queryClient.getQueriesData<TasksQueryData>({
-    queryKey: KEYS.tasksPrefix(locator),
+    queryKey: KEYS.threadsPrefix(locator),
   });
   for (const [, data] of queries) {
     if (!data?.pages) continue;

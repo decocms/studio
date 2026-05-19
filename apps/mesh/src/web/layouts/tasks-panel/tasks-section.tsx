@@ -73,9 +73,9 @@ export function TasksSection({
 
   const visibleTasks =
     filter === "automation"
-      ? memberFiltered.filter((t) => t.fromAutomation)
+      ? memberFiltered.filter((t) => Boolean(t.trigger_id))
       : filter === "manual"
-        ? memberFiltered.filter((t) => !t.fromAutomation)
+        ? memberFiltered.filter((t) => !t.trigger_id)
         : memberFiltered;
 
   return (
@@ -192,7 +192,7 @@ export function TasksSection({
                       track("tasks_panel_task_clicked", {
                         thread_id: t.id,
                         virtual_mcp_id: t.virtual_mcp_id ?? null,
-                        from_automation: Boolean(t.fromAutomation),
+                        from_automation: Boolean(t.trigger_id),
                       });
                     }
                     onSelect(t);
@@ -204,7 +204,9 @@ export function TasksSection({
                     });
                     onArchive(t);
                   }}
-                  showAutomationBadge={showAutomationBadge || t.fromAutomation}
+                  showAutomationBadge={
+                    showAutomationBadge || Boolean(t.trigger_id)
+                  }
                 />
               </div>
             ))}

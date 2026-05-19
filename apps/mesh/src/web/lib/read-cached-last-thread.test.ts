@@ -20,12 +20,12 @@ function task(overrides: Partial<Task>): Task {
   };
 }
 
+function pagedData(items: Task[]): TasksQueryData {
+  return { pages: [{ items, hasMore: false }], pageParams: [0] };
+}
+
 function seed(qc: QueryClient, filterTag: string, items: Task[]) {
-  const data: TasksQueryData = {
-    pages: [{ items, hasMore: false }],
-    pageParams: [0],
-  };
-  qc.setQueryData(["tasks", LOCATOR, filterTag], data);
+  qc.setQueryData(["threads", LOCATOR, filterTag], pagedData(items));
 }
 
 describe("readCachedLastThread", () => {
@@ -86,36 +86,30 @@ describe("readCachedLastThread", () => {
 
   test("does not match cache entries for a different locator", () => {
     const qc = new QueryClient();
-    qc.setQueryData(["tasks", "other-locator", "list-a"], {
-      pages: [{ items: [task({ id: "elsewhere" })], hasMore: false }],
-      pageParams: [0],
-    } satisfies TasksQueryData);
+    qc.setQueryData(
+      ["threads", "other-locator", "list-a"],
+      pagedData([task({ id: "elsewhere" })]) satisfies TasksQueryData,
+    );
     expect(readCachedLastThread(qc, LOCATOR, AGENT_ID, USER_ID)).toBeNull();
   });
 
   test("ignores entries with empty/missing items", () => {
     const qc = new QueryClient();
-    qc.setQueryData(["tasks", LOCATOR, "empty"], {
-      pages: [{ items: [], hasMore: false }],
-      pageParams: [0],
-    } satisfies TasksQueryData);
-    qc.setQueryData(["tasks", LOCATOR, "undef"], undefined);
+    qc.setQueryData(
+      ["threads", LOCATOR, "empty"],
+      pagedData([]) satisfies TasksQueryData,
+    );
+    qc.setQueryData(["threads", LOCATOR, "undef"], undefined);
     expect(readCachedLastThread(qc, LOCATOR, AGENT_ID, USER_ID)).toBeNull();
   });
 
-  test("verifies KEYS.tasksPrefix is used as the matching prefix", () => {
+  test("verifies KEYS.threadsPrefix is used as the matching prefix", () => {
     const qc = new QueryClient();
-    const exactKey = KEYS.tasks(LOCATOR, {
-      owner: "me",
-      status: "open",
-      virtualMcpId: AGENT_ID,
-      userId: USER_ID,
-      hasTrigger: null,
-    });
-    qc.setQueryData(exactKey, {
-      pages: [{ items: [task({ id: "from-real-key" })], hasMore: false }],
-      pageParams: [0],
-    } satisfies TasksQueryData);
+    const exactKey = KEYS.threadsPrefix(LOCATOR);
+    qc.setQueryData(
+      [...exactKey, "list-a"],
+      pagedData([task({ id: "from-real-key" })]) satisfies TasksQueryData,
+    );
     expect(readCachedLastThread(qc, LOCATOR, AGENT_ID, USER_ID)?.id).toBe(
       "from-real-key",
     );

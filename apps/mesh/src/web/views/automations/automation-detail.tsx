@@ -18,7 +18,7 @@ import {
 import {
   useChatTask,
   useChatPrefs,
-  useChatBridge,
+  useChatStream,
 } from "@/web/components/chat/context";
 import { usePreferences } from "@/web/hooks/use-preferences";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -335,7 +335,7 @@ export function SettingsTab({
   const { createTaskWithMessage } = useChatTask();
   const { setSimpleModeTier } = useChatPrefs();
   const { setChatOpen } = usePanelActions();
-  const { sendMessage } = useChatBridge();
+  const { sendMessage } = useChatStream();
   const ensureStudioPack = useEnsureStudioPack();
   const [preferences, setPreferences] = usePreferences();
   const initialTiptapDoc =

@@ -167,10 +167,12 @@ const InternalMonacoEditor = memo(function InternalMonacoEditor({
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const onSaveRef = useRef(onSave);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onSaveRef.current = onSave;
 
   // Store language in ref to avoid stale closures in editor callbacks
   const languageRef = useRef(language);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   languageRef.current = language;
 
   // Unique path so Monaco treats this as a TypeScript file

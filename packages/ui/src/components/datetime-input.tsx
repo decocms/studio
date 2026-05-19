@@ -97,7 +97,9 @@ export function DateTimeInput({
 
   // Sync input value when prop changes, but only if not focused (action during render)
   const prevValueRef = React.useRef(value);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (prevValueRef.current !== value) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevValueRef.current = value;
     if (!isFocused) {
       setInputValue(getDisplayValue(value));
