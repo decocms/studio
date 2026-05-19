@@ -145,11 +145,16 @@ function AgentListItem({
   const xRef = useRef<HTMLButtonElement>(null);
   const showTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDraggingRef = useRef(false);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   isDraggingRef.current = !!isDragging;
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (isDragging && (buttonRect || showTimeoutRef.current)) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     if (showTimeoutRef.current) {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       clearTimeout(showTimeoutRef.current);
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       showTimeoutRef.current = null;
     }
     if (buttonRect) setButtonRect(null);

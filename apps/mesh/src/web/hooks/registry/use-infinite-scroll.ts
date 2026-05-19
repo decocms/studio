@@ -10,8 +10,11 @@ export function useInfiniteScroll(
   const hasMoreRef = useRef(hasMore);
   const isLoadingRef = useRef(isLoading);
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onLoadMoreRef.current = onLoadMore;
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   hasMoreRef.current = hasMore;
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   isLoadingRef.current = isLoading;
 
   const lastElementRef = (node: HTMLElement | null) => {

@@ -48,9 +48,12 @@ export function TimeRangePicker({
   // Sync local state when prop changes (action during render)
   const prevValueRef = React.useRef({ from: value.from, to: value.to });
   if (
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevValueRef.current.from !== value.from ||
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevValueRef.current.to !== value.to
   ) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevValueRef.current = { from: value.from, to: value.to };
     setLocalFrom(value.from);
     setLocalTo(value.to);

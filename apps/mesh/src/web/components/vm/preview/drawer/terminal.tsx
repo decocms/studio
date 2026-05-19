@@ -26,11 +26,13 @@ export function VmTerminal({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const onSelectionChangeRef = useRef(onSelectionChange);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onSelectionChangeRef.current = onSelectionChange;
   const vmEvents = useVmEvents();
   // Stable ref so the chunk handler (registered once on mount) always sees
   // the current source; no dep churn on prop changes.
   const sourceRef = useRef(source);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   sourceRef.current = source;
 
   useVmChunkHandler((chunkSource, data) => {

@@ -35,6 +35,7 @@ export class TenantConfigStore {
   private draining = false;
 
   read(): EnrichedTenantConfig | null {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     return this.current;
   }
 
@@ -45,6 +46,7 @@ export class TenantConfigStore {
    * accepts requests, so it can safely skip the apply queue.
    */
   hydrate(config: TenantConfig): void {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     this.current = enrich(config);
   }
 
@@ -53,6 +55,7 @@ export class TenantConfigStore {
    * "awaiting fresh bootstrap."
    */
   clear(): void {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     this.current = null;
   }
 
@@ -112,6 +115,7 @@ export class TenantConfigStore {
   }
 
   private async runOne(entry: QueueEntry): Promise<ApplyResult> {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     const before = this.current ? plainConfig(this.current) : null;
     const patch = entry.compute ? entry.compute(before) : entry.patch;
     if (!patch) {
@@ -147,6 +151,7 @@ export class TenantConfigStore {
       };
     }
 
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     this.current = enrich(merged);
 
     if (!entry.silent) {

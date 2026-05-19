@@ -147,26 +147,32 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
   // Stable callback refs so the long-lived subscribe loop reads the latest
   // closures without re-subscribing when consumers re-render.
   const cbRef = useRef({ onFinish, onData, onToolCall, onError });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   cbRef.current = { onFinish, onData, onToolCall, onError };
 
   // ── Stores (re-render only on actual changes) ─────────────────────────
   const localMessagesStore = useRef<Store<Tagged<UI_MESSAGE>[]>>(
     null as unknown as Store<Tagged<UI_MESSAGE>[]>,
   );
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (!localMessagesStore.current) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     localMessagesStore.current = new Store<Tagged<UI_MESSAGE>[]>([]);
   }
   const streamingStore = useRef<Store<UI_MESSAGE | null>>(
     null as unknown as Store<UI_MESSAGE | null>,
   );
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (!streamingStore.current) streamingStore.current = new Store(null);
   const statusStore = useRef<Store<ChatStreamStatus>>(
     null as unknown as Store<ChatStreamStatus>,
   );
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (!statusStore.current) statusStore.current = new Store("ready");
   const errorStore = useRef<Store<Error | null>>(
     null as unknown as Store<Error | null>,
   );
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (!errorStore.current) errorStore.current = new Store(null);
 
   // Subscribe React to the stores
@@ -206,15 +212,23 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
   const subscribeRef = useRef<((notify: () => void) => () => void) | null>(
     null,
   );
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (!subscribeRef.current || prevKeyRef.current !== connKey) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     if (prevKeyRef.current !== connKey) {
       // Thread switched — discard any stale local snapshot.
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       localMessagesStore.current.set([]);
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       streamingStore.current.set(null);
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       statusStore.current.set("ready");
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       errorStore.current.set(null);
     }
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevKeyRef.current = connKey;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     subscribeRef.current = (_notify: () => void) => {
       if (!threadId) return () => {};
       const abort = new AbortController();
@@ -242,6 +256,7 @@ export function useThreadChat<UI_MESSAGE extends UIMessage>(
     };
   }
   useSyncExternalStore(
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     subscribeRef.current,
     () => connKey,
     () => connKey,

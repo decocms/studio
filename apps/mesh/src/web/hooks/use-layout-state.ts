@@ -159,6 +159,7 @@ export function useChatMainPanelState(
   const mainOpen = defaults.mainOpen;
 
   const fallbackRef = useRef(crypto.randomUUID());
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   const taskId = routeParamsRaw.taskId ?? fallbackRef.current;
 
   const routeBase = "/$org/$taskId" as const;

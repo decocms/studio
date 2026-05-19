@@ -31,6 +31,7 @@ export function useDebouncedAutosave<R>({
   // Always-fresh ref so the deferred timer invokes the latest closure rather
   // than whichever one was in scope when the timer was scheduled.
   const saveRef = useRef(save);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   saveRef.current = save;
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

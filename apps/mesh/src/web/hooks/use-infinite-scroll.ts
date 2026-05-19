@@ -37,8 +37,11 @@ export function useInfiniteScroll(
   const onLoadMoreRef = useRef(onLoadMore);
   const hasMoreRef = useRef(hasMore);
   const isLoadingRef = useRef(isLoading);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onLoadMoreRef.current = onLoadMore;
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   hasMoreRef.current = hasMore;
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   isLoadingRef.current = isLoading;
 
   // Ref callback for the last element - React Compiler handles memoization
