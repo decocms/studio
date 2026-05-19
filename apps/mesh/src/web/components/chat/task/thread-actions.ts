@@ -21,7 +21,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { KEYS } from "../../../lib/query-keys";
 import { callUpdateTaskTool } from "./helpers";
-import { applyPatch, type RowPatch } from "./thread-events";
+import {
+  patchThreadCaches,
+  prependRowToThreadCaches,
+  type RowPatch,
+} from "./thread-events";
 import type { ChatMessage, Task, TasksQueryData } from "./types";
 import { updateMessagesCache } from "./cache-operations";
 
@@ -106,14 +110,7 @@ export function useThreadActions() {
     mutateAsync: async (data, options) => {
       const row = await originalCreate.mutateAsync(data, options);
       if (row) {
-        queryClient.setQueriesData<TasksQueryData>(
-          { queryKey: KEYS.threadsPrefix(locator) },
-          (cached) => {
-            if (!cached) return cached;
-            if (cached.items.some((t) => t.id === row.id)) return cached;
-            return { ...cached, items: [row, ...cached.items] };
-          },
-        );
+        prependRowToThreadCaches(queryClient, locator, row);
       }
       return row;
     },
@@ -200,10 +197,7 @@ export function useThreadActions() {
     // persisted the change and is informing the client via SSE — mirrors
     // the path ThreadEventsBridge uses for decopilot.thread.status events.
     patchThread: (patch: RowPatch): void => {
-      queryClient.setQueriesData<TasksQueryData>(
-        { queryKey: KEYS.threadsPrefix(locator) },
-        (data) => applyPatch(data, patch),
-      );
+      patchThreadCaches(queryClient, locator, patch);
     },
   };
 }

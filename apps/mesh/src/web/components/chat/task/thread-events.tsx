@@ -16,11 +16,48 @@
  *     local patch isn't briefly overwritten by stale server state.
  */
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useDecopilotEvents } from "../../../hooks/use-decopilot-events";
 import { KEYS } from "../../../lib/query-keys";
 import { getActiveConn } from "../hooks/thread-connection";
 import type { Task, TasksQueryData } from "./types";
+
+export type ThreadScopeFromKey =
+  | "org"
+  | { kind: "agent"; virtualMcpId: string };
+
+/**
+ * Recover the scope a `KEYS.threads(locator, scope)` cache entry was created
+ * with by parsing the query key shape:
+ *   ["threads", locator, "org"]
+ *   ["threads", locator, "agent", virtualMcpId]
+ * Returns null for any other shape (e.g. `threadsInfinite`, `threadMessages`)
+ * so iterators can skip unrelated caches that happen to share the prefix.
+ */
+export function getThreadScopeFromKey(
+  key: readonly unknown[],
+): ThreadScopeFromKey | null {
+  if (key[2] === "org") return "org";
+  if (key[2] === "agent" && typeof key[3] === "string") {
+    return { kind: "agent", virtualMcpId: key[3] };
+  }
+  return null;
+}
+
+/**
+ * Whether a row with the given `virtual_mcp_id` belongs in a cache of this
+ * scope. Org scope shows all threads; agent scope only accepts rows tagged
+ * with the matching agent. Rows whose `virtual_mcp_id` is unknown are
+ * rejected from agent scopes — the next refetch will repopulate them
+ * correctly if they do belong.
+ */
+export function scopeAcceptsRow(
+  scope: ThreadScopeFromKey,
+  virtualMcpId: string | undefined,
+): boolean {
+  if (scope === "org") return true;
+  return virtualMcpId === scope.virtualMcpId;
+}
 
 export interface RowPatch {
   id: string;
@@ -39,6 +76,7 @@ export interface RowPatch {
 export function applyPatch(
   data: TasksQueryData | undefined,
   patch: RowPatch,
+  options: { canInsert?: boolean } = {},
 ): TasksQueryData | undefined {
   if (!data) return data;
   const idx = data.items.findIndex((t) => t.id === patch.id);
@@ -47,6 +85,7 @@ export function applyPatch(
     // Thread not in this cache yet (created in another tab, or never
     // loaded). Insert at the top with a minimal synthetic row; the next
     // refetch fills missing optional fields.
+    if (options.canInsert === false) return data;
     const synthetic: Task = {
       id: patch.id,
       title: patch.title ?? "New chat",
@@ -86,15 +125,60 @@ export function applyPatch(
   return { ...data, items };
 }
 
+/**
+ * Patch every matching thread-list cache for `locator`. Updates of existing
+ * rows always apply; insertion of a missing row only happens in caches whose
+ * scope accepts a row tagged with `patch.virtual_mcp_id`, so an event for
+ * agent A can't pollute agent B's list cache.
+ */
+export function patchThreadCaches(
+  queryClient: QueryClient,
+  locator: string,
+  patch: RowPatch,
+): void {
+  const entries = queryClient.getQueriesData<TasksQueryData>({
+    queryKey: KEYS.threadsPrefix(locator),
+  });
+  for (const [key, data] of entries) {
+    if (!data) continue;
+    const scope = getThreadScopeFromKey(key);
+    if (!scope) continue;
+    const canInsert = scopeAcceptsRow(scope, patch.virtual_mcp_id);
+    const next = applyPatch(data, patch, { canInsert });
+    if (next !== data) queryClient.setQueryData(key, next);
+  }
+}
+
+/**
+ * Prepend a known row to every matching thread-list cache for `locator`,
+ * skipping caches whose scope wouldn't naturally contain a row with this
+ * `virtual_mcp_id`. Used by create paths that already have the full row
+ * (so we don't need the synthetic-insert flow from `applyPatch`).
+ */
+export function prependRowToThreadCaches(
+  queryClient: QueryClient,
+  locator: string,
+  row: Task,
+): void {
+  const entries = queryClient.getQueriesData<TasksQueryData>({
+    queryKey: KEYS.threadsPrefix(locator),
+  });
+  for (const [key, cached] of entries) {
+    if (!cached) continue;
+    const scope = getThreadScopeFromKey(key);
+    if (!scope) continue;
+    if (!scopeAcceptsRow(scope, row.virtual_mcp_id)) continue;
+    if (cached.items.some((t) => t.id === row.id)) continue;
+    queryClient.setQueryData(key, { ...cached, items: [row, ...cached.items] });
+  }
+}
+
 export function ThreadEventsBridge(): null {
   const { org, locator } = useProjectContext();
   const queryClient = useQueryClient();
 
   const patchAllScopes = (patch: RowPatch) => {
-    queryClient.setQueriesData<TasksQueryData>(
-      { queryKey: KEYS.threadsPrefix(locator) },
-      (data) => applyPatch(data, patch),
-    );
+    patchThreadCaches(queryClient, locator, patch);
   };
 
   useDecopilotEvents({

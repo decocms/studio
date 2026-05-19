@@ -25,7 +25,8 @@ import {
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "../lib/query-keys";
-import type { Task, TasksQueryData } from "../components/chat/task/types";
+import type { Task } from "../components/chat/task/types";
+import { prependRowToThreadCaches } from "../components/chat/task/thread-events";
 
 type State =
   | { status: "loading" }
@@ -93,16 +94,7 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
           q.queryKey[3] === "collection" &&
           q.queryKey[4] === "THREADS",
       });
-      queryClient.setQueriesData<TasksQueryData>(
-        { queryKey: KEYS.threadsPrefix(locator) },
-        (cached) => {
-          if (!cached) return cached;
-          return {
-            ...cached,
-            items: [createdRow, ...cached.items],
-          };
-        },
-      );
+      prependRowToThreadCaches(queryClient, locator, createdRow);
       void query.refetch();
     },
   });
