@@ -10,7 +10,6 @@
 
 import { getSettings } from "../settings";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
-import { normalizeThreadForResponse } from "../tools/thread/helpers";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
@@ -545,55 +544,15 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
 };
 
 /**
- * Probe event type used to decide whether a listener's `?types=...` filter
- * would deliver thread events. We pick a single representative type from the
- * `decopilot.thread.*` namespace and run it through the SSE hub's matcher so
- * the snapshot is emitted exactly when the listener would also receive live
- * thread events — no drift between "what the snapshot covers" and "what live
- * events the listener actually sees".
- *
- * Exported for tests so they can assert the probe lives inside the namespace
- * it claims to represent.
- *
- * Limitation: Listeners that subscribe to a single specific thread event type
- * by exact name (e.g. `?types=decopilot.thread.status`, with no
- * wildcard) will receive live events for that type but will NOT receive the
- * initial snapshot — the probe type (`decopilot.thread.snapshot`) is not equal
- * to the literal exact-match pattern (`decopilot.thread.status`), so
- * `matchesAnyPattern` returns false. The supported subscription pattern for
- * getting both the snapshot and live events is `decopilot.thread.*` (or any
- * broader prefix that covers the thread namespace). This is a deliberate
- * consequence of driving the snapshot decision through a single sentinel
- * probe type fed to the existing pattern matcher rather than enumerating
- * every thread event type. The server-side thread CloudEvent factories
- * (`createDecopilotThreadStatusEvent` etc. in `@decocms/mesh-sdk`) emit
- * `decopilot.thread.*` types — there is no `com.deco.` prefix on the wire.
- */
-export const THREAD_SNAPSHOT_PROBE_TYPE = "decopilot.thread.snapshot";
-
-/**
- * True when the listener's `?types=...` filter would let any event from the
- * thread namespace through. Returns true for an absent/empty filter (the
- * hub treats null as "match everything").
- */
-function shouldEmitThreadSnapshot(typePatterns: string[] | null): boolean {
-  if (!typePatterns || typePatterns.length === 0) return true;
-  return matchesAnyPattern(THREAD_SNAPSHOT_PROBE_TYPE, typePatterns);
-}
-
-/**
  * SSE events endpoint — streams events for an organization in real time.
  * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
  * on the `/api/:org/watch` mount). Auth is required.
  *
  * On connect, emits in order:
  *   1. `event: connected` — listener metadata
- *   2. `event: snapshot` — `{ threads: [...] }` for the open thread list,
- *      ONLY when the listener's `?types=...` filter would also deliver thread
- *      events (see `shouldEmitThreadSnapshot`). Skipping the snapshot for
- *      filters that don't subscribe to thread events avoids paying for a
- *      potentially large query the client never asked for.
- *   3. Live events from the SSE hub.
+ *   2. Live events from the SSE hub.
+ *
+ * Clients use `COLLECTION_THREADS_LIST` for their initial state.
  */
 export const watchHandler: MiddlewareHandler<Env> = async (c) => {
   const meshContext = c.var.meshContext;
@@ -631,51 +590,6 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
         connectedAt: new Date().toISOString(),
       }),
     });
-
-    // Emit a one-shot thread snapshot before the listener is wired up to the
-    // hub, so reconnecting clients can rebuild the thread list deterministically
-    // without a separate REST round-trip. Reads through the same storage path
-    // `COLLECTION_THREADS_LIST` uses internally so the snapshot is consistent
-    // with what that tool would return. Only emitted when the listener's
-    // filter would deliver thread events — otherwise we'd be paying for a
-    // query the client never asked for.
-    if (shouldEmitThreadSnapshot(typePatterns)) {
-      try {
-        const { threads: rawThreads } = await meshContext.storage.threads.list(
-          undefined,
-          {
-            limit: 100,
-          },
-        );
-        // Run rows through the same normalizer `COLLECTION_THREADS_LIST` uses
-        // so the snapshot payload matches what the client receives via the
-        // REST/MCP tool path (coerces `hidden: null` → `false`; surfaces stale
-        // in_progress threads as the virtual `"expired"` status).
-        const now = Date.now();
-        const threads = rawThreads.map((thread) =>
-          normalizeThreadForResponse(thread, now),
-        );
-        await stream.writeSSE({
-          event: "snapshot",
-          data: JSON.stringify({ threads }),
-        });
-      } catch (err) {
-        // Response headers already flushed (we sent `connected` above), so we
-        // can't surface this as an HTTP error. Emit an `event: error` frame
-        // the client can detect and return to close the stream — the client's
-        // reconnect loop will retry. Running with no snapshot would leave the
-        // UI in an inconsistent state.
-        console.error("[watchHandler] snapshot failed", err);
-        await stream.writeSSE({
-          event: "error",
-          data: JSON.stringify({
-            error: "Snapshot unavailable",
-            message: "Failed to load thread snapshot. Reconnect to retry.",
-          }),
-        });
-        return;
-      }
-    }
 
     // Register listener with the SSE hub
     const registered = sseHub.add({
@@ -744,7 +658,6 @@ import { Env } from "./hono-env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
 import { type SSEEvent, sseHub } from "../event-bus";
-import { matchesAnyPattern } from "../event-bus/sse-hub";
 const getHandleOAuthProtectedResourceMetadata = () =>
   oAuthProtectedResourceMetadata(auth);
 const getHandleOAuthDiscoveryMetadata = () => oAuthDiscoveryMetadata(auth);
