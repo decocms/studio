@@ -33,8 +33,6 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 
-export { isCreditError } from "./is-credit-error";
-
 const QUICK_AMOUNTS = {
   usd: [
     { dollars: 10, label: "Starter" },
