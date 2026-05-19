@@ -20,6 +20,7 @@ import { Loading01, Menu01 } from "@untitledui/icons";
 import { Outlet, useParams } from "@tanstack/react-router";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
+import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
 import { ThreadEventsBridge } from "@/web/components/chat/task";
 import { TasksPanelStateProvider } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
@@ -98,35 +99,37 @@ export default function OrgShellLayout() {
           >
             <ChatPrefsProvider>
               <TasksPanelStateProvider>
-                <ThreadEventsBridge />
-                {isMobile ? (
-                  <>
-                    {!hasTaskRoute && <MobileHomeToolbar />}
-                    <Suspense fallback={<RouteFallback />}>
-                      <Outlet />
-                    </Suspense>
-                  </>
-                ) : (
-                  <Toolbar>
-                    <Toolbar.Header>
-                      <Toolbar.LeftColumn>
-                        <Toolbar.Nav />
-                        <Toolbar.TogglesSlot />
-                      </Toolbar.LeftColumn>
-                      <Toolbar.CenterSlot />
-                      <Toolbar.RightColumn>
-                        <Toolbar.TabsSlot />
-                        <Toolbar.RightSlot />
-                      </Toolbar.RightColumn>
-                    </Toolbar.Header>
-                    <div className="flex-1 min-h-0 flex flex-row">
-                      <TasksPanelColumn />
+                <ThreadManagerProvider>
+                  <ThreadEventsBridge />
+                  {isMobile ? (
+                    <>
+                      {!hasTaskRoute && <MobileHomeToolbar />}
                       <Suspense fallback={<RouteFallback />}>
                         <Outlet />
                       </Suspense>
-                    </div>
-                  </Toolbar>
-                )}
+                    </>
+                  ) : (
+                    <Toolbar>
+                      <Toolbar.Header>
+                        <Toolbar.LeftColumn>
+                          <Toolbar.Nav />
+                          <Toolbar.TogglesSlot />
+                        </Toolbar.LeftColumn>
+                        <Toolbar.CenterSlot />
+                        <Toolbar.RightColumn>
+                          <Toolbar.TabsSlot />
+                          <Toolbar.RightSlot />
+                        </Toolbar.RightColumn>
+                      </Toolbar.Header>
+                      <div className="flex-1 min-h-0 flex flex-row">
+                        <TasksPanelColumn />
+                        <Suspense fallback={<RouteFallback />}>
+                          <Outlet />
+                        </Suspense>
+                      </div>
+                    </Toolbar>
+                  )}
+                </ThreadManagerProvider>
               </TasksPanelStateProvider>
             </ChatPrefsProvider>
           </SidebarInset>
