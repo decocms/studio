@@ -4,6 +4,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import { Pagination } from "../pagination";
 
@@ -25,6 +26,15 @@ export interface PaginatedFormFooterProps {
  * the left, form-specific slots on either side, and a Submit button on the
  * right. Submit is disabled while streaming or while any item is
  * unanswered; in both disabled states a tooltip explains why.
+ *
+ * The Submit button uses `aria-disabled` (not `disabled`) so it remains
+ * focusable — Radix Tooltip opens on focus, making the disabled-state
+ * explanation reachable for keyboard and screen-reader users.
+ *
+ * Returns a fragment of two sibling rows; the consumer must render them
+ * inside a `justify-between` flex container (e.g. `CollapsibleHighlight`'s
+ * footer slot). `extraLeft` renders before `Pagination`; `extraRight`
+ * renders before the Submit button.
  */
 export function PaginatedFormFooter({
   currentIndex,
@@ -39,19 +49,25 @@ export function PaginatedFormFooter({
   submitLabel = "Submit",
 }: PaginatedFormFooterProps) {
   const disabled = isStreaming || !isAllAnswered;
-  const tooltipText = isStreaming
-    ? "Waiting for the assistant to finish…"
-    : !isAllAnswered
-      ? "Answer every item to submit"
-      : null;
+  const tooltipText = disabled
+    ? isStreaming
+      ? "Waiting for the assistant to finish…"
+      : "Answer every item to submit"
+    : null;
 
   const submitButton = (
     <Button
       type="button"
       size="sm"
-      disabled={disabled}
-      onClick={onSubmit}
-      className="h-7 px-2.5 text-xs"
+      aria-disabled={disabled}
+      onClick={() => {
+        if (disabled) return;
+        onSubmit();
+      }}
+      className={cn(
+        "h-7 px-2.5 text-xs",
+        disabled && "opacity-50 cursor-not-allowed",
+      )}
     >
       {submitLabel}
     </Button>
@@ -72,11 +88,7 @@ export function PaginatedFormFooter({
         {extraRight}
         {tooltipText ? (
           <Tooltip>
-            <TooltipTrigger asChild>
-              {/* span wrapper: disabled buttons don't fire pointer events
-                  on their own, so Tooltip needs a non-disabled child */}
-              <span>{submitButton}</span>
-            </TooltipTrigger>
+            <TooltipTrigger asChild>{submitButton}</TooltipTrigger>
             <TooltipContent>{tooltipText}</TooltipContent>
           </Tooltip>
         ) : (
