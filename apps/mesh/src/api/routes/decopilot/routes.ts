@@ -40,6 +40,71 @@ import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 
 // ============================================================================
+// Snapshot SSE frame
+// ============================================================================
+
+/**
+ * Prepend a single `event: snapshot` SSE frame to the body of an existing
+ * SSE Response. The snapshot data shape is `{ messages: [...] }` — the same
+ * payload `COLLECTION_THREAD_MESSAGES_LIST` resolves through, so reconnecting
+ * clients can rebuild thread state deterministically before tailing the live
+ * stream.
+ *
+ * The AI SDK's `JsonToSseTransformStream` only emits anonymous `data:` events,
+ * so a named `event:` field is reserved for control frames the application
+ * layer injects directly into the byte stream.
+ */
+function prependSnapshotFrame(
+  response: Response,
+  messages: unknown[],
+): Response {
+  if (!response.body) return response;
+
+  const frame = `event: snapshot\ndata: ${JSON.stringify({ messages })}\n\n`;
+  const frameBytes = new TextEncoder().encode(frame);
+
+  const source = response.body;
+  const wrapped = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      controller.enqueue(frameBytes);
+      const reader = source.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          controller.enqueue(value);
+        }
+        controller.close();
+      } catch (err) {
+        try {
+          controller.error(err);
+        } catch {
+          // Already errored — nothing to do.
+        }
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          // releaseLock throws if the reader is already released (e.g. via
+          // the cancel path). Safe to ignore.
+        }
+      }
+    },
+    cancel(reason) {
+      source.cancel(reason).catch(() => {
+        // Best-effort: source may already be errored.
+      });
+    },
+  });
+
+  return new Response(wrapped, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
+// ============================================================================
 // Idempotency
 // ============================================================================
 
@@ -417,7 +482,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
-      const { taskId, thread } = await validateThreadAccess(c);
+      const { ctx, taskId, thread } = await validateThreadAccess(c);
+
+      // Snapshot of the persisted thread messages, emitted as the first SSE
+      // frame so reconnecting clients receive a deterministic starting state
+      // before any live tail chunks arrive. Reads via the same storage helper
+      // as COLLECTION_THREAD_MESSAGES_LIST so the snapshot is consistent with
+      // whatever path that tool exposes.
+      const { messages: snapshotMessages } =
+        await ctx.storage.threads.listMessages(taskId);
 
       // Use the DB's view, not pod-local registry state. A client attached
       // to a non-owner pod (any multi-pod deployment, including mid-deploy
@@ -450,11 +523,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
       });
 
+      const baseResponse = createUIMessageStreamResponse({
+        stream: tailStream,
+        consumeSseStream: consumeStream,
+      });
+
       return wrapWithSseKeepalive(
-        createUIMessageStreamResponse({
-          stream: tailStream,
-          consumeSseStream: consumeStream,
-        }),
+        prependSnapshotFrame(baseResponse, snapshotMessages),
       );
     } catch (err) {
       if (err instanceof HTTPException) throw err;
