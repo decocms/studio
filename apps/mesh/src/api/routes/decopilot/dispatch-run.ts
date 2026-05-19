@@ -1,20 +1,16 @@
 /**
  * Dispatch Run
  *
- * The agent loop, decoupled from any transport. Two public entry points:
- *
- *   dispatchRun(input, ctx, deps)
- *     Fire-and-forget. Claims the run, starts the JetStream pump, returns
- *     `{ taskId }`. Subscribers receive chunks via
- *     `streamBuffer.createTailStream(taskId)` (the `/attach` endpoint).
- *     Requires `deps.streamBuffer`. Used by every HTTP route that
- *     initiates work.
+ * The agent loop, decoupled from any transport.
  *
  *   dispatchRunAndWait(input, ctx, deps)
- *     Same lifecycle, but drains `uiStream` internally until the run
- *     terminates and resolves once it's done. Used by automation paths
- *     (DBOS workflow steps, pod-death recovery) that need to await
- *     completion. Does not require a `streamBuffer`.
+ *     Claims the run, drains `uiStream` internally until the run
+ *     terminates, and resolves once it's done. Used by every entry point
+ *     that initiates work (the per-thread DBOS workflow step that backs
+ *     POST /messages, automation fires, pod-death recovery). When a
+ *     `streamBuffer` is configured the run also pumps into JetStream so
+ *     `/stream` tails see chunks live; without one the run still
+ *     completes but its chunks are dropped.
  *
  * Architecture: dispatch-run owns the shared infrastructure (run-registry
  * lifecycle, memory load, JetStream buffering, registry FINISH dispatch,
@@ -23,8 +19,7 @@
  * `localDispatch(harnessId, harnessInput, ctx)`. The three in-tree harnesses
  * (`decopilot`, `claude-code`, `codex`) each produce `UIMessageChunk`
  * streams that get merged into the outer `createUIMessageStream` writer;
- * the JetStream pump (`dispatchRun`) or the drain reader
- * (`dispatchRunAndWait`) consumes the result.
+ * the drain reader consumes the result.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -261,44 +256,6 @@ function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
 }
 
 /**
- * Fire-and-forget: claim the run, start the JetStream pump, return
- * `{ taskId }`. Subscribers receive chunks via
- * `streamBuffer.createTailStream` (the `/attach` endpoint). Requires
- * `deps.streamBuffer` to be configured; routes that need an SSE response
- * call `createTailStream` themselves after this returns.
- *
- * Used by every HTTP route that initiates work (`POST /messages`,
- * `/attach` orphan-resume).
- */
-export async function dispatchRun(
-  input: DispatchRunInput,
-  ctx: MeshContext,
-  deps: DispatchRunDeps,
-): Promise<DispatchRunResult> {
-  const buffer = deps.streamBuffer;
-  if (!buffer) {
-    throw new Error(
-      "dispatchRun: deps.streamBuffer is required for HTTP-initiated runs. " +
-        "Use dispatchRunAndWait for automation flows that need to await completion.",
-    );
-  }
-  return traced(
-    "decopilot.dispatchRun",
-    async (rootSpan) => {
-      const { taskId, uiStream, registrySignal } = await prepareRun(
-        input,
-        ctx,
-        deps,
-        rootSpan,
-      );
-      buffer.pump(uiStream, taskId, registrySignal);
-      return { taskId };
-    },
-    dispatchRunSpanAttrs(input),
-  );
-}
-
-/**
  * Drain-to-completion: claim the run, await the run's chunks until the
  * `{done: true}` sentinel arrives, return `{ taskId }`. Used by callers
  * that need to block on the agent's completion (DBOS workflow steps).
@@ -446,7 +403,7 @@ async function prepareRun(
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
 
     if (!input.taskId) {
-      throw new Error("dispatchRun: taskId is required");
+      throw new Error("dispatchRunAndWait: taskId is required");
     }
 
     // 2. Load entities and create/load memory in parallel
@@ -729,9 +686,9 @@ async function prepareRun(
 
         // Dispatch through the registry. The harness produces a stream
         // of UIMessageChunk; we adapt it to a ReadableStream so it can
-        // flow through writer.merge(). The JetStream pump (started by
-        // `dispatchRun`) reads the merged uiStream output and publishes
-        // every chunk into the per-task subject — that's what /attach
+        // flow through writer.merge(). When a streamBuffer is wired, its
+        // JetStream pump reads the merged uiStream output and publishes
+        // every chunk into the per-task subject — that's what /stream
         // tails. We do NOT pipe through the buffer here; the pump is
         // detached and consumes uiStream directly after prepareRun
         // returns.
@@ -870,15 +827,10 @@ async function prepareRun(
       },
     });
 
-    // Setup complete — hand the uiStream back to the dispatch variant.
-    // The caller (`dispatchRun` or `dispatchRunAndWait`) picks the
-    // consumption strategy:
-    //   - `dispatchRun` → `streamBuffer.pump(uiStream, taskId, registrySignal)`
-    //     fans the chunks out via JetStream so /attach subscribers can tail
-    //     them across runs and across tabs.
-    //   - `dispatchRunAndWait` → drains `uiStream` directly with a reader
-    //     loop and resolves when the run finishes. Used by automations
-    //     that need to await completion.
+    // Setup complete — hand the uiStream back to `dispatchRunAndWait`,
+    // which drains it with a reader loop and resolves when the run
+    // finishes. When a streamBuffer is configured the run also pumps into
+    // JetStream so `/stream` tails see chunks live across runs and tabs.
     return {
       taskId: mem.thread.id,
       uiStream,
