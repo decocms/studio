@@ -6,11 +6,11 @@
  * on `${orgSlug}::${locator}`, repeated provider renders return the same
  * instance — no `useEffect` is needed to gate construction.
  *
- * The leaf hooks wrap the manager's `Store<T>` slots with
- * `useSyncExternalStore`. When a hook subscribes to an *optional* slot (e.g.
- * the active conn's `messages`), it falls back to module-scoped stable
- * `noopSubscribe` / default-getter pairs so `useSyncExternalStore`'s
- * reference-identity rules hold per render.
+ * Only the hooks actually consumed by call sites are exported. Per-thread
+ * subscriptions (messages, conn status, finishReason) go through
+ * `getOrOpenStream(...)` + `useSyncExternalStore` directly in chat-context;
+ * adding hook wrappers here would be dead public surface until something
+ * needs them.
  */
 
 import {
@@ -18,7 +18,6 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import type { UIMessage } from "ai";
 import {
   createContext,
   type ReactNode,
@@ -26,7 +25,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { Task } from "../task/types";
-import type { ConnStatus, ThreadConnection } from "./thread-connection";
 import {
   getOrOpenManager,
   type ThreadManagerStore,
@@ -66,40 +64,6 @@ export function useThreads(): { threads: Task[]; status: ThreadsStatus } {
   return { threads, status };
 }
 
-export function useThreadStatus(): ThreadsStatus {
-  const m = useThreadManager();
-  return useSyncExternalStore(m.threadsStatus.subscribe, m.threadsStatus.get);
-}
-
-export function useActiveThread(): ThreadConnection | null {
-  const m = useThreadManager();
-  return useSyncExternalStore(m.active.subscribe, m.active.get);
-}
-
-export function useThreadMessages(): UIMessage[] {
-  const conn = useActiveThread();
-  return useSyncExternalStore(
-    conn?.messages.subscribe ?? noopSubscribe,
-    conn?.messages.get ?? returnEmptyArray,
-  );
-}
-
-export function useThreadConnStatus(): ConnStatus {
-  const conn = useActiveThread();
-  return useSyncExternalStore(
-    conn?.status.subscribe ?? noopSubscribe,
-    conn?.status.get ?? returnLoading,
-  );
-}
-
-export function useFinishReason(): string | null {
-  const conn = useActiveThread();
-  return useSyncExternalStore(
-    conn?.finishReason.subscribe ?? noopSubscribe,
-    conn?.finishReason.get ?? returnNull,
-  );
-}
-
 export function useThreadActions() {
   const m = useThreadManager();
   return {
@@ -112,12 +76,3 @@ export function useThreadActions() {
     closeActive: m.closeActive.bind(m),
   };
 }
-
-// ─── Stable fallbacks for optional active-conn subscriptions ─────────────────
-
-const noopSubscribe = () => () => {};
-const EMPTY_MESSAGES: UIMessage[] = [];
-const returnEmptyArray = (): UIMessage[] => EMPTY_MESSAGES;
-const LOADING_STATUS: ConnStatus = { kind: "loading" };
-const returnLoading = (): ConnStatus => LOADING_STATUS;
-const returnNull = (): string | null => null;

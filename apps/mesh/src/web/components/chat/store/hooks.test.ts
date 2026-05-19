@@ -1,11 +1,10 @@
 /**
- * Store-level smoke tests for the hook layer.
+ * Store-level smoke test for the hook layer.
  *
  * No `@testing-library/react` is available, so we exercise the manager
- * directly and assert the same Store<T> slots the hooks read from. Each
- * test below mirrors what the corresponding hook would observe via
- * useSyncExternalStore — i.e. the hook is a one-line wrapper, the unit of
- * behavior is the store.
+ * directly and assert the same Store<T> slots the hooks read from.
+ * `useThreads` is a one-line wrapper around `manager.threads` /
+ * `manager.threadsStatus`; the unit of behavior is the store.
  */
 
 import { afterEach, describe, expect, it, mock } from "bun:test";
@@ -53,77 +52,6 @@ describe("hooks: useThreads source (manager.threads)", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(store.threadsStatus.get()).toEqual({ kind: "ready" });
     expect(store.threads.get().map((t) => t.id)).toEqual(["t-1"]);
-    store.dispose();
-  });
-});
-
-describe("hooks: useActiveThread source (manager.active)", () => {
-  it("active.get() is null until setActive, then flips to the conn", () => {
-    globalThis.fetch = streamSse([`event: snapshot\ndata: {"threads":[]}\n\n`]);
-    const store = new ThreadManagerStore("acme", "loc-1");
-    expect(store.active.get()).toBeNull();
-    const conn = store.setActive("t-1");
-    expect(store.active.get()).toBe(conn);
-    store.closeActive();
-    expect(store.active.get()).toBeNull();
-    store.dispose();
-  });
-});
-
-describe("hooks: useThreadMessages source (active conn .messages)", () => {
-  it("reflects the conn's /stream snapshot event", async () => {
-    let call = 0;
-    globalThis.fetch = mock(async () => {
-      call++;
-      const enc = new TextEncoder();
-      const body =
-        call === 1
-          ? new ReadableStream<Uint8Array>({
-              start(c) {
-                c.enqueue(
-                  enc.encode(`event: snapshot\ndata: {"threads":[]}\n\n`),
-                );
-                c.close();
-              },
-            })
-          : new ReadableStream<Uint8Array>({
-              start(c) {
-                c.enqueue(
-                  enc.encode(
-                    `event: snapshot\ndata: ${JSON.stringify({
-                      messages: [
-                        {
-                          id: "m-1",
-                          role: "user",
-                          parts: [{ type: "text", text: "hi" }],
-                        },
-                      ],
-                    })}\n\n`,
-                  ),
-                );
-                c.close();
-              },
-            });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }) as unknown as typeof fetch;
-
-    const store = new ThreadManagerStore("acme", "loc-1");
-    const conn = store.setActive("t-1");
-    await new Promise((r) => setTimeout(r, 20));
-    expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1"]);
-    expect(store.active.get()).toBe(conn);
-    store.dispose();
-  });
-
-  it("is an empty array when no active conn (hook fallback semantics)", () => {
-    globalThis.fetch = streamSse([`event: snapshot\ndata: {"threads":[]}\n\n`]);
-    const store = new ThreadManagerStore("acme", "loc-1");
-    // useThreadMessages reads from active?.messages; when active is null it
-    // returns the module-scoped empty array. Mirror that here.
-    expect(store.active.get()).toBeNull();
     store.dispose();
   });
 });

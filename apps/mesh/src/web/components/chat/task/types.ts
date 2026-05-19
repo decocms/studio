@@ -1,16 +1,6 @@
 import type { ThreadDisplayStatus } from "@decocms/mesh-sdk";
 import type { ThreadMetadata } from "@/storage/types";
 
-// Constants
-export const TASK_CONSTANTS = {
-  /** Page size for task messages queries */
-  TASK_MESSAGES_PAGE_SIZE: 100,
-  /** Page size for tasks list queries */
-  TASKS_PAGE_SIZE: 50,
-  /** Stale time for React Query queries (30 seconds) */
-  QUERY_STALE_TIME: 30_000,
-} as const;
-
 // Types
 export interface Task {
   id: string;

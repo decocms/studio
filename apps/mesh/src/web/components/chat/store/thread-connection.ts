@@ -654,16 +654,6 @@ export function getOrOpenStream(
   return current;
 }
 
-/** Look up the active conn by thread id without forcing a new construction.
- *  Returns null if no conn matches. */
-export function getActiveConn(
-  orgSlug: string,
-  threadId: string,
-): ThreadConnection | null {
-  const key = `${orgSlug}::${threadId}`;
-  return current?.key === key ? current : null;
-}
-
 /** Test-only: clear the active connection. Aborts in-flight fetch. */
 export function __resetRegistry(): void {
   current?.dispose();
