@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { ShieldTick } from "@untitledui/icons";
-import { Controller } from "react-hook-form";
+import { type Control, Controller } from "react-hook-form";
 import { z } from "zod";
 import {
   APPROVAL_LEVEL_OPTIONS,
@@ -316,8 +316,7 @@ function ApprovalDecisionButtons({
   onChange,
 }: {
   approvalId: string;
-  // biome-ignore lint/suspicious/noExplicitAny: react-hook-form Control generic doesn't unify with ApprovalFormValues at Controller call site
-  control: any;
+  control: Control<ApprovalFormValues>;
   onChange: () => void;
 }) {
   return (
