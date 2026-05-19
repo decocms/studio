@@ -7,7 +7,6 @@ import {
   useRouterState,
   useSearch,
 } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   closestCenter,
@@ -95,7 +94,6 @@ import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thre
  */
 function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { create } = useThreadActions();
   const { locator } = useProjectContext();
   const params = useParams({ strict: false }) as { taskId?: string };
@@ -105,7 +103,7 @@ function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
     const taskId = crypto.randomUUID();
     const carryBranch =
       clickedVirtualMcpId === search.virtualmcpid
-        ? readCachedTaskBranch(queryClient, locator, params.taskId ?? "")
+        ? readCachedTaskBranch(orgSlug, locator, params.taskId ?? "")
         : null;
     try {
       await create({

@@ -14,9 +14,6 @@ export const KEYS = {
   // Auth-related queries
   session: () => ["session"] as const,
 
-  // Thread list cache prefix — used by `read-cached-*` helpers to peek at
-  // any thread-scoped cache entry without knowing the exact scope key.
-  threadsPrefix: (locator: string) => ["threads", locator] as const,
   messages: (locator: string) => ["messages", locator] as const,
 
   // Organizations list

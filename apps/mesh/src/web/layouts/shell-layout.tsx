@@ -11,7 +11,7 @@ import {
   ProjectContextProvider,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   Outlet,
   useMatch,
@@ -70,7 +70,6 @@ function ShellProjectProvider({
 
 export function usePanelActions() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { create } = useThreadActions();
   const { org, locator } = useProjectContext();
 
@@ -131,7 +130,7 @@ export function usePanelActions() {
   // matches the same fallback in agent-shell-layout's createNewTask.
   const createNewTask = async () => {
     const newId = crypto.randomUUID();
-    const branch = readCachedTaskBranch(queryClient, locator, currentTaskId);
+    const branch = readCachedTaskBranch(org.slug, locator, currentTaskId);
     const targetVmcp =
       search.virtualmcpid ?? getWellKnownDecopilotVirtualMCP(org.id).id;
     try {
