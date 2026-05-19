@@ -82,7 +82,7 @@ export function TasksSection({
     row.focus({ preventScroll: true });
     row.scrollIntoView({
       behavior: "smooth",
-      block: "start",
+      block: "nearest",
       inline: "nearest",
     });
   }, [activeTaskId]);
