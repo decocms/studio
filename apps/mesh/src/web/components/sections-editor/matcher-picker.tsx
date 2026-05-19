@@ -28,9 +28,8 @@ export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("matchers")) continue;
     for (const resolveType of Object.keys(blockMap)) {
-      // Skip "always" and "never" — always is hardcoded, never isn't user-selectable
-      if (resolveType.includes("always") || resolveType.includes("never"))
-        continue;
+      // Skip "always" — it's hardcoded as the first option in the picker
+      if (resolveType.includes("always")) continue;
       const segments = resolveType.split("/");
       const filename = segments[segments.length - 1] ?? resolveType;
       const title = filename
