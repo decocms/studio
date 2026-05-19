@@ -28,7 +28,6 @@ import { configureGitIdentity } from "./identity";
 import { spawnInstall } from "./install";
 import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
-import { sanitizeDenoTasks } from "./sanitize-deno";
 
 const INSTALL_LOG_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -351,18 +350,6 @@ export class SetupOrchestrator {
       );
       return;
     }
-    if (config.application?.packageManager?.name === "deno") {
-      const cwd = resolvePmRoot(
-        config.repoDir,
-        config.application?.packageManager?.path,
-      );
-      if (sanitizeDenoTasks(cwd)) {
-        this.chunk(
-          "[orchestrator] stripped --unstable-hmr from deno tasks\r\n",
-        );
-      }
-    }
-
     const command = this.buildStartCommand(config);
     if (!command) {
       const reason = this.diagnoseNoStartCommand(config);
