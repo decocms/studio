@@ -20,6 +20,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ThreadUpdateData } from "@/tools/thread/schema.ts";
+import { KEYS } from "@/web/lib/query-keys";
 import { callUpdateTaskTool } from "./helpers";
 import {
   patchThreadCaches,
@@ -64,7 +65,12 @@ export function useThreadActions() {
     ...originalCreate,
     mutateAsync: async (data, options) => {
       const row = await originalCreate.mutateAsync(data, options);
-      if (row) prependRowToThreadCaches(queryClient, locator, row);
+      if (row) {
+        prependRowToThreadCaches(queryClient, locator, row);
+        // Prime the ensure-task cache so useEnsureTask resolves from cache
+        // on mount and skips the redundant COLLECTION_THREADS_GET probe.
+        queryClient.setQueryData(KEYS.ensureTask(org.id, row.id), row);
+      }
       return row;
     },
   };

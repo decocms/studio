@@ -1,10 +1,7 @@
 /**
  * ThreadEventsBridge — single SSE → cache patcher for thread-list queries
- * and ThreadConnection.refresh() trigger.
- *
- * Mount once near the app root (inside ProjectContext + QueryClientProvider).
- * Replaces useTasksAutoRefresh, useStreamManager, and the thread-list
- * invalidation logic that used to live in the legacy task-manager facade.
+ * and ThreadConnection.refresh() trigger. Mount once near the app root
+ * (inside ProjectContext + QueryClientProvider).
  *
  * Contract:
  *   • thread-list rows are surgically patched via setQueriesData

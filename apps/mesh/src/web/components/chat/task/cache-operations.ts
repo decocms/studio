@@ -30,9 +30,6 @@ export function updateMessagesCache(
     return;
   }
 
-  // Update cache with new messages in the format expected by useCollectionList
-  // This matches the structure returned by the MCP tool (before select transformation)
-  // Use type assertion similar to useTaskMessages since runtime structure works correctly
   queryClient.setQueryData(queryKey, {
     structuredContent: {
       items: messages as (CollectionEntity & ChatMessage)[],
