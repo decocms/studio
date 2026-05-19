@@ -19,9 +19,12 @@
  *      10s) detects the vanished heartbeat key and fires
  *      `runRegistry.handlePodDeath`, which claims the orphan and
  *      re-dispatches with `isResume: true`.
- *   6. Wait until a survivor sees chunk-3 (which can only come from the
- *      resumed run, since the dead pod only got past chunk-2). Then
- *      open a fresh /stream against a survivor.
+ *   6. Wait until a survivor sees chunk-10 — far enough past chunk-2
+ *      (the kill trigger) that no kill-latency timing variant could
+ *      have let the dead pod publish chunk-10 itself. So chunk-10 is
+ *      provably from the resumed run, meaning prepareRun has already
+ *      purged the per-thread subject. Then open a fresh /stream
+ *      against a survivor.
  *   7. Assert: the late /stream sees chunks 1..20 EXACTLY ONCE — i.e.,
  *      `chunk-1 ` appears once in its joined stream. If the resumed
  *      run had pumped on top of the dead pod's leftover prefix in
@@ -198,15 +201,20 @@ describe("pod-death + DBOS replay", () => {
     const survivors = watchers.filter((w) => w.pod.service !== ownerRaw);
     let lateWatcher: Watcher | null = null;
     try {
-      // First: wait until a survivor sees a chunk that *must* be from
-      // the resumed run (the dead pod only ever got past chunk-2 before
-      // we SIGKILL'd it). chunk-3 is the earliest signal that the
-      // resumed pump has run, and — critically — that prepareRun has
-      // already purged the per-thread subject. This means a /attach
+      // First: wait until a survivor sees a chunk that's *provably*
+      // from the resumed run. Between the kill trigger (chunk-2) and
+      // SIGKILL actually taking effect there's ~400-1000ms of latency
+      // (DB query for run_owner_pod + docker compose kill + SIGKILL
+      // propagation), during which the dead pod can keep publishing
+      // — typically up to chunk-4. So chunk-3 and chunk-4 are racy;
+      // they might still be the dead pod's. chunk-10 is 5s past the
+      // mock's start time, well past any kill-window variance, and
+      // can ONLY come from the resumed pump. Gating on chunk-10 also
+      // guarantees prepareRun's purge has already run, so a /stream
       // opened from this moment forward sees only the resumed run's
       // chunks, not the dead pod's prefix.
       await pollUntil(
-        async () => survivors.some((w) => w.joined.includes("chunk-3")),
+        async () => survivors.some((w) => w.joined.includes("chunk-10")),
         {
           timeoutMs: 75_000,
           intervalMs: 500,
