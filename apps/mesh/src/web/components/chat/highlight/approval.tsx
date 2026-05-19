@@ -20,10 +20,7 @@ import {
 import { stripMcpServerPrefix } from "@/web/lib/tool-namespace";
 import { toTitleCase } from "../message/parts/tool-call-part/utils.tsx";
 import { CollapsibleHighlight } from "./collapsible-highlight";
-import {
-  PaginatedFormFooterLeft,
-  PaginatedFormSubmitButton,
-} from "./common/paginated-form-footer";
+import { PaginatedFormFooterLeft } from "./common/paginated-form-footer";
 import { useMultiPartDecisionForm } from "./common/use-multipart-decision-form";
 
 // ============================================================================
@@ -246,9 +243,9 @@ function BatchedApprovalPrompt({
         approvals.map((a) => [a.approvalId, { approved: true }]),
       ) as ApprovalFormValues,
     );
-    // best-effort: hook no-ops if !canSubmit (still streaming). User then
-    // clicks Submit manually once streaming ends.
-    decisionForm.submit();
+    // submitOrAdvance bypasses the !isStreaming gate — the data-layer
+    // deferred-POST check handles in-flight runs.
+    decisionForm.submitOrAdvance();
   };
 
   const current = decisionForm.currentPart;
@@ -276,20 +273,13 @@ function BatchedApprovalPrompt({
             />
           }
           footerRight={
-            <>
-              {current ? (
-                <ApprovalDecisionButtons
-                  approvalId={current.approvalId}
-                  control={decisionForm.form.control}
-                  onChange={decisionForm.advanceToNextUnanswered}
-                />
-              ) : null}
-              <PaginatedFormSubmitButton
-                isStreaming={isStreaming}
-                isAllAnswered={decisionForm.isAllAnswered}
-                onSubmit={decisionForm.submit}
+            current ? (
+              <ApprovalDecisionButtons
+                approvalId={current.approvalId}
+                control={decisionForm.form.control}
+                onChange={decisionForm.submitOrAdvance}
               />
-            </>
+            ) : null
           }
         >
           {current ? <ApprovalDetail input={current.input} /> : null}

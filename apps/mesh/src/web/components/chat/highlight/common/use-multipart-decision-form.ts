@@ -35,6 +35,14 @@ export interface MultiPartDecisionForm<TPart, TValues extends FieldValues> {
   goNext: () => void;
   advanceToNextUnanswered: () => void;
   submit: () => void;
+  /**
+   * Auto-action for per-item button decisions: if every item is now
+   * answered, flush the per-part `onSubmit` loop immediately; otherwise
+   * advance to the next unanswered item. Bypasses the `!isStreaming`
+   * gate in `canSubmit` — the data-layer deferred-POST check is the
+   * actual safety net for in-flight runs.
+   */
+  submitOrAdvance: () => void;
 }
 
 /**
@@ -96,14 +104,34 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
     if (nextKey) setActiveKey(nextKey);
   };
 
-  const submit = () => {
-    if (!canSubmit) return;
+  const flush = () => {
     void form.handleSubmit((data) => {
       const map = data as Record<string, unknown>;
       for (const part of parts) {
         onSubmit(part, map[partKey(part)]);
       }
     })();
+  };
+
+  const submit = () => {
+    if (!canSubmit) return;
+    flush();
+  };
+
+  const submitOrAdvance = () => {
+    const latest = form.getValues() as Record<string, unknown>;
+    if (isAllAnswered(parts, partKey, latest, hasAnswer)) {
+      flush();
+    } else {
+      const nextKey = findNextUnansweredKey(
+        parts,
+        partKey,
+        latest,
+        hasAnswer,
+        activeKey,
+      );
+      if (nextKey) setActiveKey(nextKey);
+    }
   };
 
   return {
@@ -119,5 +147,6 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
     goNext,
     advanceToNextUnanswered,
     submit,
+    submitOrAdvance,
   };
 }
