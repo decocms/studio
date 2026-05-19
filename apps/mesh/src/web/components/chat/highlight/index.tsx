@@ -131,14 +131,6 @@ export function ChatHighlight() {
   const userAskParts = assistantParts.filter(
     (part) => part.type === "tool-user_ask",
   );
-  // Coerce to boolean — `.length` is a number, and concurrent JSX renders
-  // `{0 && <X/>}` as the literal text "0" (unlike the prior priority cascade,
-  // where `if (0) { return … }` was control flow). After every user_ask
-  // resolves to `output-available`, the unfiltered count is 0, which would
-  // otherwise stamp a stray "0" between the highlight stack and the input.
-  const isWaitingForUserInput = !!userAskParts.filter(
-    (p) => p.state !== "output-available",
-  ).length;
   const pendingPlans = extractPendingPlans(assistantParts);
   const pendingApprovals = extractPendingApprovals(
     assistantParts as Array<{
@@ -264,7 +256,7 @@ export function ChatHighlight() {
           onRespond={handleApprovalRespond}
         />
       )}
-      {pendingPlans.length > 0 && (
+      {flags.hasPlans && (
         <ProposePlanHighlight
           key={planKey}
           plans={pendingPlans}
@@ -273,7 +265,7 @@ export function ChatHighlight() {
           onDismiss={handlePlanDismiss}
         />
       )}
-      {isWaitingForUserInput && (
+      {flags.isWaitingForUserInput && (
         <UserAskQuestionHighlight
           key={userAskKey}
           userAskParts={userAskParts}
