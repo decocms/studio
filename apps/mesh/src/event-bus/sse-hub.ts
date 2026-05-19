@@ -210,10 +210,7 @@ class SSEHub {
  * Check if an event type matches any of the given patterns.
  * Supports exact match and wildcard suffix (e.g., "workflow.*" matches "workflow.execution.created").
  */
-function matchesAnyPattern(
-  eventType: string,
-  patterns: string[],
-): boolean {
+function matchesAnyPattern(eventType: string, patterns: string[]): boolean {
   for (const pattern of patterns) {
     if (pattern === eventType) return true;
     if (pattern.endsWith(".*")) {
