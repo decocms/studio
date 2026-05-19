@@ -1,6 +1,8 @@
 /**
  * TasksPanel — left-panel entry point. Org-wide (not scoped to a virtualMCP).
- * Renders all open tasks in a single list, sorted by created_at.
+ * Renders all open tasks in a single list, sorted by updated_at desc to
+ * match the server's orderBy (see thread-store.ts). Matching the server's
+ * sort key keeps offset-paginated pages stable as new ones arrive.
  * Automation-triggered tasks are distinguished by a badge on their avatar.
  */
 
@@ -43,7 +45,7 @@ function TasksPanelContent() {
   const activeTaskId = params.taskId ?? null;
 
   const allTasks = [...myTasks, ...automationTasks].sort((a, b) =>
-    (b.created_at ?? "").localeCompare(a.created_at ?? ""),
+    (b.updated_at ?? "").localeCompare(a.updated_at ?? ""),
   );
 
   const handleArchive = (task: Task) => {

@@ -177,44 +177,46 @@ export function TasksSection({
           </div>
         ) : (
           <>
-            {visibleTasks.map((t, idx) => (
-              <div
+            {visibleTasks.map((t) => (
+              <TaskRow
                 key={t.id}
-                ref={
-                  idx === visibleTasks.length - 1 ? lastElementRef : undefined
-                }
-              >
-                <TaskRow
-                  task={t}
-                  isActive={activeTaskId === t.id}
-                  onClick={() => {
-                    if (activeTaskId !== t.id) {
-                      track("tasks_panel_task_clicked", {
-                        thread_id: t.id,
-                        virtual_mcp_id: t.virtual_mcp_id ?? null,
-                        from_automation: Boolean(t.trigger_id),
-                      });
-                    }
-                    onSelect(t);
-                  }}
-                  onArchive={() => {
-                    track("tasks_panel_task_archived", {
+                task={t}
+                isActive={activeTaskId === t.id}
+                onClick={() => {
+                  if (activeTaskId !== t.id) {
+                    track("tasks_panel_task_clicked", {
                       thread_id: t.id,
                       virtual_mcp_id: t.virtual_mcp_id ?? null,
+                      from_automation: Boolean(t.trigger_id),
                     });
-                    onArchive(t);
-                  }}
-                  showAutomationBadge={
-                    showAutomationBadge || Boolean(t.trigger_id)
                   }
-                />
-              </div>
+                  onSelect(t);
+                }}
+                onArchive={() => {
+                  track("tasks_panel_task_archived", {
+                    thread_id: t.id,
+                    virtual_mcp_id: t.virtual_mcp_id ?? null,
+                  });
+                  onArchive(t);
+                }}
+                showAutomationBadge={
+                  showAutomationBadge || Boolean(t.trigger_id)
+                }
+              />
             ))}
             {isFetchingMore && (
               <div className="py-2 text-center text-xs text-muted-foreground">
                 Loading more…
               </div>
             )}
+            {/* Dedicated sentinel with stable identity. Attaching the
+                observer to the last rendered row cascades when client-side
+                filters strip out most of each page — the last row keeps
+                being in view after every fetch. A fixed sentinel placed
+                AFTER the list (and after the loading indicator) only
+                intersects when the user has scrolled past the actual
+                content. */}
+            {hasMore && <div ref={lastElementRef} aria-hidden />}
           </>
         )}
       </div>

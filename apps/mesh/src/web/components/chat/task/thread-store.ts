@@ -39,7 +39,7 @@ export interface UseThreadsResult {
   totalCount: number | undefined;
   hasMore: boolean;
   refetch: () => Promise<unknown>;
-  fetchNextPage: () => unknown;
+  fetchNextPage: () => Promise<unknown>;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
 }
