@@ -78,7 +78,7 @@ import { StudioPackRecruitModal } from "@/web/components/home/studio-pack-recrui
 import { LeanCanvasRecruitModal } from "@/web/components/home/lean-canvas-recruit-modal.tsx";
 import { AiImageRecruitModal } from "@/web/components/home/ai-image-recruit-modal.tsx";
 import { AiResearchRecruitModal } from "@/web/components/home/ai-research-recruit-modal.tsx";
-import { useThreadActions } from "@/web/components/chat/task";
+import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thread";
 
@@ -96,7 +96,7 @@ import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thre
 function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const taskActions = useThreadActions();
+  const { create } = useThreadActions();
   const { locator } = useProjectContext();
   const params = useParams({ strict: false }) as { taskId?: string };
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
@@ -108,7 +108,7 @@ function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
         ? readCachedTaskBranch(queryClient, locator, params.taskId ?? "")
         : null;
     try {
-      await taskActions.create.mutateAsync({
+      await create({
         id: taskId,
         virtual_mcp_id: clickedVirtualMcpId,
         ...(carryBranch ? { branch: carryBranch } : {}),

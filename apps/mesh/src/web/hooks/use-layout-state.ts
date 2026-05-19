@@ -18,7 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { resolveDefaultTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
-import { useThreadActions } from "@/web/components/chat/task";
+import { useThreadActions } from "@/web/components/chat/store/hooks";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,7 +144,7 @@ export function useChatMainPanelState(
     taskId?: string;
   };
   const queryClient = useQueryClient();
-  const taskActions = useThreadActions();
+  const { create } = useThreadActions();
   const { locator } = useProjectContext();
 
   const { virtualMcpId, orgSlug, isAgentRoute } = routeCtx;
@@ -218,7 +218,7 @@ export function useChatMainPanelState(
     const newTaskId = crypto.randomUUID();
     const branch = readCachedTaskBranch(queryClient, locator, taskId);
     try {
-      await taskActions.create.mutateAsync({
+      await create({
         id: newTaskId,
         virtual_mcp_id: virtualMcpId,
         ...(branch ? { branch } : {}),

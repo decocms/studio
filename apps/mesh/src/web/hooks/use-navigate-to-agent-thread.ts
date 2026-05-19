@@ -1,7 +1,7 @@
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useThreadActions } from "@/web/components/chat/task";
+import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { readCachedLastThread } from "@/web/lib/read-cached-last-thread";
 import { authClient } from "@/web/lib/auth-client";
@@ -18,7 +18,7 @@ import { authClient } from "@/web/lib/auth-client";
 export function useNavigateToAgentThread(orgSlug: string) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const taskActions = useThreadActions();
+  const { create } = useThreadActions();
   const { locator } = useProjectContext();
   const params = useParams({ strict: false }) as { taskId?: string };
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
@@ -45,7 +45,7 @@ export function useNavigateToAgentThread(orgSlug: string) {
         ? readCachedTaskBranch(queryClient, locator, params.taskId ?? "")
         : null;
     try {
-      await taskActions.create.mutateAsync({
+      await create({
         id: taskId,
         virtual_mcp_id: targetVirtualMcpId,
         ...(carryBranch ? { branch: carryBranch } : {}),
