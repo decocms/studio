@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { __resetRegistry } from "../hooks/thread-connection";
-import { ThreadManagerStore } from "./thread-manager-store";
+import {
+  __resetManagerRegistry,
+  getManager,
+  getOrOpenManager,
+  ThreadManagerStore,
+} from "./thread-manager-store";
 
 // Fake SSE source. fetch is stubbed to return a controllable ReadableStream
 // of SSE chunks.
@@ -284,5 +289,27 @@ describe("ThreadManagerStore active slot", () => {
     store.closeActive();
     expect(store.active.get()).toBe(null);
     store.dispose();
+  });
+});
+
+describe("ThreadManagerStore registry", () => {
+  afterEach(() => __resetManagerRegistry());
+
+  it("returns the same instance for same key", () => {
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const a = getOrOpenManager("acme", "loc-1");
+    const b = getOrOpenManager("acme", "loc-1");
+    expect(a).toBe(b);
+  });
+
+  it("disposes and replaces on different key", () => {
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const a = getOrOpenManager("acme", "loc-1");
+    const b = getOrOpenManager("acme", "loc-2");
+    expect(a).not.toBe(b);
+  });
+
+  it("getManager returns null when no manager matches", () => {
+    expect(getManager("acme", "loc-1")).toBeNull();
   });
 });

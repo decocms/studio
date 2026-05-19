@@ -44,6 +44,7 @@ export class ThreadManagerStore {
   readonly threads = new Store<Task[]>([]);
   readonly threadsStatus = new Store<ThreadsStatus>({ kind: "loading" });
   readonly active = new Store<ThreadConnection | null>(null);
+  readonly key: string;
 
   private abort = new AbortController();
   private pendingOptimistic = new Set<string>();
@@ -54,6 +55,7 @@ export class ThreadManagerStore {
     readonly locator: string,
     opts: ThreadManagerStoreOptions = {},
   ) {
+    this.key = `${orgSlug}::${locator}`;
     this.client = opts.client ?? null;
     void this.runWatchLoop();
   }
@@ -305,4 +307,37 @@ export class ThreadManagerStore {
       }
     }
   }
+}
+
+// ─── Module-scoped registry ──────────────────────────────────────────────────
+
+let current: ThreadManagerStore | null = null;
+
+/** Idempotent: same key → same instance. Different key → dispose + reopen. */
+export function getOrOpenManager(
+  orgSlug: string,
+  locator: string,
+  opts: ThreadManagerStoreOptions = {},
+): ThreadManagerStore {
+  const key = `${orgSlug}::${locator}`;
+  if (current && current.key === key) return current;
+  current?.dispose();
+  current = new ThreadManagerStore(orgSlug, locator, opts);
+  return current;
+}
+
+/** Look up the active manager by key without forcing a new construction.
+ *  Returns null if no manager matches. */
+export function getManager(
+  orgSlug: string,
+  locator: string,
+): ThreadManagerStore | null {
+  const key = `${orgSlug}::${locator}`;
+  return current && current.key === key ? current : null;
+}
+
+/** Test-only: dispose the active manager and clear the slot. */
+export function __resetManagerRegistry(): void {
+  current?.dispose();
+  current = null;
 }
