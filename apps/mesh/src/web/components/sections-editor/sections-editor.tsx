@@ -41,11 +41,11 @@ function PageHeaderInputs({
 }) {
   const [name, setName] = useState(initialName);
   const [path, setPath] = useState(initialPath);
-  const prevKeyRef = useRef(pageKey);
+  const [prevKey, setPrevKey] = useState(pageKey);
 
   // Reset local state when navigating to a different page
-  if (prevKeyRef.current !== pageKey) {
-    prevKeyRef.current = pageKey;
+  if (prevKey !== pageKey) {
+    setPrevKey(pageKey);
     setName(initialName);
     setPath(initialPath);
   }
@@ -176,9 +176,9 @@ export function SectionsEditor({
   );
 
   // Reset form state when the active page changes
-  const prevPathRef = useRef(currentPath);
-  if (prevPathRef.current !== currentPath) {
-    prevPathRef.current = currentPath;
+  const [prevPath, setPrevPath] = useState(currentPath);
+  if (prevPath !== currentPath) {
+    setPrevPath(currentPath);
     setSelectedSectionIndex(null);
     setFormValue(null);
     setActiveResolveType(null);
@@ -233,6 +233,7 @@ export function SectionsEditor({
   const parsedSections = parseSections(rawSections, decofile);
 
   // Sync ref so debounced callbacks always see the latest values.
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref is only read in setTimeout callbacks, not during render
   latestRef.current = { rawSections, parsedSections, decofile, activePageKey };
 
   const activeSchema =

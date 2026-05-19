@@ -211,9 +211,9 @@ export function resolveSchema(
         });
         if (loaderBranches.length > 0) {
           const anyOfRefs = loaderBranches.map((branch) => {
-            const rtEnum = (
-              (branch.properties as RawSchema)?.__resolveType as RawSchema
-            ).enum as unknown[];
+            const rtSchema = (branch.properties as RawSchema | undefined)
+              ?.__resolveType as RawSchema | undefined;
+            const rtEnum = (rtSchema?.enum ?? []) as unknown[];
             const rt = String(rtEnum[0]);
             return {
               resolveType: rt,
