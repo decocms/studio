@@ -243,8 +243,8 @@ function BatchedApprovalPrompt({
         approvals.map((a) => [a.approvalId, { approved: true }]),
       ) as ApprovalFormValues,
     );
-    // submitOrAdvance bypasses the !isStreaming gate — the data-layer
-    // deferred-POST check handles in-flight runs.
+    // submitOrAdvance defers the flush while streaming and fires it the
+    // moment the stream finishes (see useMultiPartDecisionForm).
     decisionForm.submitOrAdvance();
   };
 

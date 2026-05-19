@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type FieldValues, type UseFormReturn, useForm } from "react-hook-form";
 import type { ZodTypeAny } from "zod";
 import {
@@ -37,10 +37,10 @@ export interface MultiPartDecisionForm<TPart, TValues extends FieldValues> {
   submit: () => void;
   /**
    * Auto-action for per-item button decisions: if every item is now
-   * answered, flush the per-part `onSubmit` loop immediately; otherwise
-   * advance to the next unanswered item. Bypasses the `!isStreaming`
-   * gate in `canSubmit` — the data-layer deferred-POST check is the
-   * actual safety net for in-flight runs.
+   * answered, flush the per-part `onSubmit` loop; otherwise advance to
+   * the next unanswered item. While the assistant is still streaming
+   * the flush is deferred — once `isStreaming` flips to false (and the
+   * form is still fully answered) the flush fires automatically.
    */
   submitOrAdvance: () => void;
 }
@@ -65,6 +65,7 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
 
   const initialKey = parts[0] ? partKey(parts[0]) : "";
   const [activeKey, setActiveKey] = useState(initialKey);
+  const [pendingFlush, setPendingFlush] = useState(false);
 
   const form = useForm<TValues>({
     resolver: zodResolver(schema as never) as never,
@@ -113,14 +114,27 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
     })();
   };
 
+  // Always-fresh closure for the auto-flush effect so it never invokes
+  // stale `parts` / `onSubmit` captured at the moment the intent was set.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+
   const submit = () => {
     if (!canSubmit) return;
+    setPendingFlush(false);
     flush();
   };
 
   const submitOrAdvance = () => {
     const latest = form.getValues() as Record<string, unknown>;
     if (isAllAnswered(parts, partKey, latest, hasAnswer)) {
+      if (isStreaming) {
+        // Stream still in flight — record the intent; the effect below
+        // fires the flush once `isStreaming` flips to false.
+        setPendingFlush(true);
+        return;
+      }
+      setPendingFlush(false);
       flush();
     } else {
       const nextKey = findNextUnansweredKey(
@@ -133,6 +147,21 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
       if (nextKey) setActiveKey(nextKey);
     }
   };
+
+  // Auto-flush deferred submissions when the stream finishes. Banned in
+  // most places, but the streaming-finished transition is genuinely an
+  // external event that needs to drive a side effect.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    if (!pendingFlush) return;
+    if (isStreaming) return;
+    if (!allAnswered) {
+      setPendingFlush(false);
+      return;
+    }
+    setPendingFlush(false);
+    flushRef.current();
+  }, [pendingFlush, isStreaming, allAnswered]);
 
   return {
     form,
