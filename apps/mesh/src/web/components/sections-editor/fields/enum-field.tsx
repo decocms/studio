@@ -36,7 +36,7 @@ export function EnumField({
           <SelectValue placeholder="Select..." />
         </SelectTrigger>
         <SelectContent>
-          {options.map((opt, i) => (
+          {options.map((opt) => (
             <SelectItem key={String(opt)} value={String(opt)}>
               {String(opt)}
             </SelectItem>
