@@ -3,6 +3,10 @@ import type {
   ThreadCreateData,
   ThreadUpdateData,
 } from "@/tools/thread/schema.ts";
+import {
+  getOrOpenStream,
+  type ThreadConnection,
+} from "../hooks/thread-connection";
 import type { RowPatch, Task } from "../task/types";
 import { Store } from "./store-primitive";
 
@@ -39,6 +43,7 @@ function applyPatch(list: Task[], patch: RowPatch): Task[] {
 export class ThreadManagerStore {
   readonly threads = new Store<Task[]>([]);
   readonly threadsStatus = new Store<ThreadsStatus>({ kind: "loading" });
+  readonly active = new Store<ThreadConnection | null>(null);
 
   private abort = new AbortController();
   private pendingOptimistic = new Set<string>();
@@ -55,6 +60,20 @@ export class ThreadManagerStore {
 
   dispose(): void {
     this.abort.abort();
+    this.active.set(null);
+  }
+
+  setActive(threadId: string): ThreadConnection {
+    const conn = getOrOpenStream(this.orgSlug, threadId);
+    if (this.active.get() !== conn) this.active.set(conn);
+    return conn;
+  }
+
+  closeActive(): void {
+    // The existing registry only stores one conn — disposing here would
+    // re-dispose it elsewhere if the registry already replaced it. We just
+    // clear the slot; the registry handles its own lifecycle.
+    if (this.active.get() !== null) this.active.set(null);
   }
 
   async create(data: ThreadCreateData): Promise<Task> {

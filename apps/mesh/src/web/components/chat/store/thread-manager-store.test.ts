@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { __resetRegistry } from "../hooks/thread-connection";
 import { ThreadManagerStore } from "./thread-manager-store";
 
 // Fake SSE source. fetch is stubbed to return a controllable ReadableStream
@@ -243,6 +244,45 @@ describe("ThreadManagerStore optimistic mutators", () => {
 
     resolveSecond!();
     await pending;
+    store.dispose();
+  });
+});
+
+describe("ThreadManagerStore active slot", () => {
+  it("setActive opens a connection and exposes it via active store", () => {
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: {"threads":[]}\n\n`,
+    ]) as unknown as typeof fetch;
+    __resetRegistry();
+    const store = new ThreadManagerStore("acme", "loc-1");
+    const conn = store.setActive("t-1");
+    expect(store.active.get()).toBe(conn);
+    expect(conn.threadId).toBe("t-1");
+    store.dispose();
+  });
+
+  it("setActive on a different id swaps the slot", () => {
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: {"threads":[]}\n\n`,
+    ]) as unknown as typeof fetch;
+    __resetRegistry();
+    const store = new ThreadManagerStore("acme", "loc-1");
+    const a = store.setActive("t-1");
+    const b = store.setActive("t-2");
+    expect(a).not.toBe(b);
+    expect(store.active.get()).toBe(b);
+    store.dispose();
+  });
+
+  it("closeActive clears the slot", () => {
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: {"threads":[]}\n\n`,
+    ]) as unknown as typeof fetch;
+    __resetRegistry();
+    const store = new ThreadManagerStore("acme", "loc-1");
+    store.setActive("t-1");
+    store.closeActive();
+    expect(store.active.get()).toBe(null);
     store.dispose();
   });
 });

@@ -227,7 +227,7 @@ async function parseSseSingleResponse(
 
 // ─── ThreadConnection ────────────────────────────────────────────────────────
 
-class ThreadConnection {
+export class ThreadConnection {
   readonly key: string;
 
   /** Single source of truth. Server snapshot on load, mutated locally on
