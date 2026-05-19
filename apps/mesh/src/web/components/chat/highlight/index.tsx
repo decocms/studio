@@ -12,10 +12,8 @@ import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
-import {
-  CreditsExhaustedBanner,
-  isCreditError,
-} from "../credits-exhausted-banner";
+import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
+import { useHighlightFlags } from "./use-highlight-count";
 import type { UserAskToolPart } from "../types";
 
 // ============================================================================
@@ -102,7 +100,6 @@ export function ChatHighlight() {
     clearFinishReason,
     messages,
     isStreaming,
-    isWaitingForApprovals,
     submit,
     sendMessage,
   } = useChatStream();
@@ -229,30 +226,13 @@ export function ChatHighlight() {
   // closest to the chat input. Credit-exhausted errors are a modal,
   // handled by an early return outside the stack.
 
-  if (!isStreaming && error && isCreditError(error)) {
+  const flags = useHighlightFlags();
+
+  if (flags.isCreditExhausted) {
     return <CreditsExhaustedBanner onDismiss={clearError} />;
   }
 
-  const showError = !isStreaming && !!error;
-  const hasApprovals =
-    pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals);
-  // `user_ask` and `propose_plan` are client-side tools (no `execute`), so
-  // the model emitting one terminates the step loop with
-  // `finishReason: "tool-calls"`. Same for tools paused on
-  // `approval-requested`. Those are expected handoffs, not stuck loops —
-  // the matching cards (UserAskQuestion / ProposePlan / Approval) already
-  // tell the user what to do, so suppress the duplicate warning. Mirrors
-  // the backend's `resolveThreadStatus` (status.ts) which maps the same
-  // shape to `requires_action`.
-  const isToolCallsWaitingOnClient =
-    finishReason === "tool-calls" &&
-    (isWaitingForUserInput || hasApprovals || pendingPlans.length > 0);
-  const showWarning =
-    !isStreaming &&
-    !!finishReason &&
-    finishReason !== "stop" &&
-    !isToolCallsWaitingOnClient &&
-    !showError;
+  const { showError, showWarning, hasApprovals } = flags;
   const userAskKey = userAskParts.map((p) => p.toolCallId).join("|");
   const planKey = pendingPlans[0]?.toolCallId ?? "";
   const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
