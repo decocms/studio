@@ -60,31 +60,55 @@ export function applyPatch(
   options: { canInsert?: boolean } = {},
 ): TasksQueryData | undefined {
   if (!data) return data;
-  const idx = data.items.findIndex((t) => t.id === patch.id);
 
-  if (idx === -1) {
-    // Thread not in this cache yet (created in another tab, or never
-    // loaded). Insert at the top with a minimal synthetic row; the next
-    // refetch fills missing optional fields.
-    if (options.canInsert === false) return data;
-    const now = patch.updated_at ?? new Date().toISOString();
-    const synthetic: Task = {
-      created_at: now,
-      updated_at: now,
-      ...patch,
-      title: patch.title ?? "New chat",
-      branch: patch.branch ?? null,
-    };
-    return { ...data, items: [synthetic, ...data.items] };
+  // Walk every loaded page; the first one containing the row wins.
+  let updatedPageIdx = -1;
+  let updatedItems: Task[] | null = null;
+  for (let i = 0; i < data.pages.length; i++) {
+    const page = data.pages[i];
+    if (!page) continue;
+    const idx = page.items.findIndex((t) => t.id === patch.id);
+    if (idx === -1) continue;
+    const current = page.items[idx];
+    if (!current) continue;
+    const next: Task = { ...current, ...patch };
+    updatedItems = [...page.items];
+    updatedItems[idx] = next;
+    updatedPageIdx = i;
+    break;
   }
 
-  const current = data.items[idx];
-  if (!current) return data;
+  if (updatedPageIdx !== -1 && updatedItems) {
+    const pages = data.pages.map((p, i) =>
+      i === updatedPageIdx && updatedItems ? { ...p, items: updatedItems } : p,
+    );
+    return { ...data, pages };
+  }
 
-  const next: Task = { ...current, ...patch };
-  const items = [...data.items];
-  items[idx] = next;
-  return { ...data, items };
+  // Thread not in any page yet (created in another tab, or never loaded).
+  // Insert at the top of the first page with a minimal synthetic row.
+  if (options.canInsert === false) return data;
+  const now = patch.updated_at ?? new Date().toISOString();
+  const synthetic: Task = {
+    created_at: now,
+    updated_at: now,
+    ...patch,
+    title: patch.title ?? "New chat",
+    branch: patch.branch ?? null,
+  };
+  const firstPage = data.pages[0];
+  if (!firstPage) {
+    return {
+      ...data,
+      pages: [{ items: [synthetic], hasMore: false }],
+      pageParams: data.pageParams.length === 0 ? [0] : data.pageParams,
+    };
+  }
+  const pages = [
+    { ...firstPage, items: [synthetic, ...firstPage.items] },
+    ...data.pages.slice(1),
+  ];
+  return { ...data, pages };
 }
 
 /**
@@ -125,11 +149,16 @@ export function removeRowFromThreadCaches(
   });
   for (const [key, data] of entries) {
     if (!data) continue;
-    const idx = data.items.findIndex((t) => t.id === id);
-    if (idx === -1) continue;
-    const items = [...data.items];
-    items.splice(idx, 1);
-    queryClient.setQueryData(key, { ...data, items });
+    let mutated = false;
+    const pages = data.pages.map((page) => {
+      const idx = page.items.findIndex((t) => t.id === id);
+      if (idx === -1) return page;
+      const items = [...page.items];
+      items.splice(idx, 1);
+      mutated = true;
+      return { ...page, items };
+    });
+    if (mutated) queryClient.setQueryData(key, { ...data, pages });
   }
 }
 
@@ -175,8 +204,23 @@ export function prependRowToThreadCaches(
     const scope = getThreadScopeFromKey(key);
     if (!scope) continue;
     if (!scopeAcceptsRow(scope, row.virtual_mcp_id)) continue;
-    if (cached.items.some((t) => t.id === row.id)) continue;
-    queryClient.setQueryData(key, { ...cached, items: [row, ...cached.items] });
+    if (cached.pages.some((p) => p.items.some((t) => t.id === row.id))) {
+      continue;
+    }
+    const firstPage = cached.pages[0];
+    if (!firstPage) {
+      queryClient.setQueryData(key, {
+        ...cached,
+        pages: [{ items: [row], hasMore: false }],
+        pageParams: cached.pageParams.length === 0 ? [0] : cached.pageParams,
+      });
+      continue;
+    }
+    const pages = [
+      { ...firstPage, items: [row, ...firstPage.items] },
+      ...cached.pages.slice(1),
+    ];
+    queryClient.setQueryData(key, { ...cached, pages });
   }
 }
 

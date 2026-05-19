@@ -37,10 +37,21 @@ export interface Task {
 
 export type { ChatMessage } from "../types.ts";
 
-export type TasksQueryData = {
+export type TasksPage = {
   items: Task[];
   hasMore: boolean;
   totalCount?: number;
+};
+
+/**
+ * Cache shape for thread-list queries. Stored as paged data by
+ * `useSuspenseInfiniteQuery` — every page-aware reader/writer (event
+ * bridge, infinite scroll, helpers like `readCachedLastThread`) must
+ * walk `pages` rather than reading a flat `items` array.
+ */
+export type TasksQueryData = {
+  pages: TasksPage[];
+  pageParams: number[];
 };
 
 /**

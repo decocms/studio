@@ -20,12 +20,14 @@ export function readCachedLastThread(
   });
   let best: Task | null = null;
   for (const [, data] of queries) {
-    if (!data?.items) continue;
-    for (const t of data.items) {
-      if (t.virtual_mcp_id !== virtualMcpId) continue;
-      if (t.created_by !== userId) continue;
-      if (t.hidden) continue;
-      if (!best || t.updated_at > best.updated_at) best = t;
+    if (!data?.pages) continue;
+    for (const page of data.pages) {
+      for (const t of page.items) {
+        if (t.virtual_mcp_id !== virtualMcpId) continue;
+        if (t.created_by !== userId) continue;
+        if (t.hidden) continue;
+        if (!best || t.updated_at > best.updated_at) best = t;
+      }
     }
   }
   return best;

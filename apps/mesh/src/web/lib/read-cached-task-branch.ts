@@ -22,8 +22,11 @@ export function readCachedTaskBranch(
     queryKey: KEYS.threadsPrefix(locator),
   });
   for (const [, data] of queries) {
-    const task = data?.items?.find((t) => t.id === taskId);
-    if (task?.branch) return task.branch;
+    if (!data?.pages) continue;
+    for (const page of data.pages) {
+      const task = page.items.find((t) => t.id === taskId);
+      if (task?.branch) return task.branch;
+    }
   }
   return null;
 }

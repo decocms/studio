@@ -10,7 +10,18 @@ import {
 } from "./thread-events";
 import type { Task, TasksQueryData } from "./types";
 
-const emptyData: TasksQueryData = { items: [], hasMore: false };
+function pagedData(items: Task[]): TasksQueryData {
+  return {
+    pages: [{ items, hasMore: false }],
+    pageParams: [0],
+  };
+}
+
+function flatItems(data: TasksQueryData | undefined): Task[] {
+  return data?.pages.flatMap((p) => p.items) ?? [];
+}
+
+const emptyData: TasksQueryData = pagedData([]);
 
 describe("applyPatch", () => {
   test("synthetic row carries created_by and trigger_id when provided", () => {
@@ -21,7 +32,7 @@ describe("applyPatch", () => {
       status: "in_progress",
       updated_at: "2026-05-15T00:00:00Z",
     });
-    expect(out?.items[0]).toMatchObject({
+    expect(flatItems(out)[0]).toMatchObject({
       id: "t1",
       created_by: "user-1",
       trigger_id: "trig-1",
@@ -35,25 +46,22 @@ describe("applyPatch", () => {
       created_by: "user-1",
       trigger_id: null,
     });
-    expect(out?.items[0]?.trigger_id).toBeNull();
+    expect(flatItems(out)[0]?.trigger_id).toBeNull();
   });
 
   test("patching an existing row does not clobber created_by / trigger_id when undefined", () => {
-    const existing: TasksQueryData = {
-      items: [
-        {
-          id: "t1",
-          title: "Existing",
-          created_at: "2026-05-15T00:00:00Z",
-          updated_at: "2026-05-15T00:00:00Z",
-          created_by: "user-1",
-          trigger_id: "trig-1",
-        },
-      ],
-      hasMore: false,
-    };
+    const existing = pagedData([
+      {
+        id: "t1",
+        title: "Existing",
+        created_at: "2026-05-15T00:00:00Z",
+        updated_at: "2026-05-15T00:00:00Z",
+        created_by: "user-1",
+        trigger_id: "trig-1",
+      },
+    ]);
     const out = applyPatch(existing, { id: "t1", status: "completed" });
-    expect(out?.items[0]).toMatchObject({
+    expect(flatItems(out)[0]).toMatchObject({
       created_by: "user-1",
       trigger_id: "trig-1",
       status: "completed",
@@ -61,20 +69,17 @@ describe("applyPatch", () => {
   });
 
   test("patching can update trigger_id when explicitly carried", () => {
-    const existing: TasksQueryData = {
-      items: [
-        {
-          id: "t1",
-          title: "Existing",
-          created_at: "2026-05-15T00:00:00Z",
-          updated_at: "2026-05-15T00:00:00Z",
-          trigger_id: null,
-        },
-      ],
-      hasMore: false,
-    };
+    const existing = pagedData([
+      {
+        id: "t1",
+        title: "Existing",
+        created_at: "2026-05-15T00:00:00Z",
+        updated_at: "2026-05-15T00:00:00Z",
+        trigger_id: null,
+      },
+    ]);
     const out = applyPatch(existing, { id: "t1", trigger_id: "trig-1" });
-    expect(out?.items[0]?.trigger_id).toBe("trig-1");
+    expect(flatItems(out)[0]?.trigger_id).toBe("trig-1");
   });
 
   test("synthetic row carries virtual_mcp_id when provided (so the agent icon renders on SSE-inserted rows)", () => {
@@ -84,24 +89,21 @@ describe("applyPatch", () => {
       status: "in_progress",
       updated_at: "2026-05-15T00:00:00Z",
     });
-    expect(out?.items[0]?.virtual_mcp_id).toBe("vmcp-1");
+    expect(flatItems(out)[0]?.virtual_mcp_id).toBe("vmcp-1");
   });
 
   test("patching an existing row does not clobber virtual_mcp_id when undefined", () => {
-    const existing: TasksQueryData = {
-      items: [
-        {
-          id: "t1",
-          title: "Existing",
-          created_at: "2026-05-15T00:00:00Z",
-          updated_at: "2026-05-15T00:00:00Z",
-          virtual_mcp_id: "vmcp-1",
-        },
-      ],
-      hasMore: false,
-    };
+    const existing = pagedData([
+      {
+        id: "t1",
+        title: "Existing",
+        created_at: "2026-05-15T00:00:00Z",
+        updated_at: "2026-05-15T00:00:00Z",
+        virtual_mcp_id: "vmcp-1",
+      },
+    ]);
     const out = applyPatch(existing, { id: "t1", status: "completed" });
-    expect(out?.items[0]?.virtual_mcp_id).toBe("vmcp-1");
+    expect(flatItems(out)[0]?.virtual_mcp_id).toBe("vmcp-1");
   });
 
   test("canInsert:false skips synthetic insert for missing row", () => {
@@ -110,7 +112,41 @@ describe("applyPatch", () => {
       { id: "t1", virtual_mcp_id: "vmcp-1" },
       { canInsert: false },
     );
-    expect(out?.items).toEqual([]);
+    expect(flatItems(out)).toEqual([]);
+  });
+
+  test("patches a row on a later page (not just the first)", () => {
+    const existing: TasksQueryData = {
+      pages: [
+        {
+          items: [
+            {
+              id: "t0",
+              title: "Page 1",
+              created_at: "2026-05-15T00:00:00Z",
+              updated_at: "2026-05-15T00:00:00Z",
+            },
+          ],
+          hasMore: true,
+        },
+        {
+          items: [
+            {
+              id: "t1",
+              title: "Page 2",
+              created_at: "2026-05-15T00:00:00Z",
+              updated_at: "2026-05-15T00:00:00Z",
+            },
+          ],
+          hasMore: false,
+        },
+      ],
+      pageParams: [0, 50],
+    };
+    const out = applyPatch(existing, { id: "t1", status: "completed" });
+    expect(out?.pages[1]?.items[0]?.status).toBe("completed");
+    // First page row left untouched
+    expect(out?.pages[0]?.items[0]?.title).toBe("Page 1");
   });
 });
 
@@ -156,14 +192,14 @@ function seedCaches(
   locator: string,
   agents: string[],
 ) {
-  queryClient.setQueryData<TasksQueryData>(KEYS.threads(locator, "org"), {
-    items: [],
-    hasMore: false,
-  });
+  queryClient.setQueryData<TasksQueryData>(
+    KEYS.threads(locator, "org"),
+    pagedData([]),
+  );
   for (const v of agents) {
     queryClient.setQueryData<TasksQueryData>(
       KEYS.threads(locator, { kind: "agent", virtualMcpId: v }),
-      { items: [], hasMore: false },
+      pagedData([]),
     );
   }
 }
@@ -187,9 +223,9 @@ describe("patchThreadCaches", () => {
     );
     const org = qc.getQueryData<TasksQueryData>(KEYS.threads("loc", "org"));
 
-    expect(agentA?.items.map((t) => t.id)).toEqual(["t1"]);
-    expect(agentB?.items).toEqual([]);
-    expect(org?.items.map((t) => t.id)).toEqual(["t1"]);
+    expect(flatItems(agentA).map((t) => t.id)).toEqual(["t1"]);
+    expect(flatItems(agentB)).toEqual([]);
+    expect(flatItems(org).map((t) => t.id)).toEqual(["t1"]);
   });
 
   test("event without virtual_mcp_id only lands in org scope", () => {
@@ -202,8 +238,8 @@ describe("patchThreadCaches", () => {
       KEYS.threads("loc", { kind: "agent", virtualMcpId: "a" }),
     );
     const org = qc.getQueryData<TasksQueryData>(KEYS.threads("loc", "org"));
-    expect(agentA?.items).toEqual([]);
-    expect(org?.items.map((t) => t.id)).toEqual(["t1"]);
+    expect(flatItems(agentA)).toEqual([]);
+    expect(flatItems(org).map((t) => t.id)).toEqual(["t1"]);
   });
 
   test("updates of existing rows apply across all scopes that hold them", () => {
@@ -215,13 +251,13 @@ describe("patchThreadCaches", () => {
       updated_at: "2026-05-15T00:00:00Z",
       virtual_mcp_id: "a",
     };
-    qc.setQueryData<TasksQueryData>(KEYS.threads("loc", "org"), {
-      items: [row],
-      hasMore: false,
-    });
+    qc.setQueryData<TasksQueryData>(
+      KEYS.threads("loc", "org"),
+      pagedData([row]),
+    );
     qc.setQueryData<TasksQueryData>(
       KEYS.threads("loc", { kind: "agent", virtualMcpId: "a" }),
-      { items: [row], hasMore: false },
+      pagedData([row]),
     );
 
     patchThreadCaches(qc, "loc", {
@@ -234,8 +270,8 @@ describe("patchThreadCaches", () => {
     const agentA = qc.getQueryData<TasksQueryData>(
       KEYS.threads("loc", { kind: "agent", virtualMcpId: "a" }),
     );
-    expect(org?.items[0]?.status).toBe("completed");
-    expect(agentA?.items[0]?.status).toBe("completed");
+    expect(flatItems(org)[0]?.status).toBe("completed");
+    expect(flatItems(agentA)[0]?.status).toBe("completed");
   });
 });
 
@@ -260,9 +296,9 @@ describe("prependRowToThreadCaches", () => {
       KEYS.threads("loc", { kind: "agent", virtualMcpId: "b" }),
     );
     const org = qc.getQueryData<TasksQueryData>(KEYS.threads("loc", "org"));
-    expect(agentA?.items.map((t) => t.id)).toEqual(["t1"]);
-    expect(agentB?.items).toEqual([]);
-    expect(org?.items.map((t) => t.id)).toEqual(["t1"]);
+    expect(flatItems(agentA).map((t) => t.id)).toEqual(["t1"]);
+    expect(flatItems(agentB)).toEqual([]);
+    expect(flatItems(org).map((t) => t.id)).toEqual(["t1"]);
   });
 
   test("dedupes when the row is already cached", () => {
@@ -274,14 +310,14 @@ describe("prependRowToThreadCaches", () => {
       updated_at: "2026-05-15T00:00:00Z",
       virtual_mcp_id: "a",
     };
-    qc.setQueryData<TasksQueryData>(KEYS.threads("loc", "org"), {
-      items: [row],
-      hasMore: false,
-    });
+    qc.setQueryData<TasksQueryData>(
+      KEYS.threads("loc", "org"),
+      pagedData([row]),
+    );
 
     prependRowToThreadCaches(qc, "loc", row);
 
     const org = qc.getQueryData<TasksQueryData>(KEYS.threads("loc", "org"));
-    expect(org?.items.length).toBe(1);
+    expect(flatItems(org).length).toBe(1);
   });
 });

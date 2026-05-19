@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Edit05, FilterLines, User02, Users03 } from "@untitledui/icons";
 import {
   DropdownMenu,
@@ -9,6 +9,7 @@ import {
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import type { Task } from "@/web/components/chat/task/types";
+import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { TaskRow } from "./task-row";
 import { track } from "@/web/lib/posthog-client";
 
@@ -37,6 +38,9 @@ export function TasksSection({
   showAutomationBadge,
   emptyLabel,
   currentUserId,
+  hasMore = false,
+  isFetchingMore = false,
+  onLoadMore,
 }: {
   title: string;
   tasks: Task[];
@@ -48,7 +52,17 @@ export function TasksSection({
   showAutomationBadge?: boolean;
   emptyLabel?: string;
   currentUserId?: string;
+  hasMore?: boolean;
+  isFetchingMore?: boolean;
+  onLoadMore?: () => void;
 }) {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastElementRef = useInfiniteScroll(
+    () => onLoadMore?.(),
+    hasMore,
+    isFetchingMore,
+    scrollContainerRef,
+  );
   const [filter, setFilter] = useState<FilterOption>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
 
@@ -153,37 +167,57 @@ export function TasksSection({
           )}
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5"
+      >
         {visibleTasks.length === 0 && emptyLabel ? (
           <div className="px-2 py-1.5 text-xs text-muted-foreground/70">
             {emptyLabel}
           </div>
         ) : (
-          visibleTasks.map((t) => (
-            <TaskRow
-              key={t.id}
-              task={t}
-              isActive={activeTaskId === t.id}
-              onClick={() => {
-                if (activeTaskId !== t.id) {
-                  track("tasks_panel_task_clicked", {
+          <>
+            {visibleTasks.map((t) => (
+              <TaskRow
+                key={t.id}
+                task={t}
+                isActive={activeTaskId === t.id}
+                onClick={() => {
+                  if (activeTaskId !== t.id) {
+                    track("tasks_panel_task_clicked", {
+                      thread_id: t.id,
+                      virtual_mcp_id: t.virtual_mcp_id ?? null,
+                      from_automation: Boolean(t.trigger_id),
+                    });
+                  }
+                  onSelect(t);
+                }}
+                onArchive={() => {
+                  track("tasks_panel_task_archived", {
                     thread_id: t.id,
                     virtual_mcp_id: t.virtual_mcp_id ?? null,
-                    from_automation: Boolean(t.trigger_id),
                   });
+                  onArchive(t);
+                }}
+                showAutomationBadge={
+                  showAutomationBadge || Boolean(t.trigger_id)
                 }
-                onSelect(t);
-              }}
-              onArchive={() => {
-                track("tasks_panel_task_archived", {
-                  thread_id: t.id,
-                  virtual_mcp_id: t.virtual_mcp_id ?? null,
-                });
-                onArchive(t);
-              }}
-              showAutomationBadge={showAutomationBadge || Boolean(t.trigger_id)}
-            />
-          ))
+              />
+            ))}
+            {isFetchingMore && (
+              <div className="py-2 text-center text-xs text-muted-foreground">
+                Loading more…
+              </div>
+            )}
+            {/* Dedicated sentinel with stable identity. Attaching the
+                observer to the last rendered row cascades when client-side
+                filters strip out most of each page — the last row keeps
+                being in view after every fetch. A fixed sentinel placed
+                AFTER the list (and after the loading indicator) only
+                intersects when the user has scrolled past the actual
+                content. */}
+            {hasMore && <div ref={lastElementRef} aria-hidden />}
+          </>
         )}
       </div>
     </div>
