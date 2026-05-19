@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { type FieldValues, type UseFormReturn, useForm } from "react-hook-form";
 import type { ZodTypeAny } from "zod";
 import {
@@ -114,12 +114,6 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
     })();
   };
 
-  // Always-fresh closure for the auto-flush effect so it never invokes
-  // stale `parts` / `onSubmit` captured at the moment the intent was set.
-  const flushRef = useRef(flush);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  flushRef.current = flush;
-
   const submit = () => {
     if (!canSubmit) return;
     setPendingFlush(false);
@@ -149,10 +143,13 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
     }
   };
 
-  // Auto-flush deferred submissions when the stream finishes. Banned in
-  // most places, but the streaming-finished transition is genuinely an
-  // external event that needs to drive a side effect.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  // Auto-flush deferred submissions when the stream finishes. The
+  // streaming-finished transition is an external event, so this is a
+  // legitimate effect. `flush` is in deps so the latest closure (with
+  // current `parts` / `onSubmit`) fires when `isStreaming` flips false;
+  // `pendingFlush` gates one-shot semantics so spurious re-runs from
+  // `flush` identity changes short-circuit at the first guard.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- streaming-finished is an external event
   useEffect(() => {
     if (!pendingFlush) return;
     if (isStreaming) return;
@@ -161,8 +158,8 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
       return;
     }
     setPendingFlush(false);
-    flushRef.current();
-  }, [pendingFlush, isStreaming, allAnswered]);
+    flush();
+  }, [pendingFlush, isStreaming, allAnswered, flush]);
 
   return {
     form,
