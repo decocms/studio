@@ -209,8 +209,17 @@ class SSEHub {
 /**
  * Check if an event type matches any of the given patterns.
  * Supports exact match and wildcard suffix (e.g., "workflow.*" matches "workflow.execution.created").
+ *
+ * Exported so callers outside the hub (e.g. the SSE connect handler that
+ * decides whether to emit a thread snapshot) can use the exact same matcher
+ * the hub uses to filter live events — avoiding drift where the snapshot is
+ * emitted to a listener that would never receive matching live events, or
+ * vice versa.
  */
-function matchesAnyPattern(eventType: string, patterns: string[]): boolean {
+export function matchesAnyPattern(
+  eventType: string,
+  patterns: string[],
+): boolean {
   for (const pattern of patterns) {
     if (pattern === eventType) return true;
     if (pattern.endsWith(".*")) {

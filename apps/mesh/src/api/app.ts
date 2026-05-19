@@ -544,11 +544,43 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
 };
 
 /**
+ * Probe event type used to decide whether a listener's `?types=...` filter
+ * would deliver thread events. We pick a single representative type from the
+ * `com.deco.decopilot.thread.*` namespace and run it through the SSE hub's
+ * matcher so the snapshot is emitted exactly when the listener would also
+ * receive live thread events — no drift between "what the snapshot covers"
+ * and "what live events the listener actually sees".
+ *
+ * Exported for tests so they can assert the probe lives inside the namespace
+ * it claims to represent.
+ */
+export const THREAD_SNAPSHOT_PROBE_TYPE = "com.deco.decopilot.thread.snapshot";
+
+/**
+ * True when the listener's `?types=...` filter would let any event from the
+ * thread namespace through. Returns true for an absent/empty filter (the
+ * hub treats null as "match everything").
+ */
+function shouldEmitThreadSnapshot(typePatterns: string[] | null): boolean {
+  if (!typePatterns || typePatterns.length === 0) return true;
+  return matchesAnyPattern(THREAD_SNAPSHOT_PROBE_TYPE, typePatterns);
+}
+
+/**
  * SSE events endpoint — streams events for an organization in real time.
  * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
  * on the `/api/:org/events` mount). Auth is required.
+ *
+ * On connect, emits in order:
+ *   1. `event: connected` — listener metadata
+ *   2. `event: snapshot` — `{ threads: [...] }` for the open thread list,
+ *      ONLY when the listener's `?types=...` filter would also deliver thread
+ *      events (see `shouldEmitThreadSnapshot`). Skipping the snapshot for
+ *      filters that don't subscribe to thread events avoids paying for a
+ *      potentially large query the client never asked for.
+ *   3. Live events from the SSE hub.
  */
-const watchHandler: MiddlewareHandler<Env> = async (c) => {
+export const watchHandler: MiddlewareHandler<Env> = async (c) => {
   const meshContext = c.var.meshContext;
 
   // Require authentication (user session or API key)
@@ -584,6 +616,23 @@ const watchHandler: MiddlewareHandler<Env> = async (c) => {
         connectedAt: new Date().toISOString(),
       }),
     });
+
+    // Emit a one-shot thread snapshot before the listener is wired up to the
+    // hub, so reconnecting clients can rebuild the thread list deterministically
+    // without a separate REST round-trip. Reads through the same storage path
+    // `COLLECTION_THREADS_LIST` uses internally so the snapshot is consistent
+    // with what that tool would return. Only emitted when the listener's
+    // filter would deliver thread events — otherwise we'd be paying for a
+    // query the client never asked for.
+    if (shouldEmitThreadSnapshot(typePatterns)) {
+      const { threads } = await meshContext.storage.threads.list(undefined, {
+        limit: 100,
+      });
+      await stream.writeSSE({
+        event: "snapshot",
+        data: JSON.stringify({ threads }),
+      });
+    }
 
     // Register listener with the SSE hub
     const registered = sseHub.add({
@@ -652,6 +701,7 @@ import { Env } from "./hono-env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
 import { type SSEEvent, sseHub } from "../event-bus";
+import { matchesAnyPattern } from "../event-bus/sse-hub";
 const getHandleOAuthProtectedResourceMetadata = () =>
   oAuthProtectedResourceMetadata(auth);
 const getHandleOAuthDiscoveryMetadata = () => oAuthDiscoveryMetadata(auth);
