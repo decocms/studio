@@ -5,6 +5,7 @@
  * Uses Memory and ModelProvider abstractions.
  */
 
+import { createHash } from "node:crypto";
 import type { MeshContext } from "@/core/mesh-context";
 import { TierUnavailableError, resolveTier } from "@/core/resolve-tier";
 import type { SimpleModeTier } from "@/tools/organization/schema";
@@ -37,6 +38,28 @@ import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
+
+// ============================================================================
+// Idempotency
+// ============================================================================
+
+/**
+ * Derive the workflowID idempotency key from the last request message.
+ *
+ * - User messages have a fresh id per turn, so the id itself is unique.
+ * - Assistant messages are re-POSTed with the same id across approval /
+ *   tool-output rounds in a single logical turn. Hashing the serialized
+ *   message makes each round produce a distinct key while still letting
+ *   a genuine network retry of an identical POST collapse onto the same
+ *   workflow.
+ */
+export function computeIdempotencyKey(
+  lastMsg: ChatMessage | undefined,
+): string | undefined {
+  if (!lastMsg) return undefined;
+  if (lastMsg.role === "user" && lastMsg.id) return lastMsg.id;
+  return createHash("sha1").update(JSON.stringify(lastMsg)).digest("hex");
+}
 
 // ============================================================================
 // Request Validation
@@ -274,15 +297,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // queues behind it and dispatches only after that run completes.
   //
   // Idempotency: a retried POST collapses onto the existing workflow
-  // handle when an idempotency signal is provided. In order of
-  // preference:
-  //   1. `X-Idempotency-Key` request header (explicit; recommended for
-  //      clients that retry).
-  //   2. Request message id (the last message's `id`, when the client
-  //      sent one).
-  // If neither is supplied, retries get a fresh workflowID and dispatch
-  // again — at-least-once semantics. Clients that care about exactly-once
-  // must send one of the two.
+  // handle. The key is derived from the last message:
+  //   - user turn: the message id (unique per turn).
+  //   - approval / tool-output continuation: SHA1 of the serialized
+  //     message. The assistant message id is reused across approval
+  //     rounds in the same logical turn, so the id alone would dedupe
+  //     two distinct accepts onto the first workflow and leave the
+  //     second round's state unsaved (bricked approval prompt). Hashing
+  //     the message contents gives each round a fresh workflowID while
+  //     still collapsing genuine network retries of the same POST.
 
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
@@ -295,14 +318,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       }
 
       const { abortSignal: _ignored, ...serializableRequest } = input;
-      // Coalesce empty/whitespace-only header values to undefined so the
-      // fallback to the message id still applies. Without this, a client
-      // that sets `X-Idempotency-Key:` with an empty value would be kept
-      // as `""` by `??`, fail the truthy check below, and silently get
-      // at-least-once semantics.
-      const headerKey = c.req.header("X-Idempotency-Key")?.trim() || undefined;
-      const idempotencyKey =
-        headerKey ?? input.messages[input.messages.length - 1]?.id;
+      const lastMsg = input.messages[input.messages.length - 1];
+      const idempotencyKey = computeIdempotencyKey(lastMsg);
       const workflowID = idempotencyKey
         ? `thread-run:${taskId}:${idempotencyKey}`
         : undefined;
