@@ -29,6 +29,8 @@ function makeSseFetch(chunks: string[]) {
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
+  __resetRegistry(); // dispose any ThreadConnection
+  __resetManagerRegistry(); // dispose any ThreadManagerStore
 });
 
 describe("ThreadManagerStore /watch snapshot", () => {
@@ -258,7 +260,6 @@ describe("ThreadManagerStore active slot", () => {
     globalThis.fetch = makeSseFetch([
       `event: snapshot\ndata: {"threads":[]}\n\n`,
     ]) as unknown as typeof fetch;
-    __resetRegistry();
     const store = new ThreadManagerStore("acme", "loc-1");
     const conn = store.setActive("t-1");
     expect(store.active.get()).toBe(conn);
@@ -270,7 +271,6 @@ describe("ThreadManagerStore active slot", () => {
     globalThis.fetch = makeSseFetch([
       `event: snapshot\ndata: {"threads":[]}\n\n`,
     ]) as unknown as typeof fetch;
-    __resetRegistry();
     const store = new ThreadManagerStore("acme", "loc-1");
     const a = store.setActive("t-1");
     const b = store.setActive("t-2");
@@ -283,7 +283,6 @@ describe("ThreadManagerStore active slot", () => {
     globalThis.fetch = makeSseFetch([
       `event: snapshot\ndata: {"threads":[]}\n\n`,
     ]) as unknown as typeof fetch;
-    __resetRegistry();
     const store = new ThreadManagerStore("acme", "loc-1");
     store.setActive("t-1");
     store.closeActive();
@@ -293,8 +292,6 @@ describe("ThreadManagerStore active slot", () => {
 });
 
 describe("ThreadManagerStore registry", () => {
-  afterEach(() => __resetManagerRegistry());
-
   it("returns the same instance for same key", () => {
     globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
     const a = getOrOpenManager("acme", "loc-1");

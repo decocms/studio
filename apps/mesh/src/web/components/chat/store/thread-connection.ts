@@ -111,6 +111,7 @@ export interface ThreadObserver {
 
 const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
+const CLEAN_RECONNECT_DELAY_MS = 50;
 
 /**
  * Apply a SubmitAction to a messages list. Returns the next list, or null
@@ -401,7 +402,7 @@ export class ThreadConnection {
 
       if (this.abort.signal.aborted) return;
       const delay = cleanExit
-        ? 0
+        ? CLEAN_RECONNECT_DELAY_MS
         : Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
       attempt++;
       if (delay > 0) {
