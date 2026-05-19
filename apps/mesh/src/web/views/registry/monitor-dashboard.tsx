@@ -347,8 +347,10 @@ export function MonitorDashboard({
   if (
     !activeRunId &&
     latestRunId &&
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     lastAutoSelectedRunRef.current !== latestRunId
   ) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     lastAutoSelectedRunRef.current = latestRunId;
     queueMicrotask(() => {
       onRunChange(latestRunId);

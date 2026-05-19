@@ -713,8 +713,10 @@ function LayoutTabContent({
   if (
     connectionsWithTools &&
     connectionsWithTools.length > 0 &&
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     !reconciledRef.current
   ) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     reconciledRef.current = true;
 
     const fetchedOkIds = new Set(

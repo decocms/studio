@@ -87,6 +87,7 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
     onFinish,
     onTaskStatus,
   });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   callbacksRef.current = { taskId, onStep, onFinish, onTaskStatus };
 
   // `subscribe` only depends on `enabled` and `orgSlug` so the EventSource
@@ -99,13 +100,19 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
   const prevOrgSlug = useRef(orgSlug);
 
   if (
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     !subscribeRef.current ||
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevEnabled.current !== enabled ||
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevOrgSlug.current !== orgSlug
   ) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevEnabled.current = enabled;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevOrgSlug.current = orgSlug;
 
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     subscribeRef.current = (onStoreChange: () => void) => {
       if (!enabled || !orgSlug) {
         return () => {};
@@ -141,5 +148,6 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
     };
   }
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   useSyncExternalStore(subscribeRef.current, getSnapshot, getSnapshot);
 }

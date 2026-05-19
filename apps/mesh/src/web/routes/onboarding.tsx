@@ -623,7 +623,9 @@ function SetupWorkflow({
   // Schedule step progression once — useRef guard prevents double-fire
   // in Strict Mode. Timers are short-lived and the component only unmounts
   // on redirect, so cleanup is not critical.
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (!didSchedule.current) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     didSchedule.current = true;
     for (let i = 1; i < steps.length; i++) {
       setTimeout(() => setActiveStep(i), STEP_DELAY_MS * i);

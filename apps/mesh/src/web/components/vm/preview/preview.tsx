@@ -130,12 +130,16 @@ export function PreviewContent() {
     url: "",
     value: false,
   });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (previewUrl && htmlSupportRef.current.url !== previewUrl) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     htmlSupportRef.current = { url: previewUrl, value: false };
   }
   if (vmEvents.lifecycle.phase === "running") {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     htmlSupportRef.current.value = vmEvents.lifecycle.htmlSupport;
   }
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   const hasHtmlPreview = htmlSupportRef.current.value;
   const upstreamStatus: "booting" | "online" | "offline" =
     lifecyclePhase === "running"
@@ -213,13 +217,16 @@ export function PreviewContent() {
     });
   };
   const triggerStartRef = useRef(triggerStart);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   triggerStartRef.current = triggerStart;
 
   // Auto-start = "arrive → provision one", NOT "always ensure exists". Once
   // a vmEntry is seen for this taskId, explicit stop must NOT re-trigger (or
   // it races the user's manual Start). Mark ref on first-sight, BEFORE
   // evaluating shouldAutoStart, so a transient null can't sneak through.
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (taskId && vmEntry && autoStartedForTaskRef.current !== taskId) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     autoStartedForTaskRef.current = taskId;
   }
   // Branch must be resolved before firing: VmEventsBridge keys auto-start on
@@ -237,6 +244,7 @@ export function PreviewContent() {
     !lastStartError &&
     !userStopped &&
     !startVm.isPending &&
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     autoStartedForTaskRef.current !== taskId;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — bridges external state (vmEntry derived from query cache, taskId from router) into a one-shot mutation; no render-time equivalent
   useEffect(() => {
@@ -280,7 +288,9 @@ export function PreviewContent() {
   // in this codebase (useEffect is banned for this).
   const [drawerOpen, setDrawerOpen] = useState<boolean | null>(null);
   const lastHydratedKeyRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (lastHydratedKeyRef.current !== drawerStorageKey) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     lastHydratedKeyRef.current = drawerStorageKey;
     setDrawerOpen(readPersistedDrawerOpen(drawerStorageKey));
   }

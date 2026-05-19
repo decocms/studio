@@ -35,11 +35,13 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // tab, we don't reopen it on the next render. Reset happens via the
   // `key={vmId}` remount at the call site (preview.tsx).
   const scriptsAppliedRef = useRef(false);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (!scriptsAppliedRef.current && vmEvents.scripts.length > 0) {
     const starter = WELL_KNOWN_STARTERS.find((s) =>
       vmEvents.scripts.includes(s),
     );
     if (starter) {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       scriptsAppliedRef.current = true;
       setScriptTabs((prev) =>
         prev.includes(starter) ? prev : [...prev, starter],

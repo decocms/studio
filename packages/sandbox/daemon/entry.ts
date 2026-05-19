@@ -109,6 +109,7 @@ const lifecycle = new LifecycleManager({ broadcaster });
 // may bind somewhere else and we need to re-sniff its announcement.
 const lifecycleTransitionRaw = lifecycle.transition.bind(lifecycle);
 lifecycle.transition = (next) => {
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   const prev = lifecycle.current().phase;
   const wasRunning = prev === "running";
   lifecycleTransitionRaw(next);
@@ -194,6 +195,7 @@ let baselineTimer: ReturnType<typeof setTimeout> | null = null;
 let lastRunningPort: number | null = null;
 const lastProbe = startUpstreamProbe({
   getPort: () =>
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     portSniffer.current() ?? store.read()?.application?.port ?? null,
   onChange: (s) => {
     // The probe only honors a "port is responding" verdict when we
@@ -206,6 +208,7 @@ const lastProbe = startUpstreamProbe({
     // sandbox's app. Same logic mirrored on the offline edge: only mark
     // `crashed` when we were actually running, never as a side effect of
     // a port that was never ours in the first place.
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     const phase = lifecycle.current().phase;
     if (s.status === "online" && s.port !== null) {
       const isCrashedRecovery =
@@ -250,6 +253,7 @@ const lastProbe = startUpstreamProbe({
 // actually bound to. Falls back to the configured value when nothing has
 // been sniffed yet.
 const getDevPort = (): number | null =>
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   portSniffer.current() ?? store.read()?.application?.port ?? null;
 const { appRoot, repoDir } = bootConfig;
 const fsDeps = { appRoot, repoDir };
@@ -292,6 +296,7 @@ const setupCloneH = makeSetupHandler("clone", { orchestrator });
 const setupInstallH = makeSetupHandler("install", { orchestrator });
 const setupStartH = makeSetupHandler("start", { orchestrator });
 
+// oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
 const isReady = () => lifecycle.current().phase === "running";
 
 const healthH = makeHealthHandler({
@@ -306,6 +311,7 @@ const healthH = makeHealthHandler({
 
 const eventsH = makeEventsHandler({
   broadcaster,
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   getLifecycle: () => lifecycle.current(),
   getDiscoveredScripts: () => orchestrator.getDiscoveredScripts(),
   getActiveTasks,

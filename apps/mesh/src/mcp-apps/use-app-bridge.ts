@@ -469,7 +469,9 @@ export function useAppBridge(options: UseAppBridgeOptions): UseAppBridgeReturn {
   }, [options]);
 
   const { height, isLoading, error } = useSyncExternalStore(
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     storeRef.current.subscribe,
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     storeRef.current.getSnapshot,
   );
 
@@ -477,6 +479,7 @@ export function useAppBridge(options: UseAppBridgeOptions): UseAppBridgeReturn {
     height,
     isLoading,
     error,
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     iframeRef: storeRef.current.attach,
   };
 }

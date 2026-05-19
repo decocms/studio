@@ -353,6 +353,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   );
 
   const [chatMode, setChatMode] = useState<ChatMode>("default");
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   chatModeForTransportRef.current = chatMode;
 
   // Simple Model Mode
@@ -471,6 +472,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   tiptapDocRef.current = tiptapDoc;
 
   const value: ChatPrefsContextValue = {
@@ -554,6 +556,7 @@ export function ChatContextProvider({
   );
 
   const [chatMode, setChatMode] = useState<ChatMode>("default");
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   chatModeForTransportRef.current = chatMode;
 
   // Simple Model Mode — org-level config.
@@ -697,6 +700,7 @@ export function ChatContextProvider({
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   tiptapDocRef.current = tiptapDoc;
 
   // Body builder shared by useChatStream — slices to the request message
@@ -1155,6 +1159,7 @@ export function ActiveTaskProvider({
   };
 
   // Register sendMessage on the bridge so TaskProvider-level code can call it
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   bridgeRef.current = {
     sendMessage: sendMessageInternal,
     isStreaming: chat.status === "submitted" || chat.status === "streaming",
