@@ -378,6 +378,92 @@ describe("ThreadManagerStore enriched thread.status events", () => {
   });
 });
 
+describe("ThreadManagerStore.fetchThread", () => {
+  it("returns the local row when present", async () => {
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return {
+          structuredContent: {
+            items: [{ id: "t-1", updated_at: "2026-05-19T00:00:00Z" }],
+            hasMore: false,
+          },
+        };
+      }
+      return {};
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const row = await store.fetchThread("t-1");
+    expect(row?.id).toBe("t-1");
+    // Did not call THREADS_GET — local hit.
+    const getCalls = callTool.mock.calls.filter(
+      (c) => (c[0] as { name: string }).name === "COLLECTION_THREADS_GET",
+    );
+    expect(getCalls.length).toBe(0);
+    store.dispose();
+  });
+
+  it("falls back to COLLECTION_THREADS_GET when absent locally", async () => {
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const callTool = mock(
+      async (args: { name: string; arguments: unknown }) => {
+        if (args.name === "COLLECTION_THREADS_LIST") {
+          return { structuredContent: { items: [], hasMore: false } };
+        }
+        if (args.name === "COLLECTION_THREADS_GET") {
+          return {
+            structuredContent: {
+              item: {
+                id: "t-archived",
+                title: "Old thread",
+                hidden: true,
+                updated_at: "2026-05-19T00:00:00Z",
+              },
+            },
+          };
+        }
+        return {};
+      },
+    );
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const row = await store.fetchThread("t-archived");
+    expect(row?.id).toBe("t-archived");
+    expect(row?.title).toBe("Old thread");
+    // Row should be merged into the local list.
+    expect(store.threads.get().some((t) => t.id === "t-archived")).toBe(true);
+    store.dispose();
+  });
+
+  it("returns null when the row doesn't exist", async () => {
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return { structuredContent: { items: [], hasMore: false } };
+      }
+      if (args.name === "COLLECTION_THREADS_GET") {
+        return { structuredContent: { item: null } };
+      }
+      return {};
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const row = await store.fetchThread("nope");
+    expect(row).toBeNull();
+    store.dispose();
+  });
+});
+
 describe("ThreadManagerStore registry", () => {
   it("returns the same instance for same key", () => {
     globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;

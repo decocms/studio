@@ -29,15 +29,19 @@ export function buildOnTitleUpdated(
     }
     deps.sseHub.emit(
       deps.organizationId,
-      createDecopilotThreadStatusEvent(deps.threadId, "in_progress", {
-        title,
-        virtualMcpId: row?.virtual_mcp_id ?? undefined,
-        createdBy: row?.created_by,
-        triggerId: row?.trigger_id,
-        branch: row?.branch ?? null,
-        createdAt: row?.created_at,
-        updatedAt: row?.updated_at,
-      }),
+      createDecopilotThreadStatusEvent(
+        deps.threadId,
+        row?.status ?? "in_progress",
+        {
+          title,
+          virtualMcpId: row?.virtual_mcp_id ?? undefined,
+          createdBy: row?.created_by,
+          triggerId: row?.trigger_id,
+          branch: row?.branch ?? null,
+          createdAt: row?.created_at,
+          updatedAt: row?.updated_at,
+        },
+      ),
     );
   };
 }

@@ -341,6 +341,45 @@ export class ThreadManagerStore {
     }
   }
 
+  /**
+   * Resolve a thread by id. Checks the loaded `threads` slot first; falls
+   * back to a `COLLECTION_THREADS_GET` MCP call when the row isn't in the
+   * loaded set (e.g., direct link to an older thread past page 0 or to an
+   * archived thread). Returns null if the thread doesn't exist server-side
+   * or the MCP call fails.
+   *
+   * Resolved rows are merged into the local list so subsequent lookups hit
+   * the fast path.
+   */
+  async fetchThread(id: string): Promise<Task | null> {
+    if (!id) return null;
+    const local = this.threads.get().find((t) => t.id === id);
+    if (local) return local;
+    if (!this.client) return null;
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREADS_GET",
+        arguments: { id },
+      });
+      if ((result as { isError?: boolean }).isError) return null;
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as { item?: Task | null };
+      const row = payload.item ?? null;
+      if (row) {
+        // Merge into the local list so future lookups are local. The row may
+        // already be present if a concurrent event arrived between the
+        // find() above and this fetch; dedupe by id.
+        this.threads.update((list) => {
+          if (list.some((t) => t.id === row.id)) return list;
+          return [row, ...list];
+        });
+      }
+      return row;
+    } catch {
+      return null;
+    }
+  }
+
   private async runWatchLoop(): Promise<void> {
     const url = `/api/${encodeURIComponent(
       this.orgSlug,

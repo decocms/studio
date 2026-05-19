@@ -120,6 +120,38 @@ describe("onTitleUpdated callback", () => {
     expect(emittedEvent.data.created_by).toBeUndefined();
   });
 
+  it("emits the row's actual status (not hardcoded in_progress) when the row is completed", async () => {
+    const thread = makeThread({ status: "completed" });
+    const getThread = mock(() => Promise.resolve(thread));
+    const sseHub = { emit: mock(() => {}) };
+
+    const ctx = {
+      storage: {
+        threads: {
+          get: getThread,
+        },
+      },
+    } as unknown as import("@/core/mesh-context").MeshContext;
+
+    const onTitleUpdated = buildOnTitleUpdated({
+      ctx,
+      sseHub,
+      threadId: "thread-1",
+      organizationId: "org-1",
+    });
+
+    await onTitleUpdated("Auto-generated title");
+
+    const [, emittedEvent] = (sseHub.emit as ReturnType<typeof mock>).mock
+      .calls[0] as [
+      string,
+      ReturnType<typeof createDecopilotThreadStatusEvent>,
+    ];
+
+    expect(emittedEvent.data.status).toBe("completed");
+    expect(emittedEvent.data.title).toBe("Auto-generated title");
+  });
+
   it("emits to the correct org id regardless of thread org", async () => {
     const thread = makeThread({ organization_id: "other-org" });
     const getThread = mock(() => Promise.resolve(thread));
