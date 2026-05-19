@@ -7,6 +7,7 @@ import {
   getOrOpenManager,
   ThreadManagerStore,
 } from "./thread-manager-store";
+import type { Task } from "../task/types";
 
 // Fake SSE source. fetch is stubbed to return a controllable ReadableStream
 // of SSE chunks.
@@ -26,6 +27,27 @@ function makeSseFetch(chunks: string[]) {
   });
 }
 
+/**
+ * Build a minimal MCP client mock. COLLECTION_THREADS_LIST returns initialItems;
+ * all other tools return `{}` (tests that need specific other-tool behavior
+ * override callTool themselves).
+ */
+function makeMcpClient(initialItems: Task[] = []): MCPClient {
+  return {
+    callTool: mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return {
+          structuredContent: {
+            items: initialItems,
+            hasMore: false,
+          },
+        };
+      }
+      return {};
+    }),
+  } as unknown as MCPClient;
+}
+
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
@@ -41,86 +63,10 @@ describe("ThreadManagerStore /watch snapshot", () => {
     expect(store.threads.get()).toEqual([]);
     store.dispose();
   });
-
-  it("flips status to error on a malformed snapshot frame (and triggers reconnect)", async () => {
-    // Two connects: first returns garbage (parse fails → status=error, throw,
-    // outer loop reconnects after backoff), second returns a valid snapshot
-    // (status=ready).
-    let call = 0;
-    globalThis.fetch = (async () => {
-      call++;
-      const enc = new TextEncoder();
-      const chunks =
-        call === 1
-          ? [`event: snapshot\ndata: not-json{{{\n\n`]
-          : [
-              `event: snapshot\ndata: ${JSON.stringify({
-                threads: [
-                  {
-                    id: "t-r",
-                    title: "Recovered",
-                    updated_at: "2026-01-01T00:00:00Z",
-                  },
-                ],
-              })}\n\n`,
-            ];
-      const body = new ReadableStream<Uint8Array>({
-        start(c) {
-          for (const ch of chunks) c.enqueue(enc.encode(ch));
-          c.close();
-        },
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }) as unknown as typeof fetch;
-
-    const store = new ThreadManagerStore("acme", "loc-1");
-    // After the first connect, status should land on error (not silently stuck on loading).
-    await new Promise((r) => setTimeout(r, 30));
-    expect(store.threadsStatus.get().kind).toBe("error");
-    // After backoff + reconnect (BASE_DELAY_MS = 1s for attempt=1), the next
-    // snapshot recovers. Wait past the 1s backoff.
-    await new Promise((r) => setTimeout(r, 1200));
-    expect(store.threadsStatus.get()).toEqual({ kind: "ready" });
-    expect(store.threads.get().map((t) => t.id)).toEqual(["t-r"]);
-    store.dispose();
-  });
-
-  it("transitions to ready and populates threads on snapshot event", async () => {
-    const snapshot = JSON.stringify({
-      threads: [
-        { id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" },
-        { id: "t-2", title: "B", updated_at: "2026-01-02T00:00:00Z" },
-      ],
-    });
-    globalThis.fetch = makeSseFetch([
-      `event: connected\ndata: {"listenerId":"x"}\n\n`,
-      `event: snapshot\ndata: ${snapshot}\n\n`,
-    ]) as unknown as typeof fetch;
-
-    const store = new ThreadManagerStore("acme", "loc-1");
-    // Wait a tick for the SSE consumer to advance.
-    await new Promise((r) => setTimeout(r, 10));
-    expect(store.threadsStatus.get()).toEqual({ kind: "ready" });
-    expect(store.threads.get().map((t) => t.id)).toEqual(["t-1", "t-2"]);
-    store.dispose();
-  });
 });
 
 describe("ThreadManagerStore thread.* event patching", () => {
   it("updates an existing row via thread.status event", async () => {
-    const snapshot = JSON.stringify({
-      threads: [
-        {
-          id: "t-1",
-          title: "A",
-          status: "idle",
-          updated_at: "2026-01-01T00:00:00Z",
-        },
-      ],
-    });
     const ev = JSON.stringify({
       type: "decopilot.thread.status",
       subject: "t-1",
@@ -128,11 +74,18 @@ describe("ThreadManagerStore thread.* event patching", () => {
       data: { status: "in_progress" },
     });
     globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: ${snapshot}\n\n`,
       `event: decopilot.thread.status\ndata: ${ev}\n\n`,
     ]) as unknown as typeof fetch;
 
-    const store = new ThreadManagerStore("acme", "loc-1");
+    const client = makeMcpClient([
+      {
+        id: "t-1",
+        title: "A",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      } as Task,
+    ]);
+    const store = new ThreadManagerStore("acme", "loc-1", { client });
     await new Promise((r) => setTimeout(r, 10));
     expect(store.threads.get()[0]?.status).toBe("in_progress");
     expect(store.threads.get()[0]?.updated_at).toBe("2026-01-02T00:00:00Z");
@@ -140,7 +93,6 @@ describe("ThreadManagerStore thread.* event patching", () => {
   });
 
   it("inserts an unknown row at the top from a thread.* event", async () => {
-    const snapshot = JSON.stringify({ threads: [] });
     const ev = JSON.stringify({
       type: "decopilot.thread.status",
       subject: "t-new",
@@ -148,11 +100,11 @@ describe("ThreadManagerStore thread.* event patching", () => {
       data: { status: "in_progress", virtual_mcp_id: "vm-x" },
     });
     globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: ${snapshot}\n\n`,
       `event: decopilot.thread.status\ndata: ${ev}\n\n`,
     ]) as unknown as typeof fetch;
 
-    const store = new ThreadManagerStore("acme", "loc-1");
+    const client = makeMcpClient([]);
+    const store = new ThreadManagerStore("acme", "loc-1", { client });
     await new Promise((r) => setTimeout(r, 10));
     expect(store.threads.get().map((t) => t.id)).toEqual(["t-new"]);
     store.dispose();
@@ -161,18 +113,21 @@ describe("ThreadManagerStore thread.* event patching", () => {
 
 describe("ThreadManagerStore optimistic mutators", () => {
   it("rename applies optimistically, calls server, succeeds", async () => {
-    const snapshot = JSON.stringify({
-      threads: [
-        { id: "t-1", title: "Old", updated_at: "2026-01-01T00:00:00Z" },
-      ],
-    });
-    globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: ${snapshot}\n\n`,
-    ]) as unknown as typeof fetch;
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
 
-    const callTool = mock(async () => ({
-      structuredContent: { item: { id: "t-1" } },
-    }));
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return {
+          structuredContent: {
+            items: [
+              { id: "t-1", title: "Old", updated_at: "2026-01-01T00:00:00Z" },
+            ],
+            hasMore: false,
+          },
+        };
+      }
+      return { structuredContent: { item: { id: "t-1" } } };
+    });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
     });
@@ -186,16 +141,19 @@ describe("ThreadManagerStore optimistic mutators", () => {
   });
 
   it("rename rolls back on server error", async () => {
-    const snapshot = JSON.stringify({
-      threads: [
-        { id: "t-1", title: "Old", updated_at: "2026-01-01T00:00:00Z" },
-      ],
-    });
-    globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: ${snapshot}\n\n`,
-    ]) as unknown as typeof fetch;
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
 
-    const callTool = mock(async () => {
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return {
+          structuredContent: {
+            items: [
+              { id: "t-1", title: "Old", updated_at: "2026-01-01T00:00:00Z" },
+            ],
+            hasMore: false,
+          },
+        };
+      }
       throw new Error("nope");
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
@@ -209,17 +167,18 @@ describe("ThreadManagerStore optimistic mutators", () => {
   });
 
   it("create prepends the row and returns it", async () => {
-    globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: {"threads":[]}\n\n`,
-    ]) as unknown as typeof fetch;
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
     const row = {
       id: "t-new",
       title: "Fresh",
       updated_at: "2026-01-03T00:00:00Z",
     };
-    const callTool = mock(async () => ({
-      structuredContent: { item: row },
-    }));
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return { structuredContent: { items: [], hasMore: false } };
+      }
+      return { structuredContent: { item: row } };
+    });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
     });
@@ -234,13 +193,16 @@ describe("ThreadManagerStore optimistic mutators", () => {
   });
 
   it("create throws with the server error text when result.isError is true", async () => {
-    globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: {"threads":[]}\n\n`,
-    ]) as unknown as typeof fetch;
-    const callTool = mock(async () => ({
-      isError: true,
-      content: [{ type: "text", text: "branch already exists" }],
-    }));
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return { structuredContent: { items: [], hasMore: false } };
+      }
+      return {
+        isError: true,
+        content: [{ type: "text", text: "branch already exists" }],
+      };
+    });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
     });
@@ -253,86 +215,15 @@ describe("ThreadManagerStore optimistic mutators", () => {
     expect(store.threads.get()).toEqual([]);
     store.dispose();
   });
-
-  it("preserves optimistic rows when a fresh snapshot replaces the list", async () => {
-    let resolveSecond: (() => void) | undefined;
-    const stalledServer = new Promise<void>((r) => {
-      resolveSecond = r;
-    });
-    const snapshotA = JSON.stringify({
-      threads: [
-        { id: "t-1", title: "Old", updated_at: "2026-01-01T00:00:00Z" },
-      ],
-    });
-    const snapshotB = JSON.stringify({
-      threads: [
-        { id: "t-1", title: "ServerOld", updated_at: "2026-01-01T00:00:00Z" },
-      ],
-    });
-    // Controllable SSE source: emit snapshotA immediately, hold snapshotB
-    // until we explicitly release it.
-    let releaseSnapshotB: (() => void) | undefined;
-    const snapshotBGate = new Promise<void>((r) => {
-      releaseSnapshotB = r;
-    });
-    globalThis.fetch = mock(async () => {
-      const enc = new TextEncoder();
-      const body = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          controller.enqueue(
-            enc.encode(`event: snapshot\ndata: ${snapshotA}\n\n`),
-          );
-          await snapshotBGate;
-          controller.enqueue(
-            enc.encode(`event: snapshot\ndata: ${snapshotB}\n\n`),
-          );
-          controller.close();
-        },
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }) as unknown as typeof fetch;
-
-    const callTool = mock(async () => {
-      await stalledServer;
-      return { structuredContent: { item: { id: "t-1" } } };
-    });
-    const store = new ThreadManagerStore("acme", "loc-1", {
-      client: { callTool } as unknown as MCPClient,
-    });
-    await new Promise((r) => setTimeout(r, 5));
-    // Sanity: first snapshot applied.
-    expect(store.threads.get()[0]?.title).toBe("Old");
-
-    // Kick off rename — server is stalled, so `t-1` stays in pendingOptimistic.
-    const pending = store.rename("t-1", "New");
-    await new Promise((r) => setTimeout(r, 5));
-    expect(store.threads.get()[0]?.title).toBe("New");
-
-    // Now release the second snapshot.
-    releaseSnapshotB!();
-    await new Promise((r) => setTimeout(r, 10));
-    // Second snapshot arrived; should NOT overwrite the optimistic title.
-    expect(store.threads.get()[0]?.title).toBe("New");
-
-    resolveSecond!();
-    await pending;
-    store.dispose();
-  });
 });
 
 describe("ThreadManagerStore archive tombstones", () => {
   it("drops a late decopilot.thread.* event for a just-archived thread", async () => {
-    // Two SSE chunks queued: snapshot, then (after hide()) a thread.status
+    // Two SSE chunks queued: then (after hide()) a thread.status
     // event that would normally re-insert a synthetic row via applyPatch.
     let release: ((arg: void) => void) | undefined;
     const gate = new Promise<void>((r) => {
       release = r;
-    });
-    const snapshot = JSON.stringify({
-      threads: [{ id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" }],
     });
     const lateEvent = JSON.stringify({
       type: "decopilot.thread.status",
@@ -344,7 +235,6 @@ describe("ThreadManagerStore archive tombstones", () => {
       const enc = new TextEncoder();
       const body = new ReadableStream<Uint8Array>({
         async start(c) {
-          c.enqueue(enc.encode(`event: snapshot\ndata: ${snapshot}\n\n`));
           await gate;
           c.enqueue(
             enc.encode(
@@ -360,7 +250,19 @@ describe("ThreadManagerStore archive tombstones", () => {
       });
     }) as unknown as typeof fetch;
 
-    const callTool = mock(async () => ({ structuredContent: { item: {} } }));
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return {
+          structuredContent: {
+            items: [
+              { id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" },
+            ],
+            hasMore: false,
+          },
+        };
+      }
+      return { structuredContent: { item: {} } };
+    });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
     });
@@ -379,59 +281,21 @@ describe("ThreadManagerStore archive tombstones", () => {
     store.dispose();
   });
 
-  it("drops a stale snapshot row for a just-archived thread", async () => {
-    // Two SSE connects. First: snapshot with t-1; user archives it. Second
-    // (after reconnect): snapshot that still carries t-1 (server-side hidden
-    // flag hasn't propagated yet). The tombstone strips it.
-    let call = 0;
-    const snapshotWithRow = JSON.stringify({
-      threads: [{ id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" }],
-    });
-    globalThis.fetch = (async () => {
-      call++;
-      const enc = new TextEncoder();
-      const body = new ReadableStream<Uint8Array>({
-        start(c) {
-          c.enqueue(
-            enc.encode(`event: snapshot\ndata: ${snapshotWithRow}\n\n`),
-          );
-          c.close();
-        },
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }) as unknown as typeof fetch;
-
-    const callTool = mock(async () => ({ structuredContent: { item: {} } }));
-    const store = new ThreadManagerStore("acme", "loc-1", {
-      client: { callTool } as unknown as MCPClient,
-    });
-    await new Promise((r) => setTimeout(r, 10));
-    expect(call).toBe(1);
-
-    await store.hide("t-1");
-    expect(store.threads.get()).toEqual([]);
-
-    // Wait for the reconnect (BASE_DELAY_MS=1s for clean EOF on attempt=1).
-    await new Promise((r) => setTimeout(r, 1200));
-    expect(call).toBeGreaterThanOrEqual(2);
-    // Stale snapshot would have re-added t-1 without the tombstone.
-    expect(store.threads.get()).toEqual([]);
-    store.dispose();
-  });
-
   it("clears the tombstone on hide() rollback so future events resume", async () => {
-    const snapshot = JSON.stringify({
-      threads: [{ id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" }],
-    });
-    globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: ${snapshot}\n\n`,
-    ]) as unknown as typeof fetch;
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
 
     // Server rejects the hide.
-    const callTool = mock(async () => {
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return {
+          structuredContent: {
+            items: [
+              { id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" },
+            ],
+            hasMore: false,
+          },
+        };
+      }
       throw new Error("server says no");
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
@@ -453,9 +317,7 @@ describe("ThreadManagerStore archive tombstones", () => {
 
 describe("ThreadManagerStore active slot", () => {
   it("setActive opens a connection and exposes it via active store", () => {
-    globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: {"threads":[]}\n\n`,
-    ]) as unknown as typeof fetch;
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
     const store = new ThreadManagerStore("acme", "loc-1");
     const conn = store.setActive("t-1");
     expect(store.active.get()).toBe(conn);
@@ -464,9 +326,7 @@ describe("ThreadManagerStore active slot", () => {
   });
 
   it("setActive on a different id swaps the slot", () => {
-    globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: {"threads":[]}\n\n`,
-    ]) as unknown as typeof fetch;
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
     const store = new ThreadManagerStore("acme", "loc-1");
     const a = store.setActive("t-1");
     const b = store.setActive("t-2");
@@ -476,9 +336,7 @@ describe("ThreadManagerStore active slot", () => {
   });
 
   it("closeActive clears the slot", () => {
-    globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: {"threads":[]}\n\n`,
-    ]) as unknown as typeof fetch;
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
     const store = new ThreadManagerStore("acme", "loc-1");
     store.setActive("t-1");
     store.closeActive();
@@ -489,7 +347,6 @@ describe("ThreadManagerStore active slot", () => {
 
 describe("ThreadManagerStore enriched thread.status events", () => {
   it("synthesizes a row with title/branch from an enriched event (no 'New chat' zombie)", async () => {
-    const snapshot = JSON.stringify({ threads: [] });
     const enrichedEvent = JSON.stringify({
       type: "decopilot.thread.status",
       subject: "t-new",
@@ -504,11 +361,11 @@ describe("ThreadManagerStore enriched thread.status events", () => {
       },
     });
     globalThis.fetch = makeSseFetch([
-      `event: snapshot\ndata: ${snapshot}\n\n`,
       `event: decopilot.thread.status\ndata: ${enrichedEvent}\n\n`,
     ]) as unknown as typeof fetch;
 
-    const store = new ThreadManagerStore("acme", "loc-1");
+    const client = makeMcpClient([]);
+    const store = new ThreadManagerStore("acme", "loc-1", { client });
     await new Promise((r) => setTimeout(r, 10));
 
     const row = store.threads.get()[0];

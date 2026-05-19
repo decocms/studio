@@ -8,6 +8,7 @@
  */
 
 import { afterEach, describe, expect, it, mock } from "bun:test";
+import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { __resetRegistry } from "./thread-connection";
 import {
   __resetManagerRegistry,
@@ -38,15 +39,24 @@ afterEach(() => {
 });
 
 describe("hooks: useThreads source (manager.threads)", () => {
-  it("starts empty and flips to ready after snapshot", async () => {
-    globalThis.fetch = streamSse([
-      `event: snapshot\ndata: ${JSON.stringify({
-        threads: [
-          { id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" },
-        ],
-      })}\n\n`,
-    ]);
-    const store = new ThreadManagerStore("acme", "loc-1");
+  it("starts empty and flips to ready after loadInitialPage", async () => {
+    globalThis.fetch = streamSse([]);
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return {
+          structuredContent: {
+            items: [
+              { id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" },
+            ],
+            hasMore: false,
+          },
+        };
+      }
+      return {};
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
     expect(store.threads.get()).toEqual([]);
     expect(store.threadsStatus.get()).toEqual({ kind: "loading" });
     await new Promise((r) => setTimeout(r, 10));

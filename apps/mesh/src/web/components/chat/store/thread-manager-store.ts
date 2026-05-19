@@ -39,12 +39,10 @@ const MAX_DELAY_MS = 30_000;
 
 /**
  * How long a just-archived thread id is held in the tombstone set after
- * `hide(id)`. Covers the window where: (a) a `decopilot.thread.*` event
- * for the in-flight or already-finished archived run arrives and would
- * otherwise re-insert a synthetic row, or (b) a stale `/watch` snapshot
- * replays the row before the server-side hidden flag propagates. 60s is
- * generous enough for slow networks while still letting an un-archive flow
- * recover the row from a fresh event.
+ * `hide(id)`. Covers the window where a `decopilot.thread.*` event for the
+ * in-flight or already-finished archived run arrives and would otherwise
+ * re-insert a synthetic row. 60s is generous enough for slow networks while
+ * still letting an un-archive flow recover the row from a fresh event.
  */
 const ARCHIVED_TOMBSTONE_TTL_MS = 60_000;
 
@@ -78,9 +76,9 @@ export class ThreadManagerStore {
   private pendingOptimistic = new Set<string>();
   /**
    * Short-lived block list of just-archived thread ids. Read by every code
-   * path that could re-insert a row (`/watch` snapshot reconciliation,
-   * `decopilot.thread.*` patch handler) and pruned lazily on access. Entries
-   * older than ARCHIVED_TOMBSTONE_TTL_MS are dropped.
+   * path that could re-insert a row (`decopilot.thread.*` patch handler,
+   * event buffer drain) and pruned lazily on access. Entries older than
+   * ARCHIVED_TOMBSTONE_TTL_MS are dropped.
    */
   private archivedTombstones = new Map<string, number>();
   private client: MCPClient | null;
@@ -260,8 +258,9 @@ export class ThreadManagerStore {
 
   private async loadInitialPage(): Promise<void> {
     if (!this.client) {
-      // No MCP client — fall back to snapshot-driven boot (legacy path).
-      // Drain the buffer immediately so SSE events are dispatched live.
+      // No MCP client — drain the buffer immediately so SSE events are
+      // dispatched live (store stays in "loading" status until a client
+      // is provided).
       this.drainEventBuffer();
       return;
     }
@@ -410,58 +409,6 @@ export class ThreadManagerStore {
     }
     if (dataLines.length === 0) return;
     const data = dataLines.join("\n");
-    if (event === "snapshot") {
-      try {
-        const parsed = JSON.parse(data) as { threads: Task[] };
-        // Strip rows the user just archived. The server already filters
-        // hidden rows out of `storage.threads.list`, but a snapshot from an
-        // SSE reconnect can race the hide call and still carry the row;
-        // dropping tombstoned ids here keeps the local state consistent
-        // until the next snapshot.
-        this.pruneArchivedTombstones();
-        const serverThreads =
-          this.archivedTombstones.size === 0
-            ? parsed.threads
-            : parsed.threads.filter((t) => !this.archivedTombstones.has(t.id));
-        const pending = this.pendingOptimistic;
-        if (pending.size === 0) {
-          this.threads.set(serverThreads);
-        } else {
-          const current = this.threads.get();
-          const optimisticById = new Map(
-            current
-              .filter((t) => pending.has(t.id))
-              .map((t) => [t.id, t] as const),
-          );
-          this.threads.set(
-            serverThreads.map((t) => optimisticById.get(t.id) ?? t),
-          );
-          // Optimistic rows that the server hasn't acknowledged yet keep their
-          // place by being merged in; an optimistic row absent from the
-          // snapshot is preserved at the front.
-          const merged = this.threads.get();
-          const knownIds = new Set(merged.map((t) => t.id));
-          for (const id of pending) {
-            if (!knownIds.has(id)) {
-              const row = current.find((t) => t.id === id);
-              if (row) this.threads.set([row, ...this.threads.get()]);
-            }
-          }
-        }
-        this.threadsStatus.set({ kind: "ready" });
-      } catch (err) {
-        // Bad snapshot leaves the UI stuck at "loading" if we silently ignore.
-        // Flip status to `error` so gated consumers (e.g. useEnsureTask) can
-        // recover, and re-throw so consumeSse → runWatchLoop reconnects with
-        // backoff. A subsequent SSE attempt usually succeeds (transient
-        // server-side corruption or partial flush); a permanently corrupt
-        // payload settles into the 30s backoff ceiling.
-        const error = err instanceof Error ? err : new Error(String(err));
-        this.threadsStatus.set({ kind: "error", error });
-        throw error;
-      }
-      return;
-    }
     if (event.startsWith("decopilot.thread.")) {
       try {
         const parsed = JSON.parse(data) as {
