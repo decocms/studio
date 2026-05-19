@@ -1,5 +1,14 @@
+import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
+import type {
+  ThreadCreateData,
+  ThreadUpdateData,
+} from "@/tools/thread/schema.ts";
 import type { RowPatch, Task } from "../task/types";
 import { Store } from "./store-primitive";
+
+export interface ThreadManagerStoreOptions {
+  client?: MCPClient | null;
+}
 
 export type ThreadsStatus =
   | { kind: "loading" }
@@ -32,16 +41,107 @@ export class ThreadManagerStore {
   readonly threadsStatus = new Store<ThreadsStatus>({ kind: "loading" });
 
   private abort = new AbortController();
+  private pendingOptimistic = new Set<string>();
+  private client: MCPClient | null;
 
   constructor(
     readonly orgSlug: string,
     readonly locator: string,
+    opts: ThreadManagerStoreOptions = {},
   ) {
+    this.client = opts.client ?? null;
     void this.runWatchLoop();
   }
 
   dispose(): void {
     this.abort.abort();
+  }
+
+  async create(data: ThreadCreateData): Promise<Task> {
+    if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
+    const result = await this.client.callTool({
+      name: "COLLECTION_THREADS_CREATE",
+      arguments: { data },
+    });
+    const row = (
+      (result as { structuredContent?: unknown }).structuredContent as
+        | { item?: Task }
+        | undefined
+    )?.item;
+    if (!row) throw new Error("create: no item returned");
+    this.threads.update((list) =>
+      list.some((t) => t.id === row.id) ? list : [row, ...list],
+    );
+    return row;
+  }
+
+  rename(id: string, title: string): Promise<void> {
+    return this.optimisticUpdate(id, { title });
+  }
+
+  hide(id: string): Promise<void> {
+    return this.optimisticHide(id);
+  }
+
+  setStatus(id: string, status: Task["status"]): Promise<void> {
+    return this.optimisticUpdate(id, {
+      status: status as ThreadUpdateData["status"],
+    });
+  }
+
+  setBranch(id: string, branch: string | null): Promise<void> {
+    return this.optimisticUpdate(id, { branch });
+  }
+
+  private async optimisticUpdate(
+    id: string,
+    patch: ThreadUpdateData,
+  ): Promise<void> {
+    if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
+    const snapshot = this.threads.get();
+    this.pendingOptimistic.add(id);
+    this.threads.update((list) =>
+      applyPatch(list, {
+        ...(patch as unknown as RowPatch),
+        id,
+        updated_at: new Date().toISOString(),
+      }),
+    );
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREADS_UPDATE",
+        arguments: { id, data: patch },
+      });
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error("COLLECTION_THREADS_UPDATE failed");
+      }
+    } catch (err) {
+      this.threads.set(snapshot);
+      throw err;
+    } finally {
+      this.pendingOptimistic.delete(id);
+    }
+  }
+
+  private async optimisticHide(id: string): Promise<void> {
+    if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
+    const snapshot = this.threads.get();
+    this.pendingOptimistic.add(id);
+    this.threads.update((list) => list.filter((t) => t.id !== id));
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREADS_UPDATE",
+        arguments: { id, data: { hidden: true } },
+      });
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error("COLLECTION_THREADS_UPDATE failed");
+      }
+    } catch (err) {
+      this.threads.set(snapshot);
+      throw err;
+    } finally {
+      this.pendingOptimistic.delete(id);
+    }
   }
 
   private async runWatchLoop(): Promise<void> {

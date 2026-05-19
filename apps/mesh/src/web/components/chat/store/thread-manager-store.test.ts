@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
+import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { ThreadManagerStore } from "./thread-manager-store";
 
 // Fake SSE source. fetch is stubbed to return a controllable ReadableStream
@@ -101,5 +102,79 @@ describe("ThreadManagerStore thread.* event patching", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(store.threads.get().map((t) => t.id)).toEqual(["t-new"]);
     store.dispose();
+  });
+});
+
+describe("ThreadManagerStore optimistic mutators", () => {
+  it("rename applies optimistically, calls server, succeeds", async () => {
+    const snapshot = JSON.stringify({
+      threads: [
+        { id: "t-1", title: "Old", updated_at: "2026-01-01T00:00:00Z" },
+      ],
+    });
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: ${snapshot}\n\n`,
+    ]) as unknown as typeof fetch;
+
+    const callTool = mock(async () => ({
+      structuredContent: { item: { id: "t-1" } },
+    }));
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await store.rename("t-1", "New");
+    expect(store.threads.get()[0]?.title).toBe("New");
+    expect(callTool).toHaveBeenCalledTimes(1);
+    store.dispose();
+  });
+
+  it("rename rolls back on server error", async () => {
+    const snapshot = JSON.stringify({
+      threads: [
+        { id: "t-1", title: "Old", updated_at: "2026-01-01T00:00:00Z" },
+      ],
+    });
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: ${snapshot}\n\n`,
+    ]) as unknown as typeof fetch;
+
+    const callTool = mock(async () => {
+      throw new Error("nope");
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await expect(store.rename("t-1", "New")).rejects.toThrow("nope");
+    expect(store.threads.get()[0]?.title).toBe("Old");
+    store.dispose();
+  });
+
+  it("create prepends the row and returns it", async () => {
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: {"threads":[]}\n\n`,
+    ]) as unknown as typeof fetch;
+    const row = {
+      id: "t-new",
+      title: "Fresh",
+      updated_at: "2026-01-03T00:00:00Z",
+    };
+    const callTool = mock(async () => ({
+      structuredContent: { item: row },
+    }));
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const result = await store.create({
+      title: "Fresh",
+      virtual_mcp_id: "vm-x",
+    });
+    expect(result.id).toBe("t-new");
+    expect(store.threads.get()[0]?.id).toBe("t-new");
   });
 });
