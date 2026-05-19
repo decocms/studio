@@ -54,14 +54,31 @@ export function useThreadManager(): ThreadManagerStore {
   return m;
 }
 
-export function useThreads(): { threads: Task[]; status: ThreadsStatus } {
+export function useThreads(): {
+  threads: Task[];
+  status: ThreadsStatus;
+  hasMore: boolean;
+  isFetchingMore: boolean;
+  fetchNextPage: () => Promise<void>;
+} {
   const m = useThreadManager();
   const threads = useSyncExternalStore(m.threads.subscribe, m.threads.get);
   const status = useSyncExternalStore(
     m.threadsStatus.subscribe,
     m.threadsStatus.get,
   );
-  return { threads, status };
+  const hasMore = useSyncExternalStore(m.hasMore.subscribe, m.hasMore.get);
+  const isFetchingMore = useSyncExternalStore(
+    m.isFetchingMore.subscribe,
+    m.isFetchingMore.get,
+  );
+  return {
+    threads,
+    status,
+    hasMore,
+    isFetchingMore,
+    fetchNextPage: m.fetchNextPage.bind(m),
+  };
 }
 
 export function useThreadActions() {

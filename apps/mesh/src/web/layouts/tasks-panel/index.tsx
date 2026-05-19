@@ -25,7 +25,12 @@ import { TasksSection } from "./tasks-section";
 function TasksPanelContent() {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
-  const { threads: allThreads } = useThreads();
+  const {
+    threads: allThreads,
+    hasMore,
+    isFetchingMore,
+    fetchNextPage,
+  } = useThreads();
   const threads = filterThreads(allThreads, { hidden: false });
   const { hide } = useThreadActions();
 
@@ -91,6 +96,9 @@ function TasksPanelContent() {
         onNew={createNewTask}
         showNewButton
         currentUserId={currentUserId}
+        hasMore={hasMore}
+        isFetchingMore={isFetchingMore}
+        onLoadMore={fetchNextPage}
       />
     </div>
   );
