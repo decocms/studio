@@ -43,3 +43,36 @@ describe("createDecopilotThreadStatusEvent", () => {
     expect(e.data.trigger_id).toBeUndefined();
   });
 });
+
+describe("createDecopilotThreadStatusEvent — enriched fields", () => {
+  test("round-trips title, branch, createdAt, updatedAt", () => {
+    const e = createDecopilotThreadStatusEvent("task-1", "in_progress", {
+      virtualMcpId: "vm-1",
+      title: "Refactor login",
+      branch: "feature/login",
+      createdAt: "2026-05-19T00:00:00.000Z",
+      updatedAt: "2026-05-19T00:05:00.000Z",
+    });
+    expect(e.data.title).toBe("Refactor login");
+    expect(e.data.branch).toBe("feature/login");
+    expect(e.data.created_at).toBe("2026-05-19T00:00:00.000Z");
+    expect(e.data.updated_at).toBe("2026-05-19T00:05:00.000Z");
+  });
+
+  test("omits the new fields when not provided", () => {
+    const e = createDecopilotThreadStatusEvent("task-1", "in_progress", {
+      virtualMcpId: "vm-1",
+    });
+    expect(e.data.title).toBeUndefined();
+    expect(e.data.branch).toBeUndefined();
+    expect(e.data.created_at).toBeUndefined();
+    expect(e.data.updated_at).toBeUndefined();
+  });
+
+  test("explicit null branch is preserved", () => {
+    const e = createDecopilotThreadStatusEvent("task-1", "in_progress", {
+      branch: null,
+    });
+    expect(e.data.branch).toBeNull();
+  });
+});

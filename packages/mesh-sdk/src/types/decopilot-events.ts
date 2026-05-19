@@ -73,6 +73,14 @@ export interface DecopilotThreadStatusEvent extends BaseDecopilotEvent {
     created_by?: string;
     /** Automation trigger id; null for human-initiated, omitted when unknown. */
     trigger_id?: string | null;
+    /** Thread title at emit time. Absent if caller didn't load the row. */
+    title?: string;
+    /** Branch this thread is pinned to (null when unpinned). Absent if caller didn't load the row. */
+    branch?: string | null;
+    /** Thread creation timestamp. Absent if caller didn't load the row. */
+    created_at?: string;
+    /** Last update timestamp; useful for the client to sort/dedupe. Absent if caller didn't load the row. */
+    updated_at?: string;
   };
 }
 
@@ -127,6 +135,10 @@ export function createDecopilotThreadStatusEvent(
     virtualMcpId?: string;
     createdBy?: string;
     triggerId?: string | null;
+    title?: string;
+    branch?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
   },
 ): DecopilotThreadStatusEvent {
   return {
@@ -141,6 +153,10 @@ export function createDecopilotThreadStatusEvent(
       }),
       ...(opts?.createdBy !== undefined && { created_by: opts.createdBy }),
       ...(opts?.triggerId !== undefined && { trigger_id: opts.triggerId }),
+      ...(opts?.title !== undefined && { title: opts.title }),
+      ...(opts?.branch !== undefined && { branch: opts.branch }),
+      ...(opts?.createdAt !== undefined && { created_at: opts.createdAt }),
+      ...(opts?.updatedAt !== undefined && { updated_at: opts.updatedAt }),
     },
     time: new Date().toISOString(),
   };
