@@ -42,6 +42,52 @@ describe("ThreadManagerStore /watch snapshot", () => {
     store.dispose();
   });
 
+  it("flips status to error on a malformed snapshot frame (and triggers reconnect)", async () => {
+    // Two connects: first returns garbage (parse fails → status=error, throw,
+    // outer loop reconnects after backoff), second returns a valid snapshot
+    // (status=ready).
+    let call = 0;
+    globalThis.fetch = (async () => {
+      call++;
+      const enc = new TextEncoder();
+      const chunks =
+        call === 1
+          ? [`event: snapshot\ndata: not-json{{{\n\n`]
+          : [
+              `event: snapshot\ndata: ${JSON.stringify({
+                threads: [
+                  {
+                    id: "t-r",
+                    title: "Recovered",
+                    updated_at: "2026-01-01T00:00:00Z",
+                  },
+                ],
+              })}\n\n`,
+            ];
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          for (const ch of chunks) c.enqueue(enc.encode(ch));
+          c.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+
+    const store = new ThreadManagerStore("acme", "loc-1");
+    // After the first connect, status should land on error (not silently stuck on loading).
+    await new Promise((r) => setTimeout(r, 30));
+    expect(store.threadsStatus.get().kind).toBe("error");
+    // After backoff + reconnect (BASE_DELAY_MS = 1s for attempt=1), the next
+    // snapshot recovers. Wait past the 1s backoff.
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(store.threadsStatus.get()).toEqual({ kind: "ready" });
+    expect(store.threads.get().map((t) => t.id)).toEqual(["t-r"]);
+    store.dispose();
+  });
+
   it("transitions to ready and populates threads on snapshot event", async () => {
     const snapshot = JSON.stringify({
       threads: [
@@ -186,6 +232,27 @@ describe("ThreadManagerStore optimistic mutators", () => {
     expect(store.threads.get()[0]?.id).toBe("t-new");
   });
 
+  it("create throws with the server error text when result.isError is true", async () => {
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: {"threads":[]}\n\n`,
+    ]) as unknown as typeof fetch;
+    const callTool = mock(async () => ({
+      isError: true,
+      content: [{ type: "text", text: "branch already exists" }],
+    }));
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await expect(
+      store.create({ title: "x", virtual_mcp_id: "vm-x" }),
+    ).rejects.toThrow("branch already exists");
+    // No row added on failure.
+    expect(store.threads.get()).toEqual([]);
+    store.dispose();
+  });
+
   it("preserves optimistic rows when a fresh snapshot replaces the list", async () => {
     let resolveSecond: (() => void) | undefined;
     const stalledServer = new Promise<void>((r) => {
@@ -255,6 +322,134 @@ describe("ThreadManagerStore optimistic mutators", () => {
   });
 });
 
+describe("ThreadManagerStore archive tombstones", () => {
+  it("drops a late decopilot.thread.* event for a just-archived thread", async () => {
+    // Two SSE chunks queued: snapshot, then (after hide()) a thread.status
+    // event that would normally re-insert a synthetic row via applyPatch.
+    let release: ((arg: void) => void) | undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const snapshot = JSON.stringify({
+      threads: [{ id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" }],
+    });
+    const lateEvent = JSON.stringify({
+      type: "decopilot.thread.status",
+      subject: "t-1",
+      time: "2026-01-02T00:00:00Z",
+      data: { status: "completed" },
+    });
+    globalThis.fetch = (async () => {
+      const enc = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        async start(c) {
+          c.enqueue(enc.encode(`event: snapshot\ndata: ${snapshot}\n\n`));
+          await gate;
+          c.enqueue(
+            enc.encode(
+              `event: decopilot.thread.status\ndata: ${lateEvent}\n\n`,
+            ),
+          );
+          c.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+
+    const callTool = mock(async () => ({ structuredContent: { item: {} } }));
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Archive the row.
+    await store.hide("t-1");
+    expect(store.threads.get()).toEqual([]);
+
+    // Release the late thread.status event.
+    release!();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // The synthetic row would have been re-inserted without the tombstone.
+    expect(store.threads.get()).toEqual([]);
+    store.dispose();
+  });
+
+  it("drops a stale snapshot row for a just-archived thread", async () => {
+    // Two SSE connects. First: snapshot with t-1; user archives it. Second
+    // (after reconnect): snapshot that still carries t-1 (server-side hidden
+    // flag hasn't propagated yet). The tombstone strips it.
+    let call = 0;
+    const snapshotWithRow = JSON.stringify({
+      threads: [{ id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" }],
+    });
+    globalThis.fetch = (async () => {
+      call++;
+      const enc = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(
+            enc.encode(`event: snapshot\ndata: ${snapshotWithRow}\n\n`),
+          );
+          c.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+
+    const callTool = mock(async () => ({ structuredContent: { item: {} } }));
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(call).toBe(1);
+
+    await store.hide("t-1");
+    expect(store.threads.get()).toEqual([]);
+
+    // Wait for the reconnect (BASE_DELAY_MS=1s for clean EOF on attempt=1).
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(call).toBeGreaterThanOrEqual(2);
+    // Stale snapshot would have re-added t-1 without the tombstone.
+    expect(store.threads.get()).toEqual([]);
+    store.dispose();
+  });
+
+  it("clears the tombstone on hide() rollback so future events resume", async () => {
+    const snapshot = JSON.stringify({
+      threads: [{ id: "t-1", title: "A", updated_at: "2026-01-01T00:00:00Z" }],
+    });
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: ${snapshot}\n\n`,
+    ]) as unknown as typeof fetch;
+
+    // Server rejects the hide.
+    const callTool = mock(async () => {
+      throw new Error("server says no");
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await expect(store.hide("t-1")).rejects.toThrow("server says no");
+    // Row is restored.
+    expect(store.threads.get().map((t) => t.id)).toEqual(["t-1"]);
+
+    // A subsequent local patch should NOT be tombstoned — the rollback
+    // cleared the tombstone, so the title update lands.
+    store.patchThread({ id: "t-1", title: "Renamed locally" });
+    expect(store.threads.get()[0]?.title).toBe("Renamed locally");
+    store.dispose();
+  });
+});
+
 describe("ThreadManagerStore active slot", () => {
   it("setActive opens a connection and exposes it via active store", () => {
     globalThis.fetch = makeSseFetch([
@@ -287,6 +482,40 @@ describe("ThreadManagerStore active slot", () => {
     store.setActive("t-1");
     store.closeActive();
     expect(store.active.get()).toBe(null);
+    store.dispose();
+  });
+});
+
+describe("ThreadManagerStore enriched thread.status events", () => {
+  it("synthesizes a row with title/branch from an enriched event (no 'New chat' zombie)", async () => {
+    const snapshot = JSON.stringify({ threads: [] });
+    const enrichedEvent = JSON.stringify({
+      type: "decopilot.thread.status",
+      subject: "t-new",
+      time: "2026-05-19T00:00:00Z",
+      data: {
+        status: "in_progress",
+        virtual_mcp_id: "vm-x",
+        title: "Refactor login",
+        branch: "feature/login",
+        created_at: "2026-05-19T00:00:00Z",
+        updated_at: "2026-05-19T00:00:01Z",
+      },
+    });
+    globalThis.fetch = makeSseFetch([
+      `event: snapshot\ndata: ${snapshot}\n\n`,
+      `event: decopilot.thread.status\ndata: ${enrichedEvent}\n\n`,
+    ]) as unknown as typeof fetch;
+
+    const store = new ThreadManagerStore("acme", "loc-1");
+    await new Promise((r) => setTimeout(r, 10));
+
+    const row = store.threads.get()[0];
+    expect(row?.id).toBe("t-new");
+    expect(row?.title).toBe("Refactor login");
+    expect(row?.branch).toBe("feature/login");
+    expect(row?.created_at).toBe("2026-05-19T00:00:00Z");
+    expect(row?.updated_at).toBe("2026-05-19T00:00:01Z");
     store.dispose();
   });
 });

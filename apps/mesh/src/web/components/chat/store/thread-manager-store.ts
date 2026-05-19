@@ -51,10 +51,10 @@ const ARCHIVED_TOMBSTONE_TTL_MS = 60_000;
 function applyPatch(list: Task[], patch: RowPatch): Task[] {
   const idx = list.findIndex((t) => t.id === patch.id);
   if (idx === -1) {
-    const now = patch.updated_at ?? new Date().toISOString();
+    const now = new Date().toISOString();
     const synthetic: Task = {
-      created_at: now,
-      updated_at: now,
+      created_at: patch.created_at ?? patch.updated_at ?? now,
+      updated_at: patch.updated_at ?? now,
       ...patch,
       title: patch.title ?? "New chat",
       branch: patch.branch ?? null,
@@ -379,6 +379,8 @@ export class ThreadManagerStore {
             virtual_mcp_id?: string;
             title?: string;
             branch?: string | null;
+            created_at?: string;
+            updated_at?: string;
           };
         };
         // Drop events for a thread the user just archived. `applyPatch` has
@@ -388,7 +390,7 @@ export class ThreadManagerStore {
         if (this.isTombstoned(parsed.subject)) return;
         const patch: RowPatch = {
           id: parsed.subject,
-          updated_at: parsed.time,
+          updated_at: parsed.data.updated_at ?? parsed.time,
           ...(parsed.data.status !== undefined && {
             status: parsed.data.status,
           }),
@@ -404,6 +406,9 @@ export class ThreadManagerStore {
           ...(parsed.data.title !== undefined && { title: parsed.data.title }),
           ...(parsed.data.branch !== undefined && {
             branch: parsed.data.branch,
+          }),
+          ...(parsed.data.created_at !== undefined && {
+            created_at: parsed.data.created_at,
           }),
         };
         this.threads.update((list) => applyPatch(list, patch));
