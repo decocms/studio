@@ -11,15 +11,16 @@
  * carry a taskId (e.g. /$org/) can call the hook unconditionally.
  *
  * Read path: the `ThreadManagerStore.threads` slot is the only source of
- * truth. The `/events` snapshot populates it on app boot and `manager.create`
+ * truth. The `/watch` snapshot populates it on app boot and `manager.create`
  * writes a new row on thread creation, so the common case is zero MCP
  * round-trips — `localHit` resolves synchronously.
  *
- * Slow path: when the store doesn't know the id AND its snapshot has arrived
- * (`threadsStatus.kind === "ready"`), call `manager.create` directly. The
- * server's `COLLECTION_THREADS_CREATE` is idempotent (`INSERT … ON CONFLICT`
- * SELECT-returns the existing row), so this single call yields the row
- * regardless of whether it pre-existed. Replaces the prior GET-then-create
+ * Slow path: when the store doesn't know the id AND the watcher has moved
+ * past `loading` (either `ready` or `error`), call `manager.create` directly.
+ * `error` is treated as a recovery trigger: `COLLECTION_THREADS_CREATE` is
+ * idempotent (`INSERT … ON CONFLICT` SELECT-returns the existing row), so
+ * firing it during a `/watch` outage is safe and avoids stranding the user
+ * in `loading` while the watcher backs off. Replaces the prior GET-then-create
  * dance with one network call.
  */
 
@@ -51,16 +52,17 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
       manager.create({ id: taskId, virtual_mcp_id: virtualMcpId }),
   });
 
-  // Fire create only after the org snapshot has arrived AND localHit is still
-  // missing — at that point the thread either doesn't exist or is archived,
-  // and CREATE's idempotent behavior covers both. The variables/isPending
-  // checks dedupe within a single id; React 19 Strict Mode dev double-mount
-  // is silent because the server's INSERT … ON CONFLICT handles the duplicate.
+  // Fire create once the watcher has moved past `loading` AND localHit is
+  // still missing. `ready` means the snapshot arrived without the row (new
+  // or archived); `error` is the recovery path so a degraded `/watch`
+  // watcher doesn't strand the user in `loading`. CREATE's idempotent
+  // behavior makes both safe. React 19 Strict Mode dev double-mount is
+  // silent because the server's INSERT … ON CONFLICT handles duplicates.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     if (!id) return;
     if (localHit) return;
-    if (threadsStatus.kind !== "ready") return;
+    if (threadsStatus.kind === "loading") return;
     if (ensureCreate.isPending) return;
     if (ensureCreate.variables === id) return;
     ensureCreate.mutate(id);
@@ -72,7 +74,7 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
   if (ensureCreate.isError) {
     return { status: "error", error: ensureCreate.error };
   }
-  if (ensureCreate.isPending || threadsStatus.kind === "ready") {
+  if (ensureCreate.isPending || threadsStatus.kind !== "loading") {
     return { status: "creating" };
   }
   return { status: "loading" };
