@@ -76,14 +76,14 @@ describe("ThreadManagerStore thread.* event patching", () => {
       ],
     });
     const ev = JSON.stringify({
-      type: "com.deco.decopilot.thread.status",
+      type: "decopilot.thread.status",
       subject: "t-1",
       time: "2026-01-02T00:00:00Z",
       data: { status: "in_progress" },
     });
     globalThis.fetch = makeSseFetch([
       `event: snapshot\ndata: ${snapshot}\n\n`,
-      `event: com.deco.decopilot.thread.status\ndata: ${ev}\n\n`,
+      `event: decopilot.thread.status\ndata: ${ev}\n\n`,
     ]) as unknown as typeof fetch;
 
     const store = new ThreadManagerStore("acme", "loc-1");
@@ -96,14 +96,14 @@ describe("ThreadManagerStore thread.* event patching", () => {
   it("inserts an unknown row at the top from a thread.* event", async () => {
     const snapshot = JSON.stringify({ threads: [] });
     const ev = JSON.stringify({
-      type: "com.deco.decopilot.thread.status",
+      type: "decopilot.thread.status",
       subject: "t-new",
       time: "2026-01-02T00:00:00Z",
       data: { status: "in_progress", virtual_mcp_id: "vm-x" },
     });
     globalThis.fetch = makeSseFetch([
       `event: snapshot\ndata: ${snapshot}\n\n`,
-      `event: com.deco.decopilot.thread.status\ndata: ${ev}\n\n`,
+      `event: decopilot.thread.status\ndata: ${ev}\n\n`,
     ]) as unknown as typeof fetch;
 
     const store = new ThreadManagerStore("acme", "loc-1");

@@ -81,7 +81,7 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 }
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
-import { useThreadActions, useThreads } from "./store/hooks";
+import { useThreadActions, useThreadManager, useThreads } from "./store/hooks";
 import { filterThreads } from "./task";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -678,6 +678,7 @@ export function ActiveTaskProvider({
 
   const onToolCall = useInvalidateCollectionsOnToolCall();
   const queryClient = useQueryClient();
+  const manager = useThreadManager();
 
   // The connection owns SSE subscription, POSTs, and message state. The
   // provider is keyed by taskId at the layout level, so this resolves to a
@@ -694,6 +695,7 @@ export function ActiveTaskProvider({
     queryClient,
     rawNavigateToTask,
     taskId,
+    manager,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   cbRef.current = {
@@ -701,11 +703,27 @@ export function ActiveTaskProvider({
     queryClient,
     rawNavigateToTask,
     taskId,
+    manager,
   };
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
   useEffect(() => {
     const observer: ThreadObserver = {
+      // Auto-titler emits `data-thread-title` chunks as the turn streams. Mirror
+      // the new title into the manager's thread row so the tasks panel updates
+      // — no `/events` thread.title event exists; this is the only path.
+      onData: (chunk) => {
+        if (chunk.type !== "data-thread-title") return;
+        const data = (chunk as unknown as { data: { title?: string } }).data;
+        if (!data?.title) return;
+        const cb = cbRef.current;
+        if (!cb.taskId) return;
+        cb.manager.patchThread({
+          id: cb.taskId,
+          title: data.title,
+          updated_at: new Date().toISOString(),
+        });
+      },
       onFinish: (message) => {
         const cb = cbRef.current;
         // Refresh download chips only when this turn actually produced a

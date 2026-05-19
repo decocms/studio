@@ -147,16 +147,14 @@ function makeThread(overrides: Partial<Thread>): Thread {
 }
 
 describe("GET /api/:org/events — thread snapshot frame", () => {
-  test("emits snapshot when types filter is com.deco.decopilot.thread.*", async () => {
+  test("emits snapshot when types filter is decopilot.thread.*", async () => {
     const threads = [
       makeThread({ id: "thrd_a", title: "A" }),
       makeThread({ id: "thrd_b", title: "B" }),
     ];
     const setup = makeWatchApp({ threads });
 
-    const res = await setup.app.request(
-      "/events?types=com.deco.decopilot.thread.*",
-    );
+    const res = await setup.app.request("/events?types=decopilot.thread.*");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
 
@@ -214,7 +212,7 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
     // matches, so a bare `*` would NOT cause the hub to deliver live thread
     // events to the listener — emitting a snapshot in that case would create
     // an inconsistent listener.
-    for (const pattern of ["com.deco.*", "com.deco.decopilot.*"]) {
+    for (const pattern of ["decopilot.*", "decopilot.thread.*"]) {
       const setup = makeWatchApp({
         threads: [makeThread({ id: "thrd_a" })],
       });
@@ -233,9 +231,9 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
   test("snapshot probe type lives in the thread namespace", () => {
     // Sanity check that the probe type the handler matches against is
     // actually a member of the thread namespace it claims to represent.
-    expect(
-      THREAD_SNAPSHOT_PROBE_TYPE.startsWith("com.deco.decopilot.thread."),
-    ).toBe(true);
+    expect(THREAD_SNAPSHOT_PROBE_TYPE.startsWith("decopilot.thread.")).toBe(
+      true,
+    );
   });
 
   test("emits error frame and closes stream when snapshot list() throws", async () => {
@@ -243,9 +241,7 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
       listError: new Error("simulated db outage"),
     });
 
-    const res = await setup.app.request(
-      "/events?types=com.deco.decopilot.thread.*",
-    );
+    const res = await setup.app.request("/events?types=decopilot.thread.*");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
 
@@ -329,9 +325,7 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
     ];
     const setup = makeWatchApp({ threads });
 
-    const res = await setup.app.request(
-      "/events?types=com.deco.decopilot.thread.*",
-    );
+    const res = await setup.app.request("/events?types=decopilot.thread.*");
     expect(res.status).toBe(200);
 
     const body = await readUntilFrames(res, { requireSnapshot: true });

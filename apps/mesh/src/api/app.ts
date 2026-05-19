@@ -547,28 +547,29 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
 /**
  * Probe event type used to decide whether a listener's `?types=...` filter
  * would deliver thread events. We pick a single representative type from the
- * `com.deco.decopilot.thread.*` namespace and run it through the SSE hub's
- * matcher so the snapshot is emitted exactly when the listener would also
- * receive live thread events — no drift between "what the snapshot covers"
- * and "what live events the listener actually sees".
+ * `decopilot.thread.*` namespace and run it through the SSE hub's matcher so
+ * the snapshot is emitted exactly when the listener would also receive live
+ * thread events — no drift between "what the snapshot covers" and "what live
+ * events the listener actually sees".
  *
  * Exported for tests so they can assert the probe lives inside the namespace
  * it claims to represent.
  *
  * Limitation: Listeners that subscribe to a single specific thread event type
- * by exact name (e.g. `?types=com.deco.decopilot.thread.status`, with no
+ * by exact name (e.g. `?types=decopilot.thread.status`, with no
  * wildcard) will receive live events for that type but will NOT receive the
- * initial snapshot — the probe type (`thread.snapshot`) is not equal to the
- * literal exact-match pattern (`thread.status`), so `matchesAnyPattern`
- * returns false. The supported subscription pattern for getting both the
- * snapshot and live events is `com.deco.decopilot.thread.*` (or any broader
- * prefix that covers the thread namespace). This is a deliberate consequence
- * of driving the snapshot decision through a single sentinel probe type fed
- * to the existing pattern matcher rather than enumerating every thread
- * event type. The existing client (`useDecopilotEvents`) already uses the
- * `com.deco.decopilot.thread.*` wildcard, so this does not bite in practice.
+ * initial snapshot — the probe type (`decopilot.thread.snapshot`) is not equal
+ * to the literal exact-match pattern (`decopilot.thread.status`), so
+ * `matchesAnyPattern` returns false. The supported subscription pattern for
+ * getting both the snapshot and live events is `decopilot.thread.*` (or any
+ * broader prefix that covers the thread namespace). This is a deliberate
+ * consequence of driving the snapshot decision through a single sentinel
+ * probe type fed to the existing pattern matcher rather than enumerating
+ * every thread event type. The server-side thread CloudEvent factories
+ * (`createDecopilotThreadStatusEvent` etc. in `@decocms/mesh-sdk`) emit
+ * `decopilot.thread.*` types — there is no `com.deco.` prefix on the wire.
  */
-export const THREAD_SNAPSHOT_PROBE_TYPE = "com.deco.decopilot.thread.snapshot";
+export const THREAD_SNAPSHOT_PROBE_TYPE = "decopilot.thread.snapshot";
 
 /**
  * True when the listener's `?types=...` filter would let any event from the

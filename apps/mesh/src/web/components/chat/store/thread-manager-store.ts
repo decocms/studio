@@ -111,6 +111,15 @@ export class ThreadManagerStore {
     return this.optimisticUpdate(id, { branch });
   }
 
+  /**
+   * Local-only patch: apply a partial Task patch in-place. No server round-trip.
+   * Used for live signals that don't flow through `/events` (e.g. titles emitted
+   * as `data-thread-title` UIMessageChunks on the per-thread `/stream`).
+   */
+  patchThread(patch: RowPatch): void {
+    this.threads.update((list) => applyPatch(list, patch));
+  }
+
   private async optimisticUpdate(
     id: string,
     patch: ThreadUpdateData,
@@ -165,7 +174,7 @@ export class ThreadManagerStore {
   private async runWatchLoop(): Promise<void> {
     const url = `/api/${encodeURIComponent(
       this.orgSlug,
-    )}/events?types=com.deco.decopilot.thread.*`;
+    )}/events?types=decopilot.thread.*`;
     let attempt = 0;
 
     while (!this.abort.signal.aborted) {
@@ -264,7 +273,7 @@ export class ThreadManagerStore {
       }
       return;
     }
-    if (event.startsWith("com.deco.decopilot.thread.")) {
+    if (event.startsWith("decopilot.thread.")) {
       try {
         const parsed = JSON.parse(data) as {
           subject: string;
