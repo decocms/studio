@@ -639,24 +639,41 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     // filter would deliver thread events — otherwise we'd be paying for a
     // query the client never asked for.
     if (shouldEmitThreadSnapshot(typePatterns)) {
-      const { threads: rawThreads } = await meshContext.storage.threads.list(
-        undefined,
-        {
-          limit: 100,
-        },
-      );
-      // Run rows through the same normalizer `COLLECTION_THREADS_LIST` uses so
-      // the snapshot payload matches what the client receives via the
-      // REST/MCP tool path (coerces `hidden: null` → `false`; surfaces stale
-      // in_progress threads as the virtual `"expired"` status).
-      const now = Date.now();
-      const threads = rawThreads.map((thread) =>
-        normalizeThreadForResponse(thread, now),
-      );
-      await stream.writeSSE({
-        event: "snapshot",
-        data: JSON.stringify({ threads }),
-      });
+      try {
+        const { threads: rawThreads } = await meshContext.storage.threads.list(
+          undefined,
+          {
+            limit: 100,
+          },
+        );
+        // Run rows through the same normalizer `COLLECTION_THREADS_LIST` uses
+        // so the snapshot payload matches what the client receives via the
+        // REST/MCP tool path (coerces `hidden: null` → `false`; surfaces stale
+        // in_progress threads as the virtual `"expired"` status).
+        const now = Date.now();
+        const threads = rawThreads.map((thread) =>
+          normalizeThreadForResponse(thread, now),
+        );
+        await stream.writeSSE({
+          event: "snapshot",
+          data: JSON.stringify({ threads }),
+        });
+      } catch (err) {
+        // Response headers already flushed (we sent `connected` above), so we
+        // can't surface this as an HTTP error. Emit an `event: error` frame
+        // the client can detect and return to close the stream — the client's
+        // reconnect loop will retry. Running with no snapshot would leave the
+        // UI in an inconsistent state.
+        console.error("[watchHandler] snapshot failed", err);
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({
+            error: "Snapshot unavailable",
+            message: "Failed to load thread snapshot. Reconnect to retry.",
+          }),
+        });
+        return;
+      }
     }
 
     // Register listener with the SSE hub

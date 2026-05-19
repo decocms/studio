@@ -19,7 +19,10 @@ interface WatchTestSetup {
   listCalls: number;
 }
 
-function makeWatchApp(opts?: { threads?: Thread[] }): WatchTestSetup {
+function makeWatchApp(opts?: {
+  threads?: Thread[];
+  listError?: Error;
+}): WatchTestSetup {
   let listCalls = 0;
   const threads = opts?.threads ?? [];
 
@@ -30,6 +33,9 @@ function makeWatchApp(opts?: { threads?: Thread[] }): WatchTestSetup {
       threads: {
         list: async () => {
           listCalls += 1;
+          if (opts?.listError) {
+            throw opts.listError;
+          }
           return { threads, total: threads.length };
         },
       },
@@ -230,6 +236,73 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
     expect(
       THREAD_SNAPSHOT_PROBE_TYPE.startsWith("com.deco.decopilot.thread."),
     ).toBe(true);
+  });
+
+  test("emits error frame and closes stream when snapshot list() throws", async () => {
+    const setup = makeWatchApp({
+      listError: new Error("simulated db outage"),
+    });
+
+    const res = await setup.app.request(
+      "/events?types=com.deco.decopilot.thread.*",
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+
+    // The handler returns after emitting the error frame, so the stream
+    // should close on its own — read the body to completion.
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let sawDone = false;
+    const deadline = Date.now() + 2000;
+
+    try {
+      while (Date.now() < deadline) {
+        const readPromise = reader.read();
+        const timeoutPromise = new Promise<{
+          done: true;
+          value: undefined;
+        }>((resolve) =>
+          setTimeout(
+            () => resolve({ done: true, value: undefined }),
+            Math.max(0, deadline - Date.now()),
+          ),
+        );
+        const { done, value } = await Promise.race([
+          readPromise,
+          timeoutPromise,
+        ]);
+        if (done) {
+          sawDone = true;
+          break;
+        }
+        buf += decoder.decode(value, { stream: true });
+      }
+    } finally {
+      buf += decoder.decode();
+      await reader.cancel().catch(() => {});
+    }
+
+    expect(setup.listCalls).toBe(1);
+    expect(buf).toContain("event: connected");
+    expect(buf).toContain("event: error");
+    expect(buf).not.toContain("event: snapshot");
+    // The handler returned after the error frame — the stream is closed.
+    expect(sawDone).toBe(true);
+
+    // The error payload should mirror the "Too many connections" shape:
+    // a JSON object with `error` and `message` fields.
+    const errorIdx = buf.indexOf("event: error");
+    const afterError = buf.slice(errorIdx);
+    const dataMatch = afterError.match(/^data: (.*)$/m);
+    expect(dataMatch).not.toBeNull();
+    const parsed = JSON.parse(dataMatch![1]!) as {
+      error: string;
+      message: string;
+    };
+    expect(parsed.error).toBe("Snapshot unavailable");
+    expect(parsed.message).toContain("Reconnect to retry");
   });
 
   test("snapshot rows are run through normalizeThreadForResponse", async () => {
