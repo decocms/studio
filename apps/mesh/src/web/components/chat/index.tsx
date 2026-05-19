@@ -57,11 +57,13 @@ function ChatMessages() {
   const lastMessagePair = messagePairs.at(-1);
   const highlightCount = useHighlightCount();
 
-  // Reserve exactly `n × h` of bottom padding so that, when every highlight
-  // is collapsed, the last message can be scrolled flush with the top of
-  // the highlight stack. Expanded highlights still cover content — the
-  // affordance is "collapse to read".
-  const paddingBottom = highlightCount * HIGHLIGHT_COLLAPSED_HEIGHT_PX;
+  // Reserve `n × h + 8px` of bottom padding so that, when every highlight
+  // is collapsed, the last message sits a comfortable gap above the top of
+  // the highlight stack. The extra 8px is a breathing-room buffer so the
+  // last message doesn't sit flush against the card. Expanded highlights
+  // still cover content — the affordance is "collapse to read".
+  const paddingBottom =
+    highlightCount > 0 ? highlightCount * HIGHLIGHT_COLLAPSED_HEIGHT_PX + 8 : 0;
 
   return (
     <div
