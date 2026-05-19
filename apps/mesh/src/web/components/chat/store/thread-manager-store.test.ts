@@ -177,4 +177,72 @@ describe("ThreadManagerStore optimistic mutators", () => {
     expect(result.id).toBe("t-new");
     expect(store.threads.get()[0]?.id).toBe("t-new");
   });
+
+  it("preserves optimistic rows when a fresh snapshot replaces the list", async () => {
+    let resolveSecond: (() => void) | undefined;
+    const stalledServer = new Promise<void>((r) => {
+      resolveSecond = r;
+    });
+    const snapshotA = JSON.stringify({
+      threads: [
+        { id: "t-1", title: "Old", updated_at: "2026-01-01T00:00:00Z" },
+      ],
+    });
+    const snapshotB = JSON.stringify({
+      threads: [
+        { id: "t-1", title: "ServerOld", updated_at: "2026-01-01T00:00:00Z" },
+      ],
+    });
+    // Controllable SSE source: emit snapshotA immediately, hold snapshotB
+    // until we explicitly release it.
+    let releaseSnapshotB: (() => void) | undefined;
+    const snapshotBGate = new Promise<void>((r) => {
+      releaseSnapshotB = r;
+    });
+    globalThis.fetch = mock(async () => {
+      const enc = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(
+            enc.encode(`event: snapshot\ndata: ${snapshotA}\n\n`),
+          );
+          await snapshotBGate;
+          controller.enqueue(
+            enc.encode(`event: snapshot\ndata: ${snapshotB}\n\n`),
+          );
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+
+    const callTool = mock(async () => {
+      await stalledServer;
+      return { structuredContent: { item: { id: "t-1" } } };
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    // Sanity: first snapshot applied.
+    expect(store.threads.get()[0]?.title).toBe("Old");
+
+    // Kick off rename — server is stalled, so `t-1` stays in pendingOptimistic.
+    const pending = store.rename("t-1", "New");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(store.threads.get()[0]?.title).toBe("New");
+
+    // Now release the second snapshot.
+    releaseSnapshotB!();
+    await new Promise((r) => setTimeout(r, 10));
+    // Second snapshot arrived; should NOT overwrite the optimistic title.
+    expect(store.threads.get()[0]?.title).toBe("New");
+
+    resolveSecond!();
+    await pending;
+    store.dispose();
+  });
 });

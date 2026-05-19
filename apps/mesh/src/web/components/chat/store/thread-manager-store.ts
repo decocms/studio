@@ -215,7 +215,31 @@ export class ThreadManagerStore {
     if (event === "snapshot") {
       try {
         const parsed = JSON.parse(data) as { threads: Task[] };
-        this.threads.set(parsed.threads);
+        const pending = this.pendingOptimistic;
+        if (pending.size === 0) {
+          this.threads.set(parsed.threads);
+        } else {
+          const current = this.threads.get();
+          const optimisticById = new Map(
+            current
+              .filter((t) => pending.has(t.id))
+              .map((t) => [t.id, t] as const),
+          );
+          this.threads.set(
+            parsed.threads.map((t) => optimisticById.get(t.id) ?? t),
+          );
+          // Optimistic rows that the server hasn't acknowledged yet keep their
+          // place by being merged in; an optimistic row absent from the
+          // snapshot is preserved at the front.
+          const merged = this.threads.get();
+          const knownIds = new Set(merged.map((t) => t.id));
+          for (const id of pending) {
+            if (!knownIds.has(id)) {
+              const row = current.find((t) => t.id === id);
+              if (row) this.threads.set([row, ...this.threads.get()]);
+            }
+          }
+        }
         this.threadsStatus.set({ kind: "ready" });
       } catch {
         // ignore malformed snapshot
