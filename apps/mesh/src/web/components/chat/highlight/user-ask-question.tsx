@@ -397,7 +397,8 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
       <PaginatedFormSubmitButton
         isStreaming={isStreaming}
         isAllAnswered={decisionForm.isAllAnswered}
-        onSubmit={decisionForm.submit}
+        isCurrentAnswered={decisionForm.isCurrentAnswered}
+        onAdvanceOrSubmit={decisionForm.submitOrAdvance}
       />
     </>
   );
