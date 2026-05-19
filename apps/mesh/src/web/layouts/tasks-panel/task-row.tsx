@@ -11,6 +11,7 @@ import { McpAvatar } from "./mcp-avatar";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { useClockTick } from "@/web/lib/use-clock-tick";
 import type { Task } from "@/web/components/chat/task/types";
 
 export function TaskRow({
@@ -31,6 +32,10 @@ export function TaskRow({
   const virtualMcp = useVirtualMCP(task.virtual_mcp_id);
   const githubRepo = getActiveGithubRepo(virtualMcp);
   const rowRef = useRef<HTMLDivElement>(null);
+  // Subscribe to a 30s heartbeat so the relative timestamp re-renders even
+  // when `task` is referentially stable — without this, "3m ago" stays
+  // pinned until something else forces the row to re-render.
+  useClockTick(30_000);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs route-selected task row with the scrollable tasks panel DOM
   useEffect(() => {
