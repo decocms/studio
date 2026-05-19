@@ -86,7 +86,7 @@ export interface ThreadGateRuntime {
   meshContextFactory: MeshContextFactory;
   deps: Pick<
     DispatchRunDeps,
-    "runRegistry" | "cancelBroadcast" | "streamBuffer"
+    "runRegistry" | "cancelBroadcast" | "streamBuffer" | "sseHub"
   >;
   /**
    * Default per-run timeout (ms). Overridable per-enqueue via

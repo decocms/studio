@@ -58,6 +58,8 @@ import type { PendingImage } from "../../../harnesses/decopilot/built-in-tools";
 import { getInternalUrl } from "@/core/server-constants";
 import { traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
+import { createDecopilotThreadStatusEvent } from "@decocms/mesh-sdk";
+import type { SSEEvent } from "@/event-bus";
 
 /**
  * Classify a stream error into a small, stable taxonomy for analytics.
@@ -234,6 +236,12 @@ export interface DispatchRunDeps {
   runRegistry: RunRegistry;
   streamBuffer?: StreamBuffer;
   cancelBroadcast: CancelBroadcast;
+  /** When provided, the auto-titler emits a `decopilot.thread.status` SSE
+   *  event after committing the new title to the DB so tabs not subscribed
+   *  to the per-thread `/stream` see the updated title in real-time.
+   *  Optional — callers without an sseHub (e.g. the orphan-recovery path)
+   *  may omit it; the omission is safe and the auto-title still persists. */
+  sseHub?: { emit(orgId: string, event: SSEEvent): void };
 }
 
 export interface DispatchRunResult {
@@ -359,7 +367,7 @@ async function prepareRun(
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
 ): Promise<PreparedRun> {
-  const { runRegistry, streamBuffer } = deps;
+  const { runRegistry, streamBuffer, sseHub } = deps;
 
   // Normalize: ensure every message has an id (runtime callers may omit it)
   input = {
@@ -659,6 +667,38 @@ async function prepareRun(
               totalTokens: aggregatedUsage.totalTokens + totalUsage.totalTokens,
             };
           },
+          onTitleUpdated: sseHub
+            ? async (title: string) => {
+                // Best-effort: load the latest thread row so the event
+                // carries the full enriched shape. If the load fails we
+                // still emit with the title alone — better a partial event
+                // than no event.
+                let row: Awaited<
+                  ReturnType<typeof ctx.storage.threads.get>
+                > | null = null;
+                try {
+                  row = await ctx.storage.threads.get(mem.thread.id);
+                } catch {
+                  row = null;
+                }
+                sseHub.emit(
+                  input.organizationId,
+                  createDecopilotThreadStatusEvent(
+                    mem.thread.id,
+                    "in_progress",
+                    {
+                      title,
+                      virtualMcpId: row?.virtual_mcp_id ?? undefined,
+                      createdBy: row?.created_by,
+                      triggerId: row?.trigger_id,
+                      branch: row?.branch ?? null,
+                      createdAt: row?.created_at,
+                      updatedAt: row?.updated_at,
+                    },
+                  ),
+                );
+              }
+            : undefined,
         };
 
         const harnessInput: HarnessStreamInput = {

@@ -1261,7 +1261,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   setThreadGateRuntime({
     dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
-    deps: { runRegistry, cancelBroadcast, streamBuffer },
+    deps: { runRegistry, cancelBroadcast, streamBuffer, sseHub },
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
@@ -1391,7 +1391,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         isResume: true,
       },
       resumeCtx,
-      { runRegistry, cancelBroadcast },
+      { runRegistry, cancelBroadcast, sseHub },
     );
   };
 
