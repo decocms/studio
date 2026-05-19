@@ -71,6 +71,8 @@ export class ThreadManagerStore {
   readonly threadsStatus = new Store<ThreadsStatus>({ kind: "loading" });
   readonly active = new Store<ThreadConnection | null>(null);
   readonly key: string;
+  readonly hasMore = new Store<boolean>(false);
+  readonly isFetchingMore = new Store<boolean>(false);
 
   private abort = new AbortController();
   private pendingOptimistic = new Set<string>();
@@ -82,6 +84,14 @@ export class ThreadManagerStore {
    */
   private archivedTombstones = new Map<string, number>();
   private client: MCPClient | null;
+  private nextOffset = 0;
+  private readonly pageSize = 50;
+  /**
+   * Event buffer: `[]` means "boot, buffering"; `null` means "ready, dispatching live".
+   * thread.* events arriving before loadInitialPage resolves are queued here
+   * and replayed (tombstone-checked) after the first page lands.
+   */
+  private eventBuffer: RowPatch[] | null = [];
 
   constructor(
     readonly orgSlug: string,
@@ -91,6 +101,7 @@ export class ThreadManagerStore {
     this.key = `${orgSlug}::${locator}`;
     this.client = opts.client ?? null;
     void this.runWatchLoop();
+    void this.loadInitialPage();
   }
 
   dispose(): void {
@@ -245,6 +256,90 @@ export class ThreadManagerStore {
   private isTombstoned(id: string): boolean {
     this.pruneArchivedTombstones();
     return this.archivedTombstones.has(id);
+  }
+
+  private async loadInitialPage(): Promise<void> {
+    if (!this.client) {
+      // No MCP client — fall back to snapshot-driven boot (legacy path).
+      // Drain the buffer immediately so SSE events are dispatched live.
+      this.drainEventBuffer();
+      return;
+    }
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREADS_LIST",
+        arguments: {
+          limit: this.pageSize,
+          offset: 0,
+          orderBy: [{ field: ["updated_at"], direction: "desc" }],
+          where: { hidden: false },
+        },
+      });
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error(
+          extractToolErrorMessage(result, "COLLECTION_THREADS_LIST failed"),
+        );
+      }
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as { items?: Task[]; hasMore?: boolean };
+      const items = payload.items ?? [];
+      this.threads.set(items);
+      this.hasMore.set(payload.hasMore ?? false);
+      this.nextOffset = items.length;
+      this.threadsStatus.set({ kind: "ready" });
+      this.drainEventBuffer();
+    } catch (err) {
+      this.threadsStatus.set({
+        kind: "error",
+        error: err instanceof Error ? err : new Error(String(err)),
+      });
+    }
+  }
+
+  private drainEventBuffer(): void {
+    const buffered = this.eventBuffer ?? [];
+    this.eventBuffer = null;
+    for (const patch of buffered) {
+      if (this.isTombstoned(patch.id)) continue;
+      this.threads.update((list) => applyPatch(list, patch));
+    }
+  }
+
+  async fetchNextPage(): Promise<void> {
+    if (!this.client) return;
+    if (!this.hasMore.get()) return;
+    if (this.isFetchingMore.get()) return;
+    this.isFetchingMore.set(true);
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREADS_LIST",
+        arguments: {
+          limit: this.pageSize,
+          offset: this.nextOffset,
+          orderBy: [{ field: ["updated_at"], direction: "desc" }],
+          where: { hidden: false },
+        },
+      });
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error(
+          extractToolErrorMessage(result, "COLLECTION_THREADS_LIST failed"),
+        );
+      }
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as { items?: Task[]; hasMore?: boolean };
+      const items = payload.items ?? [];
+      this.threads.update((list) => {
+        const seen = new Set(list.map((t) => t.id));
+        return [...list, ...items.filter((t) => !seen.has(t.id))];
+      });
+      this.hasMore.set(payload.hasMore ?? false);
+      this.nextOffset += items.length;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Could not load more threads: ${msg}`);
+    } finally {
+      this.isFetchingMore.set(false);
+    }
   }
 
   private async runWatchLoop(): Promise<void> {
@@ -411,6 +506,10 @@ export class ThreadManagerStore {
             created_at: parsed.data.created_at,
           }),
         };
+        if (this.eventBuffer !== null) {
+          this.eventBuffer.push(patch);
+          return;
+        }
         this.threads.update((list) => applyPatch(list, patch));
       } catch {
         // ignore malformed

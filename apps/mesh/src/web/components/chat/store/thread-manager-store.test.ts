@@ -180,7 +180,8 @@ describe("ThreadManagerStore optimistic mutators", () => {
 
     await store.rename("t-1", "New");
     expect(store.threads.get()[0]?.title).toBe("New");
-    expect(callTool).toHaveBeenCalledTimes(1);
+    // loadInitialPage (COLLECTION_THREADS_LIST) + rename (COLLECTION_THREADS_UPDATE) = 2
+    expect(callTool).toHaveBeenCalledTimes(2);
     store.dispose();
   });
 
@@ -537,5 +538,217 @@ describe("ThreadManagerStore registry", () => {
 
   it("getManager returns null when no manager matches", () => {
     expect(getManager("acme", "loc-1")).toBeNull();
+  });
+});
+
+describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
+  it("loadInitialPage populates threads from MCP and flips status to ready", async () => {
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return {
+          structuredContent: {
+            items: [
+              {
+                id: "t-1",
+                title: "From MCP",
+                updated_at: "2026-05-19T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+          },
+        };
+      }
+      return {};
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.threadsStatus.get()).toEqual({ kind: "ready" });
+    expect(store.threads.get().map((t) => t.id)).toEqual(["t-1"]);
+    expect(store.hasMore.get()).toBe(false);
+    store.dispose();
+  });
+
+  it("loadInitialPage error flips status to error", async () => {
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const callTool = mock(async () => {
+      throw new Error("MCP down");
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.threadsStatus.get().kind).toBe("error");
+    store.dispose();
+  });
+
+  it("fetchNextPage appends items and advances offset", async () => {
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    let call = 0;
+    const callTool = mock(
+      async (args: { name: string; arguments: { offset: number } }) => {
+        if (args.name !== "COLLECTION_THREADS_LIST") return {};
+        call++;
+        const offset = args.arguments.offset;
+        const items = Array.from({ length: 50 }, (_, i) => ({
+          id: `t-${offset + i}`,
+          title: `Thread ${offset + i}`,
+          updated_at: new Date(2026, 0, offset + i).toISOString(),
+        }));
+        return {
+          structuredContent: { items, hasMore: call < 2 },
+        };
+      },
+    );
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.threads.get()).toHaveLength(50);
+    expect(store.hasMore.get()).toBe(true);
+
+    await store.fetchNextPage();
+    expect(store.threads.get()).toHaveLength(100);
+    expect(store.threads.get()[50]?.id).toBe("t-50");
+    expect(store.hasMore.get()).toBe(false);
+    store.dispose();
+  });
+
+  it("fetchNextPage no-ops when !hasMore", async () => {
+    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    let calls = 0;
+    const callTool = mock(async () => {
+      calls++;
+      return {
+        structuredContent: { items: [], hasMore: false },
+      };
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(calls).toBe(1);
+    await store.fetchNextPage();
+    expect(calls).toBe(1);
+    store.dispose();
+  });
+});
+
+describe("ThreadManagerStore event buffer during boot", () => {
+  it("buffers thread.* events until loadInitialPage resolves, then replays", async () => {
+    let releaseMcp!: (v: unknown) => void;
+    const callTool = mock(
+      () =>
+        new Promise((r) => {
+          releaseMcp = r;
+        }),
+    );
+
+    // SSE sends an event BEFORE the MCP fetch resolves.
+    const enc = new TextEncoder();
+    const eventPayload = JSON.stringify({
+      type: "decopilot.thread.status",
+      subject: "t-event",
+      time: "2026-05-19T00:00:00Z",
+      data: {
+        status: "in_progress",
+        title: "From event",
+        virtual_mcp_id: "vm-x",
+      },
+    });
+    globalThis.fetch = (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(
+            enc.encode(
+              `event: decopilot.thread.status\ndata: ${eventPayload}\n\n`,
+            ),
+          );
+          c.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    // Let the SSE event arrive while MCP is stalled.
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Event was buffered — not yet applied.
+    expect(store.threads.get()).toEqual([]);
+
+    // Release the MCP fetch.
+    releaseMcp({
+      structuredContent: {
+        items: [],
+        hasMore: false,
+      },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Buffer drained → synthetic row visible with title from the event.
+    expect(store.threads.get().map((t) => t.id)).toEqual(["t-event"]);
+    expect(store.threads.get()[0]?.title).toBe("From event");
+    store.dispose();
+  });
+
+  it("tombstones still suppress buffered events for archived threads", async () => {
+    let releaseMcp!: (v: unknown) => void;
+    const callTool = mock((args: { name: string }) => {
+      if (args.name === "COLLECTION_THREADS_LIST") {
+        return new Promise((r) => {
+          releaseMcp = r;
+        });
+      }
+      // COLLECTION_THREADS_UPDATE for hide
+      return Promise.resolve({});
+    });
+
+    const enc = new TextEncoder();
+    const eventPayload = JSON.stringify({
+      type: "decopilot.thread.status",
+      subject: "t-archived",
+      time: "2026-05-19T00:00:00Z",
+      data: { status: "in_progress", title: "Should be dropped" },
+    });
+    globalThis.fetch = (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(
+            enc.encode(
+              `event: decopilot.thread.status\ndata: ${eventPayload}\n\n`,
+            ),
+          );
+          c.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Archive the thread BEFORE the MCP fetch resolves — the buffered event
+    // will be dropped on drain.
+    await store.hide("t-archived");
+
+    releaseMcp({ structuredContent: { items: [], hasMore: false } });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Buffered event dropped by tombstone → row not synthesized.
+    expect(store.threads.get()).toEqual([]);
+    store.dispose();
   });
 });
