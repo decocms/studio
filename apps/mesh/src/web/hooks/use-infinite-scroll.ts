@@ -6,6 +6,12 @@ import { useRef } from "react";
  * @param onLoadMore - Callback function to load more items
  * @param hasMore - Whether there are more items to load
  * @param isLoading - Whether data is currently loading (prevents duplicate triggers)
+ * @param rootRef - Optional ref to the scroll container. When omitted the
+ *                  observer falls back to the viewport, which fires based on
+ *                  page-level visibility rather than visibility *inside the
+ *                  scroll container*. Pass the scrollable parent ref to
+ *                  avoid cascade-loading short lists that already fit on
+ *                  screen.
  * @returns A ref callback to attach to the last element in the list
  *
  * @example
@@ -30,6 +36,7 @@ export function useInfiniteScroll(
   onLoadMore: () => void,
   hasMore: boolean,
   isLoading = false,
+  rootRef?: React.RefObject<HTMLElement | null>,
 ): (node: HTMLElement | null) => void {
   const observerRef = useRef<IntersectionObserver | null>(null);
 
@@ -37,8 +44,11 @@ export function useInfiniteScroll(
   const onLoadMoreRef = useRef(onLoadMore);
   const hasMoreRef = useRef(hasMore);
   const isLoadingRef = useRef(isLoading);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onLoadMoreRef.current = onLoadMore;
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   hasMoreRef.current = hasMore;
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   isLoadingRef.current = isLoading;
 
   // Ref callback for the last element - React Compiler handles memoization
@@ -47,15 +57,18 @@ export function useInfiniteScroll(
       observerRef.current.disconnect();
     }
 
-    observerRef.current = new IntersectionObserver((entries) => {
-      if (
-        entries[0]?.isIntersecting &&
-        hasMoreRef.current &&
-        !isLoadingRef.current
-      ) {
-        onLoadMoreRef.current();
-      }
-    });
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries[0]?.isIntersecting &&
+          hasMoreRef.current &&
+          !isLoadingRef.current
+        ) {
+          onLoadMoreRef.current();
+        }
+      },
+      { root: rootRef?.current ?? null },
+    );
 
     if (node) {
       observerRef.current.observe(node);

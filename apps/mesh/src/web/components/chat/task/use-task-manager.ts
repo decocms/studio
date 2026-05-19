@@ -15,7 +15,10 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useQueryClient,
+  useSuspenseInfiniteQuery,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
 import { authClient } from "../../../lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "../../../lib/localstorage-keys";
@@ -50,52 +53,58 @@ export function useTasks(params: UseTasksParams) {
     orgSlug: org.slug,
   });
 
-  const { data, refetch } = useSuspenseQuery({
-    queryKey: KEYS.tasks(locator, {
-      owner: params.owner,
-      status: params.status,
-      virtualMcpId: params.virtualMcpId,
-      userId: params.owner === "me" ? (params.userId ?? null) : null,
-      hasTrigger: params.hasTrigger ?? null,
-    }),
-    queryFn: async () => {
-      if (!client) {
-        throw new Error("MCP client is not available");
-      }
-      const where: Record<string, unknown> = {
-        hidden: params.status === "archived",
-      };
-      if (params.virtualMcpId) where.virtual_mcp_id = params.virtualMcpId;
-      if (params.owner === "me") where.created_by = "me";
-      if (params.owner === "automation") where.has_trigger = true;
-      if (params.hasTrigger !== undefined)
-        where.has_trigger = params.hasTrigger;
+  const { data, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useSuspenseInfiniteQuery({
+      queryKey: KEYS.tasks(locator, {
+        owner: params.owner,
+        status: params.status,
+        virtualMcpId: params.virtualMcpId,
+        userId: params.owner === "me" ? (params.userId ?? null) : null,
+        hasTrigger: params.hasTrigger ?? null,
+      }),
+      queryFn: async ({ pageParam = 0 }) => {
+        if (!client) {
+          throw new Error("MCP client is not available");
+        }
+        const where: Record<string, unknown> = {
+          hidden: params.status === "archived",
+        };
+        if (params.virtualMcpId) where.virtual_mcp_id = params.virtualMcpId;
+        if (params.owner === "me") where.created_by = "me";
+        if (params.owner === "automation") where.has_trigger = true;
+        if (params.hasTrigger !== undefined)
+          where.has_trigger = params.hasTrigger;
 
-      const input = {
-        limit: TASK_CONSTANTS.TASKS_PAGE_SIZE,
-        offset: 0,
-        orderBy: [{ field: ["updated_at"], direction: "desc" as const }],
-        where,
-      };
+        const input = {
+          limit: TASK_CONSTANTS.TASKS_PAGE_SIZE,
+          offset: pageParam,
+          orderBy: [{ field: ["updated_at"], direction: "desc" as const }],
+          where,
+        };
 
-      const result = (await client.callTool({
-        name: "COLLECTION_THREADS_LIST",
-        arguments: input,
-      })) as { structuredContent?: unknown };
-      const payload = (result.structuredContent ??
-        result) as CollectionListOutput<Task>;
+        const result = (await client.callTool({
+          name: "COLLECTION_THREADS_LIST",
+          arguments: input,
+        })) as { structuredContent?: unknown };
+        const payload = (result.structuredContent ??
+          result) as CollectionListOutput<Task>;
 
-      return {
-        items: payload.items ?? [],
-        hasMore: payload.hasMore ?? false,
-        totalCount: payload.totalCount,
-      };
-    },
-    staleTime: TASK_CONSTANTS.QUERY_STALE_TIME,
-  });
+        return {
+          items: payload.items ?? [],
+          hasMore: payload.hasMore ?? false,
+          totalCount: payload.totalCount,
+        };
+      },
+      initialPageParam: 0 as number,
+      getNextPageParam: (lastPage, allPages) => {
+        if (!lastPage.hasMore) return undefined;
+        return allPages.length * TASK_CONSTANTS.TASKS_PAGE_SIZE;
+      },
+      staleTime: TASK_CONSTANTS.QUERY_STALE_TIME,
+    });
 
-  const tasks = data?.items ?? [];
-  return { tasks, refetch };
+  const tasks = data.pages.flatMap((p) => p.items ?? []);
+  return { tasks, refetch, fetchNextPage, hasNextPage, isFetchingNextPage };
 }
 
 // ============================================================================

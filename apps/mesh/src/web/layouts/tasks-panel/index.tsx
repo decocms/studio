@@ -30,12 +30,22 @@ function TasksPanelContent() {
   useTasksAutoRefresh();
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
-  const { tasks: myTasks } = useTasks({
+  const {
+    tasks: myTasks,
+    fetchNextPage: fetchMoreMyTasks,
+    hasNextPage: hasMoreMyTasks,
+    isFetchingNextPage: isFetchingMoreMyTasks,
+  } = useTasks({
     owner: "me",
     status: "open",
     hasTrigger: false,
   });
-  const { tasks: automationTasks } = useTasks({
+  const {
+    tasks: automationTasks,
+    fetchNextPage: fetchMoreAutomationTasks,
+    hasNextPage: hasMoreAutomationTasks,
+    isFetchingNextPage: isFetchingMoreAutomationTasks,
+  } = useTasks({
     owner: "all",
     status: "open",
     hasTrigger: true,
@@ -56,6 +66,14 @@ function TasksPanelContent() {
     ...myTasks,
     ...automationTasks.map((t) => ({ ...t, fromAutomation: true as const })),
   ].sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+
+  const hasMore = hasMoreMyTasks || hasMoreAutomationTasks;
+  const isFetchingMore = isFetchingMoreMyTasks || isFetchingMoreAutomationTasks;
+  const handleLoadMore = () => {
+    if (hasMoreMyTasks && !isFetchingMoreMyTasks) fetchMoreMyTasks();
+    if (hasMoreAutomationTasks && !isFetchingMoreAutomationTasks)
+      fetchMoreAutomationTasks();
+  };
 
   const handleArchive = async (task: Task) => {
     try {
@@ -92,6 +110,9 @@ function TasksPanelContent() {
         onNew={createNewTask}
         showNewButton
         currentUserId={currentUserId}
+        hasMore={hasMore}
+        isFetchingMore={isFetchingMore}
+        onLoadMore={handleLoadMore}
       />
     </div>
   );

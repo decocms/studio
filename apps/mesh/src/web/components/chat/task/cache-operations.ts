@@ -22,25 +22,29 @@ export function updateTaskInCache(
     { queryKey: KEYS.tasksPrefix(locator) },
     (data) => {
       if (!data) return data;
-      const idx = data.items.findIndex((t) => t.id === taskId);
-      if (idx === -1) return data;
+      const pages = data.pages.map((page) => {
+        const idx = page.items.findIndex((t) => t.id === taskId);
+        if (idx === -1) return page;
 
-      const current = data.items[idx];
-      if (!current) return data;
+        const current = page.items[idx];
+        if (!current) return page;
 
-      const next: Task = {
-        ...current,
-        title: updates.title ?? current.title,
-        updated_at: updates.updated_at ?? current.updated_at,
-        hidden: updates.hidden ?? current.hidden,
-        status: updates.status ?? current.status,
-        branch: "branch" in updates ? updates.branch : current.branch,
-      };
+        const next: Task = {
+          ...current,
+          title: updates.title ?? current.title,
+          updated_at: updates.updated_at ?? current.updated_at,
+          hidden: updates.hidden ?? current.hidden,
+          status: updates.status ?? current.status,
+          branch: "branch" in updates ? updates.branch : current.branch,
+        };
 
-      const items = [...data.items];
-      items[idx] = next;
-      found = true;
-      return { ...data, items };
+        const items = [...page.items];
+        items[idx] = next;
+        found = true;
+        return { ...page, items };
+      });
+      if (!found) return data;
+      return { ...data, pages };
     },
   );
   return found;

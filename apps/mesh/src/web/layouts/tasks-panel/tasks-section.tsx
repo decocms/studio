@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Edit05, FilterLines, User02, Users03 } from "@untitledui/icons";
 import {
   DropdownMenu,
@@ -9,6 +9,7 @@ import {
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import type { Task } from "@/web/components/chat/task/types";
+import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { TaskRow } from "./task-row";
 import { track } from "@/web/lib/posthog-client";
 
@@ -37,6 +38,9 @@ export function TasksSection({
   showAutomationBadge,
   emptyLabel,
   currentUserId,
+  hasMore = false,
+  isFetchingMore = false,
+  onLoadMore,
 }: {
   title: string;
   tasks: Task[];
@@ -48,7 +52,17 @@ export function TasksSection({
   showAutomationBadge?: boolean;
   emptyLabel?: string;
   currentUserId?: string;
+  hasMore?: boolean;
+  isFetchingMore?: boolean;
+  onLoadMore?: () => void;
 }) {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastElementRef = useInfiniteScroll(
+    () => onLoadMore?.(),
+    hasMore,
+    isFetchingMore,
+    scrollContainerRef,
+  );
   const [filter, setFilter] = useState<FilterOption>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
 
@@ -153,37 +167,53 @@ export function TasksSection({
           )}
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5"
+      >
         {visibleTasks.length === 0 && emptyLabel ? (
           <div className="px-2 py-1.5 text-xs text-muted-foreground/70">
             {emptyLabel}
           </div>
         ) : (
-          visibleTasks.map((t) => (
-            <TaskRow
-              key={t.id}
-              task={t}
-              isActive={activeTaskId === t.id}
-              onClick={() => {
-                if (activeTaskId !== t.id) {
-                  track("tasks_panel_task_clicked", {
-                    thread_id: t.id,
-                    virtual_mcp_id: t.virtual_mcp_id ?? null,
-                    from_automation: Boolean(t.fromAutomation),
-                  });
+          <>
+            {visibleTasks.map((t, idx) => (
+              <div
+                key={t.id}
+                ref={
+                  idx === visibleTasks.length - 1 ? lastElementRef : undefined
                 }
-                onSelect(t);
-              }}
-              onArchive={() => {
-                track("tasks_panel_task_archived", {
-                  thread_id: t.id,
-                  virtual_mcp_id: t.virtual_mcp_id ?? null,
-                });
-                onArchive(t);
-              }}
-              showAutomationBadge={showAutomationBadge || t.fromAutomation}
-            />
-          ))
+              >
+                <TaskRow
+                  task={t}
+                  isActive={activeTaskId === t.id}
+                  onClick={() => {
+                    if (activeTaskId !== t.id) {
+                      track("tasks_panel_task_clicked", {
+                        thread_id: t.id,
+                        virtual_mcp_id: t.virtual_mcp_id ?? null,
+                        from_automation: Boolean(t.fromAutomation),
+                      });
+                    }
+                    onSelect(t);
+                  }}
+                  onArchive={() => {
+                    track("tasks_panel_task_archived", {
+                      thread_id: t.id,
+                      virtual_mcp_id: t.virtual_mcp_id ?? null,
+                    });
+                    onArchive(t);
+                  }}
+                  showAutomationBadge={showAutomationBadge || t.fromAutomation}
+                />
+              </div>
+            ))}
+            {isFetchingMore && (
+              <div className="py-2 text-center text-xs text-muted-foreground">
+                Loading more…
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

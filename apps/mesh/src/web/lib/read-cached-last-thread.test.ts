@@ -21,7 +21,10 @@ function task(overrides: Partial<Task>): Task {
 }
 
 function seed(qc: QueryClient, filterTag: string, items: Task[]) {
-  const data: TasksQueryData = { items, hasMore: false };
+  const data: TasksQueryData = {
+    pages: [{ items, hasMore: false }],
+    pageParams: [0],
+  };
   qc.setQueryData(["tasks", LOCATOR, filterTag], data);
 }
 
@@ -84,8 +87,8 @@ describe("readCachedLastThread", () => {
   test("does not match cache entries for a different locator", () => {
     const qc = new QueryClient();
     qc.setQueryData(["tasks", "other-locator", "list-a"], {
-      items: [task({ id: "elsewhere" })],
-      hasMore: false,
+      pages: [{ items: [task({ id: "elsewhere" })], hasMore: false }],
+      pageParams: [0],
     } satisfies TasksQueryData);
     expect(readCachedLastThread(qc, LOCATOR, AGENT_ID, USER_ID)).toBeNull();
   });
@@ -93,8 +96,8 @@ describe("readCachedLastThread", () => {
   test("ignores entries with empty/missing items", () => {
     const qc = new QueryClient();
     qc.setQueryData(["tasks", LOCATOR, "empty"], {
-      items: [],
-      hasMore: false,
+      pages: [{ items: [], hasMore: false }],
+      pageParams: [0],
     } satisfies TasksQueryData);
     qc.setQueryData(["tasks", LOCATOR, "undef"], undefined);
     expect(readCachedLastThread(qc, LOCATOR, AGENT_ID, USER_ID)).toBeNull();
@@ -110,8 +113,8 @@ describe("readCachedLastThread", () => {
       hasTrigger: null,
     });
     qc.setQueryData(exactKey, {
-      items: [task({ id: "from-real-key" })],
-      hasMore: false,
+      pages: [{ items: [task({ id: "from-real-key" })], hasMore: false }],
+      pageParams: [0],
     } satisfies TasksQueryData);
     expect(readCachedLastThread(qc, LOCATOR, AGENT_ID, USER_ID)?.id).toBe(
       "from-real-key",

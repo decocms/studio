@@ -30,8 +30,13 @@ export interface Task {
 
 export type { ChatMessage } from "../types.ts";
 
-export type TasksQueryData = {
+export type TasksPage = {
   items: Task[];
   hasMore: boolean;
   totalCount?: number;
+};
+
+export type TasksQueryData = {
+  pages: TasksPage[];
+  pageParams: number[];
 };
