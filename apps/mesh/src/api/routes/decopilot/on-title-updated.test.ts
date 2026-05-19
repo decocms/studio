@@ -1,50 +1,16 @@
 /**
  * Unit tests for the onTitleUpdated callback wiring.
  *
- * The callback is built inside dispatch-run's prepareRun() closure. These
- * tests validate the callback's contract directly — storage lookup + sseHub
- * emit shape — without spinning up the full dispatchRun pipeline.
+ * Tests exercise the exported `buildOnTitleUpdated` function from
+ * on-title-updated.ts — the same code path used by dispatch-run's
+ * prepareRun() — so drift between tests and production behaviour is
+ * impossible.
  */
 
 import { describe, it, expect, mock } from "bun:test";
 import { createDecopilotThreadStatusEvent } from "@decocms/mesh-sdk";
 import type { Thread } from "@/storage/types";
-
-// ============================================================================
-// Helpers — mirror the onTitleUpdated callback logic from dispatch-run.ts
-// ============================================================================
-
-/**
- * Reproduces the onTitleUpdated callback body from prepareRun() so we can
- * unit-test its behaviour without standing up the full dispatch pipeline.
- */
-function makeOnTitleUpdated(
-  threadId: string,
-  organizationId: string,
-  getThread: (id: string) => Promise<Thread | null>,
-  sseHub: { emit(orgId: string, event: unknown): void },
-): (title: string) => Promise<void> {
-  return async (title: string) => {
-    let row: Thread | null = null;
-    try {
-      row = await getThread(threadId);
-    } catch {
-      row = null;
-    }
-    sseHub.emit(
-      organizationId,
-      createDecopilotThreadStatusEvent(threadId, "in_progress", {
-        title,
-        virtualMcpId: row?.virtual_mcp_id ?? undefined,
-        createdBy: row?.created_by,
-        triggerId: row?.trigger_id,
-        branch: row?.branch ?? null,
-        createdAt: row?.created_at,
-        updatedAt: row?.updated_at,
-      }),
-    );
-  };
-}
+import { buildOnTitleUpdated } from "./on-title-updated";
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {
@@ -81,12 +47,20 @@ describe("onTitleUpdated callback", () => {
     const getThread = mock(() => Promise.resolve(thread));
     const sseHub = { emit: mock(() => {}) };
 
-    const onTitleUpdated = makeOnTitleUpdated(
-      "thread-1",
-      "org-1",
-      getThread,
+    const ctx = {
+      storage: {
+        threads: {
+          get: getThread,
+        },
+      },
+    } as unknown as import("@/core/mesh-context").MeshContext;
+
+    const onTitleUpdated = buildOnTitleUpdated({
+      ctx,
       sseHub,
-    );
+      threadId: "thread-1",
+      organizationId: "org-1",
+    });
 
     await onTitleUpdated("My generated title");
 
@@ -115,12 +89,20 @@ describe("onTitleUpdated callback", () => {
     const getThread = mock(() => Promise.reject(new Error("DB offline")));
     const sseHub = { emit: mock(() => {}) };
 
-    const onTitleUpdated = makeOnTitleUpdated(
-      "thread-1",
-      "org-1",
-      getThread,
+    const ctx = {
+      storage: {
+        threads: {
+          get: getThread,
+        },
+      },
+    } as unknown as import("@/core/mesh-context").MeshContext;
+
+    const onTitleUpdated = buildOnTitleUpdated({
+      ctx,
       sseHub,
-    );
+      threadId: "thread-1",
+      organizationId: "org-1",
+    });
 
     await onTitleUpdated("Fallback title");
 
@@ -143,31 +125,25 @@ describe("onTitleUpdated callback", () => {
     const getThread = mock(() => Promise.resolve(thread));
     const sseHub = { emit: mock(() => {}) };
 
-    const onTitleUpdated = makeOnTitleUpdated(
-      "thread-1",
-      "org-correct",
-      getThread,
+    const ctx = {
+      storage: {
+        threads: {
+          get: getThread,
+        },
+      },
+    } as unknown as import("@/core/mesh-context").MeshContext;
+
+    const onTitleUpdated = buildOnTitleUpdated({
+      ctx,
       sseHub,
-    );
+      threadId: "thread-1",
+      organizationId: "org-correct",
+    });
 
     await onTitleUpdated("Title");
 
     const [emittedOrgId] = (sseHub.emit as ReturnType<typeof mock>).mock
       .calls[0] as [string, unknown];
     expect(emittedOrgId).toBe("org-correct");
-  });
-});
-
-describe("HarnessProcessLocal.onTitleUpdated field", () => {
-  it("is optional — omitting it does not cause TypeScript errors", () => {
-    // This test is purely a compile-time check. If HarnessProcessLocal
-    // requires onTitleUpdated, the import below will fail type-checking.
-    const _partial: Pick<
-      import("@/harnesses/types").HarnessProcessLocal,
-      "onTitleUpdated"
-    > = {
-      // deliberately omitted — field is optional
-    };
-    expect(_partial).toBeDefined();
   });
 });

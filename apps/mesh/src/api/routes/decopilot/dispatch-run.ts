@@ -44,6 +44,7 @@ import { type ChatMode } from "./mode-config";
 export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
+import { buildOnTitleUpdated } from "./on-title-updated";
 import {
   checkModelPermission,
   fetchModelPermissions,
@@ -58,7 +59,6 @@ import type { PendingImage } from "../../../harnesses/decopilot/built-in-tools";
 import { getInternalUrl } from "@/core/server-constants";
 import { traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
-import { createDecopilotThreadStatusEvent } from "@decocms/mesh-sdk";
 import type { SSEEvent } from "@/event-bus";
 
 /**
@@ -668,36 +668,12 @@ async function prepareRun(
             };
           },
           onTitleUpdated: sseHub
-            ? async (title: string) => {
-                // Best-effort: load the latest thread row so the event
-                // carries the full enriched shape. If the load fails we
-                // still emit with the title alone — better a partial event
-                // than no event.
-                let row: Awaited<
-                  ReturnType<typeof ctx.storage.threads.get>
-                > | null = null;
-                try {
-                  row = await ctx.storage.threads.get(mem.thread.id);
-                } catch {
-                  row = null;
-                }
-                sseHub.emit(
-                  input.organizationId,
-                  createDecopilotThreadStatusEvent(
-                    mem.thread.id,
-                    "in_progress",
-                    {
-                      title,
-                      virtualMcpId: row?.virtual_mcp_id ?? undefined,
-                      createdBy: row?.created_by,
-                      triggerId: row?.trigger_id,
-                      branch: row?.branch ?? null,
-                      createdAt: row?.created_at,
-                      updatedAt: row?.updated_at,
-                    },
-                  ),
-                );
-              }
+            ? buildOnTitleUpdated({
+                ctx,
+                sseHub,
+                threadId: mem.thread.id,
+                organizationId: input.organizationId,
+              })
             : undefined,
         };
 
