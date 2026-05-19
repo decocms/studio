@@ -25,7 +25,8 @@ import {
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "../lib/query-keys";
-import type { Task } from "./use-tasks";
+import type { Task } from "../components/chat/task/types";
+import { prependRowToThreadCaches } from "../components/chat/task/thread-events";
 
 type State =
   | { status: "loading" }
@@ -83,20 +84,17 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
         .structuredContent as { item: Task };
       return payload.item;
     },
-    onSuccess: () => {
-      // Refresh the canonical THREADS collection cache and the legacy
-      // KEYS.tasksPrefix list (read by chat-context's tasks.find), then
-      // refetch the ensure query so the consumer transitions from
-      // "creating" to "ready" without an extra round-trip.
+    onSuccess: (createdRow) => {
+      // Refresh the canonical THREADS collection cache, then prepend the
+      // newly-created row to threadsPrefix caches. ThreadEventsBridge will
+      // subsequently overwrite synthetic fields on the first SSE event.
       queryClient.invalidateQueries({
         predicate: (q) =>
           q.queryKey[1] === org.id &&
           q.queryKey[3] === "collection" &&
           q.queryKey[4] === "THREADS",
       });
-      queryClient.invalidateQueries({
-        queryKey: KEYS.tasksPrefix(locator),
-      });
+      prependRowToThreadCaches(queryClient, locator, createdRow);
       void query.refetch();
     },
   });

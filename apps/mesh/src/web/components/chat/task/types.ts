@@ -1,4 +1,5 @@
 import type { ThreadDisplayStatus } from "@decocms/mesh-sdk";
+import type { ThreadMetadata } from "@/storage/types";
 
 // Constants
 export const TASK_CONSTANTS = {
@@ -22,10 +23,16 @@ export interface Task {
   status?: ThreadDisplayStatus;
   /** Virtual MCP (agent) this task was initiated with */
   virtual_mcp_id?: string;
-  /** True when this task was triggered by an automation */
-  fromAutomation?: boolean;
+  /**
+   * Automation trigger that created this thread, when applicable.
+   * `null` (or absent) ⇒ human-initiated. Use `Boolean(task.trigger_id)`
+   * to ask "is this an automation?".
+   */
+  trigger_id?: string | null;
   /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
   branch?: string | null;
+  /** Per-thread metadata — layout tabs, expanded tools, etc. Loaded by COLLECTION_THREADS_GET. */
+  metadata?: ThreadMetadata;
 }
 
 export type { ChatMessage } from "../types.ts";
@@ -35,3 +42,29 @@ export type TasksQueryData = {
   hasMore: boolean;
   totalCount?: number;
 };
+
+/**
+ * The two shapes a thread-list cache key can carry. `org` is the unscoped
+ * view; `agent` narrows by `virtualMcpId`. Used both by `useThreads` (as
+ * the query argument) and by the event bridge (as the parsed shape of a
+ * `KEYS.threads(…)` cache key).
+ */
+export type ThreadScope = "org" | { kind: "agent"; virtualMcpId: string };
+
+/**
+ * Partial Task patch — every cache write goes through one of these. `id`
+ * pins the row; the rest are optional overrides applied via spread.
+ */
+export type RowPatch = Pick<Task, "id"> &
+  Partial<
+    Pick<
+      Task,
+      | "status"
+      | "updated_at"
+      | "title"
+      | "branch"
+      | "created_by"
+      | "trigger_id"
+      | "virtual_mcp_id"
+    >
+  >;

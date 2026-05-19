@@ -16,7 +16,7 @@ export function readCachedLastThread(
   userId: string,
 ): Task | null {
   const queries = queryClient.getQueriesData<TasksQueryData>({
-    queryKey: KEYS.tasksPrefix(locator),
+    queryKey: KEYS.threadsPrefix(locator),
   });
   let best: Task | null = null;
   for (const [, data] of queries) {

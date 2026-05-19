@@ -127,7 +127,7 @@ export class EventBus implements IEventBus {
       cron: input.cron,
     });
 
-    // Fan out to SSE /watch connections (non-blocking, best-effort)
+    // Fan out to SSE /events connections (non-blocking, best-effort)
     sseHub.emit(organizationId, toSSEEvent(event));
 
     // Find matching subscriptions and create delivery records

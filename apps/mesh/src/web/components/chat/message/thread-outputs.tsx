@@ -3,7 +3,13 @@
  * to the user via the `share_with_user` tool. Files live under
  * `model-outputs/<thread_id>/` and are listed by
  * `GET /api/:org/threads/:threadId/outputs`. The query is invalidated on
- * assistant-turn completion (see useStreamManager + chat onFinish).
+ * assistant-turn completion (see ThreadEventsBridge + chat onFinish).
+ *
+ * The fetch is gated on whether any message in the thread has a
+ * `tool-share_with_user` part with `state: "output-available"` — threads
+ * that never shared a file pay zero network. The companion invalidation in
+ * chat-context's onFinish handler refreshes the cache only when a new
+ * share appears, so the round-trip count is exactly one per produced file.
  *
  * Attribution caveat: outputs are aggregated under the *last* assistant
  * message of the thread rather than per-producing-message. Future
@@ -15,6 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Download01 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { KEYS } from "../../../lib/query-keys";
+import { useOptionalChatStream } from "../context.tsx";
 
 interface ThreadOutput {
   key: string;
@@ -53,9 +60,22 @@ function formatSize(bytes: number): string {
 
 export function ThreadOutputs({ threadId }: { threadId: string }) {
   const { org } = useProjectContext();
+  const messages = useOptionalChatStream()?.messages ?? [];
+  // Only fetch when the thread has actually produced a shared file.
+  // Threads with no share_with_user output stay silent — no /outputs GET.
+  const hasSharedFile = messages.some((m) =>
+    m.parts?.some((p) => {
+      const part = p as { type: string; state?: string };
+      return (
+        part.type === "tool-share_with_user" &&
+        part.state === "output-available"
+      );
+    }),
+  );
   const { data: outputs } = useQuery({
     queryKey: KEYS.threadOutputs(threadId),
     queryFn: () => fetchThreadOutputs(threadId, org.slug),
+    enabled: hasSharedFile,
     // Stale immediately so refetch on invalidation is fresh.
     staleTime: 0,
   });

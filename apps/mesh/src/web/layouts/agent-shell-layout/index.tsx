@@ -79,7 +79,7 @@ import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { VmEventsProvider } from "@/web/components/vm/hooks/vm-events-context.tsx";
 import type { VmMapEntry } from "@decocms/mesh-sdk";
-import { useEnsureTask } from "@/web/hooks/use-tasks";
+import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -445,7 +445,10 @@ function AgentInsetProvider() {
                 onToggleMain={layout.toggleMain}
                 onNewTask={layout.createNewTask}
               />
-              <Chat.ActiveTaskProvider taskId={layout.taskId}>
+              <Chat.ActiveTaskProvider
+                key={layout.taskId}
+                taskId={layout.taskId}
+              >
                 <Suspense fallback={<Chat.Skeleton />}>
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {layout.mainOpen ? (
@@ -518,7 +521,7 @@ function AgentInsetProvider() {
               onNewTaskRef={onNewTask}
               createNewTask={layout.createNewTask}
             />
-            <Chat.ActiveTaskProvider taskId={layout.taskId}>
+            <Chat.ActiveTaskProvider key={layout.taskId} taskId={layout.taskId}>
               <Suspense fallback={<Chat.Skeleton />}>
                 <ChatMainPanelGroup
                   virtualMcpId={virtualMcpId}

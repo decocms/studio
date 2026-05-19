@@ -1,7 +1,7 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
-import { useChatBridge } from "@/web/components/chat/context";
+import { useChatStream } from "@/web/components/chat/context";
 import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
@@ -1079,7 +1079,7 @@ function VirtualMcpDetailViewWithData({
   const [instructionsFullscreen, setInstructionsFullscreen] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
   const { createNewTask, setChatOpen } = usePanelActions();
-  const { sendMessage } = useChatBridge();
+  const { sendMessage } = useChatStream();
   const ensureStudioPack = useEnsureStudioPack();
 
   const handleImprovePrompt = async () => {

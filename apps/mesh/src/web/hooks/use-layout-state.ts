@@ -18,7 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { resolveDefaultTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
-import { useTaskActions } from "@/web/hooks/use-tasks";
+import { useThreadActions } from "@/web/components/chat/task";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,7 +144,7 @@ export function useChatMainPanelState(
     taskId?: string;
   };
   const queryClient = useQueryClient();
-  const taskActions = useTaskActions();
+  const taskActions = useThreadActions();
   const { locator } = useProjectContext();
 
   const { virtualMcpId, orgSlug, isAgentRoute } = routeCtx;
