@@ -584,7 +584,7 @@ function shouldEmitThreadSnapshot(typePatterns: string[] | null): boolean {
 /**
  * SSE events endpoint — streams events for an organization in real time.
  * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
- * on the `/api/:org/events` mount). Auth is required.
+ * on the `/api/:org/watch` mount). Auth is required.
  *
  * On connect, emits in order:
  *   1. `event: connected` — listener metadata

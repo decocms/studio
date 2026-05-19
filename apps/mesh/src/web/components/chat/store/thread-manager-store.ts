@@ -1,4 +1,5 @@
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { toast } from "sonner";
 import type {
   ThreadCreateData,
   ThreadUpdateData,
@@ -6,6 +7,23 @@ import type {
 import { getOrOpenStream, type ThreadConnection } from "./thread-connection";
 import type { RowPatch, Task } from "../task/types";
 import { Store } from "./store-primitive";
+
+/**
+ * Extract a server-side error message from a `callTool` result, falling back
+ * to the supplied default when no usable text is present. Mirrors the shape
+ * the MCP SDK returns for tool failures: `{ isError: true, content: [{ text }] }`.
+ */
+function extractToolErrorMessage(result: unknown, fallback: string): string {
+  const content = (result as { content?: unknown }).content;
+  if (Array.isArray(content)) {
+    const first = content[0];
+    if (first && typeof first === "object") {
+      const text = (first as { text?: string }).text;
+      if (text) return text;
+    }
+  }
+  return fallback;
+}
 
 export interface ThreadManagerStoreOptions {
   client?: MCPClient | null;
@@ -18,6 +36,17 @@ export type ThreadsStatus =
 
 const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
+
+/**
+ * How long a just-archived thread id is held in the tombstone set after
+ * `hide(id)`. Covers the window where: (a) a `decopilot.thread.*` event
+ * for the in-flight or already-finished archived run arrives and would
+ * otherwise re-insert a synthetic row, or (b) a stale `/watch` snapshot
+ * replays the row before the server-side hidden flag propagates. 60s is
+ * generous enough for slow networks while still letting an un-archive flow
+ * recover the row from a fresh event.
+ */
+const ARCHIVED_TOMBSTONE_TTL_MS = 60_000;
 
 function applyPatch(list: Task[], patch: RowPatch): Task[] {
   const idx = list.findIndex((t) => t.id === patch.id);
@@ -45,6 +74,13 @@ export class ThreadManagerStore {
 
   private abort = new AbortController();
   private pendingOptimistic = new Set<string>();
+  /**
+   * Short-lived block list of just-archived thread ids. Read by every code
+   * path that could re-insert a row (`/watch` snapshot reconciliation,
+   * `decopilot.thread.*` patch handler) and pruned lazily on access. Entries
+   * older than ARCHIVED_TOMBSTONE_TTL_MS are dropped.
+   */
+  private archivedTombstones = new Map<string, number>();
   private client: MCPClient | null;
 
   constructor(
@@ -76,21 +112,34 @@ export class ThreadManagerStore {
   }
 
   async create(data: ThreadCreateData): Promise<Task> {
-    if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
-    const result = await this.client.callTool({
-      name: "COLLECTION_THREADS_CREATE",
-      arguments: { data },
-    });
-    const row = (
-      (result as { structuredContent?: unknown }).structuredContent as
-        | { item?: Task }
-        | undefined
-    )?.item;
-    if (!row) throw new Error("create: no item returned");
-    this.threads.update((list) =>
-      list.some((t) => t.id === row.id) ? list : [row, ...list],
-    );
-    return row;
+    try {
+      if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREADS_CREATE",
+        arguments: { data },
+      });
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error(
+          extractToolErrorMessage(result, "COLLECTION_THREADS_CREATE failed"),
+        );
+      }
+      const row = (
+        (result as { structuredContent?: unknown }).structuredContent as
+          | { item?: Task }
+          | undefined
+      )?.item;
+      if (!row) throw new Error("create: no item returned");
+      this.threads.update((list) =>
+        list.some((t) => t.id === row.id) ? list : [row, ...list],
+      );
+      return row;
+    } catch (err) {
+      // Surface failures here so callers don't each need their own toast.
+      // Re-throw so callers can still branch (navigate-anyway, abort, etc.).
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Could not create thread: ${msg}`);
+      throw err;
+    }
   }
 
   rename(id: string, title: string): Promise<void> {
@@ -113,10 +162,14 @@ export class ThreadManagerStore {
 
   /**
    * Local-only patch: apply a partial Task patch in-place. No server round-trip.
-   * Used for live signals that don't flow through `/events` (e.g. titles emitted
+   * Used for live signals that don't flow through `/watch` (e.g. titles emitted
    * as `data-thread-title` UIMessageChunks on the per-thread `/stream`).
+   *
+   * Tombstone-aware: a title update for a just-archived thread is dropped so
+   * the synthetic-row upsert in `applyPatch` doesn't resurrect the row.
    */
   patchThread(patch: RowPatch): void {
+    if (this.isTombstoned(patch.id)) return;
     this.threads.update((list) => applyPatch(list, patch));
   }
 
@@ -154,6 +207,11 @@ export class ThreadManagerStore {
     if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
     const snapshot = this.threads.get();
     this.pendingOptimistic.add(id);
+    // Tombstone BEFORE filtering the row out so any late `decopilot.thread.*`
+    // event for this thread (e.g., the finish event for a run that was still
+    // streaming at archive time) is dropped by handleFrame instead of
+    // re-inserting a synthetic row.
+    this.archivedTombstones.set(id, Date.now());
     this.threads.update((list) => list.filter((t) => t.id !== id));
     try {
       const result = await this.client.callTool({
@@ -165,16 +223,34 @@ export class ThreadManagerStore {
       }
     } catch (err) {
       this.threads.set(snapshot);
+      // Server rejected the archive — the row is back in the list, so the
+      // tombstone must clear too or future events for that id would be
+      // silently dropped.
+      this.archivedTombstones.delete(id);
       throw err;
     } finally {
       this.pendingOptimistic.delete(id);
     }
   }
 
+  /** Drop tombstone entries older than the TTL. Called lazily on every read. */
+  private pruneArchivedTombstones(): void {
+    if (this.archivedTombstones.size === 0) return;
+    const cutoff = Date.now() - ARCHIVED_TOMBSTONE_TTL_MS;
+    for (const [id, ts] of this.archivedTombstones) {
+      if (ts < cutoff) this.archivedTombstones.delete(id);
+    }
+  }
+
+  private isTombstoned(id: string): boolean {
+    this.pruneArchivedTombstones();
+    return this.archivedTombstones.has(id);
+  }
+
   private async runWatchLoop(): Promise<void> {
     const url = `/api/${encodeURIComponent(
       this.orgSlug,
-    )}/events?types=decopilot.thread.*`;
+    )}/watch?types=decopilot.thread.*`;
     let attempt = 0;
 
     while (!this.abort.signal.aborted) {
@@ -188,7 +264,7 @@ export class ThreadManagerStore {
         if (!resp.ok || !resp.body) {
           this.threadsStatus.set({
             kind: "error",
-            error: new Error(`/events ${resp.status}`),
+            error: new Error(`/watch ${resp.status}`),
           });
         } else {
           attempt = 0;
@@ -242,9 +318,19 @@ export class ThreadManagerStore {
     if (event === "snapshot") {
       try {
         const parsed = JSON.parse(data) as { threads: Task[] };
+        // Strip rows the user just archived. The server already filters
+        // hidden rows out of `storage.threads.list`, but a snapshot from an
+        // SSE reconnect can race the hide call and still carry the row;
+        // dropping tombstoned ids here keeps the local state consistent
+        // until the next snapshot.
+        this.pruneArchivedTombstones();
+        const serverThreads =
+          this.archivedTombstones.size === 0
+            ? parsed.threads
+            : parsed.threads.filter((t) => !this.archivedTombstones.has(t.id));
         const pending = this.pendingOptimistic;
         if (pending.size === 0) {
-          this.threads.set(parsed.threads);
+          this.threads.set(serverThreads);
         } else {
           const current = this.threads.get();
           const optimisticById = new Map(
@@ -253,7 +339,7 @@ export class ThreadManagerStore {
               .map((t) => [t.id, t] as const),
           );
           this.threads.set(
-            parsed.threads.map((t) => optimisticById.get(t.id) ?? t),
+            serverThreads.map((t) => optimisticById.get(t.id) ?? t),
           );
           // Optimistic rows that the server hasn't acknowledged yet keep their
           // place by being merged in; an optimistic row absent from the
@@ -268,8 +354,16 @@ export class ThreadManagerStore {
           }
         }
         this.threadsStatus.set({ kind: "ready" });
-      } catch {
-        // ignore malformed snapshot
+      } catch (err) {
+        // Bad snapshot leaves the UI stuck at "loading" if we silently ignore.
+        // Flip status to `error` so gated consumers (e.g. useEnsureTask) can
+        // recover, and re-throw so consumeSse → runWatchLoop reconnects with
+        // backoff. A subsequent SSE attempt usually succeeds (transient
+        // server-side corruption or partial flush); a permanently corrupt
+        // payload settles into the 30s backoff ceiling.
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.threadsStatus.set({ kind: "error", error });
+        throw error;
       }
       return;
     }
@@ -287,6 +381,11 @@ export class ThreadManagerStore {
             branch?: string | null;
           };
         };
+        // Drop events for a thread the user just archived. `applyPatch` has
+        // upsert-if-missing semantics, so without this guard a late finish
+        // event for a streaming run that was archived mid-flight would
+        // re-insert a synthetic row that survives until reload.
+        if (this.isTombstoned(parsed.subject)) return;
         const patch: RowPatch = {
           id: parsed.subject,
           updated_at: parsed.time,

@@ -1,5 +1,5 @@
 /**
- * Tests for the SSE watch handler — `GET /api/:org/events`.
+ * Tests for the SSE watch handler — `GET /api/:org/watch`.
  *
  * Covers the snapshot frame the handler emits on connect when the listener's
  * type filter overlaps with the thread event namespace. The handler logic
@@ -47,7 +47,7 @@ function makeWatchApp(opts?: {
     c.set("meshContext", ctx);
     await next();
   });
-  app.get("/events", watchHandler);
+  app.get("/watch", watchHandler);
 
   return {
     app,
@@ -146,7 +146,7 @@ function makeThread(overrides: Partial<Thread>): Thread {
   };
 }
 
-describe("GET /api/:org/events — thread snapshot frame", () => {
+describe("GET /api/:org/watch — thread snapshot frame", () => {
   test("emits snapshot when types filter is decopilot.thread.*", async () => {
     const threads = [
       makeThread({ id: "thrd_a", title: "A" }),
@@ -154,7 +154,7 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
     ];
     const setup = makeWatchApp({ threads });
 
-    const res = await setup.app.request("/events?types=decopilot.thread.*");
+    const res = await setup.app.request("/watch?types=decopilot.thread.*");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
 
@@ -182,7 +182,7 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
       threads: [makeThread({ id: "thrd_a" })],
     });
 
-    const res = await setup.app.request("/events?types=workflow.*");
+    const res = await setup.app.request("/watch?types=workflow.*");
     expect(res.status).toBe(200);
 
     const body = await readUntilFrames(res, { requireSnapshot: false });
@@ -196,7 +196,7 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
       threads: [makeThread({ id: "thrd_a" })],
     });
 
-    const res = await setup.app.request("/events");
+    const res = await setup.app.request("/watch");
     expect(res.status).toBe(200);
 
     const body = await readUntilFrames(res, { requireSnapshot: true });
@@ -218,7 +218,7 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
       });
 
       const res = await setup.app.request(
-        `/events?types=${encodeURIComponent(pattern)}`,
+        `/watch?types=${encodeURIComponent(pattern)}`,
       );
       expect(res.status).toBe(200);
 
@@ -241,7 +241,7 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
       listError: new Error("simulated db outage"),
     });
 
-    const res = await setup.app.request("/events?types=decopilot.thread.*");
+    const res = await setup.app.request("/watch?types=decopilot.thread.*");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
 
@@ -325,7 +325,7 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
     ];
     const setup = makeWatchApp({ threads });
 
-    const res = await setup.app.request("/events?types=decopilot.thread.*");
+    const res = await setup.app.request("/watch?types=decopilot.thread.*");
     expect(res.status).toBe(200);
 
     const body = await readUntilFrames(res, { requireSnapshot: true });

@@ -30,7 +30,7 @@ const WORKFLOW_EVENT_TYPES = [
 
 const workflowSSE = createSSESubscription({
   buildUrl: (orgSlug) =>
-    `/api/${encodeURIComponent(orgSlug)}/events?types=workflow.*`,
+    `/api/${encodeURIComponent(orgSlug)}/watch?types=workflow.*`,
   eventTypes: WORKFLOW_EVENT_TYPES,
 });
 

@@ -28,7 +28,7 @@ import { createSSESubscription } from "./create-sse-subscription";
 const decopilotSSE = createSSESubscription({
   buildUrl: (orgSlug) => {
     const typesParam = ALL_DECOPILOT_EVENT_TYPES.join(",");
-    return `/api/${encodeURIComponent(orgSlug)}/events?types=${typesParam}`;
+    return `/api/${encodeURIComponent(orgSlug)}/watch?types=${typesParam}`;
   },
   eventTypes: [...ALL_DECOPILOT_EVENT_TYPES],
 });
