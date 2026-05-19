@@ -21,6 +21,7 @@ import {
   RefreshCw01,
   Server01,
 } from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.js";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   ViewModeToggle,
@@ -582,7 +583,10 @@ export function PreviewContent() {
                 {pages.length > 0 && (
                   <ChevronDown
                     size={12}
-                    className={`shrink-0 text-muted-foreground transition-transform ${pagesOpen ? "rotate-180" : ""}`}
+                    className={cn(
+                      "shrink-0 text-muted-foreground transition-transform",
+                      pagesOpen && "rotate-180",
+                    )}
                   />
                 )}
               </button>

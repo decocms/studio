@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type FieldValues, type UseFormReturn, useForm } from "react-hook-form";
 import type { ZodTypeAny } from "zod";
 import {
@@ -114,10 +114,15 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
     })();
   };
 
+  // Stable ref so the effect below doesn't re-fire on every render.
+  const flushRef = useRef(flush);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- keep ref in sync with latest closure
+  flushRef.current = flush;
+
   const submit = () => {
     if (!canSubmit) return;
     setPendingFlush(false);
-    flush();
+    flushRef.current();
   };
 
   const submitOrAdvance = () => {
@@ -130,7 +135,7 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
         return;
       }
       setPendingFlush(false);
-      flush();
+      flushRef.current();
     } else {
       const nextKey = findNextUnansweredKey(
         parts,
@@ -145,10 +150,9 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
 
   // Auto-flush deferred submissions when the stream finishes. The
   // streaming-finished transition is an external event, so this is a
-  // legitimate effect. `flush` is in deps so the latest closure (with
-  // current `parts` / `onSubmit`) fires when `isStreaming` flips false;
-  // `pendingFlush` gates one-shot semantics so spurious re-runs from
-  // `flush` identity changes short-circuit at the first guard.
+  // legitimate effect. `flushRef` is stable so the dep array only
+  // reacts to the meaningful state changes (`pendingFlush`, `isStreaming`,
+  // `allAnswered`). The ref always holds the latest closure.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- streaming-finished is an external event
   useEffect(() => {
     if (!pendingFlush) return;
@@ -158,8 +162,8 @@ export function useMultiPartDecisionForm<TPart, TValues extends FieldValues>(
       return;
     }
     setPendingFlush(false);
-    flush();
-  }, [pendingFlush, isStreaming, allAnswered, flush]);
+    flushRef.current();
+  }, [pendingFlush, isStreaming, allAnswered]);
 
   return {
     form,
