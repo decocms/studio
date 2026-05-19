@@ -78,27 +78,27 @@ export default function OrgShellLayout() {
   const hasTaskRoute = Boolean(params.taskId);
 
   return (
-    <SidebarProvider defaultOpen={false}>
-      <div className="flex flex-col h-dvh overflow-hidden">
-        <SidebarLayout
-          className="flex-1 bg-sidebar"
-          style={
-            {
-              "--sidebar-width-icon": "3.5rem",
-            } as Record<string, string>
-          }
-        >
-          <StudioSidebar />
-          <SidebarInset
-            className="flex flex-col"
-            style={{
-              background: "transparent",
-              containerType: "inline-size",
-            }}
+    <ThreadManagerProvider>
+      <SidebarProvider defaultOpen={false}>
+        <div className="flex flex-col h-dvh overflow-hidden">
+          <SidebarLayout
+            className="flex-1 bg-sidebar"
+            style={
+              {
+                "--sidebar-width-icon": "3.5rem",
+              } as Record<string, string>
+            }
           >
-            <ChatPrefsProvider>
-              <TasksPanelStateProvider>
-                <ThreadManagerProvider>
+            <StudioSidebar />
+            <SidebarInset
+              className="flex flex-col"
+              style={{
+                background: "transparent",
+                containerType: "inline-size",
+              }}
+            >
+              <ChatPrefsProvider>
+                <TasksPanelStateProvider>
                   {isMobile ? (
                     <>
                       {!hasTaskRoute && <MobileHomeToolbar />}
@@ -127,12 +127,12 @@ export default function OrgShellLayout() {
                       </div>
                     </Toolbar>
                   )}
-                </ThreadManagerProvider>
-              </TasksPanelStateProvider>
-            </ChatPrefsProvider>
-          </SidebarInset>
-        </SidebarLayout>
-      </div>
-    </SidebarProvider>
+                </TasksPanelStateProvider>
+              </ChatPrefsProvider>
+            </SidebarInset>
+          </SidebarLayout>
+        </div>
+      </SidebarProvider>
+    </ThreadManagerProvider>
   );
 }
