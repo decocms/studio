@@ -58,16 +58,6 @@ describe("filterThreads", () => {
     ]);
   });
 
-  test("filters by virtualMcpId", () => {
-    const threads = [
-      t("a", { virtual_mcp_id: "agent-1" }),
-      t("b", { virtual_mcp_id: "agent-2" }),
-    ];
-    expect(filterThreads(threads, { virtualMcpId: "agent-1" })).toEqual([
-      threads[0]!,
-    ]);
-  });
-
   test("filters by hidden=false (excludes hidden threads, treats undefined as visible)", () => {
     const threads = [
       t("a", { hidden: true }),

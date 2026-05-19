@@ -5,8 +5,6 @@ export interface ThreadFilter {
   ownerUserId?: string;
   /** Keep only threads whose `trigger_id` truthiness matches this flag. */
   hasTrigger?: boolean;
-  /** Keep only threads for a specific agent. */
-  virtualMcpId?: string;
   /** Keep only threads whose `hidden` flag matches (treats `undefined` as `false`). */
   hidden?: boolean;
 }
@@ -24,11 +22,6 @@ export function filterThreads(
     if (
       filter.hasTrigger !== undefined &&
       Boolean(thread.trigger_id) !== filter.hasTrigger
-    )
-      return false;
-    if (
-      filter.virtualMcpId !== undefined &&
-      thread.virtual_mcp_id !== filter.virtualMcpId
     )
       return false;
     if (filter.hidden !== undefined && Boolean(thread.hidden) !== filter.hidden)
