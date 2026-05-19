@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@deco/ui/components/button.tsx";
+import { Form } from "@deco/ui/components/form.tsx";
 import {
   Select,
   SelectContent,
@@ -9,16 +10,18 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { ShieldTick } from "@untitledui/icons";
-import { useState } from "react";
+import { Controller } from "react-hook-form";
+import { z } from "zod";
 import {
   APPROVAL_LEVEL_OPTIONS,
   usePreferences,
   type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
-import { toTitleCase } from "../message/parts/tool-call-part/utils.tsx";
 import { stripMcpServerPrefix } from "@/web/lib/tool-namespace";
-import { Pagination } from "./pagination";
+import { toTitleCase } from "../message/parts/tool-call-part/utils.tsx";
 import { CollapsibleHighlight } from "./collapsible-highlight";
+import { PaginatedFormFooter } from "./common/paginated-form-footer";
+import { useMultiPartDecisionForm } from "./common/use-multipart-decision-form";
 
 // ============================================================================
 // Types
@@ -54,9 +57,6 @@ function ApprovalLevelSelect({
     const newLevel = value as ToolApprovalLevel;
     setPreferences({ ...preferences, toolApprovalLevel: newLevel });
     if (newLevel === "auto") {
-      // Pass the new level explicitly — setPreferences won't have flushed
-      // by the time handleAcceptAll runs in this same handler, so the
-      // closure value of preferences.toolApprovalLevel is still stale.
       onYolo(newLevel);
     }
   };
@@ -85,21 +85,19 @@ function ApprovalLevelSelect({
 }
 
 // ============================================================================
-// ApprovalDetail - shows tool input as formatted code
+// ApprovalDetail
 // ============================================================================
 
 function ApprovalDetail({ input }: { input: unknown }) {
   if (input === undefined || input === null) {
     return <div className="px-4 text-xs text-muted-foreground">No input</div>;
   }
-
   let formatted: string;
   try {
     formatted = JSON.stringify(input, null, 2);
   } catch {
     formatted = String(input);
   }
-
   return (
     <div className="px-4">
       <pre className="text-xs font-mono text-muted-foreground/70 whitespace-pre-wrap wrap-break-word max-h-32 overflow-y-auto rounded-md bg-muted/30 px-3 py-2">
@@ -110,11 +108,11 @@ function ApprovalDetail({ input }: { input: unknown }) {
 }
 
 // ============================================================================
-// ApprovalPrompt - aggregated approval UI with pagination
+// Single-approval branch — instant fire, no Submit
 // ============================================================================
 
-interface ApprovalPromptProps {
-  approvals: PendingApproval[];
+interface SingleApprovalPromptProps {
+  approval: PendingApproval;
   onRespond: (
     approvalId: string,
     approved: boolean,
@@ -123,59 +121,26 @@ interface ApprovalPromptProps {
   ) => void;
 }
 
-function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
+function SingleApprovalPrompt({
+  approval,
+  onRespond,
+}: SingleApprovalPromptProps) {
   const [preferences] = usePreferences();
-
-  // Clamp index if list shrinks
-  const safeIndex = Math.min(activeIndex, approvals.length - 1);
-  const current = approvals[safeIndex];
-
-  if (!current) return null;
-
-  const handleDeny = (level: ToolApprovalLevel) => {
-    onRespond(current.approvalId, false, DEFAULT_DENY_REASON, level);
-    // Keep index; list shrinks on re-render, clamp handles it
-  };
-
-  const handleAccept = (level: ToolApprovalLevel) => {
-    onRespond(current.approvalId, true, undefined, level);
-  };
-
-  const handleAcceptAll = (level: ToolApprovalLevel) => {
-    for (const approval of approvals) {
-      onRespond(approval.approvalId, true, undefined, level);
-    }
-  };
-
-  const goToPrev = () => {
-    if (safeIndex > 0) setActiveIndex(safeIndex - 1);
-  };
-
-  const goToNext = () => {
-    if (safeIndex < approvals.length - 1) setActiveIndex(safeIndex + 1);
-  };
-
-  const chipLabel =
-    approvals.length === 1
-      ? "Approval needed"
-      : `${approvals.length} approvals pending`;
-
   const currentLevel: ToolApprovalLevel =
     preferences.toolApprovalLevel ?? "readonly";
+
+  const handleDeny = () =>
+    onRespond(approval.approvalId, false, DEFAULT_DENY_REASON, currentLevel);
+  const handleAccept = () =>
+    onRespond(approval.approvalId, true, undefined, currentLevel);
+  const handleAcceptAll = (level: ToolApprovalLevel) =>
+    onRespond(approval.approvalId, true, undefined, level);
 
   const footerLeft = (
     <div className="flex items-center gap-2">
       <ApprovalLevelSelect onYolo={handleAcceptAll} />
-      <Pagination
-        current={safeIndex}
-        total={approvals.length}
-        onPrev={goToPrev}
-        onNext={goToNext}
-      />
     </div>
   );
-
   const footerRight = (
     <>
       <Button
@@ -183,26 +148,15 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
         variant="ghost"
         size="sm"
         className="h-7 px-2.5 text-xs text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
-        onClick={() => handleDeny(currentLevel)}
+        onClick={handleDeny}
       >
         Deny
       </Button>
-      {approvals.length > 1 && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs active:scale-[0.97] transition-transform"
-          onClick={() => handleAcceptAll(currentLevel)}
-        >
-          Accept All
-        </Button>
-      )}
       <Button
         type="button"
         size="sm"
         className="h-7 px-2.5 text-xs active:scale-[0.97] transition-transform"
-        onClick={() => handleAccept(currentLevel)}
+        onClick={handleAccept}
       >
         Accept
       </Button>
@@ -212,14 +166,199 @@ function ApprovalPrompt({ approvals, onRespond }: ApprovalPromptProps) {
   return (
     <CollapsibleHighlight
       icon={<ShieldTick size={14} />}
-      label={chipLabel}
-      title={current.friendlyName}
+      label="Approval needed"
+      title={approval.friendlyName}
       defaultExpanded={true}
       footerLeft={footerLeft}
       footerRight={footerRight}
     >
-      <ApprovalDetail input={current.input} />
+      <ApprovalDetail input={approval.input} />
     </CollapsibleHighlight>
+  );
+}
+
+// ============================================================================
+// Batched approval prompt — react-hook-form, explicit Submit
+// ============================================================================
+
+type ApprovalFormValues = Record<string, { approved?: boolean }>;
+
+const approvalsSchema = z.record(
+  z.string(),
+  z.object({
+    approved: z.boolean().optional(),
+  }),
+);
+
+interface BatchedApprovalPromptProps {
+  approvals: PendingApproval[];
+  isStreaming: boolean;
+  onRespond: (
+    approvalId: string,
+    approved: boolean,
+    reason: string | undefined,
+    toolApprovalLevel: ToolApprovalLevel,
+  ) => void;
+}
+
+function BatchedApprovalPrompt({
+  approvals,
+  isStreaming,
+  onRespond,
+}: BatchedApprovalPromptProps) {
+  const [preferences] = usePreferences();
+  const currentLevel: ToolApprovalLevel =
+    preferences.toolApprovalLevel ?? "readonly";
+
+  const defaultValues: ApprovalFormValues = Object.fromEntries(
+    approvals.map((a) => [a.approvalId, { approved: undefined }]),
+  );
+
+  const decisionForm = useMultiPartDecisionForm<
+    PendingApproval,
+    ApprovalFormValues
+  >({
+    parts: approvals,
+    partKey: (a) => a.approvalId,
+    schema: approvalsSchema,
+    defaultValues,
+    isStreaming,
+    hasAnswer: (v) =>
+      typeof (v as { approved?: boolean } | undefined)?.approved === "boolean",
+    onSubmit: (approval, value) => {
+      const approved = (value as { approved?: boolean })?.approved;
+      if (typeof approved !== "boolean") return;
+      onRespond(
+        approval.approvalId,
+        approved,
+        approved === false ? DEFAULT_DENY_REASON : undefined,
+        currentLevel,
+      );
+    },
+  });
+
+  const fillAndSubmit = () => {
+    decisionForm.form.reset(
+      Object.fromEntries(
+        approvals.map((a) => [a.approvalId, { approved: true }]),
+      ) as ApprovalFormValues,
+    );
+    // best-effort: hook no-ops if !canSubmit (still streaming). User then
+    // clicks Submit manually once streaming ends.
+    decisionForm.submit();
+  };
+
+  const current = decisionForm.currentPart;
+
+  return (
+    <Form {...decisionForm.form}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          decisionForm.submit();
+        }}
+      >
+        <CollapsibleHighlight
+          icon={<ShieldTick size={14} />}
+          label={`${approvals.length} approvals pending`}
+          title={current?.friendlyName ?? ""}
+          defaultExpanded={true}
+          footerLeft={null}
+          footerRight={
+            <PaginatedFormFooter
+              currentIndex={decisionForm.currentIndex}
+              total={approvals.length}
+              onPrev={decisionForm.goPrev}
+              onNext={decisionForm.goNext}
+              isStreaming={isStreaming}
+              isAllAnswered={decisionForm.isAllAnswered}
+              onSubmit={decisionForm.submit}
+              extraLeft={<ApprovalLevelSelect onYolo={fillAndSubmit} />}
+              extraRight={
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2.5 text-xs"
+                    onClick={fillAndSubmit}
+                  >
+                    Accept All
+                  </Button>
+                  {current ? (
+                    <ApprovalDecisionButtons
+                      approvalId={current.approvalId}
+                      control={decisionForm.form.control}
+                      onChange={decisionForm.advanceToNextUnanswered}
+                    />
+                  ) : null}
+                </>
+              }
+            />
+          }
+        >
+          {current ? <ApprovalDetail input={current.input} /> : null}
+        </CollapsibleHighlight>
+      </form>
+    </Form>
+  );
+}
+
+// ============================================================================
+// ApprovalDecisionButtons — Deny / Accept pair for the current approval,
+// driven by react-hook-form. Click toggles the form value; both buttons can
+// be flipped freely before final Submit.
+// ============================================================================
+
+function ApprovalDecisionButtons({
+  approvalId,
+  control,
+  onChange,
+}: {
+  approvalId: string;
+  // biome-ignore lint/suspicious/noExplicitAny: react-hook-form Control generic doesn't unify with ApprovalFormValues at Controller call site
+  control: any;
+  onChange: () => void;
+}) {
+  return (
+    <Controller
+      control={control}
+      name={`${approvalId}.approved`}
+      render={({ field }) => {
+        const isAccepted = field.value === true;
+        const isDenied = field.value === false;
+        return (
+          <>
+            <Button
+              type="button"
+              variant={isDenied ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              onClick={() => {
+                field.onChange(false);
+                onChange();
+              }}
+              aria-pressed={isDenied}
+            >
+              Deny
+            </Button>
+            <Button
+              type="button"
+              variant={isAccepted ? "default" : "outline"}
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              onClick={() => {
+                field.onChange(true);
+                onChange();
+              }}
+              aria-pressed={isAccepted}
+            >
+              Accept
+            </Button>
+          </>
+        );
+      }}
+    />
   );
 }
 
@@ -264,7 +403,19 @@ export function ApprovalHighlight({
     return null;
   }
 
-  return <ApprovalPrompt approvals={approvals} onRespond={onRespond} />;
+  if (approvals.length === 1) {
+    const only = approvals[0];
+    if (!only) return null;
+    return <SingleApprovalPrompt approval={only} onRespond={onRespond} />;
+  }
+
+  return (
+    <BatchedApprovalPrompt
+      approvals={approvals}
+      isStreaming={isStreaming}
+      onRespond={onRespond}
+    />
+  );
 }
 
 // ============================================================================
@@ -282,7 +433,6 @@ export function extractPendingApprovals(
   }>,
 ): PendingApproval[] {
   const result: PendingApproval[] = [];
-
   for (const part of parts) {
     if (
       "state" in part &&
@@ -298,7 +448,6 @@ export function extractPendingApprovals(
           : part.type.startsWith("tool-")
             ? part.type.replace("tool-", "")
             : "Tool";
-
       result.push({
         approvalId: part.approval.id,
         toolCallId: part.toolCallId,
@@ -308,6 +457,5 @@ export function extractPendingApprovals(
       });
     }
   }
-
   return result;
 }
