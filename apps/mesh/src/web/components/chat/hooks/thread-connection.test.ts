@@ -210,6 +210,77 @@ describe("chunk handling", () => {
   });
 });
 
+// ─── stop() — late chunks from the cancelled run are dropped ────────────────
+
+describe("stop", () => {
+  test("late chunks from a cancelled run don't land on the next user turn", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-stop-late");
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Run 1 starts streaming.
+    stream.enqueue({ type: "start", messageId: "m-1" });
+    stream.enqueue({ type: "text-start", id: "p-1" });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: "partial" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(conn.messages.get().at(-1)?.id).toBe("m-1");
+
+    // User clicks Stop mid-stream.
+    conn.stop();
+    expect(conn.status.get().kind).toBe("ready");
+
+    // User immediately sends a new message before the cancelled run's tail
+    // chunks have a chance to drain through the SSE.
+    await conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "u-2",
+          role: "user",
+          parts: [{ type: "text", text: "second" }],
+        },
+      },
+      baseOpts,
+    );
+
+    // Cancelled run's late chunks arrive AFTER the new user message — these
+    // are exactly the chunks that previously got attributed to a phantom
+    // assistant message appended after the user message.
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: " leftover" });
+    stream.enqueue({ type: "text-end", id: "p-1" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Run 2 starts properly.
+    stream.enqueue({ type: "start", messageId: "m-2" });
+    stream.enqueue({ type: "text-start", id: "p-2" });
+    stream.enqueue({ type: "text-delta", id: "p-2", delta: "fresh" });
+    stream.enqueue({ type: "text-end", id: "p-2" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const ids = conn.messages.get().map((m) => m.id);
+    expect(ids).toEqual(["m-1", "u-2", "m-2"]);
+
+    const textOf = (id: string) => {
+      const m = conn.messages.get().find((x) => x.id === id);
+      return (m?.parts ?? [])
+        .filter((p) => (p as { type: string }).type === "text")
+        .map((p) => (p as { text: string }).text)
+        .join("");
+    };
+    // m-1 keeps its pre-stop content; the leftover delta is dropped.
+    expect(textOf("m-1")).toBe("partial");
+    // m-2 contains only run 2's content — no contamination from run 1.
+    expect(textOf("m-2")).toBe("fresh");
+  });
+});
+
 // ─── submit() — single mutator entry point ───────────────────────────────────
 
 describe("submit", () => {

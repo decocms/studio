@@ -266,6 +266,13 @@ class ThreadConnection {
   private pendingFinishReason: string | undefined = undefined;
   private discardOnClose = false;
   private inflightPost: AbortController | null = null;
+  /**
+   * After a manual stop(), drop chunks until the next `start` chunk so late
+   * text-deltas / finish events from the cancelled run don't open a fresh
+   * substream and land on a new assistant message after any user turn the
+   * user has queued in the meantime.
+   */
+  private waitingForNewRun = false;
 
   constructor(
     readonly orgSlug: string,
@@ -331,6 +338,15 @@ class ThreadConnection {
     if (s.kind === "submitted" || s.kind === "streaming") {
       this.status.set({ kind: "ready" });
     }
+    // Freeze the in-flight assistant message at its current state and gate
+    // every subsequent chunk on a fresh `start` boundary. Without this, the
+    // cancel's racing tail chunks (or a server-side replay across an SSE
+    // reconnect) would create a new assistant message that lands after any
+    // user turn the user queues between Stop and the next run.
+    if (this.subController) {
+      this.forceCloseSubStream(true);
+    }
+    this.waitingForNewRun = true;
   }
 
   clearError(): void {
@@ -528,6 +544,10 @@ class ThreadConnection {
   }
 
   private handleChunk(chunk: UIMessageChunk): void {
+    if (this.waitingForNewRun) {
+      if (chunk.type !== "start") return;
+      this.waitingForNewRun = false;
+    }
     if (chunk.type.startsWith("data-")) {
       this.observer?.onData?.(
         chunk as Extract<UIMessageChunk, { type: `data-${string}` }>,
