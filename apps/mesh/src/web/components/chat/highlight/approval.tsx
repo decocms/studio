@@ -181,12 +181,16 @@ function SingleApprovalPrompt({
 // Batched approval prompt — react-hook-form, explicit Submit
 // ============================================================================
 
-type ApprovalFormValues = Record<string, { approved?: boolean }>;
+type ApprovalFormValues = Record<
+  string,
+  { approved?: boolean; levelOverride?: ToolApprovalLevel }
+>;
 
 const approvalsSchema = z.record(
   z.string(),
   z.object({
     approved: z.boolean().optional(),
+    levelOverride: z.enum(["auto", "readonly"]).optional(),
   }),
 );
 
@@ -226,25 +230,33 @@ function BatchedApprovalPrompt({
     hasAnswer: (v) =>
       typeof (v as { approved?: boolean } | undefined)?.approved === "boolean",
     onSubmit: (approval, value) => {
-      const approved = (value as { approved?: boolean })?.approved;
-      if (typeof approved !== "boolean") return;
+      const v = value as {
+        approved?: boolean;
+        levelOverride?: ToolApprovalLevel;
+      };
+      if (typeof v?.approved !== "boolean") return;
       onRespond(
         approval.approvalId,
-        approved,
-        approved === false ? DEFAULT_DENY_REASON : undefined,
-        currentLevel,
+        v.approved,
+        v.approved === false ? DEFAULT_DENY_REASON : undefined,
+        v.levelOverride ?? currentLevel,
       );
     },
   });
 
-  const fillAndSubmit = () => {
+  const fillAndSubmit = (level: ToolApprovalLevel) => {
+    // Stash the explicit level on each form value so onSubmit doesn't have
+    // to read it from the (still-stale) preferences closure. Stashing in
+    // the form (rather than a closure or ref) also survives the
+    // streaming-deferred flush in useMultiPartDecisionForm.
     decisionForm.form.reset(
       Object.fromEntries(
-        approvals.map((a) => [a.approvalId, { approved: true }]),
+        approvals.map((a) => [
+          a.approvalId,
+          { approved: true, levelOverride: level },
+        ]),
       ) as ApprovalFormValues,
     );
-    // submitOrAdvance defers the flush while streaming and fires it the
-    // moment the stream finishes (see useMultiPartDecisionForm).
     decisionForm.submitOrAdvance();
   };
 
