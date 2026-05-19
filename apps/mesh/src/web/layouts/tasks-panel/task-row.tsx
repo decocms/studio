@@ -32,10 +32,11 @@ export function TaskRow({
   const virtualMcp = useVirtualMCP(task.virtual_mcp_id);
   const githubRepo = getActiveGithubRepo(virtualMcp);
   const rowRef = useRef<HTMLDivElement>(null);
-  // Subscribe to a 30s heartbeat so the relative timestamp re-renders even
+  // Subscribe to a 60s heartbeat so the relative timestamp re-renders even
   // when `task` is referentially stable — without this, "3m ago" stays
-  // pinned until something else forces the row to re-render.
-  useClockTick(30_000);
+  // pinned until something else forces the row to re-render. 60s matches
+  // the resolution of `formatTimeAgo`'s "Xm ago" output.
+  useClockTick(60_000);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs route-selected task row with the scrollable tasks panel DOM
   useEffect(() => {

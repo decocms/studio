@@ -1,7 +1,7 @@
 /**
  * `useClockTick` — subscribe to a coarse wall-clock heartbeat.
  *
- * Returns a number that increments every `intervalMs` (default 30s), so
+ * Returns a number that increments every `intervalMs` (default 60s), so
  * any component that calls this hook re-renders on the same cadence.
  * Use it to keep relative timestamps (`formatTimeAgo`) fresh on rows
  * whose `task` props haven't changed and would otherwise stay memoized
@@ -50,7 +50,7 @@ function subscribe(intervalMs: number, listener: () => void): () => void {
   };
 }
 
-export function useClockTick(intervalMs: number = 30_000): number {
+export function useClockTick(intervalMs: number = 60_000): number {
   return useSyncExternalStore(
     (listener) => subscribe(intervalMs, listener),
     () => getStore(intervalMs).tick,
