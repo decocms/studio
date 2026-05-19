@@ -118,6 +118,9 @@ export function PreviewContent() {
 
   // Sections editor panel
   const [sectionsOpen, setSectionsOpen] = useState(false);
+  // Tracks the last focused element outside the iframe so we can restore it
+  // when the iframe reload steals focus.
+  const focusBeforeIframeRef = useRef<HTMLElement | null>(null);
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
@@ -394,6 +397,45 @@ export function PreviewContent() {
     document.addEventListener("pointerdown", handler);
     return () => document.removeEventListener("pointerdown", handler);
   }, [pagesOpen]);
+
+  // Prevent the iframe from stealing focus away from sections-editor inputs.
+  // When focus leaves an element and lands on the iframe (or body, which
+  // happens for cross-origin iframe focus), restore the previously focused
+  // element. We track the last non-iframe focused element via `focusin`, and
+  // detect the steal via a rAF after `blur` (by that time activeElement has
+  // settled to body/iframe when focus entered the iframe content window).
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription for focus tracking
+  useEffect(() => {
+    if (!sectionsOpen) return;
+
+    const onFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target !== previewIframeRef.current) {
+        focusBeforeIframeRef.current = target;
+      }
+    };
+
+    const onBlur = () => {
+      requestAnimationFrame(() => {
+        const active = document.activeElement;
+        // When focus enters a cross-origin iframe, activeElement becomes
+        // <body> or the <iframe> element itself.
+        if (
+          (active === document.body || active === previewIframeRef.current) &&
+          focusBeforeIframeRef.current
+        ) {
+          focusBeforeIframeRef.current.focus();
+        }
+      });
+    };
+
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("blur", onBlur, true);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("blur", onBlur, true);
+    };
+  }, [sectionsOpen]);
 
   const injectVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
@@ -750,6 +792,7 @@ export function PreviewContent() {
               src={previewState.previewUrl}
               className="w-full h-full border-0"
               title="Dev Server Preview"
+              tabIndex={sectionsOpen ? -1 : undefined}
               onLoad={() => {
                 // This is the VM dev-server preview (sandboxed running app),
                 // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.

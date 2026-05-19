@@ -54,10 +54,7 @@ export function ArrayField({
         <p className="text-xs text-muted-foreground">{schema.description}</p>
       )}
       {items.map((item, i) => (
-        <div
-          key={`${path}.${i}.${items.length}`}
-          className="border rounded-md p-3 relative"
-        >
+        <div key={`${path}.${i}`} className="border rounded-md p-3 relative">
           <Button
             type="button"
             variant="ghost"
