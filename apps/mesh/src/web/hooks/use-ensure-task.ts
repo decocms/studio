@@ -12,6 +12,16 @@
  * URL params (e.g. /$org/) call the hook unconditionally so Rules of Hooks
  * stays happy across the home/task branch.
  *
+ * Read path: the `ThreadManagerStore.threads` slot is consulted first via
+ * `useSyncExternalStore`. If the thread is already in the org-scoped list
+ * (initial snapshot already arrived, or a sibling component just created
+ * it), the hook returns ready synchronously with no MCP round-trip.
+ *
+ * Slow path: when the store doesn't yet know about the id, fall through to
+ * a single MCP GET. A 404 (resolved to `null`) triggers
+ * `manager.create({ id, virtual_mcp_id })`; the manager owns list
+ * insertion, so no React Query cache priming is needed here.
+ *
  * Race safety: the create mutation is server-side idempotent (`INSERT … ON
  * CONFLICT DO NOTHING RETURNING *`). Two tabs hitting the same URL both end
  * up with the same row.
@@ -22,11 +32,11 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useSyncExternalStore } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { KEYS } from "../lib/query-keys";
 import type { Task } from "../components/chat/task/types";
-import { prependRowToThreadCaches } from "../components/chat/task/thread-events";
+import { useThreadManager } from "../components/chat/store/hooks";
 
 type State =
   | { status: "loading" }
@@ -35,13 +45,18 @@ type State =
   | { status: "error"; error: Error };
 
 export function useEnsureTask(id: string, virtualMcpId: string): State {
-  const { org, locator } = useProjectContext();
+  const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const queryClient = useQueryClient();
+  const manager = useThreadManager();
+  const threads = useSyncExternalStore(
+    manager.threads.subscribe,
+    manager.threads.get,
+  );
+  const localHit = id ? (threads.find((t) => t.id === id) ?? null) : null;
 
   const query = useQuery<Task | null>({
     queryKey: KEYS.ensureTask(org.id, id),
@@ -54,49 +69,17 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
         .structuredContent as { item?: Task } | undefined;
       return payload?.item ?? null;
     },
-    enabled: id.length > 0,
+    enabled: id.length > 0 && !localHit,
     retry: false,
     refetchOnWindowFocus: false,
   });
 
-  // Private mutation owned by this hook so we can suppress the toast and
-  // shared-cache invalidation that `useTaskActions().create` does. Effects
-  // re-run on (id, query.isSuccess, query.data) changes; React 19 Strict
-  // Mode dev may double-fire on first mount, but the server's `INSERT … ON
-  // CONFLICT DO NOTHING` makes this silent (no duplicate row, no toast).
+  // Private mutation owned by this hook so we can suppress the toast that
+  // `useTaskActions().create` would surface. The store handles list
+  // insertion internally — no cache invalidation or priming needed.
   const ensureCreate = useMutation<Task, Error, string>({
-    mutationFn: async (taskId) => {
-      const result = await client.callTool({
-        name: "COLLECTION_THREADS_CREATE",
-        arguments: {
-          data: { id: taskId, virtual_mcp_id: virtualMcpId },
-        },
-      });
-      if ((result as { isError?: boolean }).isError) {
-        const content = (result as { content?: unknown }).content;
-        const msg =
-          Array.isArray(content) && content[0] && typeof content[0] === "object"
-            ? ((content[0] as { text?: string }).text ?? "Create failed")
-            : "Create failed";
-        throw new Error(msg);
-      }
-      const payload = (result as { structuredContent?: unknown })
-        .structuredContent as { item: Task };
-      return payload.item;
-    },
-    onSuccess: (createdRow) => {
-      // Refresh the canonical THREADS collection cache, then prepend the
-      // newly-created row to threadsPrefix caches. ThreadEventsBridge will
-      // subsequently overwrite synthetic fields on the first SSE event.
-      queryClient.invalidateQueries({
-        predicate: (q) =>
-          q.queryKey[1] === org.id &&
-          q.queryKey[3] === "collection" &&
-          q.queryKey[4] === "THREADS",
-      });
-      prependRowToThreadCaches(queryClient, locator, createdRow);
-      void query.refetch();
-    },
+    mutationFn: async (taskId) =>
+      manager.create({ id: taskId, virtual_mcp_id: virtualMcpId }),
   });
 
   // Fires the create mutation when GET resolves to a missing thread.
@@ -107,13 +90,15 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     if (!id) return;
+    if (localHit) return;
     if (!query.isSuccess || query.data) return;
     if (ensureCreate.isPending) return;
     if (ensureCreate.variables === id) return;
     ensureCreate.mutate(id);
-  }, [id, query.isSuccess, query.data, ensureCreate]);
+  }, [id, localHit, query.isSuccess, query.data, ensureCreate]);
 
   if (!id) return { status: "ready", task: null };
+  if (localHit) return { status: "ready", task: localHit };
   if (query.isLoading) return { status: "loading" };
   if (query.isError) return { status: "error", error: query.error as Error };
   if (query.isSuccess && query.data) {
