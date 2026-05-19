@@ -59,13 +59,10 @@ function ChatMessages() {
 
   // Reserve `n × h + 32px` of bottom padding so that, when every highlight
   // is collapsed, the last message sits a comfortable gap above the top of
-  // the highlight stack. The extra 32px is a breathing-room buffer so the
-  // last message doesn't sit flush against the card. Expanded highlights
+  // the highlight stack. The 32px baseline keeps the last message off the
+  // bottom edge even when no highlights are rendered. Expanded highlights
   // still cover content — the affordance is "collapse to read".
-  const paddingBottom =
-    highlightCount > 0
-      ? highlightCount * HIGHLIGHT_COLLAPSED_HEIGHT_PX + 32
-      : 0;
+  const paddingBottom = highlightCount * HIGHLIGHT_COLLAPSED_HEIGHT_PX + 32;
 
   return (
     <div
