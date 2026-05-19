@@ -8,8 +8,10 @@
  *   • `status` and `finishReason` Stores read by the React layer
  *
  * Lifecycle:
- *   constructor → bootstrap() fetches the server snapshot via
- *   COLLECTION_THREAD_MESSAGES_LIST, sets messages, then opens the SSE.
+ *   constructor → bootstrap() opens the SSE. The server emits an
+ *   `event: snapshot` SSE frame as the FIRST frame on every connect; that
+ *   frame seeds `messages`. Subsequent frames are UIMessageChunk events
+ *   that fold into the in-progress assistant message.
  *   dispose() aborts everything.
  *
  * Mutation:
@@ -25,16 +27,15 @@
  *   the current `messages`, submit() throws.
  *
  * Server-snapshot reconciliation:
- *   refresh() re-fetches the snapshot and replaces messages. Server is
- *   authoritative — except while a submit is in flight (status="submitted"),
- *   in which case refresh() is a no-op. The next event after the POST
- *   settles will refresh normally.
+ *   On every SSE reconnect the server re-emits `event: snapshot`, which
+ *   replaces `messages` — except while a submit is in flight
+ *   (status="submitted"), in which case the snapshot is dropped to avoid
+ *   transiently overwriting the local optimistic patch.
  */
 
 import {
   lastAssistantMessageIsCompleteWithApprovalResponses,
   lastAssistantMessageIsCompleteWithToolCalls,
-  parseJsonEventStream,
   readUIMessageStream,
   uiMessageChunkSchema,
   type UIMessage,
@@ -195,36 +196,6 @@ function describe(action: SubmitAction): string {
   return `approval approvalId=${action.approvalId}`;
 }
 
-interface JsonRpcResponse {
-  result?: { structuredContent?: { items?: UIMessage[] } };
-  error?: { message?: string };
-}
-
-/** Parse a streamable-HTTP MCP response when the server picked
- *  `text/event-stream` over `application/json` content negotiation. The
- *  response body is one or more `data: <jsonrpc-message>` SSE events; for a
- *  single `tools/call` request we expect exactly one matching response
- *  message. */
-async function parseSseSingleResponse(
-  resp: Response,
-): Promise<JsonRpcResponse> {
-  const text = await resp.text();
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("data:")) continue;
-    const payload = line.slice(5).trim();
-    if (!payload) continue;
-    try {
-      const parsed = JSON.parse(payload) as JsonRpcResponse;
-      if (parsed.result !== undefined || parsed.error !== undefined) {
-        return parsed;
-      }
-    } catch {
-      // ignore — next line might be the real response
-    }
-  }
-  throw new Error("snapshot rpc: no response in stream");
-}
-
 // ─── ThreadConnection ────────────────────────────────────────────────────────
 
 export class ThreadConnection {
@@ -335,77 +306,14 @@ export class ThreadConnection {
     if (s.kind === "error") this.status.set({ kind: "ready" });
   }
 
-  /**
-   * Re-fetch the server snapshot and replace `messages`. Skipped while a
-   * submit POST is in flight — the local patch would be transiently
-   * overwritten by the not-yet-ingested server state. The next event after
-   * the POST settles will refresh us.
-   *
-   * Called by ThreadEventsBridge on thread status / finish notifications.
-   */
-  async refresh(): Promise<void> {
-    if (this.status.get().kind === "submitted") return;
-    try {
-      const snapshot = await this.fetchSnapshot();
-      this.messages.set(snapshot);
-    } catch (err) {
-      // Soft-fail: a refresh failure shouldn't poison the conn. The next
-      // event will retry. Surface to console for visibility.
-      console.error("[ThreadConnection] refresh failed", err);
-    }
-  }
+  /** Snapshot now arrives as the first /stream SSE event on every reconnect.
+   *  This stub stays until thread-events.tsx is deleted in Phase 6. */
+  async refresh(): Promise<void> {}
 
   // ── Internal: bootstrap ─────────────────────────────────────────────────
 
   private async bootstrap(): Promise<void> {
-    try {
-      const snapshot = await this.fetchSnapshot();
-      this.messages.set(snapshot);
-      this.status.set({ kind: "ready" });
-    } catch (err) {
-      const e = err instanceof Error ? err : new Error(String(err));
-      this.failTo(e);
-    }
-    // Start the SSE loop regardless of snapshot result — the user can still
-    // send and the run loop will reconnect on its own backoff schedule.
-    void this.runSseLoop();
-  }
-
-  private async fetchSnapshot(): Promise<UIMessage[]> {
-    const url = `/api/${encodeURIComponent(this.orgSlug)}/mcp/self`;
-    const resp = await fetch(url, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "content-type": "application/json",
-        // MCP HTTP transport requires both — server returns 406 otherwise.
-        accept: "application/json, text/event-stream",
-      },
-      signal: this.abort.signal,
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: "COLLECTION_THREAD_MESSAGES_LIST",
-          arguments: { thread_id: this.threadId, limit: 100 },
-        },
-      }),
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new Error(text || `snapshot fetch failed (${resp.status})`);
-    }
-    // Server may stream as text/event-stream even though we requested a
-    // tools/call. Parse SSE if applicable; otherwise treat as JSON.
-    const contentType = resp.headers.get("content-type") ?? "";
-    const body = contentType.includes("text/event-stream")
-      ? await parseSseSingleResponse(resp)
-      : ((await resp.json()) as JsonRpcResponse);
-    if (body.error) {
-      throw new Error(body.error.message ?? "snapshot rpc error");
-    }
-    return body.result?.structuredContent?.items ?? [];
+    await this.runSseLoop();
   }
 
   // ── Internal: POST /messages ────────────────────────────────────────────
@@ -480,22 +388,10 @@ export class ThreadConnection {
           return;
         }
         attempt = 0;
-        const parsed = parseJsonEventStream({
-          stream: resp.body,
-          schema: uiMessageChunkSchema,
-        });
-        const reader = parsed.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            cleanExit = true;
-            break;
-          }
-          if (!value.success) {
-            this.failTo(value.error);
-            return;
-          }
-          this.handleChunk(value.value as UIMessageChunk);
+        cleanExit = await this.consumeStreamSse(resp.body);
+        if (!cleanExit && this.status.get().kind === "error") {
+          // Schema mismatch / parser failure routed through failTo — terminal.
+          return;
         }
       } catch (err) {
         if (this.abort.signal.aborted) return;
@@ -521,6 +417,91 @@ export class ThreadConnection {
           );
         });
       }
+    }
+  }
+
+  /** Parse the body as SSE frames. Returns true on clean EOF, false if a
+   *  frame routed through `failTo()` (schema mismatch / parser error). */
+  private async consumeStreamSse(
+    body: ReadableStream<Uint8Array>,
+  ): Promise<boolean> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return true;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        await this.handleStreamFrame(frame);
+        if (this.status.get().kind === "error") return false;
+      }
+    }
+  }
+
+  private async handleStreamFrame(frame: string): Promise<void> {
+    const lines = frame.split("\n");
+    let event = "message";
+    const dataLines: string[] = [];
+    for (const line of lines) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (dataLines.length === 0) return;
+    const data = dataLines.join("\n");
+
+    if (event === "snapshot") {
+      // Drop the snapshot if a local submit is in flight — the optimistic
+      // patch in `messages` is fresher than the server-side persisted state.
+      if (this.status.get().kind === "submitted") return;
+      try {
+        const parsed = JSON.parse(data) as { messages: UIMessage[] };
+        this.messages.set(parsed.messages);
+        if (this.status.get().kind === "loading") {
+          this.status.set({ kind: "ready" });
+        }
+      } catch {
+        // Malformed snapshot frame — ignore. Subsequent frames still process.
+      }
+      return;
+    }
+
+    // Default: a UIMessageChunk JSON payload.
+    let payload: unknown;
+    try {
+      payload = JSON.parse(data);
+    } catch (err) {
+      this.failTo(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+    await this.validateAndHandleChunk(payload);
+  }
+
+  private async validateAndHandleChunk(payload: unknown): Promise<void> {
+    // `uiMessageChunkSchema` is an AI SDK LazySchema — call it to get the
+    // underlying Schema and use its `validate` method. Behaviour matches the
+    // prior `parseJsonEventStream` path: schema mismatch routes through
+    // `failTo` (terminal); structural validation passes through to
+    // `handleChunk`.
+    try {
+      const schema = uiMessageChunkSchema();
+      const result = schema.validate
+        ? await schema.validate(payload)
+        : { success: true as const, value: payload as UIMessageChunk };
+      if (!result.success) {
+        this.failTo(
+          result.error instanceof Error
+            ? result.error
+            : new Error(String(result.error)),
+        );
+        return;
+      }
+      this.handleChunk(result.value as UIMessageChunk);
+    } catch (err) {
+      this.failTo(err instanceof Error ? err : new Error(String(err)));
     }
   }
 

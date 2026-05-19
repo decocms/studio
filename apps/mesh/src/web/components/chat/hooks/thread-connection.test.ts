@@ -8,56 +8,79 @@ import {
 
 // ─── Fetch mock builders ─────────────────────────────────────────────────────
 
-/** Build a fetch mock with explicit handlers per endpoint. Default: snapshot
- *  returns empty items; /messages 200s; /stream hangs until aborted. Each
+/** Build a fetch mock with explicit handlers per endpoint. Default: /messages
+ *  200s; /stream hangs until aborted (after emitting an empty snapshot). Each
  *  endpoint can be overridden. */
 function makeFetchMock(
   opts: {
-    snapshot?: () => Response;
-    stream?: () => Response | Promise<Response>;
+    stream?: (init?: RequestInit) => Response | Promise<Response>;
     messages?: (init?: RequestInit) => Response;
     fallback?: (init?: RequestInit) => Promise<Response>;
   } = {},
 ) {
-  const defaultSnapshot = () =>
-    new Response(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        result: { structuredContent: { items: [] } },
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
-  const defaultStream = (init?: RequestInit) =>
-    new Promise<Response>((_, reject) => {
-      init?.signal?.addEventListener("abort", () =>
-        reject(new DOMException("aborted", "AbortError")),
-      );
+  const defaultStream = (init?: RequestInit) => {
+    // Emit an empty snapshot, then hang until aborted.
+    const enc = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          enc.encode(`event: snapshot\ndata: {"messages":[]}\n\n`),
+        );
+        init?.signal?.addEventListener("abort", () => {
+          try {
+            controller.close();
+          } catch {
+            // already closed
+          }
+        });
+      },
     });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
   const defaultMessages = () => new Response("ok", { status: 200 });
 
   return mock((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("/mcp/self")) {
-      return Promise.resolve(opts.snapshot?.() ?? defaultSnapshot());
-    }
     if (url.includes("/stream")) {
-      return Promise.resolve(opts.stream?.() ?? defaultStream(init));
+      return Promise.resolve(opts.stream?.(init) ?? defaultStream(init));
     }
     if (url.includes("/messages")) {
       return Promise.resolve(opts.messages?.(init) ?? defaultMessages());
     }
-    return opts.fallback?.(init) ?? defaultStream(init);
+    return (
+      opts.fallback?.(init) ??
+      new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      })
+    );
   });
 }
 
-/** Build a controllable /stream response — enqueue chunks at test time. */
-function controllableStream() {
+/** Build a controllable /stream response — enqueue chunks at test time. By
+ *  default emits an empty `event: snapshot` frame first so the connection
+ *  flips out of `loading`. Pass `{ snapshotMessages }` to seed the initial
+ *  messages list, or `{ omitSnapshot: true }` to suppress the snapshot. */
+function controllableStream(
+  opts: { snapshotMessages?: unknown[]; omitSnapshot?: boolean } = {},
+) {
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   const enc = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
     start(c) {
       controller = c;
+      if (!opts.omitSnapshot) {
+        const messages = opts.snapshotMessages ?? [];
+        c.enqueue(
+          enc.encode(
+            `event: snapshot\ndata: ${JSON.stringify({ messages })}\n\n`,
+          ),
+        );
+      }
     },
   });
   return {
@@ -123,20 +146,13 @@ describe("getOrOpenStream", () => {
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
 describe("bootstrap", () => {
-  test("loads server snapshot into messages and transitions to ready", async () => {
+  test("loads server snapshot from the /stream SSE event into messages and transitions to ready", async () => {
     const seedMessages = [
       { id: "u-1", role: "user", parts: [{ type: "text", text: "hi" }] },
     ];
+    const stream = controllableStream({ snapshotMessages: seedMessages });
     globalThis.fetch = makeFetchMock({
-      snapshot: () =>
-        new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            result: { structuredContent: { items: seedMessages } },
-          }),
-          { status: 200 },
-        ),
+      stream: () => stream.response,
     }) as unknown as typeof globalThis.fetch;
 
     const conn = getOrOpenStream("acme", "thread-boot");
@@ -147,9 +163,9 @@ describe("bootstrap", () => {
     expect(conn.messages.get()).toEqual(seedMessages as never);
   });
 
-  test("error during snapshot fetch transitions to status=error", async () => {
+  test("HTTP error on /stream transitions to status=error", async () => {
     globalThis.fetch = makeFetchMock({
-      snapshot: () => new Response("boom", { status: 500 }),
+      stream: () => new Response("boom", { status: 500 }),
     }) as unknown as typeof globalThis.fetch;
 
     const conn = getOrOpenStream("acme", "thread-boot-err");
@@ -289,25 +305,7 @@ describe("submit", () => {
     const messagesFetch = mock(() => new Response("ok", { status: 200 }));
     globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/mcp/self")) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              result: { structuredContent: { items: [] } },
-            }),
-            { status: 200 },
-          ),
-        );
-      }
       if (url.includes("/stream")) return Promise.resolve(stream.response);
-      if (
-        url.includes("/messages") &&
-        !url.includes("/decopilot/threads/") === false
-      ) {
-        return Promise.resolve(messagesFetch());
-      }
       if (url.includes("/messages")) return Promise.resolve(messagesFetch());
       return new Promise<Response>((_, reject) => {
         init?.signal?.addEventListener("abort", () =>
@@ -607,113 +605,5 @@ describe("submit defers POST", () => {
 
     expect(observedHeaders).not.toBeNull();
     expect(observedHeaders!.get("x-idempotency-key")).toBeNull();
-  });
-});
-
-// ─── refresh() ───────────────────────────────────────────────────────────────
-
-describe("refresh", () => {
-  test("re-fetches snapshot and replaces messages", async () => {
-    let returnNewSnapshot = false;
-    const initial = [
-      { id: "u-1", role: "user", parts: [{ type: "text", text: "old" }] },
-    ];
-    const updated = [
-      { id: "u-1", role: "user", parts: [{ type: "text", text: "old" }] },
-      { id: "a-1", role: "assistant", parts: [{ type: "text", text: "new" }] },
-    ];
-    globalThis.fetch = makeFetchMock({
-      snapshot: () =>
-        new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            result: {
-              structuredContent: {
-                items: returnNewSnapshot ? updated : initial,
-              },
-            },
-          }),
-          { status: 200 },
-        ),
-    }) as unknown as typeof globalThis.fetch;
-
-    const conn = getOrOpenStream("acme", "thread-refresh");
-    await new Promise((r) => setTimeout(r, 20));
-    expect(conn.messages.get().length).toBe(1);
-
-    returnNewSnapshot = true;
-    await conn.refresh();
-
-    expect(conn.messages.get().length).toBe(2);
-  });
-
-  test("refresh is a no-op while a submit POST is in flight", async () => {
-    const stream = controllableStream();
-    let resolveMessagesPost: (() => void) | null = null;
-    const snapshotCalls: number[] = [];
-    let snapshotCallCount = 0;
-
-    globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/mcp/self")) {
-        snapshotCallCount++;
-        snapshotCalls.push(snapshotCallCount);
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              result: { structuredContent: { items: [] } },
-            }),
-            { status: 200 },
-          ),
-        );
-      }
-      if (url.includes("/stream")) return Promise.resolve(stream.response);
-      if (url.includes("/messages")) {
-        // Hold the POST open so status stays "submitted".
-        return new Promise<Response>((resolve) => {
-          resolveMessagesPost = () =>
-            resolve(new Response("ok", { status: 200 }));
-        });
-      }
-      return new Promise<Response>((_, reject) => {
-        init?.signal?.addEventListener("abort", () =>
-          reject(new DOMException("aborted", "AbortError")),
-        );
-      });
-    }) as unknown as typeof globalThis.fetch;
-
-    const conn = getOrOpenStream("acme", "thread-refresh-guard");
-    await new Promise((r) => setTimeout(r, 20));
-    const snapshotCallsAfterBoot = snapshotCallCount;
-
-    // Stage a pending tool.
-    stream.enqueue({ type: "start", messageId: "m-1" });
-    stream.enqueue({
-      type: "tool-input-available",
-      toolCallId: "toolu_G",
-      toolName: "user_ask",
-      input: {},
-    });
-    stream.enqueue({ type: "finish", finishReason: "tool-calls" });
-    await new Promise((r) => setTimeout(r, 10));
-
-    // Kick off a submit — POST is held open.
-    const submitPromise = conn.submit(
-      { kind: "toolOutput", toolCallId: "toolu_G", output: {} },
-      baseOpts,
-    );
-    await new Promise((r) => setTimeout(r, 0));
-    expect(conn.status.get().kind).toBe("submitted");
-
-    // refresh() should bail without issuing a snapshot fetch.
-    await conn.refresh();
-    expect(snapshotCallCount).toBe(snapshotCallsAfterBoot);
-
-    // Settle the POST so the test cleans up.
-    (resolveMessagesPost as (() => void) | null)?.();
-    await submitPromise;
   });
 });
