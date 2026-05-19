@@ -33,14 +33,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 
-/**
- * Detect credit/payment errors.
- * The backend prefixes these with `[CREDITS]` so detection is deterministic.
- */
-export function isCreditError(error: Error | null): boolean {
-  if (!error) return false;
-  return error.message.startsWith("[CREDITS]");
-}
+export { isCreditError } from "./is-credit-error";
 
 const QUICK_AMOUNTS = {
   usd: [

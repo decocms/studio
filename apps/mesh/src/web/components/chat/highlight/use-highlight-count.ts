@@ -9,18 +9,13 @@
  * The credit-exhausted case is special: it renders as a modal `Dialog`
  * outside the stack, so it does NOT count toward `n`. The `isCreditExhausted`
  * flag is exposed for `ChatHighlight` to handle the early return.
- *
- * NOTE: The pure extraction helpers (extractPendingApprovals,
- * extractPendingPlans, isCreditError) are intentionally inlined here rather
- * than imported from their respective UI modules (approval.tsx,
- * propose-plan.tsx, credits-exhausted-banner.tsx). Those files pull in heavy
- * React UI components whose transitive dependencies (e.g. @deco/ui) are not
- * available in the bun test environment. The logic is identical to the
- * source-of-truth implementations in those files.
  */
 
 import type { UIMessage } from "ai";
 import { deriveCurrentTodos } from "./derive-current-todos";
+import { extractPendingApprovals } from "./extract-pending-approvals";
+import { extractPendingPlans } from "./extract-pending-plans";
+import { isCreditError } from "../is-credit-error";
 
 export interface HighlightFlags {
   isCreditExhausted: boolean;
@@ -50,52 +45,6 @@ const EMPTY_FLAGS: HighlightFlags = {
   isWaitingForUserInput: false,
 };
 
-// ---------------------------------------------------------------------------
-// Inlined pure helpers — identical logic to the source files, but without the
-// React/UI imports that would break the bun test environment.
-// ---------------------------------------------------------------------------
-
-/** Mirror of isCreditError in credits-exhausted-banner.tsx */
-function isCreditError(error: Error | null): boolean {
-  if (!error) return false;
-  return error.message.startsWith("[CREDITS]");
-}
-
-type LoosePart = {
-  type: string;
-  state?: string;
-  approval?: { id: string };
-  toolCallId?: string;
-  toolName?: string;
-  input?: unknown;
-};
-
-/** Mirror of extractPendingApprovals in approval.tsx */
-function extractPendingApprovals(parts: LoosePart[]): LoosePart[] {
-  return parts.filter(
-    (part) =>
-      "state" in part &&
-      part.state === "approval-requested" &&
-      "approval" in part &&
-      part.approval?.id &&
-      "toolCallId" in part &&
-      part.toolCallId,
-  );
-}
-
-/** Mirror of extractPendingPlans in propose-plan.tsx */
-function extractPendingPlans(parts: LoosePart[]): LoosePart[] {
-  return parts.filter(
-    (part) =>
-      part.type === "tool-propose_plan" &&
-      part.state === "input-available" &&
-      "toolCallId" in part &&
-      "input" in part,
-  );
-}
-
-// ---------------------------------------------------------------------------
-
 export function deriveHighlightFlags(
   input: DeriveHighlightFlagsInput,
 ): HighlightFlags {
@@ -111,6 +60,14 @@ export function deriveHighlightFlags(
   const assistantParts =
     lastMessage?.role === "assistant" ? lastMessage.parts : [];
 
+  type LoosePart = {
+    type: string;
+    state?: string;
+    approval?: { id: string };
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+  };
   const looseParts = assistantParts as LoosePart[];
   const userAskParts = looseParts.filter(
     (part) => part.type === "tool-user_ask",
@@ -119,7 +76,9 @@ export function deriveHighlightFlags(
     (p) => p.state !== "output-available",
   ).length;
 
-  const pendingPlans = extractPendingPlans(looseParts);
+  const pendingPlans = extractPendingPlans(
+    assistantParts as Parameters<typeof extractPendingPlans>[0],
+  );
   const pendingApprovals = extractPendingApprovals(looseParts);
 
   const todos = deriveCurrentTodos(messages);

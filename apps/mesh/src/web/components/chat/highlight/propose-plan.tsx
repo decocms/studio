@@ -4,17 +4,11 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Check, ClipboardCheck } from "@untitledui/icons";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { MessageTextPart } from "../message/parts/text-part.tsx";
-import type { ChatMessage } from "../types.ts";
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface PendingPlan {
-  toolCallId: string;
-  plan: string;
-  state: string;
-}
+import { type PendingPlan } from "./extract-pending-plans";
+export {
+  extractPendingPlans,
+  type PendingPlan,
+} from "./extract-pending-plans";
 
 // ============================================================================
 // ProposePlanPrompt - Plan card with approve/reject buttons
@@ -124,34 +118,4 @@ export function ProposePlanHighlight({
       onDismiss={onDismiss}
     />
   );
-}
-
-// ============================================================================
-// Utility: extract pending propose_plan parts from message
-// ============================================================================
-
-export function extractPendingPlans(
-  parts: ChatMessage["parts"],
-): PendingPlan[] {
-  const result: PendingPlan[] = [];
-
-  for (const part of parts) {
-    if (
-      "type" in part &&
-      (part as { type: string }).type === "tool-propose_plan" &&
-      "state" in part &&
-      (part as { state: string }).state === "input-available" &&
-      "toolCallId" in part &&
-      "input" in part
-    ) {
-      const input = (part as { input: { plan: string } }).input;
-      result.push({
-        toolCallId: (part as { toolCallId: string }).toolCallId,
-        plan: input.plan,
-        state: (part as { state: string }).state,
-      });
-    }
-  }
-
-  return result;
 }
