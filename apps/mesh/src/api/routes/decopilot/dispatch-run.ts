@@ -1388,18 +1388,6 @@ async function prepareRun(
           messageMetadata: ({ part }) => {
             if (part.type === "start") {
               return {
-                agent: {
-                  id: input.agent.id ?? null,
-                },
-                models: {
-                  credentialId: input.models.credentialId,
-                  thinking: {
-                    ...input.models.thinking,
-                    title:
-                      input.models.thinking.title ?? input.models.thinking.id,
-                    provider: input.models.thinking.provider ?? undefined,
-                  },
-                },
                 created_at: new Date(),
                 _request: {
                   systemSections: systemPrompts.map((p) => ({
