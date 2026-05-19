@@ -81,7 +81,8 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 }
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
-import { useThreadActions, useThreads, type RowPatch } from "./task";
+import { useThreadActions, useThreads } from "./store/hooks";
+import { filterThreads } from "./task";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
@@ -269,10 +270,6 @@ interface TaskProviderInternals {
   contextPrompt: string;
   preferences: {
     toolApprovalLevel?: import("../../hooks/use-preferences").ToolApprovalLevel;
-  };
-  taskManager: {
-    updateMessagesCache: (taskId: string, messages: ChatMessage[]) => void;
-    patchTask: (patch: RowPatch) => void;
   };
   rawNavigateToTask: (taskId: string) => void;
 }
@@ -514,12 +511,14 @@ export function ChatContextProvider({
   const [preferences] = usePreferences();
   const { markTaskRead } = useTaskReadState();
 
-  // Thread list — agent-scoped, open status. Consumers of `useChatTask().tasks`
-  // only look up the active thread by id, so no client-side filtering is needed.
-  const { threads: tasks } = useThreads(
-    { kind: "agent", virtualMcpId },
-    "open",
-  );
+  // Thread list — agent-scoped, visible-only. Consumers of `useChatTask().tasks`
+  // only look up the active thread by id, so the client-side filter is just
+  // defense-in-depth around the manager's full snapshot.
+  const { threads: allThreads } = useThreads();
+  const tasks = filterThreads(allThreads, {
+    virtualMcpId,
+    hidden: false,
+  });
   const threadActions = useThreadActions();
 
   // taskId always comes from the URL (seeded by router's validateSearch)
@@ -552,12 +551,12 @@ export function ChatContextProvider({
   // GET and skip the create-on-404 fallback.
   const createTask = (): string => {
     const newId = crypto.randomUUID();
-    void threadActions.create
-      .mutateAsync({
+    void threadActions
+      .create({
         id: newId,
         virtual_mcp_id: virtualMcpId,
         ...(currentBranch ? { branch: currentBranch } : {}),
-      } as Partial<Task>)
+      })
       .then(() => navigateToTask(newId))
       .catch(() => {
         // create error toast already fired by useCollectionActions; navigate
@@ -581,12 +580,12 @@ export function ChatContextProvider({
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
     const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
-    void threadActions.create
-      .mutateAsync({
+    void threadActions
+      .create({
         id: newId,
         virtual_mcp_id: targetVmcp,
         ...(carryBranch ? { branch: carryBranch } : {}),
-      } as Partial<Task>)
+      })
       .then(() =>
         navigateToTask(newId, {
           virtualMcpId: params.virtualMcpId,
@@ -623,10 +622,6 @@ export function ChatContextProvider({
     user,
     contextPrompt,
     preferences,
-    taskManager: {
-      updateMessagesCache: threadActions.updateMessages,
-      patchTask: threadActions.patchThread,
-    },
     rawNavigateToTask,
   };
 
@@ -675,8 +670,7 @@ export function ActiveTaskProvider({
     );
   }
 
-  const { user, contextPrompt, preferences, taskManager, rawNavigateToTask } =
-    internals;
+  const { user, contextPrompt, preferences, rawNavigateToTask } = internals;
 
   const { org, locator } = useProjectContext();
 
@@ -699,7 +693,6 @@ export function ActiveTaskProvider({
     onToolCall,
     queryClient,
     rawNavigateToTask,
-    taskManager,
     taskId,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
@@ -707,7 +700,6 @@ export function ActiveTaskProvider({
     onToolCall,
     queryClient,
     rawNavigateToTask,
-    taskManager,
     taskId,
   };
 
@@ -736,18 +728,6 @@ export function ActiveTaskProvider({
           ?.thread_id;
         if (serverThreadId && serverThreadId !== cb.taskId) {
           cb.rawNavigateToTask(serverThreadId);
-        }
-      },
-      onData: (chunk) => {
-        const cb = cbRef.current;
-        if (chunk.type === "data-thread-title") {
-          const { title } = (chunk as { data: { title?: string } }).data;
-          if (!title) return;
-          cb.taskManager.patchTask({
-            id: cb.taskId,
-            title,
-            updated_at: new Date().toISOString(),
-          });
         }
       },
       onError: (error) => {
