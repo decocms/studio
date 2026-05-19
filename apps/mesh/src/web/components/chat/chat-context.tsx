@@ -981,16 +981,10 @@ export function ActiveTaskProvider({
     const messageMetadata: Metadata = {
       tiptapDoc: params.tiptapDoc,
       created_at: new Date().toISOString(),
-      thread_id: capturedTaskId,
-      agent: { id: capturedVirtualMcpId },
-      ...(currentBranch ? { branch: currentBranch } : {}),
       user: {
         avatar: user?.image ?? undefined,
         name: user?.name ?? "you",
       },
-      ...(preferences.toolApprovalLevel && {
-        toolApprovalLevel: preferences.toolApprovalLevel,
-      }),
     };
 
     const appContextEntries = Object.entries(appContexts);
