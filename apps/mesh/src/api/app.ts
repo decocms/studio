@@ -10,6 +10,7 @@
 
 import { getSettings } from "../settings";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
+import { normalizeThreadForResponse } from "../tools/thread/helpers";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
@@ -553,6 +554,19 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
  *
  * Exported for tests so they can assert the probe lives inside the namespace
  * it claims to represent.
+ *
+ * Limitation: Listeners that subscribe to a single specific thread event type
+ * by exact name (e.g. `?types=com.deco.decopilot.thread.status`, with no
+ * wildcard) will receive live events for that type but will NOT receive the
+ * initial snapshot — the probe type (`thread.snapshot`) is not equal to the
+ * literal exact-match pattern (`thread.status`), so `matchesAnyPattern`
+ * returns false. The supported subscription pattern for getting both the
+ * snapshot and live events is `com.deco.decopilot.thread.*` (or any broader
+ * prefix that covers the thread namespace). This is a deliberate consequence
+ * of driving the snapshot decision through a single sentinel probe type fed
+ * to the existing pattern matcher rather than enumerating every thread
+ * event type. The existing client (`useDecopilotEvents`) already uses the
+ * `com.deco.decopilot.thread.*` wildcard, so this does not bite in practice.
  */
 export const THREAD_SNAPSHOT_PROBE_TYPE = "com.deco.decopilot.thread.snapshot";
 
@@ -625,9 +639,20 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     // filter would deliver thread events — otherwise we'd be paying for a
     // query the client never asked for.
     if (shouldEmitThreadSnapshot(typePatterns)) {
-      const { threads } = await meshContext.storage.threads.list(undefined, {
-        limit: 100,
-      });
+      const { threads: rawThreads } = await meshContext.storage.threads.list(
+        undefined,
+        {
+          limit: 100,
+        },
+      );
+      // Run rows through the same normalizer `COLLECTION_THREADS_LIST` uses so
+      // the snapshot payload matches what the client receives via the
+      // REST/MCP tool path (coerces `hidden: null` → `false`; surfaces stale
+      // in_progress threads as the virtual `"expired"` status).
+      const now = Date.now();
+      const threads = rawThreads.map((thread) =>
+        normalizeThreadForResponse(thread, now),
+      );
       await stream.writeSSE({
         event: "snapshot",
         data: JSON.stringify({ threads }),

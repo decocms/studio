@@ -231,4 +231,58 @@ describe("GET /api/:org/events — thread snapshot frame", () => {
       THREAD_SNAPSHOT_PROBE_TYPE.startsWith("com.deco.decopilot.thread."),
     ).toBe(true);
   });
+
+  test("snapshot rows are run through normalizeThreadForResponse", async () => {
+    // Seed two rows that exercise the two normalizer behaviours:
+    //  - `hidden: null` should be coerced to `false`
+    //  - an `in_progress` thread whose `updated_at` is ≥ 31min in the past
+    //    should be surfaced as the virtual `"expired"` status
+    const stale = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+    const fresh = new Date().toISOString();
+    const threads = [
+      makeThread({
+        id: "thrd_stale",
+        status: "in_progress",
+        updated_at: stale,
+        // Cast through unknown so the test can simulate the raw storage shape
+        // (which may legitimately return `hidden: null` for older rows).
+        hidden: null as unknown as boolean,
+      }),
+      makeThread({
+        id: "thrd_fresh",
+        status: "in_progress",
+        updated_at: fresh,
+      }),
+    ];
+    const setup = makeWatchApp({ threads });
+
+    const res = await setup.app.request(
+      "/events?types=com.deco.decopilot.thread.*",
+    );
+    expect(res.status).toBe(200);
+
+    const body = await readUntilFrames(res, { requireSnapshot: true });
+    const snapshotIdx = body.indexOf("event: snapshot");
+    expect(snapshotIdx).toBeGreaterThan(-1);
+
+    const afterSnapshot = body.slice(snapshotIdx);
+    const dataMatch = afterSnapshot.match(/^data: (.*)$/m);
+    expect(dataMatch).not.toBeNull();
+    const parsed = JSON.parse(dataMatch![1]!) as {
+      threads: Array<
+        Omit<Thread, "status" | "hidden"> & { status: string; hidden: boolean }
+      >;
+    };
+
+    expect(parsed.threads).toHaveLength(2);
+
+    const staleRow = parsed.threads.find((t) => t.id === "thrd_stale")!;
+    expect(staleRow.status).toBe("expired");
+    // null → false coercion
+    expect(staleRow.hidden).toBe(false);
+
+    const freshRow = parsed.threads.find((t) => t.id === "thrd_fresh")!;
+    // A fresh in_progress thread should NOT be surfaced as expired.
+    expect(freshRow.status).toBe("in_progress");
+  });
 });
