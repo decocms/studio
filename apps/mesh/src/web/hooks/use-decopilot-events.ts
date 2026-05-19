@@ -1,7 +1,7 @@
 /**
  * useDecopilotEvents — Subscribe to typed decopilot SSE events
  *
- * Connects to the /api/:org/watch SSE endpoint, parses incoming events
+ * Connects to the /api/:org/events SSE endpoint, parses incoming events
  * into the discriminated DecopilotSSEEvent union, filters by taskId when
  * provided, and dispatches to typed handlers.
  *
@@ -28,7 +28,7 @@ import { createSSESubscription } from "./create-sse-subscription";
 const decopilotSSE = createSSESubscription({
   buildUrl: (orgSlug) => {
     const typesParam = ALL_DECOPILOT_EVENT_TYPES.join(",");
-    return `/api/${encodeURIComponent(orgSlug)}/watch?types=${typesParam}`;
+    return `/api/${encodeURIComponent(orgSlug)}/events?types=${typesParam}`;
   },
   eventTypes: [...ALL_DECOPILOT_EVENT_TYPES],
 });

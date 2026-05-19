@@ -5,7 +5,7 @@
  * openai-compatible.ts) wraps `@ai-sdk/openai` against a custom baseURL,
  * so pointing a credential's JSON at this server is enough to drive the
  * full decopilot dispatch pipeline (streamText → onChunk → JetStream pump
- * → /attach tail) without burning real LLM budget.
+ * → /stream tail) without burning real LLM budget.
  *
  * Two endpoints:
  *   GET  /v1/models                — required by the adapter's listModels()

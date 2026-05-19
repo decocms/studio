@@ -2,7 +2,7 @@
  * Chat Provider — split architecture with Suspense boundary support.
  *
  * TaskProvider (outer)
- *   Contexts: ChatTaskContext, ChatPrefsContext, ChatBridgeContext
+ *   Contexts: ChatTaskContext, ChatPrefsContext
  *   Owns: task list, navigation, preferences, transport, pending messages
  *
  * ActiveTaskProvider (inner, inside Suspense)
@@ -20,11 +20,11 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type PropsWithChildren,
 } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import type { UseChatHelpers } from "@ai-sdk/react";
 import {
   AUTOSEND_QUERY_VALUE,
   claimStoredAutosend,
@@ -32,11 +32,13 @@ import {
   writeStoredAutosend,
 } from "@/web/lib/autosend";
 import {
-  lastAssistantMessageIsCompleteWithToolCalls,
-  lastAssistantMessageIsCompleteWithApprovalResponses,
-  type UIMessage,
-} from "ai";
-import { useThreadChat } from "./hooks/use-thread-chat";
+  getOrOpenStream,
+  type ConnStatus,
+  type RequestOptions,
+  type Store,
+  type SubmitAction,
+  type ThreadObserver,
+} from "./hooks/thread-connection";
 import {
   pickSimpleModeDefaults,
   useProjectContext,
@@ -65,11 +67,21 @@ import { track } from "../../lib/posthog-client";
 // re-firing when the user switches tasks.
 const openedChats = new Set<string>();
 
+/** Subscribe a React component to a connection Store via useSyncExternalStore. */
+function useStore<T>(store: Store<T>): T {
+  return useSyncExternalStore(store.subscribe, store.get, store.get);
+}
+
+/** Map the conn's discriminated `ConnStatus` onto the public string status.
+ *  "loading" is collapsed to "ready" — bootstrap is short and the UI treats
+ *  pre-snapshot the same as ready-but-empty. */
+function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
+  if (s.kind === "loading") return "ready";
+  return s.kind;
+}
+
 import { useChatNavigation } from "./hooks/use-chat-navigation";
-import { useStreamManager } from "./hooks/use-stream-manager";
-import { useTaskActions } from "../../hooks/use-tasks";
-import { useTaskManager, type TaskOwnerFilter } from "./task";
-import { useTaskMessages } from "./task/use-task-manager";
+import { useThreadActions, useThreads, type RowPatch } from "./task";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
@@ -92,9 +104,10 @@ export interface ChatStreamContextValue {
     params: SendMessageParams | Metadata["tiptapDoc"],
   ) => Promise<void>;
   stop: () => void;
-  setMessages: UseChatHelpers<ChatMessage>["setMessages"];
-  addToolOutput: UseChatHelpers<ChatMessage>["addToolOutput"];
-  addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
+  /** Single mutator entry point — new user message, tool output, or approval
+   *  response. Patches local messages, clears finishReason, POSTs to /messages.
+   *  Throws if a toolOutput / approval target isn't found in current messages. */
+  submit: (action: SubmitAction, opts: RequestOptions) => Promise<void>;
   error: Error | null;
   clearError: () => void;
   finishReason: string | null;
@@ -115,9 +128,6 @@ export interface ChatTaskContextValue {
     virtualMcpId?: string;
   }) => void;
   tasks: Task[];
-  hideTask: (taskId: string) => Promise<void>;
-  renameTask: (taskId: string, title: string) => Promise<void>;
-  setTaskStatus: (taskId: string, status: string) => Promise<void>;
   /** thread.branch — the only source of truth. Null until the user picks one or the server generates one on first send. */
   currentBranch: string | null;
   /**
@@ -127,9 +137,6 @@ export interface ChatTaskContextValue {
   isBranchLocked: boolean;
   /** Persist pinned branch onto the thread (cache + server). */
   setCurrentTaskBranch: (branch: string | null) => void;
-  ownerFilter: TaskOwnerFilter;
-  setOwnerFilter: (filter: TaskOwnerFilter) => void;
-  isFilterChangePending: boolean;
 }
 
 export interface ChatPrefsContextValue {
@@ -161,11 +168,6 @@ export interface ChatPrefsContextValue {
   /** The currently selected tier in Simple Model Mode */
   simpleModeTier: SimpleTier;
   setSimpleModeTier: (tier: SimpleTier) => void;
-}
-
-export interface ChatBridgeValue {
-  sendMessage: (params: SendMessageParams) => Promise<void>;
-  isStreaming: boolean;
 }
 
 // ============================================================================
@@ -261,21 +263,8 @@ function pickFallbackChatModel(
 const MAX_APP_CONTEXT_LENGTH = 10_000;
 const MAX_APP_CONTEXT_SOURCES = 10;
 
-const BRIDGE_NOOP: ChatBridgeValue = {
-  sendMessage: async () => {
-    console.warn(
-      "[ChatBridge] sendMessage called but ActiveTaskProvider not mounted",
-    );
-  },
-  isStreaming: false,
-};
-
 /** Internal-only type for cross-provider communication */
 interface TaskProviderInternals {
-  prepareBody: (args: {
-    messages: UIMessage<Metadata>[];
-    requestMetadata: unknown;
-  }) => object;
   user: { image?: string | null; name?: string } | null;
   contextPrompt: string;
   preferences: {
@@ -283,10 +272,9 @@ interface TaskProviderInternals {
   };
   taskManager: {
     updateMessagesCache: (taskId: string, messages: ChatMessage[]) => void;
-    updateTask: (taskId: string, updates: Partial<Task>) => void;
+    patchTask: (patch: RowPatch) => void;
   };
   rawNavigateToTask: (taskId: string) => void;
-  bridgeRef: React.RefObject<ChatBridgeValue>;
 }
 
 // ============================================================================
@@ -296,15 +284,6 @@ interface TaskProviderInternals {
 const ChatStreamCtx = createContext<ChatStreamContextValue | null>(null);
 const ChatTaskCtx = createContext<ChatTaskContextValue | null>(null);
 const ChatPrefsCtx = createContext<ChatPrefsContextValue | null>(null);
-/**
- * ChatBridgeCtx holds a RefObject (not a value) so consumers outside
- * ActiveTaskProvider always read the latest sendMessage/isStreaming via
- * `.current` at call time — avoids stale closures when ActiveTaskProvider
- * mutates the ref after initial render.
- */
-const ChatBridgeCtx = createContext<React.RefObject<ChatBridgeValue>>({
-  current: BRIDGE_NOOP,
-});
 
 /** Internal context for passing TaskProvider internals to ActiveTaskProvider */
 const TaskInternalsCtx = createContext<TaskProviderInternals | null>(null);
@@ -324,13 +303,12 @@ const TaskInternalsCtx = createContext<TaskProviderInternals | null>(null);
  * a decopilot fallback, matching `useChatNavigation` — so the same
  * provider works on `/$org/` and `/$org/$taskId`.
  *
- * On routes that mount `ChatContextProvider`, that wrapper internally
- * mounts its own `ChatPrefsCtx.Provider` for backwards compatibility; the
- * inner mount shadows this one. Persistent state still syncs via
- * localStorage; transient state (chatMode, tiptapDoc, appContexts) is
- * scoped to whichever mount the consumer is reading from — fine for our
- * flows because home submit clears the editor and the task page starts
- * fresh.
+ * `ChatContextProvider` composes this provider, so routes that mount the
+ * full chat context get the prefs context via the same code path. If a
+ * parent layout has already mounted `ChatPrefsProvider`, the inner mount
+ * shadows it — persistent state still syncs via localStorage; transient
+ * state (chatMode, tiptapDoc, appContexts) is scoped to whichever mount
+ * the consumer reads from.
  */
 export function ChatPrefsProvider({ children }: PropsWithChildren) {
   const { locator } = useProjectContext();
@@ -536,115 +514,13 @@ export function ChatContextProvider({
   const [preferences] = usePreferences();
   const { markTaskRead } = useTaskReadState();
 
-  // Model selection (localStorage-backed) — image and deep research only;
-  // chat model is always tier-driven.
-  const [storedImageRef, setStoredImageRef] = useLocalStorage<ModelRef | null>(
-    LOCALSTORAGE_KEYS.chatSelectedImageModel(locator),
-    null,
+  // Thread list — agent-scoped, open status. Consumers of `useChatTask().tasks`
+  // only look up the active thread by id, so no client-side filtering is needed.
+  const { threads: tasks } = useThreads(
+    { kind: "agent", virtualMcpId },
+    "open",
   );
-  const [storedDeepResearchRef, setStoredDeepResearchRef] =
-    useLocalStorage<ModelRef | null>(
-      LOCALSTORAGE_KEYS.chatSelectedDeepResearchModel(locator),
-      null,
-    );
-
-  // Session-only credential override. Lets the picker browse models for a
-  // different credential before the user commits via setModel. Resets on
-  // reload — not persisted.
-  const [sessionCredentialId, setSessionCredentialId] = useState<string | null>(
-    null,
-  );
-
-  const [chatMode, setChatMode] = useState<ChatMode>("default");
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  chatModeForTransportRef.current = chatMode;
-
-  // Simple Model Mode — org-level config.
-  const simpleMode = useSimpleMode();
-  const [storedTier, setStoredTier] = useLocalStorage<SimpleTier | null>(
-    LOCALSTORAGE_KEYS.chatSimpleModeTier(locator),
-    null,
-  );
-  const activeTier = resolveActiveTier(storedTier);
-
-  // AI provider keys and models.
-  const keys = useAiProviderKeys();
-  // Simple Mode slots can reference any credential, not just effectiveKeyId.
-  // Fetch models for each slot's keyId directly so findModel returns real
-  // AiProviderModel objects with full capabilities (file upload, etc).
-  // Each useAiProviderModels call is a separate, cached React Query — no
-  // duplicate requests when a keyId is reused across slots.
-  const activeChatSlot = simpleMode.tiers[activeTier];
-  const effectiveKeyId =
-    sessionCredentialId && keys.some((k) => k.id === sessionCredentialId)
-      ? sessionCredentialId
-      : (activeChatSlot?.keyId ?? keys[0]?.id ?? null);
-  // Always fetch models — React Query (staleTime 60s) caches across consumers.
-  const { models: allKeyModels, isLoading: isModelsQueryLoading } =
-    useAiProviderModels(effectiveKeyId ?? undefined);
-
-  const { models: simpleChatModels } = useAiProviderModels(
-    activeChatSlot?.keyId,
-  );
-  const { models: simpleImageModels } = useAiProviderModels(
-    simpleMode.tiers.image?.keyId,
-  );
-  const { models: simpleWebResearchModels } = useAiProviderModels(
-    simpleMode.tiers.web_research?.keyId,
-  );
-
-  // Resolve the chat model from the active tier slot, falling back to a
-  // tier-aware pick from the effective key's catalog when no slot is set —
-  // mirrors backend resolveTier so capabilities (file upload, vision) are
-  // accurate without waiting for the first stream response.
-  const selectedModel: AiProviderModel | null =
-    findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title) ??
-    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels);
-  const isModelsLoading = isModelsQueryLoading;
-
-  // Image model — tier-driven, fall back to stored/defaults.
-  const imageModels = allKeyModels.filter((m) =>
-    m.capabilities?.includes("image"),
-  );
-  const validatedStoredImage = findModel(storedImageRef, keys, imageModels);
-  const resolvedImageModel: AiProviderModel | null =
-    findModel(
-      simpleMode.tiers.image,
-      keys,
-      simpleImageModels,
-      simpleMode.tiers.image?.title,
-    ) ??
-    validatedStoredImage ??
-    imageModels[0] ??
-    null;
-
-  // Deep research model — tier-driven, fall back to stored/defaults.
-  const deepResearchModels = allKeyModels.filter((m) => {
-    const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
-    return n.includes("sonar") || n.includes("deepresearch");
-  });
-  const validatedStoredDeepResearch = findModel(
-    storedDeepResearchRef,
-    keys,
-    deepResearchModels,
-  );
-  const defaultDeepResearchModel =
-    deepResearchModels.find((m) => m.modelId === "perplexity/sonar") ??
-    deepResearchModels[0] ??
-    null;
-  const resolvedDeepResearchModel: AiProviderModel | null =
-    findModel(
-      simpleMode.tiers.web_research,
-      keys,
-      simpleWebResearchModels,
-      simpleMode.tiers.web_research?.title,
-    ) ??
-    validatedStoredDeepResearch ??
-    defaultDeepResearchModel;
-
-  // Task management (scoped by URL virtualMcpId — task list doesn't change on override)
-  const taskManager = useTaskManager(virtualMcpId);
-  const { tasks } = taskManager;
+  const threadActions = useThreadActions();
 
   // taskId always comes from the URL (seeded by router's validateSearch)
   const effectiveTaskId = urlTaskId;
@@ -652,104 +528,8 @@ export function ChatContextProvider({
   // Effective agent: URL param ?? prop (thread owner)
   const effectiveVirtualMcpId = urlVirtualMcpId;
 
-  // Single-item fetch for the selected virtual MCP (no full list needed)
-  const selectedVirtualMcpData = useVirtualMCP(effectiveVirtualMcpId);
-  const selectedVirtualMcp: VirtualMCPInfo = selectedVirtualMcpData ?? {
-    id: effectiveVirtualMcpId,
-    title: "",
-    description: null,
-    icon: null,
-  };
-
   // Context prompt (uses effective agent)
   const contextPrompt = useContextHook(effectiveVirtualMcpId);
-
-  // App contexts
-  const [appContexts, setAppContextsState] = useState<Record<string, string>>(
-    {},
-  );
-  const setAppContext = (sourceId: string, params: SetAppContextParams) => {
-    const textParts: string[] = [];
-    for (const block of params.content ?? []) {
-      if (block.type === "text" && block.text?.trim()) {
-        textParts.push(block.text.trim());
-      }
-    }
-    const text = textParts.join("\n");
-    if (!text) {
-      clearAppContext(sourceId);
-      return;
-    }
-    if (new TextEncoder().encode(text).length > MAX_APP_CONTEXT_LENGTH) return;
-    setAppContextsState((prev) => {
-      if (
-        Object.keys(prev).length >= MAX_APP_CONTEXT_SOURCES &&
-        !(sourceId in prev)
-      )
-        return prev;
-      return { ...prev, [sourceId]: text };
-    });
-  };
-  const clearAppContext = (sourceId: string) => {
-    setAppContextsState((prev) => {
-      const { [sourceId]: _, ...rest } = prev;
-      return rest;
-    });
-  };
-
-  // Tiptap doc (transient UI state)
-  const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
-  const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  tiptapDocRef.current = tiptapDoc;
-
-  // Body builder shared by useChatStream — slices to the request message
-  // (last non-system message) and folds in the configured system prompt /
-  // metadata the way the legacy transport's prepareSendMessagesRequest did.
-  const prepareBody = ({
-    messages,
-    requestMetadata = {},
-  }: {
-    messages: UIMessage<Metadata>[];
-    requestMetadata: unknown;
-  }) => {
-    const {
-      system,
-      tiptapDoc: _tiptapDoc,
-      ...metadata
-    } = requestMetadata as Metadata;
-    const systemMessage: UIMessage<Metadata> | null = system
-      ? {
-          id: crypto.randomUUID(),
-          role: "system",
-          parts: [{ type: "text", text: system }],
-        }
-      : null;
-    const userMessage = messages.slice(-1).filter(Boolean) as ChatMessage[];
-    const allMessages = systemMessage
-      ? [systemMessage, ...userMessage]
-      : userMessage;
-
-    const lastMsgMeta = (messages.at(-1)?.metadata ?? {}) as Metadata;
-    const mergedMetadata = {
-      ...metadata,
-      agent: metadata.agent ?? lastMsgMeta.agent,
-      tier: metadata.tier ?? lastMsgMeta.tier,
-      thread_id: metadata.thread_id ?? lastMsgMeta.thread_id,
-    };
-
-    return {
-      messages: allMessages,
-      ...mergedMetadata,
-      toolApprovalLevel: readToolApprovalLevel(),
-      // mode comes from mergedMetadata (set in sendMessageInternal before
-      // the mode state is reset). Reading from a ref here races with the
-      // React state flush that resets chatMode to "default".
-    };
-  };
-
-  // Bridge ref — ActiveTaskProvider registers sendMessage here
-  const bridgeRef = useRef<ChatBridgeValue>(BRIDGE_NOOP);
 
   const navigateToTask = (
     taskId: string,
@@ -770,10 +550,9 @@ export function ChatContextProvider({
   // task's branch so the new thread lands on the same warm sandbox. The
   // route loader's useEnsureTask will see the row already exists on its
   // GET and skip the create-on-404 fallback.
-  const taskActions = useTaskActions();
   const createTask = (): string => {
     const newId = crypto.randomUUID();
-    void taskActions.create
+    void threadActions.create
       .mutateAsync({
         id: newId,
         virtual_mcp_id: virtualMcpId,
@@ -802,7 +581,7 @@ export function ChatContextProvider({
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
     const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
-    void taskActions.create
+    void threadActions.create
       .mutateAsync({
         id: newId,
         virtual_mcp_id: targetVmcp,
@@ -822,19 +601,6 @@ export function ChatContextProvider({
       });
   };
 
-  // Hide task (switch to next after hiding)
-  const hideTask = async (taskId: string) => {
-    await taskManager.hideTask(taskId);
-    if (taskId === effectiveTaskId) {
-      const next = tasks.find((t) => t.id !== taskId && !t.hidden);
-      if (next) {
-        navigateToTask(next.id);
-      } else {
-        createTask();
-      }
-    }
-  };
-
   // ---- Build context values ----
 
   const taskValue: ChatTaskContextValue = {
@@ -844,76 +610,33 @@ export function ChatContextProvider({
     createTask,
     createTaskWithMessage,
     tasks,
-    hideTask,
-    renameTask: taskManager.renameTask,
-    setTaskStatus: taskManager.setTaskStatus,
     currentBranch,
     isBranchLocked,
     setCurrentTaskBranch: (branch: string | null) => {
       if (effectiveTaskId) {
-        taskManager.setTaskBranch(effectiveTaskId, branch);
+        threadActions.setBranch(effectiveTaskId, branch);
       }
     },
-    ownerFilter: taskManager.ownerFilter,
-    setOwnerFilter: taskManager.setOwnerFilter,
-    isFilterChangePending: taskManager.isFilterChangePending ?? false,
-  };
-
-  const prefsValue: ChatPrefsContextValue = {
-    selectedModel,
-    setModel: () => {},
-    credentialId: effectiveKeyId,
-    setCredentialId: setSessionCredentialId,
-    allModelsConnections: keys,
-    isModelsLoading,
-    selectedVirtualMcp,
-    imageModel: resolvedImageModel,
-    setImageModel: (model: AiProviderModel | null) => {
-      setStoredImageRef(
-        model?.keyId ? { keyId: model.keyId, modelId: model.modelId } : null,
-      );
-    },
-    deepResearchModel: resolvedDeepResearchModel,
-    setDeepResearchModel: (model: AiProviderModel | null) => {
-      setStoredDeepResearchRef(
-        model?.keyId ? { keyId: model.keyId, modelId: model.modelId } : null,
-      );
-    },
-    chatMode,
-    setChatMode,
-    appContexts,
-    setAppContext,
-    clearAppContext,
-    tiptapDoc,
-    setTiptapDoc,
-    tiptapDocRef,
-    resetInteraction: () => {},
-    simpleModeTier: activeTier,
-    setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
   };
 
   const internals: TaskProviderInternals = {
-    prepareBody,
     user,
     contextPrompt,
     preferences,
     taskManager: {
-      updateMessagesCache: taskManager.updateMessagesCache,
-      updateTask: taskManager.updateTask,
+      updateMessagesCache: threadActions.updateMessages,
+      patchTask: threadActions.patchThread,
     },
     rawNavigateToTask,
-    bridgeRef,
   };
 
   return (
     <ChatTaskCtx.Provider value={taskValue}>
-      <ChatPrefsCtx.Provider value={prefsValue}>
-        <ChatBridgeCtx.Provider value={bridgeRef}>
-          <TaskInternalsCtx.Provider value={internals}>
-            {children}
-          </TaskInternalsCtx.Provider>
-        </ChatBridgeCtx.Provider>
-      </ChatPrefsCtx.Provider>
+      <ChatPrefsProvider>
+        <TaskInternalsCtx.Provider value={internals}>
+          {children}
+        </TaskInternalsCtx.Provider>
+      </ChatPrefsProvider>
     </ChatTaskCtx.Provider>
   );
 }
@@ -952,86 +675,96 @@ export function ActiveTaskProvider({
     );
   }
 
-  const {
-    prepareBody,
-    user,
-    contextPrompt,
-    preferences,
-    taskManager,
-    rawNavigateToTask,
-    bridgeRef,
-  } = internals;
+  const { user, contextPrompt, preferences, taskManager, rawNavigateToTask } =
+    internals;
 
   const { org, locator } = useProjectContext();
 
-  // Messages for current task (from React Query / server) — this is what suspends
-  const serverMessages = useTaskMessages(taskId || null);
-
-  const [finishReason, setFinishReason] = useState<string | null>(null);
   const [chatError, setChatError] = useState<Error | null>(null);
 
   const onToolCall = useInvalidateCollectionsOnToolCall();
   const queryClient = useQueryClient();
 
-  // Subscribe model: persistent /attach + POST /messages. No useChat.
-  const chat = useThreadChat<ChatMessage>({
-    threadId: taskId,
-    orgSlug: org.slug,
-    initialMessages: serverMessages,
-    prepareBody,
-    sendAutomaticallyWhen: ({ messages }) =>
-      lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
-      lastAssistantMessageIsCompleteWithApprovalResponses({ messages }),
-    onFinish: (payload) => {
-      setFinishReason(payload.finishReason ?? null);
+  // The connection owns SSE subscription, POSTs, and message state. The
+  // provider is keyed by taskId at the layout level, so this resolves to a
+  // fresh conn per thread mount.
+  const conn = getOrOpenStream(org.slug, taskId);
+  const messages = useStore(conn.messages) as ChatMessage[];
+  const connStatus = useStore(conn.status);
+  const finishReason = useStore(conn.finishReason);
 
-      // Refresh download chips for files share_with_user produced this turn.
-      if (taskId) {
-        queryClient.invalidateQueries({
-          queryKey: KEYS.threadOutputs(taskId),
-        });
-      }
-
-      const serverThreadId = (payload.message.metadata as Metadata | undefined)
-        ?.thread_id;
-
-      // Handle server thread_id reassignment
-      if (serverThreadId && serverThreadId !== taskId) {
-        rawNavigateToTask(serverThreadId);
-      }
-
-      // Note: in the subscribe model the persistent /attach delivers
-      // assistant chunks to every observer on the thread, so onFinish
-      // fires on each tab — including passive ones whose local snapshot
-      // doesn't include the originating user message. Writing
-      // payload.messages straight to the cache from here would clobber
-      // the sender's full conversation with the passive tab's partial
-      // one. Skip the direct cache update and let
-      // useStreamManager.onFinish invalidate THREAD_MESSAGES instead —
-      // every tab refetches the authoritative server snapshot.
-    },
-    onToolCall: onToolCall as never,
-    onError: (error: Error) => {
-      setChatError(error);
-      console.error("[chat] Error", error);
-    },
-    onData: (chunk) => {
-      if (chunk.type === "data-thread-title") {
-        const { title } = (chunk as { data: { title?: string } }).data;
-        if (!title) return;
-        taskManager.updateTask(taskId, {
-          title,
-          updated_at: new Date().toISOString(),
-        });
-      }
-    },
+  // Stable callback ref so the observer wrapper sees the latest consumer
+  // callbacks without re-running the effect on every render.
+  const cbRef = useRef({
+    onToolCall,
+    queryClient,
+    rawNavigateToTask,
+    taskManager,
+    taskId,
   });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
+  cbRef.current = {
+    onToolCall,
+    queryClient,
+    rawNavigateToTask,
+    taskManager,
+    taskId,
+  };
 
-  // Derived state. useThreadChat already composes server + optimistic +
-  // streaming messages internally — chat.messages is the live view.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
+  useEffect(() => {
+    const observer: ThreadObserver = {
+      onFinish: (message) => {
+        const cb = cbRef.current;
+        // Refresh download chips only when this turn actually produced a
+        // shared file. AI SDK v5 surfaces tool invocations as `tool-<name>`
+        // parts; filter on `output-available` to skip denied/cancelled calls.
+        const sharedFile = message.parts?.some((p) => {
+          const part = p as { type: string; state?: string };
+          return (
+            part.type === "tool-share_with_user" &&
+            part.state === "output-available"
+          );
+        });
+        if (cb.taskId && sharedFile) {
+          cb.queryClient.invalidateQueries({
+            queryKey: KEYS.threadOutputs(cb.taskId),
+          });
+        }
+
+        const serverThreadId = (message.metadata as Metadata | undefined)
+          ?.thread_id;
+        if (serverThreadId && serverThreadId !== cb.taskId) {
+          cb.rawNavigateToTask(serverThreadId);
+        }
+      },
+      onData: (chunk) => {
+        const cb = cbRef.current;
+        if (chunk.type === "data-thread-title") {
+          const { title } = (chunk as { data: { title?: string } }).data;
+          if (!title) return;
+          cb.taskManager.patchTask({
+            id: cb.taskId,
+            title,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      },
+      onError: (error) => {
+        setChatError(error);
+        console.error("[chat] Error", error);
+      },
+      onToolCall: (event) => cbRef.current.onToolCall(event as never),
+    };
+    conn.observer = observer;
+    return () => {
+      if (conn.observer === observer) conn.observer = null;
+    };
+  }, [conn]);
+
+  // Derived state.
   const isStreaming =
-    chat.status === "submitted" || chat.status === "streaming";
-  const messages = chat.messages;
+    connStatus.kind === "submitted" || connStatus.kind === "streaming";
   const isChatEmpty = messages.length === 0;
   const lastMessage = messages.at(-1);
   const isWaitingForApprovals =
@@ -1043,13 +776,8 @@ export function ActiveTaskProvider({
   const thread = tasks.find((t) => t.id === taskId);
   const isRunInProgress =
     (thread?.status === "in_progress" || thread?.status === "expired") &&
-    chat.status === "ready" &&
+    connStatus.kind === "ready" &&
     messages.length > 0;
-
-  // Watch-SSE driven cache invalidations for this thread. The subscribe
-  // stream is always open in useThreadChat — resume / reconnect logic
-  // lives there, not here.
-  useStreamManager(taskId);
 
   // sendMessage — captures context at call time
   async function sendMessageInternal(params: SendMessageParams): Promise<void> {
@@ -1060,26 +788,20 @@ export function ActiveTaskProvider({
     const capturedTaskId = taskId;
     const capturedVirtualMcpId = virtualMcpId;
 
-    setFinishReason(null);
     // Drop any error banner from a prior turn — explicitly sending a new
     // message means the user has moved on and a stale "network error"
-    // toast on top of a fresh request is just noise.
+    // toast on top of a fresh request is just noise. (finishReason is
+    // cleared inside conn.submit synchronously.)
     setChatError(null);
     setTiptapDoc(undefined);
 
     const messageMetadata: Metadata = {
       tiptapDoc: params.tiptapDoc,
       created_at: new Date().toISOString(),
-      thread_id: capturedTaskId,
-      agent: { id: capturedVirtualMcpId },
-      ...(currentBranch ? { branch: currentBranch } : {}),
       user: {
         avatar: user?.image ?? undefined,
         name: user?.name ?? "you",
       },
-      ...(preferences.toolApprovalLevel && {
-        toolApprovalLevel: preferences.toolApprovalLevel,
-      }),
     };
 
     const appContextEntries = Object.entries(appContexts);
@@ -1106,13 +828,6 @@ export function ActiveTaskProvider({
       setChatMode("default");
     }
 
-    const metadata: Metadata = {
-      ...messageMetadata,
-      system,
-      tier: activeTier,
-      mode: modeToSend,
-    };
-
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -1120,12 +835,24 @@ export function ActiveTaskProvider({
       metadata: messageMetadata,
     };
 
-    await chat.sendMessage(userMessage, { metadata });
+    await conn.submit(
+      { kind: "message", message: userMessage },
+      {
+        tier: activeTier,
+        mode: modeToSend,
+        toolApprovalLevel:
+          preferences.toolApprovalLevel ?? readToolApprovalLevel(),
+        system: system || undefined,
+        agent: { id: capturedVirtualMcpId },
+        thread_id: capturedTaskId,
+        branch: currentBranch,
+      },
+    );
   }
 
   // Cancel run
   const cancelRun = async () => {
-    chat.stop();
+    conn.stop();
     try {
       const res = await fetch(`/api/${org.slug}/decopilot/cancel/${taskId}`, {
         method: "POST",
@@ -1158,13 +885,6 @@ export function ActiveTaskProvider({
     return sendMessageInternal(params as SendMessageParams);
   };
 
-  // Register sendMessage on the bridge so TaskProvider-level code can call it
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  bridgeRef.current = {
-    sendMessage: sendMessageInternal,
-    isStreaming: chat.status === "submitted" || chat.status === "streaming",
-  };
-
   // Autosend consumer: the URL carries only `autosend=true`; the message
   // body lives in sessionStorage keyed by locator + taskId. It only boots empty
   // threads, and the stored status gates duplicate sends across remounts.
@@ -1186,16 +906,14 @@ export function ActiveTaskProvider({
 
   const streamValue: ChatStreamContextValue = {
     messages,
-    status: chat.status,
+    status: statusToString(connStatus),
     sendMessage: sendMessagePublic,
     stop: () => void cancelRun(),
-    setMessages: chat.setMessages,
-    addToolOutput: chat.addToolOutput,
-    addToolApprovalResponse: chat.addToolApprovalResponse,
+    submit: (action, opts) => conn.submit(action, opts),
     error: chatError,
     clearError: () => setChatError(null),
     finishReason,
-    clearFinishReason: () => setFinishReason(null),
+    clearFinishReason: () => conn.finishReason.set(null),
     isStreaming,
     isChatEmpty,
     isWaitingForApprovals: isWaitingForApprovals ?? false,
@@ -1244,18 +962,4 @@ export function useOptionalChatPrefs(): ChatPrefsContextValue | null {
 
 export function useOptionalChatTask(): ChatTaskContextValue | null {
   return useContext(ChatTaskCtx);
-}
-
-export function useChatBridge(): ChatBridgeValue {
-  const ref = useContext(ChatBridgeCtx);
-  // Return wrappers that read .current at call time. Destructuring
-  // `{ sendMessage }` still sees the latest implementation even when the
-  // ref is mutated after this hook call (which is the case when
-  // ActiveTaskProvider registers sendMessage after the consumer mounts).
-  return {
-    sendMessage: (params) => ref.current.sendMessage(params),
-    get isStreaming() {
-      return ref.current.isStreaming;
-    },
-  };
 }

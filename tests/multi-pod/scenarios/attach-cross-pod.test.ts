@@ -69,7 +69,7 @@ async function collectAttachUntil(
   try {
     for await (const payload of sse(
       pod,
-      `/api/${orgSlug}/decopilot/attach/${threadId}`,
+      `/api/${orgSlug}/decopilot/threads/${threadId}/stream`,
       { auth: { apiKey }, signal: controller.signal },
     )) {
       joined += payload;

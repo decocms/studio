@@ -3,7 +3,7 @@
  *
  * Abstraction for treating a NATS JetStream subject as the single source
  * of truth for a run's UI stream. The producer (`dispatchRunAndWait`) pumps
- * chunks into JetStream via `pump()`; every `/attach` HTTP response reads
+ * chunks into JetStream via `pump()`; every `/stream` HTTP response reads
  * from JetStream via `createTailStream()`. The producer's lifetime is bound
  * to the run registry, not to any HTTP consumer, so a proxy/idle/tab-close
  * on the consumer side never stalls or drops chunks.
@@ -52,7 +52,7 @@ export interface StreamBuffer {
    * - `closeOnDone` (default `false`): when true, close the stream as soon
    *   as a `{done: true}` sentinel arrives. Use for callers that want to
    *   block on a single run (e.g. `dispatchRunAndWait`). Default `false`
-   *   preserves the cross-run continuation needed by `/attach`.
+   *   preserves the cross-run continuation needed by `/stream`.
    */
   createTailStream(
     taskId: string,

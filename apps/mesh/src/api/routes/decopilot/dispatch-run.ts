@@ -9,7 +9,7 @@
  *     that initiates work (the per-thread DBOS workflow step that backs
  *     POST /messages, automation fires, pod-death recovery). When a
  *     `streamBuffer` is configured the run also pumps into JetStream so
- *     `/attach` tails see chunks live; without one the run still
+ *     `/stream` tails see chunks live; without one the run still
  *     completes but its chunks are dropped.
  */
 
@@ -1388,18 +1388,6 @@ async function prepareRun(
           messageMetadata: ({ part }) => {
             if (part.type === "start") {
               return {
-                agent: {
-                  id: input.agent.id ?? null,
-                },
-                models: {
-                  credentialId: input.models.credentialId,
-                  thinking: {
-                    ...input.models.thinking,
-                    title:
-                      input.models.thinking.title ?? input.models.thinking.id,
-                    provider: input.models.thinking.provider ?? undefined,
-                  },
-                },
                 created_at: new Date(),
                 _request: {
                   systemSections: systemPrompts.map((p) => ({
@@ -1720,7 +1708,7 @@ async function prepareRun(
 
     // Setup complete — hand the uiStream back to dispatchRunAndWait,
     // which drains it with a reader loop and (when a streamBuffer is
-    // configured) also pumps the chunks into JetStream so /attach
+    // configured) also pumps the chunks into JetStream so /stream
     // subscribers can tail them across runs and across tabs.
     return {
       taskId: mem.thread.id,

@@ -3,7 +3,7 @@
  *
  * The per-task JetStream subject is the source of truth for a run's UI
  * stream. The producer (`dispatchRunAndWait`) calls `pump()` once; tail
- * consumers (every `/attach` HTTP response) call `createTailStream()`. The
+ * consumers (every `/stream` HTTP response) call `createTailStream()`. The
  * pump is decoupled from any consumer, so an HTTP cancel never stalls the
  * producer or drops chunks.
  *

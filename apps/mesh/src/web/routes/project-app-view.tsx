@@ -17,7 +17,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { contentBlocksToTiptapDoc } from "@/mcp-apps/content-blocks.ts";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
-import { useChatBridge, useChatPrefs } from "@/web/components/chat/context.tsx";
+import { useChatStream, useChatPrefs } from "@/web/components/chat/context.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
@@ -42,7 +42,7 @@ function AppRenderer({
   orgId?: string;
   args?: Record<string, unknown>;
 }) {
-  const { sendMessage } = useChatBridge();
+  const { sendMessage } = useChatStream();
   const { setAppContext, clearAppContext } = useChatPrefs();
   const { setChatOpen, openTab } = usePanelActions();
   const sourceId = `${connectionId}:${tool.name}`;
