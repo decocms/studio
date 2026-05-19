@@ -491,6 +491,92 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
     expect(calls).toBe(1);
     store.dispose();
   });
+
+  it("fetchNextPage no-ops while already in flight", async () => {
+    let releaseSecond!: (v: unknown) => void;
+    let calls = 0;
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name !== "COLLECTION_THREADS_LIST") return {};
+      calls++;
+      if (calls === 1) {
+        // initial page resolves
+        return {
+          structuredContent: {
+            items: [{ id: "t-0", updated_at: "2026-01-01T00:00:00Z" }],
+            hasMore: true,
+          },
+        };
+      }
+      return new Promise((r) => {
+        releaseSecond = r;
+      });
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const p1 = store.fetchNextPage();
+    const p2 = store.fetchNextPage(); // should no-op
+    expect(store.isFetchingMore.get()).toBe(true);
+    releaseSecond({ structuredContent: { items: [], hasMore: false } });
+    await Promise.all([p1, p2]);
+    expect(store.isFetchingMore.get()).toBe(false);
+    expect(calls).toBe(2); // initial + first fetchNextPage; second fetchNextPage was a no-op
+    store.dispose();
+  });
+
+  it("re-runs loadInitialPage on /watch reconnect (resync after disconnect)", async () => {
+    // First /watch response closes cleanly; second connect triggers re-init.
+    let watchConnects = 0;
+    globalThis.fetch = (async () => {
+      watchConnects++;
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          // Close right away — simulates a transient drop that triggers reconnect
+          c.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+
+    let mcpCalls = 0;
+    const callTool = mock(async (args: { name: string }) => {
+      if (args.name !== "COLLECTION_THREADS_LIST") return {};
+      mcpCalls++;
+      return {
+        structuredContent: {
+          items:
+            mcpCalls === 1
+              ? [{ id: "t-initial", updated_at: "2026-05-19T00:00:00Z" }]
+              : [
+                  {
+                    id: "t-after-reconnect",
+                    updated_at: "2026-05-19T00:01:00Z",
+                  },
+                ],
+          hasMore: false,
+        },
+      };
+    });
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+    });
+    // Wait for initial connect + load
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.threads.get().map((t) => t.id)).toEqual(["t-initial"]);
+    expect(mcpCalls).toBe(1);
+
+    // Wait for first reconnect backoff (BASE_DELAY_MS = 1000) + then for the second loadInitialPage
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(watchConnects).toBeGreaterThanOrEqual(2);
+    expect(mcpCalls).toBeGreaterThanOrEqual(2);
+    expect(store.threads.get().map((t) => t.id)).toEqual(["t-after-reconnect"]);
+    store.dispose();
+  });
 });
 
 describe("ThreadManagerStore event buffer during boot", () => {

@@ -346,6 +346,7 @@ export class ThreadManagerStore {
       this.orgSlug,
     )}/watch?types=decopilot.thread.*`;
     let attempt = 0;
+    let firstConnect = true;
 
     while (!this.abort.signal.aborted) {
       try {
@@ -356,11 +357,17 @@ export class ThreadManagerStore {
           signal: this.abort.signal,
         });
         if (!resp.ok || !resp.body) {
-          this.threadsStatus.set({
-            kind: "error",
-            error: new Error(`/watch ${resp.status}`),
-          });
+          // Transient HTTP error — backoff and retry silently.
+          // threadsStatus is NOT written here; it only reflects the MCP page load.
         } else {
+          if (firstConnect) {
+            firstConnect = false;
+          } else {
+            // Reconnect after a drop — re-arm the event buffer and resync the
+            // thread list so any events missed during the disconnect are recovered.
+            this.eventBuffer = [];
+            void this.loadInitialPage();
+          }
           attempt = 0;
           await this.consumeSse(resp.body);
         }
