@@ -4,6 +4,8 @@ import { ActiveTaskProvider, ChatProvider, useChatStream } from "./context";
 
 export { useChatTask } from "./context";
 import { IceBreakers } from "./ice-breakers";
+import { HIGHLIGHT_COLLAPSED_HEIGHT_PX } from "./highlight/collapsible-highlight";
+import { useHighlightCount } from "./highlight/use-highlight-count";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
 import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
@@ -53,24 +55,20 @@ function ChatMessages() {
   const { messages, status } = useChatStream();
   const messagePairs = useMessagePairs(messages);
   const lastMessagePair = messagePairs.at(-1);
+  const highlightCount = useHighlightCount();
 
-  const isStreaming = status === "submitted" || status === "streaming";
-  const lastMessage = messages.at(-1);
-  const hasActiveUserAsk =
-    !isStreaming &&
-    lastMessage?.role === "assistant" &&
-    lastMessage.parts
-      .filter((p) => p.type === "tool-user_ask")
-      .some((p) => p.state === "input-available");
-  const hasActivePendingApprovals =
-    !isStreaming &&
-    lastMessage?.role === "assistant" &&
-    lastMessage.parts.some(
-      (p) => "state" in p && p.state === "approval-requested",
-    );
+  // Reserve `n × h + 16px` of bottom padding so that, when every highlight
+  // is collapsed, the last message sits a comfortable gap above the top of
+  // the highlight stack. The 16px baseline keeps the last message off the
+  // bottom edge even when no highlights are rendered. Expanded highlights
+  // still cover content — the affordance is "collapse to read".
+  const paddingBottom = highlightCount * HIGHLIGHT_COLLAPSED_HEIGHT_PX + 16;
 
   return (
-    <div className="w-full min-w-0 max-w-full overflow-y-auto h-full overflow-x-hidden">
+    <div
+      className="w-full min-w-0 max-w-full overflow-y-auto h-full overflow-x-hidden"
+      style={{ paddingBottom }}
+    >
       <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
         {messagePairs.slice(0, -1).map((pair, index) => (
           <MessagePair
@@ -82,12 +80,7 @@ function ChatMessages() {
         ))}
       </div>
       {lastMessagePair && (
-        <div
-          className={cn(
-            "min-h-full min-w-0 max-w-2xl mx-auto w-full",
-            (hasActiveUserAsk || hasActivePendingApprovals) && "pb-60",
-          )}
-        >
+        <div className="min-h-full min-w-0 max-w-2xl mx-auto w-full">
           <MessagePair
             key={`pair-${lastMessagePair?.user.id}`}
             pair={lastMessagePair}

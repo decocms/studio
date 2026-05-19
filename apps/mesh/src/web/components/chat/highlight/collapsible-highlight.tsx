@@ -56,6 +56,18 @@ export interface CollapsibleHighlightProps {
   onClose?: () => void;
 }
 
+/**
+ * Collapsed height of a single highlight card in pixels, including the
+ * `mb-2` gap below it. Equals chip row (`px-3 py-2` + `text-sm` line ≈ 36px)
+ * + `mb-2` (8px) = 44px. Used by `useHighlightCount` consumers to reserve
+ * exactly enough scroll padding so that when every highlight is collapsed,
+ * the last message can be scrolled flush against the top of the stack.
+ *
+ * If the chip row's vertical padding or font size changes, update this
+ * value (or measure with devtools and round up).
+ */
+export const HIGHLIGHT_COLLAPSED_HEIGHT_PX = 44;
+
 // Tint is applied via an ::after pseudo-element instead of a `bg-*` utility so
 // it layers over `bg-background` rather than colliding with it under twMerge
 // (which would otherwise strip the solid background and leave the card
