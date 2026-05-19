@@ -48,6 +48,11 @@ services:
   # migration step (we override the entrypoint with a direct start command) to
   # avoid races on parallel boot.
   migrate:
+    # Same image as the mesh-N services so a single `docker compose
+    # build mesh-1` updates the migration set everywhere. Without
+    # this, migrate kept its own separately-tagged image and would
+    # silently use stale migration code while mesh-N had the new one.
+    image: multi-pod-studio:latest
     build:
       context: ../../
       dockerfile: tests/resilience/Dockerfile.studio

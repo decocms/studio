@@ -119,7 +119,7 @@ import {
   toModelsConfig,
 } from "./routes/decopilot/run-config";
 import { getPodId } from "../core/pod-identity";
-import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
+import { PgPodHeartbeat, type PodHeartbeat } from "../core/pod-heartbeat";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
@@ -839,51 +839,29 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   });
 
-  // Per-pod heartbeat via NATS KV (only when NATS is available)
-  let podHeartbeat: NatsPodHeartbeat | null = null;
-  if (natsProvider) {
-    podHeartbeat = new NatsPodHeartbeat({
-      getConnection: () => natsProvider!.getConnection(),
-      getJetStream: () => natsProvider!.getJetStream(),
+  // Per-pod heartbeat via Postgres advisory locks. The dedicated
+  // long-lived connection's lifetime IS the liveness signal — when this
+  // pod's process dies, Postgres releases the lock instantly via TCP
+  // close, and survivor pods detect that on the next poll tick (~5s).
+  // No NATS dependency; recovery still fires even when NATS is degraded.
+  const podHeartbeat: PodHeartbeat = new PgPodHeartbeat({
+    connectionString: getSettings().databaseUrl,
+    pool: database.pool,
+  });
+  podHeartbeat
+    .init()
+    .then(() => {
+      podHeartbeat.start(POD_ID);
+      console.log(`[PodHeartbeat] Started (pod=${POD_ID})`);
+    })
+    .catch((err: unknown) => {
+      console.error("[PodHeartbeat] Init failed:", err);
     });
-
-    // Attempt immediate init (may no-op if NATS not ready). Surface
-    // any real error — silent swallow here historically hid bucket-
-    // creation races and turned pod-death recovery into "mostly works".
-    podHeartbeat
-      .init()
-      .then(() => {
-        if (podHeartbeat!.isReady()) {
-          podHeartbeat!.start(POD_ID);
-          console.log(`[PodHeartbeat] Started (pod=${POD_ID})`);
-        }
-      })
-      .catch((err: unknown) => {
-        console.error("[PodHeartbeat] Initial init failed:", err);
-      });
-
-    // Re-init when NATS connects (or reconnects). Idempotent — start()
-    // is a no-op if the heartbeat is already running.
-    natsProvider.onReady(() => {
-      podHeartbeat!
-        .init()
-        .then(() => {
-          if (podHeartbeat!.isReady()) {
-            podHeartbeat!.start(POD_ID);
-            console.log(
-              `[PodHeartbeat] Started after NATS ready (pod=${POD_ID})`,
-            );
-          }
-        })
-        .catch((err: unknown) => {
-          console.error("[PodHeartbeat] Deferred init failed:", err);
-        });
-    });
-  }
 
   currentDecopilotCleanup = async () => {
-    // Delete KV key first → watcher fires on other pods → immediate handoff
-    await podHeartbeat?.stop();
+    // Release the liveness lock + remove from registry first → survivors
+    // see us gone on their next poll, no false-alive window.
+    await podHeartbeat.stop();
     await runRegistry.stopAll();
     runRegistry.dispose();
     cancelBroadcast.stop().catch(() => {});
@@ -1316,19 +1294,17 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   };
 
-  // Wire pod death watcher → orphan recovery
-  if (podHeartbeat) {
-    podHeartbeat.onPodDeath((deadPodId) => {
-      runRegistry
-        .handlePodDeath(deadPodId, resumeOrphanedThread, cancelBroadcast)
-        .catch((err) => {
-          console.error(
-            `[Decopilot] Pod death recovery failed for ${deadPodId}:`,
-            err,
-          );
-        });
-    });
-  }
+  // Wire pod death watcher → orphan recovery.
+  podHeartbeat.onPodDeath((deadPodId) => {
+    runRegistry
+      .handlePodDeath(deadPodId, resumeOrphanedThread, cancelBroadcast)
+      .catch((err) => {
+        console.error(
+          `[Decopilot] Pod death recovery failed for ${deadPodId}:`,
+          err,
+        );
+      });
+  });
 
   setTimeout(() => {
     runRegistry.recoverOrphanedRuns(resumeOrphanedThread).catch((err) => {
