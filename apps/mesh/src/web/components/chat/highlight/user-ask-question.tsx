@@ -8,22 +8,17 @@ import {
 } from "@deco/ui/components/form.tsx";
 import { Tabs, TabsContent } from "@deco/ui/components/tabs.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { Edit02, MessageQuestionCircle } from "@untitledui/icons";
-import { useEffect, useRef, useState } from "react";
-import {
-  type Control,
-  type FieldValues,
-  useController,
-  useForm,
-} from "react-hook-form";
+import { useEffect, useRef } from "react";
+import { type Control, type FieldValues, useController } from "react-hook-form";
 import type { UserAskToolPart } from "../types";
+import { CollapsibleHighlight } from "./collapsible-highlight";
+import { PaginatedFormFooter } from "./common/paginated-form-footer";
+import { useMultiPartDecisionForm } from "./common/use-multipart-decision-form";
 import {
   getUserAskResponse,
   type UserAskQuestionValue,
 } from "./get-user-ask-response";
-import { Pagination } from "./pagination";
-import { CollapsibleHighlight } from "./collapsible-highlight";
 import { buildCombinedSchema } from "./user-ask-schemas";
 
 /** Inferred from UserAskToolPart so we don't import the backend module directly. */
@@ -319,12 +314,11 @@ function QuestionInput({ input, control, toolCallId }: QuestionInputProps) {
 
 interface UserAskPromptProps {
   parts: UserAskToolPart[];
+  isStreaming: boolean;
   onSubmit: (part: UserAskToolPart, response: string) => void;
 }
 
-function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
-  const [activeTab, setActiveTab] = useState(parts[0]?.toolCallId ?? "");
-
+function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
   const schema = buildCombinedSchema(
     parts.map((p) => ({
       toolCallId: p.toolCallId,
@@ -332,142 +326,97 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
     })),
   );
 
-  const form = useForm<CombinedFormValues>({
-    resolver: zodResolver(schema) as never,
-    defaultValues: Object.fromEntries(
-      parts.map((p) => {
-        const input = p.input as UserAskInput | undefined;
-        if (input?.type === "choice") {
-          return [p.toolCallId, { option: null, draft: "" }];
-        }
-        return [p.toolCallId, { response: "" }];
-      }),
-    ),
+  const defaultValues: CombinedFormValues = Object.fromEntries(
+    parts.map((p) => {
+      const input = p.input as UserAskInput | undefined;
+      if (input?.type === "choice") {
+        return [p.toolCallId, { option: null, draft: "" }];
+      }
+      return [p.toolCallId, { response: "" }];
+    }),
+  );
+
+  const decisionForm = useMultiPartDecisionForm<
+    UserAskToolPart,
+    CombinedFormValues
+  >({
+    parts,
+    partKey: (p) => p.toolCallId,
+    schema,
+    defaultValues,
+    isStreaming,
+    hasAnswer: (value) =>
+      !!getUserAskResponse(value as UserAskQuestionValue | undefined),
+    onSubmit: (part, value) => {
+      const response = getUserAskResponse(
+        value as UserAskQuestionValue | undefined,
+      );
+      if (response) onSubmit(part, response);
+    },
   });
 
-  const values = form.watch();
-  const currentIndex = parts.findIndex((p) => p.toolCallId === activeTab);
-  const currentAnswered = !!getUserAskResponse(
-    values[activeTab] as UserAskQuestionValue | undefined,
-  );
-  const allAnswered = parts.every(
-    (p) =>
-      !!getUserAskResponse(
-        values[p.toolCallId] as UserAskQuestionValue | undefined,
-      ),
-  );
-
-  const submitAll = (data: CombinedFormValues) => {
-    for (const part of parts) {
-      const response = getUserAskResponse(
-        data[part.toolCallId] as UserAskQuestionValue | undefined,
-      );
-      if (response) {
-        onSubmit(part, response);
-      }
-    }
-  };
-
-  const findNextUnanswered = (formValues: CombinedFormValues) =>
-    parts.find(
-      (p) =>
-        !getUserAskResponse(
-          formValues[p.toolCallId] as UserAskQuestionValue | undefined,
-        ) && p.toolCallId !== activeTab,
-    ) ?? null;
-
-  const advanceOrSubmit = () => {
-    const latest = form.getValues();
-    const everyAnswered = parts.every(
-      (p) =>
-        !!getUserAskResponse(
-          latest[p.toolCallId] as UserAskQuestionValue | undefined,
-        ),
-    );
-    if (everyAnswered) {
-      form.handleSubmit(submitAll)();
-    } else {
-      const next = findNextUnanswered(latest);
-      if (next) setActiveTab(next.toolCallId);
-    }
-  };
+  const current = decisionForm.currentPart;
 
   const handleSkip = () => {
-    const activePart = parts.find((p) => p.toolCallId === activeTab);
+    const activePart = current;
+    if (!activePart) return;
     const skipText = "user has skip this question";
-    if (activePart?.input?.type === "choice") {
-      form.setValue(`${activeTab}.option` as never, null as never);
-      form.setValue(`${activeTab}.draft` as never, skipText as never);
+    const key = activePart.toolCallId;
+    if (activePart.input?.type === "choice") {
+      decisionForm.form.setValue(`${key}.option` as never, null as never);
+      decisionForm.form.setValue(`${key}.draft` as never, skipText as never);
     } else {
-      form.setValue(`${activeTab}.response` as never, skipText as never);
+      decisionForm.form.setValue(`${key}.response` as never, skipText as never);
     }
-    advanceOrSubmit();
+    decisionForm.advanceToNextUnanswered();
   };
 
-  const goToPrev = () => {
-    if (currentIndex > 0) {
-      const prev = parts[currentIndex - 1];
-      if (prev) setActiveTab(prev.toolCallId);
-    }
-  };
-
-  const goToNext = () => {
-    if (currentIndex < parts.length - 1) {
-      const next = parts[currentIndex + 1];
-      if (next) setActiveTab(next.toolCallId);
-    }
-  };
-
-  const footerButtons = (
-    <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={handleSkip}
-        className="h-7"
-      >
-        Skip
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        disabled={!currentAnswered}
-        onClick={advanceOrSubmit}
-        className={cn("h-7", !currentAnswered ? "opacity-50" : "")}
-      >
-        {allAnswered ? "Submit" : "Next"}
-      </Button>
-    </>
-  );
-
-  const pagination = (
-    <Pagination
-      current={currentIndex}
+  const footer = (
+    <PaginatedFormFooter
+      currentIndex={decisionForm.currentIndex}
       total={parts.length}
-      onPrev={goToPrev}
-      onNext={goToNext}
+      onPrev={decisionForm.goPrev}
+      onNext={decisionForm.goNext}
+      isStreaming={isStreaming}
+      isAllAnswered={decisionForm.isAllAnswered}
+      onSubmit={decisionForm.submit}
+      extraRight={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleSkip}
+          className="h-7"
+        >
+          Skip
+        </Button>
+      }
     />
   );
 
-  // Single question — no tabs needed
+  // Single question — no Tabs needed
   if (parts.length === 1) {
     const part = parts[0];
     if (!part?.input) return null;
-
     return (
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(submitAll)} autoComplete="off">
+      <Form {...decisionForm.form}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            decisionForm.submit();
+          }}
+          autoComplete="off"
+        >
           <CollapsibleHighlight
             icon={<MessageQuestionCircle size={14} />}
             label="Question pending"
             title={part.input?.prompt ?? "Question"}
             defaultExpanded={true}
-            footerRight={footerButtons}
+            footerRight={footer}
           >
             <QuestionInput
               input={part.input as UserAskInput}
-              control={form.control}
+              control={decisionForm.form.control}
               toolCallId={part.toolCallId}
             />
           </CollapsibleHighlight>
@@ -476,20 +425,28 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
     );
   }
 
-  // Multiple questions — tabbed layout with unified submit
+  // Multiple questions — Tabs + shared footer
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(submitAll)} autoComplete="off">
+    <Form {...decisionForm.form}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          decisionForm.submit();
+        }}
+        autoComplete="off"
+      >
         <CollapsibleHighlight
           icon={<MessageQuestionCircle size={14} />}
           label="Question pending"
-          count={`${currentIndex + 1} of ${parts.length}`}
-          title={parts[currentIndex]?.input?.prompt ?? "Question"}
+          count={`${decisionForm.currentIndex + 1} of ${parts.length}`}
+          title={current?.input?.prompt ?? "Question"}
           defaultExpanded={true}
-          footerLeft={pagination}
-          footerRight={footerButtons}
+          footerRight={footer}
         >
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs
+            value={decisionForm.activeKey}
+            onValueChange={decisionForm.setActiveKey}
+          >
             {parts.map((part) => (
               <TabsContent
                 key={part.toolCallId}
@@ -498,7 +455,7 @@ function UserAskPrompt({ parts, onSubmit }: UserAskPromptProps) {
               >
                 <QuestionInput
                   input={part.input as UserAskInput}
-                  control={form.control}
+                  control={decisionForm.form.control}
                   toolCallId={part.toolCallId}
                 />
               </TabsContent>
@@ -542,13 +499,16 @@ export function UserAskQuestionHighlight({
     (p) => p.state === "input-available",
   );
 
-  if (isStreaming) {
-    return <UserAskLoadingUI />;
-  }
-
   if (pendingParts.length === 0) {
+    if (isStreaming) return <UserAskLoadingUI />;
     return null;
   }
 
-  return <UserAskPrompt parts={pendingParts} onSubmit={onSubmit} />;
+  return (
+    <UserAskPrompt
+      parts={pendingParts}
+      isStreaming={isStreaming}
+      onSubmit={onSubmit}
+    />
+  );
 }
