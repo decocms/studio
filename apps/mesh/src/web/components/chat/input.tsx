@@ -231,7 +231,6 @@ export function ChatInput({
   const isRunInProgress = stream?.isRunInProgress ?? false;
   const stop = stream?.stop ?? (() => {});
   const taskId = taskCtx?.taskId ?? "";
-  const tasks = taskCtx?.tasks ?? [];
   const homeSubmit = useHomeSubmit();
   const {
     selectedModel,
@@ -300,7 +299,7 @@ export function ChatInput({
     tiptapRef.current?.syncVoiceText(voiceBaselineDocRef.current, voiceText);
   }, [voice.transcript, voice.interimTranscript, voice.status]);
 
-  const task = tasks.find((task) => task.id === taskId);
+  const task = taskCtx?.activeTask ?? null;
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.

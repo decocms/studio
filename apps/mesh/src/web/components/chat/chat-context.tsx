@@ -82,7 +82,6 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useThreadActions, useThreadManager, useThreads } from "./store/hooks";
-import { filterThreads } from "./task";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
@@ -128,7 +127,7 @@ export interface ChatTaskContextValue {
     message: SendMessageParams;
     virtualMcpId?: string;
   }) => void;
-  tasks: Task[];
+  activeTask: Task | null;
   /** thread.branch — the only source of truth. Null until the user picks one or the server generates one on first send. */
   currentBranch: string | null;
   /**
@@ -511,14 +510,8 @@ export function ChatContextProvider({
   const [preferences] = usePreferences();
   const { markTaskRead } = useTaskReadState();
 
-  // Thread list — agent-scoped, visible-only. Consumers of `useChatTask().tasks`
-  // only look up the active thread by id, so the client-side filter is just
-  // defense-in-depth around the manager's full snapshot.
+  // Resolve the active thread directly from the manager's snapshot by id.
   const { threads: allThreads } = useThreads();
-  const tasks = filterThreads(allThreads, {
-    virtualMcpId,
-    hidden: false,
-  });
   const threadActions = useThreadActions();
 
   // taskId always comes from the URL (seeded by router's validateSearch)
@@ -541,7 +534,9 @@ export function ChatContextProvider({
     });
   };
 
-  const activeTask = tasks.find((t) => t.id === effectiveTaskId);
+  const activeTask = effectiveTaskId
+    ? (allThreads.find((t) => t.id === effectiveTaskId) ?? null)
+    : null;
   const currentBranch = activeTask?.branch ?? null;
   const isBranchLocked = !!activeTask?.branch;
 
@@ -559,9 +554,9 @@ export function ChatContextProvider({
       })
       .then(() => navigateToTask(newId))
       .catch(() => {
-        // create error toast already fired by useCollectionActions; navigate
-        // anyway so the user's not stranded — the route loader's ensure
-        // fallback will retry.
+        // Error toast surfaced by ThreadManagerStore.create; navigate anyway
+        // so the user's not stranded — the route loader's ensure fallback
+        // will retry.
         navigateToTask(newId);
       });
     return newId;
@@ -608,7 +603,7 @@ export function ChatContextProvider({
     openTask: navigateToTask,
     createTask,
     createTaskWithMessage,
-    tasks,
+    activeTask,
     currentBranch,
     isBranchLocked,
     setCurrentTaskBranch: (branch: string | null) => {
@@ -644,7 +639,7 @@ export function ActiveTaskProvider({
   taskId,
   children,
 }: PropsWithChildren<{ taskId: string }>) {
-  const { virtualMcpId, tasks, currentBranch } = useChatTask();
+  const { virtualMcpId, activeTask, currentBranch } = useChatTask();
 
   // Fire chat_opened once per (page session × taskId). Runs during render, but
   // the Set gate keeps it idempotent. Fires for every thread a user views —
@@ -771,7 +766,7 @@ export function ActiveTaskProvider({
     lastMessage.parts.some(
       (part) => "state" in part && part.state === "approval-requested",
     );
-  const thread = tasks.find((t) => t.id === taskId);
+  const thread = activeTask;
   const isRunInProgress =
     (thread?.status === "in_progress" || thread?.status === "expired") &&
     connStatus.kind === "ready" &&
