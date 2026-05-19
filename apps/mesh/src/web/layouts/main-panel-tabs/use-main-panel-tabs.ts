@@ -22,6 +22,7 @@ import {
 import { KEYS } from "@/web/lib/query-keys";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { useChatTask } from "@/web/components/chat/index";
+import { useThreadManager } from "@/web/components/chat/store/hooks";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -71,13 +72,18 @@ function useTaskMetadata(taskId: string): ThreadMetadata | null {
     orgId: org.id,
     orgSlug: org.slug,
   });
-  // Share the cache entry with useEnsureTask (same MCP call, same row).
-  // `select` narrows to the metadata slice this hook needs; the underlying
-  // Task | null payload remains the single source of truth for the thread.
+  const manager = useThreadManager();
+  // Fast path reads from ThreadManagerStore — the org-wide `/events` snapshot
+  // populates it, and `manager.create` writes the new row on thread creation.
+  // Slow path falls through to a one-shot MCP GET for archived threads (not
+  // in the open-list snapshot) or cold loads racing the snapshot.
   const { data } = useSuspenseQuery<Task | null, Error, ThreadMetadata | null>({
     queryKey: KEYS.ensureTask(org.id, taskId),
     queryFn: async () => {
-      if (!client || !taskId) return null;
+      if (!taskId) return null;
+      const localHit = manager.threads.get().find((t) => t.id === taskId);
+      if (localHit) return localHit;
+      if (!client) return null;
       try {
         const result = (await client.callTool({
           name: "COLLECTION_THREADS_GET",
