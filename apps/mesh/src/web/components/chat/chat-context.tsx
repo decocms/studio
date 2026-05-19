@@ -38,7 +38,7 @@ import {
   type Store,
   type SubmitAction,
   type ThreadObserver,
-} from "./hooks/thread-connection";
+} from "./store/thread-connection";
 import {
   pickSimpleModeDefaults,
   useProjectContext,

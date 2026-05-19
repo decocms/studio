@@ -3,10 +3,7 @@ import type {
   ThreadCreateData,
   ThreadUpdateData,
 } from "@/tools/thread/schema.ts";
-import {
-  getOrOpenStream,
-  type ThreadConnection,
-} from "../hooks/thread-connection";
+import { getOrOpenStream, type ThreadConnection } from "./thread-connection";
 import type { RowPatch, Task } from "../task/types";
 import { Store } from "./store-primitive";
 

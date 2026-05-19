@@ -43,7 +43,7 @@ import {
 } from "ai";
 import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
 import type { SimpleModeTier } from "@/tools/organization/schema";
-import { Store } from "../store/store-primitive";
+import { Store } from "./store-primitive";
 import type { ChatMode } from "../types";
 
 export { Store };

@@ -16,7 +16,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useDecopilotEvents } from "../../../hooks/use-decopilot-events";
 import { KEYS } from "../../../lib/query-keys";
-import { getActiveConn } from "../hooks/thread-connection";
+import { getActiveConn } from "../store/thread-connection";
 import type { RowPatch, Task, TasksQueryData, ThreadScope } from "./types";
 
 export type { RowPatch } from "./types";

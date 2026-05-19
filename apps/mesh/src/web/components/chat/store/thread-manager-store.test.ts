@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
-import { __resetRegistry } from "../hooks/thread-connection";
+import { __resetRegistry } from "./thread-connection";
 import {
   __resetManagerRegistry,
   getManager,

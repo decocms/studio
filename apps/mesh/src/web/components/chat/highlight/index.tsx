@@ -6,7 +6,7 @@ import {
   type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
 import { useChatPrefs, useChatStream, useChatTask } from "../context";
-import type { RequestOptions } from "../hooks/thread-connection";
+import type { RequestOptions } from "../store/thread-connection";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
