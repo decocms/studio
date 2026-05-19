@@ -3,14 +3,14 @@
  *
  * When the pod owning a run dies mid-stream, a survivor pod must take
  * over the run via the heartbeat watcher and the resumed run's chunks
- * must reach /attach tails on the survivor side — that's the whole
+ * must reach /stream tails on the survivor side — that's the whole
  * point of the recovery path.
  *
  * ── What the test exercises ──────────────────────────────────────────
  *
  *   1. POST a SLOW message (20 chunks × 500ms ≈ 10s) so we have a
  *      window to kill the owner mid-stream.
- *   2. Open /attach on all three pods. Whichever pod ends up owning
+ *   2. Open /stream on all three pods. Whichever pod ends up owning
  *      the run, the other two stay alive and observe the recovery.
  *   3. Wait for chunk-2 on any watcher — proof the run is flowing.
  *   4. Read `threads.run_owner_pod` (POD_NAME maps 1:1 to the compose
@@ -21,12 +21,12 @@
  *      re-dispatches with `isResume: true`.
  *   6. Wait until a survivor sees chunk-3 (which can only come from the
  *      resumed run, since the dead pod only got past chunk-2). Then
- *      open a fresh /attach against a survivor.
- *   7. Assert: the late /attach sees chunks 1..20 EXACTLY ONCE — i.e.,
+ *      open a fresh /stream against a survivor.
+ *   7. Assert: the late /stream sees chunks 1..20 EXACTLY ONCE — i.e.,
  *      `chunk-1 ` appears once in its joined stream. If the resumed
  *      run had pumped on top of the dead pod's leftover prefix in
  *      JetStream (i.e., if prepareRun's purge ever regressed), a late
- *      /attach would see the assistant's reply duplicated end-to-end
+ *      /stream would see the assistant's reply duplicated end-to-end
  *      and the count would be 2.
  *
  * ── What had to be fixed for this to pass ────────────────────────────
@@ -42,7 +42,7 @@
  *
  *   - **Keep the unconditional purge**: an early version of this PR
  *     skipped `streamBuffer.purge()` on resume, but that left the
- *     dead pod's prefix in JetStream and any /attach opened after
+ *     dead pod's prefix in JetStream and any /stream opened after
  *     recovery would see the response duplicated. The chunk-1 count
  *     assertion below is the regression guard for this.
  *     (`apps/mesh/src/api/routes/decopilot/dispatch-run.ts`)
@@ -94,7 +94,7 @@ function openAttachWatcher(
     try {
       for await (const payload of sse(
         pod,
-        `/api/${orgSlug}/decopilot/attach/${threadId}`,
+        `/api/${orgSlug}/decopilot/threads/${threadId}/stream`,
         { auth: { apiKey }, signal: abort.signal },
       )) {
         watcher.joined += payload;

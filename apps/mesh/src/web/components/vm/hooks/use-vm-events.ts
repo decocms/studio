@@ -22,6 +22,7 @@ export function useVmEvents() {
 export function useVmChunkHandler(handler: ChunkHandler | null) {
   const { subscribeChunks } = useVmEvents();
   const handlerRef = useRef(handler);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   handlerRef.current = handler;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscription lifecycle bound to the component mount; uses ref for stable identity
@@ -38,6 +39,7 @@ export function useVmChunkHandler(handler: ChunkHandler | null) {
 export function useVmReloadHandler(handler: ReloadHandler | null) {
   const { subscribeReload } = useVmEvents();
   const handlerRef = useRef(handler);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   handlerRef.current = handler;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscription lifecycle bound to the component mount; uses ref for stable identity

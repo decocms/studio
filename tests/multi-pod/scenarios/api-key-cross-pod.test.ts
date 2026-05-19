@@ -2,7 +2,7 @@
  * API-key cross-pod — proves Bearer-token auth is shared cluster-wide.
  *
  * The cluster-smoke scenario covers cookie-based session lookup. Decopilot
- * endpoints (POST /messages, GET /attach) authenticate via API key in
+ * endpoints (POST /messages, GET /stream) authenticate via API key in
  * production, which is a different code path — Bearer header → API-key
  * table lookup, not Cookie header → session table lookup. This scenario
  * pins down that path before any decopilot scenario relies on it.

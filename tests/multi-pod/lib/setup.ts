@@ -224,8 +224,8 @@ export async function createTestAgent(
 }
 
 /**
- * Pre-create a thread row so /attach has something to look up the
- * instant after POST /messages returns 202. Without this, /attach
+ * Pre-create a thread row so /stream has something to look up the
+ * instant after POST /messages returns 202. Without this, /stream
  * races against the workflow's first `prepareRun` (which is what
  * normally inserts the thread row) and 404s.
  */

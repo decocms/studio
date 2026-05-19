@@ -54,10 +54,12 @@ export function useAutoInstallGitHub(opts: {
     opts.enabled &&
     registryItem &&
     !isRegistryLoading &&
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     !startedRef.current &&
     session?.user?.id &&
     status === "idle"
   ) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     startedRef.current = true;
     runInstallFlow();
   }

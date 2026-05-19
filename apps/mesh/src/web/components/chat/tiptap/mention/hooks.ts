@@ -363,6 +363,7 @@ export function useMentionState({
 
   // Ref for onOpenChange to avoid stale closures in the plugin
   const onOpenChangeRef = useRef(onOpenChange);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onOpenChangeRef.current = onOpenChange;
 
   // Register the suggestion plugin here at the top level

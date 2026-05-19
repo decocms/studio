@@ -1,7 +1,7 @@
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { LinkExternal01 } from "@untitledui/icons";
-import { useChatBridge } from "../../chat/chat-context.tsx";
+import { useChatStream } from "../../chat/chat-context.tsx";
 import * as tpl from "./message-templates.ts";
 import { useChecks, type CheckRun, type PrSummary } from "./use-pr-data.ts";
 
@@ -19,7 +19,7 @@ interface Props {
  */
 export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
   const { org } = useProjectContext();
-  const chat = useChatBridge();
+  const chat = useChatStream();
 
   const checksQuery = useChecks({
     orgId: org.id,

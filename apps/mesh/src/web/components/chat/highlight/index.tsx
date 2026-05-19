@@ -1,7 +1,12 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { AlertCircle, AlertTriangle } from "@untitledui/icons";
-import { usePreferences } from "@/web/hooks/use-preferences.ts";
-import { useChatStream, useChatTask } from "../context";
+import {
+  readToolApprovalLevel,
+  usePreferences,
+  type ToolApprovalLevel,
+} from "@/web/hooks/use-preferences.ts";
+import { useChatPrefs, useChatStream, useChatTask } from "../context";
+import type { RequestOptions } from "../hooks/thread-connection";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
@@ -98,49 +103,56 @@ export function ChatHighlight() {
     messages,
     isStreaming,
     isWaitingForApprovals,
-    addToolOutput,
-    addToolApprovalResponse,
+    submit,
     sendMessage,
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
+  const { chatMode, simpleModeTier } = useChatPrefs();
+
+  // Build a fresh RequestOptions at call time so tier/mode reflect the
+  // user's current selection. `toolApprovalLevel` is passed in explicitly:
+  // the approval dropdown flips it to "auto" and triggers Accept-All in
+  // the same handler, so reading React state here would see the stale
+  // pre-change value.
+  const buildRequestOptions = (
+    toolApprovalLevel: ToolApprovalLevel,
+  ): RequestOptions => ({
+    tier: simpleModeTier,
+    mode: chatMode,
+    toolApprovalLevel,
+    agent: virtualMcpId ? { id: virtualMcpId } : undefined,
+  });
+
+  const currentApprovalLevel: ToolApprovalLevel =
+    preferences.toolApprovalLevel ?? readToolApprovalLevel();
 
   const lastMessage = messages.at(-1);
+  const assistantParts =
+    lastMessage?.role === "assistant" ? lastMessage.parts : [];
 
-  const userAskParts =
-    lastMessage?.role === "assistant"
-      ? lastMessage.parts.filter((part) => part.type === "tool-user_ask")
-      : null;
-
+  const userAskParts = assistantParts.filter(
+    (part) => part.type === "tool-user_ask",
+  );
   // Coerce to boolean — `.length` is a number, and concurrent JSX renders
   // `{0 && <X/>}` as the literal text "0" (unlike the prior priority cascade,
   // where `if (0) { return … }` was control flow). After every user_ask
   // resolves to `output-available`, the unfiltered count is 0, which would
   // otherwise stamp a stray "0" between the highlight stack and the input.
-  const isWaitingForUserInput = !!userAskParts?.filter(
+  const isWaitingForUserInput = !!userAskParts.filter(
     (p) => p.state !== "output-available",
-  )?.length;
-
-  // Collect pending plan proposals from the last assistant message
-  const pendingPlans =
-    lastMessage?.role === "assistant"
-      ? extractPendingPlans(lastMessage.parts)
-      : [];
-
-  // Collect pending approval parts from the last assistant message
-  const pendingApprovals =
-    lastMessage?.role === "assistant"
-      ? extractPendingApprovals(
-          lastMessage.parts as Array<{
-            type: string;
-            state?: string;
-            approval?: { id: string };
-            toolCallId?: string;
-            toolName?: string;
-            input?: unknown;
-          }>,
-        )
-      : [];
+  ).length;
+  const pendingPlans = extractPendingPlans(assistantParts);
+  const pendingApprovals = extractPendingApprovals(
+    assistantParts as Array<{
+      type: string;
+      state?: string;
+      approval?: { id: string };
+      toolCallId?: string;
+      toolName?: string;
+      input?: unknown;
+    }>,
+  );
 
   const handleFixInChat = () => {
     if (error) {
@@ -167,11 +179,14 @@ export function ChatHighlight() {
   };
 
   const handleUserAskSubmit = (part: UserAskToolPart, response: string) => {
-    addToolOutput({
-      tool: "user_ask",
-      toolCallId: part.toolCallId,
-      output: { response },
-    });
+    void submit(
+      {
+        kind: "toolOutput",
+        toolCallId: part.toolCallId,
+        output: { response },
+      },
+      buildRequestOptions(currentApprovalLevel),
+    );
   };
 
   const handlePlanApprove = (planText: string) => {
@@ -195,13 +210,18 @@ export function ChatHighlight() {
   const handleApprovalRespond = (
     approvalId: string,
     approved: boolean,
-    reason?: string,
+    reason: string | undefined,
+    toolApprovalLevel: ToolApprovalLevel,
   ) => {
-    addToolApprovalResponse({
-      id: approvalId,
-      approved,
-      ...(reason ? { reason } : {}),
-    });
+    void submit(
+      {
+        kind: "approval",
+        approvalId,
+        approved,
+        ...(reason ? { reason } : {}),
+      },
+      buildRequestOptions(toolApprovalLevel),
+    );
   };
 
   // Each banner condition is evaluated independently; all that match
@@ -233,7 +253,7 @@ export function ChatHighlight() {
     finishReason !== "stop" &&
     !isToolCallsWaitingOnClient &&
     !showError;
-  const userAskKey = userAskParts?.map((p) => p.toolCallId).join("|") ?? "";
+  const userAskKey = userAskParts.map((p) => p.toolCallId).join("|");
   const planKey = pendingPlans[0]?.toolCallId ?? "";
   const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
 
@@ -273,7 +293,7 @@ export function ChatHighlight() {
           onDismiss={handlePlanDismiss}
         />
       )}
-      {isWaitingForUserInput && userAskParts && (
+      {isWaitingForUserInput && (
         <UserAskQuestionHighlight
           key={userAskKey}
           userAskParts={userAskParts}

@@ -112,6 +112,7 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
     org.slug,
   );
   const promptToConnectionRef = useRef(promptToConnection);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   promptToConnectionRef.current = promptToConnection;
 
   const promptsQueryKey = KEYS.virtualMcpPrompts(virtualMcpId, org.id);

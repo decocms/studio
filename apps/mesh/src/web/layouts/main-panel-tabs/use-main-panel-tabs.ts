@@ -26,6 +26,7 @@ import type {
   ThreadExpandedTool,
   ThreadMetadata,
 } from "../../../storage/types";
+import type { Task } from "@/web/components/chat/task/types";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
@@ -70,8 +71,11 @@ function useTaskMetadata(taskId: string): ThreadMetadata | null {
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const { data } = useSuspenseQuery({
-    queryKey: KEYS.threadMetadata(taskId),
+  // Share the cache entry with useEnsureTask (same MCP call, same row).
+  // `select` narrows to the metadata slice this hook needs; the underlying
+  // Task | null payload remains the single source of truth for the thread.
+  const { data } = useSuspenseQuery<Task | null, Error, ThreadMetadata | null>({
+    queryKey: KEYS.ensureTask(org.id, taskId),
     queryFn: async () => {
       if (!client || !taskId) return null;
       try {
@@ -80,13 +84,14 @@ function useTaskMetadata(taskId: string): ThreadMetadata | null {
           arguments: { id: taskId },
         })) as { structuredContent?: unknown };
         const payload = (result.structuredContent ?? result) as {
-          item?: { metadata?: ThreadMetadata } | null;
+          item?: Task | null;
         };
-        return payload.item?.metadata ?? null;
+        return payload.item ?? null;
       } catch {
         return null;
       }
     },
+    select: (task) => task?.metadata ?? null,
     staleTime: 30_000,
   });
   return data;

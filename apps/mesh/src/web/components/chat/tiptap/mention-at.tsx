@@ -66,6 +66,7 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
 
   const [mode, setMode] = useState<AtMode>("categories");
   const modeRef = useRef(mode);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   modeRef.current = mode;
 
   // Track picker open → close outcome so we can measure abandonment.

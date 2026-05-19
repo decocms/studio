@@ -8,7 +8,9 @@ export default function AiProviderOAuthCallback() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasSentRef = useRef(false);
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (!hasSentRef.current) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     hasSentRef.current = true;
 
     queueMicrotask(() => {

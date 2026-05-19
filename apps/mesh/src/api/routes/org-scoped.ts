@@ -42,8 +42,8 @@ interface OrgScopedDeps {
    */
   eventsHandler: MiddlewareHandler<Env>;
   /**
-   * SSE watch handler (defined in app.ts). Mounted at
-   * `GET /api/:org/watch`.
+   * SSE events handler (defined in app.ts). Mounted at
+   * `GET /api/:org/events`.
    */
   watchHandler: MiddlewareHandler<Env>;
   /**
@@ -113,9 +113,9 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   // must match the resolved org).
   app.all("/oauth-proxy/:connectionId/*", deps.oauthProxyHandler);
 
-  // Public events publish + SSE watch.
+  // Public events: POST /events/:type publishes; GET /events streams.
   app.post("/events/:type", deps.eventsHandler);
-  app.get("/watch", deps.watchHandler);
+  app.get("/events", deps.watchHandler);
 
   return app;
 };

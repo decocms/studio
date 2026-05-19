@@ -544,10 +544,9 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
 };
 
 /**
- * SSE watch endpoint — streams events for an organization in real time.
+ * SSE events endpoint — streams events for an organization in real time.
  * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
- * on the `/api/:org/watch` mount) or from the legacy `:organizationId`
- * path param. Auth is required either way.
+ * on the `/api/:org/events` mount). Auth is required.
  */
 const watchHandler: MiddlewareHandler<Env> = async (c) => {
   const meshContext = c.var.meshContext;
@@ -558,19 +557,9 @@ const watchHandler: MiddlewareHandler<Env> = async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Prefer org resolved from path (new mount); fall back to legacy param.
-  const orgId =
-    meshContext.organization?.id ?? c.req.param("organizationId") ?? null;
+  const orgId = meshContext.organization?.id;
   if (!orgId) {
     return c.json({ error: "organization id missing" }, 400);
-  }
-
-  // On the legacy path the middleware doesn't enforce membership; check that
-  // the authenticated user has access to the requested organization. (On the
-  // new path `resolveOrgFromPath` already enforced this and `orgId` came from
-  // `ctx.organization.id`, so the comparison is trivially true.)
-  if (orgId !== meshContext.organization?.id) {
-    return c.json({ error: "Forbidden access to organization" }, 403);
   }
 
   // Optional type filter: ?types=workflow.*,public.* (comma-separated patterns)
@@ -741,7 +730,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
       // `execute` actually runs to completion. Nothing is buffered;
-      // `createTailStream` returns null so /attach surfaces a 204 / 503
+      // `createTailStream` returns null so /stream surfaces a 204 / 503
       // to the client when NATS isn't available.
       pump: (stream: ReadableStream) => {
         void (async () => {
@@ -1302,7 +1291,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
     // Pod-death recovery: a different pod's run was claimed by us.
     // Drain synchronously to know when the run completes server-side
-    // AND pump chunks into JetStream via `streamBuffer` so any /attach
+    // AND pump chunks into JetStream via `streamBuffer` so any /stream
     // tails on survivor pods continue to receive data — that's the
     // entire user-visible win of taking over a dead pod's work. The
     // previous omission of `streamBuffer` here meant the resumed run
@@ -1627,15 +1616,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
   app.use("/org/:organizationId/events/:type", logDeprecatedRoute);
   app.post("/org/:organizationId/events/:type", eventsHandler);
-
-  // ============================================================================
-  // SSE Watch Endpoint — stream events for an organization in real time
-  // (Legacy mount with deprecation log. New mount lives at
-  // `GET /api/:org/watch` via createOrgScopedApi.)
-  // ============================================================================
-
-  app.use("/org/:organizationId/watch", logDeprecatedRoute);
-  app.get("/org/:organizationId/watch", watchHandler);
 
   // Downstream token management routes
   // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
