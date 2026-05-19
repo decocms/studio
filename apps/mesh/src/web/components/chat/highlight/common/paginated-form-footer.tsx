@@ -8,46 +8,65 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import { Pagination } from "../pagination";
 
-export interface PaginatedFormFooterProps {
+export interface PaginatedFormFooterLeftProps {
   currentIndex: number;
   total: number;
   onPrev: () => void;
   onNext: () => void;
-  isStreaming: boolean;
-  isAllAnswered: boolean;
-  onSubmit: () => void;
   extraLeft?: ReactNode;
-  extraRight?: ReactNode;
-  submitLabel?: string;
 }
 
 /**
- * Shared footer for the multipart decision prompts. Renders pagination on
- * the left, form-specific slots on either side, and a Submit button on the
- * right. Submit is disabled while streaming or while any item is
- * unanswered; in both disabled states a tooltip explains why.
- *
- * The Submit button uses `aria-disabled` (not `disabled`) so it remains
- * focusable — Radix Tooltip opens on focus, making the disabled-state
- * explanation reachable for keyboard and screen-reader users.
- *
- * Returns a fragment of two sibling rows; the consumer must render them
- * inside a `justify-between` flex container (e.g. `CollapsibleHighlight`'s
- * footer slot). `extraLeft` renders before `Pagination`; `extraRight`
- * renders before the Submit button.
+ * Left half of the multipart decision form footer: form-level controls
+ * (e.g. ApprovalLevelSelect) followed by Pagination. Goes into
+ * `CollapsibleHighlight`'s `footerLeft` slot so it left-justifies while
+ * the action buttons in `footerRight` right-justify with fill space
+ * between them.
  */
-export function PaginatedFormFooter({
+export function PaginatedFormFooterLeft({
   currentIndex,
   total,
   onPrev,
   onNext,
+  extraLeft,
+}: PaginatedFormFooterLeftProps) {
+  return (
+    <div className="flex items-center gap-2">
+      {extraLeft}
+      <Pagination
+        current={currentIndex}
+        total={total}
+        onPrev={onPrev}
+        onNext={onNext}
+      />
+    </div>
+  );
+}
+
+export interface PaginatedFormSubmitButtonProps {
+  isStreaming: boolean;
+  isAllAnswered: boolean;
+  onSubmit: () => void;
+  submitLabel?: string;
+}
+
+/**
+ * The Submit button for the multipart decision form. Disabled while
+ * streaming or while any item is unanswered; a tooltip explains why.
+ *
+ * Uses `aria-disabled` (not `disabled`) so the button stays focusable —
+ * Radix Tooltip opens on focus, making the disabled-state explanation
+ * reachable for keyboard and screen-reader users.
+ *
+ * Place this LAST in `CollapsibleHighlight`'s `footerRight` slot, after
+ * any form-specific buttons (Skip, Deny, Accept All, …).
+ */
+export function PaginatedFormSubmitButton({
   isStreaming,
   isAllAnswered,
   onSubmit,
-  extraLeft,
-  extraRight,
   submitLabel = "Submit",
-}: PaginatedFormFooterProps) {
+}: PaginatedFormSubmitButtonProps) {
   const disabled = isStreaming || !isAllAnswered;
   const tooltipText = disabled
     ? isStreaming
@@ -73,28 +92,11 @@ export function PaginatedFormFooter({
     </Button>
   );
 
+  if (!tooltipText) return submitButton;
   return (
-    <>
-      <div className="flex items-center gap-2">
-        {extraLeft}
-        <Pagination
-          current={currentIndex}
-          total={total}
-          onPrev={onPrev}
-          onNext={onNext}
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        {extraRight}
-        {tooltipText ? (
-          <Tooltip>
-            <TooltipTrigger asChild>{submitButton}</TooltipTrigger>
-            <TooltipContent>{tooltipText}</TooltipContent>
-          </Tooltip>
-        ) : (
-          submitButton
-        )}
-      </div>
-    </>
+    <Tooltip>
+      <TooltipTrigger asChild>{submitButton}</TooltipTrigger>
+      <TooltipContent>{tooltipText}</TooltipContent>
+    </Tooltip>
   );
 }

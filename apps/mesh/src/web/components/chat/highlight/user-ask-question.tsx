@@ -13,7 +13,10 @@ import { useEffect, useRef } from "react";
 import { type Control, type FieldValues, useController } from "react-hook-form";
 import type { UserAskToolPart } from "../types";
 import { CollapsibleHighlight } from "./collapsible-highlight";
-import { PaginatedFormFooter } from "./common/paginated-form-footer";
+import {
+  PaginatedFormFooterLeft,
+  PaginatedFormSubmitButton,
+} from "./common/paginated-form-footer";
 import { useMultiPartDecisionForm } from "./common/use-multipart-decision-form";
 import {
   getUserAskResponse,
@@ -371,27 +374,32 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
     decisionForm.advanceToNextUnanswered();
   };
 
-  const footer = (
-    <PaginatedFormFooter
+  const footerLeft = (
+    <PaginatedFormFooterLeft
       currentIndex={decisionForm.currentIndex}
       total={parts.length}
       onPrev={decisionForm.goPrev}
       onNext={decisionForm.goNext}
-      isStreaming={isStreaming}
-      isAllAnswered={decisionForm.isAllAnswered}
-      onSubmit={decisionForm.submit}
-      extraRight={
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleSkip}
-          className="h-7"
-        >
-          Skip
-        </Button>
-      }
     />
+  );
+
+  const footerRight = (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleSkip}
+        className="h-7"
+      >
+        Skip
+      </Button>
+      <PaginatedFormSubmitButton
+        isStreaming={isStreaming}
+        isAllAnswered={decisionForm.isAllAnswered}
+        onSubmit={decisionForm.submit}
+      />
+    </>
   );
 
   // Single question — no Tabs needed
@@ -412,7 +420,7 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
             label="Question pending"
             title={part.input?.prompt ?? "Question"}
             defaultExpanded={true}
-            footerRight={footer}
+            footerRight={footerRight}
           >
             <QuestionInput
               input={part.input as UserAskInput}
@@ -441,7 +449,8 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
           count={`${decisionForm.currentIndex + 1} of ${parts.length}`}
           title={current?.input?.prompt ?? "Question"}
           defaultExpanded={true}
-          footerRight={footer}
+          footerLeft={footerLeft}
+          footerRight={footerRight}
         >
           <Tabs
             value={decisionForm.activeKey}

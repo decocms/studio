@@ -20,7 +20,10 @@ import {
 import { stripMcpServerPrefix } from "@/web/lib/tool-namespace";
 import { toTitleCase } from "../message/parts/tool-call-part/utils.tsx";
 import { CollapsibleHighlight } from "./collapsible-highlight";
-import { PaginatedFormFooter } from "./common/paginated-form-footer";
+import {
+  PaginatedFormFooterLeft,
+  PaginatedFormSubmitButton,
+} from "./common/paginated-form-footer";
 import { useMultiPartDecisionForm } from "./common/use-multipart-decision-form";
 
 // ============================================================================
@@ -263,38 +266,39 @@ function BatchedApprovalPrompt({
           label={`${approvals.length} approvals pending`}
           title={current?.friendlyName ?? ""}
           defaultExpanded={true}
-          footerLeft={null}
-          footerRight={
-            <PaginatedFormFooter
+          footerLeft={
+            <PaginatedFormFooterLeft
               currentIndex={decisionForm.currentIndex}
               total={approvals.length}
               onPrev={decisionForm.goPrev}
               onNext={decisionForm.goNext}
-              isStreaming={isStreaming}
-              isAllAnswered={decisionForm.isAllAnswered}
-              onSubmit={decisionForm.submit}
               extraLeft={<ApprovalLevelSelect onYolo={fillAndSubmit} />}
-              extraRight={
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-2.5 text-xs"
-                    onClick={fillAndSubmit}
-                  >
-                    Accept All
-                  </Button>
-                  {current ? (
-                    <ApprovalDecisionButtons
-                      approvalId={current.approvalId}
-                      control={decisionForm.form.control}
-                      onChange={decisionForm.advanceToNextUnanswered}
-                    />
-                  ) : null}
-                </>
-              }
             />
+          }
+          footerRight={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2.5 text-xs"
+                onClick={fillAndSubmit}
+              >
+                Accept All
+              </Button>
+              {current ? (
+                <ApprovalDecisionButtons
+                  approvalId={current.approvalId}
+                  control={decisionForm.form.control}
+                  onChange={decisionForm.advanceToNextUnanswered}
+                />
+              ) : null}
+              <PaginatedFormSubmitButton
+                isStreaming={isStreaming}
+                isAllAnswered={decisionForm.isAllAnswered}
+                onSubmit={decisionForm.submit}
+              />
+            </>
           }
         >
           {current ? <ApprovalDetail input={current.input} /> : null}
