@@ -3,7 +3,7 @@
  * to the user via the `share_with_user` tool. Files live under
  * `model-outputs/<thread_id>/` and are listed by
  * `GET /api/:org/threads/:threadId/outputs`. The query is invalidated on
- * assistant-turn completion (see ThreadEventsBridge + chat onFinish).
+ * assistant-turn completion (see chat onFinish).
  *
  * The fetch is gated on whether any message in the thread has a
  * `tool-share_with_user` part with `state: "output-available"` — threads

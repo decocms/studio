@@ -251,10 +251,8 @@ export function ChatContextPanel({
   );
 
   const { messages } = useChatStream();
-  const { tasks, taskId } = useChatTask();
+  const { activeTask } = useChatTask();
   const { selectedModel, selectedVirtualMcp } = useChatPrefs();
-
-  const activeTask = tasks.find((t) => t.id === taskId);
 
   const stats = calculateUsageStats(
     messages as Array<{

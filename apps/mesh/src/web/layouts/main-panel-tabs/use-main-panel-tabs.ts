@@ -12,6 +12,7 @@
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
 import {
   SELF_MCP_ALIAS_ID,
   useConnections,
@@ -22,6 +23,7 @@ import {
 import { KEYS } from "@/web/lib/query-keys";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { useChatTask } from "@/web/components/chat/index";
+import { useThreadManager } from "@/web/components/chat/store/hooks";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -71,13 +73,30 @@ function useTaskMetadata(taskId: string): ThreadMetadata | null {
     orgId: org.id,
     orgSlug: org.slug,
   });
-  // Share the cache entry with useEnsureTask (same MCP call, same row).
-  // `select` narrows to the metadata slice this hook needs; the underlying
-  // Task | null payload remains the single source of truth for the thread.
-  const { data } = useSuspenseQuery<Task | null, Error, ThreadMetadata | null>({
+  const manager = useThreadManager();
+  // Subscribe to the store so a row that lands AFTER first render (snapshot
+  // arrives late, manager.create prepends, etc.) re-renders this hook with
+  // fresh metadata. Reading via the queryFn alone would pin a stale null in
+  // the React Query cache.
+  const threads = useSyncExternalStore(
+    manager.threads.subscribe,
+    manager.threads.get,
+  );
+  const localHit = taskId
+    ? (threads.find((t) => t.id === taskId) ?? null)
+    : null;
+  // Suspense fallback for the archived-thread / cold-load case — not in the
+  // open-list snapshot, so the store can't help. Result is cached per
+  // `KEYS.ensureTask(orgId, taskId)`; localHit always wins when present, so a
+  // stale-null cache entry is harmless once the store catches up.
+  const { data: fetchedMetadata } = useSuspenseQuery<
+    Task | null,
+    Error,
+    ThreadMetadata | null
+  >({
     queryKey: KEYS.ensureTask(org.id, taskId),
     queryFn: async () => {
-      if (!client || !taskId) return null;
+      if (!taskId || !client) return null;
       try {
         const result = (await client.callTool({
           name: "COLLECTION_THREADS_GET",
@@ -94,7 +113,7 @@ function useTaskMetadata(taskId: string): ThreadMetadata | null {
     select: (task) => task?.metadata ?? null,
     staleTime: 30_000,
   });
-  return data;
+  return localHit?.metadata ?? fetchedMetadata ?? null;
 }
 
 export function useMainPanelTabs(ctx: {

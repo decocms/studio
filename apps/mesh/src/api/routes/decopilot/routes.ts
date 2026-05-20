@@ -403,10 +403,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // Stream Endpoint — tail the per-thread JetStream subject
   // ============================================================================
   //
-  // Pure watch endpoint. The persistent connection stays open across runs —
-  // JetStream-level `{done}` sentinels are skipped on the server, and
-  // clients detect run boundaries from the AI-SDK `{type: "finish"}` chunk
-  // in the stream. One open stream per (tab, thread) covers every run.
+  // Pure live tail. The client owns initial message state via the
+  // `COLLECTION_THREAD_MESSAGES_LIST` MCP tool and re-fetches the latest
+  // page on every reconnect; this endpoint serves only live UI message
+  // chunks from the JetStream subject. The persistent connection stays
+  // open across runs — clients detect run boundaries from the AI-SDK
+  // `{type: "finish"}` chunk. One open stream per (tab, thread) covers
+  // every run.
   //
   // Recovery for in-flight runs whose owning pod died is handled out of
   // band: the thread-gate workflow step is restarted by the DBOS recovery
@@ -450,12 +453,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
       });
 
-      return wrapWithSseKeepalive(
-        createUIMessageStreamResponse({
-          stream: tailStream,
-          consumeSseStream: consumeStream,
-        }),
-      );
+      const baseResponse = createUIMessageStreamResponse({
+        stream: tailStream,
+        consumeSseStream: consumeStream,
+      });
+
+      return wrapWithSseKeepalive(baseResponse);
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       console.error("[decopilot:stream] Error", err);

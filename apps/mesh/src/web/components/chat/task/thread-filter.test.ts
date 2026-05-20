@@ -58,14 +58,25 @@ describe("filterThreads", () => {
     ]);
   });
 
-  test("filters by virtualMcpId", () => {
+  test("filters by hidden=false (excludes hidden threads, treats undefined as visible)", () => {
     const threads = [
-      t("a", { virtual_mcp_id: "agent-1" }),
-      t("b", { virtual_mcp_id: "agent-2" }),
+      t("a", { hidden: true }),
+      t("b", { hidden: false }),
+      t("c"), // no hidden field — treated as visible
     ];
-    expect(filterThreads(threads, { virtualMcpId: "agent-1" })).toEqual([
-      threads[0]!,
+    expect(filterThreads(threads, { hidden: false })).toEqual([
+      threads[1]!,
+      threads[2]!,
     ]);
+  });
+
+  test("filters by hidden=true (only hidden threads)", () => {
+    const threads = [
+      t("a", { hidden: true }),
+      t("b", { hidden: false }),
+      t("c"),
+    ];
+    expect(filterThreads(threads, { hidden: true })).toEqual([threads[0]!]);
   });
 
   test("composes multiple filters (AND semantics)", () => {

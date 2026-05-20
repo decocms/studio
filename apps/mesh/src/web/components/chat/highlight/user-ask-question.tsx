@@ -54,28 +54,37 @@ function TextInput({
     <FormField
       control={control}
       name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormControl>
-            <div className="px-2">
-              <div className="flex items-center gap-3 px-2 py-3 rounded-lg bg-accent/50">
-                <span className="flex items-center justify-center size-6 rounded-md bg-muted shrink-0">
-                  <Edit02 size={16} className="text-muted-foreground" />
-                </span>
-                <input
-                  {...field}
-                  type="text"
-                  placeholder={placeholder || "Type your response..."}
-                  autoFocus
-                  aria-label="Text response input"
-                  className="flex-1 text-sm bg-transparent outline-none placeholder:text-foreground/25 text-foreground min-w-0"
-                />
+      render={({ field }) => {
+        // Coerce to "" so the input stays controlled from the first render.
+        // react-hook-form returns `undefined` for paths that don't yet exist
+        // in `defaultValues` — happens transiently when new question parts
+        // arrive mid-stream — and React warns when an input flips from
+        // uncontrolled (`value={undefined}`) to controlled (`value="..."`).
+        const value = (field.value as string | undefined) ?? "";
+        return (
+          <FormItem>
+            <FormControl>
+              <div className="px-2">
+                <div className="flex items-center gap-3 px-2 py-3 rounded-lg bg-accent/50">
+                  <span className="flex items-center justify-center size-6 rounded-md bg-muted shrink-0">
+                    <Edit02 size={16} className="text-muted-foreground" />
+                  </span>
+                  <input
+                    {...field}
+                    value={value}
+                    type="text"
+                    placeholder={placeholder || "Type your response..."}
+                    autoFocus
+                    aria-label="Text response input"
+                    className="flex-1 text-sm bg-transparent outline-none placeholder:text-foreground/25 text-foreground min-w-0"
+                  />
+                </div>
               </div>
-            </div>
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )}
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        );
+      }}
     />
   );
 }
@@ -397,7 +406,8 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
       <PaginatedFormSubmitButton
         isStreaming={isStreaming}
         isAllAnswered={decisionForm.isAllAnswered}
-        onSubmit={decisionForm.submit}
+        isCurrentAnswered={decisionForm.isCurrentAnswered}
+        onAdvanceOrSubmit={decisionForm.submitOrAdvance}
       />
     </>
   );

@@ -5,11 +5,15 @@
  *   • one persistent SSE GET /stream loop (reconnect+backoff)
  *   • one-shot POST /messages for sends + continuations
  *   • a single `messages` Store that's the only source of truth
- *   • `status` and `finishReason` Stores read by the React layer
+ *   • `status`, `finishReason`, `hasMoreOlder`, `isFetchingOlder` Stores
+ *     read by the React layer
  *
  * Lifecycle:
- *   constructor → bootstrap() fetches the server snapshot via
- *   COLLECTION_THREAD_MESSAGES_LIST, sets messages, then opens the SSE.
+ *   constructor → bootstrap() opens the SSE and calls
+ *   COLLECTION_THREAD_MESSAGES_LIST in parallel to seed the initial page
+ *   (latest 5 messages). The SSE delivers UIMessageChunk events that fold
+ *   into the messages list via mergeAndSort. Chunks arriving before the
+ *   initial page resolves are buffered and drained afterwards.
  *   dispose() aborts everything.
  *
  * Mutation:
@@ -24,25 +28,30 @@
  *   No silent no-ops: if a toolOutput / approval target isn't found in
  *   the current `messages`, submit() throws.
  *
- * Server-snapshot reconciliation:
- *   refresh() re-fetches the snapshot and replaces messages. Server is
- *   authoritative — except while a submit is in flight (status="submitted"),
- *   in which case refresh() is a no-op. The next event after the POST
- *   settles will refresh normally.
+ * Server reconciliation:
+ *   On every SSE reconnect the connection re-fetches the latest page via
+ *   COLLECTION_THREAD_MESSAGES_LIST and merges via mergeAndSort. The
+ *   merge is upsert-by-id then sort by (created_at, id), so optimistic
+ *   local rows and in-flight streaming rows are preserved correctly.
  */
 
 import {
   lastAssistantMessageIsCompleteWithApprovalResponses,
   lastAssistantMessageIsCompleteWithToolCalls,
-  parseJsonEventStream,
   readUIMessageStream,
   uiMessageChunkSchema,
   type UIMessage,
   type UIMessageChunk,
 } from "ai";
+import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
 import type { SimpleModeTier } from "@/tools/organization/schema";
+import { Store } from "./store-primitive";
+import { extractToolErrorMessage } from "./mcp-utils";
 import type { ChatMode } from "../types";
+import { toast } from "sonner";
+
+export { Store };
 
 // ─── Request options (wire payload alongside `messages`) ─────────────────────
 
@@ -85,30 +94,8 @@ export type SubmitAction =
     };
 
 // ─── Hand-rolled emitter ─────────────────────────────────────────────────────
-
-/**
- * Per-update emitter (does not batch across SSE chunks). React subscribes via
- * useSyncExternalStore.
- */
-export class Store<T> {
-  private subs = new Set<() => void>();
-  constructor(private value: T) {}
-  get = (): T => this.value;
-  set = (next: T): void => {
-    if (Object.is(next, this.value)) return;
-    this.value = next;
-    this.subs.forEach((s) => s());
-  };
-  update = (fn: (prev: T) => T): void => {
-    this.set(fn(this.value));
-  };
-  subscribe = (s: () => void): (() => void) => {
-    this.subs.add(s);
-    return () => {
-      this.subs.delete(s);
-    };
-  };
-}
+// `Store<T>` lives in ../store/store-primitive; re-exported above for callers
+// that import it from this module.
 
 // ─── Observer ────────────────────────────────────────────────────────────────
 
@@ -129,6 +116,7 @@ export interface ThreadObserver {
 
 const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
+const CLEAN_RECONNECT_DELAY_MS = 50;
 
 /**
  * Apply a SubmitAction to a messages list. Returns the next list, or null
@@ -214,46 +202,23 @@ function describe(action: SubmitAction): string {
   return `approval approvalId=${action.approvalId}`;
 }
 
-interface JsonRpcResponse {
-  result?: { structuredContent?: { items?: UIMessage[] } };
-  error?: { message?: string };
-}
-
-/** Parse a streamable-HTTP MCP response when the server picked
- *  `text/event-stream` over `application/json` content negotiation. The
- *  response body is one or more `data: <jsonrpc-message>` SSE events; for a
- *  single `tools/call` request we expect exactly one matching response
- *  message. */
-async function parseSseSingleResponse(
-  resp: Response,
-): Promise<JsonRpcResponse> {
-  const text = await resp.text();
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("data:")) continue;
-    const payload = line.slice(5).trim();
-    if (!payload) continue;
-    try {
-      const parsed = JSON.parse(payload) as JsonRpcResponse;
-      if (parsed.result !== undefined || parsed.error !== undefined) {
-        return parsed;
-      }
-    } catch {
-      // ignore — next line might be the real response
-    }
-  }
-  throw new Error("snapshot rpc: no response in stream");
-}
-
 // ─── ThreadConnection ────────────────────────────────────────────────────────
 
-class ThreadConnection {
+interface ThreadConnectionOptions {
+  client?: MCPClient | null;
+}
+
+export class ThreadConnection {
   readonly key: string;
 
-  /** Single source of truth. Server snapshot on load, mutated locally on
-   *  submit, mutated chunk-by-chunk during SSE streaming. */
+  /** Single source of truth. Seeded from COLLECTION_THREAD_MESSAGES_LIST on
+   *  load, mutated locally on submit, mutated chunk-by-chunk during SSE
+   *  streaming. */
   readonly messages = new Store<UIMessage[]>([]);
   readonly status = new Store<ConnStatus>({ kind: "loading" });
   readonly finishReason = new Store<string | null>(null);
+  readonly hasMoreOlder = new Store<boolean>(false);
+  readonly isFetchingOlder = new Store<boolean>(false);
 
   observer: ThreadObserver | null = null;
 
@@ -273,12 +238,38 @@ class ThreadConnection {
    * user has queued in the meantime.
    */
   private waitingForNewRun = false;
+  private client: MCPClient | null;
+  private serverFetchedCount = 0;
+  private readonly pageSize = 5;
+  /**
+   * Chunk buffer: `[]` means "boot, buffering"; `null` means "ready, fold
+   * chunks live". Chunks arriving before loadInitialPage resolves are queued
+   * here and replayed through `handleChunk` after the page lands.
+   */
+  private chunkBuffer: UIMessageChunk[] | null = [];
+
+  /**
+   * Resolves once the initial page load settles (success, error, or
+   * null-client fallback). Consumers `use()` this to suspend the chat tree
+   * via the `<Suspense fallback={<Chat.Skeleton />}>` boundary in
+   * side-panel-chat.tsx so the first paint isn't an empty message list.
+   * Resolves only — never rejects; error states are surfaced through
+   * `status` so the UI can render an inline error instead of an
+   * ErrorBoundary fallback.
+   */
+  readonly ready: Promise<void>;
+  private resolveReady!: () => void;
 
   constructor(
     readonly orgSlug: string,
     readonly threadId: string,
+    opts: ThreadConnectionOptions = {},
   ) {
     this.key = `${orgSlug}::${threadId}`;
+    this.client = opts.client ?? null;
+    this.ready = new Promise<void>((res) => {
+      this.resolveReady = res;
+    });
     void this.bootstrap();
   }
 
@@ -354,77 +345,168 @@ class ThreadConnection {
     if (s.kind === "error") this.status.set({ kind: "ready" });
   }
 
-  /**
-   * Re-fetch the server snapshot and replace `messages`. Skipped while a
-   * submit POST is in flight — the local patch would be transiently
-   * overwritten by the not-yet-ingested server state. The next event after
-   * the POST settles will refresh us.
-   *
-   * Called by ThreadEventsBridge on thread status / finish notifications.
-   */
-  async refresh(): Promise<void> {
-    if (this.status.get().kind === "submitted") return;
-    try {
-      const snapshot = await this.fetchSnapshot();
-      this.messages.set(snapshot);
-    } catch (err) {
-      // Soft-fail: a refresh failure shouldn't poison the conn. The next
-      // event will retry. Surface to console for visibility.
-      console.error("[ThreadConnection] refresh failed", err);
-    }
-  }
-
   // ── Internal: bootstrap ─────────────────────────────────────────────────
 
   private async bootstrap(): Promise<void> {
-    try {
-      const snapshot = await this.fetchSnapshot();
-      this.messages.set(snapshot);
-      this.status.set({ kind: "ready" });
-    } catch (err) {
-      const e = err instanceof Error ? err : new Error(String(err));
-      this.failTo(e);
-    }
-    // Start the SSE loop regardless of snapshot result — the user can still
-    // send and the run loop will reconnect on its own backoff schedule.
-    void this.runSseLoop();
+    // Initial-page fetch and SSE loop run concurrently. Chunks arriving
+    // before the page resolves are queued via `chunkBuffer` and drained
+    // through `handleChunk` after the page lands.
+    void this.loadInitialPage();
+    await this.runSseLoop();
   }
 
-  private async fetchSnapshot(): Promise<UIMessage[]> {
-    const url = `/api/${encodeURIComponent(this.orgSlug)}/mcp/self`;
-    const resp = await fetch(url, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "content-type": "application/json",
-        // MCP HTTP transport requires both — server returns 406 otherwise.
-        accept: "application/json, text/event-stream",
-      },
-      signal: this.abort.signal,
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: "COLLECTION_THREAD_MESSAGES_LIST",
-          arguments: { thread_id: this.threadId, limit: 100 },
+  private async loadInitialPage(): Promise<void> {
+    // Yield one microtask so the constructor finishes and callers can
+    // observe the initial { kind: "loading" } status synchronously.
+    await Promise.resolve();
+    if (!this.client) {
+      // Test harness / no MCP — flip to ready immediately and dispatch
+      // chunks live. The chat UI is usable with chunks alone.
+      if (this.status.get().kind === "loading") {
+        this.status.set({ kind: "ready" });
+      }
+      this.drainChunkBuffer();
+      this.resolveReady();
+      return;
+    }
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREAD_MESSAGES_LIST",
+        arguments: {
+          thread_id: this.threadId,
+          limit: this.pageSize,
+          offset: 0,
+          orderBy: [{ field: ["created_at"], direction: "desc" }],
         },
-      }),
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new Error(text || `snapshot fetch failed (${resp.status})`);
+      });
+      if (this.abort.signal.aborted) {
+        this.resolveReady();
+        return;
+      }
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error(
+          extractToolErrorMessage(
+            result,
+            "COLLECTION_THREAD_MESSAGES_LIST failed",
+          ),
+        );
+      }
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as {
+        items?: UIMessage[];
+        hasMore?: boolean;
+      };
+      const items = payload.items ?? [];
+      this.messages.update((curr) => mergeAndSort(curr, items));
+      this.serverFetchedCount = items.length;
+      this.hasMoreOlder.set(payload.hasMore ?? false);
+      if (this.status.get().kind === "loading") {
+        this.status.set({ kind: "ready" });
+      }
+      this.drainChunkBuffer();
+    } catch (err) {
+      this.failTo(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      this.resolveReady();
     }
-    // Server may stream as text/event-stream even though we requested a
-    // tools/call. Parse SSE if applicable; otherwise treat as JSON.
-    const contentType = resp.headers.get("content-type") ?? "";
-    const body = contentType.includes("text/event-stream")
-      ? await parseSseSingleResponse(resp)
-      : ((await resp.json()) as JsonRpcResponse);
-    if (body.error) {
-      throw new Error(body.error.message ?? "snapshot rpc error");
+  }
+
+  /**
+   * Refresh the latest page after an SSE reconnect. Same args as the initial
+   * load; the merge (upsert-by-id + sort by created_at) absorbs any overlap
+   * with rows already in `messages` and preserves any optimistic-local rows
+   * the server hasn't seen yet.
+   *
+   * Errors are logged but not surfaced — the next reconnect retries.
+   */
+  private async refetchLatestPage(): Promise<void> {
+    if (!this.client) return;
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREAD_MESSAGES_LIST",
+        arguments: {
+          thread_id: this.threadId,
+          limit: this.pageSize,
+          offset: 0,
+          orderBy: [{ field: ["created_at"], direction: "desc" }],
+        },
+      });
+      if (this.abort.signal.aborted) return;
+      if ((result as { isError?: boolean }).isError) {
+        console.warn(
+          "[chat-store] refetchLatestPage:",
+          extractToolErrorMessage(result, "tool error"),
+        );
+        return;
+      }
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as {
+        items?: UIMessage[];
+        hasMore?: boolean;
+      };
+      const items = payload.items ?? [];
+      this.messages.update((curr) => mergeAndSort(curr, items));
+      if (payload.hasMore !== undefined) {
+        this.hasMoreOlder.set(payload.hasMore);
+      }
+    } catch (err) {
+      console.warn("[chat-store] refetchLatestPage failed:", err);
     }
-    return body.result?.structuredContent?.items ?? [];
+  }
+
+  /**
+   * Fetch the next older page of messages. Triggered by the top-of-list
+   * sentinel + IntersectionObserver in the chat UI.
+   *
+   * Uses `serverFetchedCount` as the offset cursor. With orderBy
+   * created_at desc and append-only thread messages (server inserts only
+   * at the head), offset pagination produces overlap on concurrent
+   * inserts but never gaps — overlap is absorbed by mergeAndSort's
+   * upsert-by-id.
+   *
+   * Guards: noop if no client, no more older pages, or another fetch is
+   * already in flight (the sentinel can re-trigger rapidly on small pages).
+   */
+  async fetchOlderMessages(): Promise<void> {
+    if (!this.client) return;
+    if (!this.hasMoreOlder.get()) return;
+    if (this.isFetchingOlder.get()) return;
+    this.isFetchingOlder.set(true);
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREAD_MESSAGES_LIST",
+        arguments: {
+          thread_id: this.threadId,
+          limit: this.pageSize,
+          offset: this.serverFetchedCount,
+          orderBy: [{ field: ["created_at"], direction: "desc" }],
+        },
+      });
+      if (this.abort.signal.aborted) return;
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error(
+          extractToolErrorMessage(
+            result,
+            "COLLECTION_THREAD_MESSAGES_LIST failed",
+          ),
+        );
+      }
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as {
+        items?: UIMessage[];
+        hasMore?: boolean;
+      };
+      const items = payload.items ?? [];
+      this.messages.update((curr) => mergeAndSort(curr, items));
+      this.serverFetchedCount += items.length;
+      this.hasMoreOlder.set(payload.hasMore ?? false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn("[chat-store] fetchOlderMessages failed:", msg);
+      toast.error(`Could not load older messages: ${msg}`);
+    } finally {
+      this.isFetchingOlder.set(false);
+    }
   }
 
   // ── Internal: POST /messages ────────────────────────────────────────────
@@ -478,11 +560,10 @@ class ThreadConnection {
 
     while (!this.abort.signal.aborted) {
       if (!firstConnect) {
-        // Drop the in-flight fold before the upcoming replay so duplicate
+        // Drop the in-flight fold before the upcoming refetch so duplicate
         // deltas don't accumulate.
         this.forceCloseSubStream(true);
       }
-      firstConnect = false;
 
       let cleanExit = false;
       try {
@@ -499,22 +580,18 @@ class ThreadConnection {
           return;
         }
         attempt = 0;
-        const parsed = parseJsonEventStream({
-          stream: resp.body,
-          schema: uiMessageChunkSchema,
-        });
-        const reader = parsed.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            cleanExit = true;
-            break;
-          }
-          if (!value.success) {
-            this.failTo(value.error);
-            return;
-          }
-          this.handleChunk(value.value as UIMessageChunk);
+        if (!firstConnect) {
+          // On reconnect, refresh the latest page so any messages persisted
+          // while disconnected become visible. Merge is upsert-by-id + sort
+          // by created_at; optimistic local rows survive (their id isn't on
+          // the server yet).
+          await this.refetchLatestPage();
+        }
+        firstConnect = false;
+        cleanExit = await this.consumeStreamSse(resp.body);
+        if (!cleanExit && this.status.get().kind === "error") {
+          // Schema mismatch / parser failure routed through failTo — terminal.
+          return;
         }
       } catch (err) {
         if (this.abort.signal.aborted) return;
@@ -524,7 +601,7 @@ class ThreadConnection {
 
       if (this.abort.signal.aborted) return;
       const delay = cleanExit
-        ? 0
+        ? CLEAN_RECONNECT_DELAY_MS
         : Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
       attempt++;
       if (delay > 0) {
@@ -543,7 +620,91 @@ class ThreadConnection {
     }
   }
 
+  /** Parse the body as SSE frames. Returns true on clean EOF, false if a
+   *  frame routed through `failTo()` (schema mismatch / parser error). */
+  private async consumeStreamSse(
+    body: ReadableStream<Uint8Array>,
+  ): Promise<boolean> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return true;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        await this.handleStreamFrame(frame);
+        if (this.status.get().kind === "error") return false;
+      }
+    }
+  }
+
+  private async handleStreamFrame(frame: string): Promise<void> {
+    const lines = frame.split("\n");
+    let event = "message";
+    const dataLines: string[] = [];
+    for (const line of lines) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (dataLines.length === 0) return;
+    const data = dataLines.join("\n");
+
+    // The server no longer emits `event: snapshot` (initial state comes
+    // from COLLECTION_THREAD_MESSAGES_LIST). Any non-"message" SSE event
+    // received from a stale server is silently ignored.
+    if (event !== "message") return;
+
+    // Default: a UIMessageChunk JSON payload.
+    let payload: unknown;
+    try {
+      payload = JSON.parse(data);
+    } catch (err) {
+      this.failTo(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+    await this.validateAndHandleChunk(payload);
+  }
+
+  private async validateAndHandleChunk(payload: unknown): Promise<void> {
+    // `uiMessageChunkSchema` is an AI SDK LazySchema — call it to get the
+    // underlying Schema and use its `validate` method. Behaviour matches the
+    // prior `parseJsonEventStream` path: schema mismatch routes through
+    // `failTo` (terminal); structural validation passes through to
+    // `handleChunk`.
+    try {
+      const schema = uiMessageChunkSchema();
+      const result = schema.validate
+        ? await schema.validate(payload)
+        : { success: true as const, value: payload as UIMessageChunk };
+      if (!result.success) {
+        this.failTo(
+          result.error instanceof Error
+            ? result.error
+            : new Error(String(result.error)),
+        );
+        return;
+      }
+      this.handleChunk(result.value as UIMessageChunk);
+    } catch (err) {
+      this.failTo(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  private drainChunkBuffer(): void {
+    const buffered = this.chunkBuffer ?? [];
+    this.chunkBuffer = null;
+    for (const chunk of buffered) this.handleChunk(chunk);
+  }
+
   private handleChunk(chunk: UIMessageChunk): void {
+    if (this.chunkBuffer !== null) {
+      this.chunkBuffer.push(chunk);
+      return;
+    }
     if (this.waitingForNewRun) {
       if (chunk.type !== "start") return;
       this.waitingForNewRun = false;
@@ -679,6 +840,49 @@ function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {
   return next;
 }
 
+/**
+ * Merge `incoming` rows into `prev` (upsert by id), then sort the result
+ * ascending by `(created_at, id)`. The id tiebreaker mirrors
+ * `storage.threads.listMessages`'s `ORDER BY created_at, id` for stability
+ * across batched inserts.
+ *
+ * Messages without a `created_at` (an in-flight optimistic message before
+ * the server has persisted it) sort to the end (treated as +Infinity).
+ * They are the newest by construction; once the persisted row arrives,
+ * the upsert replaces them and the sort resettles.
+ */
+export function mergeAndSort(
+  prev: UIMessage[],
+  incoming: UIMessage[],
+): UIMessage[] {
+  const byId = new Map(prev.map((m) => [m.id, m] as const));
+  for (const m of incoming) byId.set(m.id, m);
+  const merged = [...byId.values()];
+  merged.sort((a, b) => {
+    const ta = readTimestamp(a);
+    const tb = readTimestamp(b);
+    if (ta !== tb) return ta - tb;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return merged;
+}
+
+/**
+ * Persisted messages from COLLECTION_THREAD_MESSAGES_LIST carry the DB row's
+ * `created_at` at the top level. AI-SDK UIMessages don't declare that field,
+ * so we read it via a defensive cast. Some assistant messages additionally
+ * stamp a `metadata.created_at` at the run-start time — that field reflects
+ * the user-turn timestamp, NOT when the assistant row was actually written,
+ * so it sorts the assistant BEFORE the user it answered. We deliberately
+ * ignore `metadata.created_at` for ordering and trust only the top-level
+ * persisted timestamp.
+ */
+function readTimestamp(m: UIMessage): number {
+  const withTs = m as unknown as { created_at?: string | number | Date };
+  if (withTs.created_at == null) return Number.POSITIVE_INFINITY;
+  return new Date(withTs.created_at).getTime();
+}
+
 // ─── Module-scoped slot ──────────────────────────────────────────────────────
 
 let current: ThreadConnection | null = null;
@@ -687,22 +891,13 @@ let current: ThreadConnection | null = null;
 export function getOrOpenStream(
   orgSlug: string,
   threadId: string,
+  opts: ThreadConnectionOptions = {},
 ): ThreadConnection {
   const key = `${orgSlug}::${threadId}`;
   if (current?.key === key) return current;
   current?.dispose();
-  current = new ThreadConnection(orgSlug, threadId);
+  current = new ThreadConnection(orgSlug, threadId, opts);
   return current;
-}
-
-/** ThreadEventsBridge handle: look up the active conn by thread id without
- *  forcing a new construction. Returns null if no conn matches. */
-export function getActiveConn(
-  orgSlug: string,
-  threadId: string,
-): ThreadConnection | null {
-  const key = `${orgSlug}::${threadId}`;
-  return current?.key === key ? current : null;
 }
 
 /** Test-only: clear the active connection. Aborts in-flight fetch. */

@@ -1,16 +1,6 @@
 import type { ThreadDisplayStatus } from "@decocms/mesh-sdk";
 import type { ThreadMetadata } from "@/storage/types";
 
-// Constants
-export const TASK_CONSTANTS = {
-  /** Page size for task messages queries */
-  TASK_MESSAGES_PAGE_SIZE: 100,
-  /** Page size for tasks list queries */
-  TASKS_PAGE_SIZE: 50,
-  /** Stale time for React Query queries (30 seconds) */
-  QUERY_STALE_TIME: 30_000,
-} as const;
-
 // Types
 export interface Task {
   id: string;
@@ -37,33 +27,8 @@ export interface Task {
 
 export type { ChatMessage } from "../types.ts";
 
-export type TasksPage = {
-  items: Task[];
-  hasMore: boolean;
-  totalCount?: number;
-};
-
 /**
- * Cache shape for thread-list queries. Stored as paged data by
- * `useSuspenseInfiniteQuery` — every page-aware reader/writer (event
- * bridge, infinite scroll, helpers like `readCachedLastThread`) must
- * walk `pages` rather than reading a flat `items` array.
- */
-export type TasksQueryData = {
-  pages: TasksPage[];
-  pageParams: number[];
-};
-
-/**
- * The two shapes a thread-list cache key can carry. `org` is the unscoped
- * view; `agent` narrows by `virtualMcpId`. Used both by `useThreads` (as
- * the query argument) and by the event bridge (as the parsed shape of a
- * `KEYS.threads(…)` cache key).
- */
-export type ThreadScope = "org" | { kind: "agent"; virtualMcpId: string };
-
-/**
- * Partial Task patch — every cache write goes through one of these. `id`
+ * Partial Task patch — every store update goes through one of these. `id`
  * pins the row; the rest are optional overrides applied via spread.
  */
 export type RowPatch = Pick<Task, "id"> &
@@ -71,6 +36,7 @@ export type RowPatch = Pick<Task, "id"> &
     Pick<
       Task,
       | "status"
+      | "created_at"
       | "updated_at"
       | "title"
       | "branch"

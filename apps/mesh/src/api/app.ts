@@ -546,9 +546,15 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
 /**
  * SSE events endpoint — streams events for an organization in real time.
  * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
- * on the `/api/:org/events` mount). Auth is required.
+ * on the `/api/:org/watch` mount). Auth is required.
+ *
+ * On connect, emits in order:
+ *   1. `event: connected` — listener metadata
+ *   2. Live events from the SSE hub.
+ *
+ * Clients use `COLLECTION_THREADS_LIST` for their initial state.
  */
-const watchHandler: MiddlewareHandler<Env> = async (c) => {
+export const watchHandler: MiddlewareHandler<Env> = async (c) => {
   const meshContext = c.var.meshContext;
 
   // Require authentication (user session or API key)
@@ -1168,7 +1174,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   setThreadGateRuntime({
     dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
-    deps: { runRegistry, cancelBroadcast, streamBuffer },
+    deps: { runRegistry, cancelBroadcast, streamBuffer, sseHub },
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
@@ -1298,7 +1304,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         isResume: true,
       },
       resumeCtx,
-      { runRegistry, cancelBroadcast },
+      { runRegistry, cancelBroadcast, sseHub },
     );
   };
 

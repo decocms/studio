@@ -88,6 +88,44 @@ describe("reactAll", () => {
       expect(deps.streamBuffer.purge).not.toHaveBeenCalled();
     });
 
+    it("emitted thread.status event carries title, branch, created_at, updated_at from the thread row", async () => {
+      const deps = makeDeps();
+      (deps.storage.get as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve({
+          id: "t1",
+          title: "Test thread",
+          branch: "main",
+          created_at: "2026-05-19T00:00:00.000Z",
+          updated_at: "2026-05-19T00:00:01.000Z",
+          virtual_mcp_id: "vmcp-1",
+          created_by: "u1",
+          trigger_id: null,
+        }),
+      );
+
+      const pairs: RunTransition[] = [
+        {
+          event: {
+            type: "RUN_STARTED",
+            taskId: "t1",
+            orgId: "org1",
+            userId: "u1",
+            abortController: new AbortController(),
+          },
+          state: makeRunningState(),
+        },
+      ];
+
+      await reactAll(pairs, deps);
+
+      const emittedEvent = (deps.sseHub.emit as ReturnType<typeof mock>).mock
+        .calls[0]?.[1];
+      expect(emittedEvent.data.title).toBe("Test thread");
+      expect(emittedEvent.data.branch).toBe("main");
+      expect(emittedEvent.data.created_at).toBe("2026-05-19T00:00:00.000Z");
+      expect(emittedEvent.data.updated_at).toBe("2026-05-19T00:00:01.000Z");
+    });
+
     it("throws RunClaimError when claimRunStart returns false", async () => {
       const deps = makeDeps();
       (

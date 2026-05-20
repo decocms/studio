@@ -46,13 +46,30 @@ export function PaginatedFormFooterLeft({
 export interface PaginatedFormSubmitButtonProps {
   isStreaming: boolean;
   isAllAnswered: boolean;
-  onSubmit: () => void;
+  isCurrentAnswered: boolean;
+  /**
+   * Called when the user advances to the next unanswered item OR commits the
+   * batch — typically `decisionForm.submitOrAdvance`, which decides which to
+   * do based on whether every item is now answered.
+   */
+  onAdvanceOrSubmit: () => void;
   submitLabel?: string;
+  nextLabel?: string;
 }
 
 /**
- * The Submit button for the multipart decision form. Disabled while
- * streaming or while any item is unanswered; a tooltip explains why.
+ * Primary action button for the multipart decision form.
+ *
+ * Labels itself "Next" while any item is unanswered and "Submit" once every
+ * item has an answer. The "Next" form advances to the next unanswered item;
+ * "Submit" flushes the batch. Both routes are funneled through one handler
+ * (`submitOrAdvance`) so the parent doesn't need to fork on state.
+ *
+ * Disabled states:
+ *   - "Next" while the current item is unanswered (so you can't skip without
+ *     answering).
+ *   - "Submit" while the assistant is still streaming (the flush will fire
+ *     automatically once streaming ends; tooltip explains).
  *
  * Uses `aria-disabled` (not `disabled`) so the button stays focusable —
  * Radix Tooltip opens on focus, making the disabled-state explanation
@@ -64,38 +81,41 @@ export interface PaginatedFormSubmitButtonProps {
 export function PaginatedFormSubmitButton({
   isStreaming,
   isAllAnswered,
-  onSubmit,
+  isCurrentAnswered,
+  onAdvanceOrSubmit,
   submitLabel = "Submit",
+  nextLabel = "Next",
 }: PaginatedFormSubmitButtonProps) {
-  const disabled = isStreaming || !isAllAnswered;
+  const label = isAllAnswered ? submitLabel : nextLabel;
+  const disabled = isAllAnswered ? isStreaming : !isCurrentAnswered;
   const tooltipText = disabled
-    ? isStreaming
+    ? isAllAnswered
       ? "Waiting for the assistant to finish…"
-      : "Answer every item to submit"
+      : "Answer this item to continue"
     : null;
 
-  const submitButton = (
+  const button = (
     <Button
       type="button"
       size="sm"
       aria-disabled={disabled}
       onClick={() => {
         if (disabled) return;
-        onSubmit();
+        onAdvanceOrSubmit();
       }}
       className={cn(
         "h-7 px-2.5 text-xs",
         disabled && "opacity-50 cursor-not-allowed",
       )}
     >
-      {submitLabel}
+      {label}
     </Button>
   );
 
-  if (!tooltipText) return submitButton;
+  if (!tooltipText) return button;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{submitButton}</TooltipTrigger>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent>{tooltipText}</TooltipContent>
     </Tooltip>
   );

@@ -20,7 +20,7 @@ import { Loading01, Menu01 } from "@untitledui/icons";
 import { Outlet, useParams } from "@tanstack/react-router";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
-import { ThreadEventsBridge } from "@/web/components/chat/task";
+import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
 import { TasksPanelStateProvider } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { TasksPanelColumn } from "@/web/layouts/agent-shell-layout/tasks-panel-column";
@@ -78,60 +78,61 @@ export default function OrgShellLayout() {
   const hasTaskRoute = Boolean(params.taskId);
 
   return (
-    <SidebarProvider defaultOpen={false}>
-      <div className="flex flex-col h-dvh overflow-hidden">
-        <SidebarLayout
-          className="flex-1 bg-sidebar"
-          style={
-            {
-              "--sidebar-width-icon": "3.5rem",
-            } as Record<string, string>
-          }
-        >
-          <StudioSidebar />
-          <SidebarInset
-            className="flex flex-col"
-            style={{
-              background: "transparent",
-              containerType: "inline-size",
-            }}
+    <ThreadManagerProvider>
+      <SidebarProvider defaultOpen={false}>
+        <div className="flex flex-col h-dvh overflow-hidden">
+          <SidebarLayout
+            className="flex-1 bg-sidebar"
+            style={
+              {
+                "--sidebar-width-icon": "3.5rem",
+              } as Record<string, string>
+            }
           >
-            <ChatPrefsProvider>
-              <TasksPanelStateProvider>
-                <ThreadEventsBridge />
-                {isMobile ? (
-                  <>
-                    {!hasTaskRoute && <MobileHomeToolbar />}
-                    <Suspense fallback={<RouteFallback />}>
-                      <Outlet />
-                    </Suspense>
-                  </>
-                ) : (
-                  <Toolbar>
-                    <Toolbar.Header>
-                      <Toolbar.LeftColumn>
-                        <Toolbar.Nav />
-                        <Toolbar.TogglesSlot />
-                      </Toolbar.LeftColumn>
-                      <Toolbar.CenterSlot />
-                      <Toolbar.RightColumn>
-                        <Toolbar.TabsSlot />
-                        <Toolbar.RightSlot />
-                      </Toolbar.RightColumn>
-                    </Toolbar.Header>
-                    <div className="flex-1 min-h-0 flex flex-row">
-                      <TasksPanelColumn />
+            <StudioSidebar />
+            <SidebarInset
+              className="flex flex-col"
+              style={{
+                background: "transparent",
+                containerType: "inline-size",
+              }}
+            >
+              <ChatPrefsProvider>
+                <TasksPanelStateProvider>
+                  {isMobile ? (
+                    <>
+                      {!hasTaskRoute && <MobileHomeToolbar />}
                       <Suspense fallback={<RouteFallback />}>
                         <Outlet />
                       </Suspense>
-                    </div>
-                  </Toolbar>
-                )}
-              </TasksPanelStateProvider>
-            </ChatPrefsProvider>
-          </SidebarInset>
-        </SidebarLayout>
-      </div>
-    </SidebarProvider>
+                    </>
+                  ) : (
+                    <Toolbar>
+                      <Toolbar.Header>
+                        <Toolbar.LeftColumn>
+                          <Toolbar.Nav />
+                          <Toolbar.TogglesSlot />
+                        </Toolbar.LeftColumn>
+                        <Toolbar.CenterSlot />
+                        <Toolbar.RightColumn>
+                          <Toolbar.TabsSlot />
+                          <Toolbar.RightSlot />
+                        </Toolbar.RightColumn>
+                      </Toolbar.Header>
+                      <div className="flex-1 min-h-0 flex flex-row">
+                        <TasksPanelColumn />
+                        <Suspense fallback={<RouteFallback />}>
+                          <Outlet />
+                        </Suspense>
+                      </div>
+                    </Toolbar>
+                  )}
+                </TasksPanelStateProvider>
+              </ChatPrefsProvider>
+            </SidebarInset>
+          </SidebarLayout>
+        </div>
+      </SidebarProvider>
+    </ThreadManagerProvider>
   );
 }

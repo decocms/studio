@@ -279,6 +279,18 @@ export interface RunDecopilotStreamExtras {
    * built-in tools setup and the inline `prepareStep`.
    */
   pendingImages: PendingImage[];
+
+  /**
+   * Called after the auto-titler commits a new title to the DB.
+   * Implementations emit a `decopilot.thread.status` SSE event so tabs
+   * that are NOT subscribed to this thread's `/stream` see the new title.
+   * Optional — callers that cannot supply sseHub (e.g. test harnesses,
+   * orphan-recovery without a buffer) may omit it; the omission is safe.
+   *
+   * Source: wired by `dispatch-run.ts`'s `prepareRun` when `deps.sseHub`
+   * is available.
+   */
+  onTitleUpdated?: (title: string) => void | Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -367,6 +379,7 @@ export async function* runDecopilotStream(
     currentThreadTitle,
     registerPendingOp,
     isStreamFinished,
+    onTitleUpdated,
   } = extras;
 
   const modeConfig = resolveModeConfig(input.mode, { isCliAgent: false });
@@ -408,6 +421,17 @@ export async function* runDecopilotStream(
             error,
           );
         });
+
+        // Notify subscribers outside the per-thread /stream (other tabs,
+        // panels). Best-effort: a publish failure must not break the run.
+        try {
+          await onTitleUpdated?.(title);
+        } catch (err) {
+          console.error(
+            "[decopilot:stream] onTitleUpdated callback failed",
+            err,
+          );
+        }
 
         if (!isStreamFinished()) {
           chunkQueue.push({

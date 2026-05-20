@@ -14,9 +14,9 @@ import { Chat } from "@/web/components/chat";
 import { EmptyState } from "@/web/components/empty-state";
 import {
   useThreads,
-  filterThreads,
   useThreadActions,
-} from "@/web/components/chat/task";
+} from "@/web/components/chat/store/hooks";
+import { filterThreads } from "@/web/components/chat/task";
 import type { Task } from "@/web/components/chat/task/types";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { authClient } from "@/web/lib/auth-client";
@@ -25,9 +25,14 @@ import { TasksSection } from "./tasks-section";
 function TasksPanelContent() {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
-  const { threads, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useThreads("org", "open");
-  const { hideThread } = useThreadActions();
+  const {
+    threads: allThreads,
+    hasMore,
+    isFetchingMore,
+    fetchNextPage,
+  } = useThreads();
+  const threads = filterThreads(allThreads, { hidden: false });
+  const { hide } = useThreadActions();
 
   const myTasks = filterThreads(threads, {
     ownerUserId: currentUserId,
@@ -50,7 +55,7 @@ function TasksPanelContent() {
 
   const handleArchive = (task: Task) => {
     const wasActive = task.id === activeTaskId;
-    hideThread(task.id);
+    hide(task.id);
 
     if (!wasActive) return;
 
@@ -91,8 +96,8 @@ function TasksPanelContent() {
         onNew={createNewTask}
         showNewButton
         currentUserId={currentUserId}
-        hasMore={hasNextPage}
-        isFetchingMore={isFetchingNextPage}
+        hasMore={hasMore}
+        isFetchingMore={isFetchingMore}
         onLoadMore={fetchNextPage}
       />
     </div>

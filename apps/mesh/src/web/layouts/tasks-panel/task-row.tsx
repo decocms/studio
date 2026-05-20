@@ -1,6 +1,5 @@
 import { cn } from "@deco/ui/lib/utils.js";
 import { Archive } from "@untitledui/icons";
-import { useEffect, useRef } from "react";
 import {
   Tooltip,
   TooltipContent,
@@ -11,6 +10,7 @@ import { McpAvatar } from "./mcp-avatar";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { useClockTick } from "@/web/lib/use-clock-tick";
 import type { Task } from "@/web/components/chat/task/types";
 
 export function TaskRow({
@@ -30,25 +30,20 @@ export function TaskRow({
   const StatusIcon = config.icon;
   const virtualMcp = useVirtualMCP(task.virtual_mcp_id);
   const githubRepo = getActiveGithubRepo(virtualMcp);
-  const rowRef = useRef<HTMLDivElement>(null);
+  // Subscribe to a 60s heartbeat so the relative timestamp re-renders even
+  // when `task` is referentially stable — without this, "3m ago" stays
+  // pinned until something else forces the row to re-render. 60s matches
+  // the resolution of `formatTimeAgo`'s "Xm ago" output.
+  useClockTick(60_000);
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs route-selected task row with the scrollable tasks panel DOM
-  useEffect(() => {
-    if (!isActive) return;
-    const row = rowRef.current;
-    if (!row) return;
-
-    row.focus({ preventScroll: true });
-    row.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-      inline: "nearest",
-    });
-  }, [isActive, task.id]);
+  // Scroll-into-view / focus for the active row is owned by the parent
+  // TasksSection (single effect keyed on activeTaskId). Doing it per-row
+  // re-fired scrollIntoView whenever fetchNextPage grew the list and forced
+  // the active row to leap back into view, fighting the user's scroll.
 
   return (
     <div
-      ref={rowRef}
+      data-task-id={task.id}
       role="button"
       tabIndex={0}
       onClick={onClick}

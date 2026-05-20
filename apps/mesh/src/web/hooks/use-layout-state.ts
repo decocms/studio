@@ -14,11 +14,10 @@
 
 import { useRef } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { resolveDefaultTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
-import { useThreadActions } from "@/web/components/chat/task";
+import { useThreadActions } from "@/web/components/chat/store/hooks";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -143,8 +142,7 @@ export function useChatMainPanelState(
     org?: string;
     taskId?: string;
   };
-  const queryClient = useQueryClient();
-  const taskActions = useThreadActions();
+  const { create } = useThreadActions();
   const { locator } = useProjectContext();
 
   const { virtualMcpId, orgSlug, isAgentRoute } = routeCtx;
@@ -216,9 +214,9 @@ export function useChatMainPanelState(
   // same warm sandbox. Server picks from vmMap when no branch is provided.
   const createNewTask = async () => {
     const newTaskId = crypto.randomUUID();
-    const branch = readCachedTaskBranch(queryClient, locator, taskId);
+    const branch = readCachedTaskBranch(orgSlug, locator, taskId);
     try {
-      await taskActions.create.mutateAsync({
+      await create({
         id: newTaskId,
         virtual_mcp_id: virtualMcpId,
         ...(branch ? { branch } : {}),

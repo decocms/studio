@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useThreads } from "@/web/components/chat/task";
+import { useThreads } from "@/web/components/chat/store/hooks";
+import { filterThreads } from "@/web/components/chat/task";
 import { resolveTasksOpen } from "@/web/hooks/use-layout-state";
 
 interface TasksPanelState {
@@ -23,7 +24,8 @@ export function TasksPanelStateProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { tasks?: number };
   const params = useParams({ strict: false }) as { taskId?: string };
-  const { threads } = useThreads("org", "open");
+  const { threads: allThreads } = useThreads();
+  const threads = filterThreads(allThreads, { hidden: false });
 
   const tasksOpen = resolveTasksOpen(
     search.tasks,

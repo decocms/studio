@@ -44,6 +44,7 @@ import { type ChatMode } from "./mode-config";
 export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
+import { buildOnTitleUpdated } from "./on-title-updated";
 import {
   checkModelPermission,
   fetchModelPermissions,
@@ -58,6 +59,7 @@ import type { PendingImage } from "../../../harnesses/decopilot/built-in-tools";
 import { getInternalUrl } from "@/core/server-constants";
 import { traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
+import type { SSEEvent } from "@/event-bus";
 
 /**
  * Classify a stream error into a small, stable taxonomy for analytics.
@@ -234,6 +236,12 @@ export interface DispatchRunDeps {
   runRegistry: RunRegistry;
   streamBuffer?: StreamBuffer;
   cancelBroadcast: CancelBroadcast;
+  /** When provided, the auto-titler emits a `decopilot.thread.status` SSE
+   *  event after committing the new title to the DB so tabs not subscribed
+   *  to the per-thread `/stream` see the updated title in real-time.
+   *  Optional — callers without an sseHub (e.g. the orphan-recovery path)
+   *  may omit it; the omission is safe and the auto-title still persists. */
+  sseHub?: { emit(orgId: string, event: SSEEvent): void };
 }
 
 export interface DispatchRunResult {
@@ -359,7 +367,7 @@ async function prepareRun(
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
 ): Promise<PreparedRun> {
-  const { runRegistry, streamBuffer } = deps;
+  const { runRegistry, streamBuffer, sseHub } = deps;
 
   // Normalize: ensure every message has an id (runtime callers may omit it)
   input = {
@@ -659,6 +667,14 @@ async function prepareRun(
               totalTokens: aggregatedUsage.totalTokens + totalUsage.totalTokens,
             };
           },
+          onTitleUpdated: sseHub
+            ? buildOnTitleUpdated({
+                ctx,
+                sseHub,
+                threadId: mem.thread.id,
+                organizationId: input.organizationId,
+              })
+            : undefined,
         };
 
         const harnessInput: HarnessStreamInput = {

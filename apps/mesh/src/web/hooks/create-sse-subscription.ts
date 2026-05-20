@@ -10,7 +10,9 @@
  * Reconnection: When EventSource enters CLOSED state (server restart, network
  * change), the connection is automatically re-established with exponential
  * backoff (1s → 2s → 4s, capped at 30s). Existing event listeners are
- * re-attached to the new EventSource transparently.
+ * re-attached to the new EventSource transparently, and any subscriber that
+ * registered an `onReconnect` callback is invoked once the re-established
+ * connection opens (initial connect does NOT fire `onReconnect`).
  */
 
 /** Max reconnect delay in ms */
@@ -23,6 +25,8 @@ interface SharedConnection {
   refCount: number;
   /** Active handlers to re-attach after reconnect */
   handlers: Set<(e: MessageEvent) => void>;
+  /** Per-subscriber callbacks fired after a re-establishment (not initial open). */
+  reconnectHandlers: Set<() => void>;
   /** Current reconnect attempt (reset on successful open) */
   reconnectAttempt: number;
   /** Pending reconnect timer */
@@ -43,8 +47,16 @@ export interface SSESubscription {
    *
    * Multiple subscribers share one EventSource per key; the connection
    * is closed when the last subscriber unsubscribes.
+   *
+   * @param onReconnect Optional. Fired once each time the underlying
+   * EventSource is re-established after a drop. NOT fired on the first
+   * successful connect — subscribers do their own initial load.
    */
-  subscribe: (key: string, handler: (e: MessageEvent) => void) => () => void;
+  subscribe: (
+    key: string,
+    handler: (e: MessageEvent) => void,
+    onReconnect?: () => void,
+  ) => () => void;
 }
 
 export function createSSESubscription(
@@ -64,11 +76,18 @@ export function createSSESubscription(
     }
   }
 
-  function createEventSource(key: string, conn: SharedConnection): void {
+  function createEventSource(
+    key: string,
+    conn: SharedConnection,
+    fireReconnect: boolean,
+  ): void {
     const es = new EventSource(buildUrl(key));
 
     es.onopen = () => {
       conn.reconnectAttempt = 0;
+      if (fireReconnect) {
+        for (const cb of conn.reconnectHandlers) cb();
+      }
     };
 
     es.onerror = () => {
@@ -104,7 +123,7 @@ export function createSSESubscription(
       }
 
       conn.es.close();
-      createEventSource(key, conn);
+      createEventSource(key, conn, /* fireReconnect */ true);
     }, delay);
   }
 
@@ -115,20 +134,22 @@ export function createSSESubscription(
         es: null!,
         refCount: 0,
         handlers: new Set(),
+        reconnectHandlers: new Set(),
         reconnectAttempt: 0,
         reconnectTimer: null,
       };
-      createEventSource(key, conn);
+      createEventSource(key, conn, /* fireReconnect */ false);
       connections.set(key, conn);
     }
     return conn;
   }
 
   return {
-    subscribe(key, handler) {
+    subscribe(key, handler, onReconnect) {
       const conn = getOrCreate(key);
       conn.refCount++;
       conn.handlers.add(handler);
+      if (onReconnect) conn.reconnectHandlers.add(onReconnect);
 
       for (const type of eventTypes) {
         conn.es.addEventListener(type, handler);
@@ -143,6 +164,7 @@ export function createSSESubscription(
           conn.es.removeEventListener(type, handler);
         }
         conn.handlers.delete(handler);
+        if (onReconnect) conn.reconnectHandlers.delete(onReconnect);
         conn.refCount--;
         if (conn.refCount <= 0) {
           if (conn.reconnectTimer) {

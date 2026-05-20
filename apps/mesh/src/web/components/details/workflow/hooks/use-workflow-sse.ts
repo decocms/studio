@@ -1,7 +1,7 @@
 /**
  * useWorkflowSSE — Subscribe to workflow SSE events and invalidate queries
  *
- * Connects to the /api/:org/events?types=workflow.* SSE endpoint and
+ * Connects to the /api/:org/watch?types=workflow.* SSE endpoint and
  * invalidates the relevant React Query caches when workflow events arrive.
  * This replaces polling for real-time workflow execution updates.
  *
@@ -30,7 +30,7 @@ const WORKFLOW_EVENT_TYPES = [
 
 const workflowSSE = createSSESubscription({
   buildUrl: (orgSlug) =>
-    `/api/${encodeURIComponent(orgSlug)}/events?types=workflow.*`,
+    `/api/${encodeURIComponent(orgSlug)}/watch?types=workflow.*`,
   eventTypes: WORKFLOW_EVENT_TYPES,
 });
 

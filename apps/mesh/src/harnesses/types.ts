@@ -95,6 +95,13 @@ export interface HarnessProcessLocal {
     outputTokens: number;
     totalTokens: number;
   }) => void;
+
+  /** Called after the auto-titler commits a new title to the DB.
+   *  Implementations emit a `decopilot.thread.status` SSE event so tabs
+   *  that are NOT subscribed to this thread's `/stream` see the new title.
+   *  Optional — callers that cannot supply sseHub (e.g. orphan-recovery
+   *  path without a buffer) may omit it; the omission is safe and silent. */
+  onTitleUpdated?: (title: string) => void | Promise<void>;
 }
 
 /** Input passed to every Harness.stream() call. Fully serializable except

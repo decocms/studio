@@ -16,6 +16,7 @@
 
 import {
   createContext,
+  use,
   useContext,
   useEffect,
   useRef,
@@ -38,9 +39,11 @@ import {
   type Store,
   type SubmitAction,
   type ThreadObserver,
-} from "./hooks/thread-connection";
+} from "./store/thread-connection";
 import {
   pickSimpleModeDefaults,
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
   useProjectContext,
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
@@ -81,7 +84,7 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 }
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
-import { useThreadActions, useThreads, type RowPatch } from "./task";
+import { useThreadActions, useThreadManager, useThreads } from "./store/hooks";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
@@ -116,6 +119,9 @@ export interface ChatStreamContextValue {
   isChatEmpty: boolean;
   isWaitingForApprovals: boolean;
   isRunInProgress: boolean;
+  hasMoreOlder: boolean;
+  isFetchingOlder: boolean;
+  fetchOlderMessages: () => Promise<void>;
 }
 
 export interface ChatTaskContextValue {
@@ -127,7 +133,7 @@ export interface ChatTaskContextValue {
     message: SendMessageParams;
     virtualMcpId?: string;
   }) => void;
-  tasks: Task[];
+  activeTask: Task | null;
   /** thread.branch — the only source of truth. Null until the user picks one or the server generates one on first send. */
   currentBranch: string | null;
   /**
@@ -269,10 +275,6 @@ interface TaskProviderInternals {
   contextPrompt: string;
   preferences: {
     toolApprovalLevel?: import("../../hooks/use-preferences").ToolApprovalLevel;
-  };
-  taskManager: {
-    updateMessagesCache: (taskId: string, messages: ChatMessage[]) => void;
-    patchTask: (patch: RowPatch) => void;
   };
   rawNavigateToTask: (taskId: string) => void;
 }
@@ -514,12 +516,8 @@ export function ChatContextProvider({
   const [preferences] = usePreferences();
   const { markTaskRead } = useTaskReadState();
 
-  // Thread list — agent-scoped, open status. Consumers of `useChatTask().tasks`
-  // only look up the active thread by id, so no client-side filtering is needed.
-  const { threads: tasks } = useThreads(
-    { kind: "agent", virtualMcpId },
-    "open",
-  );
+  // Resolve the active thread directly from the manager's snapshot by id.
+  const { threads: allThreads } = useThreads();
   const threadActions = useThreadActions();
 
   // taskId always comes from the URL (seeded by router's validateSearch)
@@ -542,7 +540,9 @@ export function ChatContextProvider({
     });
   };
 
-  const activeTask = tasks.find((t) => t.id === effectiveTaskId);
+  const activeTask = effectiveTaskId
+    ? (allThreads.find((t) => t.id === effectiveTaskId) ?? null)
+    : null;
   const currentBranch = activeTask?.branch ?? null;
   const isBranchLocked = !!activeTask?.branch;
 
@@ -552,17 +552,17 @@ export function ChatContextProvider({
   // GET and skip the create-on-404 fallback.
   const createTask = (): string => {
     const newId = crypto.randomUUID();
-    void threadActions.create
-      .mutateAsync({
+    void threadActions
+      .create({
         id: newId,
         virtual_mcp_id: virtualMcpId,
         ...(currentBranch ? { branch: currentBranch } : {}),
-      } as Partial<Task>)
+      })
       .then(() => navigateToTask(newId))
       .catch(() => {
-        // create error toast already fired by useCollectionActions; navigate
-        // anyway so the user's not stranded — the route loader's ensure
-        // fallback will retry.
+        // Error toast surfaced by ThreadManagerStore.create; navigate anyway
+        // so the user's not stranded — the route loader's ensure fallback
+        // will retry.
         navigateToTask(newId);
       });
     return newId;
@@ -581,12 +581,12 @@ export function ChatContextProvider({
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
     const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
-    void threadActions.create
-      .mutateAsync({
+    void threadActions
+      .create({
         id: newId,
         virtual_mcp_id: targetVmcp,
         ...(carryBranch ? { branch: carryBranch } : {}),
-      } as Partial<Task>)
+      })
       .then(() =>
         navigateToTask(newId, {
           virtualMcpId: params.virtualMcpId,
@@ -609,7 +609,7 @@ export function ChatContextProvider({
     openTask: navigateToTask,
     createTask,
     createTaskWithMessage,
-    tasks,
+    activeTask,
     currentBranch,
     isBranchLocked,
     setCurrentTaskBranch: (branch: string | null) => {
@@ -623,10 +623,6 @@ export function ChatContextProvider({
     user,
     contextPrompt,
     preferences,
-    taskManager: {
-      updateMessagesCache: threadActions.updateMessages,
-      patchTask: threadActions.patchThread,
-    },
     rawNavigateToTask,
   };
 
@@ -649,7 +645,7 @@ export function ActiveTaskProvider({
   taskId,
   children,
 }: PropsWithChildren<{ taskId: string }>) {
-  const { virtualMcpId, tasks, currentBranch } = useChatTask();
+  const { virtualMcpId, activeTask, currentBranch } = useChatTask();
 
   // Fire chat_opened once per (page session × taskId). Runs during render, but
   // the Set gate keeps it idempotent. Fires for every thread a user views —
@@ -675,8 +671,7 @@ export function ActiveTaskProvider({
     );
   }
 
-  const { user, contextPrompt, preferences, taskManager, rawNavigateToTask } =
-    internals;
+  const { user, contextPrompt, preferences, rawNavigateToTask } = internals;
 
   const { org, locator } = useProjectContext();
 
@@ -684,14 +679,29 @@ export function ActiveTaskProvider({
 
   const onToolCall = useInvalidateCollectionsOnToolCall();
   const queryClient = useQueryClient();
+  const manager = useThreadManager();
 
   // The connection owns SSE subscription, POSTs, and message state. The
   // provider is keyed by taskId at the layout level, so this resolves to a
   // fresh conn per thread mount.
-  const conn = getOrOpenStream(org.slug, taskId);
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const conn = getOrOpenStream(org.slug, taskId, { client });
+  // Suspend until the initial-page MCP fetch settles. The Suspense boundary
+  // in side-panel-chat.tsx (`<Suspense fallback={<Chat.Skeleton />}>`)
+  // catches this and shows the skeleton instead of an empty message list.
+  // `conn.ready` resolves on success, error, and null-client paths so the
+  // chat unsuspends in every terminal case; error states are surfaced via
+  // `status` and rendered inline.
+  use(conn.ready);
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
   const finishReason = useStore(conn.finishReason);
+  const hasMoreOlder = useStore(conn.hasMoreOlder);
+  const isFetchingOlder = useStore(conn.isFetchingOlder);
 
   // Stable callback ref so the observer wrapper sees the latest consumer
   // callbacks without re-running the effect on every render.
@@ -699,21 +709,36 @@ export function ActiveTaskProvider({
     onToolCall,
     queryClient,
     rawNavigateToTask,
-    taskManager,
     taskId,
+    manager,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   cbRef.current = {
     onToolCall,
     queryClient,
     rawNavigateToTask,
-    taskManager,
     taskId,
+    manager,
   };
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
   useEffect(() => {
     const observer: ThreadObserver = {
+      // Auto-titler emits `data-thread-title` chunks as the turn streams. Mirror
+      // the new title into the manager's thread row so the tasks panel updates
+      // — no `/events` thread.title event exists; this is the only path.
+      onData: (chunk) => {
+        if (chunk.type !== "data-thread-title") return;
+        const data = (chunk as unknown as { data: { title?: string } }).data;
+        if (!data?.title) return;
+        const cb = cbRef.current;
+        if (!cb.taskId) return;
+        cb.manager.patchThread({
+          id: cb.taskId,
+          title: data.title,
+          updated_at: new Date().toISOString(),
+        });
+      },
       onFinish: (message) => {
         const cb = cbRef.current;
         // Refresh download chips only when this turn actually produced a
@@ -736,18 +761,6 @@ export function ActiveTaskProvider({
           ?.thread_id;
         if (serverThreadId && serverThreadId !== cb.taskId) {
           cb.rawNavigateToTask(serverThreadId);
-        }
-      },
-      onData: (chunk) => {
-        const cb = cbRef.current;
-        if (chunk.type === "data-thread-title") {
-          const { title } = (chunk as { data: { title?: string } }).data;
-          if (!title) return;
-          cb.taskManager.patchTask({
-            id: cb.taskId,
-            title,
-            updated_at: new Date().toISOString(),
-          });
         }
       },
       onError: (error) => {
@@ -773,7 +786,7 @@ export function ActiveTaskProvider({
     lastMessage.parts.some(
       (part) => "state" in part && part.state === "approval-requested",
     );
-  const thread = tasks.find((t) => t.id === taskId);
+  const thread = activeTask;
   const isRunInProgress =
     (thread?.status === "in_progress" || thread?.status === "expired") &&
     connStatus.kind === "ready" &&
@@ -918,6 +931,9 @@ export function ActiveTaskProvider({
     isChatEmpty,
     isWaitingForApprovals: isWaitingForApprovals ?? false,
     isRunInProgress,
+    hasMoreOlder,
+    isFetchingOlder,
+    fetchOlderMessages: conn.fetchOlderMessages.bind(conn),
   };
 
   return (

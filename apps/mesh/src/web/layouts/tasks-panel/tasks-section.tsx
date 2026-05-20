@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Edit05, FilterLines, User02, Users03 } from "@untitledui/icons";
 import {
   DropdownMenu,
@@ -65,6 +65,27 @@ export function TasksSection({
   );
   const [filter, setFilter] = useState<FilterOption>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
+
+  // Scroll the active row into view exactly when `activeTaskId` changes —
+  // not when the list grows from infinite scroll. Owning this effect here
+  // (instead of inside each row) prevents fetchNextPage re-renders from
+  // re-triggering scrollIntoView and fighting the user's scroll position.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative DOM sync keyed on route selection
+  useEffect(() => {
+    if (!activeTaskId) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const row = container.querySelector<HTMLElement>(
+      `[data-task-id="${CSS.escape(activeTaskId)}"]`,
+    );
+    if (!row) return;
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [activeTaskId]);
 
   const memberFiltered =
     memberFilter === "mine" && currentUserId

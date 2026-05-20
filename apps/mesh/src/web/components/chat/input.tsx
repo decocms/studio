@@ -28,6 +28,7 @@ import {
   useOptionalChatStream,
   useOptionalChatTask,
 } from "./context";
+import { useThreadActions } from "./store/hooks";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
@@ -177,17 +178,21 @@ function FileDropZone({
 // ============================================================================
 
 /**
- * Submit handler for the home composer. No active task exists; we write
- * the tiptap doc to sessionStorage and navigate to a fresh /$org/$taskId.
- * The new task page's useEnsureTask creates the thread (server-side
- * idempotent on id) and ActiveTaskProvider's autosend consumer fires
- * sendMessage on mount.
+ * Submit handler for the home composer. No active task exists; we create
+ * the thread synchronously via ThreadManagerStore so the row is in the
+ * manager's `threads` list BEFORE navigation. The new task page's
+ * `useEnsureTask` then resolves the localHit fast path on first render,
+ * skipping its own CREATE (which would otherwise duplicate against React
+ * 19 Strict Mode's intentional re-mount of the effect). Tiptap doc is
+ * written to sessionStorage and ActiveTaskProvider's autosend consumer
+ * fires sendMessage on mount.
  */
 function useHomeSubmit() {
   const navigate = useNavigate();
   const { org, locator } = useProjectContext();
+  const { create } = useThreadActions();
 
-  return ({
+  return async ({
     tiptapDoc,
     virtualMcp,
   }: {
@@ -198,6 +203,12 @@ function useHomeSubmit() {
     const targetVmcp =
       virtualMcp?.id ?? getWellKnownDecopilotVirtualMCP(org.id).id;
     writeStoredAutosend(sessionStorage, locator, newId, { tiptapDoc });
+    try {
+      await create({ id: newId, virtual_mcp_id: targetVmcp });
+    } catch {
+      // Toast already surfaced by the store; navigate anyway — the route's
+      // ensure-fallback will retry if the row is missing.
+    }
     navigate({
       to: "/$org/$taskId",
       params: { org: org.slug, taskId: newId },
@@ -220,7 +231,6 @@ export function ChatInput({
   const isRunInProgress = stream?.isRunInProgress ?? false;
   const stop = stream?.stop ?? (() => {});
   const taskId = taskCtx?.taskId ?? "";
-  const tasks = taskCtx?.tasks ?? [];
   const homeSubmit = useHomeSubmit();
   const {
     selectedModel,
@@ -289,7 +299,7 @@ export function ChatInput({
     tiptapRef.current?.syncVoiceText(voiceBaselineDocRef.current, voiceText);
   }, [voice.transcript, voice.interimTranscript, voice.status]);
 
-  const task = tasks.find((task) => task.id === taskId);
+  const task = taskCtx?.activeTask ?? null;
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.
