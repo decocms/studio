@@ -7,24 +7,47 @@ import {
   getOrOpenManager,
   ThreadManagerStore,
 } from "./thread-manager-store";
+import type { SSESubscription } from "@/web/hooks/create-sse-subscription";
 import type { Task } from "../task/types";
 
-// Fake SSE source. fetch is stubbed to return a controllable ReadableStream
-// of SSE chunks.
-function makeSseFetch(chunks: string[]) {
-  return mock(async (_url: string, _init?: RequestInit) => {
-    const enc = new TextEncoder();
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        for (const c of chunks) controller.enqueue(enc.encode(c));
-        controller.close();
-      },
-    });
-    return new Response(body, {
-      status: 200,
-      headers: { "content-type": "text/event-stream" },
-    });
-  });
+/**
+ * In-process fake of the decopilot SSE pool used by `ThreadManagerStore`.
+ * Tests build one of these and pass it as `opts.sse` so no real EventSource
+ * or fetch is opened. Provides imperative helpers for emitting events and
+ * simulating the post-drop reconnect that fires `onWatchReconnect`.
+ */
+interface FakePool extends SSESubscription {
+  /** Dispatch a typed SSE event to the subscriber registered for `key`. */
+  emit(key: string, type: string, data: unknown): void;
+  /** Simulate the shared pool firing onReconnect after a re-establishment. */
+  triggerReconnect(key: string): void;
+}
+
+function makeFakePool(): FakePool {
+  interface Sub {
+    handler: (e: MessageEvent) => void;
+    onReconnect?: () => void;
+  }
+  const subs = new Map<string, Sub>();
+  return {
+    subscribe(key, handler, onReconnect) {
+      subs.set(key, { handler, onReconnect });
+      return () => {
+        const cur = subs.get(key);
+        if (cur && cur.handler === handler) subs.delete(key);
+      };
+    },
+    emit(key, type, data) {
+      const sub = subs.get(key);
+      if (!sub) return;
+      const payload = typeof data === "string" ? data : JSON.stringify(data);
+      const e = new MessageEvent(type, { data: payload });
+      sub.handler(e);
+    },
+    triggerReconnect(key) {
+      subs.get(key)?.onReconnect?.();
+    },
+  };
 }
 
 /**
@@ -48,17 +71,26 @@ function makeMcpClient(initialItems: Task[] = []): MCPClient {
   } as unknown as MCPClient;
 }
 
-const realFetch = globalThis.fetch;
+const threadStatusEvent = (
+  subject: string,
+  data: Record<string, unknown>,
+  time = "2026-01-02T00:00:00Z",
+) => ({
+  type: "decopilot.thread.status",
+  subject,
+  time,
+  data,
+});
+
 afterEach(() => {
-  globalThis.fetch = realFetch;
   __resetRegistry(); // dispose any ThreadConnection
   __resetManagerRegistry(); // dispose any ThreadManagerStore
 });
 
 describe("ThreadManagerStore /watch snapshot", () => {
   it("starts in loading state", () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
-    const store = new ThreadManagerStore("acme", "loc-1");
+    const sse = makeFakePool();
+    const store = new ThreadManagerStore("acme", "loc-1", { sse });
     expect(store.threadsStatus.get()).toEqual({ kind: "loading" });
     expect(store.threads.get()).toEqual([]);
     store.dispose();
@@ -67,16 +99,7 @@ describe("ThreadManagerStore /watch snapshot", () => {
 
 describe("ThreadManagerStore thread.* event patching", () => {
   it("updates an existing row via thread.status event", async () => {
-    const ev = JSON.stringify({
-      type: "decopilot.thread.status",
-      subject: "t-1",
-      time: "2026-01-02T00:00:00Z",
-      data: { status: "in_progress" },
-    });
-    globalThis.fetch = makeSseFetch([
-      `event: decopilot.thread.status\ndata: ${ev}\n\n`,
-    ]) as unknown as typeof fetch;
-
+    const sse = makeFakePool();
     const client = makeMcpClient([
       {
         id: "t-1",
@@ -85,27 +108,31 @@ describe("ThreadManagerStore thread.* event patching", () => {
         updated_at: "2026-01-01T00:00:00Z",
       } as Task,
     ]);
-    const store = new ThreadManagerStore("acme", "loc-1", { client });
+    const store = new ThreadManagerStore("acme", "loc-1", { client, sse });
     await new Promise((r) => setTimeout(r, 10));
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent("t-1", { status: "in_progress" }),
+    );
     expect(store.threads.get()[0]?.status).toBe("in_progress");
     expect(store.threads.get()[0]?.updated_at).toBe("2026-01-02T00:00:00Z");
     store.dispose();
   });
 
   it("inserts an unknown row at the top from a thread.* event", async () => {
-    const ev = JSON.stringify({
-      type: "decopilot.thread.status",
-      subject: "t-new",
-      time: "2026-01-02T00:00:00Z",
-      data: { status: "in_progress", virtual_mcp_id: "vm-x" },
-    });
-    globalThis.fetch = makeSseFetch([
-      `event: decopilot.thread.status\ndata: ${ev}\n\n`,
-    ]) as unknown as typeof fetch;
-
+    const sse = makeFakePool();
     const client = makeMcpClient([]);
-    const store = new ThreadManagerStore("acme", "loc-1", { client });
+    const store = new ThreadManagerStore("acme", "loc-1", { client, sse });
     await new Promise((r) => setTimeout(r, 10));
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent("t-new", {
+        status: "in_progress",
+        virtual_mcp_id: "vm-x",
+      }),
+    );
     expect(store.threads.get().map((t) => t.id)).toEqual(["t-new"]);
     store.dispose();
   });
@@ -113,8 +140,7 @@ describe("ThreadManagerStore thread.* event patching", () => {
 
 describe("ThreadManagerStore optimistic mutators", () => {
   it("rename applies optimistically, calls server, succeeds", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
-
+    const sse = makeFakePool();
     const callTool = mock(async (args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
         return {
@@ -130,6 +156,7 @@ describe("ThreadManagerStore optimistic mutators", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -141,8 +168,7 @@ describe("ThreadManagerStore optimistic mutators", () => {
   });
 
   it("rename rolls back on server error", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
-
+    const sse = makeFakePool();
     const callTool = mock(async (args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
         return {
@@ -158,6 +184,7 @@ describe("ThreadManagerStore optimistic mutators", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -167,7 +194,7 @@ describe("ThreadManagerStore optimistic mutators", () => {
   });
 
   it("create prepends the row and returns it", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const sse = makeFakePool();
     const row = {
       id: "t-new",
       title: "Fresh",
@@ -181,6 +208,7 @@ describe("ThreadManagerStore optimistic mutators", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -193,7 +221,7 @@ describe("ThreadManagerStore optimistic mutators", () => {
   });
 
   it("create throws with the server error text when result.isError is true", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const sse = makeFakePool();
     const callTool = mock(async (args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
         return { structuredContent: { items: [], hasMore: false } };
@@ -205,6 +233,7 @@ describe("ThreadManagerStore optimistic mutators", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -219,37 +248,7 @@ describe("ThreadManagerStore optimistic mutators", () => {
 
 describe("ThreadManagerStore archive tombstones", () => {
   it("drops a late decopilot.thread.* event for a just-archived thread", async () => {
-    // Two SSE chunks queued: then (after hide()) a thread.status
-    // event that would normally re-insert a synthetic row via applyPatch.
-    let release: ((arg: void) => void) | undefined;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
-    const lateEvent = JSON.stringify({
-      type: "decopilot.thread.status",
-      subject: "t-1",
-      time: "2026-01-02T00:00:00Z",
-      data: { status: "completed" },
-    });
-    globalThis.fetch = (async () => {
-      const enc = new TextEncoder();
-      const body = new ReadableStream<Uint8Array>({
-        async start(c) {
-          await gate;
-          c.enqueue(
-            enc.encode(
-              `event: decopilot.thread.status\ndata: ${lateEvent}\n\n`,
-            ),
-          );
-          c.close();
-        },
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }) as unknown as typeof fetch;
-
+    const sse = makeFakePool();
     const callTool = mock(async (args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
         return {
@@ -265,6 +264,7 @@ describe("ThreadManagerStore archive tombstones", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -272,9 +272,12 @@ describe("ThreadManagerStore archive tombstones", () => {
     await store.hide("t-1");
     expect(store.threads.get()).toEqual([]);
 
-    // Release the late thread.status event.
-    release!();
-    await new Promise((r) => setTimeout(r, 10));
+    // Late thread.status event arrives — would normally re-insert via applyPatch.
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent("t-1", { status: "completed" }),
+    );
 
     // The synthetic row would have been re-inserted without the tombstone.
     expect(store.threads.get()).toEqual([]);
@@ -282,8 +285,7 @@ describe("ThreadManagerStore archive tombstones", () => {
   });
 
   it("clears the tombstone on hide() rollback so future events resume", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
-
+    const sse = makeFakePool();
     // Server rejects the hide.
     const callTool = mock(async (args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
@@ -300,6 +302,7 @@ describe("ThreadManagerStore archive tombstones", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -317,8 +320,8 @@ describe("ThreadManagerStore archive tombstones", () => {
 
 describe("ThreadManagerStore active slot", () => {
   it("setActive opens a connection and exposes it via active store", () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
-    const store = new ThreadManagerStore("acme", "loc-1");
+    const sse = makeFakePool();
+    const store = new ThreadManagerStore("acme", "loc-1", { sse });
     const conn = store.setActive("t-1");
     expect(store.active.get()).toBe(conn);
     expect(conn.threadId).toBe("t-1");
@@ -326,8 +329,8 @@ describe("ThreadManagerStore active slot", () => {
   });
 
   it("setActive on a different id swaps the slot", () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
-    const store = new ThreadManagerStore("acme", "loc-1");
+    const sse = makeFakePool();
+    const store = new ThreadManagerStore("acme", "loc-1", { sse });
     const a = store.setActive("t-1");
     const b = store.setActive("t-2");
     expect(a).not.toBe(b);
@@ -336,8 +339,8 @@ describe("ThreadManagerStore active slot", () => {
   });
 
   it("closeActive clears the slot", () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
-    const store = new ThreadManagerStore("acme", "loc-1");
+    const sse = makeFakePool();
+    const store = new ThreadManagerStore("acme", "loc-1", { sse });
     store.setActive("t-1");
     store.closeActive();
     expect(store.active.get()).toBe(null);
@@ -347,26 +350,27 @@ describe("ThreadManagerStore active slot", () => {
 
 describe("ThreadManagerStore enriched thread.status events", () => {
   it("synthesizes a row with title/branch from an enriched event (no 'New chat' zombie)", async () => {
-    const enrichedEvent = JSON.stringify({
-      type: "decopilot.thread.status",
-      subject: "t-new",
-      time: "2026-05-19T00:00:00Z",
-      data: {
-        status: "in_progress",
-        virtual_mcp_id: "vm-x",
-        title: "Refactor login",
-        branch: "feature/login",
-        created_at: "2026-05-19T00:00:00Z",
-        updated_at: "2026-05-19T00:00:01Z",
-      },
-    });
-    globalThis.fetch = makeSseFetch([
-      `event: decopilot.thread.status\ndata: ${enrichedEvent}\n\n`,
-    ]) as unknown as typeof fetch;
-
+    const sse = makeFakePool();
     const client = makeMcpClient([]);
-    const store = new ThreadManagerStore("acme", "loc-1", { client });
+    const store = new ThreadManagerStore("acme", "loc-1", { client, sse });
     await new Promise((r) => setTimeout(r, 10));
+
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent(
+        "t-new",
+        {
+          status: "in_progress",
+          virtual_mcp_id: "vm-x",
+          title: "Refactor login",
+          branch: "feature/login",
+          created_at: "2026-05-19T00:00:00Z",
+          updated_at: "2026-05-19T00:00:01Z",
+        },
+        "2026-05-19T00:00:00Z",
+      ),
+    );
 
     const row = store.threads.get()[0];
     expect(row?.id).toBe("t-new");
@@ -380,7 +384,7 @@ describe("ThreadManagerStore enriched thread.status events", () => {
 
 describe("ThreadManagerStore.fetchThread", () => {
   it("returns the local row when present", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const sse = makeFakePool();
     const callTool = mock(async (args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
         return {
@@ -394,6 +398,7 @@ describe("ThreadManagerStore.fetchThread", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -408,7 +413,7 @@ describe("ThreadManagerStore.fetchThread", () => {
   });
 
   it("falls back to COLLECTION_THREADS_GET when absent locally", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const sse = makeFakePool();
     const callTool = mock(
       async (args: { name: string; arguments: unknown }) => {
         if (args.name === "COLLECTION_THREADS_LIST") {
@@ -431,6 +436,7 @@ describe("ThreadManagerStore.fetchThread", () => {
     );
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -443,7 +449,7 @@ describe("ThreadManagerStore.fetchThread", () => {
   });
 
   it("returns null when the row doesn't exist", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const sse = makeFakePool();
     const callTool = mock(async (args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
         return { structuredContent: { items: [], hasMore: false } };
@@ -455,6 +461,7 @@ describe("ThreadManagerStore.fetchThread", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -466,16 +473,16 @@ describe("ThreadManagerStore.fetchThread", () => {
 
 describe("ThreadManagerStore registry", () => {
   it("returns the same instance for same key", () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
-    const a = getOrOpenManager("acme", "loc-1");
-    const b = getOrOpenManager("acme", "loc-1");
+    const sse = makeFakePool();
+    const a = getOrOpenManager("acme", "loc-1", { sse });
+    const b = getOrOpenManager("acme", "loc-1", { sse });
     expect(a).toBe(b);
   });
 
   it("disposes and replaces on different key", () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
-    const a = getOrOpenManager("acme", "loc-1");
-    const b = getOrOpenManager("acme", "loc-2");
+    const sse = makeFakePool();
+    const a = getOrOpenManager("acme", "loc-1", { sse });
+    const b = getOrOpenManager("acme", "loc-2", { sse });
     expect(a).not.toBe(b);
   });
 
@@ -486,7 +493,7 @@ describe("ThreadManagerStore registry", () => {
 
 describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
   it("loadInitialPage populates threads from MCP and flips status to ready", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const sse = makeFakePool();
     const callTool = mock(async (args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
         return {
@@ -506,6 +513,7 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
     expect(store.threadsStatus.get()).toEqual({ kind: "ready" });
@@ -515,12 +523,13 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
   });
 
   it("loadInitialPage error flips status to error", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const sse = makeFakePool();
     const callTool = mock(async () => {
       throw new Error("MCP down");
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
     expect(store.threadsStatus.get().kind).toBe("error");
@@ -528,7 +537,7 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
   });
 
   it("fetchNextPage appends items and advances offset", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const sse = makeFakePool();
     let call = 0;
     const callTool = mock(
       async (args: { name: string; arguments: { offset: number } }) => {
@@ -547,6 +556,7 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
     );
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
     expect(store.threads.get()).toHaveLength(50);
@@ -560,7 +570,7 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
   });
 
   it("fetchNextPage no-ops when !hasMore", async () => {
-    globalThis.fetch = makeSseFetch([]) as unknown as typeof fetch;
+    const sse = makeFakePool();
     let calls = 0;
     const callTool = mock(async () => {
       calls++;
@@ -570,6 +580,7 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
     expect(calls).toBe(1);
@@ -579,6 +590,7 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
   });
 
   it("fetchNextPage no-ops while already in flight", async () => {
+    const sse = makeFakePool();
     let releaseSecond!: (v: unknown) => void;
     let calls = 0;
     const callTool = mock(async (args: { name: string }) => {
@@ -599,6 +611,7 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     await new Promise((r) => setTimeout(r, 10));
 
@@ -613,22 +626,7 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
   });
 
   it("re-runs loadInitialPage on /watch reconnect (resync after disconnect)", async () => {
-    // First /watch response closes cleanly; second connect triggers re-init.
-    let watchConnects = 0;
-    globalThis.fetch = (async () => {
-      watchConnects++;
-      const body = new ReadableStream<Uint8Array>({
-        start(c) {
-          // Close right away — simulates a transient drop that triggers reconnect
-          c.close();
-        },
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }) as unknown as typeof fetch;
-
+    const sse = makeFakePool();
     let mcpCalls = 0;
     const callTool = mock(async (args: { name: string }) => {
       if (args.name !== "COLLECTION_THREADS_LIST") return {};
@@ -650,16 +648,19 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
     // Wait for initial connect + load
     await new Promise((r) => setTimeout(r, 10));
     expect(store.threads.get().map((t) => t.id)).toEqual(["t-initial"]);
     expect(mcpCalls).toBe(1);
 
-    // Wait for first reconnect backoff (BASE_DELAY_MS = 1000) + then for the second loadInitialPage
-    await new Promise((r) => setTimeout(r, 1200));
-    expect(watchConnects).toBeGreaterThanOrEqual(2);
-    expect(mcpCalls).toBeGreaterThanOrEqual(2);
+    // Pool tells us the EventSource was re-established post-drop. The store
+    // should re-arm the buffer and re-load the initial page.
+    sse.triggerReconnect("acme");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mcpCalls).toBe(2);
     expect(store.threads.get().map((t) => t.id)).toEqual(["t-after-reconnect"]);
     store.dispose();
   });
@@ -667,6 +668,7 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
 
 describe("ThreadManagerStore event buffer during boot", () => {
   it("buffers thread.* events until loadInitialPage resolves, then replays", async () => {
+    const sse = makeFakePool();
     let releaseMcp!: (v: unknown) => void;
     const callTool = mock(
       () =>
@@ -675,40 +677,27 @@ describe("ThreadManagerStore event buffer during boot", () => {
         }),
     );
 
-    // SSE sends an event BEFORE the MCP fetch resolves.
-    const enc = new TextEncoder();
-    const eventPayload = JSON.stringify({
-      type: "decopilot.thread.status",
-      subject: "t-event",
-      time: "2026-05-19T00:00:00Z",
-      data: {
-        status: "in_progress",
-        title: "From event",
-        virtual_mcp_id: "vm-x",
-      },
-    });
-    globalThis.fetch = (async () => {
-      const body = new ReadableStream<Uint8Array>({
-        start(c) {
-          c.enqueue(
-            enc.encode(
-              `event: decopilot.thread.status\ndata: ${eventPayload}\n\n`,
-            ),
-          );
-          c.close();
-        },
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }) as unknown as typeof fetch;
-
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
-    // Let the SSE event arrive while MCP is stalled.
-    await new Promise((r) => setTimeout(r, 20));
+    // Let the store register its handler.
+    await new Promise((r) => setTimeout(r, 5));
+
+    // Emit a thread event BEFORE the MCP fetch resolves — should be buffered.
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent(
+        "t-event",
+        {
+          status: "in_progress",
+          title: "From event",
+          virtual_mcp_id: "vm-x",
+        },
+        "2026-05-19T00:00:00Z",
+      ),
+    );
 
     // Event was buffered — not yet applied.
     expect(store.threads.get()).toEqual([]);
@@ -729,6 +718,7 @@ describe("ThreadManagerStore event buffer during boot", () => {
   });
 
   it("tombstones still suppress buffered events for archived threads", async () => {
+    const sse = makeFakePool();
     let releaseMcp!: (v: unknown) => void;
     const callTool = mock((args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
@@ -740,34 +730,22 @@ describe("ThreadManagerStore event buffer during boot", () => {
       return Promise.resolve({});
     });
 
-    const enc = new TextEncoder();
-    const eventPayload = JSON.stringify({
-      type: "decopilot.thread.status",
-      subject: "t-archived",
-      time: "2026-05-19T00:00:00Z",
-      data: { status: "in_progress", title: "Should be dropped" },
-    });
-    globalThis.fetch = (async () => {
-      const body = new ReadableStream<Uint8Array>({
-        start(c) {
-          c.enqueue(
-            enc.encode(
-              `event: decopilot.thread.status\ndata: ${eventPayload}\n\n`,
-            ),
-          );
-          c.close();
-        },
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }) as unknown as typeof fetch;
-
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse,
     });
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 5));
+
+    // SSE event arrives while MCP is stalled.
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent(
+        "t-archived",
+        { status: "in_progress", title: "Should be dropped" },
+        "2026-05-19T00:00:00Z",
+      ),
+    );
 
     // Archive the thread BEFORE the MCP fetch resolves — the buffered event
     // will be dropped on drain.

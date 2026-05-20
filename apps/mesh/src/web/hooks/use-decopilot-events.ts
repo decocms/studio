@@ -12,26 +12,13 @@
 
 import {
   DECOPILOT_EVENTS,
-  ALL_DECOPILOT_EVENT_TYPES,
   type DecopilotSSEEvent,
   type DecopilotStepEvent,
   type DecopilotFinishEvent,
   type DecopilotThreadStatusEvent,
 } from "@decocms/mesh-sdk";
 import { useRef, useSyncExternalStore } from "react";
-import { createSSESubscription } from "./create-sse-subscription";
-
-// ============================================================================
-// Shared connection pool
-// ============================================================================
-
-const decopilotSSE = createSSESubscription({
-  buildUrl: (orgSlug) => {
-    const typesParam = ALL_DECOPILOT_EVENT_TYPES.join(",");
-    return `/api/${encodeURIComponent(orgSlug)}/watch?types=${typesParam}`;
-  },
-  eventTypes: [...ALL_DECOPILOT_EVENT_TYPES],
-});
+import { decopilotSSE } from "./decopilot-sse-pool";
 
 const getSnapshot = () => 0;
 

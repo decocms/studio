@@ -1,25 +1,34 @@
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { toast } from "sonner";
+import {
+  DECOPILOT_EVENTS,
+  type DecopilotThreadStatusEvent,
+} from "@decocms/mesh-sdk";
 import type {
   ThreadCreateData,
   ThreadUpdateData,
 } from "@/tools/thread/schema.ts";
 import { getOrOpenStream, type ThreadConnection } from "./thread-connection";
 import { extractToolErrorMessage } from "./mcp-utils";
+import { decopilotSSE } from "@/web/hooks/decopilot-sse-pool";
+import type { SSESubscription } from "@/web/hooks/create-sse-subscription";
 import type { RowPatch, Task } from "../task/types";
 import { Store } from "./store-primitive";
 
 export interface ThreadManagerStoreOptions {
   client?: MCPClient | null;
+  /**
+   * Override the shared decopilot SSE pool. Tests inject a fake; production
+   * code leaves this unset so the singleton in `decopilot-sse-pool.ts` is
+   * shared with `useDecopilotEvents`.
+   */
+  sse?: SSESubscription;
 }
 
 export type ThreadsStatus =
   | { kind: "loading" }
   | { kind: "ready" }
   | { kind: "error"; error: Error };
-
-const BASE_DELAY_MS = 1_000;
-const MAX_DELAY_MS = 30_000;
 
 /**
  * How long a just-archived thread id is held in the tombstone set after
@@ -56,7 +65,6 @@ export class ThreadManagerStore {
   readonly hasMore = new Store<boolean>(false);
   readonly isFetchingMore = new Store<boolean>(false);
 
-  private abort = new AbortController();
   private pendingOptimistic = new Set<string>();
   /**
    * Short-lived block list of just-archived thread ids. Read by every code
@@ -74,6 +82,7 @@ export class ThreadManagerStore {
    * and replayed (tombstone-checked) after the first page lands.
    */
   private eventBuffer: RowPatch[] | null = [];
+  private watchUnsubscribe: (() => void) | null = null;
 
   constructor(
     readonly orgSlug: string,
@@ -82,12 +91,18 @@ export class ThreadManagerStore {
   ) {
     this.key = `${orgSlug}::${locator}`;
     this.client = opts.client ?? null;
-    void this.runWatchLoop();
+    const sse = opts.sse ?? decopilotSSE;
+    this.watchUnsubscribe = sse.subscribe(
+      this.orgSlug,
+      (e) => this.handleWatchEvent(e),
+      () => this.onWatchReconnect(),
+    );
     void this.loadInitialPage();
   }
 
   dispose(): void {
-    this.abort.abort();
+    this.watchUnsubscribe?.();
+    this.watchUnsubscribe = null;
     this.active.set(null);
   }
 
@@ -366,134 +381,62 @@ export class ThreadManagerStore {
     }
   }
 
-  private async runWatchLoop(): Promise<void> {
-    const url = `/api/${encodeURIComponent(
-      this.orgSlug,
-    )}/watch?types=decopilot.thread.*`;
-    let attempt = 0;
-    let firstConnect = true;
-
-    while (!this.abort.signal.aborted) {
-      try {
-        const resp = await fetch(url, {
-          method: "GET",
-          credentials: "include",
-          headers: { accept: "text/event-stream" },
-          signal: this.abort.signal,
-        });
-        if (!resp.ok || !resp.body) {
-          // Transient HTTP error — backoff and retry silently.
-          // threadsStatus is NOT written here; it only reflects the MCP page load.
-        } else {
-          if (firstConnect) {
-            firstConnect = false;
-          } else {
-            // Reconnect after a drop — re-arm the event buffer and resync the
-            // thread list so any events missed during the disconnect are recovered.
-            this.eventBuffer = [];
-            void this.loadInitialPage();
-          }
-          attempt = 0;
-          await this.consumeSse(resp.body);
-        }
-      } catch (err) {
-        if (this.abort.signal.aborted) return;
-        // Transient — fall through to backoff.
-        void err;
-      }
-      if (this.abort.signal.aborted) return;
-      const delay = Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
-      attempt++;
-      await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, delay);
-        this.abort.signal.addEventListener("abort", () => {
-          clearTimeout(t);
-          resolve();
-        });
-      });
+  /**
+   * Handle a single SSE MessageEvent from the shared decopilot pool. We only
+   * care about `decopilot.thread.status` here; other decopilot event types
+   * are consumed by `useDecopilotEvents` elsewhere.
+   */
+  private handleWatchEvent(e: MessageEvent): void {
+    if (e.type !== DECOPILOT_EVENTS.THREAD_STATUS) return;
+    let parsed: DecopilotThreadStatusEvent;
+    try {
+      parsed = JSON.parse(e.data) as DecopilotThreadStatusEvent;
+    } catch {
+      return;
     }
+    // Drop events for a thread the user just archived. `applyPatch` has
+    // upsert-if-missing semantics, so without this guard a late finish
+    // event for a streaming run that was archived mid-flight would
+    // re-insert a synthetic row that survives until reload.
+    if (this.isTombstoned(parsed.subject)) return;
+    const patch: RowPatch = {
+      id: parsed.subject,
+      updated_at: parsed.data.updated_at ?? parsed.time,
+      ...(parsed.data.status !== undefined && {
+        status: parsed.data.status,
+      }),
+      ...(parsed.data.created_by !== undefined && {
+        created_by: parsed.data.created_by,
+      }),
+      ...(parsed.data.trigger_id !== undefined && {
+        trigger_id: parsed.data.trigger_id,
+      }),
+      ...(parsed.data.virtual_mcp_id !== undefined && {
+        virtual_mcp_id: parsed.data.virtual_mcp_id,
+      }),
+      ...(parsed.data.title !== undefined && { title: parsed.data.title }),
+      ...(parsed.data.branch !== undefined && {
+        branch: parsed.data.branch,
+      }),
+      ...(parsed.data.created_at !== undefined && {
+        created_at: parsed.data.created_at,
+      }),
+    };
+    if (this.eventBuffer !== null) {
+      this.eventBuffer.push(patch);
+      return;
+    }
+    this.threads.update((list) => applyPatch(list, patch));
   }
 
-  private async consumeSse(body: ReadableStream<Uint8Array>): Promise<void> {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      buffer += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buffer.indexOf("\n\n")) !== -1) {
-        const frame = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        this.handleFrame(frame);
-      }
-    }
-  }
-
-  private handleFrame(frame: string): void {
-    const lines = frame.split("\n");
-    let event = "message";
-    const dataLines: string[] = [];
-    for (const line of lines) {
-      if (line.startsWith("event:")) event = line.slice(6).trim();
-      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-    }
-    if (dataLines.length === 0) return;
-    const data = dataLines.join("\n");
-    if (event.startsWith("decopilot.thread.")) {
-      try {
-        const parsed = JSON.parse(data) as {
-          subject: string;
-          time?: string;
-          data: {
-            status?: Task["status"];
-            created_by?: string;
-            trigger_id?: string;
-            virtual_mcp_id?: string;
-            title?: string;
-            branch?: string | null;
-            created_at?: string;
-            updated_at?: string;
-          };
-        };
-        // Drop events for a thread the user just archived. `applyPatch` has
-        // upsert-if-missing semantics, so without this guard a late finish
-        // event for a streaming run that was archived mid-flight would
-        // re-insert a synthetic row that survives until reload.
-        if (this.isTombstoned(parsed.subject)) return;
-        const patch: RowPatch = {
-          id: parsed.subject,
-          updated_at: parsed.data.updated_at ?? parsed.time,
-          ...(parsed.data.status !== undefined && {
-            status: parsed.data.status,
-          }),
-          ...(parsed.data.created_by !== undefined && {
-            created_by: parsed.data.created_by,
-          }),
-          ...(parsed.data.trigger_id !== undefined && {
-            trigger_id: parsed.data.trigger_id,
-          }),
-          ...(parsed.data.virtual_mcp_id !== undefined && {
-            virtual_mcp_id: parsed.data.virtual_mcp_id,
-          }),
-          ...(parsed.data.title !== undefined && { title: parsed.data.title }),
-          ...(parsed.data.branch !== undefined && {
-            branch: parsed.data.branch,
-          }),
-          ...(parsed.data.created_at !== undefined && {
-            created_at: parsed.data.created_at,
-          }),
-        };
-        if (this.eventBuffer !== null) {
-          this.eventBuffer.push(patch);
-          return;
-        }
-        this.threads.update((list) => applyPatch(list, patch));
-      } catch {
-        // ignore malformed
-      }
-    }
+  /**
+   * Fired by the shared SSE pool after the underlying EventSource is
+   * re-established post-drop. Re-arm the boot buffer and resync the thread
+   * list so any events missed during the disconnect are recovered.
+   */
+  private onWatchReconnect(): void {
+    this.eventBuffer = [];
+    void this.loadInitialPage();
   }
 }
 

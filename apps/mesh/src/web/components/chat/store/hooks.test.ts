@@ -9,38 +9,24 @@
 
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
+import type { SSESubscription } from "@/web/hooks/create-sse-subscription";
 import { __resetRegistry } from "./thread-connection";
 import {
   __resetManagerRegistry,
   ThreadManagerStore,
 } from "./thread-manager-store";
 
-function streamSse(chunks: string[]): typeof fetch {
-  return mock(async () => {
-    const enc = new TextEncoder();
-    const body = new ReadableStream<Uint8Array>({
-      start(c) {
-        for (const ch of chunks) c.enqueue(enc.encode(ch));
-        c.close();
-      },
-    });
-    return new Response(body, {
-      status: 200,
-      headers: { "content-type": "text/event-stream" },
-    });
-  }) as unknown as typeof fetch;
-}
+const noopSse: SSESubscription = {
+  subscribe: () => () => {},
+};
 
-const realFetch = globalThis.fetch;
 afterEach(() => {
-  globalThis.fetch = realFetch;
   __resetRegistry();
   __resetManagerRegistry();
 });
 
 describe("hooks: useThreads source (manager.threads)", () => {
   it("starts empty and flips to ready after loadInitialPage", async () => {
-    globalThis.fetch = streamSse([]);
     const callTool = mock(async (args: { name: string }) => {
       if (args.name === "COLLECTION_THREADS_LIST") {
         return {
@@ -56,6 +42,7 @@ describe("hooks: useThreads source (manager.threads)", () => {
     });
     const store = new ThreadManagerStore("acme", "loc-1", {
       client: { callTool } as unknown as MCPClient,
+      sse: noopSse,
     });
     expect(store.threads.get()).toEqual([]);
     expect(store.threadsStatus.get()).toEqual({ kind: "loading" });

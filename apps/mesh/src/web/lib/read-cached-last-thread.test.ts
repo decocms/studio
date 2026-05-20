@@ -3,6 +3,7 @@ import {
   __resetManagerRegistry,
   getOrOpenManager,
 } from "@/web/components/chat/store/thread-manager-store";
+import type { SSESubscription } from "@/web/hooks/create-sse-subscription";
 import { readCachedLastThread } from "./read-cached-last-thread";
 import type { Task } from "@/web/components/chat/task/types";
 
@@ -23,33 +24,18 @@ function task(overrides: Partial<Task>): Task {
   };
 }
 
-const realFetch = globalThis.fetch;
-function stubFetchEmptySnapshot() {
-  const enc = new TextEncoder();
-  globalThis.fetch = (async () => {
-    const body = new ReadableStream<Uint8Array>({
-      start(c) {
-        c.enqueue(enc.encode(`event: snapshot\ndata: {"threads":[]}\n\n`));
-        c.close();
-      },
-    });
-    return new Response(body, {
-      status: 200,
-      headers: { "content-type": "text/event-stream" },
-    });
-  }) as unknown as typeof fetch;
-}
+const noopSse: SSESubscription = {
+  subscribe: () => () => {},
+};
 
 function seed(items: Task[]) {
-  stubFetchEmptySnapshot();
-  const m = getOrOpenManager(ORG, LOCATOR);
+  const m = getOrOpenManager(ORG, LOCATOR, { sse: noopSse });
   m.threads.set(items);
   return m;
 }
 
 afterEach(() => {
   __resetManagerRegistry();
-  globalThis.fetch = realFetch;
 });
 
 describe("readCachedLastThread", () => {
