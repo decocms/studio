@@ -69,7 +69,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "@/web/components/empty-state";
 import { useChatMainPanelState } from "@/web/hooks/use-layout-state";
-import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { hasPreviewableRepo } from "@/web/lib/github-repo";
 import { useOptionalTasksPanelState } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "./toolbar";
 import { ChatMainPanelGroup } from "./chat-main-panel-group";
@@ -309,7 +309,7 @@ function AgentInsetProvider() {
       }
     : null;
 
-  const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
+  const hasActiveGithubRepo = !!(entity && hasPreviewableRepo(entity));
 
   const layout = useChatMainPanelState(entityMetadata, {
     virtualMcpId,

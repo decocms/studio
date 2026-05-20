@@ -58,11 +58,15 @@ async function resolveClaudeCodeCwd(
 ): Promise<string | undefined> {
   const vmMetadata = input.virtualMcp.metadata as {
     githubRepo?: unknown;
+    cloneUrl?: string | null;
   } | null;
-  if (!vmMetadata?.githubRepo) return undefined;
+  const hasRepoSource =
+    !!vmMetadata?.githubRepo ||
+    (typeof vmMetadata?.cloneUrl === "string" && !!vmMetadata.cloneUrl);
+  if (!hasRepoSource) return undefined;
   if (!input.user?.id) return undefined;
 
-  const isEphemeralAgent = !vmMetadata.githubRepo;
+  const isEphemeralAgent = !hasRepoSource;
   const branch = isEphemeralAgent
     ? "ephemeral"
     : (input.branch ?? `thread:${input.threadId}`);

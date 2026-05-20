@@ -168,8 +168,11 @@ export async function assembleDecopilotTools(
     //   reads and scoped outputs; revisit if it bites.
     const vmMetadata = input.virtualMcp.metadata as {
       githubRepo?: GithubRepo | null;
+      cloneUrl?: string | null;
     };
-    const isEphemeralAgent = !vmMetadata.githubRepo;
+    const isEphemeralAgent =
+      !vmMetadata.githubRepo &&
+      !(typeof vmMetadata.cloneUrl === "string" && vmMetadata.cloneUrl);
     const vmContext: VmContext | null = input.user.id
       ? {
           virtualMcpId: input.agent.id,

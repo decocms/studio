@@ -49,6 +49,7 @@ type GithubRepo = {
 
 type GithubRepoMeta = {
   githubRepo?: GithubRepo | null;
+  cloneUrl?: string | null;
 };
 
 export const VM_START = defineTool({
@@ -92,7 +93,9 @@ export const VM_START = defineTool({
       ctx,
     );
 
-    const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
+    const repoMeta = metadata as GithubRepoMeta;
+    const githubRepo = repoMeta.githubRepo ?? null;
+    const cloneUrl = repoMeta.cloneUrl ?? null;
 
     const runnerKind = resolveRunnerKindFromEnv();
     await reapStaleRunner(ctx, existing, runnerKind);
@@ -105,6 +108,7 @@ export const VM_START = defineTool({
       branch: resolvedBranch,
       metadata,
       githubRepo,
+      cloneUrl,
       existing,
     });
     return {
@@ -157,7 +161,9 @@ export async function ensureVmForBranch(
 
   await reapStaleRunner(ctx, existing, runnerKind);
 
-  const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
+  const repoMeta = metadata as GithubRepoMeta;
+  const githubRepo = repoMeta.githubRepo ?? null;
+  const cloneUrl = repoMeta.cloneUrl ?? null;
   const { entry } = await provisionSandbox({
     ctx,
     userId,
@@ -166,6 +172,7 @@ export async function ensureVmForBranch(
     branch: input.branch,
     metadata,
     githubRepo,
+    cloneUrl,
     existing,
   });
   return entry;
@@ -206,6 +213,8 @@ type StartParams = {
   branch: string;
   metadata: Record<string, unknown>;
   githubRepo: GithubRepo | null;
+  /** Plain git clone URL — used when no GitHub OAuth connection. */
+  cloneUrl: string | null;
   existing: VmMapEntry | null;
 };
 
@@ -220,6 +229,7 @@ async function provisionSandbox(
     branch,
     metadata,
     githubRepo,
+    cloneUrl: plainCloneUrl,
     existing,
   } = params;
 
@@ -286,6 +296,29 @@ async function provisionSandbox(
       userEmail: gitUserEmail,
       branch,
       displayName: `${githubRepo.owner}/${githubRepo.name}`,
+    };
+  } else if (plainCloneUrl) {
+    // Plain git URL — no OAuth token required. Public github.com URLs work as-is.
+    // Strip any `user:token@` embedded in the URL from the display name so creds
+    // pasted to reach a private repo don't leak into UI/logs. The original URL
+    // (with creds) still goes to the runner via `repoOpts.cloneUrl`.
+    let safeDisplayName = plainCloneUrl;
+    try {
+      const u = new URL(plainCloneUrl);
+      if (u.username || u.password) {
+        u.username = "";
+        u.password = "";
+        safeDisplayName = u.toString();
+      }
+    } catch {
+      // Non-URL form (e.g. `git@github.com:owner/repo.git`) — keep as-is.
+    }
+    repoOpts = {
+      cloneUrl: plainCloneUrl,
+      userName: "Deco Studio",
+      userEmail: "studio@deco.cx",
+      branch,
+      displayName: safeDisplayName,
     };
   }
 

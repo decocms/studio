@@ -162,6 +162,21 @@ const GithubRepoSchema = z.object({
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
 /**
+ * Direct git clone URL — used when GitHub OAuth isn't configured (e.g.
+ * templates clicked from the home page). The URL goes to the sandbox
+ * runner as-is. Public URLs work without auth; private repos require
+ * credentials embedded in the URL.
+ */
+const CloneUrlSchema = z
+  .string()
+  .url()
+  .nullable()
+  .optional()
+  .describe(
+    "Direct git clone URL used when GitHub is not connected. Public repos work without auth.",
+  );
+
+/**
  * A single vm entry in vmMap — the vmId plus the preview URL the UI renders.
  *
  * `runnerKind` lets the UI construct daemon URLs correctly:
@@ -272,6 +287,7 @@ export const VirtualMCPEntitySchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      cloneUrl: CloneUrlSchema,
       runtime: RuntimeMetadataSchema.nullable()
         .optional()
         .describe(
@@ -329,6 +345,7 @@ export const VirtualMCPCreateDataSchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      cloneUrl: CloneUrlSchema,
       runtime: RuntimeMetadataSchema.nullable()
         .optional()
         .describe(
@@ -382,6 +399,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
       githubRepo: GithubRepoSchema.nullable()
         .optional()
         .describe("Linked GitHub repository"),
+      cloneUrl: CloneUrlSchema,
       runtime: RuntimeMetadataSchema.nullable()
         .optional()
         .describe(
