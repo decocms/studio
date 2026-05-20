@@ -169,6 +169,14 @@ if (ingressEligible) {
   }
 }
 
+// Snapshot saver: polls each tracked sandbox's daemon `/idle` and uploads a
+// tar via the SandboxStore. Idle saves keep work durable mid-session; the
+// shutdown sweep below is the safety net for active pods.
+{
+  const { startSnapshotSaver } = await import("./sandbox/snapshot-saver");
+  startSnapshotSaver();
+}
+
 // Create the Hono app (any DBOS.registerWorkflow calls happen during this
 // import chain). Launch DBOS afterwards so the registry is sealed before
 // the executor starts dequeueing workflows.
@@ -295,6 +303,18 @@ async function gracefulShutdown(signal: string) {
 
     // 3. Let K8s notice the 503 before we close connections.
     await new Promise((r) => setTimeout(r, 2_000));
+
+    // 3.5. Save snapshots of every tracked sandbox so users don't lose
+    //      work on a pod recycle. Runs before connection close so the
+    //      runner's proxyDaemonRequest path is still alive.
+    try {
+      const { saveAllSnapshotsOnShutdown } = await import(
+        "./sandbox/snapshot-saver"
+      );
+      await saveAllSnapshotsOnShutdown();
+    } catch (err) {
+      console.warn("[shutdown] snapshot sweep failed:", err);
+    }
 
     // 4. Force-close connections (SSE streams are long-lived and would block
     //    graceful drain indefinitely).

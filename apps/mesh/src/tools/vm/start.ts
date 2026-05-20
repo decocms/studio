@@ -36,6 +36,7 @@ import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { getRunnerByKind, getSharedRunner } from "../../sandbox/lifecycle";
 import { pickStoreFromEnv, snapshotKey } from "../../sandbox/sandbox-store";
+import { trackSandbox } from "../../sandbox/snapshot-saver";
 import { getSettings } from "../../settings";
 import { setVmMapEntry } from "./vm-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
@@ -372,6 +373,9 @@ async function provisionSandbox(
       path: runtimePath,
     },
   };
+
+  // Register with the snapshot saver so idle/shutdown auto-saves the workdir.
+  trackSandbox({ orgId, virtualMcpId, branch, handle: sandbox.handle });
 
   await setVmMapEntry(
     ctx.storage.virtualMcps,

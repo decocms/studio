@@ -9,6 +9,7 @@ import type { RunnerKind } from "@decocms/sandbox/runner";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
 import { getRunnerByKind } from "../../sandbox/lifecycle";
+import { untrackSandbox } from "../../sandbox/snapshot-saver";
 import { removeVmMapEntry } from "./vm-map";
 
 export const VM_DELETE = defineTool({
@@ -57,6 +58,9 @@ export const VM_DELETE = defineTool({
       userId,
       input.branch,
     );
+
+    // Stop tracking this handle so the saver doesn't try to snapshot a dead pod.
+    untrackSandbox(entry.vmId);
 
     // Legacy entries (pre-runnerKind column) default to freestyle.
     const kind: RunnerKind = entry.runnerKind ?? "freestyle";
