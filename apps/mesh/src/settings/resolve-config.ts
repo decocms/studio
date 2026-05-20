@@ -101,7 +101,40 @@ export function resolveConfig(
     // Runtime flags
     isCli: true,
     noTui: flags.noTui === true,
-    podName: envVars.POD_NAME ?? crypto.randomUUID(),
+    // Pod identity is the DBOS executorID, which is how durable
+    // workflow recovery scopes "whose work to resume on launch." A
+    // value that changes per restart (random UUID) silently strands
+    // any in-flight workflow at the moment the pod dies — DBOS only
+    // recovers rows whose executor_id matches the booting process.
+    //
+    // In production, refuse to boot without an explicit POD_NAME so
+    // misconfigured deployments crash visibly rather than losing
+    // workflows. Operators should wire it from the K8s downward API
+    // (metadata.name for StatefulSet) or set a stable constant for
+    // single-pod self-hosted (e.g. POD_NAME=studio).
+    //
+    // Outside production, fall back to a random UUID — single-process
+    // dev/test still gets DBOS recovery across same-process restarts
+    // via the application_version path, and the random id stops
+    // accidental cross-environment recovery if multiple dev instances
+    // share a database.
+    podName: (() => {
+      if (envVars.POD_NAME && envVars.POD_NAME.length > 0) {
+        return envVars.POD_NAME;
+      }
+      if (nodeEnv === "production") {
+        throw new Error(
+          "POD_NAME must be set in production. DBOS recovery is " +
+            "scoped to executor_id (the pod name), and a missing or " +
+            "auto-generated value strands in-flight workflows on every " +
+            "restart. Wire POD_NAME from the K8s downward API " +
+            "(metadata.name on a StatefulSet) for multi-pod deploys, " +
+            "or set a stable constant like POD_NAME=studio for a " +
+            "single-pod self-hosted instance.",
+        );
+      }
+      return crypto.randomUUID();
+    })(),
 
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
