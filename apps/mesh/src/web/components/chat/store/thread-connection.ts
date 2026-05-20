@@ -41,6 +41,7 @@ import {
   type UIMessage,
   type UIMessageChunk,
 } from "ai";
+import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
 import type { SimpleModeTier } from "@/tools/organization/schema";
 import { Store } from "./store-primitive";
@@ -199,6 +200,10 @@ function describe(action: SubmitAction): string {
 
 // ─── ThreadConnection ────────────────────────────────────────────────────────
 
+export interface ThreadConnectionOptions {
+  client?: MCPClient | null;
+}
+
 export class ThreadConnection {
   readonly key: string;
 
@@ -226,12 +231,15 @@ export class ThreadConnection {
    * user has queued in the meantime.
    */
   private waitingForNewRun = false;
+  private client: MCPClient | null;
 
   constructor(
     readonly orgSlug: string,
     readonly threadId: string,
+    opts: ThreadConnectionOptions = {},
   ) {
     this.key = `${orgSlug}::${threadId}`;
+    this.client = opts.client ?? null;
     void this.bootstrap();
   }
 
@@ -679,11 +687,12 @@ let current: ThreadConnection | null = null;
 export function getOrOpenStream(
   orgSlug: string,
   threadId: string,
+  opts: ThreadConnectionOptions = {},
 ): ThreadConnection {
   const key = `${orgSlug}::${threadId}`;
   if (current?.key === key) return current;
   current?.dispose();
-  current = new ThreadConnection(orgSlug, threadId);
+  current = new ThreadConnection(orgSlug, threadId, opts);
   return current;
 }
 

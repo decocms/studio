@@ -41,6 +41,8 @@ import {
 } from "./store/thread-connection";
 import {
   pickSimpleModeDefaults,
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
   useProjectContext,
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
@@ -678,7 +680,12 @@ export function ActiveTaskProvider({
   // The connection owns SSE subscription, POSTs, and message state. The
   // provider is keyed by taskId at the layout level, so this resolves to a
   // fresh conn per thread mount.
-  const conn = getOrOpenStream(org.slug, taskId);
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const conn = getOrOpenStream(org.slug, taskId, { client });
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
   const finishReason = useStore(conn.finishReason);
