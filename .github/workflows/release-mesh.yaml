@@ -231,11 +231,12 @@ jobs:
 
   release:
     name: GitHub Release + Deployment
-    needs: [prepare, publish-npm, merge-docker]
+    needs: [prepare, publish-npm, build-docker, merge-docker]
     if: |
       always() &&
       (needs.prepare.outputs.version-changed == 'true' || needs.prepare.outputs.image-exists == 'false') &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
+      (needs.build-docker.result == 'success' || needs.build-docker.result == 'skipped') &&
       (needs.merge-docker.result == 'success' || needs.merge-docker.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
