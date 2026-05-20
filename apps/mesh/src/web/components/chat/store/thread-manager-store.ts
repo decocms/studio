@@ -5,25 +5,9 @@ import type {
   ThreadUpdateData,
 } from "@/tools/thread/schema.ts";
 import { getOrOpenStream, type ThreadConnection } from "./thread-connection";
+import { extractToolErrorMessage } from "./mcp-utils";
 import type { RowPatch, Task } from "../task/types";
 import { Store } from "./store-primitive";
-
-/**
- * Extract a server-side error message from a `callTool` result, falling back
- * to the supplied default when no usable text is present. Mirrors the shape
- * the MCP SDK returns for tool failures: `{ isError: true, content: [{ text }] }`.
- */
-function extractToolErrorMessage(result: unknown, fallback: string): string {
-  const content = (result as { content?: unknown }).content;
-  if (Array.isArray(content)) {
-    const first = content[0];
-    if (first && typeof first === "object") {
-      const text = (first as { text?: string }).text;
-      if (text) return text;
-    }
-  }
-  return fallback;
-}
 
 export interface ThreadManagerStoreOptions {
   client?: MCPClient | null;

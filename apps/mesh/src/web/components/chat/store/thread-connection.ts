@@ -47,6 +47,7 @@ import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index
 import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
 import type { SimpleModeTier } from "@/tools/organization/schema";
 import { Store } from "./store-primitive";
+import { extractToolErrorMessage } from "./mcp-utils";
 import type { ChatMode } from "../types";
 import { toast } from "sonner";
 
@@ -816,18 +817,6 @@ function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {
   const next = [...list];
   next[idx] = msg;
   return next;
-}
-
-function extractToolErrorMessage(result: unknown, fallback: string): string {
-  const content = (result as { content?: unknown }).content;
-  if (Array.isArray(content)) {
-    const first = content[0];
-    if (first && typeof first === "object") {
-      const text = (first as { text?: string }).text;
-      if (text) return text;
-    }
-  }
-  return fallback;
 }
 
 /**
