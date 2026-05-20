@@ -46,6 +46,15 @@ DBOS.setConfig({
   // N workers all call DBOS.launch(); the admin server would otherwise fight
   // over port 3001. Re-enable per-process once we need workflow admin HTTP.
   runAdminServer: false,
+  // Pin this pod's workflows to its stable identity. DBOS only recovers
+  // PENDING workflows whose executor_id matches the booting process,
+  // so for distributed self-hosting we need each replica to come back
+  // with the same id it had before — which K8s StatefulSet guarantees
+  // via metadata.name (wired through POD_NAME → settings.podName).
+  // Outside K8s, settings.podName falls back to a random UUID, which
+  // disables cross-process recovery (each restart looks like a new
+  // executor). That's fine for single-process / dev.
+  executorID: settings.podName,
 });
 
 const { createApp } = await import("./api/app");

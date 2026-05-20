@@ -1,74 +1,69 @@
 /**
- * Pod-death recovery scenario.
+ * Pod-death recovery via DBOS workflow replay.
  *
- * When the pod owning a run dies mid-stream, a survivor pod must take
- * over the run via the heartbeat watcher and the resumed run's chunks
- * must reach /stream tails on the survivor side — that's the whole
- * point of the recovery path.
+ * Validates the simplification: heartbeat + cross-pod claim CAS were
+ * deleted in favor of trusting DBOS launch-time recovery. The contract
+ * being verified here is exactly DBOS's documented one — "When an
+ * application with an executor ID restarts, it only recovers pending
+ * workflows assigned to that executor ID" — under our actual streaming
+ * pipeline (threadGateWorkflow → dispatchRunAndWaitStep → streamText
+ * → JetStream pump).
  *
  * ── What the test exercises ──────────────────────────────────────────
  *
- *   1. POST a SLOW message (20 chunks × 500ms ≈ 10s) so we have a
- *      window to kill the owner mid-stream.
- *   2. Open /stream on all three pods. Whichever pod ends up owning
- *      the run, the other two stay alive and observe the recovery.
- *   3. Wait for chunk-2 on any watcher — proof the run is flowing.
- *   4. Read `threads.run_owner_pod` (POD_NAME maps 1:1 to the compose
- *      service name) and SIGKILL that pod.
- *   5. The heartbeat poller on a survivor pod (probes each peer in
- *      `studio_pods` via `pg_try_advisory_xact_lock` every 5s)
- *      detects the freed advisory lock — Postgres released it the
- *      moment the dead pod's TCP connection closed — and fires
- *      `runRegistry.handlePodDeath`, which claims the orphan and
- *      re-dispatches with `isResume: true`.
- *   6. Wait for a chunk whose mock-ai call-start timestamp is *after*
- *      the kill — mock-ai stamps every chunk with `t<ms>` for the
- *      wall-clock moment the call began. A chunk with `t > killTime`
- *      provably came from a mock-ai call started after the kill,
- *      which can only be the resumed pump. No chunk-count heuristic,
- *      no "kill should be done by chunk-N" timing argument. By the
- *      time we see such a chunk, prepareRun has run (including its
- *      purge of the per-thread subject), so opening a fresh /stream
- *      now is guaranteed to see only the resumed run's chunks.
- *   7. Assert: the late /stream sees chunks 1..20 EXACTLY ONCE — i.e.,
- *      `chunk-1 ` appears once in its joined stream. If the resumed
- *      run had pumped on top of the dead pod's leftover prefix in
- *      JetStream (i.e., if prepareRun's purge ever regressed), a late
- *      /stream would see the assistant's reply duplicated end-to-end
- *      and the count would be 2.
+ *   1. POST a SLOW message (20 chunks × 500ms ≈ 10s).
+ *   2. Open /stream on all three pods.
+ *   3. Wait for chunk-2 — proof the run is flowing.
+ *   4. Read `threads.run_owner_pod` and SIGKILL that pod.
+ *   5. Restart the killed pod with `docker compose start <name>` —
+ *      mimics K8s StatefulSet bringing the pod back with the same
+ *      identity (POD_NAME → DBOS executor_id).
+ *   6. DBOS launches on the restarted pod, sees its own PENDING
+ *      threadGateWorkflow in `dbos.workflow_status`, and re-runs the
+ *      `dispatchRunAndWaitStep` from scratch — streamText fires again
+ *      against the mock-ai, chunks land on the same per-thread
+ *      JetStream subject, and SSE tails on any pod see them.
+ *   7. Wait for a chunk whose mock-ai call-start timestamp is *after*
+ *      the kill — proves the chunks came from the replayed step, not
+ *      from the dead pod's leftover JetStream prefix.
+ *   8. Wait for chunk-20 to confirm the replay completes end-to-end.
+ *   9. Open a late /stream AFTER the resumed pump is flowing and
+ *      assert chunks 1..20 appear EXACTLY ONCE (`chunk-1 ` count == 1).
+ *      If `prepareRun`'s JetStream purge ever regresses, this watcher
+ *      would see the dead pod's prefix AND the resumed run, doubling
+ *      the count.
  *
- * ── What had to be fixed for this to pass ────────────────────────────
+ * ── What enables this ────────────────────────────────────────────────
  *
- *   - **Postgres-advisory-lock heartbeat**: each pod holds
- *     `pg_advisory_lock(hashtext(podId))` on a dedicated long-lived
- *     pg.Client; SIGKILL closes the TCP connection and Postgres
- *     releases the lock immediately. Survivors poll the `studio_pods`
- *     registry every 5s and probe each peer via
- *     `pg_try_advisory_xact_lock`; success means the lock isn't held
- *     and the peer is dead. (`apps/mesh/src/core/pod-heartbeat.ts`,
- *     migration `apps/mesh/migrations/078-studio-pods.ts`)
+ *   - **DBOS executorID = POD_NAME** (`apps/mesh/src/index.ts`):
+ *     pins this pod's workflows to a stable id that K8s StatefulSet
+ *     preserves across restarts. Without this, every restart would be
+ *     a "new executor" and orphans would sit forever.
  *
- *   - **streamBuffer in recovery dispatch**: `resumeOrphanedThread`
- *     was deliberately dropping streamBuffer when calling
- *     dispatchRunAndWait, so the resumed run streamed to /dev/null.
- *     (`apps/mesh/src/api/app.ts`)
+ *   - **Single `dispatchRunAndWaitStep` per thread-gate workflow**
+ *     (`apps/mesh/src/dispatch-queue/thread-gate-workflow.ts`): the
+ *     entire streamText loop is one DBOS step, so replay re-runs the
+ *     whole agent turn (correct as long as steps are idempotent, which
+ *     they are for our LLM calls).
  *
- *   - **Keep the unconditional purge AND await it**: an early version
- *     of this PR skipped `streamBuffer.purge()` on resume, but that
- *     left the dead pod's prefix in JetStream and any /stream opened
- *     after recovery would see the response duplicated. Purge was
- *     also fire-and-forget; the dispatch's first chunk could land
- *     before purge completed, racing the late /stream's "all" replay.
- *     Purge is now awaited in prepareRun. The chunk-1 count assertion
- *     below is the regression guard.
- *     (`apps/mesh/src/api/routes/decopilot/dispatch-run.ts`)
+ *   - **Unconditional awaited `streamBuffer.purge` in prepareRun**
+ *     (`apps/mesh/src/api/routes/decopilot/dispatch-run.ts`): replay
+ *     would otherwise pump on top of the dead pod's leftover prefix in
+ *     JetStream, and any /stream opened post-recovery would see the
+ *     response duplicated. The chunk-1 count assertion below is the
+ *     regression guard.
+ *
+ *   - **Stable mock-ai per-call timestamp** (`tests/multi-pod/mock-ai/
+ *     server.ts`): every chunk emits `t<ms>` for the wall-clock moment
+ *     the mock-ai call began. A chunk with `t > killTime` provably
+ *     came from a call started after the kill — i.e. the replay.
  */
 
 import { describe, expect, test } from "bun:test";
 import { postJson, sse } from "../lib/client";
 import { getThreadRunOwnerPod } from "../lib/db";
 import { registerTestHooks } from "../lib/hooks";
-import { kill } from "../lib/pod";
+import { kill, start } from "../lib/pod";
 import type { PodInfo, PodName } from "../lib/pods";
 import { ALL_PODS, PODS } from "../lib/pods";
 import { pollUntil } from "../lib/poll-until";
@@ -118,10 +113,7 @@ function openAttachWatcher(
     } catch (err) {
       // Aborts and connection drops (when the owning pod dies) are
       // expected in this scenario — swallow them. Anything else
-      // re-throws so the test sees it. Bun's fetch surfaces the
-      // condition as either an `AbortError`, a system error with a
-      // `code` property (ECONNRESET/ECONNREFUSED), or a generic "socket
-      // connection was closed" message; cover all three.
+      // re-throws so the test sees it.
       const code = (err as { code?: string } | null)?.code ?? "";
       const msg = err instanceof Error ? err.message : String(err);
       const expectedCodes = ["ECONNRESET", "ECONNREFUSED", "ABORT_ERR"];
@@ -143,7 +135,7 @@ function openAttachWatcher(
 }
 
 describe("pod-death + DBOS replay", () => {
-  test("killing the owning pod mid-stream still delivers the final chunk via a survivor", async () => {
+  test("killing the owning pod mid-stream still delivers the final chunk via DBOS replay on restart", async () => {
     const session = await bootstrapSession(PODS.MESH_1);
     await wireMockProvider(PODS.MESH_1, session);
     const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
@@ -172,15 +164,10 @@ describe("pod-death + DBOS replay", () => {
     );
     expect(postRes.status).toBe(202);
 
-    // Open watchers on all three pods. Whichever pod we end up killing,
-    // the other two stay alive and at least one of them sees the run
-    // through to completion.
     const watchers = ALL_PODS.map((pod) =>
       openAttachWatcher(pod, session.orgSlug, threadId, session.apiKey),
     );
 
-    // Wait until at least one watcher sees a chunk — proves the run
-    // is actually flowing before we go knock a pod over.
     await pollUntil(
       async () => watchers.some((w) => w.joined.includes("chunk-2")),
       {
@@ -190,89 +177,60 @@ describe("pod-death + DBOS replay", () => {
       },
     );
 
-    // Identify the dispatch owner from the DB (POD_NAME equals the
-    // compose service name, so the value here is a valid PodName).
     const ownerRaw = await pollUntil(
       async () => (await getThreadRunOwnerPod(threadId)) !== null,
-      {
-        timeoutMs: 5_000,
-        intervalMs: 200,
-        label: "owner-pod-claimed",
-      },
+      { timeoutMs: 5_000, intervalMs: 200, label: "owner-pod-claimed" },
     )
       .then(() => getThreadRunOwnerPod(threadId))
       .then((v) => v as PodName);
     expect(["mesh-1", "mesh-2", "mesh-3"]).toContain(ownerRaw);
 
-    console.log(`  → run owned by ${ownerRaw}; SIGKILLing it`);
-    // Record the wall-clock time of the kill so we can later
-    // discriminate dead-pod chunks (mock-ai call started before this)
-    // from resumed-pump chunks (mock-ai call started after this).
+    console.log(`  → run owned by ${ownerRaw}; SIGKILLing then restarting it`);
     const killTime = Date.now();
     await kill(ownerRaw);
 
-    // Survivor watchers (everything except the killed pod) must
-    // eventually see the final chunk. We don't care which one — any
-    // single survivor receiving "chunk-20" proves the pump resumed
-    // on a replay-target pod and JetStream caught it back up.
-    const survivors = watchers.filter((w) => w.pod.service !== ownerRaw);
+    // Bring the same pod back up (StatefulSet-style identity). DBOS
+    // launch-time recovery on this pod scans its workflow_status rows
+    // for executor_id = POD_NAME with status PENDING and replays them.
+    await start(ownerRaw);
+
+    const otherWatchers = watchers.filter((w) => w.pod.service !== ownerRaw);
     let lateWatcher: Watcher | null = null;
     try {
-      // Deterministic gate: wait for a chunk whose mock-ai call-start
-      // timestamp is strictly later than the kill. mock-ai stamps
-      // every emitted chunk with `t<ms>` for the wall-clock moment the
-      // call began (see tests/multi-pod/mock-ai/server.ts). A chunk
-      // with `t > killTime` provably came from a mock-ai call started
-      // AFTER the kill — which can only be the resumed pump on a
-      // survivor pod. No chunk-count timing argument; no "should be
-      // done by chunk-N" guess.
-      //
-      // Side effect: by the time we observe such a chunk, the resumed
-      // pump's prepareRun has run (including its purge of the
-      // per-thread subject). So a /stream opened from this moment
-      // forward sees only the resumed run's chunks, not the dead
-      // pod's prefix.
+      // Deterministic gate: a chunk with `t > killTime` came from a
+      // mock-ai call started AFTER the kill, which can only be the
+      // DBOS-replayed dispatchRunAndWaitStep on the restarted pod.
+      // Window covers: pod restart (~30s for clean reboot of mesh in
+      // docker) + DBOS launch recovery + replay step + first chunks.
       await pollUntil(
         async () =>
-          survivors.some((w) => {
+          otherWatchers.some((w) => {
             for (const m of w.joined.matchAll(/t(\d+) chunk-/g)) {
               if (Number(m[1]) > killTime) return true;
             }
             return false;
           }),
         {
-          timeoutMs: 75_000,
+          timeoutMs: 120_000,
           intervalMs: 500,
-          label: "resumed-pump-flowing",
+          label: "replayed-pump-flowing",
         },
       );
 
-      // Open a late /attach AFTER the resumed pump is flowing. With
-      // the unconditional purge in prepareRun, this watcher sees ONE
-      // copy of the response (chunks from the resumed run only). If
-      // purge ever regresses (e.g. someone gates it on isResume), the
-      // late watcher would see chunks from BOTH the dead pod's pre-kill
-      // prefix AND the resumed pod's full body — the assistant reply
-      // duplicated end-to-end.
+      // Open a late /attach AFTER the replayed pump is flowing.
+      // With the unconditional purge in prepareRun, this watcher sees
+      // ONE copy of the response. Without it, a late /stream sees the
+      // dead pod's prefix AND the replay → chunk-1 count == 2.
       lateWatcher = openAttachWatcher(
-        survivors[0]!.pod,
+        otherWatchers[0]!.pod,
         session.orgSlug,
         threadId,
         session.apiKey,
       );
 
-      // Now wait for chunk-20 on the original survivor (proves the
-      // resumed run completed end-to-end), THEN on the late watcher
-      // (proves it received the tail too).
       await pollUntil(
-        async () => survivors.some((w) => w.joined.includes("chunk-20")),
+        async () => otherWatchers.some((w) => w.joined.includes("chunk-20")),
         {
-          // Window has to cover: PG-advisory-lock detection (sub-second
-          // for SIGKILL, since TCP close releases the dedicated client's
-          // session lock immediately) + one poll tick (≤5s) +
-          // handlePodDeath claim + dispatchRunAndWait resume + ~10s of
-          // mock chunks ≈ 20s worst case. 90s leaves comfortable margin
-          // for cold-boot variance without dragging green runs.
           timeoutMs: 90_000,
           intervalMs: 500,
           label: "final-chunk-after-replay",
@@ -284,25 +242,13 @@ describe("pod-death + DBOS replay", () => {
         label: "late-watcher-saw-final-chunk",
       });
 
-      // The load-bearing duplicate-detection assertion. `chunk-1 `
-      // (with trailing space) is what the mock emits as its first
-      // text-delta; counting its occurrences in the SSE payload tells
-      // us how many copies of the response landed on the wire.
-      // Exactly one ⇒ purge worked. Two ⇒ the resumed run's chunks
-      // were appended to the dead pod's prefix, and any user-facing
-      // late /attach would render the reply twice.
       const chunk1Count = (lateWatcher.joined.match(/chunk-1 /g) ?? []).length;
       expect(chunk1Count).toBe(1);
     } finally {
-      // Always close out the SSE consumers so the test process exits
-      // cleanly even on assertion failure.
       for (const w of watchers) w.abort.abort();
       lateWatcher?.abort.abort();
       await Promise.allSettled(watchers.map((w) => w.done));
       if (lateWatcher) await lateWatcher.done.catch(() => {});
     }
-    // Test budget exceeds pollUntil by a safety margin so the finally
-    // above always runs (cleanly aborts SSE consumers) instead of
-    // racing the bun-test-level timeout.
-  }, 220_000);
+  }, 300_000);
 });

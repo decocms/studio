@@ -66,29 +66,6 @@ export interface ThreadStoragePort {
     options?: { limit?: number; offset?: number },
   ): Promise<{ threads: Thread[]; total: number }>;
   /**
-   * Atomically claim an orphaned run. Returns true if this pod won the CAS.
-   * The CAS keys on `expectedCurrentOwner` (read from the same Thread row
-   * the caller already has in hand): the UPDATE matches only if the row's
-   * `run_owner_pod` is still that value — including `NULL`, treated via
-   * `IS NOT DISTINCT FROM`. Two survivors racing on the same dead pod's
-   * orphan both pass `expectedCurrentOwner = deadPodId`; the first
-   * UPDATE swaps the column to its podId, the second's WHERE clause
-   * no longer matches, and `claimed` returns false.
-   */
-  claimOrphanedRun(
-    taskId: string,
-    organizationId: string,
-    podId: string,
-    expectedCurrentOwner: string | null,
-  ): Promise<boolean>;
-
-  /** List all in_progress threads not owned by the given pod (null or stale owner). */
-  listOrphanedRuns(currentPodId: string): Promise<Thread[]>;
-
-  /** List all in_progress threads owned by a specific (dead) pod. */
-  listOrphanedRunsByPod(deadPodId: string): Promise<Thread[]>;
-
-  /**
    * Atomically claim a run start via CAS. Returns true if this pod won.
    * Allows: new runs (not in_progress), orphans (null pod), or same-pod restarts.
    */

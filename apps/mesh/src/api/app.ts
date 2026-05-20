@@ -24,7 +24,7 @@ import {
   createMeshContextFactory,
 } from "../core/context-factory";
 import type { MeshContext } from "../core/mesh-context";
-import { closeDatabase, getDb, getSsl, type MeshDatabase } from "../database";
+import { closeDatabase, getDb, type MeshDatabase } from "../database";
 import { asDockerRunner, getSharedRunnerIfInit } from "../sandbox/lifecycle";
 import { createEventBus, type EventBus } from "../event-bus";
 import {
@@ -92,7 +92,6 @@ import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
-import type { Thread } from "../storage/types";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
@@ -114,12 +113,6 @@ import {
 } from "../dispatch-queue";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
-import {
-  PersistedRunConfigSchema,
-  toModelsConfig,
-} from "./routes/decopilot/run-config";
-import { getPodId } from "../core/pod-identity";
-import { PgPodHeartbeat, type PodHeartbeat } from "../core/pod-heartbeat";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
@@ -813,8 +806,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     sseHub,
   };
 
-  const POD_ID = getPodId();
-  const runRegistry = new RunRegistry(cancelReactorDeps, POD_ID);
+  const runRegistry = new RunRegistry(cancelReactorDeps);
 
   cancelBroadcast
     .start((taskId) => {
@@ -839,36 +831,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   });
 
-  // Per-pod heartbeat via Postgres advisory locks. The dedicated
-  // long-lived connection's lifetime IS the liveness signal — when this
-  // pod's process dies, Postgres releases the lock instantly via TCP
-  // close, and survivor pods detect that on the next poll tick (~5s).
-  // No NATS dependency; recovery still fires even when NATS is degraded.
-  const podHeartbeat: PodHeartbeat = new PgPodHeartbeat({
-    connectionString: getSettings().databaseUrl,
-    ssl: getSsl(),
-    pool: database.pool,
-  });
-  podHeartbeat
-    .init()
-    .then(() => podHeartbeat.start(POD_ID))
-    .then(() => {
-      console.log(`[PodHeartbeat] Started (pod=${POD_ID})`);
-    })
-    .catch((err: unknown) => {
-      console.error("[PodHeartbeat] Init failed:", err);
-    });
-
   currentDecopilotCleanup = async () => {
-    // Abort in-flight runs FIRST, then release the liveness lock.
-    // Order matters: dropping the lock signals death to peers, and we
-    // want our streamText loops fully aborted before a survivor's
-    // handlePodDeath fires and starts a resumed run — otherwise both
-    // pods briefly pump into the same per-thread subject. `stopAll`
-    // leaves `run_owner_pod` set so the survivor can locate our runs
-    // via `listOrphanedRunsByPod(thisPodId)`.
+    // Abort in-flight runs so streamText loops stop cleanly. DBOS's
+    // launch-time recovery picks up the workflows on the next start of
+    // this same pod (executorID = POD_NAME, stable on K8s StatefulSet),
+    // so we don't need any in-process death detection here.
     await runRegistry.stopAll();
-    await podHeartbeat.stop();
     runRegistry.dispose();
     cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();
@@ -1216,107 +1184,20 @@ export async function createApp(options: CreateAppOptions = {}) {
     ).setAutomationEventDispatcher(automationEventDispatcher);
   }
 
-  // ============================================================================
-  // Crash Recovery — resume orphaned automation runs after rolling deploy
-  // ============================================================================
-
-  /** Shared resume function for both startup recovery and pod-death watcher. */
-  const resumeOrphanedThread = async (thread: Thread) => {
-    const parsed = PersistedRunConfigSchema.safeParse(thread.run_config);
-    if (!parsed.success) {
-      console.warn(
-        `[recovery] Invalid run_config for ${thread.id}, force-failing`,
-      );
-      await threadStorage.forceFailIfInProgress(
-        thread.id,
-        thread.organization_id,
-      );
-      return;
-    }
-    const config = parsed.data;
-
-    // Build context for the original user
-    const resumeCtx = await automationContextFactory(
-      thread.organization_id,
-      thread.created_by,
-    );
-    if (!resumeCtx) {
-      console.warn(
-        `[recovery] Cannot build context for ${thread.id}, force-failing`,
-      );
-      await threadStorage.forceFailIfInProgress(
-        thread.id,
-        thread.organization_id,
-      );
-      return;
-    }
-
-    // Audit trail: record that this run was auto-resumed
-    const now = new Date().toISOString();
-    await threadStorage.saveMessages(
-      [
-        {
-          id: crypto.randomUUID(),
-          thread_id: thread.id,
-          role: "system",
-          parts: [
-            {
-              type: "text",
-              text: "Run resumed automatically after infrastructure restart.",
-            },
-          ],
-          metadata: undefined,
-          created_at: now,
-          updated_at: now,
-        },
-      ],
-      thread.organization_id,
-    );
-
-    // Pod-death recovery: a different pod's run was claimed by us.
-    // Drain synchronously to know when the run completes server-side
-    // AND pump chunks into JetStream via `streamBuffer` so any /stream
-    // tails on survivor pods continue to receive data — that's the
-    // entire user-visible win of taking over a dead pod's work. The
-    // previous omission of `streamBuffer` here meant the resumed run
-    // ran but its chunks went nowhere visible, defeating the point of
-    // the recovery path.
-    await dispatchRunAndWait(
-      {
-        messages: [],
-        models: toModelsConfig(config.models),
-        agent: config.agent,
-        temperature: config.temperature,
-        toolApprovalLevel: config.toolApprovalLevel,
-        mode: config.mode,
-        organizationId: thread.organization_id,
-        userId: thread.created_by,
-        taskId: thread.id,
-        windowSize: config.windowSize,
-        isResume: true,
-      },
-      resumeCtx,
-      { runRegistry, cancelBroadcast, streamBuffer },
-    );
-  };
-
-  // Wire pod death watcher → orphan recovery.
-  podHeartbeat.onPodDeath((deadPodId) => {
-    runRegistry
-      .handlePodDeath(deadPodId, resumeOrphanedThread, cancelBroadcast)
-      .catch((err) => {
-        console.error(
-          `[Decopilot] Pod death recovery failed for ${deadPodId}:`,
-          err,
-        );
-      });
-  });
-
-  setTimeout(() => {
-    runRegistry.recoverOrphanedRuns(resumeOrphanedThread).catch((err) => {
-      console.error("[recovery] Orphan recovery failed:", err);
-    });
-  }, 10_000); // 10s grace for rolling deploys
+  // Crash recovery is delegated to DBOS. A pod that dies mid-stream
+  // leaves its threadGateWorkflow row in `dbos.workflow_status` with
+  // status PENDING and executor_id = POD_NAME. When K8s restarts the
+  // pod with the same name (StatefulSet), DBOS launch-time recovery
+  // re-runs the `dispatchRunAndWait` step from scratch — streamText
+  // produces chunks again into the same per-thread JetStream subject,
+  // and SSE tails on any pod see the resumed stream. No cross-pod
+  // detection or claim CAS lives here on purpose.
+  //
+  // Pre-DBOS: a custom Postgres-advisory-lock heartbeat detected dead
+  // peers in ~5s and CAS-stole their runs. Deleted in favor of trusting
+  // DBOS recovery — fewer races, single source of truth, and the
+  // bounded-by-pod-restart-time recovery window is acceptable for chat
+  // UX. See thread-gate-workflow.ts for the durable workflow surface.
 
   // NDJSON monitoring retention cleanup runs as a DBOS scheduled workflow
   // (see `initDbos` below). Kick off a single eager sweep at boot so a fresh

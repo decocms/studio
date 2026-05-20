@@ -76,7 +76,6 @@ import * as migration074sandboxrunnerstatehandlenonunique from "./074-sandbox-ru
 import * as migration075threadinflightasyncjobs from "./075-thread-inflight-async-jobs.ts";
 import * as migration076automationsdropagentjson from "./076-automations-drop-agent-json.ts";
 import * as migration077tieronlymodelselection from "./077-tier-only-model-selection.ts";
-import * as migration078studiopods from "./078-studio-pods.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -168,7 +167,6 @@ const migrations: Record<string, Migration> = {
   "075-thread-inflight-async-jobs": migration075threadinflightasyncjobs,
   "076-automations-drop-agent-json": migration076automationsdropagentjson,
   "077-tier-only-model-selection": migration077tieronlymodelselection,
-  "078-studio-pods": migration078studiopods,
 };
 
 export default migrations;

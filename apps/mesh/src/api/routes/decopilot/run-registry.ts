@@ -18,7 +18,6 @@ import { decide } from "./run-decider";
 import { project } from "./run-projector";
 import type { RunReactorDeps } from "./run-reactor";
 import { reactAll } from "./run-reactor";
-import type { Thread } from "@/storage/types";
 import { meter } from "@/observability";
 
 export type { RunReactorDeps };
@@ -47,7 +46,6 @@ export class RunRegistry {
 
   constructor(
     private readonly deps: RunReactorDeps,
-    private readonly podId: string,
     private readonly clock: () => Date = () => new Date(),
   ) {
     this.reaperTimer = setInterval(
@@ -140,14 +138,11 @@ export class RunRegistry {
   }
 
   /**
-   * Graceful shutdown: abort in-memory controllers and clear state. We
-   * deliberately leave `run_owner_pod` set so survivors that detect our
-   * death (their next heartbeat poll catches the released advisory
-   * lock) can locate our runs via `listOrphanedRunsByPod(thisPodId)`.
-   * Nulling the column here would have hidden them from the
-   * by-pod query and the death signal would have been lost.
-   * Same-pod restarts still recover via `listOrphanedRuns`'s
-   * `currentPodId` branch.
+   * Graceful shutdown: abort in-memory controllers and clear state.
+   * Recovery of the aborted runs is handled by DBOS — the workflow
+   * row stays PENDING in `dbos.workflow_status`, and when this pod
+   * (same executor_id = POD_NAME) relaunches, DBOS re-runs the
+   * dispatch step from scratch.
    */
   async stopAll(): Promise<void> {
     for (const [, state] of this.states) {
@@ -156,114 +151,6 @@ export class RunRegistry {
       }
     }
     this.states.clear();
-  }
-
-  /**
-   * Recover all orphaned runs on startup. Server crashes shouldn't
-   * punish users — every in-progress run gets resumed automatically.
-   * Concurrency is capped at 5 concurrent resumes.
-   */
-  async recoverOrphanedRuns(
-    resumeFn: (thread: Thread) => Promise<void>,
-  ): Promise<void> {
-    const orphans = await this.deps.storage.listOrphanedRuns(this.podId);
-    if (orphans.length === 0) return;
-
-    // Concurrency cap: max 5 concurrent resumes
-    const CONCURRENCY = 5;
-    for (let i = 0; i < orphans.length; i += CONCURRENCY) {
-      const batch = orphans.slice(i, i + CONCURRENCY);
-      await Promise.allSettled(
-        batch.map(async (thread) => {
-          // Skip threads we're already actively running. Otherwise a
-          // race between handlePodDeath (claimed mesh-1 → mesh-2 and
-          // started dispatching) and this startup-recovery timer firing
-          // immediately after lets both pass the CAS: the row is now
-          // mesh-2 = currentPodId, which the same-pod recovery branch in
-          // listOrphanedRuns deliberately allows. Without this guard the
-          // resumed dispatch fires twice on the same JetStream subject.
-          if (this.isRunning(thread.id)) return;
-          // CAS on the thread's current owner so concurrent claimers
-          // serialize. First to flip the column wins; the rest see the
-          // new owner and bail.
-          const claimed = await this.deps.storage.claimOrphanedRun(
-            thread.id,
-            thread.organization_id,
-            this.podId,
-            thread.run_owner_pod ?? null,
-          );
-          if (!claimed) return; // Another pod got it
-
-          try {
-            await resumeFn(thread);
-          } catch (err) {
-            console.error(`[RunRegistry] Failed to resume ${thread.id}:`, err);
-            await this.deps.storage
-              .forceFailIfInProgress(thread.id, thread.organization_id)
-              .catch(() => {});
-          }
-        }),
-      );
-    }
-  }
-
-  /**
-   * Handle a dead pod notification from the heartbeat watcher. Finds all
-   * in-progress threads owned by the dead pod, broadcasts cancel (in case
-   * it's partitioned, not dead), then CAS-claims and resumes each orphan.
-   */
-  async handlePodDeath(
-    deadPodId: string,
-    resumeFn: (thread: Thread) => Promise<void>,
-    cancelBroadcast?: { broadcast(taskId: string): void },
-  ): Promise<void> {
-    const orphans = await this.deps.storage.listOrphanedRunsByPod(deadPodId);
-    if (orphans.length === 0) {
-      console.log(
-        `[RunRegistry] handlePodDeath(${deadPodId}): no orphans to recover`,
-      );
-      return;
-    }
-    console.log(
-      `[RunRegistry] handlePodDeath(${deadPodId}): recovering ${orphans.length} orphan(s) on pod ${this.podId}`,
-    );
-
-    // Cancel running threads on the dead pod (in case it's alive but partitioned)
-    for (const thread of orphans) {
-      cancelBroadcast?.broadcast(thread.id);
-    }
-
-    const CONCURRENCY = 5;
-    for (let i = 0; i < orphans.length; i += CONCURRENCY) {
-      const batch = orphans.slice(i, i + CONCURRENCY);
-      await Promise.allSettled(
-        batch.map(async (thread) => {
-          if (this.isRunning(thread.id)) return;
-          // CAS on `deadPodId` so the first survivor wins. The race
-          // ISN'T hypothetical: with parallel heartbeat pollers on
-          // every survivor, two pods regularly detect the same dead
-          // peer within the same tick. Without this CAS both claim,
-          // both dispatch a resumed run, and the per-thread JetStream
-          // subject gets two copies of every chunk.
-          const claimed = await this.deps.storage.claimOrphanedRun(
-            thread.id,
-            thread.organization_id,
-            this.podId,
-            deadPodId,
-          );
-          if (!claimed) return;
-
-          try {
-            await resumeFn(thread);
-          } catch (err) {
-            console.error(`[RunRegistry] Failed to resume ${thread.id}:`, err);
-            await this.deps.storage
-              .forceFailIfInProgress(thread.id, thread.organization_id)
-              .catch(() => {});
-          }
-        }),
-      );
-    }
   }
 
   /** Stop the reaper timer. Call once during server shutdown. */
