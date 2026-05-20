@@ -389,6 +389,49 @@ export class ThreadConnection {
     }
   }
 
+  /**
+   * Refresh the latest page after an SSE reconnect. Same args as the initial
+   * load; the merge (upsert-by-id + sort by created_at) absorbs any overlap
+   * with rows already in `messages` and preserves any optimistic-local rows
+   * the server hasn't seen yet.
+   *
+   * Errors are logged but not surfaced — the next reconnect retries.
+   */
+  private async refetchLatestPage(): Promise<void> {
+    if (!this.client) return;
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREAD_MESSAGES_LIST",
+        arguments: {
+          thread_id: this.threadId,
+          limit: this.pageSize,
+          offset: 0,
+          orderBy: [{ field: ["created_at"], direction: "desc" }],
+        },
+      });
+      if (this.abort.signal.aborted) return;
+      if ((result as { isError?: boolean }).isError) {
+        console.warn(
+          "[chat-store] refetchLatestPage:",
+          extractToolErrorMessage(result, "tool error"),
+        );
+        return;
+      }
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as {
+        items?: UIMessage[];
+        hasMore?: boolean;
+      };
+      const items = payload.items ?? [];
+      this.messages.update((curr) => mergeAndSort(curr, items));
+      if (payload.hasMore !== undefined) {
+        this.hasMoreOlder.set(payload.hasMore);
+      }
+    } catch (err) {
+      console.warn("[chat-store] refetchLatestPage failed:", err);
+    }
+  }
+
   // ── Internal: POST /messages ────────────────────────────────────────────
 
   private async post(
@@ -440,11 +483,10 @@ export class ThreadConnection {
 
     while (!this.abort.signal.aborted) {
       if (!firstConnect) {
-        // Drop the in-flight fold before the upcoming replay so duplicate
+        // Drop the in-flight fold before the upcoming refetch so duplicate
         // deltas don't accumulate.
         this.forceCloseSubStream(true);
       }
-      firstConnect = false;
 
       let cleanExit = false;
       try {
@@ -461,6 +503,14 @@ export class ThreadConnection {
           return;
         }
         attempt = 0;
+        if (!firstConnect) {
+          // On reconnect, refresh the latest page so any messages persisted
+          // while disconnected become visible. Merge is upsert-by-id + sort
+          // by created_at; optimistic local rows survive (their id isn't on
+          // the server yet).
+          await this.refetchLatestPage();
+        }
+        firstConnect = false;
         cleanExit = await this.consumeStreamSse(resp.body);
         if (!cleanExit && this.status.get().kind === "error") {
           // Schema mismatch / parser failure routed through failTo — terminal.

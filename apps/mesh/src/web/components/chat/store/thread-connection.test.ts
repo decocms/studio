@@ -843,3 +843,74 @@ describe("boot buffering", () => {
     expect(ids).toEqual(["real"]);
   });
 });
+
+// ─── reconnect refetch ───────────────────────────────────────────────────────
+
+describe("reconnect refetch", () => {
+  test("re-fetches latest page on SSE reconnect and merges via upsert", async () => {
+    let streamSlot = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => streamSlot.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const calls: Array<{ name: string; arguments: unknown }> = [];
+    let nextResolve: ((items: unknown[]) => void) | null = null;
+    const client = {
+      callTool: (req: { name: string; arguments: unknown }) => {
+        calls.push(req);
+        return new Promise<unknown>((res) => {
+          nextResolve = (items: unknown[]) =>
+            res({ structuredContent: { items, hasMore: false } });
+        });
+      },
+    };
+
+    const conn = getOrOpenStream("acme", "thread-reconnect", {
+      client: client as never,
+    });
+
+    // Initial page resolves with one row.
+    await new Promise((r) => setTimeout(r, 10));
+    // biome-ignore lint/style/noNonNullAssertion: set by callTool closure above
+    nextResolve!([
+      {
+        id: "m-1",
+        role: "user",
+        parts: [],
+        metadata: { created_at: "2026-01-01T00:00:00Z" },
+      },
+    ]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1"]);
+    expect(calls.length).toBe(1);
+
+    // Force a reconnect by closing the current stream and providing a fresh one.
+    streamSlot.close();
+    streamSlot = controllableStream();
+    await new Promise((r) => setTimeout(r, 1100)); // exponential backoff base ≈ 1s
+
+    // After reconnect, refetchLatestPage must have fired a second call.
+    expect(calls.length).toBe(2);
+
+    // Resolve with a newer row that arrived while disconnected.
+    // biome-ignore lint/style/noNonNullAssertion: set by second callTool call
+    nextResolve!([
+      {
+        id: "m-2",
+        role: "user",
+        parts: [],
+        metadata: { created_at: "2026-01-01T00:00:01Z" },
+      },
+      {
+        id: "m-1",
+        role: "user",
+        parts: [],
+        metadata: { created_at: "2026-01-01T00:00:00Z" },
+      },
+    ]);
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Both rows present, ordered ascending by created_at.
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1", "m-2"]);
+  });
+});
