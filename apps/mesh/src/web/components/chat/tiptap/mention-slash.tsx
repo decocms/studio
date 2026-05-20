@@ -154,6 +154,7 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   // extension is read by `MentionNodeView`; we dispatch through a ref so the
   // stored callback always uses the latest closure without needing useEffect.
   const requestEditRef = useRef<(req: EditMentionRequest) => void>(() => {});
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   requestEditRef.current = async (req: EditMentionRequest) => {
     if (!client) return;
     try {
