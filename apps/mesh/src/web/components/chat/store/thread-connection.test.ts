@@ -671,4 +671,32 @@ describe("mergeAndSort", () => {
     ];
     expect(mergeAndSort([], incoming).map((m) => m.id)).toEqual(["a", "z"]);
   });
+
+  test("both arrays empty → returns empty array", () => {
+    expect(mergeAndSort([], [])).toEqual([]);
+  });
+
+  test("numeric created_at sorts correctly alongside string timestamps", () => {
+    const prev = [msg("a", "2026-01-01T00:00:00Z")];
+    const numericMsg = {
+      ...msg("b", undefined),
+      metadata: {
+        created_at: new Date("2026-01-01T00:00:01Z").getTime(),
+      },
+    } as UIMessage;
+    expect(mergeAndSort(prev, [numericMsg]).map((m) => m.id)).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  test("duplicate ids within incoming → last write wins", () => {
+    const incoming = [
+      msg("dup", "2026-01-01T00:00:00Z", "user"),
+      msg("dup", "2026-01-01T00:00:00Z", "assistant"),
+    ];
+    const out = mergeAndSort([], incoming);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.role).toBe("assistant");
+  });
 });

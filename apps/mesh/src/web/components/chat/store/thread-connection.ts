@@ -667,7 +667,7 @@ export function mergeAndSort(
 
 function readTimestamp(m: UIMessage): number {
   const md = m.metadata as { created_at?: string | number | Date } | undefined;
-  if (!md?.created_at) return Number.POSITIVE_INFINITY;
+  if (md?.created_at == null) return Number.POSITIVE_INFINITY;
   return new Date(md.created_at).getTime();
 }
 
