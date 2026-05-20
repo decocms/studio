@@ -105,12 +105,10 @@ interface StreamTestSetup {
 }
 
 function makeStreamApp(opts: {
-  messages: Array<Record<string, unknown>>;
   threadStatus?: "idle" | "in_progress";
   tailChunks?: ReadableStream | null;
 }): StreamTestSetup {
   let listMessagesCalls = 0;
-  const messages = opts.messages;
 
   const ctx = {
     organization: { id: "org_1", slug: "acme" },
@@ -125,7 +123,7 @@ function makeStreamApp(opts: {
         }),
         listMessages: async () => {
           listMessagesCalls += 1;
-          return { messages, total: messages.length };
+          return { messages: [], total: 0 };
         },
       },
     },
@@ -186,17 +184,7 @@ async function readSseBody(res: Response): Promise<string> {
 
 describe("GET /:org/decopilot/threads/:threadId/stream", () => {
   test("does not call listMessages or emit a snapshot frame", async () => {
-    const messages = [
-      {
-        id: "msg_1",
-        thread_id: "thread_1",
-        role: "user",
-        parts: [{ type: "text", text: "hello" }],
-        created_at: "2026-01-01T00:00:00.000Z",
-        updated_at: "2026-01-01T00:00:00.000Z",
-      },
-    ];
-    const setup = makeStreamApp({ messages });
+    const setup = makeStreamApp({});
 
     const res = await setup.app.request(
       "/acme/decopilot/threads/thread_1/stream",
@@ -221,7 +209,7 @@ describe("GET /:org/decopilot/threads/:threadId/stream", () => {
         controller.close();
       },
     });
-    const setup = makeStreamApp({ messages: [], tailChunks: tail });
+    const setup = makeStreamApp({ tailChunks: tail });
 
     const res = await setup.app.request(
       "/acme/decopilot/threads/thread_1/stream",
