@@ -105,6 +105,10 @@ function setStatus(next: DaemonStatus) {
 const store = new TenantConfigStore();
 const installState = new InstallState();
 const lifecycle = new LifecycleManager({ broadcaster });
+// Forward-declared so the monkey-patch below can force the probe back to a
+// neutral state when we leave `running`. The real implementation is bound
+// after `startUpstreamProbe` returns its live state reference further down.
+let resetProbeState = (): void => {};
 // Drop the sniffed port whenever we leave `running` — the next dev start
 // may bind somewhere else and we need to re-sniff its announcement.
 const lifecycleTransitionRaw = lifecycle.transition.bind(lifecycle);
@@ -113,7 +117,13 @@ lifecycle.transition = (next) => {
   const prev = lifecycle.current().phase;
   const wasRunning = prev === "running";
   lifecycleTransitionRaw(next);
-  if (wasRunning && next.phase !== "running") portSniffer.reset();
+  if (wasRunning && next.phase !== "running") {
+    portSniffer.reset();
+    // Force the probe to re-evaluate. On same-port restarts in slow (30s)
+    // cadence, the probe otherwise sees online→online with no state change,
+    // never fires `onChange`, and lifecycle stays stuck on `starting`.
+    resetProbeState();
+  }
   if (prev !== next.phase) {
     console.log(`[lifecycle] ${prev} → ${next.phase}`);
   }
@@ -217,11 +227,18 @@ const lastProbe = startUpstreamProbe({
         return;
       }
       lastRunningPort = s.port;
+      // Reload the preview when the dev server comes back up after a stop
+      // (restart, crash recovery). The browser caches the "connection
+      // refused" / "starting…" page across the downtime and won't auto-refresh
+      // without a nudge. Skip when we're already running — same-port probe
+      // pings shouldn't churn the iframe.
+      const wasDown = phase === "starting" || phase === "crashed";
       lifecycle.transition({
         phase: "running",
         port: s.port,
         htmlSupport: s.htmlSupport,
       });
+      if (wasDown) broadcaster.emit("reload", {});
       if (!baselineTimer) {
         baselineTimer = setTimeout(() => {
           baselineTimer = null;
@@ -245,6 +262,14 @@ const lastProbe = startUpstreamProbe({
   },
   onLog: (msg) => broadcaster.broadcastChunk("setup", msg),
 });
+// Wire the forward-declared reset now that the probe's live state exists.
+// Mutating in place is the contract `startUpstreamProbe` documents — the
+// returned object is the same reference the probe loop reads on every tick.
+resetProbeState = () => {
+  lastProbe.status = "booting";
+  lastProbe.port = null;
+  lastProbe.htmlSupport = false;
+};
 
 // HTTP/WS proxy forwards to the same port the probe is HEAD-checking.
 // `application.port` is what mesh configured, but vite/etc. routinely

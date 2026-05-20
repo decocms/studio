@@ -1,6 +1,6 @@
 import { markClaimed } from "../activity";
 import type { TenantConfigStore } from "../config-store";
-import type { ApplyResult } from "../config-store/types";
+import type { ApplyResult, ConfigPatch } from "../config-store/types";
 import type { Phase } from "../process/phase-manager";
 import type { TenantConfig } from "../types";
 import { jsonResponse, parseJsonBody } from "./body-parser";
@@ -37,7 +37,7 @@ interface AuthPatch {
   rotateToken?: string;
 }
 
-interface ConfigPatchWire extends Partial<TenantConfig> {
+interface ConfigPatchWire extends ConfigPatch {
   auth?: AuthPatch;
 }
 
@@ -56,6 +56,7 @@ export function makeConfigReadHandler(deps: ConfigDeps) {
     return jsonResponse({
       bootId: deps.daemonBootId,
       config: tenant ? stripDerived(tenant) : null,
+      envKeys: tenant?.env ? Object.keys(tenant.env).sort() : [],
       orchestrator: state?.orchestrator,
       ready: state?.ready ?? false,
       tasks: deps.getTasks?.(),
@@ -96,7 +97,7 @@ export function makeConfigUpdateHandler(deps: ConfigDeps) {
       }
     }
     const { auth: _strip, ...patch } = wire;
-    const result = await deps.store.apply(patch as Partial<TenantConfig>);
+    const result = await deps.store.apply(patch);
     if (result.kind !== "rejected") markClaimed();
     return makeApplyResponse(deps.daemonBootId, result);
   };
@@ -156,6 +157,8 @@ function stripDerived(
   enriched: ReturnType<TenantConfigStore["read"]>,
 ): TenantConfig | null {
   if (!enriched) return null;
+  // `env` is intentionally omitted — values are write-only. Read clients use
+  // the top-level `envKeys` field on the response to know which keys are set.
   return {
     git: enriched.git,
     application: enriched.application,

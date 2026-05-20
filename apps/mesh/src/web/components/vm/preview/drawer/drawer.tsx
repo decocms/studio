@@ -2,7 +2,13 @@ import { useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useVmEvents } from "../../hooks/use-vm-events";
-import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
+import { EnvPanel } from "./env-panel";
+import {
+  DEFAULT_TAB,
+  DrawerToolbar,
+  ENV_TAB,
+  type DrawerStatus,
+} from "./toolbar";
 import { VmTerminal } from "./terminal";
 
 const WELL_KNOWN_STARTERS = ["dev", "start"];
@@ -199,6 +205,9 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
         <div className="flex-1 overflow-hidden">
           <DrawerBody
             vmId={props.vmId}
+            orgSlug={props.orgSlug}
+            virtualMcpId={props.virtualMcpId}
+            branch={props.branch}
             active={active}
             hasData={vmEvents.hasData(active)}
             onRunActive={handleRunActive}
@@ -224,11 +233,17 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
  */
 function DrawerBody({
   vmId,
+  orgSlug,
+  virtualMcpId,
+  branch,
   active,
   hasData,
   onRunActive,
 }: {
   vmId: string | null;
+  orgSlug: string;
+  virtualMcpId: string | null;
+  branch: string | null;
   active: string;
   hasData: boolean;
   onRunActive: () => void;
@@ -237,6 +252,11 @@ function DrawerBody({
   // owns the single empty-state CTA. Rendering anything here (xterm shell
   // or "no output" copy) would compete with it.
   if (!vmId) return null;
+  if (active === ENV_TAB) {
+    return (
+      <EnvPanel orgSlug={orgSlug} virtualMcpId={virtualMcpId} branch={branch} />
+    );
+  }
   if (active === DEFAULT_TAB || hasData) {
     return <VmTerminal key={active} source={active} className="h-full" />;
   }

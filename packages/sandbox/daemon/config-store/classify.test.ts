@@ -124,4 +124,45 @@ describe("classify", () => {
     };
     expect(classify(before, after).kind).toBe("branch-change");
   });
+
+  it("env added on otherwise-identical config = env-change with key names only", () => {
+    const before: TenantConfig = { application: baseApp };
+    const after: TenantConfig = {
+      application: baseApp,
+      env: { STRIPE_KEY: "sk_test_secret" },
+    };
+    const t = classify(before, after);
+    expect(t.kind).toBe("env-change");
+    if (t.kind === "env-change") {
+      expect(t.changed.set).toEqual(["STRIPE_KEY"]);
+      expect(t.changed.deleted).toEqual([]);
+      // No value field exists on the transition — keys-only is structural.
+      expect(JSON.stringify(t)).not.toContain("sk_test_secret");
+    }
+  });
+
+  it("env deletion is reported", () => {
+    const before: TenantConfig = {
+      application: baseApp,
+      env: { FOO: "1" },
+    };
+    const after: TenantConfig = { application: baseApp };
+    const t = classify(before, after);
+    expect(t.kind).toBe("env-change");
+    if (t.kind === "env-change") {
+      expect(t.changed.deleted).toEqual(["FOO"]);
+    }
+  });
+
+  it("port change beats env change", () => {
+    const before: TenantConfig = {
+      application: { ...baseApp, port: 3000 },
+      env: { FOO: "1" },
+    };
+    const after: TenantConfig = {
+      application: { ...baseApp, port: 4000 },
+      env: { FOO: "2" },
+    };
+    expect(classify(before, after).kind).toBe("port-change");
+  });
 });

@@ -8,6 +8,8 @@ import { spawnSetupStep } from "./spawn-step";
 export interface InstallDeps {
   config: Config;
   dropPrivileges?: boolean;
+  /** Tenant env merged into the install subprocess (postinstall scripts see it). */
+  env?: Readonly<Record<string, string>>;
   onChunk: (source: "setup", data: string) => void;
 }
 
@@ -38,5 +40,8 @@ export function spawnInstall(deps: InstallDeps): Promise<number> | null {
     "export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 && (corepack enable 2>/dev/null || true) && ";
   const cmd = `${config.runtimePathPrefix}cd ${installRoot} && ${corepack}${pmConfig.install}`;
   deps.onChunk("setup", `\r\n$ ${cmd}\r\n`);
-  return spawnSetupStep(cmd, deps.onChunk, deps.dropPrivileges);
+  return spawnSetupStep(cmd, deps.onChunk, {
+    dropPrivileges: deps.dropPrivileges,
+    env: deps.env,
+  });
 }
