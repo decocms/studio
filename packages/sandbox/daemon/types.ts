@@ -60,12 +60,6 @@ export interface Application {
 export interface TenantConfig {
   readonly git?: GitConfig;
   readonly application?: Application;
-  /**
-   * Process env merged into dev-task and install spawns. Stored shape is
-   * `key → value`. On the wire (PUT /config), pass `null` for a key to delete
-   * it. GET /config never returns values — only `envKeys` is exposed.
-   * In-memory only: lost on daemon restart, callers re-PUT on boot.
-   */
   readonly env?: Readonly<Record<string, string>>;
 }
 

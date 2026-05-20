@@ -1,10 +1,5 @@
 import type { PackageManagerConfig, RuntimeName, TenantConfig } from "../types";
 
-/**
- * Patch shape accepted by the store. Same as `Partial<TenantConfig>` except
- * `env` may carry `null` per key to signal deletion — merge resolves those
- * before classification, so the post-merge `TenantConfig` never contains nulls.
- */
 export type ConfigPatch = Partial<Omit<TenantConfig, "env">> & {
   env?: Record<string, string | null>;
 };
@@ -29,7 +24,6 @@ export type Transition =
     }
   | {
       kind: "env-change";
-      /** Key names only — values never leak through transitions. */
       changed: { set: string[]; deleted: string[] };
     }
   | { kind: "identity-conflict"; field: "cloneUrl" }

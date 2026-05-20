@@ -611,8 +611,6 @@ function transitionToStep(t: Transition): Step | null {
     case "env-change":
     case "identity-conflict":
     case "no-op":
-      // env-change is informational. Callers POST /setup/start to restart the
-      // dev script with the new values; the orchestrator does not auto-react.
       return null;
     default:
       t satisfies never;

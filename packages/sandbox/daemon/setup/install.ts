@@ -8,7 +8,6 @@ import { spawnSetupStep } from "./spawn-step";
 export interface InstallDeps {
   config: Config;
   dropPrivileges?: boolean;
-  /** Tenant env merged into the install subprocess (postinstall scripts see it). */
   env?: Readonly<Record<string, string>>;
   onChunk: (source: "setup", data: string) => void;
 }

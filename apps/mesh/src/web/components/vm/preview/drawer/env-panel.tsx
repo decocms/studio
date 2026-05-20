@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardCheck, Plus, RefreshCw01, Trash01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { KEYS } from "@/web/lib/query-keys";
-import { parseDotenv } from "./parse-dotenv";
+import { ENV_KEY_RE, parseDotenv } from "./parse-dotenv";
 
 export interface EnvPanelProps {
   orgSlug: string;
@@ -15,14 +15,6 @@ export interface EnvPanelProps {
 
 interface ConfigResponse {
   envKeys?: string[];
-}
-
-const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-function looksLikeBulkDotenv(text: string): boolean {
-  if (/\r?\n/.test(text.trim())) return true;
-  const eqCount = (text.match(/=/g) ?? []).length;
-  return eqCount > 1;
 }
 
 export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
@@ -79,13 +71,11 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
     },
   });
 
-  // Pending = staged client-side, not yet sent to /config. Order = insertion.
   const [pending, setPending] = useState<Array<{ key: string; value: string }>>(
     [],
   );
   const [keyDraft, setKeyDraft] = useState("");
   const [valueDraft, setValueDraft] = useState("");
-  const valueInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
 
   const upsertPending = (entries: Array<{ key: string; value: string }>) => {
@@ -94,10 +84,6 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
       for (const e of entries) map.set(e.key, e.value);
       return Array.from(map, ([key, value]) => ({ key, value }));
     });
-  };
-
-  const removePending = (key: string) => {
-    setPending((prev) => prev.filter((e) => e.key !== key));
   };
 
   const stageSingle = () => {
@@ -113,67 +99,34 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
     keyInputRef.current?.focus();
   };
 
-  const consumePastedText = (text: string): boolean => {
-    if (looksLikeBulkDotenv(text)) {
-      let parsed: Record<string, string>;
-      try {
-        parsed = parseDotenv(text);
-      } catch (e) {
-        toast.error((e as Error).message);
-        return true;
-      }
-      const entries = Object.entries(parsed).map(([key, value]) => ({
-        key,
-        value,
-      }));
-      if (entries.length === 0) {
-        toast.error("Nothing to add");
-        return true;
-      }
-      upsertPending(entries);
-      return true;
-    }
-    const trimmed = text.trim();
-    const eq = trimmed.indexOf("=");
-    if (eq > 0 && ENV_KEY_RE.test(trimmed.slice(0, eq).trim())) {
-      const k = trimmed.slice(0, eq).trim();
-      let v = trimmed.slice(eq + 1).trim();
-      if (
-        v.length >= 2 &&
-        ((v.startsWith('"') && v.endsWith('"')) ||
-          (v.startsWith("'") && v.endsWith("'")))
-      ) {
-        v = v.slice(1, -1);
-      }
-      setKeyDraft(k);
-      setValueDraft(v);
-      requestAnimationFrame(() => valueInputRef.current?.focus());
-      return true;
-    }
-    return false;
-  };
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const text = e.clipboardData.getData("text");
-    if (!text) return;
-    if (consumePastedText(text)) {
-      e.preventDefault();
-    }
-  };
-
   const handlePasteButton = async () => {
+    let text: string;
     try {
-      const text = await navigator.clipboard.readText();
-      if (!text) {
-        toast.error("Clipboard is empty");
-        return;
-      }
-      if (!consumePastedText(text)) {
-        toast.error("Clipboard doesn't look like KEY=value");
-      }
+      text = await navigator.clipboard.readText();
     } catch {
       toast.error("Couldn't read clipboard");
+      return;
     }
+    if (!text) {
+      toast.error("Clipboard is empty");
+      return;
+    }
+    let parsed: Record<string, string>;
+    try {
+      parsed = parseDotenv(text);
+    } catch (e) {
+      toast.error((e as Error).message);
+      return;
+    }
+    const entries = Object.entries(parsed).map(([key, value]) => ({
+      key,
+      value,
+    }));
+    if (entries.length === 0) {
+      toast.error("Nothing to add");
+      return;
+    }
+    upsertPending(entries);
   };
 
   const handleSave = async () => {
@@ -216,8 +169,6 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
   }
 
   const savedKeys = keysQuery.data ?? [];
-  // Hide saved keys that are about to be overwritten by a pending entry, so
-  // the same KEY doesn't render twice.
   const pendingKeySet = new Set(pending.map((e) => e.key));
   const visibleSaved = savedKeys.filter((k) => !pendingKeySet.has(k));
   const hasAnyRows = visibleSaved.length > 0 || pending.length > 0;
@@ -295,7 +246,9 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => removePending(key)}
+                  onClick={() =>
+                    setPending((prev) => prev.filter((e) => e.key !== key))
+                  }
                   disabled={isBusy}
                   aria-label={`Discard pending ${key}`}
                   className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
@@ -320,7 +273,6 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
             ref={keyInputRef}
             value={keyDraft}
             onChange={(e) => setKeyDraft(e.target.value.trim())}
-            onPaste={handlePaste}
             placeholder="KEY"
             spellCheck={false}
             autoComplete="off"
@@ -331,10 +283,8 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
           />
           <span className="font-mono text-sm text-muted-foreground">=</span>
           <Input
-            ref={valueInputRef}
             value={valueDraft}
             onChange={(e) => setValueDraft(e.target.value)}
-            onPaste={handlePaste}
             placeholder="value"
             spellCheck={false}
             autoComplete="off"

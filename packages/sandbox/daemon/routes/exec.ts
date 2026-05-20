@@ -83,8 +83,6 @@ export function makeExecHandler(deps: ExecDeps) {
     // a blocking response opt in via mode: "await".
     const mode: ExecMode = body.mode === "await" ? "await" : "background";
 
-    // Tenant env is the baseline (set via PUT /config); request body.env
-    // layers on top so callers can still override per-exec.
     const env = buildDevEnv(config, { ...config.env, ...body.env });
     const { cmd, label } = pmRunCommand(
       config.runtimePathPrefix,

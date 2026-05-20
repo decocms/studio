@@ -112,13 +112,10 @@ async function proxyDaemon(
   c: Context<VmEnv>,
   daemonPath: string,
   opts?: {
-    /** HTTP method forwarded to the daemon. Defaults to "POST". */
     method?: "GET" | "POST" | "PUT";
     /** When true, base64-encode the raw request body (Cloudflare WAF bypass). */
     encodeBody?: boolean;
-    /** When true, forward the raw JSON body untouched (daemon parses with req.json()). */
     forwardJsonBody?: boolean;
-    /** Forward the request abort signal to the daemon. */
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
@@ -223,7 +220,7 @@ export const createVmRoutes = () => {
     );
   });
 
-  // -- Tenant config (env vars, etc.) ---------------------------------------
+  // -- Tenant config --------------------------------------------------------
   app.get("/:vmId/:branch/config", (c) =>
     proxyDaemon(c, "/_decopilot_vm/config", {
       method: "GET",

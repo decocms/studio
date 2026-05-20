@@ -38,9 +38,6 @@ export function classify(
     return { kind: "bootstrap", config: after };
   }
   if (before === null) {
-    // No git/application yet, but env may have arrived ahead of bootstrap
-    // (e.g., UI sets vars before the sandbox is configured). Surface as
-    // env-change so the store actually persists it.
     const envDiff = diffEnv(undefined, after.env);
     if (envDiff) return { kind: "env-change", changed: envDiff };
     return { kind: "no-op" };
@@ -81,9 +78,6 @@ export function classify(
     };
   }
 
-  // 7. ENV change (informational — orchestrator does not auto-restart on this;
-  // callers POST /setup/start explicitly if they want the dev script to see
-  // the new values).
   const envDiff = diffEnv(before.env, after.env);
   if (envDiff) {
     return { kind: "env-change", changed: envDiff };

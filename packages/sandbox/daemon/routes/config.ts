@@ -157,8 +157,6 @@ function stripDerived(
   enriched: ReturnType<TenantConfigStore["read"]>,
 ): TenantConfig | null {
   if (!enriched) return null;
-  // `env` is intentionally omitted — values are write-only. Read clients use
-  // the top-level `envKeys` field on the response to know which keys are set.
   return {
     git: enriched.git,
     application: enriched.application,

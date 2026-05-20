@@ -1,18 +1,4 @@
-/**
- * Parse a `.env`-style blob into `{ KEY: value }`.
- *
- * Accepts:
- *   - `KEY=value` per line
- *   - optional `export ` prefix
- *   - `# ...` comment lines (skipped)
- *   - blank lines (skipped)
- *   - matching single/double quotes around the value (stripped)
- *
- * Throws on the first line that can't be parsed; the message names the
- * 1-based line number and reason so the UI can show it as a toast.
- */
-
-const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function parseDotenv(text: string): Record<string, string> {
   const out: Record<string, string> = {};

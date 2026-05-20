@@ -10,8 +10,6 @@ import type { ConfigPatch } from "./types";
  *   - nested objects merge field-by-field
  *   - primitives and arrays replace wholesale
  *   - env is per-key: string → upsert, null → delete that key only
- *
- * Anything in `current` that isn't shadowed by `patch` is preserved.
  */
 export function deepMerge(
   current: TenantConfig | null,
@@ -34,7 +32,6 @@ function mergeEnv(
   for (const [k, v] of Object.entries(patch)) {
     if (v === null) delete out[k];
     else if (typeof v === "string") out[k] = v;
-    // any other type is rejected downstream by validateTenantConfig
     else (out as Record<string, unknown>)[k] = v;
   }
   return Object.keys(out).length > 0 ? out : undefined;
