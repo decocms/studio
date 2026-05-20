@@ -13,12 +13,12 @@ import {
 
 const hasRg = spawnSync("which", ["rg"]).status === 0;
 
-function b64(obj: unknown): string {
-  return Buffer.from(JSON.stringify(obj), "utf-8").toString("base64");
-}
-
 function post(path: string, obj: unknown): Request {
-  return new Request(`http://x${path}`, { method: "POST", body: b64(obj) });
+  return new Request(`http://x${path}`, {
+    method: "POST",
+    body: JSON.stringify(obj),
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 describe("fs handlers", () => {

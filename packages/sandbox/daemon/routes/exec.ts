@@ -6,7 +6,7 @@ import {
 } from "../constants";
 import type { TaskManager } from "../process/task-manager";
 import { discoverScripts } from "../process/script-discovery";
-import { jsonResponse, parseBase64JsonBody } from "./body-parser";
+import { jsonResponse, parseJsonBody } from "./body-parser";
 import { awaitTaskResponse } from "./tasks";
 
 export type ExecMode = "await" | "background";
@@ -70,7 +70,7 @@ export function makeExecHandler(deps: ExecDeps) {
     let body: ExecBody = {};
     if (req.body) {
       try {
-        const parsed = await parseBase64JsonBody(req);
+        const parsed = await parseJsonBody(req);
         if (parsed && typeof parsed === "object") {
           body = parsed as ExecBody;
         }

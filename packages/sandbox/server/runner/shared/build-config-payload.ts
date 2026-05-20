@@ -49,7 +49,7 @@ export function buildConfigPayload(args: {
   };
 }
 
-export function deriveRepoLabel(cloneUrl: string): string {
+function deriveRepoLabel(cloneUrl: string): string {
   try {
     const u = new URL(cloneUrl);
     const trimmed = u.pathname.replace(/^\/+/, "").replace(/\.git$/, "");

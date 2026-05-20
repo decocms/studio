@@ -5,7 +5,6 @@ describe("resolveRunnerKindFromEnv", () => {
   const ORIG = { ...process.env };
   beforeEach(() => {
     delete process.env.STUDIO_SANDBOX_RUNNER;
-    delete process.env.FREESTYLE_API_KEY;
   });
   afterEach(() => {
     process.env = { ...ORIG };
@@ -23,22 +22,6 @@ describe("resolveRunnerKindFromEnv", () => {
   it("honors explicit STUDIO_SANDBOX_RUNNER=agent-sandbox", () => {
     process.env.STUDIO_SANDBOX_RUNNER = "agent-sandbox";
     expect(resolveRunnerKindFromEnv()).toBe("agent-sandbox");
-  });
-
-  it("returns 'host' even when FREESTYLE_API_KEY is set without explicit runner", () => {
-    process.env.FREESTYLE_API_KEY = "sk-test";
-    expect(resolveRunnerKindFromEnv()).toBe("host");
-  });
-
-  it("returns 'freestyle' when explicit AND FREESTYLE_API_KEY is set", () => {
-    process.env.STUDIO_SANDBOX_RUNNER = "freestyle";
-    process.env.FREESTYLE_API_KEY = "sk-test";
-    expect(resolveRunnerKindFromEnv()).toBe("freestyle");
-  });
-
-  it("throws when STUDIO_SANDBOX_RUNNER=freestyle but FREESTYLE_API_KEY is missing", () => {
-    process.env.STUDIO_SANDBOX_RUNNER = "freestyle";
-    expect(() => resolveRunnerKindFromEnv()).toThrow(/FREESTYLE_API_KEY/);
   });
 
   it("throws on unknown STUDIO_SANDBOX_RUNNER value", () => {

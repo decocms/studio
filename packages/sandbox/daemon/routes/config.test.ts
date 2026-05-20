@@ -6,8 +6,11 @@ import type { TenantConfig } from "../types";
 const BOOT_ID = "boot-cfg-test";
 
 function buildReq(method: "PUT" | "POST", body: object): Request {
-  const b64 = Buffer.from(JSON.stringify(body), "utf-8").toString("base64");
-  return new Request("http://x/_decopilot_vm/config", { method, body: b64 });
+  return new Request("http://x/_decopilot_vm/config", {
+    method,
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 const SEED: TenantConfig = {

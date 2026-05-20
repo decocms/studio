@@ -1,5 +1,5 @@
 import type { TaskManager } from "../process/task-manager";
-import { jsonResponse, parseBase64JsonBody } from "./body-parser";
+import { jsonResponse, parseJsonBody } from "./body-parser";
 import { awaitTaskResponse } from "./tasks";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -33,7 +33,7 @@ export function makeBashHandler(deps: BashDeps) {
   return async (req: Request): Promise<Response> => {
     let body: BashBody;
     try {
-      body = (await parseBase64JsonBody(req)) as BashBody;
+      body = (await parseJsonBody(req)) as BashBody;
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }

@@ -88,7 +88,7 @@ describe("KyselySandboxRunnerStateStore", () => {
     // Migration 074 dropped the unique constraint on handle — different
     // runners can legitimately share a handle (hash entropy collisions).
     await expect(
-      store.put(id2, "freestyle", {
+      store.put(id2, "host", {
         handle: sharedHandle,
         state: { which: "b" },
       }),
@@ -135,7 +135,7 @@ describe("KyselySandboxRunnerStateStore", () => {
     const handle = "kind-mismatch-handle";
     await store.put(id, "docker", { handle, state: {} });
 
-    const row = await store.getByHandle("freestyle", handle);
+    const row = await store.getByHandle("host", handle);
     expect(row).toBeNull();
   });
 

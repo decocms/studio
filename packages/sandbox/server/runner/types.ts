@@ -59,7 +59,7 @@ export interface EnsureOptions {
     /** Human-readable label for logs/UI; no functional effect. */
     displayName?: string;
   };
-  /** Image override. Non-image runners (Freestyle) MUST ignore. */
+  /** Image override. Non-image runners MUST ignore. */
   image?: string;
   workload?: Workload;
   /** Frozen for the sandbox's lifetime — changing requires recreate. */
@@ -102,7 +102,7 @@ export interface ProxyRequestInit {
  * Persisted on `vmMap` and `sandbox_runner_state.runner_kind`. When widening,
  * keep `VmMapEntry.runnerKind` in sync.
  */
-export type RunnerKind = "host" | "docker" | "freestyle" | "agent-sandbox";
+export type RunnerKind = "host" | "docker" | "agent-sandbox";
 
 export interface SandboxRunner {
   readonly kind: RunnerKind;
@@ -117,8 +117,7 @@ export interface SandboxRunner {
 
   /**
    * Passthrough to the daemon control plane. Path is daemon-internal; runners
-   * translate (Docker prepends `/_daemon`, Freestyle base64-encodes for CF WAF).
-   * Bearer tokens stay inside the runner.
+   * translate (Docker prepends `/_daemon`). Bearer tokens stay inside the runner.
    */
   proxyDaemonRequest(
     handle: string,

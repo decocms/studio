@@ -1,7 +1,7 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { VmMap, VmMapEntry } from "@decocms/mesh-sdk";
 import type { MeshContext } from "../../core/mesh-context";
-import type { SandboxRunner } from "@decocms/sandbox/runner";
+import type { RunnerKind, SandboxRunner } from "@decocms/sandbox/runner";
 
 // Mock per-kind runner lookup BEFORE importing VM_DELETE.
 const mockDelete = mock(async (_handle: string): Promise<void> => {});
@@ -11,7 +11,7 @@ async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-function makeMockRunner(kind: "docker" | "freestyle"): SandboxRunner {
+function makeMockRunner(kind: RunnerKind): SandboxRunner {
   return {
     kind,
     ensure: async () => ({
@@ -34,8 +34,8 @@ function makeMockRunner(kind: "docker" | "freestyle"): SandboxRunner {
 }
 
 mock.module("../../sandbox/lifecycle", () => ({
-  getSharedRunner: () => makeMockRunner("freestyle"),
-  getRunnerByKind: (_ctx: unknown, kind: "docker" | "freestyle") => {
+  getSharedRunner: () => makeMockRunner("docker"),
+  getRunnerByKind: (_ctx: unknown, kind: RunnerKind) => {
     lastRequestedKind.value = kind;
     return makeMockRunner(kind);
   },
@@ -47,22 +47,22 @@ const { VM_DELETE } = await import("./stop");
 
 const BRANCH = "feat/example";
 
-const FREESTYLE_ENTRY: VmMapEntry = {
-  vmId: "vm_existing",
-  previewUrl: "https://vmcp-1.deco.studio",
-  runnerKind: "freestyle",
-};
-
 const DOCKER_ENTRY: VmMapEntry = {
   vmId: "f9e2fadeb813e08eb00eef6f962be2b2",
   previewUrl: "http://f9e2.localhost:7070/",
   runnerKind: "docker",
 };
 
+const AGENT_SANDBOX_ENTRY: VmMapEntry = {
+  vmId: "vm_agent_sandbox",
+  previewUrl: "https://claim-1.sandbox.example/",
+  runnerKind: "agent-sandbox",
+};
+
 const LEGACY_ENTRY: VmMapEntry = {
   vmId: "vm_legacy",
-  previewUrl: "https://legacy.deco.studio",
-  // no runnerKind — legacy entry, expected to default to freestyle
+  previewUrl: "https://legacy.example/",
+  // no runnerKind — legacy entry, expected to be skipped (no teardown).
 };
 
 type Metadata = { vmMap?: VmMap };
@@ -157,7 +157,7 @@ describe("VM_DELETE", () => {
 
   it("calls runner.delete with the entry's handle and removes vmMap entry", async () => {
     const metadata: Metadata = {
-      vmMap: { "user-1": { [BRANCH]: FREESTYLE_ENTRY } },
+      vmMap: { "user-1": { [BRANCH]: DOCKER_ENTRY } },
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});
@@ -170,8 +170,8 @@ describe("VM_DELETE", () => {
 
     expect(result).toEqual({ success: true });
     expect(mockDelete).toHaveBeenCalledTimes(1);
-    expect(mockDelete).toHaveBeenCalledWith(FREESTYLE_ENTRY.vmId);
-    expect(lastRequestedKind.value).toBe("freestyle");
+    expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.vmId);
+    expect(lastRequestedKind.value).toBe("docker");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -179,30 +179,36 @@ describe("VM_DELETE", () => {
     expect(updated.vmMap["user-1"]).toBeUndefined();
   });
 
-  it("dispatches to the docker runner when entry.runnerKind is 'docker'", async () => {
+  it("dispatches to the agent-sandbox runner when entry.runnerKind is 'agent-sandbox'", async () => {
     const metadata: Metadata = {
-      vmMap: { "user-1": { [BRANCH]: DOCKER_ENTRY } },
+      vmMap: { "user-1": { [BRANCH]: AGENT_SANDBOX_ENTRY } },
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const ctx = makeCtx({ virtualMcp });
 
     await VM_DELETE.handler({ virtualMcpId: "vmcp_1", branch: BRANCH }, ctx);
 
-    expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.vmId);
-    expect(lastRequestedKind.value).toBe("docker");
+    expect(mockDelete).toHaveBeenCalledWith(AGENT_SANDBOX_ENTRY.vmId);
+    expect(lastRequestedKind.value).toBe("agent-sandbox");
   });
 
-  it("defaults to freestyle when entry has no runnerKind (legacy entries)", async () => {
+  it("skips teardown when entry has no runnerKind (legacy entries) but still clears vmMap", async () => {
     const metadata: Metadata = {
       vmMap: { "user-1": { [BRANCH]: LEGACY_ENTRY } },
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
-    const ctx = makeCtx({ virtualMcp });
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy });
 
-    await VM_DELETE.handler({ virtualMcpId: "vmcp_1", branch: BRANCH }, ctx);
+    const result = await VM_DELETE.handler(
+      { virtualMcpId: "vmcp_1", branch: BRANCH },
+      ctx,
+    );
 
-    expect(mockDelete).toHaveBeenCalledWith(LEGACY_ENTRY.vmId);
-    expect(lastRequestedKind.value).toBe("freestyle");
+    expect(result).toEqual({ success: true });
+    expect(mockDelete).not.toHaveBeenCalled();
+    // vmMap is still cleared so the UI returns to idle.
+    expect(updateSpy).toHaveBeenCalledTimes(1);
   });
 
   // Regression guard for the invariant called out in stop.ts:1–5: a pod that
@@ -210,7 +216,7 @@ describe("VM_DELETE", () => {
   // the runner that the entry was created against.
   it("dispatches on the entry's runnerKind even when STUDIO_SANDBOX_RUNNER env disagrees", async () => {
     const original = process.env.STUDIO_SANDBOX_RUNNER;
-    process.env.STUDIO_SANDBOX_RUNNER = "freestyle";
+    process.env.STUDIO_SANDBOX_RUNNER = "agent-sandbox";
     try {
       const metadata: Metadata = {
         vmMap: { "user-1": { [BRANCH]: DOCKER_ENTRY } },
@@ -230,7 +236,7 @@ describe("VM_DELETE", () => {
 
   it("skips runner.delete and DB update when no vmMap entry for (user, branch)", async () => {
     const metadata: Metadata = {
-      vmMap: { "other-user": { [BRANCH]: FREESTYLE_ENTRY } },
+      vmMap: { "other-user": { [BRANCH]: DOCKER_ENTRY } },
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});

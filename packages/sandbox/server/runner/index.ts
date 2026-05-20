@@ -1,8 +1,7 @@
 /**
  * Public surface. Ships `DockerSandboxRunner` only via the default entry;
- * Freestyle and agent-sandbox sit behind their own subpath exports (./runner/
- * freestyle, ./runner/agent-sandbox) because their SDKs are heavy and not
- * every deploy needs them.
+ * agent-sandbox sits behind its own subpath export (./runner/agent-sandbox)
+ * because its SDK is heavy and not every deploy needs it.
  */
 
 import { DockerSandboxRunner, type DockerRunnerOptions } from "./docker";
@@ -69,31 +68,23 @@ export function createDockerRunner(
 const RUNNER_KINDS: ReadonlySet<RunnerKind> = new Set([
   "host",
   "docker",
-  "freestyle",
   "agent-sandbox",
 ]);
 
 /**
  * Single resolution rule:
  *   - explicit STUDIO_SANDBOX_RUNNER wins (validated against the kind set);
- *   - otherwise default to "host";
- *   - "freestyle" additionally requires FREESTYLE_API_KEY (precondition, not auto-trigger).
+ *   - otherwise default to "host".
  *
- * Exits the legacy auto-detection chain: setting FREESTYLE_API_KEY no longer
- * implicitly switches the runner, and Docker CLI presence is no longer probed.
- * Any non-host runner must be opted into explicitly.
+ * Docker CLI presence is not probed. Any non-host runner must be opted into
+ * explicitly.
  */
 export function resolveRunnerKindFromEnv(): RunnerKind {
   const raw = process.env.STUDIO_SANDBOX_RUNNER;
   const kind = (raw && raw.length > 0 ? raw : "host") as RunnerKind;
   if (!RUNNER_KINDS.has(kind)) {
     throw new Error(
-      `Unknown STUDIO_SANDBOX_RUNNER="${raw}" — expected "host", "docker", "freestyle", or "agent-sandbox".`,
-    );
-  }
-  if (kind === "freestyle" && !process.env.FREESTYLE_API_KEY) {
-    throw new Error(
-      `STUDIO_SANDBOX_RUNNER="freestyle" requires FREESTYLE_API_KEY to be set.`,
+      `Unknown STUDIO_SANDBOX_RUNNER="${raw}" — expected "host", "docker", or "agent-sandbox".`,
     );
   }
   return kind;

@@ -1,8 +1,7 @@
 /**
  * Persistent sandbox runner state — survives mesh restarts so we can
  * recover or terminate live sandboxes. `state` jsonb is opaque: each
- * runner serialises its own shape (docker: {token, hostPort, ...};
- * freestyle: {token, domain, ...}).
+ * runner serialises its own shape (e.g. docker: {token, hostPort, ...}).
  */
 
 import type { Kysely } from "kysely";

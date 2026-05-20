@@ -406,11 +406,10 @@ async function copyQuickjsWasm() {
   console.log(`✅ QuickJS WASM copied to ${wasmDest}`);
 }
 
-// freestyle/runner.ts and host/runner.ts both inline
-// packages/sandbox/daemon/dist/daemon.js via a text-import attribute.
-// `bun build` needs that file present on disk to embed it into the server
-// bundle, so produce it before bundling. Idempotent — `bun run build` just
-// rewrites the same outfile.
+// host/runner.ts inlines packages/sandbox/daemon/dist/daemon.js via a
+// text-import attribute. `bun build` needs that file present on disk to
+// embed it into the server bundle, so produce it before bundling.
+// Idempotent — `bun run build` just rewrites the same outfile.
 async function buildSandboxDaemon() {
   console.log("🔨 Building sandbox daemon bundle...");
   const sandboxRoot = join(WORKSPACE_ROOT, "packages/sandbox");

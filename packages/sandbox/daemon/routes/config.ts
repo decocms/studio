@@ -3,7 +3,7 @@ import type { TenantConfigStore } from "../config-store";
 import type { ApplyResult } from "../config-store/types";
 import type { Phase } from "../process/phase-manager";
 import type { TenantConfig } from "../types";
-import { jsonResponse, parseBase64JsonBody } from "./body-parser";
+import { jsonResponse, parseJsonBody } from "./body-parser";
 
 export interface DaemonState {
   orchestrator: { running: boolean; pending: number };
@@ -79,7 +79,7 @@ export function makeConfigUpdateHandler(deps: ConfigDeps) {
   return async (req: Request): Promise<Response> => {
     let raw: unknown;
     try {
-      raw = await parseBase64JsonBody(req);
+      raw = await parseJsonBody(req);
     } catch (e) {
       return jsonResponse({ error: `bad body: ${(e as Error).message}` }, 400);
     }

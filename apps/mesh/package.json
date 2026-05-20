@@ -36,11 +36,7 @@
     "prepublishOnly": "bun run build:client && bun run build:server"
   },
   "optionalDependencies": {
-    "@duckdb/node-api": "^1.5.0-r.1",
-    "@freestyle-sh/with-bun": "^0.2.12",
-    "@freestyle-sh/with-deno": "^0.0.4",
-    "@freestyle-sh/with-nodejs": "^0.2.9",
-    "freestyle-sandboxes": "^0.1.46"
+    "@duckdb/node-api": "^1.5.0-r.1"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.77",
