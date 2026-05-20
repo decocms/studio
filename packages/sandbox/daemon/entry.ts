@@ -38,6 +38,10 @@ import { makeHealthHandler } from "./routes/health";
 import { makeIdleHandler } from "./routes/idle";
 import { makeSetupHandler } from "./routes/setup";
 import {
+  makeSnapshotCreateHandler,
+  makeSnapshotRestoreHandler,
+} from "./routes/snapshot";
+import {
   makeTasksDeleteHandler,
   makeTasksGetHandler,
   makeTasksKillAllHandler,
@@ -296,6 +300,11 @@ const setupCloneH = makeSetupHandler("clone", { orchestrator });
 const setupInstallH = makeSetupHandler("install", { orchestrator });
 const setupStartH = makeSetupHandler("start", { orchestrator });
 
+// Snapshot routes — tar produce/consume against the workspace root.
+// Reuses the same `repoDir` the rest of the daemon is configured around.
+const snapshotCreateH = makeSnapshotCreateHandler({ repoDir });
+const snapshotRestoreH = makeSnapshotRestoreHandler({ repoDir });
+
 // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
 const isReady = () => lifecycle.current().phase === "running";
 
@@ -457,6 +466,10 @@ function vmRouteH(
   if (method === "POST" && vmPath in fsH) return fsH[vmPath](req);
   if (method === "POST" && vmPath.startsWith("/exec/"))
     return execRouteH(req, vmPath);
+  if (method === "POST" && vmPath === "/snapshot/create")
+    return snapshotCreateH();
+  if (method === "POST" && vmPath === "/snapshot/restore")
+    return snapshotRestoreH(req);
 
   return jsonResponse({ error: `Not found: /_decopilot_vm${vmPath}` }, 404);
 }
