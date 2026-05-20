@@ -19,7 +19,6 @@ import type { SandboxStore } from "./types";
 export type { SandboxStore, SandboxSnapshotKey, SnapshotHead } from "./types";
 export { snapshotKey } from "./types";
 export { LocalFsStore } from "./local-fs-store";
-export { S3Store } from "./s3-store";
 
 export function pickStoreFromEnv({
   dataDir,

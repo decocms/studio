@@ -25,7 +25,7 @@ describe("snapshot handlers", () => {
   });
 
   it("create returns 404 when repoDir doesn't exist", async () => {
-    const handler = makeSnapshotCreateHandler({ repoDir: "/no/such/path" });
+    const handler = makeSnapshotCreateHandler({ workDir: "/no/such/path" });
     const res = await handler();
     expect(res.status).toBe(404);
   });
@@ -35,7 +35,7 @@ describe("snapshot handlers", () => {
     mkdirSync(join(repoDir, "src"));
     writeFileSync(join(repoDir, "src", "index.ts"), "export {};\n");
 
-    const handler = makeSnapshotCreateHandler({ repoDir });
+    const handler = makeSnapshotCreateHandler({ workDir: repoDir });
     const res = await handler();
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/x-tar");
@@ -55,7 +55,7 @@ describe("snapshot handlers", () => {
     // Untracked-but-not-ignored file — must survive the round-trip.
     writeFileSync(join(repoDir, ".env.local"), "FOO=bar\n");
 
-    const create = makeSnapshotCreateHandler({ repoDir });
+    const create = makeSnapshotCreateHandler({ workDir: repoDir });
     const tarRes = await create();
     expect(tarRes.status).toBe(200);
     const tarBytes = new Uint8Array(await tarRes.arrayBuffer());
@@ -64,7 +64,7 @@ describe("snapshot handlers", () => {
     // Fresh, empty target dir simulating a cold sandbox.
     const restoreDir = mkdtempSync(join(tmpdir(), "snapshot-restore-"));
     try {
-      const restore = makeSnapshotRestoreHandler({ repoDir: restoreDir });
+      const restore = makeSnapshotRestoreHandler({ workDir: restoreDir });
       const req = new Request("http://x/_decopilot_vm/snapshot/restore", {
         method: "POST",
         body: tarBytes,
@@ -98,13 +98,15 @@ describe("snapshot handlers", () => {
     writeFileSync(join(repoDir, "kept.txt"), "should survive");
 
     const tarBytes = new Uint8Array(
-      await (await makeSnapshotCreateHandler({ repoDir })()).arrayBuffer(),
+      await (
+        await makeSnapshotCreateHandler({ workDir: repoDir })()
+      ).arrayBuffer(),
     );
 
     const restoreDir = mkdtempSync(join(tmpdir(), "snapshot-exclude-"));
     try {
       const restoreRes = await makeSnapshotRestoreHandler({
-        repoDir: restoreDir,
+        workDir: restoreDir,
       })(
         new Request("http://x", {
           method: "POST",
@@ -126,7 +128,7 @@ describe("snapshot handlers", () => {
   });
 
   it("restore returns 400 when request body is missing", async () => {
-    const restore = makeSnapshotRestoreHandler({ repoDir });
+    const restore = makeSnapshotRestoreHandler({ workDir: repoDir });
     // Pass a `Request` whose body is null — synthesize one via Request
     // semantics: GETs always have null bodies; we pass `method: GET` here
     // purely to coerce req.body=null.
@@ -139,13 +141,15 @@ describe("snapshot handlers", () => {
     // Seed a tar in a known-good dir.
     writeFileSync(join(repoDir, "hello.txt"), "hi");
     const tarBytes = new Uint8Array(
-      await (await makeSnapshotCreateHandler({ repoDir })()).arrayBuffer(),
+      await (
+        await makeSnapshotCreateHandler({ workDir: repoDir })()
+      ).arrayBuffer(),
     );
 
     const freshParent = mkdtempSync(join(tmpdir(), "snapshot-mkdir-"));
     const targetDir = join(freshParent, "nested", "subdir", "repo");
     try {
-      const res = await makeSnapshotRestoreHandler({ repoDir: targetDir })(
+      const res = await makeSnapshotRestoreHandler({ workDir: targetDir })(
         new Request("http://x", { method: "POST", body: tarBytes }),
       );
       expect(res.status).toBe(200);
@@ -156,7 +160,7 @@ describe("snapshot handlers", () => {
   });
 
   it("restore returns 500 on malformed tar input", async () => {
-    const restore = makeSnapshotRestoreHandler({ repoDir });
+    const restore = makeSnapshotRestoreHandler({ workDir: repoDir });
     const garbage = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
     const res = await restore(
       new Request("http://x", { method: "POST", body: garbage }),
