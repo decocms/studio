@@ -74,27 +74,21 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     if (!props.open) props.onOpenChange(true);
   };
 
-  // Mesh's vm-exec route requires virtualMcpId+branch to compute the
-  // per-user claim handle (same shape as vm-events). Without them the
-  // request 400s before reaching the daemon.
+  // Mesh's vm proxy route requires virtualMcpId+branch in the path to
+  // compute the per-user claim handle. Without them the request 400s
+  // before reaching the daemon.
   const execScript = (name: string) => {
     if (!props.virtualMcpId || !props.branch) return Promise.resolve(null);
-    const qs =
-      `?virtualMcpId=${encodeURIComponent(props.virtualMcpId)}` +
-      `&branch=${encodeURIComponent(props.branch)}`;
     return fetch(
-      `/api/${encodeURIComponent(props.orgSlug)}/vm-exec/exec/${encodeURIComponent(name)}${qs}`,
+      `/api/${encodeURIComponent(props.orgSlug)}/vm/${encodeURIComponent(props.virtualMcpId)}/${encodeURIComponent(props.branch)}/exec/${encodeURIComponent(name)}`,
       { method: "POST" },
     );
   };
 
   const killScript = (name: string) => {
     if (!props.virtualMcpId || !props.branch) return Promise.resolve(null);
-    const qs =
-      `?virtualMcpId=${encodeURIComponent(props.virtualMcpId)}` +
-      `&branch=${encodeURIComponent(props.branch)}`;
     return fetch(
-      `/api/${encodeURIComponent(props.orgSlug)}/vm-exec/kill/${encodeURIComponent(name)}${qs}`,
+      `/api/${encodeURIComponent(props.orgSlug)}/vm/${encodeURIComponent(props.virtualMcpId)}/${encodeURIComponent(props.branch)}/exec/${encodeURIComponent(name)}/kill`,
       { method: "POST" },
     );
   };

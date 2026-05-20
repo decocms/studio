@@ -24,9 +24,8 @@ export function useSaveBlock({
     }) => {
       const path = `.deco/blocks/${blockKey}.json`;
       const content = JSON.stringify(data, null, 2);
-      const params = new URLSearchParams({ virtualMcpId, branch });
       const res = await fetch(
-        `/api/${orgSlug}/vm-file/write?${params.toString()}`,
+        `/api/${orgSlug}/vm/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/write`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
