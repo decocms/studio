@@ -343,10 +343,10 @@ export class ThreadConnection {
     if (!this.client) {
       // Test harness / no MCP — flip to ready immediately and dispatch
       // chunks live. The chat UI is usable with chunks alone.
-      this.drainChunkBuffer();
       if (this.status.get().kind === "loading") {
         this.status.set({ kind: "ready" });
       }
+      this.drainChunkBuffer();
       return;
     }
     try {
@@ -356,9 +356,10 @@ export class ThreadConnection {
           thread_id: this.threadId,
           limit: this.pageSize,
           offset: 0,
-          sort: "desc",
+          orderBy: [{ field: ["created_at"], direction: "desc" }],
         },
       });
+      if (this.abort.signal.aborted) return;
       if ((result as { isError?: boolean }).isError) {
         throw new Error(
           extractToolErrorMessage(

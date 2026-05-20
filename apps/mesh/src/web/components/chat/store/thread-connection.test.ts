@@ -755,6 +755,16 @@ describe("boot buffering", () => {
     ]);
     await new Promise((r) => setTimeout(r, 20));
 
+    // Assert the MCP call shape so a regression in argument shape is caught.
+    expect(ctrl.calls).toHaveLength(1);
+    expect(ctrl.calls[0]?.name).toBe("COLLECTION_THREAD_MESSAGES_LIST");
+    expect(ctrl.calls[0]?.arguments).toEqual({
+      thread_id: "thread-buffer",
+      limit: 5,
+      offset: 0,
+      orderBy: [{ field: ["created_at"], direction: "desc" }],
+    });
+
     // Both the persisted message AND the live-folded assistant message are
     // present, ordered by timestamp.
     expect(conn.status.get()).toEqual({ kind: "ready" });
