@@ -212,6 +212,8 @@ export class ThreadConnection {
   readonly messages = new Store<UIMessage[]>([]);
   readonly status = new Store<ConnStatus>({ kind: "loading" });
   readonly finishReason = new Store<string | null>(null);
+  readonly hasMoreOlder = new Store<boolean>(false);
+  readonly isFetchingOlder = new Store<boolean>(false);
 
   observer: ThreadObserver | null = null;
 
@@ -231,9 +233,16 @@ export class ThreadConnection {
    * user has queued in the meantime.
    */
   private waitingForNewRun = false;
-  // Set here; first real read added in the loadInitialPage path of a later commit.
-  // @ts-expect-error TS6133 — intentionally unused until T5 plumbs loadInitialPage
-  private _client: MCPClient | null;
+  private client: MCPClient | null;
+  // @ts-expect-error TS6133 — written here, read by fetchOlderMessages in T8
+  private serverFetchedCount = 0;
+  private readonly pageSize = 5;
+  /**
+   * Chunk buffer: `[]` means "boot, buffering"; `null` means "ready, fold
+   * chunks live". Chunks arriving before loadInitialPage resolves are queued
+   * here and replayed through `handleChunk` after the page lands.
+   */
+  private chunkBuffer: UIMessageChunk[] | null = [];
 
   constructor(
     readonly orgSlug: string,
@@ -241,7 +250,7 @@ export class ThreadConnection {
     opts: ThreadConnectionOptions = {},
   ) {
     this.key = `${orgSlug}::${threadId}`;
-    this._client = opts.client ?? null;
+    this.client = opts.client ?? null;
     void this.bootstrap();
   }
 
@@ -320,7 +329,60 @@ export class ThreadConnection {
   // ── Internal: bootstrap ─────────────────────────────────────────────────
 
   private async bootstrap(): Promise<void> {
+    // Initial-page fetch and SSE loop run concurrently. Chunks arriving
+    // before the page resolves are queued via `chunkBuffer` and drained
+    // through `handleChunk` after the page lands.
+    void this.loadInitialPage();
     await this.runSseLoop();
+  }
+
+  private async loadInitialPage(): Promise<void> {
+    // Yield one microtask so the constructor finishes and callers can
+    // observe the initial { kind: "loading" } status synchronously.
+    await Promise.resolve();
+    if (!this.client) {
+      // Test harness / no MCP — flip to ready immediately and dispatch
+      // chunks live. The chat UI is usable with chunks alone.
+      this.drainChunkBuffer();
+      if (this.status.get().kind === "loading") {
+        this.status.set({ kind: "ready" });
+      }
+      return;
+    }
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREAD_MESSAGES_LIST",
+        arguments: {
+          thread_id: this.threadId,
+          limit: this.pageSize,
+          offset: 0,
+          sort: "desc",
+        },
+      });
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error(
+          extractToolErrorMessage(
+            result,
+            "COLLECTION_THREAD_MESSAGES_LIST failed",
+          ),
+        );
+      }
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as {
+        items?: UIMessage[];
+        hasMore?: boolean;
+      };
+      const items = payload.items ?? [];
+      this.messages.update((curr) => mergeAndSort(curr, items));
+      this.serverFetchedCount = items.length;
+      this.hasMoreOlder.set(payload.hasMore ?? false);
+      if (this.status.get().kind === "loading") {
+        this.status.set({ kind: "ready" });
+      }
+      this.drainChunkBuffer();
+    } catch (err) {
+      this.failTo(err instanceof Error ? err : new Error(String(err)));
+    }
   }
 
   // ── Internal: POST /messages ────────────────────────────────────────────
@@ -512,7 +574,17 @@ export class ThreadConnection {
     }
   }
 
+  private drainChunkBuffer(): void {
+    const buffered = this.chunkBuffer ?? [];
+    this.chunkBuffer = null;
+    for (const chunk of buffered) this.handleChunk(chunk);
+  }
+
   private handleChunk(chunk: UIMessageChunk): void {
+    if (this.chunkBuffer !== null) {
+      this.chunkBuffer.push(chunk);
+      return;
+    }
     if (this.waitingForNewRun) {
       if (chunk.type !== "start") return;
       this.waitingForNewRun = false;
@@ -646,6 +718,18 @@ function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {
   const next = [...list];
   next[idx] = msg;
   return next;
+}
+
+function extractToolErrorMessage(result: unknown, fallback: string): string {
+  const content = (result as { content?: unknown }).content;
+  if (Array.isArray(content)) {
+    const first = content[0];
+    if (first && typeof first === "object") {
+      const text = (first as { text?: string }).text;
+      if (text) return text;
+    }
+  }
+  return fallback;
 }
 
 /**

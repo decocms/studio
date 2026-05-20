@@ -11,8 +11,7 @@ import type { UIMessage } from "ai";
 // ─── Fetch mock builders ─────────────────────────────────────────────────────
 
 /** Build a fetch mock with explicit handlers per endpoint. Default: /messages
- *  200s; /stream hangs until aborted (after emitting an empty snapshot). Each
- *  endpoint can be overridden. */
+ *  200s; /stream hangs until aborted. Each endpoint can be overridden. */
 function makeFetchMock(
   opts: {
     stream?: (init?: RequestInit) => Response | Promise<Response>;
@@ -21,13 +20,8 @@ function makeFetchMock(
   } = {},
 ) {
   const defaultStream = (init?: RequestInit) => {
-    // Emit an empty snapshot, then hang until aborted.
-    const enc = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(
-          enc.encode(`event: snapshot\ndata: {"messages":[]}\n\n`),
-        );
         init?.signal?.addEventListener("abort", () => {
           try {
             controller.close();
@@ -63,26 +57,13 @@ function makeFetchMock(
   });
 }
 
-/** Build a controllable /stream response — enqueue chunks at test time. By
- *  default emits an empty `event: snapshot` frame first so the connection
- *  flips out of `loading`. Pass `{ snapshotMessages }` to seed the initial
- *  messages list, or `{ omitSnapshot: true }` to suppress the snapshot. */
-function controllableStream(
-  opts: { snapshotMessages?: unknown[]; omitSnapshot?: boolean } = {},
-) {
+/** Build a controllable /stream response — enqueue chunks at test time. */
+function controllableStream() {
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   const enc = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
     start(c) {
       controller = c;
-      if (!opts.omitSnapshot) {
-        const messages = opts.snapshotMessages ?? [];
-        c.enqueue(
-          enc.encode(
-            `event: snapshot\ndata: ${JSON.stringify({ messages })}\n\n`,
-          ),
-        );
-      }
     },
   });
   return {
@@ -148,21 +129,15 @@ describe("getOrOpenStream", () => {
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
 describe("bootstrap", () => {
-  test("loads server snapshot from the /stream SSE event into messages and transitions to ready", async () => {
-    const seedMessages = [
-      { id: "u-1", role: "user", parts: [{ type: "text", text: "hi" }] },
-    ];
-    const stream = controllableStream({ snapshotMessages: seedMessages });
-    globalThis.fetch = makeFetchMock({
-      stream: () => stream.response,
-    }) as unknown as typeof globalThis.fetch;
+  test("with null client, transitions to ready immediately after SSE opens", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-boot");
+    const conn = getOrOpenStream("acme", "thread-boot-null", { client: null });
     expect(conn.status.get()).toEqual({ kind: "loading" });
     await new Promise((r) => setTimeout(r, 20));
 
     expect(conn.status.get()).toEqual({ kind: "ready" });
-    expect(conn.messages.get()).toEqual(seedMessages as never);
+    expect(conn.messages.get()).toEqual([]);
   });
 
   test("HTTP error on /stream transitions to status=error", async () => {
@@ -170,7 +145,7 @@ describe("bootstrap", () => {
       stream: () => new Response("boom", { status: 500 }),
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-boot-err");
+    const conn = getOrOpenStream("acme", "thread-boot-err", { client: null });
     await new Promise((r) => setTimeout(r, 20));
 
     const s = conn.status.get();
@@ -187,7 +162,7 @@ describe("chunk handling", () => {
       stream: () => stream.response,
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-fold");
+    const conn = getOrOpenStream("acme", "thread-fold", { client: null });
     await new Promise((r) => setTimeout(r, 20)); // bootstrap
 
     stream.enqueue({ type: "start", messageId: "m-1" });
@@ -212,7 +187,7 @@ describe("chunk handling", () => {
       stream: () => stream.response,
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-obs");
+    const conn = getOrOpenStream("acme", "thread-obs", { client: null });
     const finishSpy = mock(() => {});
     conn.observer = { onFinish: finishSpy } as ThreadObserver;
     await new Promise((r) => setTimeout(r, 20));
@@ -237,7 +212,7 @@ describe("stop", () => {
       stream: () => stream.response,
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-stop-late");
+    const conn = getOrOpenStream("acme", "thread-stop-late", { client: null });
     await new Promise((r) => setTimeout(r, 20));
 
     // Run 1 starts streaming.
@@ -316,7 +291,7 @@ describe("submit", () => {
       });
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-submit");
+    const conn = getOrOpenStream("acme", "thread-submit", { client: null });
     await new Promise((r) => setTimeout(r, 20));
 
     // Stage a pending user_ask via the SSE.
@@ -354,7 +329,7 @@ describe("submit", () => {
 
   test("toolOutput throws if toolCallId is not found", async () => {
     globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
-    const conn = getOrOpenStream("acme", "thread-missing");
+    const conn = getOrOpenStream("acme", "thread-missing", { client: null });
     await new Promise((r) => setTimeout(r, 20));
 
     await expect(
@@ -371,7 +346,7 @@ describe("submit", () => {
       stream: () => stream.response,
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-cf");
+    const conn = getOrOpenStream("acme", "thread-cf", { client: null });
     await new Promise((r) => setTimeout(r, 20));
 
     // Stage a pending user_ask and let finishReason settle to "tool-calls".
@@ -446,7 +421,9 @@ describe("submit defers POST", () => {
       },
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-single-appr");
+    const conn = getOrOpenStream("acme", "thread-single-appr", {
+      client: null,
+    });
     await new Promise((r) => setTimeout(r, 20));
     await stageTurn(stream, { approvalIds: ["a1"] });
 
@@ -469,7 +446,7 @@ describe("submit defers POST", () => {
       },
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-3-appr-one");
+    const conn = getOrOpenStream("acme", "thread-3-appr-one", { client: null });
     await new Promise((r) => setTimeout(r, 20));
     await stageTurn(stream, { approvalIds: ["a1", "a2", "a3"] });
 
@@ -506,7 +483,7 @@ describe("submit defers POST", () => {
       },
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-3-appr-all");
+    const conn = getOrOpenStream("acme", "thread-3-appr-all", { client: null });
     await new Promise((r) => setTimeout(r, 20));
     await stageTurn(stream, { approvalIds: ["a1", "a2", "a3"] });
 
@@ -539,7 +516,9 @@ describe("submit defers POST", () => {
       },
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-mixed-ask-only");
+    const conn = getOrOpenStream("acme", "thread-mixed-ask-only", {
+      client: null,
+    });
     await new Promise((r) => setTimeout(r, 20));
     await stageTurn(stream, {
       approvalIds: ["a1"],
@@ -565,7 +544,7 @@ describe("submit defers POST", () => {
       },
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-mixed-both");
+    const conn = getOrOpenStream("acme", "thread-mixed-both", { client: null });
     await new Promise((r) => setTimeout(r, 20));
     await stageTurn(stream, {
       approvalIds: ["a1"],
@@ -596,7 +575,7 @@ describe("submit defers POST", () => {
       },
     }) as unknown as typeof globalThis.fetch;
 
-    const conn = getOrOpenStream("acme", "thread-no-idem");
+    const conn = getOrOpenStream("acme", "thread-no-idem", { client: null });
     await new Promise((r) => setTimeout(r, 20));
     await stageTurn(stream, { approvalIds: ["a1"] });
 
@@ -698,5 +677,127 @@ describe("mergeAndSort", () => {
     const out = mergeAndSort([], incoming);
     expect(out).toHaveLength(1);
     expect(out[0]?.role).toBe("assistant");
+  });
+});
+
+// ─── boot buffering ──────────────────────────────────────────────────────────
+
+describe("boot buffering", () => {
+  test("hasMoreOlder and isFetchingOlder stores exist and default to false", () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+    const conn = getOrOpenStream("acme", "thread-stores", { client: null });
+    expect(conn.hasMoreOlder.get()).toBe(false);
+    expect(conn.isFetchingOlder.get()).toBe(false);
+  });
+
+  /** Build a mock MCP client whose `callTool(COLLECTION_THREAD_MESSAGES_LIST)`
+   *  resolves on a controllable promise. */
+  function makeControllableClient(): {
+    client: {
+      callTool: (req: { name: string; arguments: unknown }) => Promise<unknown>;
+    };
+    resolve: (items: unknown[], hasMore?: boolean) => void;
+    reject: (err: Error) => void;
+    calls: Array<{ name: string; arguments: unknown }>;
+  } {
+    const calls: Array<{ name: string; arguments: unknown }> = [];
+    let resolveFn: ((value: unknown) => void) | null = null;
+    let rejectFn: ((err: Error) => void) | null = null;
+    const client = {
+      callTool: (req: { name: string; arguments: unknown }) => {
+        calls.push(req);
+        return new Promise<unknown>((res, rej) => {
+          resolveFn = res;
+          rejectFn = rej;
+        });
+      },
+    };
+    return {
+      client,
+      resolve: (items: unknown[], hasMore = false) =>
+        resolveFn?.({ structuredContent: { items, hasMore } }),
+      reject: (err: Error) => rejectFn?.(err),
+      calls,
+    };
+  }
+
+  test("chunks arriving before initial page resolves are buffered, then drained", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const ctrl = makeControllableClient();
+    const conn = getOrOpenStream("acme", "thread-buffer", {
+      client: ctrl.client as never,
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    stream.enqueue({ type: "start", messageId: "m-live" });
+    stream.enqueue({ type: "text-start", id: "p-1" });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: "live" });
+    stream.enqueue({ type: "text-end", id: "p-1" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Initial page hasn't resolved — messages must be empty so far.
+    expect(conn.messages.get()).toEqual([]);
+    expect(conn.status.get()).toEqual({ kind: "loading" });
+
+    // Resolve the initial page with one persisted message (older than live).
+    ctrl.resolve([
+      {
+        id: "m-persisted",
+        role: "user",
+        parts: [{ type: "text", text: "earlier" }],
+        metadata: { created_at: "2026-01-01T00:00:00Z" },
+      },
+    ]);
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Both the persisted message AND the live-folded assistant message are
+    // present, ordered by timestamp.
+    expect(conn.status.get()).toEqual({ kind: "ready" });
+    const ids = conn.messages.get().map((m) => m.id);
+    expect(ids).toEqual(["m-persisted", "m-live"]);
+  });
+
+  test("null MCP client → status flips to ready immediately, chunks fold live", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-no-client", { client: null });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(conn.status.get()).toEqual({ kind: "ready" });
+    expect(conn.messages.get()).toEqual([]);
+
+    stream.enqueue({ type: "start", messageId: "m-1" });
+    stream.enqueue({ type: "text-start", id: "p-1" });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: "hi" });
+    stream.enqueue({ type: "text-end", id: "p-1" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(conn.messages.get().at(-1)?.id).toBe("m-1");
+  });
+
+  test("initial-page error sets status=error", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const ctrl = makeControllableClient();
+    const conn = getOrOpenStream("acme", "thread-page-err", {
+      client: ctrl.client as never,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    ctrl.reject(new Error("boom"));
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(conn.status.get().kind).toBe("error");
   });
 });
