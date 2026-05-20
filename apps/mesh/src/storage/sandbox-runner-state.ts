@@ -176,10 +176,10 @@ export class KyselySandboxRunnerStateStore implements RunnerStateStore {
    * outer store is what keeps the main pool free during long provisioning.
    *
    * The lock wait is bounded via `SET LOCAL statement_timeout`: the holder
-   * runs slow provisioning (freestyle.vms.create ≈ 30–60s) inside its lock,
-   * and an unbounded wait lets one stalled holder wedge every concurrent
-   * ensure (observed: 132s). Timeout clears before the callback runs so
-   * nested reads/writes aren't capped by the lock-wait budget.
+   * runs slow provisioning inside its lock, and an unbounded wait lets one
+   * stalled holder wedge every concurrent ensure (observed: 132s). Timeout
+   * clears before the callback runs so nested reads/writes aren't capped by
+   * the lock-wait budget.
    */
   async withLock<T>(
     id: SandboxId,

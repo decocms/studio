@@ -19,9 +19,9 @@ export function hashSandboxId(id: SandboxId, length = 16): string {
  * when the branch is missing or sanitizes to empty.
  *
  * Hash length defaults to 5 chars (~20 bits) — sufficient for runners whose
- * handle is local (Docker container name, Freestyle internal ID). Runners
- * that expose the handle as a public hostname (agent-sandbox preview URLs,
- * Vercel-style) should pass `{ hashLen: 16 }` (~64 bits) — the handle is
+ * handle is local (Docker container name). Runners that expose the handle
+ * as a public hostname (agent-sandbox preview URLs, Vercel-style) should
+ * pass `{ hashLen: 16 }` (~64 bits) — the handle is
  * the only authorization on those URLs, so brute-forcing 20 bits at an
  * unrate-limited gateway (~17 min at 1k req/s) is meaningfully easier
  * than 64 bits.

@@ -8,9 +8,12 @@ import { TaskManager } from "../process/task-manager";
 import { makeExecHandler } from "./exec";
 
 function req(name: string, body?: object): Request {
-  const init: RequestInit = { method: "POST" };
+  const init: RequestInit = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  };
   if (body !== undefined) {
-    init.body = Buffer.from(JSON.stringify(body), "utf-8").toString("base64");
+    init.body = JSON.stringify(body);
   }
   return new Request(`http://x/_decopilot_vm/exec/${name}`, init);
 }

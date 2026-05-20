@@ -9,7 +9,7 @@ the sandbox is provisioned and reached.
 
 ## Runners
 
-Four runner backends live behind the common `SandboxRunner` interface
+Three runner backends live behind the common `SandboxRunner` interface
 (`server/runner/types.ts`):
 
 - **`host`** — local dev / single-tenant self-host. Spawns the same Bun-based
@@ -21,10 +21,6 @@ Four runner backends live behind the common `SandboxRunner` interface
 - **Docker** (`./runner`) — containerized sandboxes. Spawns containers via the
   local Docker CLI and routes browser traffic through an in-process ingress
   bound on `SANDBOX_INGRESS_PORT`.
-- **Freestyle** (`./runner/freestyle`) — hosted VMs. Preview URL is a
-  Freestyle-provided HTTPS domain; daemon traffic is base64-wrapped to clear
-  Cloudflare WAF. SDKs are `optionalDependencies` and only pulled in when this
-  runner is selected.
 - **agent-sandbox** (`./runner/agent-sandbox`) — one `SandboxClaim` per sandbox
   against the [kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)
   operator. Studio talks to pods via apiserver port-forward in dev; in prod,
@@ -36,14 +32,10 @@ Four runner backends live behind the common `SandboxRunner` interface
 The host app calls `resolveRunnerKindFromEnv()` to pick the runner. Single rule:
 
 1. `STUDIO_SANDBOX_RUNNER` is honored if set (one of `host`, `docker`,
-   `freestyle`, `agent-sandbox`).
+   `agent-sandbox`).
 2. Otherwise the runner defaults to `host`.
 
-Preconditions:
-
-- `freestyle` requires `FREESTYLE_API_KEY` to be set; otherwise the call throws
-  at startup.
-- `agent-sandbox` is opt-in only — never auto-selected.
+`agent-sandbox` is opt-in only — never auto-selected.
 
 ## URL shape
 
@@ -73,9 +65,8 @@ for this, you can remove them — they're no longer needed.
 ## Environment
 
 - `STUDIO_SANDBOX_RUNNER` — pin the runner: `host` (default), `docker`,
-  `freestyle`, or `agent-sandbox`. Setting it explicitly is required for any
-  non-host runner. Auto-detection of Docker has been removed.
-- `FREESTYLE_API_KEY` — required for the Freestyle runner.
+  or `agent-sandbox`. Setting it explicitly is required for any non-host
+  runner. Auto-detection of Docker has been removed.
 - `STUDIO_SANDBOX_IMAGE` — override the Docker runner image
   (default `studio-sandbox:local`, built from `image/Dockerfile`).
 - `SANDBOX_INGRESS_PORT` (default `7070`) — local ingress bind port for the

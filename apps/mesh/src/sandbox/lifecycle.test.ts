@@ -31,7 +31,7 @@ describe("asDockerRunner", () => {
     // Duck-typed non-Docker runner — satisfies the SandboxRunner shape but
     // isn't a DockerSandboxRunner instance, so instanceof narrows to null.
     const fake = {
-      kind: "freestyle" as const,
+      kind: "agent-sandbox" as const,
       ensure: async () => ({ handle: "h", workdir: "/app", previewUrl: null }),
       exec: async () => ({
         stdout: "",

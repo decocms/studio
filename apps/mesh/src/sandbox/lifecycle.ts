@@ -150,17 +150,9 @@ async function instantiate(
     }
     case "docker":
       return new DockerSandboxRunner({ stateStore, previewUrlPattern });
-    case "freestyle": {
-      // Dynamic import — freestyle SDK is an optionalDependency so
-      // docker-only deploys don't need it installed.
-      const { FreestyleSandboxRunner } = await import(
-        "@decocms/sandbox/runner/freestyle"
-      );
-      return new FreestyleSandboxRunner({ stateStore });
-    }
     case "agent-sandbox": {
       // Dynamic import — @kubernetes/client-node is heavy and only needed
-      // when STUDIO_SANDBOX_RUNNER=agent-sandbox. Docker/Freestyle deploys never
+      // when STUDIO_SANDBOX_RUNNER=agent-sandbox. Docker deploys never
       // load it.
       const { AgentSandboxRunner } = await import(
         "@decocms/sandbox/runner/agent-sandbox"
@@ -255,7 +247,7 @@ export function asDockerRunner(
 // synchronously so they don't appear stuck on `claiming` while waiting for
 // the next watch event.
 //
-// For host/docker/freestyle the source generator yields a single `ready` and
+// For host/docker the source generator yields a single `ready` and
 // returns; the dedup machinery still works (each subscriber gets the phase
 // replayed) at near-zero cost.
 // ---------------------------------------------------------------------------

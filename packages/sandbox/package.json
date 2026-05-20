@@ -12,19 +12,12 @@
   "exports": {
     "./shared": "./shared.ts",
     "./runner": "./server/runner/index.ts",
-    "./runner/agent-sandbox": "./server/runner/agent-sandbox/index.ts",
-    "./runner/freestyle": "./server/runner/freestyle/index.ts"
+    "./runner/agent-sandbox": "./server/runner/agent-sandbox/index.ts"
   },
   "dependencies": {
     "@kubernetes/client-node": "^1.4.0",
     "@opentelemetry/api": "^1.9.0",
     "node-pty": "^1.0.0"
-  },
-  "optionalDependencies": {
-    "@freestyle-sh/with-bun": "^0.2.12",
-    "@freestyle-sh/with-deno": "^0.0.4",
-    "@freestyle-sh/with-nodejs": "^0.2.9",
-    "freestyle-sandboxes": "^0.1.46"
   },
   "devDependencies": {
     "@types/bun": "latest",

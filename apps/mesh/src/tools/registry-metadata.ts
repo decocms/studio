@@ -873,12 +873,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "VM_START",
-    description: "Start a Freestyle VM with dev server preview",
+    description: "Start a sandbox VM with dev server preview",
     category: "VM",
   },
   {
     name: "VM_DELETE",
-    description: "Stop and delete a Freestyle VM",
+    description: "Stop and delete a sandbox VM",
     category: "VM",
   },
   {

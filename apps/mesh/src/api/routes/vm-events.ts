@@ -163,12 +163,12 @@ export const createVmEventsRoutes = () => {
 
       try {
         // Same probe for every runner. `runner.alive` is honest across
-        // host/docker/freestyle/agent-sandbox: each implementation queries
-        // its respective source-of-truth (state-store + pid for host, docker
-        // inspect, K8s API, freestyle daemon HTTP). When the prior vmMap
-        // entry's runner kind differs from the env's current runner, we
-        // route the stale-state cleanup through the *prior* kind so we
-        // don't leave behind rows in the wrong table.
+        // host/docker/agent-sandbox: each implementation queries its
+        // respective source-of-truth (state-store + pid for host, docker
+        // inspect, K8s API). When the prior vmMap entry's runner kind
+        // differs from the env's current runner, we route the stale-state
+        // cleanup through the *prior* kind so we don't leave behind rows
+        // in the wrong table.
         if (expectingHandle) {
           const stale = await isStaleHandle(runner, claimName);
           if (stale) {
@@ -263,7 +263,7 @@ async function cleanupStaleEntry(args: {
   claimName: string;
   userId: string;
   projectRef: string;
-  runnerKind: "host" | "docker" | "freestyle" | "agent-sandbox";
+  runnerKind: "host" | "docker" | "agent-sandbox";
 }): Promise<void> {
   const { ctx, runner, claimName, userId, projectRef, runnerKind } = args;
   try {
@@ -294,8 +294,8 @@ async function cleanupStaleEntry(args: {
  *
  * Subscribes via `subscribeLifecycle` so multiple SSE clients for the same
  * claim (multi-tab) share one underlying source. For agent-sandbox the source
- * is the K8s watcher; for host/docker/freestyle the source yields a single
- * `ready` phase and ends immediately.
+ * is the K8s watcher; for host/docker the source yields a single `ready`
+ * phase and ends immediately.
  */
 async function emitLifecycle(args: {
   stream: import("hono/streaming").SSEStreamingApi;

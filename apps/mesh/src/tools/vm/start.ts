@@ -74,7 +74,7 @@ export const VM_START = defineTool({
     vmId: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    runnerKind: z.enum(["host", "docker", "freestyle", "agent-sandbox"]),
+    runnerKind: z.enum(["host", "docker", "agent-sandbox"]),
   }),
 
   handler: async (input, ctx) => {
@@ -148,7 +148,7 @@ export async function ensureVmForBranch(
 
   // Fast path: vmMap already has an entry under the current runner. Trust
   // it; matches the prior `activeVm` behavior in built-in-tools.
-  if (existing && (existing.runnerKind ?? "freestyle") === runnerKind) {
+  if (existing && existing.runnerKind === runnerKind) {
     return existing;
   }
 
@@ -173,22 +173,15 @@ async function reapStaleRunner(
   existing: VmMapEntry | null,
   currentKind: RunnerKind,
 ): Promise<void> {
-  if (!existing) return;
-  // Legacy entries (pre-runnerKind) default to freestyle, matching VM_DELETE.
-  const priorKind: RunnerKind = existing.runnerKind ?? "freestyle";
-  if (priorKind === currentKind) return;
-
-  // Freestyle idle-times out its VMs on its own, so active teardown is
-  // unnecessary — and the freestyle SDK throws on ref() when the current
-  // env has no FREESTYLE_API_KEY (typical docker-only deploy).
-  if (priorKind === "freestyle") return;
+  if (!existing?.runnerKind) return;
+  if (existing.runnerKind === currentKind) return;
 
   try {
-    const priorRunner = await getRunnerByKind(ctx, priorKind);
+    const priorRunner = await getRunnerByKind(ctx, existing.runnerKind);
     await priorRunner.delete(existing.vmId);
   } catch (err) {
     console.error(
-      `[VM_START] stale ${priorKind} ${existing.vmId}: ${
+      `[VM_START] stale ${existing.runnerKind} ${existing.vmId}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -228,7 +221,7 @@ async function provisionSandbox(
     resolveRuntimeConfig(metadata);
 
   // Skip clone + lockfile probe entirely when no repo is connected — the
-  // sandbox boots blank (Docker only; freestyle requires a baked clone).
+  // sandbox boots blank.
   let repoOpts:
     | {
         cloneUrl: string;
@@ -286,11 +279,10 @@ async function provisionSandbox(
     };
   }
 
-  // Missing workload = clone-only. Freestyle treats it as "node, no install,
-  // no dev server"; Docker lets the runner pick its default. `devPort` is
-  // omitted unless the user explicitly pinned one — leaves runners free to
-  // assign a unique dynamic port (host runner needs this; multiple sandboxes
-  // share the host network and can't all bind 3000).
+  // Missing workload = clone-only. Docker lets the runner pick its default.
+  // `devPort` is omitted unless the user explicitly pinned one — leaves
+  // runners free to assign a unique dynamic port (host runner needs this;
+  // multiple sandboxes share the host network and can't all bind 3000).
   const workload: Workload | undefined =
     runtime && packageManager
       ? {

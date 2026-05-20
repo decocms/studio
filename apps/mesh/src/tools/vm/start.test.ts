@@ -10,13 +10,10 @@ import type {
 import { composeSandboxRef } from "@decocms/sandbox/runner";
 
 // Pin runner kind — the dev env flips STUDIO_SANDBOX_RUNNER and VM_START
-// reads it at handler time. Freestyle resolution also requires
-// FREESTYLE_API_KEY; stub it so resolution doesn't throw under the test runner.
-process.env.STUDIO_SANDBOX_RUNNER = "freestyle";
-process.env.FREESTYLE_API_KEY ??= "test-stub-key";
+// reads it at handler time.
+process.env.STUDIO_SANDBOX_RUNNER = "docker";
 
-// Mock runner BEFORE importing VM_START — handler is runner-agnostic
-// and we don't want to pull the real freestyle SDK.
+// Mock runner BEFORE importing VM_START — handler is runner-agnostic.
 
 const mockEnsure = mock(
   async (_id: SandboxId, _opts?: EnsureOptions): Promise<Sandbox> => ({
@@ -26,23 +23,12 @@ const mockEnsure = mock(
   }),
 );
 
-const mockFreestyleDelete = mock(async (_handle: string) => {});
 const mockDockerDelete = mock(async (_handle: string) => {});
+const mockAgentSandboxDelete = mock(async (_handle: string) => {});
 
 async function* readyOnly() {
   yield { kind: "ready" as const };
 }
-
-const mockRunner: SandboxRunner = {
-  kind: "freestyle",
-  ensure: (id, opts) => mockEnsure(id, opts),
-  exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
-  delete: (handle) => mockFreestyleDelete(handle),
-  alive: async () => true,
-  getPreviewUrl: async () => "https://stub.preview/",
-  proxyDaemonRequest: async () => new Response(null, { status: 204 }),
-  watchClaimLifecycle: () => readyOnly(),
-};
 
 const mockDockerRunner: SandboxRunner = {
   kind: "docker",
@@ -55,12 +41,23 @@ const mockDockerRunner: SandboxRunner = {
   watchClaimLifecycle: () => readyOnly(),
 };
 
+const mockAgentSandboxRunner: SandboxRunner = {
+  kind: "agent-sandbox",
+  ensure: (id, opts) => mockEnsure(id, opts),
+  exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
+  delete: (handle) => mockAgentSandboxDelete(handle),
+  alive: async () => true,
+  getPreviewUrl: async () => "https://stub.preview/",
+  proxyDaemonRequest: async () => new Response(null, { status: 204 }),
+  watchClaimLifecycle: () => readyOnly(),
+};
+
 mock.module("../../sandbox/lifecycle", () => ({
-  getSharedRunner: () => mockRunner,
-  getRunnerByKind: (_ctx: unknown, kind: "docker" | "freestyle") =>
-    kind === "docker" ? mockDockerRunner : mockRunner,
-  getSharedRunnerIfInit: () => mockRunner,
-  getOrInitSharedRunner: async () => mockRunner,
+  getSharedRunner: () => mockDockerRunner,
+  getRunnerByKind: (_ctx: unknown, kind: "docker" | "agent-sandbox") =>
+    kind === "docker" ? mockDockerRunner : mockAgentSandboxRunner,
+  getSharedRunnerIfInit: () => mockDockerRunner,
+  getOrInitSharedRunner: async () => mockDockerRunner,
   asDockerRunner: () => null,
   // Bun's mock.module persists across test files in the same shard. Other
   // tests in the shard (e.g. oauth-proxy.e2e.test.ts) load app.ts which
@@ -263,10 +260,10 @@ function makeCtx(overrides: {
 describe("VM_START", () => {
   beforeEach(() => {
     mockEnsure.mockReset();
-    mockFreestyleDelete.mockReset();
     mockDockerDelete.mockReset();
-    mockFreestyleDelete.mockImplementation(async () => {});
+    mockAgentSandboxDelete.mockReset();
     mockDockerDelete.mockImplementation(async () => {});
+    mockAgentSandboxDelete.mockImplementation(async () => {});
     mockTokenGet.mockReset();
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
@@ -337,7 +334,7 @@ describe("VM_START", () => {
     expect(result.previewUrl).toBe("https://stub.preview/");
     expect(result.branch).toBe(BRANCH);
     expect(result.isNewVm).toBe(true);
-    expect(result.runnerKind).toBe("freestyle");
+    expect(result.runnerKind).toBe("docker");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -346,7 +343,7 @@ describe("VM_START", () => {
     expect(stored).toMatchObject({
       vmId: "vm_xyz",
       previewUrl: "https://stub.preview/",
-      runnerKind: "freestyle",
+      runnerKind: "docker",
     });
     // Server-stamped; assert recency, not exact value.
     expect(typeof stored?.createdAt).toBe("number");
@@ -538,9 +535,9 @@ describe("VM_START", () => {
 
   it("tears down the stale VM under its prior runner when the env runner flipped", async () => {
     const staleEntry: VmMapEntry = {
-      vmId: "vm_docker_stale",
-      previewUrl: "https://docker.preview/",
-      runnerKind: "docker",
+      vmId: "vm_agent_sandbox_stale",
+      previewUrl: "https://agent-sandbox.preview/",
+      runnerKind: "agent-sandbox",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -554,22 +551,24 @@ describe("VM_START", () => {
       ctx,
     );
 
-    expect(mockDockerDelete).toHaveBeenCalledTimes(1);
-    expect(mockDockerDelete).toHaveBeenCalledWith("vm_docker_stale");
-    expect(mockFreestyleDelete).not.toHaveBeenCalled();
+    expect(mockAgentSandboxDelete).toHaveBeenCalledTimes(1);
+    expect(mockAgentSandboxDelete).toHaveBeenCalledWith(
+      "vm_agent_sandbox_stale",
+    );
+    expect(mockDockerDelete).not.toHaveBeenCalled();
     expect(mockEnsure).toHaveBeenCalledTimes(1);
-    expect(result.runnerKind).toBe("freestyle");
+    expect(result.runnerKind).toBe("docker");
     expect(result.isNewVm).toBe(true);
   });
 
   it("still provisions the new VM when the stale-runner teardown throws", async () => {
-    mockDockerDelete.mockImplementation(async () => {
-      throw new Error("docker runner gone");
+    mockAgentSandboxDelete.mockImplementation(async () => {
+      throw new Error("agent-sandbox runner gone");
     });
     const staleEntry: VmMapEntry = {
-      vmId: "vm_docker_stale",
-      previewUrl: "https://docker.preview/",
-      runnerKind: "docker",
+      vmId: "vm_agent_sandbox_stale",
+      previewUrl: "https://agent-sandbox.preview/",
+      runnerKind: "agent-sandbox",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -583,50 +582,43 @@ describe("VM_START", () => {
       ctx,
     );
 
-    expect(mockDockerDelete).toHaveBeenCalledTimes(1);
+    expect(mockAgentSandboxDelete).toHaveBeenCalledTimes(1);
     expect(mockEnsure).toHaveBeenCalledTimes(1);
     expect(result.vmId).toBe("vm_xyz");
-    expect(result.runnerKind).toBe("freestyle");
+    expect(result.runnerKind).toBe("docker");
     expect(result.isNewVm).toBe(true);
   });
 
-  it("skips freestyle teardown on runner flip — freestyle idles out on its own", async () => {
-    const original = process.env.STUDIO_SANDBOX_RUNNER;
-    process.env.STUDIO_SANDBOX_RUNNER = "docker";
-    try {
-      const staleEntry: VmMapEntry = {
-        vmId: "mh3fx1hmxzdz1h1agx4m",
-        previewUrl: "https://freestyle.preview/",
-        runnerKind: "freestyle",
-      };
-      const metadata: Metadata = {
-        ...BASE_METADATA,
-        vmMap: { [USER_ID]: { [BRANCH]: staleEntry } },
-      };
-      const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-      const ctx = makeCtx({ virtualMcp });
+  it("skips teardown for legacy entries (no runnerKind)", async () => {
+    const legacyEntry: VmMapEntry = {
+      vmId: "vm_legacy",
+      previewUrl: "https://legacy.preview/",
+      // no runnerKind
+    };
+    const metadata: Metadata = {
+      ...BASE_METADATA,
+      vmMap: { [USER_ID]: { [BRANCH]: legacyEntry } },
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
+    const ctx = makeCtx({ virtualMcp });
 
-      const result = await VM_START.handler(
-        { virtualMcpId: VMCP_ID, branch: BRANCH },
-        ctx,
-      );
+    const result = await VM_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      ctx,
+    );
 
-      expect(mockFreestyleDelete).not.toHaveBeenCalled();
-      expect(mockDockerDelete).not.toHaveBeenCalled();
-      expect(mockEnsure).toHaveBeenCalledTimes(1);
-      expect(result.runnerKind).toBe("docker");
-      expect(result.isNewVm).toBe(true);
-    } finally {
-      if (original === undefined) delete process.env.STUDIO_SANDBOX_RUNNER;
-      else process.env.STUDIO_SANDBOX_RUNNER = original;
-    }
+    expect(mockAgentSandboxDelete).not.toHaveBeenCalled();
+    expect(mockDockerDelete).not.toHaveBeenCalled();
+    expect(mockEnsure).toHaveBeenCalledTimes(1);
+    expect(result.runnerKind).toBe("docker");
+    expect(result.isNewVm).toBe(true);
   });
 
   it("does not tear down anything when the existing entry is on the same runner", async () => {
     const sameRunnerEntry: VmMapEntry = {
-      vmId: "vm_freestyle_existing",
-      previewUrl: "https://freestyle.preview/",
-      runnerKind: "freestyle",
+      vmId: "vm_docker_existing",
+      previewUrl: "https://docker.preview/",
+      runnerKind: "docker",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -637,7 +629,7 @@ describe("VM_START", () => {
 
     await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
 
-    expect(mockFreestyleDelete).not.toHaveBeenCalled();
+    expect(mockAgentSandboxDelete).not.toHaveBeenCalled();
     expect(mockDockerDelete).not.toHaveBeenCalled();
   });
 

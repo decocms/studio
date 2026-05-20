@@ -58,8 +58,10 @@ export const VM_DELETE = defineTool({
       input.branch,
     );
 
-    // Legacy entries (pre-runnerKind column) default to freestyle.
-    const kind: RunnerKind = entry.runnerKind ?? "freestyle";
+    if (!entry.runnerKind) {
+      return { success: true };
+    }
+    const kind: RunnerKind = entry.runnerKind;
     const runner = await getRunnerByKind(ctx, kind);
     await runner
       .delete(entry.vmId)

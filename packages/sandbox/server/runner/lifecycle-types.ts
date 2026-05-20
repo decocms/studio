@@ -8,9 +8,9 @@
  * through the dependency graph.
  *
  * Most phases originate from agent-sandbox's K8s watcher (image pulls, node
- * provisioning, etc.). Host/docker/freestyle yield a single `ready` phase
- * because they have no equivalent pre-Ready window worth surfacing — VM_START
- * returns once the daemon's HTTP server is up, which is fast.
+ * provisioning, etc.). Host/docker yield a single `ready` phase because they
+ * have no equivalent pre-Ready window worth surfacing — VM_START returns
+ * once the daemon's HTTP server is up, which is fast.
  */
 
 export type ClaimFailureReason =

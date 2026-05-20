@@ -536,9 +536,7 @@ describe("DockerSandboxRunner.ensure() — config bootstrap contract", () => {
       (configCall!.init.headers as Record<string, string>).Authorization,
     ).toMatch(/^Bearer [0-9a-f]{48}$/);
 
-    const body = JSON.parse(
-      Buffer.from(configCall!.init.body as string, "base64").toString("utf-8"),
-    );
+    const body = JSON.parse(configCall!.init.body as string);
     expect(body.git?.repository?.cloneUrl).toBe(
       "https://x-access-token:TOKEN@github.com/o/r.git",
     );

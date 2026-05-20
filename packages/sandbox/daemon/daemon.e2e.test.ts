@@ -158,15 +158,12 @@ describe("daemon e2e (runs generated script under Bun)", () => {
   });
 
   it("POST /_decopilot_vm/bash executes a command and returns stdout", async () => {
-    // Base64-wrap is the permanent wire format (WAF bypass); see daemon-script.ts header.
-    const raw = JSON.stringify({ command: "echo hello-world" });
-    const b64 = Buffer.from(raw, "utf-8").toString("base64");
     const res = await fetch(
       `http://localhost:${daemonPort}/_decopilot_vm/bash`,
       {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: b64,
+        body: JSON.stringify({ command: "echo hello-world" }),
       },
     );
     expect(res.status).toBe(200);
@@ -326,8 +323,7 @@ describe("daemon e2e (runs generated script under Bun)", () => {
     const sampleFile = join(appDir, "needle.txt");
     writeFileSync(sampleFile, "hello world\n");
 
-    const toBody = (obj: unknown) =>
-      Buffer.from(JSON.stringify(obj), "utf-8").toString("base64");
+    const toBody = (obj: unknown) => JSON.stringify(obj);
 
     const grepRes = await fetch(
       `http://localhost:${daemonPort}/_decopilot_vm/grep`,
@@ -357,8 +353,7 @@ describe("daemon e2e (runs generated script under Bun)", () => {
   it.skip("POST /_decopilot_vm/read returns file contents with line numbers", async () => {
     const sampleFile = join(appDir, "greet.txt");
     writeFileSync(sampleFile, "line1\nline2\nline3\n");
-    const toBody = (obj: unknown) =>
-      Buffer.from(JSON.stringify(obj), "utf-8").toString("base64");
+    const toBody = (obj: unknown) => JSON.stringify(obj);
 
     const res = await fetch(
       `http://localhost:${daemonPort}/_decopilot_vm/read`,
@@ -376,8 +371,7 @@ describe("daemon e2e (runs generated script under Bun)", () => {
   });
 
   it("POST /_decopilot_vm/write + /edit round-trip", async () => {
-    const toBody = (obj: unknown) =>
-      Buffer.from(JSON.stringify(obj), "utf-8").toString("base64");
+    const toBody = (obj: unknown) => JSON.stringify(obj);
 
     const wr = await fetch(
       `http://localhost:${daemonPort}/_decopilot_vm/write`,
@@ -412,8 +406,7 @@ describe("daemon e2e (runs generated script under Bun)", () => {
     // child terminates externally (timeout-triggered SIGKILL) and close
     // resolves the await promise with -1. If handleBash ever hangs on
     // spawn failures, this test would time out.
-    const toBody = (obj: unknown) =>
-      Buffer.from(JSON.stringify(obj), "utf-8").toString("base64");
+    const toBody = (obj: unknown) => JSON.stringify(obj);
     const res = await fetch(
       `http://localhost:${daemonPort}/_decopilot_vm/bash`,
       {
@@ -427,13 +420,13 @@ describe("daemon e2e (runs generated script under Bun)", () => {
     expect(body.exitCode).toBe(-1);
   });
 
-  it("POST /_decopilot_vm/bash with invalid base64 body returns 400", async () => {
+  it("POST /_decopilot_vm/bash with invalid JSON body returns 400", async () => {
     const res = await fetch(
       `http://localhost:${daemonPort}/_decopilot_vm/bash`,
       {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: "not-valid-base64-!!@#$",
+        body: "not-valid-json-!!@#$",
       },
     );
     expect(res.status).toBe(400);
@@ -477,16 +470,12 @@ describe("daemon e2e (Bun-native server guarantees)", () => {
     expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
 
     // 3. POST /bash (Bun-native Response)
-    const bashBody = Buffer.from(
-      JSON.stringify({ command: "true" }),
-      "utf-8",
-    ).toString("base64");
     const bash = await fetch(
       `http://localhost:${daemonPort}/_decopilot_vm/bash`,
       {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: bashBody,
+        body: JSON.stringify({ command: "true" }),
       },
     );
     expect(bash.headers.get("access-control-allow-origin")).toBe("*");
@@ -661,8 +650,7 @@ describe("daemon e2e (auth on mutating routes)", () => {
     await stopDaemon();
   }, HOOK_TIMEOUT_MS);
 
-  const toBody = (obj: unknown) =>
-    Buffer.from(JSON.stringify(obj), "utf-8").toString("base64");
+  const toBody = (obj: unknown) => JSON.stringify(obj);
 
   const MUTATING_POSTS: Array<{
     name: string;

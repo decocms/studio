@@ -4,7 +4,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import { safePath } from "../paths";
-import { parseBase64JsonBody, jsonResponse } from "./body-parser";
+import { parseJsonBody, jsonResponse } from "./body-parser";
 
 /**
  * Wall-clock cap for fetches in write_from_url / upload_to_url.
@@ -105,7 +105,7 @@ export function makeReadHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string; offset?: number; limit?: number };
     try {
-      body = (await parseBase64JsonBody(req)) as typeof body;
+      body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
@@ -177,7 +177,7 @@ export function makeWriteHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string; content?: string };
     try {
-      body = (await parseBase64JsonBody(req)) as typeof body;
+      body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
@@ -203,7 +203,7 @@ export function makeEditHandler(deps: FsDeps) {
       replace_all?: boolean;
     };
     try {
-      body = (await parseBase64JsonBody(req)) as typeof body;
+      body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
@@ -256,7 +256,7 @@ export function makeGrepHandler(deps: FsDeps) {
       limit?: number;
     };
     try {
-      body = (await parseBase64JsonBody(req)) as typeof body;
+      body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
@@ -347,7 +347,7 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string; url?: string };
     try {
-      body = (await parseBase64JsonBody(req)) as typeof body;
+      body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
@@ -452,7 +452,7 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string; url?: string; contentType?: string };
     try {
-      body = (await parseBase64JsonBody(req)) as typeof body;
+      body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }
@@ -551,7 +551,7 @@ export function makeGlobHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { pattern?: string; path?: string };
     try {
-      body = (await parseBase64JsonBody(req)) as typeof body;
+      body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 400);
     }

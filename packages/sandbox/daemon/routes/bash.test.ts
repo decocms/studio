@@ -5,14 +5,11 @@ import { join } from "node:path";
 import { TaskManager } from "../process/task-manager";
 import { makeBashHandler } from "./bash";
 
-function b64(obj: unknown): string {
-  return Buffer.from(JSON.stringify(obj), "utf-8").toString("base64");
-}
-
 function post(obj: unknown): Request {
   return new Request("http://x/_decopilot_vm/bash", {
     method: "POST",
-    body: b64(obj),
+    body: JSON.stringify(obj),
+    headers: { "Content-Type": "application/json" },
   });
 }
 

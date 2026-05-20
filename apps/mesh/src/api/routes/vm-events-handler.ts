@@ -144,7 +144,7 @@ async function cleanupStaleEntry(args: {
   claimName: string;
   userId: string;
   projectRef: string;
-  runnerKind: "host" | "docker" | "freestyle" | "agent-sandbox";
+  runnerKind: "host" | "docker" | "agent-sandbox";
 }): Promise<void> {
   const { ctx, runner, claimName, userId, projectRef, runnerKind } = args;
   try {

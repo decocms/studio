@@ -1,7 +1,6 @@
 /**
  * Pure helpers for the unified daemon's HTTP API. Daemon endpoints live
  * under `/_decopilot_vm/*` (except `/health` at root, which is unauth).
- * POST/PUT bodies are base64-encoded JSON — the daemon decodes on its side.
  */
 
 import type { TenantConfig } from "../daemon/types";
@@ -90,8 +89,7 @@ export interface ConfigAuthPatch {
  * the same payload semantics; deep-merge happens daemon-side).
  *
  * `/config` is the trust boundary endpoint; the daemon's NetworkPolicy is
- * the auth on its port. Body is base64-encoded JSON like every other
- * `/_decopilot_vm/*` route. 200 = applied (or no-op); 400 = invalid;
+ * the auth on its port. 200 = applied (or no-op); 400 = invalid;
  * 409 = identity conflict (e.g., cloneUrl mismatch).
  *
  * `auth.rotateToken` is applied *before* the tenant patch — see
@@ -115,15 +113,13 @@ async function configRequest(
 ): Promise<ConfigResponse> {
   const wire: Record<string, unknown> = { ...payload };
   if (auth && auth.rotateToken !== undefined) wire.auth = auth;
-  const rawBody = JSON.stringify(wire);
-  const b64Body = Buffer.from(rawBody, "utf-8").toString("base64");
   const res = await fetch(`${daemonUrl}/_decopilot_vm/config`, {
     method,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: b64Body,
+    body: JSON.stringify(wire),
     signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
   });
   const body = await res.text();
@@ -141,20 +137,18 @@ export async function daemonBash(
   input: ExecInput,
 ): Promise<ExecOutput> {
   const timeoutMs = input.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
-  const rawBody = JSON.stringify({
-    command: input.command,
-    timeout: timeoutMs,
-    cwd: input.cwd,
-    env: input.env,
-  });
-  const b64Body = Buffer.from(rawBody, "utf-8").toString("base64");
   const response = await fetch(`${daemonUrl}/_decopilot_vm/bash`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: b64Body,
+    body: JSON.stringify({
+      command: input.command,
+      timeout: timeoutMs,
+      cwd: input.cwd,
+      env: input.env,
+    }),
     signal: AbortSignal.timeout(timeoutMs + 5_000),
   });
   if (!response.ok) {

@@ -3,7 +3,7 @@
  * `upgrade` event hands off a socket whose writes never reach the client).
  * Binds both 127.0.0.1 and ::1 for Chrome Happy-Eyeballs; default port 7070
  * because macOS AirPlay owns 7000. `*.localhost` resolves to loopback
- * natively (RFC 6761). Not wired in prod (Freestyle/K8s have real ingress).
+ * natively (RFC 6761). Not wired in prod (K8s has real ingress).
  */
 
 import * as net from "node:net";
