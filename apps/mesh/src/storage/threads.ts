@@ -367,43 +367,53 @@ export class SqlThreadStorage implements ThreadStoragePort {
     const archived = options?.includeArchived === true;
     let query = this.db
       .selectFrom("threads")
-      .selectAll()
-      .where("organization_id", "=", organizationId)
-      .where("hidden", "=", archived)
-      .orderBy("updated_at", "desc");
+      .leftJoin(
+        "automation_triggers",
+        "automation_triggers.id",
+        "threads.trigger_id",
+      )
+      .selectAll("threads")
+      .select("automation_triggers.automation_id as automation_id")
+      .where("threads.organization_id", "=", organizationId)
+      .where("threads.hidden", "=", archived)
+      .orderBy("threads.updated_at", "desc");
 
     if (createdBy) {
-      query = query.where("created_by", "=", createdBy);
+      query = query.where("threads.created_by", "=", createdBy);
     }
     const virtualMcpFilter = options?.virtualMcpId ?? options?.agentId;
     if (virtualMcpFilter) {
-      query = query.where("virtual_mcp_id", "=", virtualMcpFilter);
+      query = query.where("threads.virtual_mcp_id", "=", virtualMcpFilter);
     }
     if (options?.hasTrigger === true) {
-      query = query.where("trigger_id", "is not", null);
+      query = query.where("threads.trigger_id", "is not", null);
     } else if (options?.hasTrigger === false) {
-      query = query.where("trigger_id", "is", null);
+      query = query.where("threads.trigger_id", "is", null);
     }
     if (options?.startDate) {
       // updated_at is stored as ISO text — string comparison is correct for ISO dates
       query = query.where(
-        "updated_at",
+        "threads.updated_at",
         ">=",
         options.startDate as unknown as Date,
       );
     }
     if (options?.endDate) {
       query = query.where(
-        "updated_at",
+        "threads.updated_at",
         "<=",
         options.endDate as unknown as Date,
       );
     }
     if (options?.search) {
-      query = query.where("title", "ilike", `%${options.search}%`);
+      query = query.where("threads.title", "ilike", `%${options.search}%`);
     }
     if (options?.status) {
-      query = query.where("status", "=", options.status as ThreadStatus);
+      query = query.where(
+        "threads.status",
+        "=",
+        options.status as ThreadStatus,
+      );
     }
 
     let countQuery = this.db
@@ -477,11 +487,17 @@ export class SqlThreadStorage implements ThreadStoragePort {
 
     let query = this.db
       .selectFrom("threads")
-      .selectAll()
-      .where("organization_id", "=", organizationId)
-      .where("hidden", "=", false)
-      .where("trigger_id", "in", triggerIds)
-      .orderBy("updated_at", "desc");
+      .leftJoin(
+        "automation_triggers",
+        "automation_triggers.id",
+        "threads.trigger_id",
+      )
+      .selectAll("threads")
+      .select("automation_triggers.automation_id as automation_id")
+      .where("threads.organization_id", "=", organizationId)
+      .where("threads.hidden", "=", false)
+      .where("threads.trigger_id", "in", triggerIds)
+      .orderBy("threads.updated_at", "desc");
 
     const countQuery = this.db
       .selectFrom("threads")
@@ -838,6 +854,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     description: string | null;
     status: string;
     trigger_id?: string | null;
+    automation_id?: string | null;
     context_start_message_id?: string | null;
     run_owner_pod?: string | null;
     run_config?: Record<string, unknown> | null;
@@ -876,6 +893,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       description: row.description,
       status: row.status as ThreadStatus,
       trigger_id: row.trigger_id ?? null,
+      automation_id: row.automation_id ?? null,
       context_start_message_id: row.context_start_message_id ?? null,
       run_owner_pod: row.run_owner_pod ?? null,
       run_config: row.run_config ?? null,

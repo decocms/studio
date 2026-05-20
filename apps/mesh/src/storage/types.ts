@@ -818,6 +818,11 @@ export interface Thread {
   hidden: boolean | null;
   status: ThreadStatus;
   trigger_id: string | null;
+  /**
+   * Derived via join with `automation_triggers.automation_id` when present.
+   * Null for threads without a trigger, or when the loading path doesn't join.
+   */
+  automation_id: string | null;
   context_start_message_id: string | null;
   run_owner_pod: string | null;
   run_config: Record<string, unknown> | null;

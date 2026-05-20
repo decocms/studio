@@ -18,6 +18,7 @@ const BASE_THREAD: Thread = {
   hidden: null,
   status: "completed",
   trigger_id: null,
+  automation_id: null,
   context_start_message_id: null,
   run_owner_pod: null,
   run_config: null,

@@ -1,12 +1,19 @@
 import { cn } from "@deco/ui/lib/utils.js";
-import { Archive } from "@untitledui/icons";
+import { Archive, Zap } from "@untitledui/icons";
 import { useEffect, useRef } from "react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { useVirtualMCP } from "@decocms/mesh-sdk";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@deco/ui/components/context-menu.tsx";
+import { useVirtualMCP, useProjectContext } from "@decocms/mesh-sdk";
+import { useNavigate } from "@tanstack/react-router";
 import { McpAvatar } from "./mcp-avatar";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { formatTimeAgo } from "@/web/lib/format-time";
@@ -31,6 +38,21 @@ export function TaskRow({
   const virtualMcp = useVirtualMCP(task.virtual_mcp_id);
   const githubRepo = getActiveGithubRepo(virtualMcp);
   const rowRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const automationId = task.automation_id;
+
+  const handleGoToAutomation = () => {
+    if (!automationId) return;
+    navigate({
+      to: "/$org/$taskId",
+      params: { org: org.slug, taskId: task.id },
+      search: {
+        virtualmcpid: task.virtual_mcp_id,
+        main: "automation:" + automationId,
+      },
+    });
+  };
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs route-selected task row with the scrollable tasks panel DOM
   useEffect(() => {
@@ -46,7 +68,7 @@ export function TaskRow({
     });
   }, [isActive, task.id]);
 
-  return (
+  const row = (
     <div
       ref={rowRef}
       role="button"
@@ -126,5 +148,19 @@ export function TaskRow({
         </Tooltip>
       </div>
     </div>
+  );
+
+  if (!automationId) return row;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={handleGoToAutomation}>
+          <Zap size={14} />
+          Go to Automation
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

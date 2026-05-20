@@ -29,6 +29,8 @@ export interface Task {
    * to ask "is this an automation?".
    */
   trigger_id?: string | null;
+  /** ID of the automation that triggered this task, when triggered by an automation. */
+  automation_id?: string | null;
   /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
   branch?: string | null;
   /** Per-thread metadata — layout tabs, expanded tools, etc. Loaded by COLLECTION_THREADS_GET. */
