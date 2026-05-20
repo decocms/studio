@@ -138,8 +138,15 @@ export function PreviewContent() {
     userId && branch ? metadata?.vmMap?.[userId]?.[branch] : undefined;
   const previewUrl = vmEntry?.previewUrl ?? null;
 
+  const virtualMcpId = inset?.entity?.id ?? null;
+  const { org } = useProjectContext();
+
   // Decofile pages for the URL bar dropdown
-  const { data: decofile } = useDecofile(previewUrl);
+  const decofileParams =
+    virtualMcpId && branch
+      ? { orgSlug: org.slug, virtualMcpId, branch }
+      : null;
+  const { data: decofile } = useDecofile(decofileParams);
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
     : [];
@@ -197,8 +204,6 @@ export function PreviewContent() {
   //   auto-start: once per taskId
   //   self-heal:  once per dead vmId (don't loop on repeat 404s; new vmId OK)
   // A shared ref would conflate them.
-  const virtualMcpId = inset?.entity?.id ?? null;
-  const { org } = useProjectContext();
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: inset?.entity?.organization_id ?? "",
@@ -711,7 +716,6 @@ export function PreviewContent() {
               }
             >
               <SectionsEditor
-                previewUrl={previewUrl}
                 orgSlug={org.slug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}

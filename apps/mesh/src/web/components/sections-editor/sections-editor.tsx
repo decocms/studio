@@ -341,14 +341,12 @@ function unwrapSection(
  * Changes auto-save after a debounce.
  */
 export function SectionsEditor({
-  previewUrl,
   orgSlug,
   virtualMcpId,
   branch,
   currentPath,
   onSaved,
 }: {
-  previewUrl: string;
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
@@ -356,9 +354,11 @@ export function SectionsEditor({
   /** Called after a successful auto-save so the parent can reload the preview. */
   onSaved?: () => void;
 }) {
+  const previewFetchParams = { orgSlug, virtualMcpId, branch };
   const { data: decofile, isLoading: decofileLoading } =
-    useDecofile(previewUrl);
-  const { data: meta, isLoading: metaLoading } = useLiveMeta(previewUrl);
+    useDecofile(previewFetchParams);
+  const { data: meta, isLoading: metaLoading } =
+    useLiveMeta(previewFetchParams);
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
@@ -388,7 +388,7 @@ export function SectionsEditor({
     setRuleResolveType(null);
   }
 
-  const saveBlock = useSaveBlock({ previewUrl, orgSlug, virtualMcpId, branch });
+  const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
