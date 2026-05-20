@@ -143,9 +143,7 @@ export function PreviewContent() {
 
   // Decofile pages for the URL bar dropdown
   const decofileParams =
-    virtualMcpId && branch
-      ? { orgSlug: org.slug, virtualMcpId, branch }
-      : null;
+    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
   const { data: decofile } = useDecofile(decofileParams);
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
