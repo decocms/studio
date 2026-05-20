@@ -14,13 +14,9 @@ export function useDecofile(params: UseDecofileParams | null) {
   return useQuery({
     queryKey: KEYS.decofile(key),
     queryFn: async () => {
-      const search = new URLSearchParams({
-        virtualMcpId: params!.virtualMcpId,
-        branch: params!.branch,
-        path: "/.decofile",
-      });
+      const search = new URLSearchParams({ path: "/.decofile" });
       const res = await fetch(
-        `/api/${params!.orgSlug}/vm-preview-fetch?${search.toString()}`,
+        `/api/${params!.orgSlug}/vm/${encodeURIComponent(params!.virtualMcpId)}/${encodeURIComponent(params!.branch)}/preview-fetch?${search.toString()}`,
       );
       if (!res.ok) throw new Error(`Failed to fetch decofile: ${res.status}`);
       return (await res.json()) as Record<string, unknown>;

@@ -15,13 +15,9 @@ export function useLiveMeta(params: UseLiveMetaParams | null) {
   return useQuery({
     queryKey: KEYS.liveMeta(key),
     queryFn: async () => {
-      const search = new URLSearchParams({
-        virtualMcpId: params!.virtualMcpId,
-        branch: params!.branch,
-        path: "/live/_meta",
-      });
+      const search = new URLSearchParams({ path: "/live/_meta" });
       const res = await fetch(
-        `/api/${params!.orgSlug}/vm-preview-fetch?${search.toString()}`,
+        `/api/${params!.orgSlug}/vm/${encodeURIComponent(params!.virtualMcpId)}/${encodeURIComponent(params!.branch)}/preview-fetch?${search.toString()}`,
       );
       if (!res.ok) throw new Error(`Failed to fetch live meta: ${res.status}`);
       return (await res.json()) as LiveMeta;

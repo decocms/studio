@@ -151,28 +151,26 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   );
 
   // Bridge for chip clicks → edit dialog. The storage on the MentionNode
-  // extension is read by `MentionNodeView`; we dispatch through a ref so the
-  // stored callback always uses the latest closure without needing useEffect.
-  const requestEditRef = useRef<(req: EditMentionRequest) => void>(() => {});
-  requestEditRef.current = async (req: EditMentionRequest) => {
-    if (!client) return;
-    try {
-      const prompts = await fetchPrompts(queryClient, promptsQueryKey, client);
-      const prompt = prompts.find((p) => p.name === req.promptId);
-      if (!prompt?.arguments || prompt.arguments.length === 0) return;
-      setEditingMention({ ...req, prompt });
-    } catch (error) {
-      console.error("[slash] Failed to load prompt for editing:", error);
-      toast.error("Failed to load prompt. Please try again.");
-    }
-  };
-  // Reassign the storage dispatcher on every render so that if SlashMention
-  // remounts (Suspense, route change), the new instance's ref is used instead
-  // of the stale one from the previous mount. The closure simply forwards to
-  // the latest `requestEditRef.current`.
+  // extension is read by `MentionNodeView`; we assign the callback directly
+  // on every render so it always closes over the latest `client` / query state.
   const mentionStorage = getMentionStorage(editor);
   if (mentionStorage) {
-    mentionStorage.onEditChip = (req) => requestEditRef.current(req);
+    mentionStorage.onEditChip = async (req: EditMentionRequest) => {
+      if (!client) return;
+      try {
+        const prompts = await fetchPrompts(
+          queryClient,
+          promptsQueryKey,
+          client,
+        );
+        const prompt = prompts.find((p) => p.name === req.promptId);
+        if (!prompt?.arguments || prompt.arguments.length === 0) return;
+        setEditingMention({ ...req, prompt });
+      } catch (error) {
+        console.error("[slash] Failed to load prompt for editing:", error);
+        toast.error("Failed to load prompt. Please try again.");
+      }
+    };
   }
 
   // Track picker open → close outcome so we can measure abandonment.

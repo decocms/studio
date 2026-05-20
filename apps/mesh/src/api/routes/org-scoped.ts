@@ -17,11 +17,7 @@ import { createSelfRoutes } from "./self";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
-import { createVmEventsRoutes } from "./vm-events";
-import { createVmExecRoutes } from "./vm-exec";
-import { createVmFileRoutes } from "./vm-file";
-import { createVmPreviewFetchRoutes } from "./vm-preview-fetch";
-import { createVmSetupRoutes } from "./vm-setup";
+import { createVmRoutes } from "./vm-proxy";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -66,11 +62,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
-  app.route("/vm-events", createVmEventsRoutes()); // /api/:org/vm-events
-  app.route("/vm-exec", createVmExecRoutes()); // /api/:org/vm-exec/{exec,kill}/:script
-  app.route("/vm-file", createVmFileRoutes()); // /api/:org/vm-file/{write,read}
-  app.route("/vm-preview-fetch", createVmPreviewFetchRoutes()); // /api/:org/vm-preview-fetch?path=...
-  app.route("/vm-setup", createVmSetupRoutes()); // /api/:org/vm-setup/:step
+  app.route("/vm", createVmRoutes()); // /api/:org/vm/:vmId/:branch/*
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(
