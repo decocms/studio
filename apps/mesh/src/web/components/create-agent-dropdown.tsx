@@ -2,8 +2,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { Globe02, ShoppingBag03, Users03 } from "@untitledui/icons";
+import { Globe02, Users03 } from "@untitledui/icons";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
+import { SHOPIFY_HYDROGEN_ICON } from "@/web/hooks/use-create-website-agent";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 
 interface CreateAgentDropdownContentProps {
@@ -42,7 +43,11 @@ export function CreateAgentDropdownContent({
         Create Website
       </DropdownMenuItem>
       <DropdownMenuItem disabled={isCreating} onClick={onCreateHydrogenStore}>
-        <ShoppingBag03 size={14} />
+        <img
+          src={SHOPIFY_HYDROGEN_ICON}
+          alt=""
+          className="size-3.5 object-contain"
+        />
         Create Shopify Headless Store
       </DropdownMenuItem>
       {preferences.experimental_vibecode && (

@@ -46,7 +46,7 @@ import {
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { CollectionSearch } from "@deco/ui/components/collection-search.tsx";
-import { Globe02, Plus, Settings02, ShoppingBag03, X } from "@untitledui/icons";
+import { Globe02, Plus, Settings02, X } from "@untitledui/icons";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -66,6 +66,7 @@ import { usePinnedAgents } from "@/web/hooks/use-pinned-agents";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import {
   HYDROGEN_TEMPLATE,
+  SHOPIFY_HYDROGEN_ICON,
   WEBSITE_TEMPLATE,
   useCreateAgentFromTemplate,
 } from "@/web/hooks/use-create-website-agent";
@@ -569,7 +570,11 @@ function PinAgentPopoverContent({
             className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
-              <ShoppingBag03 className="size-5 text-muted-foreground" />
+              <img
+                src={SHOPIFY_HYDROGEN_ICON}
+                alt=""
+                className="size-5 object-contain"
+              />
             </div>
             <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
               Shopify Headless Store
