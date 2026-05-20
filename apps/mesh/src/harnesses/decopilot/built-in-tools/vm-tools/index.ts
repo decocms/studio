@@ -3,8 +3,7 @@
  *
  * Registers the six LLM-visible tools (read/write/edit/grep/glob/bash) on
  * top of any `SandboxRunner.proxyDaemonRequest`. All runners speak the
- * unified `/_decopilot_vm/*` surface with base64-wrapped JSON bodies
- * (Cloudflare WAF bypass; harmless 33% overhead on non-CF paths).
+ * unified `/_decopilot_vm/*` surface with plain JSON bodies.
  */
 
 import { tool, zodSchema } from "ai";
@@ -103,12 +102,6 @@ function toFileDownloadUrl(
 
 export type { VmToolsParams } from "./types";
 
-/**
- * Exported because the config tools (`get_vm_config` / `set_vm_config`) live
- * in a sibling file but speak the same `/_decopilot_vm/*` wire — base64
- * JSON bodies, identical error mapping, identical "sandbox is not running"
- * surface. Keeping one helper avoids drift between the two callers.
- */
 async function daemonRequest(
   runner: SandboxRunner,
   handle: string,
@@ -130,7 +123,7 @@ async function daemonRequest(
     // GET/HEAD must not carry a body; the runners' proxy strips it anyway,
     // but constructing it is wasteful and obscures intent.
     if (method !== "GET" && body !== null) {
-      init.body = Buffer.from(JSON.stringify(body), "utf-8").toString("base64");
+      init.body = JSON.stringify(body);
     }
     res = await runner.proxyDaemonRequest(handle, path, init);
   } catch {
