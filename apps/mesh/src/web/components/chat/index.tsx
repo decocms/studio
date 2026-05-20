@@ -152,7 +152,7 @@ function ChatMessages() {
       style={{ paddingBottom }}
     >
       <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
-        <div ref={sentinelRef} aria-hidden style={{ height: 1 }} />
+        <div ref={sentinelRef} aria-hidden className="h-px" />
         {isFetchingOlder && (
           <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
             Loading older messages…
