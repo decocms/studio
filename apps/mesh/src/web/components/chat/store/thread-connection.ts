@@ -209,8 +209,9 @@ export interface ThreadConnectionOptions {
 export class ThreadConnection {
   readonly key: string;
 
-  /** Single source of truth. Server snapshot on load, mutated locally on
-   *  submit, mutated chunk-by-chunk during SSE streaming. */
+  /** Single source of truth. Seeded from COLLECTION_THREAD_MESSAGES_LIST on
+   *  load, mutated locally on submit, mutated chunk-by-chunk during SSE
+   *  streaming. */
   readonly messages = new Store<UIMessage[]>([]);
   readonly status = new Store<ConnStatus>({ kind: "loading" });
   readonly finishReason = new Store<string | null>(null);
