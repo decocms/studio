@@ -99,9 +99,6 @@ export interface ThreadStoragePort {
     podId: string | null,
   ): Promise<boolean>;
 
-  /** Release ownership for all runs owned by this pod (graceful shutdown). */
-  orphanRunsByPod(podId: string): Promise<string[]>;
-
   /** Append an entry to threads.inflight_async_jobs. Atomic via jsonb concat. */
   addInflightAsyncJob(
     taskId: string,

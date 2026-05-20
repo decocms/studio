@@ -23,7 +23,6 @@ function makeNoopDeps(): RunReactorDeps {
       claimRunStart: mock(() => Promise.resolve(true)),
       listOrphanedRuns: mock(() => Promise.resolve([])),
       listOrphanedRunsByPod: mock(() => Promise.resolve([])),
-      orphanRunsByPod: mock(() => Promise.resolve([])),
       addInflightAsyncJob: mock(() => Promise.resolve()),
       findInflightAsyncJob: mock(() => Promise.resolve(null)),
       removeInflightAsyncJob: mock(() => Promise.resolve()),
@@ -328,7 +327,7 @@ describe("RunRegistry", () => {
   // stopAll
   // -------------------------------------------------------------------------
   describe("stopAll (orphan semantics)", () => {
-    it("orphans runs in DB, aborts running entries, and clears state", async () => {
+    it("aborts running entries and clears state without touching DB ownership", async () => {
       const deps = makeNoopDeps();
       const registry = createRegistry(deps);
 
@@ -348,23 +347,17 @@ describe("RunRegistry", () => {
 
       await registry.stopAll();
 
-      // DB orphan is called first so runs are resumable if process dies
-      expect(deps.storage.orphanRunsByPod).toHaveBeenCalled();
+      // run_owner_pod is deliberately left set so survivors that detect
+      // our death via the released advisory lock can find these runs
+      // via listOrphanedRunsByPod(thisPodId). Nulling here drops the
+      // recovery signal — see graceful-shutdown comment in stopAll().
+      expect(deps.storage.update).not.toHaveBeenCalled();
 
       // In-memory: abort controllers triggered and state cleared
       expect(signalT1.aborted).toBe(true);
       expect(signalT2.aborted).toBe(true);
       expect(registry.isRunning("t1")).toBe(false);
       expect(registry.isRunning("t2")).toBe(false);
-    });
-
-    it("calls orphanRunsByPod with correct podId", async () => {
-      const deps = makeNoopDeps();
-      const registry = createRegistry(deps);
-      startThread(registry, "t1", "org1", "u1");
-
-      await registry.stopAll();
-      expect(deps.storage.orphanRunsByPod).toHaveBeenCalledWith("test-pod");
     });
 
     it("aborts AbortControllers", async () => {
@@ -383,22 +376,6 @@ describe("RunRegistry", () => {
       startThread(registry, "t1", "org1", "u1");
 
       await registry.stopAll();
-      expect(registry.isRunning("t1")).toBe(false);
-    });
-
-    it("handles orphanRunsByPod failure gracefully", async () => {
-      const deps = makeNoopDeps();
-      (
-        deps.storage.orphanRunsByPod as ReturnType<typeof mock>
-      ).mockImplementation(() => Promise.reject(new Error("DB down")));
-      const registry = createRegistry(deps);
-      startThread(registry, "t1", "org1", "u1");
-      const signal = registry.getAbortSignal("t1")!;
-
-      await registry.stopAll(); // should not throw
-
-      // controllers still aborted, state still cleared
-      expect(signal.aborted).toBe(true);
       expect(registry.isRunning("t1")).toBe(false);
     });
   });
@@ -555,6 +532,53 @@ describe("RunRegistry", () => {
       const resumeFn = mock(() => Promise.resolve());
       await registry.recoverOrphanedRuns(resumeFn);
       expect(resumeFn).not.toHaveBeenCalled();
+    });
+
+    it("skips threads this registry is already running", async () => {
+      // Race the startup-recovery sweep against handlePodDeath:
+      // handlePodDeath fired first, CAS-stole the orphan from a dead
+      // peer (run_owner_pod is now this pod), and dispatched a resume.
+      // The startup timer fires moments later and sees the row owned
+      // by us — which the same-pod branch in listOrphanedRuns
+      // deliberately allows for K8s StatefulSet name re-use. Without
+      // the isRunning guard here, recoverOrphanedRuns would CAS again
+      // (expectedCurrentOwner = thisPod still matches) and fire a
+      // second dispatch on the same JetStream subject, producing
+      // duplicated chunks downstream.
+      const deps = makeNoopDeps();
+      (
+        deps.storage.listOrphanedRuns as ReturnType<typeof mock>
+      ).mockImplementation(() =>
+        Promise.resolve([
+          {
+            id: "t1",
+            organization_id: "org1",
+            trigger_id: "trig1",
+            run_config: {},
+            title: "t",
+            description: null,
+            status: "in_progress",
+            created_at: "",
+            updated_at: "",
+            created_by: "u1",
+            updated_by: undefined,
+            hidden: false,
+            context_start_message_id: null,
+            run_owner_pod: "test-pod",
+            run_started_at: null,
+          },
+        ]),
+      );
+      (
+        deps.storage.claimOrphanedRun as ReturnType<typeof mock>
+      ).mockImplementation(() => Promise.resolve(true));
+      const registry = createRegistry(deps);
+      // Simulate handlePodDeath having already claimed + started t1.
+      startThread(registry, "t1", "org1", "u1");
+      const resumeFn = mock(() => Promise.resolve());
+      await registry.recoverOrphanedRuns(resumeFn);
+      expect(resumeFn).not.toHaveBeenCalled();
+      expect(deps.storage.claimOrphanedRun).not.toHaveBeenCalled();
     });
   });
 

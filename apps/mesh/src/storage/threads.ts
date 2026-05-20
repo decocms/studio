@@ -765,17 +765,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return (result?.numUpdatedRows ?? 0n) > 0n;
   }
 
-  async orphanRunsByPod(podId: string): Promise<string[]> {
-    const rows = await this.db
-      .updateTable("threads")
-      .set({ run_owner_pod: null, updated_at: new Date().toISOString() })
-      .where("run_owner_pod", "=", podId)
-      .where("status", "=", "in_progress")
-      .returning("id")
-      .execute();
-    return rows.map((r) => r.id);
-  }
-
   async addInflightAsyncJob(
     taskId: string,
     organizationId: string,

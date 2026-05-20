@@ -24,7 +24,6 @@ function makeDeps(): RunReactorDeps {
       claimRunStart: mock(() => Promise.resolve(true)),
       listOrphanedRuns: mock(() => Promise.resolve([])),
       listOrphanedRunsByPod: mock(() => Promise.resolve([])),
-      orphanRunsByPod: mock(() => Promise.resolve([])),
       addInflightAsyncJob: mock(() => Promise.resolve()),
       findInflightAsyncJob: mock(() => Promise.resolve(null)),
       removeInflightAsyncJob: mock(() => Promise.resolve()),

@@ -860,10 +860,15 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
 
   currentDecopilotCleanup = async () => {
-    // Release the liveness lock + remove from registry first → survivors
-    // see us gone on their next poll, no false-alive window.
-    await podHeartbeat.stop();
+    // Abort in-flight runs FIRST, then release the liveness lock.
+    // Order matters: dropping the lock signals death to peers, and we
+    // want our streamText loops fully aborted before a survivor's
+    // handlePodDeath fires and starts a resumed run — otherwise both
+    // pods briefly pump into the same per-thread subject. `stopAll`
+    // leaves `run_owner_pod` set so the survivor can locate our runs
+    // via `listOrphanedRunsByPod(thisPodId)`.
     await runRegistry.stopAll();
+    await podHeartbeat.stop();
     runRegistry.dispose();
     cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();

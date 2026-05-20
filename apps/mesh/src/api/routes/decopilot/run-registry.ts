@@ -140,26 +140,21 @@ export class RunRegistry {
   }
 
   /**
-   * Graceful shutdown: orphan all runs in the DB first (so they are resumable
-   * if the process dies), then abort in-memory controllers and clear state.
-   * The DB write MUST happen before states.clear() — if the process dies
-   * between clear() and the DB write, threads would be permanently stuck.
+   * Graceful shutdown: abort in-memory controllers and clear state. We
+   * deliberately leave `run_owner_pod` set so survivors that detect our
+   * death (their next heartbeat poll catches the released advisory
+   * lock) can locate our runs via `listOrphanedRunsByPod(thisPodId)`.
+   * Nulling the column here would have hidden them from the
+   * by-pod query and the death signal would have been lost.
+   * Same-pod restarts still recover via `listOrphanedRuns`'s
+   * `currentPodId` branch.
    */
   async stopAll(): Promise<void> {
-    // 1. DB: orphan all runs owned by this pod FIRST
-    //    (if process dies after this, runs are resumable)
-    try {
-      await this.deps.storage.orphanRunsByPod(this.podId);
-    } catch (err) {
-      console.error("[RunRegistry] Failed to orphan runs in DB:", err);
-    }
-    // 2. In-memory: abort all controllers (stops streamText loops)
     for (const [, state] of this.states) {
       if (state.status.tag === "running") {
         state.status.abortController.abort();
       }
     }
-    // 3. In-memory: clear map
     this.states.clear();
   }
 

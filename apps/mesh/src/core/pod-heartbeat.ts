@@ -23,10 +23,14 @@
  *     of truth, and the periodic poll runs against a cheap query.
  *
  * Pod registry: `studio_pods` table (one row per live pod id). Each pod
- * INSERTs on `start()` and DELETEs on `stop()` (graceful). When the
- * poll loop detects a dead peer, it DELETEs that row too — so the
- * table stays a faithful view of who's actually alive, modulo a
- * one-poll-interval window for orphans.
+ * INSERTs on `start()`; the row stays there until a peer's probe
+ * succeeds — including graceful shutdown, which releases the lock
+ * without touching the row. That keeps the death signal flowing
+ * through the same advisory-lock check whether the pod was killed,
+ * partitioned, or asked to stop, so survivors react identically. The
+ * survivor that wins the probe DELETEs the row in the same
+ * transaction, leaving the table a faithful view of liveness modulo
+ * one poll interval.
  */
 
 import { Client, type Pool, type PoolClient } from "pg";
@@ -269,13 +273,15 @@ export class PgPodHeartbeat implements PodHeartbeat {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
-    // Remove ourselves from the registry first so survivor probes
-    // stop targeting us right away.
-    if (this.podId) {
-      await this.deps.pool
-        .query("DELETE FROM studio_pods WHERE pod_id = $1", [this.podId])
-        .catch(() => {});
-    }
+    // Don't DELETE our studio_pods row here. Dropping the row would
+    // hide us from survivor polls and they'd never fire handlePodDeath
+    // for the orphaned runs we leave behind. Instead, just end the
+    // liveness client: Postgres releases the advisory lock immediately,
+    // and the next survivor poll (≤ POLL_INTERVAL_MS) sees the lock
+    // free, calls handlePodDeath, claims our runs via the existing
+    // recovery path, and cleans up our row in the same probe
+    // transaction. SIGKILL/OOM/network drop and graceful shutdown share
+    // one death-detection mechanism this way.
     if (this.livenessClient) {
       try {
         await this.livenessClient.end();

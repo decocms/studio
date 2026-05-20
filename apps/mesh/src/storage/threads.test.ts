@@ -390,45 +390,6 @@ describe("SqlThreadStorage", () => {
       });
     });
 
-    describe("orphanRunsByPod", () => {
-      it("clears ownership for all runs owned by pod", async () => {
-        const thread = await storage.create({
-          organization_id: "org_1",
-          created_by: "user_1",
-          status: "in_progress",
-        });
-        await storage.update(thread.id, "org_1", {
-          run_owner_pod: "pod-orphan-test",
-          run_config: { agent: { id: "a" } },
-        });
-
-        await storage.orphanRunsByPod("pod-orphan-test");
-
-        const loaded = await storage.get(thread.id, "org_1");
-        expect(loaded?.run_owner_pod).toBeNull();
-        // status should remain in_progress
-        expect(loaded?.status).toBe("in_progress");
-        // run_config should be preserved
-        expect(loaded?.run_config).not.toBeNull();
-      });
-
-      it("does not affect runs owned by other pods", async () => {
-        const thread = await storage.create({
-          organization_id: "org_1",
-          created_by: "user_1",
-          status: "in_progress",
-        });
-        await storage.update(thread.id, "org_1", {
-          run_owner_pod: "pod-other",
-        });
-
-        await storage.orphanRunsByPod("pod-orphan-different");
-
-        const loaded = await storage.get(thread.id, "org_1");
-        expect(loaded?.run_owner_pod).toBe("pod-other");
-      });
-    });
-
     describe("update() with new columns", () => {
       it("persists run_owner_pod", async () => {
         const thread = await storage.create({
