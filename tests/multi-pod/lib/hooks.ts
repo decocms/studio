@@ -47,6 +47,23 @@ async function clearDbosState(): Promise<void> {
   await dbQuery("DELETE FROM dbos.workflow_queue");
 }
 
+/**
+ * Mark every leftover `in_progress` thread as `failed` and clear its
+ * `run_owner_pod`. After a pod-death scenario, the killed pod's threads
+ * stay in_progress with run_owner_pod=<dead-pod-id>; when that pod
+ * restarts at the next scenario's `restoreStoppedPods`, its startup
+ * recovery sees the row as its own previous incarnation and dispatches
+ * a resume — long after the original test ended. That resumed run then
+ * races concurrent dispatches the new scenario kicks off and chunks
+ * appear on the wrong /stream subscribers. Resetting the table here
+ * keeps each scenario's recovery scope to its own in-flight work.
+ */
+async function clearStaleThreads(): Promise<void> {
+  await dbQuery(
+    "UPDATE threads SET status = 'failed', run_owner_pod = NULL WHERE status = 'in_progress'",
+  );
+}
+
 async function restoreStoppedPods(): Promise<void> {
   const proc = Bun.spawn(
     [
@@ -100,6 +117,7 @@ async function restoreStoppedPods(): Promise<void> {
 export function registerTestHooks(): void {
   beforeAll(async () => {
     await clearDbosState();
+    await clearStaleThreads();
     await restoreStoppedPods();
     await waitReady();
   }, 180_000);

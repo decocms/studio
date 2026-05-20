@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { sql } from "kysely";
 import {
   createTestDatabase,
   closeTestDatabase,
@@ -332,6 +333,56 @@ describe("SqlThreadStorage", () => {
         await storage.update(thread.id, "org_1", {
           run_config: { agent: { id: "a" } },
           run_owner_pod: "current-pod",
+        });
+        const orphans = await storage.listOrphanedRuns("current-pod");
+        const found = orphans.find((t) => t.id === thread.id);
+        expect(found).toBeDefined();
+      });
+
+      it("does NOT return threads owned by a live peer pod", async () => {
+        // The bug this guards against: a freshly-booted pod's 10s startup
+        // recovery sweep fires while a peer pod has just claimed a new
+        // thread. If listOrphanedRuns returned that thread, the booting
+        // pod would CAS-claim it (the read-back owner still matches
+        // because the peer hasn't re-touched the row) and dispatch a
+        // duplicate resume while the peer's live dispatch keeps streaming
+        // — two writers on the per-thread JetStream subject.
+        await sql`
+          INSERT INTO studio_pods (pod_id) VALUES ('live-peer')
+          ON CONFLICT (pod_id) DO NOTHING
+        `.execute(database.db);
+        const thread = await storage.create({
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "in_progress",
+        });
+        await storage.update(thread.id, "org_1", {
+          run_config: { agent: { id: "a" } },
+          run_owner_pod: "live-peer",
+        });
+        const orphans = await storage.listOrphanedRuns("current-pod");
+        const found = orphans.find((t) => t.id === thread.id);
+        expect(found).toBeUndefined();
+        await sql`DELETE FROM studio_pods WHERE pod_id = 'live-peer'`.execute(
+          database.db,
+        );
+      });
+
+      it("returns threads owned by a dead peer pod (not in registry)", async () => {
+        // A pod died and its row was cleaned up from studio_pods (or it
+        // was never in studio_pods to begin with — same effect). The
+        // booting pod's startup sweep should pick it up. The handlePodDeath
+        // path covers the same case but with a one-poll-interval lag; this
+        // sweep eliminates the lag for runs whose owner died before we
+        // booted.
+        const thread = await storage.create({
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "in_progress",
+        });
+        await storage.update(thread.id, "org_1", {
+          run_config: { agent: { id: "a" } },
+          run_owner_pod: "dead-peer",
         });
         const orphans = await storage.listOrphanedRuns("current-pod");
         const found = orphans.find((t) => t.id === thread.id);

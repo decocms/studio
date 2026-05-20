@@ -663,24 +663,48 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return result.rows.length > 0;
   }
 
-  async listOrphanedRuns(_currentPodId: string): Promise<Thread[]> {
-    // Lists every in_progress thread with a persisted run_config, regardless
-    // of which pod is recorded as the current owner. Intended for the
-    // startup recovery sweep, which runs against a registry that is empty
-    // by construction — anything in the DB is recoverable from this
-    // process's perspective.
+  async listOrphanedRuns(currentPodId: string): Promise<Thread[]> {
+    // Returns only in_progress threads whose owner is gone — null, this
+    // pod's own previous incarnation (K8s StatefulSet name re-use), or a
+    // pod that's no longer registered in `studio_pods`. Threads currently
+    // owned by a live peer are deliberately skipped: if we claimed them
+    // via CAS during this pod's 10s startup sweep, we'd race the peer's
+    // live dispatch and end up with two concurrent runs writing to the
+    // same per-thread JetStream subject (CI flake on
+    // pod-death-dbos-replay: a freshly-booted survivor's recovery timer
+    // fires while another pod has just claimed a new thread, mesh-3 CAS-
+    // stole it because the read-back owner still matched, and the test
+    // saw it as the kill target — but the original pod kept streaming).
     //
-    // Filtering out same-pod owners (the previous behavior) was a bug for
-    // K8s StatefulSet rolling restarts, where the new pod re-uses the
-    // previous incarnation's POD_NAME. Those runs were silently skipped
-    // until something else (a user revisit hitting /stream) recovered them.
+    // Same-pod entries stay in the result for the StatefulSet restart
+    // case: a stable POD_NAME means run_owner_pod = currentPodId points
+    // at the new process's own crashed incarnation, with no live peer to
+    // race.
     //
-    // The `_currentPodId` parameter is retained for interface compatibility.
+    // `studio_pods` lags pod death by up to one heartbeat poll interval
+    // (5s). A row that's stale here gets cleaned up by the next survivor
+    // poll tick, which fires `handlePodDeath` — that path covers the
+    // ones startup skipped. Net effect: at most a one-poll-interval
+    // delay on recovery for runs whose owner died in the brief window
+    // between this pod's boot and the next survivor's poll.
     const rows = await this.db
       .selectFrom("threads")
       .selectAll()
       .where("status", "=", "in_progress")
       .where("run_config", "is not", null)
+      .where(({ eb, or, not, exists, selectFrom }) =>
+        or([
+          eb("run_owner_pod", "is", null),
+          eb("run_owner_pod", "=", currentPodId),
+          not(
+            exists(
+              selectFrom("studio_pods")
+                .select("pod_id")
+                .whereRef("studio_pods.pod_id", "=", "threads.run_owner_pod"),
+            ),
+          ),
+        ]),
+      )
       .orderBy("run_started_at", "asc")
       .limit(100)
       .execute();

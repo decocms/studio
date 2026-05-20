@@ -180,6 +180,14 @@ export class RunRegistry {
       const batch = orphans.slice(i, i + CONCURRENCY);
       await Promise.allSettled(
         batch.map(async (thread) => {
+          // Skip threads we're already actively running. Otherwise a
+          // race between handlePodDeath (claimed mesh-1 → mesh-2 and
+          // started dispatching) and this startup-recovery timer firing
+          // immediately after lets both pass the CAS: the row is now
+          // mesh-2 = currentPodId, which the same-pod recovery branch in
+          // listOrphanedRuns deliberately allows. Without this guard the
+          // resumed dispatch fires twice on the same JetStream subject.
+          if (this.isRunning(thread.id)) return;
           // CAS on the thread's current owner so concurrent claimers
           // serialize. First to flip the column wins; the rest see the
           // new owner and bail.

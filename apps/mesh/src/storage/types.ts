@@ -1163,4 +1163,14 @@ export interface Database {
   organization_domains: OrganizationDomainTable;
 
   sandbox_runner_state: SandboxRunnerStateTable;
+
+  // Live pod registry — single column, populated by PgPodHeartbeat. The
+  // advisory lock per row is the real liveness signal; the table is just
+  // an enumeration aid for the heartbeat poller and for orphan recovery
+  // queries that need to skip threads still owned by a live peer.
+  studio_pods: StudioPodTable;
+}
+
+export interface StudioPodTable {
+  pod_id: string;
 }
