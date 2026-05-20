@@ -68,7 +68,7 @@ const defaultPoolOptions = {
   allowExitOnIdle: true,
 };
 
-function getSsl(): boolean {
+export function getSsl(): boolean {
   try {
     return getSettings().databasePgSsl;
   } catch {

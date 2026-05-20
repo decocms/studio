@@ -29,9 +29,34 @@
  * one-poll-interval window for orphans.
  */
 
-import { Client, type Pool } from "pg";
+import { Client, type Pool, type PoolClient } from "pg";
 
 const POLL_INTERVAL_MS = 5_000; // Scan for dead peers every 5s
+
+/**
+ * Run `fn` against a single pool client inside a BEGIN/COMMIT block.
+ * Rolls back and rethrows on error. Used to keep transaction-scoped
+ * advisory locks held across multiple statements that target the same
+ * lock key — single-statement implicit transactions would commit (and
+ * release the lock) between statements.
+ */
+async function runInTxn<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
 export interface PodHeartbeat {
   init(): Promise<void>;
@@ -55,6 +80,13 @@ export interface PgPodHeartbeatDeps {
    * advisory lock's session lifetime tracks the heartbeat instance.
    */
   connectionString: string;
+  /**
+   * Match whatever SSL config the main pool uses. Without this on
+   * TLS-required deployments (e.g. RDS with `rds.force_ssl=on`), the
+   * dedicated client would fail to connect, init would throw, and
+   * pod-death recovery would be silently disabled.
+   */
+  ssl: boolean;
   /**
    * Shared pool for everything that doesn't need session-bound state:
    * pod registration, probe queries, cleanup.
@@ -90,6 +122,11 @@ export class PgPodHeartbeat implements PodHeartbeat {
 
     const client = new Client({
       connectionString: this.deps.connectionString,
+      // Mirror the main pool's SSL setting. TLS-required Postgres
+      // deployments reject plaintext connections, and without this the
+      // liveness client would fail to connect, init would throw, and
+      // pod-death recovery would be silently disabled.
+      ssl: this.deps.ssl,
       // TCP keepalives on the liveness connection so a partitioned
       // client is detected by Postgres within ~25s rather than the
       // default 2h. Process kills don't need this (TCP RST is
@@ -179,26 +216,35 @@ export class PgPodHeartbeat implements PodHeartbeat {
           pod_id: string;
         }>("SELECT pod_id FROM studio_pods WHERE pod_id != $1", [this.podId]);
         for (const { pod_id: peerId } of peers) {
-          // Transaction-scoped advisory lock: auto-released when the
-          // implicit single-statement transaction commits, so we never
-          // need an explicit unlock. Crucially, this is safe against
-          // the pool serving the try_lock and the (former) unlock from
-          // different clients — session-scoped locks would have leaked
-          // on the try_lock's client, blocking future probes for that
-          // peer id until the connection was recycled.
-          const probe = await this.deps.pool.query<{ got: boolean }>(
-            "SELECT pg_try_advisory_xact_lock(hashtext($1)) AS got",
-            [peerId],
-          );
-          const got = probe.rows[0]?.got === true;
-          if (!got) continue;
-          // Lock acquired (and already released by xact commit) →
-          // nobody holds the session lock → peer is dead. Clean up
-          // their registry row so subsequent polls don't keep
-          // re-detecting and re-firing the callback.
-          await this.deps.pool
-            .query("DELETE FROM studio_pods WHERE pod_id = $1", [peerId])
-            .catch(() => {});
+          // Probe AND clean up under a single explicit transaction so
+          // the xact-scoped advisory lock is held across the DELETE.
+          // Two reasons this matters:
+          //
+          //  (a) The lock + DELETE need to be atomic w.r.t. a
+          //      replacement pod with the same POD_NAME. If we let the
+          //      lock release between probe and DELETE, a replacement
+          //      that boots in that window — takes a fresh session
+          //      lock and INSERTs its row — would have its row deleted
+          //      by us, leaving it unregistered (and effectively
+          //      invisible to other peers' future polls).
+          //
+          //  (b) Same xact bundle eliminates the cross-pool-client
+          //      leak that a session-scoped lock + separate unlock
+          //      had. `pg_try_advisory_xact_lock` auto-releases at
+          //      COMMIT regardless of which pool client served the
+          //      transaction.
+          const detected = await runInTxn(this.deps.pool, async (txn) => {
+            const probe = await txn.query<{ got: boolean }>(
+              "SELECT pg_try_advisory_xact_lock(hashtext($1)) AS got",
+              [peerId],
+            );
+            if (probe.rows[0]?.got !== true) return false;
+            await txn.query("DELETE FROM studio_pods WHERE pod_id = $1", [
+              peerId,
+            ]);
+            return true;
+          });
+          if (!detected) continue;
           console.log(`[PodHeartbeat:poll] detected vanished pod: ${peerId}`);
           callback(peerId);
         }

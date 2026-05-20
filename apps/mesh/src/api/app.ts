@@ -24,7 +24,7 @@ import {
   createMeshContextFactory,
 } from "../core/context-factory";
 import type { MeshContext } from "../core/mesh-context";
-import { closeDatabase, getDb, type MeshDatabase } from "../database";
+import { closeDatabase, getDb, getSsl, type MeshDatabase } from "../database";
 import { asDockerRunner, getSharedRunnerIfInit } from "../sandbox/lifecycle";
 import { createEventBus, type EventBus } from "../event-bus";
 import {
@@ -846,6 +846,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // No NATS dependency; recovery still fires even when NATS is degraded.
   const podHeartbeat: PodHeartbeat = new PgPodHeartbeat({
     connectionString: getSettings().databaseUrl,
+    ssl: getSsl(),
     pool: database.pool,
   });
   podHeartbeat
