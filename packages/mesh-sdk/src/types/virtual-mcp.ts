@@ -152,11 +152,18 @@ const GithubRepoSchema = z.object({
   url: z.string().describe("GitHub repository URL"),
   owner: z.string().describe("Repository owner"),
   name: z.string().describe("Repository name"),
-  installationId: z.number().describe("GitHub App installation ID"),
+  installationId: z
+    .number()
+    .optional()
+    .describe(
+      "GitHub App installation ID. Absent when the repo was linked without a GitHub connection (public-clone mode).",
+    ),
   connectionId: z
     .string()
     .optional()
-    .describe("ID of the mcp-github connection used for authentication"),
+    .describe(
+      "ID of the mcp-github connection used for authentication. Absent for public repos cloned without credentials.",
+    ),
 });
 
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;

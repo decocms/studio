@@ -27,6 +27,22 @@ export interface GitHubCloneInfo {
   gitUserEmail: string;
 }
 
+/**
+ * Public-repo clone (no token, no /user lookup). Anonymous HTTPS clone works
+ * for any public GitHub repo; push back will fail (no creds) but that's the
+ * documented constraint of public-clone mode.
+ */
+export function buildAnonymousCloneInfo(
+  owner: string,
+  name: string,
+): GitHubCloneInfo {
+  return {
+    cloneUrl: `https://github.com/${owner}/${name}.git`,
+    gitUserName: "Deco Studio",
+    gitUserEmail: "studio@deco.cx",
+  };
+}
+
 export async function buildCloneInfo(
   connectionId: string,
   owner: string,
