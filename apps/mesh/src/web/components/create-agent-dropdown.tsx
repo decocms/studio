@@ -40,7 +40,7 @@ export function CreateAgentDropdownContent({
       </DropdownMenuItem>
       <DropdownMenuItem disabled={isCreating} onClick={onCreateWebsite}>
         <Globe02 size={14} />
-        Create Website
+        Start Website
       </DropdownMenuItem>
       <DropdownMenuItem disabled={isCreating} onClick={onCreateHydrogenStore}>
         <img

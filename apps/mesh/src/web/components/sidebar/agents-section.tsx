@@ -550,7 +550,7 @@ function PinAgentPopoverContent({
               <Globe02 className="size-5 text-muted-foreground" />
             </div>
             <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
-              Create Website
+              Start Website
             </span>
           </button>
 
