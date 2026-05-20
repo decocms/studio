@@ -25,8 +25,8 @@ export const WEBSITE_TEMPLATE: AgentTemplate = {
 };
 
 export const HYDROGEN_TEMPLATE: AgentTemplate = {
-  title: "New Hydrogen Store",
-  description: "Shopify Hydrogen demo storefront",
+  title: "Shopify Headless Store",
+  description: "Shopify Headless Store cloned from a public template",
   url: "https://github.com/Shopify/hydrogen-demo-store",
   owner: "Shopify",
   name: "hydrogen-demo-store",

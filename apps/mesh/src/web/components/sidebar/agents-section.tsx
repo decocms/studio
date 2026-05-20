@@ -572,7 +572,7 @@ function PinAgentPopoverContent({
               <ShoppingBag03 className="size-5 text-muted-foreground" />
             </div>
             <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
-              Hydrogen Store
+              Shopify Headless Store
             </span>
           </button>
 

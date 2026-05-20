@@ -43,7 +43,7 @@ export function CreateAgentDropdownContent({
       </DropdownMenuItem>
       <DropdownMenuItem disabled={isCreating} onClick={onCreateHydrogenStore}>
         <ShoppingBag03 size={14} />
-        Create Hydrogen Store
+        Create Shopify Headless Store
       </DropdownMenuItem>
       {preferences.experimental_vibecode && (
         <DropdownMenuItem onClick={onImportGitHub}>
