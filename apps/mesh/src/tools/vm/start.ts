@@ -315,10 +315,7 @@ async function provisionSandbox(
   // workdir before the daemon's setup orchestrator runs. The orchestrator
   // sees the restored `.git` and short-circuits the clone step. Best-effort:
   // a failed restore falls through to the fresh-clone path.
-  const store = pickStoreFromEnv({
-    dataDir: getSettings().dataDir,
-    bucket: process.env.SANDBOX_SNAPSHOTS_BUCKET,
-  });
+  const store = pickStoreFromEnv({ dataDir: getSettings().dataDir });
   const snapKey = snapshotKey({ orgId, virtualMcpId, branch });
   const onDaemonReady = async (rdy: {
     daemonUrl: string;

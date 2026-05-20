@@ -64,10 +64,7 @@ export function __resetSnapshotSaverForTests(): void {
 }
 
 function resolveStore(): SandboxStore {
-  return pickStoreFromEnv({
-    dataDir: getSettings().dataDir,
-    bucket: process.env.SANDBOX_SNAPSHOTS_BUCKET,
-  });
+  return pickStoreFromEnv({ dataDir: getSettings().dataDir });
 }
 
 /**
