@@ -633,7 +633,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     taskId: string,
     organizationId: string,
     data: Partial<Thread>,
-    podId: string | null,
+    _podId: string | null,
   ): Promise<boolean> {
     const now = new Date().toISOString();
 
@@ -649,22 +649,22 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.run_started_at !== undefined)
       updateData.run_started_at = data.run_started_at;
 
-    // CAS: only claim if not already running on a different pod
+    // Always update — the thread-gate DBOS queue (concurrency=1 per
+    // threadId) already serialises dispatches per thread, so two pods
+    // can never legitimately race here. The prior pod-bound CAS
+    // ("only claim if run_owner_pod is null / same / not yet
+    // in_progress") rejected the legitimate replay case where DBOS
+    // recovers a workflow on a different executor than the original
+    // — that stalled recovery on restart. The status guard against
+    // restarting a terminal run is unnecessary too: if status had
+    // gone to completed/failed, this codepath wouldn't be re-entered
+    // (the workflow row in DBOS is the source of truth for whether
+    // a run should be in flight).
     const result = await this.db
       .updateTable("threads")
       .set(updateData)
       .where("id", "=", taskId)
       .where("organization_id", "=", organizationId)
-      .where(({ eb, or }) =>
-        or([
-          // Not currently in_progress → fresh start
-          eb("status", "!=", "in_progress"),
-          // Orphan → null pod
-          eb("run_owner_pod", "is", null),
-          // Same pod restart
-          ...(podId ? [eb("run_owner_pod", "=", podId)] : []),
-        ]),
-      )
       .executeTakeFirst();
 
     return (result?.numUpdatedRows ?? 0n) > 0n;
