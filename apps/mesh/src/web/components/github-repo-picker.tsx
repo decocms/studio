@@ -20,6 +20,7 @@ import {
   useProjectContext,
   useMCPClient,
   useConnections,
+  authenticateMcp,
   SELF_MCP_ALIAS_ID,
 } from "@decocms/mesh-sdk";
 import type { ConnectionEntity } from "@decocms/mesh-sdk";
@@ -544,6 +545,7 @@ function InstallationPicker({
     orgId,
     orgSlug,
   });
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   const installationsQuery = useQuery({
     queryKey: KEYS.githubUserOrgs(orgId, connectionId),
@@ -562,6 +564,55 @@ function InstallationPicker({
     },
   });
 
+  const handleReconnect = async () => {
+    setIsReconnecting(true);
+    try {
+      const { token, tokenInfo, error } = await authenticateMcp({
+        connectionId,
+        orgSlug,
+        scope: "offline_access",
+      });
+      if (error || !token) {
+        toast.error(`Authentication failed: ${error ?? "No token received"}`);
+        return;
+      }
+      if (tokenInfo) {
+        try {
+          const response = await fetch(
+            `/api/${orgSlug}/connections/${connectionId}/oauth-token`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                accessToken: tokenInfo.accessToken,
+                refreshToken: tokenInfo.refreshToken,
+                expiresIn: tokenInfo.expiresIn,
+                scope: tokenInfo.scope,
+                clientId: tokenInfo.clientId,
+                clientSecret: tokenInfo.clientSecret,
+                tokenEndpoint: tokenInfo.tokenEndpoint,
+              }),
+            },
+          );
+          if (!response.ok) {
+            console.error("Failed to save OAuth token:", await response.text());
+          }
+        } catch {
+          // Token saved via primary method failed, but auth succeeded
+        }
+      }
+      await installationsQuery.refetch();
+    } catch (err) {
+      toast.error(
+        "Reconnection failed: " +
+          (err instanceof Error ? err.message : "Unknown error"),
+      );
+    } finally {
+      setIsReconnecting(false);
+    }
+  };
+
   if (installationsQuery.isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -572,10 +623,36 @@ function InstallationPicker({
 
   if (installationsQuery.isError) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-sm text-destructive">
-          Failed to load GitHub accounts
-        </p>
+      <div className="flex flex-col items-center gap-4 px-6 py-10">
+        <div className="size-10 rounded-full bg-destructive/10 flex items-center justify-center">
+          <GitHubIcon className="size-5 text-destructive" />
+        </div>
+        <div className="flex flex-col items-center gap-1 text-center">
+          <p className="text-sm font-medium">Failed to load GitHub accounts</p>
+          <p className="text-xs text-muted-foreground max-w-[260px] leading-relaxed">
+            Your GitHub connection may need to be re-authenticated. Reconnect to
+            grant access again.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleReconnect}
+            disabled={isReconnecting}
+            className="text-xs font-medium text-foreground border border-border rounded-md px-3 py-1.5 hover:bg-accent transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {isReconnecting && <Loading01 size={12} className="animate-spin" />}
+            {isReconnecting ? "Reconnecting..." : "Reconnect GitHub"}
+          </button>
+          <button
+            type="button"
+            onClick={() => installationsQuery.refetch()}
+            disabled={isReconnecting}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
