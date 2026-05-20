@@ -12,9 +12,12 @@ import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   isDecopilot,
-  WELL_KNOWN_AGENT_TEMPLATES,
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
   useProjectContext,
+  useVirtualMCPActions,
   useVirtualMCPs,
+  WELL_KNOWN_AGENT_TEMPLATES,
 } from "@decocms/mesh-sdk";
 import type { ProjectLocator, VirtualMCPEntity } from "@decocms/mesh-sdk";
 import { useDefaultHomeAgents } from "@/web/hooks/use-organization-settings";
@@ -28,7 +31,7 @@ function readRecentAgentIds(locator: ProjectLocator): string[] {
   }
 }
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, Plus, Users03 } from "@untitledui/icons";
+import { ChevronRight, CodeSquare02, Plus, Users03 } from "@untitledui/icons";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 import { SiteDiagnosticsRecruitModal } from "@/web/components/home/site-diagnostics-recruit-modal.tsx";
 import { AiImageRecruitModal } from "@/web/components/home/ai-image-recruit-modal.tsx";
@@ -149,6 +152,111 @@ function SeeAllButton() {
       </div>
       <p className="text-xs sm:text-sm text-foreground text-center leading-tight">
         See all
+      </p>
+    </button>
+  );
+}
+
+const WEB_APP_TEMPLATE_URL = "https://github.com/decocms/webapp-template.git";
+
+const WEB_APP_INSTRUCTIONS = `You are a vibecoding assistant. The sandbox already has the deco webapp template cloned and the dev server running with hot module reload.
+
+How to work:
+1. Edit files using \`write\` / \`edit\` — your changes hot-reload automatically.
+2. Do NOT restart the dev server. Do NOT run install commands unless you've added a new dependency.
+3. Do NOT mention specific URLs like \`localhost:3000\` — the user has the live preview visible next to this chat. Just describe what you changed.
+4. Use \`glob\` and \`read\` to understand the project structure before making non-trivial edits.
+
+Bias heavily toward building. Don't over-explain — show results.`;
+
+/**
+ * One-click entry point that creates a vMCP pre-wired to the deco webapp
+ * template, eagerly fires VM_START so the sandbox is provisioning while
+ * the user navigates, and lands on a fresh task with the Preview tab open.
+ */
+function WebAppButton() {
+  const actions = useVirtualMCPActions();
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleClick = async () => {
+    if (isCreating) return;
+    setIsCreating(true);
+    track("home_web_app_clicked");
+    try {
+      const virtualMcp = await actions.create.mutateAsync({
+        title: "Web app",
+        description: "Vibecode a web app from the deco template",
+        status: "active",
+        pinned: true,
+        connections: [],
+        metadata: {
+          instructions: WEB_APP_INSTRUCTIONS,
+          cloneUrl: WEB_APP_TEMPLATE_URL,
+          ui: {
+            pinnedViews: null,
+            layout: {
+              defaultMainView: { type: "preview" },
+              chatDefaultOpen: true,
+            },
+          },
+        },
+      });
+
+      const virtualMcpId = virtualMcp.id!;
+      const taskId = crypto.randomUUID();
+
+      // Fire VM_START in the background BEFORE we navigate. The clone +
+      // install takes seconds; getting it started during navigation saves
+      // the user that wall-clock time. The server generates a
+      // `deco/<adj>-<noun>` branch and stores the vmMap entry under it;
+      // `pickWarmBranchFromVmMap` on the agent page reuses it for the
+      // fresh task created by `useEnsureTask`.
+      void selfClient
+        .callTool({
+          name: "VM_START",
+          arguments: { virtualMcpId },
+        })
+        .catch((err: unknown) => {
+          console.error("[web-app] eager VM_START failed", err);
+        });
+
+      navigate({
+        to: "/$org/$taskId",
+        params: { org: org.slug, taskId },
+        search: { virtualmcpid: virtualMcpId },
+      });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleClick()}
+      disabled={isCreating}
+      className={cn(
+        "flex flex-col items-center gap-3 p-2 rounded-lg",
+        "transition-colors",
+        "cursor-pointer",
+        "w-[100px] shrink-0",
+        "group",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+      )}
+      aria-label="Build web app"
+    >
+      <div className="size-12 rounded-xl bg-accent flex items-center justify-center shrink-0 transition-transform group-hover:scale-110">
+        <CodeSquare02 size={20} className="text-foreground" />
+      </div>
+      <p className="text-xs sm:text-sm text-foreground text-center leading-tight">
+        Web app
       </p>
     </button>
   );
@@ -520,6 +628,7 @@ function AgentsListContent() {
     <>
       <div className="w-full max-md:overflow-x-auto max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden">
         <div className="flex flex-wrap justify-center gap-1.5 max-md:flex-nowrap max-md:justify-start md:max-h-52 md:overflow-hidden">
+          <WebAppButton />
           {tiles.map(renderTile)}
           <CreateAgentButton />
           {hasAgents && <SeeAllButton />}
