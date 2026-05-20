@@ -203,7 +203,7 @@ function describe(action: SubmitAction): string {
 
 // ─── ThreadConnection ────────────────────────────────────────────────────────
 
-export interface ThreadConnectionOptions {
+interface ThreadConnectionOptions {
   client?: MCPClient | null;
 }
 

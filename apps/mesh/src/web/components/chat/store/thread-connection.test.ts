@@ -1044,7 +1044,9 @@ describe("reconnect refetch", () => {
     // Force a reconnect by closing the current stream and providing a fresh one.
     streamSlot.close();
     streamSlot = controllableStream();
-    await new Promise((r) => setTimeout(r, 1100)); // exponential backoff base ≈ 1s
+    // streamSlot.close() is a clean exit → CLEAN_RECONNECT_DELAY_MS (50ms);
+    // 1100ms is overkill but stable for test scheduling.
+    await new Promise((r) => setTimeout(r, 1100));
 
     // After reconnect, refetchLatestPage must have fired a second call.
     expect(calls.length).toBe(2);

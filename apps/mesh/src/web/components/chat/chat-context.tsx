@@ -925,7 +925,7 @@ export function ActiveTaskProvider({
     isRunInProgress,
     hasMoreOlder,
     isFetchingOlder,
-    fetchOlderMessages: () => conn.fetchOlderMessages(),
+    fetchOlderMessages: conn.fetchOlderMessages.bind(conn),
   };
 
   return (
