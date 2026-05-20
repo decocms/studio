@@ -702,6 +702,58 @@ describe("DockerSandboxRunner.delete()", () => {
   });
 });
 
+describe("DockerSandboxRunner.ensure() — onDaemonReady hook", () => {
+  it("fires after /health, before POST /_decopilot_vm/config, with the daemon token", async () => {
+    const { exec } = makeExec(defaultResponder);
+    const ordered: string[] = [];
+    let observedToken: string | undefined;
+
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      const url = String(input);
+      const headers = ((init as RequestInit | undefined)?.headers ?? {}) as
+        | Record<string, string>
+        | Headers;
+      if (url.endsWith("/health")) {
+        ordered.push("health");
+        return healthOkResponse();
+      }
+      if (url.endsWith("/_decopilot_vm/config")) {
+        ordered.push("config");
+        const auth =
+          headers instanceof Headers
+            ? headers.get("authorization")
+            : (headers["Authorization"] ?? headers["authorization"]);
+        observedToken = String(auth ?? "");
+        return new Response(
+          JSON.stringify({ bootId: "test-boot-id", config: {} }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("", { status: 204 });
+    }) as unknown as typeof fetch;
+
+    const runner = new DockerSandboxRunner({
+      image: "test-image:latest",
+      exec,
+    });
+    let hookSawToken = "";
+    await runner.ensure(ID, {
+      workload: { runtime: "bun", packageManager: "bun", devPort: 3000 },
+      onDaemonReady: async ({ daemonUrl, daemonToken }) => {
+        ordered.push("hook");
+        hookSawToken = daemonToken;
+        expect(daemonUrl).toMatch(/^http:\/\/127\.0\.0\.1:/);
+      },
+    });
+
+    // Hook runs after health (daemon ready) and before config post.
+    expect(ordered.indexOf("hook")).toBeGreaterThan(ordered.indexOf("health"));
+    expect(ordered.indexOf("hook")).toBeLessThan(ordered.indexOf("config"));
+    // Same token the daemon will accept on /config.
+    expect(observedToken).toBe(`Bearer ${hookSawToken}`);
+  });
+});
+
 describe("DockerSandboxRunner — sanity: preview URL & port resolvers", () => {
   it("composePreviewUrl uses pattern when workload provided; resolvers return ports", async () => {
     const { exec } = makeExec(defaultResponder);

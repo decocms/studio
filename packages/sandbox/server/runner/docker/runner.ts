@@ -403,6 +403,11 @@ export class DockerSandboxRunner implements SandboxRunner {
     log("waitForDaemonReady start", { daemonUrl });
     try {
       await waitForDaemonReady(daemonUrl);
+      if (opts.onDaemonReady) {
+        log("onDaemonReady start");
+        await opts.onDaemonReady({ daemonUrl, daemonToken: token });
+        log("onDaemonReady ok");
+      }
       if (configPayload) {
         log("postConfig start", { daemonUrl });
         await postConfig(daemonUrl, token, configPayload);

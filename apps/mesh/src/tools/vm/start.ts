@@ -35,6 +35,8 @@ import { detectRepoRuntime } from "../../shared/github-runtime-detect";
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { getRunnerByKind, getSharedRunner } from "../../sandbox/lifecycle";
+import { pickStoreFromEnv, snapshotKey } from "../../sandbox/sandbox-store";
+import { getSettings } from "../../settings";
 import { setVmMapEntry } from "./vm-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
@@ -307,12 +309,44 @@ async function provisionSandbox(
     branch,
   });
   const runner = await getSharedRunner(ctx);
+
+  // Snapshot restore: if a tar exists for (org, vmcp, branch), seed the
+  // workdir before the daemon's setup orchestrator runs. The orchestrator
+  // sees the restored `.git` and short-circuits the clone step. Best-effort:
+  // a failed restore falls through to the fresh-clone path.
+  const store = pickStoreFromEnv({
+    dataDir: getSettings().dataDir,
+    bucket: process.env.SANDBOX_SNAPSHOTS_BUCKET,
+  });
+  const snapKey = snapshotKey({ orgId, virtualMcpId, branch });
+  const onDaemonReady = async (rdy: {
+    daemonUrl: string;
+    daemonToken: string;
+  }) => {
+    const body = await store.get(snapKey);
+    if (!body) return;
+    const res = await fetch(`${rdy.daemonUrl}/_decopilot_vm/snapshot/restore`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${rdy.daemonToken}` },
+      body,
+      // Streaming request bodies require `duplex: half`; not yet in the
+      // standard fetch lib types.
+      ...({ duplex: "half" } as object),
+    });
+    if (!res.ok) {
+      console.warn(
+        `[vm-start] snapshot restore failed: ${res.status} ${await res.text()}`,
+      );
+    }
+  };
+
   const sandbox = await runner.ensure(
     { userId, projectRef },
     {
       repo: repoOpts,
       workload,
       tenant: { orgId, userId },
+      onDaemonReady,
     },
   );
 

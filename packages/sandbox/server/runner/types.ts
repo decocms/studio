@@ -75,6 +75,21 @@ export interface EnsureOptions {
     orgId: string;
     userId: string;
   };
+  /**
+   * Fires after the daemon HTTP server is healthy but BEFORE the runner
+   * posts its initial config (the config post is what triggers the setup
+   * orchestrator's clone+install+start pipeline). Use this to seed the
+   * workdir — e.g. restore a tar snapshot via POST
+   * `/_decopilot_vm/snapshot/restore` — so the orchestrator's `hasGitRepo`
+   * check short-circuits the clone step.
+   *
+   * Runners that don't use postConfig (freestyle: baked clone) MUST ignore
+   * this hook. Errors propagate and tear down the in-flight provision.
+   */
+  onDaemonReady?: (ctx: {
+    daemonUrl: string;
+    daemonToken: string;
+  }) => Promise<void>;
 }
 
 export interface ExecInput {

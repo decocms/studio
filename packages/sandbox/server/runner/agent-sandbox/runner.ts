@@ -1099,6 +1099,17 @@ export class AgentSandboxRunner implements SandboxRunner {
     let resolvedBootId: string = daemonBootId;
     try {
       await waitForDaemonReady(daemonUrl);
+      // Pre-config hook runs against whichever token the daemon currently
+      // accepts: the sentinel on warm-pool claims (pre-rotation) or the
+      // per-claim token on cold starts. After the postConfig below the
+      // daemon only accepts `token` regardless of path.
+      if (opts.onDaemonReady) {
+        const preRotateToken = this.sentinelToken ?? token;
+        await opts.onDaemonReady({
+          daemonUrl,
+          daemonToken: preRotateToken,
+        });
+      }
       if (this.sentinelToken !== null) {
         const probedHealth = await probeDaemonHealth(daemonUrl);
         if (probedHealth) resolvedBootId = probedHealth.bootId;

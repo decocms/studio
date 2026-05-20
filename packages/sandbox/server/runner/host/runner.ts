@@ -196,6 +196,9 @@ export class HostSandboxRunner implements SandboxRunner {
     const proc = await this.spawnFn({ workdir, env, daemonPort });
     try {
       await this.waitForDaemon(daemonUrl);
+      if (opts.onDaemonReady) {
+        await opts.onDaemonReady({ daemonUrl, daemonToken: token });
+      }
       if (configPayload) {
         await this.postConfigFn(daemonUrl, token, configPayload);
       }
