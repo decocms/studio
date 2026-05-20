@@ -213,6 +213,29 @@ s3Sync:
     limits:
       memory: "32Mi"
 
+# Sandbox snapshots — persists each running sandbox's workdir as a `.tar`
+# to S3, restored on next VM_START so user edits survive pod recycles.
+# See SANDBOX_PERSISTENCE.md for the design.
+#
+# Auth: uses the same IRSA ServiceAccount as `s3Sync.roleArn` (one role,
+# both permissions). Grant the role:
+#   s3:PutObject, s3:GetObject, s3:HeadObject, s3:DeleteObject
+# on `arn:aws:s3:::<bucket>/<prefix>/*`.
+#
+# When `bucket` is empty mesh falls back to writing under
+# `<DATA_DIR>/sandbox-snapshots/` on local disk — fine for self-host /
+# dev clusters that don't need cross-pod durability.
+#
+# Recommended bucket settings (not enforced by chart):
+#   - Versioning ON  — last-write-wins safety net for concurrent edits
+#   - Lifecycle rule expiring objects after the retention you want
+#   - SSE-S3 encryption (default; KMS optional)
+sandboxSnapshots:
+  enabled: false
+  bucket: ""               # required when enabled
+  region: "us-east-1"
+  prefix: "sandbox-snapshots"
+
 # NATS subchart (https://artifacthub.io/packages/helm/nats/nats)
 # When enabled, NATS_URL is automatically set to nats://<release-name>-nats:4222
 # unless overridden via configMap.meshConfig.NATS_URL

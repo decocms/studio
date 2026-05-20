@@ -92,6 +92,17 @@ spec:
               value: {{ include "chart-deco-studio.otelAttributes" . | quote }}
             {{- end }}
             {{- end }}
+            {{- if and .Values.sandboxSnapshots .Values.sandboxSnapshots.enabled }}
+            {{- if not .Values.sandboxSnapshots.bucket }}
+            {{- fail "sandboxSnapshots.enabled=true requires sandboxSnapshots.bucket" }}
+            {{- end }}
+            - name: SANDBOX_SNAPSHOTS_BUCKET
+              value: {{ .Values.sandboxSnapshots.bucket | quote }}
+            - name: SANDBOX_SNAPSHOTS_REGION
+              value: {{ .Values.sandboxSnapshots.region | default "us-east-1" | quote }}
+            - name: SANDBOX_SNAPSHOTS_PREFIX
+              value: {{ .Values.sandboxSnapshots.prefix | default "sandbox-snapshots" | quote }}
+            {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
