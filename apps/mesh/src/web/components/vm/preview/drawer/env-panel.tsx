@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw01, Trash01 } from "@untitledui/icons";
+import { ClipboardCheck, Plus, RefreshCw01, Trash01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { KEYS } from "@/web/lib/query-keys";
 import { parseDotenv } from "./parse-dotenv";
@@ -17,14 +17,23 @@ interface ConfigResponse {
   envKeys?: string[];
 }
 
+const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function looksLikeBulkDotenv(text: string): boolean {
+  if (/\r?\n/.test(text.trim())) return true;
+  const eqCount = (text.match(/=/g) ?? []).length;
+  return eqCount > 1;
+}
+
 export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
   const ready = !!virtualMcpId && !!branch;
   const queryClient = useQueryClient();
 
-  const qs = ready
-    ? `?virtualMcpId=${encodeURIComponent(virtualMcpId)}&branch=${encodeURIComponent(branch)}`
+  const vmBase = ready
+    ? `/api/${encodeURIComponent(orgSlug)}/vm/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}`
     : "";
-  const url = `/api/${encodeURIComponent(orgSlug)}/vm-config${qs}`;
+  const configUrl = `${vmBase}/config`;
+  const startUrl = `${vmBase}/setup/start`;
 
   const queryKey = ready
     ? KEYS.vmEnv(orgSlug, virtualMcpId, branch)
@@ -34,7 +43,7 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
     queryKey,
     enabled: ready,
     queryFn: async (): Promise<string[]> => {
-      const res = await fetch(url, { method: "GET" });
+      const res = await fetch(configUrl, { method: "GET" });
       if (!res.ok) throw new Error(`Failed to load env: ${res.statusText}`);
       const body = (await res.json()) as ConfigResponse;
       return body.envKeys ?? [];
@@ -44,7 +53,7 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
   const writeMutation = useMutation({
     mutationFn: async (patch: Record<string, string | null>) => {
       if (!ready) throw new Error("Sandbox not ready");
-      const res = await fetch(url, {
+      const res = await fetch(configUrl, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ env: patch }),
@@ -62,10 +71,7 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
   const restartMutation = useMutation({
     mutationFn: async () => {
       if (!ready) throw new Error("Sandbox not ready");
-      const res = await fetch(
-        `/api/${encodeURIComponent(orgSlug)}/vm-setup/start${qs}`,
-        { method: "POST" },
-      );
+      const res = await fetch(startUrl, { method: "POST" });
       if (!res.ok) {
         const text = await res.text().catch(() => res.statusText);
         throw new Error(text || res.statusText);
@@ -73,24 +79,112 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
     },
   });
 
-  const [draftText, setDraftText] = useState("");
+  // Pending = staged client-side, not yet sent to /config. Order = insertion.
+  const [pending, setPending] = useState<Array<{ key: string; value: string }>>(
+    [],
+  );
+  const [keyDraft, setKeyDraft] = useState("");
+  const [valueDraft, setValueDraft] = useState("");
+  const valueInputRef = useRef<HTMLInputElement>(null);
+  const keyInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAdd = async () => {
-    if (!draftText.trim()) return;
-    let parsed: Record<string, string>;
-    try {
-      parsed = parseDotenv(draftText);
-    } catch (e) {
-      toast.error((e as Error).message);
+  const upsertPending = (entries: Array<{ key: string; value: string }>) => {
+    setPending((prev) => {
+      const map = new Map(prev.map((e) => [e.key, e.value]));
+      for (const e of entries) map.set(e.key, e.value);
+      return Array.from(map, ([key, value]) => ({ key, value }));
+    });
+  };
+
+  const removePending = (key: string) => {
+    setPending((prev) => prev.filter((e) => e.key !== key));
+  };
+
+  const stageSingle = () => {
+    const key = keyDraft.trim();
+    if (!key) return;
+    if (!ENV_KEY_RE.test(key)) {
+      toast.error(`Invalid key "${key}"`);
       return;
     }
-    if (Object.keys(parsed).length === 0) {
-      toast.error("Nothing to add");
-      return;
+    upsertPending([{ key, value: valueDraft }]);
+    setKeyDraft("");
+    setValueDraft("");
+    keyInputRef.current?.focus();
+  };
+
+  const consumePastedText = (text: string): boolean => {
+    if (looksLikeBulkDotenv(text)) {
+      let parsed: Record<string, string>;
+      try {
+        parsed = parseDotenv(text);
+      } catch (e) {
+        toast.error((e as Error).message);
+        return true;
+      }
+      const entries = Object.entries(parsed).map(([key, value]) => ({
+        key,
+        value,
+      }));
+      if (entries.length === 0) {
+        toast.error("Nothing to add");
+        return true;
+      }
+      upsertPending(entries);
+      return true;
     }
+    const trimmed = text.trim();
+    const eq = trimmed.indexOf("=");
+    if (eq > 0 && ENV_KEY_RE.test(trimmed.slice(0, eq).trim())) {
+      const k = trimmed.slice(0, eq).trim();
+      let v = trimmed.slice(eq + 1).trim();
+      if (
+        v.length >= 2 &&
+        ((v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'")))
+      ) {
+        v = v.slice(1, -1);
+      }
+      setKeyDraft(k);
+      setValueDraft(v);
+      requestAnimationFrame(() => valueInputRef.current?.focus());
+      return true;
+    }
+    return false;
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    if (!text) return;
+    if (consumePastedText(text)) {
+      e.preventDefault();
+    }
+  };
+
+  const handlePasteButton = async () => {
     try {
-      await writeMutation.mutateAsync(parsed);
-      setDraftText("");
+      const text = await navigator.clipboard.readText();
+      if (!text) {
+        toast.error("Clipboard is empty");
+        return;
+      }
+      if (!consumePastedText(text)) {
+        toast.error("Clipboard doesn't look like KEY=value");
+      }
+    } catch {
+      toast.error("Couldn't read clipboard");
+    }
+  };
+
+  const handleSave = async () => {
+    if (pending.length === 0) return;
+    const patch: Record<string, string> = {};
+    for (const { key, value } of pending) patch[key] = value;
+    try {
+      await writeMutation.mutateAsync(patch);
+      const n = pending.length;
+      setPending([]);
+      toast.success(n === 1 ? "Saved 1 var" : `Saved ${n} vars`);
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -121,11 +215,17 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
     );
   }
 
-  const keys = keysQuery.data ?? [];
+  const savedKeys = keysQuery.data ?? [];
+  // Hide saved keys that are about to be overwritten by a pending entry, so
+  // the same KEY doesn't render twice.
+  const pendingKeySet = new Set(pending.map((e) => e.key));
+  const visibleSaved = savedKeys.filter((k) => !pendingKeySet.has(k));
+  const hasAnyRows = visibleSaved.length > 0 || pending.length > 0;
+  const isBusy = writeMutation.isPending;
 
   return (
-    <div className="flex h-full flex-col gap-3 overflow-y-auto p-3">
-      <div className="flex items-center justify-between">
+    <div className="flex h-full flex-col gap-4 overflow-y-auto p-3">
+      <div className="flex items-start justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           Injected into <span className="font-mono">process.env</span> for the
           dev script and install. Values are write-only — once set, the daemon
@@ -142,70 +242,156 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
         </Button>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="overflow-hidden rounded-lg border border-border bg-background">
         {keysQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : keys.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No env vars set.</p>
+          <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+            Loading…
+          </p>
+        ) : !hasAnyRows ? (
+          <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+            No env vars set.
+          </p>
         ) : (
-          keys.map((key) => (
-            <div
-              key={key}
-              className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 py-1.5"
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="truncate font-mono text-sm text-foreground">
-                  {key}
-                </span>
-                <span className="text-xs text-muted-foreground">●●●●●●●●</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleDelete(key)}
-                disabled={writeMutation.isPending}
-                aria-label={`Delete ${key}`}
-                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+          <ul className="divide-y divide-border">
+            {visibleSaved.map((key) => (
+              <li
+                key={`saved-${key}`}
+                className="flex items-center justify-between gap-2 px-3 py-2"
               >
-                <Trash01 className="size-3.5" />
-              </button>
-            </div>
-          ))
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="truncate font-mono text-sm text-foreground">
+                    {key}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ●●●●●●●●
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(key)}
+                  disabled={isBusy}
+                  aria-label={`Delete ${key}`}
+                  className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                >
+                  <Trash01 className="size-3.5" />
+                </button>
+              </li>
+            ))}
+            {pending.map(({ key, value }) => (
+              <li
+                key={`pending-${key}`}
+                className="flex items-center justify-between gap-2 bg-amber-50/40 px-3 py-2 dark:bg-amber-950/20"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="truncate font-mono text-sm text-foreground">
+                    {key}
+                  </span>
+                  <span className="truncate font-mono text-xs text-muted-foreground">
+                    {value || <em className="not-italic">(empty)</em>}
+                  </span>
+                  <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+                    Pending
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removePending(key)}
+                  disabled={isBusy}
+                  aria-label={`Discard pending ${key}`}
+                  className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                >
+                  <Trash01 className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          void handleAdd();
+          stageSingle();
         }}
-        className="flex flex-col gap-2 border-t border-border pt-3"
+        className="flex flex-col gap-2"
       >
-        <Textarea
-          value={draftText}
-          onChange={(e) => setDraftText(e.target.value)}
-          placeholder={"KEY=value\nANOTHER=value with spaces\n# comments OK"}
-          rows={4}
-          spellCheck={false}
-          autoComplete="off"
-          className="font-mono text-xs"
-          aria-label="Env vars (KEY=value per line)"
-        />
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
-            One <span className="font-mono">KEY=value</span> per line. Quotes
-            and <span className="font-mono">export</span> optional. Existing
-            keys are overwritten.
-          </p>
+        <div className="flex items-center gap-2">
+          <Input
+            ref={keyInputRef}
+            value={keyDraft}
+            onChange={(e) => setKeyDraft(e.target.value.trim())}
+            onPaste={handlePaste}
+            placeholder="KEY"
+            spellCheck={false}
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            className="flex-1 font-mono"
+            aria-label="Env var key"
+          />
+          <span className="font-mono text-sm text-muted-foreground">=</span>
+          <Input
+            ref={valueInputRef}
+            value={valueDraft}
+            onChange={(e) => setValueDraft(e.target.value)}
+            onPaste={handlePaste}
+            placeholder="value"
+            spellCheck={false}
+            autoComplete="off"
+            className="flex-[2] font-mono"
+            aria-label="Env var value"
+          />
           <Button
             type="submit"
+            variant="outline"
             size="sm"
-            disabled={!draftText.trim() || writeMutation.isPending}
+            disabled={!keyDraft.trim()}
+            aria-label="Add to pending"
           >
             <Plus className="size-3.5" />
             Add
           </Button>
         </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Paste a <span className="font-mono">.env</span> blob to stage
+            multiple vars at once — nothing is written until you save.
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handlePasteButton}
+          >
+            <ClipboardCheck className="size-3.5" />
+            Paste
+          </Button>
+        </div>
       </form>
+
+      {pending.length > 0 && (
+        <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setPending([])}
+            disabled={isBusy}
+          >
+            Discard
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleSave}
+            disabled={isBusy}
+          >
+            {isBusy
+              ? "Saving…"
+              : `Save ${pending.length} ${pending.length === 1 ? "var" : "vars"}`}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
