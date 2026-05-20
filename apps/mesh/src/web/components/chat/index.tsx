@@ -1,5 +1,10 @@
 import { cn } from "@deco/ui/lib/utils.ts";
-import type { PropsWithChildren } from "react";
+import {
+  useEffect,
+  useRef,
+  type PropsWithChildren,
+  type RefObject,
+} from "react";
 import { ActiveTaskProvider, ChatProvider, useChatStream } from "./context";
 
 export { useChatTask } from "./context";
@@ -15,6 +20,66 @@ import { CreditsEyebrow, NoCreditsEyebrow } from "./credits-eyebrow";
 import { DecoChatSkeleton } from "./skeleton";
 export type { VirtualMCPInfo } from "./select-virtual-mcp";
 export type { ChatMessage, ChatStatus } from "./types.ts";
+
+/**
+ * Trigger `fetchOlderMessages` when the top sentinel enters the viewport,
+ * and preserve scroll anchor when older messages prepend.
+ *
+ * Anchor preservation:
+ *   Before fetch: capture scrollHeight + scrollTop of the scroll container.
+ *   After messages commit: scrollTop += (newScrollHeight - oldScrollHeight).
+ *
+ * Without this, prepending pages would yank the user away from the message
+ * they were reading.
+ */
+function useTopSentinel({
+  scrollRef,
+  sentinelRef,
+  hasMoreOlder,
+  isFetchingOlder,
+  fetchOlderMessages,
+}: {
+  scrollRef: RefObject<HTMLDivElement | null>;
+  sentinelRef: RefObject<HTMLDivElement | null>;
+  hasMoreOlder: boolean;
+  isFetchingOlder: boolean;
+  fetchOlderMessages: () => Promise<void>;
+}) {
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- IntersectionObserver lifecycle binds to DOM nodes; ref-based effect is the natural fit
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    const scroller = scrollRef.current;
+    if (!sentinel || !scroller) return;
+    if (!hasMoreOlder) return;
+
+    const observer = new IntersectionObserver(
+      async (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        if (isFetchingOlder) return;
+        if (!hasMoreOlder) return;
+
+        const prevHeight = scroller.scrollHeight;
+        const prevTop = scroller.scrollTop;
+        await fetchOlderMessages();
+        // After the React commit, the scroll container has grown. Re-anchor.
+        requestAnimationFrame(() => {
+          const newHeight = scroller.scrollHeight;
+          scroller.scrollTop = prevTop + (newHeight - prevHeight);
+        });
+      },
+      { root: scroller, rootMargin: "200px 0px 0px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    scrollRef,
+    sentinelRef,
+    hasMoreOlder,
+    isFetchingOlder,
+    fetchOlderMessages,
+  ]);
+}
 
 function ChatRoot({
   className,
@@ -52,7 +117,13 @@ function ChatEmptyState({ children }: PropsWithChildren) {
 }
 
 function ChatMessages() {
-  const { messages, status } = useChatStream();
+  const {
+    messages,
+    status,
+    hasMoreOlder,
+    isFetchingOlder,
+    fetchOlderMessages,
+  } = useChatStream();
   const messagePairs = useMessagePairs(messages);
   const lastMessagePair = messagePairs.at(-1);
   const highlightCount = useHighlightCount();
@@ -64,12 +135,29 @@ function ChatMessages() {
   // still cover content — the affordance is "collapse to read".
   const paddingBottom = highlightCount * HIGHLIGHT_COLLAPSED_HEIGHT_PX + 16;
 
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useTopSentinel({
+    scrollRef,
+    sentinelRef,
+    hasMoreOlder,
+    isFetchingOlder,
+    fetchOlderMessages,
+  });
+
   return (
     <div
+      ref={scrollRef}
       className="w-full min-w-0 max-w-full overflow-y-auto h-full overflow-x-hidden"
       style={{ paddingBottom }}
     >
       <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
+        <div ref={sentinelRef} aria-hidden style={{ height: 1 }} />
+        {isFetchingOlder && (
+          <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
+            Loading older messages…
+          </div>
+        )}
         {messagePairs.slice(0, -1).map((pair, index) => (
           <MessagePair
             key={`pair-${pair.user.id}`}
