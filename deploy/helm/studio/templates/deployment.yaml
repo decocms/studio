@@ -92,6 +92,17 @@ spec:
               value: {{ include "chart-deco-studio.otelAttributes" . | quote }}
             {{- end }}
             {{- end }}
+            {{- if and .Values.dbosConductor .Values.dbosConductor.enabled }}
+            - name: DBOS_CONDUCTOR_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.dbosConductor.existingSecret | default (include "chart-deco-studio.secretName" .) }}
+                  key: {{ .Values.dbosConductor.existingSecretKey | default "DBOS_CONDUCTOR_KEY" }}
+            {{- with .Values.dbosConductor.url }}
+            - name: DBOS_CONDUCTOR_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
