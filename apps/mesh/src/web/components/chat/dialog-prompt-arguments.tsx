@@ -32,6 +32,8 @@ interface PromptArgsDialogProps {
   prompt: Prompt | null;
   setPrompt: (prompt: Prompt | null) => void;
   onSubmit: (values: PromptArgumentValues) => Promise<void>;
+  /** Pre-fill the form (e.g., when editing an existing prompt chip). */
+  defaultValues?: PromptArgumentValues;
 }
 
 function buildArgumentSchema(prompt: Prompt) {
@@ -44,10 +46,13 @@ function buildArgumentSchema(prompt: Prompt) {
   return z.object(shape);
 }
 
-function buildDefaultValues(prompt: Prompt): PromptArgumentValues {
+function buildDefaultValues(
+  prompt: Prompt,
+  overrides?: PromptArgumentValues,
+): PromptArgumentValues {
   const defaults: PromptArgumentValues = {};
   for (const arg of prompt.arguments ?? []) {
-    defaults[arg.name] = "";
+    defaults[arg.name] = overrides?.[arg.name] ?? "";
   }
   return defaults;
 }
@@ -56,13 +61,14 @@ export function PromptArgsDialog({
   prompt,
   setPrompt,
   onSubmit,
+  defaultValues,
 }: PromptArgsDialogProps) {
   const id = useId();
   const schema = prompt ? buildArgumentSchema(prompt) : z.object({});
   const resolver = zodResolver(schema as any);
   const form = useForm<PromptArgumentValues>({
     resolver: resolver as unknown as Resolver<PromptArgumentValues>,
-    defaultValues: prompt ? buildDefaultValues(prompt) : {},
+    defaultValues: prompt ? buildDefaultValues(prompt, defaultValues) : {},
     mode: "onChange",
   });
 

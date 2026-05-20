@@ -223,6 +223,8 @@ export function ToolsPopover({
         name: stripToolNamespace(prompt.name, clientId),
         metadata: result.messages,
         char: "/",
+        kind: "prompt",
+        args: values,
       });
     } catch {
       toast.error("Failed to load prompt. Please try again.");
