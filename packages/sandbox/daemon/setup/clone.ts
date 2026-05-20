@@ -112,7 +112,11 @@ export async function spawnClone(deps: CloneDeps): Promise<number> {
     return 1;
   }
 
-  const gc = `git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10`;
+  // GIT_TERMINAL_PROMPT=0 + GIT_ASKPASS=true: refuse to ever prompt for
+  // credentials. Without this the PTY makes git think it has a terminal, so
+  // a private repo without credentials hangs forever instead of failing fast.
+  // Public repos clone fine — no prompt is needed in the first place.
+  const gc = `GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10`;
   const dir = config.repoDir;
 
   const requestedBranch = config.git?.repository?.branch;

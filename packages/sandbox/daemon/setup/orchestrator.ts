@@ -539,7 +539,10 @@ export class SetupOrchestrator {
     const onChunk = (_src: "setup", data: string) => this.rawChunk(data);
     // http.connectTimeout: fail fast on DNS/TCP failures (seconds).
     // lowSpeedLimit/Time: abort if transfer rate stays below 1 B/s for 10 s.
-    const gc = `git -c safe.directory='*' -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10 -C ${repoDir}`;
+    // GIT_TERMINAL_PROMPT=0 + GIT_ASKPASS=true: never prompt for credentials —
+    // public repos work without auth, private-without-creds fail fast instead
+    // of hanging on a PTY-backed prompt.
+    const gc = `GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10 -C ${repoDir}`;
 
     // Fresh-clone path already lands on the target branch (clone.ts uses
     // --branch when ls-remote reports it exists). Short-circuit so gitSetup

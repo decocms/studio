@@ -30,8 +30,14 @@ import {
   type RuntimeConfigMeta,
 } from "./helpers";
 import { readVmMap, resolveVm } from "./vm-map";
-import { buildCloneInfo } from "../../shared/github-clone-info";
-import { detectRepoRuntime } from "../../shared/github-runtime-detect";
+import {
+  buildAnonymousCloneInfo,
+  buildCloneInfo,
+} from "../../shared/github-clone-info";
+import {
+  detectRepoRuntime,
+  detectRepoRuntimeAnonymous,
+} from "../../shared/github-runtime-detect";
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { getRunnerByKind, getSharedRunner } from "../../sandbox/lifecycle";
@@ -220,10 +226,6 @@ async function provisionSandbox(
     existing,
   } = params;
 
-  if (githubRepo && !githubRepo.connectionId) {
-    throw new Error("GitHub connection id missing on virtual MCP metadata");
-  }
-
   let { runtime, packageManager, port, packageManagerPath } =
     resolveRuntimeConfig(metadata);
 
@@ -240,13 +242,19 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
-    const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
-      githubRepo.connectionId!,
-      githubRepo.owner,
-      githubRepo.name,
-      ctx.db,
-      ctx.vault,
-    );
+    // Connection-backed (authenticated) vs public-clone (anonymous). The
+    // daemon's clone behavior is identical — only the URL and identity
+    // change. Push-back fails in the anonymous case; that's the documented
+    // trade-off of linking a repo without a GitHub connection.
+    const { cloneUrl, gitUserName, gitUserEmail } = githubRepo.connectionId
+      ? await buildCloneInfo(
+          githubRepo.connectionId,
+          githubRepo.owner,
+          githubRepo.name,
+          ctx.db,
+          ctx.vault,
+        )
+      : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
 
     // Lockfile probe only when metadata has no PM. Used to be client-side in
     // the repo picker, but that introduced a race — VM_START fired from the
@@ -256,13 +264,15 @@ async function provisionSandbox(
     // always matches the detected PM; the result is persisted so subsequent
     // starts skip the probe.
     if (!packageManager) {
-      const detected = await detectRepoRuntime(
-        githubRepo.connectionId!,
-        githubRepo.owner,
-        githubRepo.name,
-        ctx.db,
-        ctx.vault,
-      );
+      const detected = githubRepo.connectionId
+        ? await detectRepoRuntime(
+            githubRepo.connectionId,
+            githubRepo.owner,
+            githubRepo.name,
+            ctx.db,
+            ctx.vault,
+          )
+        : await detectRepoRuntimeAnonymous(githubRepo.owner, githubRepo.name);
       if (detected) {
         packageManager = detected.packageManager;
         runtime = PACKAGE_MANAGER_CONFIG[detected.packageManager].runtime;

@@ -30,20 +30,20 @@ describe("getActiveGithubRepo", () => {
     expect(getActiveGithubRepo(baseEntity)).toBeNull();
   });
 
-  test("returns null when githubRepo has no connectionId", () => {
+  test("returns the repo when there is no connectionId (public-clone mode)", () => {
+    const githubRepo = {
+      url: "https://github.com/owner/repo",
+      owner: "owner",
+      name: "repo",
+    };
     const entity: VirtualMCPEntity = {
       ...baseEntity,
       metadata: {
         instructions: null,
-        githubRepo: {
-          url: "https://github.com/owner/repo",
-          owner: "owner",
-          name: "repo",
-          installationId: 123,
-        },
+        githubRepo,
       },
     };
-    expect(getActiveGithubRepo(entity)).toBeNull();
+    expect(getActiveGithubRepo(entity)).toEqual(githubRepo);
   });
 
   test("returns null when connectionId is not in connections (stale)", () => {

@@ -46,7 +46,7 @@ import {
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { CollectionSearch } from "@deco/ui/components/collection-search.tsx";
-import { Plus, Settings02, X } from "@untitledui/icons";
+import { Globe02, Plus, Settings02, ShoppingBag03, X } from "@untitledui/icons";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -64,6 +64,11 @@ import {
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { usePinnedAgents } from "@/web/hooks/use-pinned-agents";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
+import {
+  HYDROGEN_TEMPLATE,
+  WEBSITE_TEMPLATE,
+  useCreateAgentFromTemplate,
+} from "@/web/hooks/use-create-website-agent";
 import { track } from "@/web/lib/posthog-client";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { AgentAvatar } from "@/web/components/agent-icon";
@@ -377,6 +382,8 @@ function PinAgentPopoverContent({
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
   });
+  const { createFromTemplate, isCreating: isCreatingFromTemplate } =
+    useCreateAgentFromTemplate();
   const [preferences] = usePreferences();
 
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
@@ -524,6 +531,48 @@ function PinAgentPopoverContent({
             </div>
             <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
               Create new
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isCreatingFromTemplate}
+            onClick={async () => {
+              track("agent_create_clicked", {
+                source: "browse_popover",
+                method: "website",
+              });
+              await createFromTemplate(WEBSITE_TEMPLATE);
+              onClose();
+            }}
+            className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
+              <Globe02 className="size-5 text-muted-foreground" />
+            </div>
+            <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
+              Create Website
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isCreatingFromTemplate}
+            onClick={async () => {
+              track("agent_create_clicked", {
+                source: "browse_popover",
+                method: "hydrogen",
+              });
+              await createFromTemplate(HYDROGEN_TEMPLATE);
+              onClose();
+            }}
+            className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
+              <ShoppingBag03 className="size-5 text-muted-foreground" />
+            </div>
+            <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
+              Hydrogen Store
             </span>
           </button>
 

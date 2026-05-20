@@ -2,12 +2,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { Users03 } from "@untitledui/icons";
+import { Globe02, ShoppingBag03, Users03 } from "@untitledui/icons";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 
 interface CreateAgentDropdownContentProps {
   onCreateFromScratch: () => void;
+  onCreateWebsite: () => void;
+  onCreateHydrogenStore: () => void;
   onImportGitHub: () => void;
   onImportDeco: () => void;
   isCreating?: boolean;
@@ -18,6 +20,8 @@ interface CreateAgentDropdownContentProps {
 
 export function CreateAgentDropdownContent({
   onCreateFromScratch,
+  onCreateWebsite,
+  onCreateHydrogenStore,
   onImportGitHub,
   onImportDeco,
   isCreating,
@@ -32,6 +36,14 @@ export function CreateAgentDropdownContent({
       <DropdownMenuItem disabled={isCreating} onClick={onCreateFromScratch}>
         <Users03 size={14} />
         Create from scratch
+      </DropdownMenuItem>
+      <DropdownMenuItem disabled={isCreating} onClick={onCreateWebsite}>
+        <Globe02 size={14} />
+        Create Website
+      </DropdownMenuItem>
+      <DropdownMenuItem disabled={isCreating} onClick={onCreateHydrogenStore}>
+        <ShoppingBag03 size={14} />
+        Create Hydrogen Store
       </DropdownMenuItem>
       {preferences.experimental_vibecode && (
         <DropdownMenuItem onClick={onImportGitHub}>
