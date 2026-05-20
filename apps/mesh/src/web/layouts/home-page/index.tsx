@@ -1,6 +1,6 @@
 import { AgentsList } from "@/web/components/home/agents-list.tsx";
+import { DancingCapybara } from "@/web/components/home/dancing-capybara.tsx";
 import { Chat } from "@/web/components/chat";
-import { NoAiProviderEmptyState } from "@/web/components/chat/no-ai-provider-empty-state";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
@@ -93,7 +93,7 @@ export function HomePage() {
     return (
       <div className="flex-1 overflow-y-auto">
         <div className="min-h-full flex items-center justify-center px-4 py-10">
-          <NoAiProviderEmptyState />
+          <DancingCapybara />
         </div>
       </div>
     );
