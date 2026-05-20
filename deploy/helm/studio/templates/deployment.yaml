@@ -96,7 +96,7 @@ spec:
             - name: DBOS_CONDUCTOR_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.dbosConductor.existingSecret | default (include "chart-deco-studio.secretName" .) }}
+                  name: {{ .Values.dbosConductor.existingSecret | default (printf "%s-dbos-conductor" (include "chart-deco-studio.fullname" .)) }}
                   key: {{ .Values.dbosConductor.existingSecretKey | default "DBOS_CONDUCTOR_KEY" }}
             {{- with .Values.dbosConductor.url }}
             - name: DBOS_CONDUCTOR_URL

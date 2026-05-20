@@ -177,11 +177,11 @@ Validate OTel collector/S3 configuration.
 {{- fail "chart-deco-studio: otel.collector.enabled=true requires otel.enabled=true" -}}
 {{- end }}
 {{- if and .Values.dbosConductor .Values.dbosConductor.enabled }}
-{{- if and .Values.secret.secretName (not .Values.dbosConductor.existingSecret) }}
-{{- fail "chart-deco-studio: when secret.secretName is set, dbosConductor.existingSecret must also be set (the chart-managed Secret is skipped, so DBOS_CONDUCTOR_KEY has nowhere to live otherwise)" -}}
-{{- end }}
 {{- if and .Values.dbosConductor.key .Values.dbosConductor.existingSecret }}
 {{- fail "chart-deco-studio: dbosConductor.key and dbosConductor.existingSecret are mutually exclusive" -}}
+{{- end }}
+{{- if and (not .Values.dbosConductor.key) (not .Values.dbosConductor.existingSecret) }}
+{{- fail "chart-deco-studio: dbosConductor.enabled=true requires either dbosConductor.key or dbosConductor.existingSecret" -}}
 {{- end }}
 {{- end }}
 {{- end }}
