@@ -52,12 +52,12 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
   const localHit = id ? (threads.find((t) => t.id === id) ?? null) : null;
 
   // fetchedTask tracks the result of manager.fetchThread:
-  //   undefined = not yet attempted
-  //   null      = server confirmed the row doesn't exist
-  //   Task      = row found via GET (already merged into the local list)
-  const [fetchedTask, setFetchedTask] = useState<Task | null | undefined>(
-    undefined,
-  );
+  //   undefined  = not yet attempted
+  //   "pending"  = fetch in flight
+  //   null       = server confirmed the row doesn't exist
+  //   Task       = row found via GET (already merged into the local list)
+  type FetchState = undefined | "pending" | null | Task;
+  const [fetchedTask, setFetchedTask] = useState<FetchState>(undefined);
 
   // Reset fetchedTask whenever the target id changes so we don't carry
   // stale state across navigation.
@@ -76,10 +76,7 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
     if (localHit) return;
     if (threadsStatus.kind === "loading") return;
     if (fetchedTask !== undefined) return; // already tried or in progress
-    // Mark as in-progress immediately (use a sentinel Task to avoid a second
-    // undefined→fetching state — null means "tried and not found").
-    // We use the setter with a function to avoid a stale-closure race.
-    setFetchedTask(null); // optimistically mark as "fetching started"
+    setFetchedTask("pending");
     manager.fetchThread(id).then((row) => {
       setFetchedTask(row); // null if not found, Task if found
     });
@@ -99,7 +96,7 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
   useEffect(() => {
     if (!id) return;
     if (localHit) return;
-    if (fetchedTask === undefined || fetchedTask !== null) return; // not yet fetched or found
+    if (fetchedTask !== null) return; // wait for fetchThread to resolve to not-found
     if (threadsStatus.kind === "loading") return;
     if (ensureCreate.isPending) return;
     if (ensureCreate.variables === id) return;
@@ -110,7 +107,9 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
   if (localHit) return { status: "ready", task: localHit };
   // fetchedTask is a Task when fetchThread returned a row (already in local list
   // via merge, but localHit above may not have updated yet in the same render).
-  if (fetchedTask) return { status: "ready", task: fetchedTask };
+  if (fetchedTask && typeof fetchedTask === "object") {
+    return { status: "ready", task: fetchedTask };
+  }
   if (ensureCreate.data) return { status: "ready", task: ensureCreate.data };
   if (ensureCreate.isError) {
     return { status: "error", error: ensureCreate.error };
