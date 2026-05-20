@@ -15,8 +15,8 @@ import {
   Code02,
   CursorClick01,
   DotsHorizontal,
-  TextInput,
   LinkExternal01,
+  TextInput,
   Loading01,
   Monitor04,
   RefreshCw01,
@@ -47,6 +47,7 @@ import {
   VisualEditorPayloadSchema,
   type VisualEditorPayload,
 } from "./visual-editor-script";
+import { CMS_EDITOR_SCRIPT, CmsEditorPayloadSchema } from "./cms-editor-script";
 import { VisualEditorPrompt } from "./visual-editor-prompt";
 import { useVmEvents, useVmReloadHandler } from "../hooks/use-vm-events";
 import {
@@ -99,17 +100,7 @@ function drawerStatusFromPreview(
   return "idle";
 }
 
-type PreviewViewMode = "preview" | "visual" | "code";
-
-const VIEW_MODE_OPTIONS: ViewModeOption<PreviewViewMode>[] = [
-  { value: "preview", icon: <Monitor04 size={14} />, tooltip: "Interactive" },
-  {
-    value: "visual",
-    icon: <CursorClick01 size={14} />,
-    tooltip: "Visual Editor",
-  },
-  { value: "code", icon: <Code02 size={14} />, tooltip: "Code Editor" },
-];
+type PreviewViewMode = "preview" | "visual" | "cms" | "code";
 
 export function PreviewContent() {
   const inset = useInsetContext();
@@ -123,7 +114,14 @@ export function PreviewContent() {
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
 
   // Sections editor panel
-  const [sectionsOpen, setSectionsOpen] = useState(false);
+  const sectionsOpen = viewMode === "cms";
+  const [cmsSelectedSectionIndex, setCmsSelectedSectionIndex] = useState<
+    number | null
+  >(null);
+  const [panelWidth, setPanelWidth] = useState(384);
+  const isResizingRef = useRef(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(0);
   // Tracks the last focused element outside the iframe so we can restore it
   // when the iframe reload steals focus.
   const focusBeforeIframeRef = useRef<HTMLElement | null>(null);
@@ -153,6 +151,7 @@ export function PreviewContent() {
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
     : [];
+  const currentPageName = pages.find((p) => p.path === currentPath)?.name;
 
   // "reload" fires on config edits framework HMR won't catch (.ts/.tsx use HMR).
   const vmEvents = useVmEvents();
@@ -388,10 +387,13 @@ export function PreviewContent() {
     }
     const handler = (e: MessageEvent) => {
       if (e.origin !== allowedOrigin) return;
-      if (e.data?.type !== "visual-editor::element-clicked") return;
-      const result = VisualEditorPayloadSchema.safeParse(e.data.payload);
-      if (result.success) {
-        setVisualElement(result.data);
+      if (e.data?.type === "visual-editor::element-clicked") {
+        const result = VisualEditorPayloadSchema.safeParse(e.data.payload);
+        if (result.success) setVisualElement(result.data);
+      } else if (e.data?.type === "cms-editor::section-clicked") {
+        const result = CmsEditorPayloadSchema.safeParse(e.data.payload);
+        if (result.success)
+          setCmsSelectedSectionIndex(result.data.sectionIndex);
       }
     };
     window.addEventListener("message", handler);
@@ -466,14 +468,30 @@ export function PreviewContent() {
     win.postMessage({ type: "visual-editor::deactivate" }, "*");
   };
 
+  const injectCmsEditor = () => {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage(
+      { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
+      "*",
+    );
+  };
+
+  const deactivateCmsEditor = () => {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: "cms-editor::deactivate" }, "*");
+  };
+
   const handleViewModeChange = (mode: PreviewViewMode) => {
+    const prev = viewMode;
     setViewMode(mode);
     setVisualElement(null);
-    if (mode === "visual") {
-      injectVisualEditor();
-    } else {
-      deactivateVisualEditor();
-    }
+    if (mode !== "cms") setCmsSelectedSectionIndex(null);
+    if (prev === "visual") deactivateVisualEditor();
+    if (prev === "cms") deactivateCmsEditor();
+    if (mode === "visual") injectVisualEditor();
+    if (mode === "cms") injectCmsEditor();
   };
 
   const handleRefresh = () => {
@@ -507,34 +525,39 @@ export function PreviewContent() {
     }
   })();
 
+  const viewModeOptions: ViewModeOption<PreviewViewMode>[] = [
+    { value: "preview", icon: <Monitor04 size={14} />, tooltip: "Interactive" },
+    {
+      value: "visual",
+      icon: <CursorClick01 size={14} />,
+      tooltip: "Visual editor",
+    },
+    ...(pages.length > 0
+      ? [
+          {
+            value: "cms" as PreviewViewMode,
+            icon: <TextInput size={14} />,
+            tooltip: "Sections editor",
+          },
+        ]
+      : []),
+    { value: "code", icon: <Code02 size={14} />, tooltip: "Code editor" },
+  ];
+
   return (
     <div className="flex flex-col w-full h-full">
       {previewState.kind === "iframe" && (
         <div className="flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
-          {/* Group 1: view mode toggle + sections */}
+          {/* Group 1: view mode toggle */}
           <div className="flex shrink-0 items-center gap-1">
             {hasHtmlPreview && (
               <ViewModeToggle
                 value={viewMode}
                 onValueChange={handleViewModeChange}
-                options={VIEW_MODE_OPTIONS}
+                options={viewModeOptions}
                 size="sm"
                 className="shrink-0 bg-foreground/4.5"
               />
-            )}
-            {pages.length > 0 && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={sectionsOpen ? "secondary" : "ghost"}
-                    size="icon"
-                    onClick={() => setSectionsOpen((prev) => !prev)}
-                  >
-                    <TextInput size={14} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Sections Editor</TooltipContent>
-              </Tooltip>
             )}
           </div>
 
@@ -593,6 +616,11 @@ export function PreviewContent() {
                 <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
                   {previewLabel}
                 </span>
+                {currentPageName && (
+                  <span className="shrink-0 text-[12px] text-muted-foreground">
+                    {currentPageName}
+                  </span>
+                )}
                 {pages.length > 0 && (
                   <ChevronDown
                     size={12}
@@ -727,54 +755,82 @@ export function PreviewContent() {
       <div className="flex-1 flex overflow-hidden">
         {/* Sections editor side panel (left) */}
         {sectionsOpen && previewUrl && branch && virtualMcpId && (
-          <div className="w-96 shrink-0 border-r overflow-hidden">
-            <Suspense
-              fallback={
-                <div className="h-full flex items-center justify-center">
-                  <Loading01
-                    size={20}
-                    className="animate-spin text-muted-foreground"
-                  />
-                </div>
-              }
+          <>
+            <div
+              className="shrink-0 border-r overflow-hidden"
+              style={{ width: panelWidth }}
             >
-              <SectionsEditor
-                orgSlug={org.slug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                currentPath={currentPath}
-                onSaved={() => {
-                  setTimeout(() => {
-                    const iframe = previewIframeRef.current;
-                    if (!iframe) return;
-                    // Prevent iframe from stealing focus during reload
-                    const focused =
-                      document.activeElement as HTMLElement | null;
-                    const prevTabIndex = iframe.tabIndex;
-                    iframe.tabIndex = -1;
-                    iframe.style.pointerEvents = "none";
-                    iframe.blur();
-                    try {
-                      iframe.contentWindow?.location.reload();
-                    } catch {
-                      // Cross-origin fallback
-                      // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
-                      // oxlint-disable-next-line no-self-assign
-                      iframe.src = iframe.src;
-                    }
-                    const restore = () => {
-                      iframe.tabIndex = prevTabIndex;
-                      iframe.style.pointerEvents = "";
-                      focused?.focus();
-                      iframe.removeEventListener("load", restore);
-                    };
-                    iframe.addEventListener("load", restore);
-                    setTimeout(restore, 3000);
-                  }, DEV_SERVER_SETTLE_MS);
-                }}
-              />
-            </Suspense>
-          </div>
+              <Suspense
+                fallback={
+                  <div className="h-full flex items-center justify-center">
+                    <Loading01
+                      size={20}
+                      className="animate-spin text-muted-foreground"
+                    />
+                  </div>
+                }
+              >
+                <SectionsEditor
+                  orgSlug={org.slug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  currentPath={currentPath}
+                  externalSelectedIndex={cmsSelectedSectionIndex}
+                  onSaved={() => {
+                    setTimeout(() => {
+                      const iframe = previewIframeRef.current;
+                      if (!iframe) return;
+                      // Prevent iframe from stealing focus during reload
+                      const focused =
+                        document.activeElement as HTMLElement | null;
+                      const prevTabIndex = iframe.tabIndex;
+                      iframe.tabIndex = -1;
+                      iframe.style.pointerEvents = "none";
+                      iframe.blur();
+                      try {
+                        iframe.contentWindow?.location.reload();
+                      } catch {
+                        // Cross-origin fallback
+                        // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
+                        // oxlint-disable-next-line no-self-assign
+                        iframe.src = iframe.src;
+                      }
+                      const restore = () => {
+                        iframe.tabIndex = prevTabIndex;
+                        iframe.style.pointerEvents = "";
+                        focused?.focus();
+                        iframe.removeEventListener("load", restore);
+                      };
+                      iframe.addEventListener("load", restore);
+                      setTimeout(restore, 3000);
+                    }, DEV_SERVER_SETTLE_MS);
+                  }}
+                />
+              </Suspense>
+            </div>
+            <div
+              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-border transition-colors"
+              onPointerDown={(e) => {
+                isResizingRef.current = true;
+                resizeStartXRef.current = e.clientX;
+                resizeStartWidthRef.current = panelWidth;
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                if (!isResizingRef.current) return;
+                const delta = e.clientX - resizeStartXRef.current;
+                setPanelWidth(
+                  Math.max(
+                    240,
+                    Math.min(640, resizeStartWidthRef.current + delta),
+                  ),
+                );
+              }}
+              onPointerUp={() => {
+                isResizingRef.current = false;
+              }}
+            />
+          </>
         )}
 
         <div className="flex-1 relative overflow-hidden">
@@ -913,9 +969,8 @@ export function PreviewContent() {
                 } catch {
                   // Cross-origin — can't read, keep current value
                 }
-                if (viewMode === "visual") {
-                  injectVisualEditor();
-                }
+                if (viewMode === "visual") injectVisualEditor();
+                if (viewMode === "cms") injectCmsEditor();
               }}
             />
           )}

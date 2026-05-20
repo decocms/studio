@@ -28,6 +28,7 @@
  */
 
 import fs from "node:fs";
+import { spawn as nodeSpawn } from "node:child_process";
 import { spawn as ptySpawn } from "node-pty";
 
 export interface PtyHandle {
@@ -110,7 +111,16 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
       }
     }
   }
-  if (lastErr) throw lastErr;
+  if (lastErr) {
+    // node-pty prebuilt binaries may not run on very new OS versions (e.g.
+    // macOS 26 / Darwin 25+). Fall back to a plain child_process.spawn so
+    // setup steps (clone/install) still work — color/progress output is lost
+    // but all data and exit-code semantics are preserved.
+    if ((lastErr as Error).message?.includes("posix_spawnp")) {
+      return spawnFallback(opts);
+    }
+    throw lastErr;
+  }
 
   const pid = raw.pid;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -214,6 +224,64 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
     },
     kill(signal) {
       raw.kill(signal);
+    },
+  };
+}
+
+function spawnFallback(opts: PtySpawnOpts): PtyHandle {
+  const baseEnv: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v === "string") baseEnv[k] = v;
+  }
+  const overrideEnv: Record<string, string> = {};
+  if (opts.env) {
+    for (const [k, v] of Object.entries(opts.env)) {
+      if (typeof v === "string") overrideEnv[k] = v;
+    }
+  }
+
+  const spawnOpts: Parameters<typeof nodeSpawn>[2] = {
+    cwd: opts.cwd ?? process.cwd(),
+    env: { TERM: "xterm-256color", ...baseEnv, ...overrideEnv },
+    ...(typeof opts.uid === "number" ? { uid: opts.uid } : {}),
+    ...(typeof opts.gid === "number" ? { gid: opts.gid } : {}),
+  };
+
+  const child = nodeSpawn("sh", ["-c", opts.cmd], spawnOpts);
+  const dataListeners: Array<(data: string) => void> = [];
+  const exitListeners: Array<(exitCode: number) => void> = [];
+
+  const emit = (chunk: Buffer | string) => {
+    const str = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    for (const l of dataListeners) l(str);
+  };
+  child.stdout?.on("data", emit);
+  child.stderr?.on("data", emit);
+
+  child.on("exit", (code, signal) => {
+    // Map signal name to number via kill -l convention (best-effort).
+    const sigMap: Record<string, number> = {
+      SIGHUP: 1,
+      SIGINT: 2,
+      SIGQUIT: 3,
+      SIGKILL: 9,
+      SIGTERM: 15,
+    };
+    const sigNum = signal ? (sigMap[signal] ?? 1) : 0;
+    const exitCode = sigNum > 0 ? 128 + sigNum : (code ?? 0);
+    for (const l of exitListeners) l(exitCode);
+  });
+
+  return {
+    pid: child.pid ?? -1,
+    onData: (cb) => {
+      dataListeners.push(cb);
+    },
+    onExit: (cb) => {
+      exitListeners.push(cb);
+    },
+    kill: (signal) => {
+      child.kill((signal ?? "SIGHUP") as NodeJS.Signals);
     },
   };
 }

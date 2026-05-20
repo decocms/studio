@@ -12,11 +12,15 @@ export function NumberField({
   const numValue = typeof value === "number" ? value : "";
 
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={path}>{label}</Label>
-      {schema.description && (
-        <p className="text-xs text-muted-foreground">{schema.description}</p>
-      )}
+    <div className="space-y-2">
+      <div className="space-y-0.5">
+        <Label htmlFor={path}>{label}</Label>
+        {schema.description && (
+          <p className="text-xs leading-normal text-muted-foreground">
+            {schema.description}
+          </p>
+        )}
+      </div>
       <Input
         id={path}
         type="number"
@@ -25,6 +29,7 @@ export function NumberField({
           const v = e.target.value;
           onChange(v === "" ? undefined : Number(v));
         }}
+        className="h-10"
       />
     </div>
   );

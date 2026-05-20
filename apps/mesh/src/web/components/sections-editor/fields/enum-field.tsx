@@ -19,20 +19,23 @@ export function EnumField({
   const strValue = value != null ? String(value) : "";
 
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={path}>{label}</Label>
-      {schema.description && (
-        <p className="text-xs text-muted-foreground">{schema.description}</p>
-      )}
+    <div className="space-y-2">
+      <div className="space-y-0.5">
+        <Label htmlFor={path}>{label}</Label>
+        {schema.description && (
+          <p className="text-xs leading-normal text-muted-foreground">
+            {schema.description}
+          </p>
+        )}
+      </div>
       <Select
         value={strValue}
         onValueChange={(v) => {
-          // Map the string back to the original enum value to preserve type
           const original = options.find((opt) => String(opt) === v);
           onChange(original !== undefined ? original : v);
         }}
       >
-        <SelectTrigger>
+        <SelectTrigger className="h-10">
           <SelectValue placeholder="Select..." />
         </SelectTrigger>
         <SelectContent>

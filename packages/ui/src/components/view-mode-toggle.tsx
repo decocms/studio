@@ -19,7 +19,7 @@ type ViewModeSize = "sm" | "md" | "lg";
 interface ViewModeToggleProps<T extends string = string> {
   value: T;
   onValueChange: (value: T) => void;
-  options: ViewModeOption<T>[];
+  options: Array<ViewModeOption<T>>;
   size?: ViewModeSize;
   fullWidth?: boolean;
   className?: string;
@@ -48,28 +48,24 @@ export function ViewModeToggle<T extends string = string>({
   fullWidth = false,
   className,
 }: ViewModeToggleProps<T>) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const buttonRefsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const [indicatorPosition, setIndicatorPosition] = useState({
     left: 0,
     width: 0,
     opacity: 0,
   });
 
-  const updateIndicator = (index: number) => {
-    const el = refs.current[index];
+  // Initialize indicator position based on current value
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const idx = options.findIndex((o) => o.value === value);
+    const el = buttonRefsRef.current[idx];
     if (!el) return;
     setIndicatorPosition({
       left: el.offsetLeft,
       width: el.offsetWidth,
       opacity: 1,
     });
-  };
-
-  // Initialize indicator position based on current value
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    const idx = options.findIndex((o) => o.value === value);
-    if (idx >= 0) updateIndicator(idx);
   }, [value, options]);
 
   const config = sizeConfig[size];
@@ -80,7 +76,7 @@ export function ViewModeToggle<T extends string = string>({
         const btn = (
           <button
             ref={(el) => {
-              refs.current[i] = el;
+              buttonRefsRef.current[i] = el;
             }}
             key={option.value}
             type="button"
