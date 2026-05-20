@@ -1,8 +1,27 @@
+import { useState } from "react";
+import { DotsGrid, DotsHorizontal, Plus, Trash01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Plus, Trash01 } from "@untitledui/icons";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
 import type { FieldProps } from "./field-props";
-import { SchemaForm } from "../schema-form";
-import { renderField } from "../schema-form";
+import { SchemaForm, renderField } from "../schema-form";
+
+function getItemLabel(item: unknown, index: number): string {
+  if (typeof item === "string") return item || `Item ${index + 1}`;
+  if (typeof item === "number" || typeof item === "boolean")
+    return String(item);
+  if (item && typeof item === "object" && !Array.isArray(item)) {
+    const obj = item as Record<string, unknown>;
+    for (const key of ["name", "label", "title", "text", "href", "id"]) {
+      if (typeof obj[key] === "string" && obj[key]) return obj[key] as string;
+    }
+  }
+  return `Item ${index + 1}`;
+}
 
 export function ArrayField({
   schema,
@@ -10,9 +29,12 @@ export function ArrayField({
   onChange,
   path,
   label,
+  breadcrumbPath = [],
+  onBreadcrumbChange,
 }: FieldProps) {
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const addItem = () => {
     const t = itemSchema?.type;
@@ -28,63 +50,141 @@ export function ArrayField({
               : t === "array"
                 ? []
                 : "";
-    onChange([...items, defaultVal]);
+    const next = [...items, defaultVal];
+    onChange(next);
+    const nextIndex = next.length - 1;
+    setSelectedIndex(nextIndex);
+    onBreadcrumbChange?.([
+      ...breadcrumbPath,
+      getItemLabel(defaultVal, nextIndex),
+    ]);
   };
 
   const removeItem = (index: number) => {
     onChange(items.filter((_, i) => i !== index));
+    if (selectedIndex === index) {
+      setSelectedIndex(null);
+      onBreadcrumbChange?.(breadcrumbPath);
+    }
   };
 
   const updateItem = (index: number, val: unknown) => {
     const next = [...items];
     next[index] = val;
     onChange(next);
+    if (selectedIndex === index) {
+      onBreadcrumbChange?.([...breadcrumbPath, getItemLabel(val, index)]);
+    }
   };
+
+  if (selectedIndex !== null && selectedIndex < items.length) {
+    const item = items[selectedIndex];
+    const itemBreadcrumbPath = [
+      ...breadcrumbPath,
+      getItemLabel(item, selectedIndex),
+    ];
+    return (
+      <div className="space-y-4">
+        {itemSchema?.type === "object" && itemSchema.properties ? (
+          <SchemaForm
+            schema={itemSchema}
+            value={item}
+            onChange={(val) => updateItem(selectedIndex, val)}
+            basePath={`${path}.${selectedIndex}`}
+            breadcrumbPath={itemBreadcrumbPath}
+            onBreadcrumbChange={onBreadcrumbChange}
+          />
+        ) : itemSchema ? (
+          renderField({
+            schema: itemSchema,
+            value: item,
+            onChange: (val) => updateItem(selectedIndex, val),
+            path: `${path}.${selectedIndex}`,
+            label: itemSchema.title ?? `Item ${selectedIndex + 1}`,
+            breadcrumbPath: itemBreadcrumbPath,
+            onBreadcrumbChange,
+          })
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">{label}</span>
-        <Button type="button" variant="outline" size="sm" onClick={addItem}>
-          <Plus size={14} />
-          Add
-        </Button>
-      </div>
-      {schema.description && (
-        <p className="text-xs text-muted-foreground">{schema.description}</p>
-      )}
-      {items.map((item, i) => (
-        <div key={`${path}.${i}`} className="border rounded-md p-3 relative">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="absolute top-1 right-1 h-7 w-7 p-0"
-            onClick={() => removeItem(i)}
-          >
-            <Trash01 size={14} />
-          </Button>
-          {itemSchema?.type === "object" && itemSchema.properties ? (
-            <SchemaForm
-              schema={itemSchema}
-              value={item}
-              onChange={(val) => updateItem(i, val)}
-              basePath={`${path}.${i}`}
-            />
-          ) : itemSchema ? (
-            renderField({
-              schema: itemSchema,
-              value: item,
-              onChange: (val) => updateItem(i, val),
-              path: `${path}.${i}`,
-              label: itemSchema.title ?? `Item ${i + 1}`,
-            })
-          ) : null}
+      <div className="min-w-0 space-y-0.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+          {items.length > 0 && (
+            <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+              {items.length}
+            </span>
+          )}
         </div>
-      ))}
-      {items.length === 0 && (
-        <p className="text-xs text-muted-foreground py-2">No items yet.</p>
+        {schema.description && (
+          <p className="break-words text-xs leading-normal text-muted-foreground">
+            {schema.description}
+          </p>
+        )}
+      </div>
+
+      {items.length > 0 && (
+        <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
+          {items.map((item, i) => (
+            <div
+              key={`${path}.${i}`}
+              className="group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground"
+            >
+              <DotsGrid className="size-3.5 shrink-0 cursor-grab text-muted-foreground/40" />
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedIndex(i);
+                  onBreadcrumbChange?.([
+                    ...breadcrumbPath,
+                    getItemLabel(item, i),
+                  ]);
+                }}
+                className="min-w-0 flex-1 truncate text-left text-sm"
+                title={getItemLabel(item, i)}
+              >
+                {getItemLabel(item, i)}
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Open actions for ${getItemLabel(item, i)}`}
+                    className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <DotsHorizontal size={14} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => removeItem(i)}
+                  >
+                    <Trash01 size={14} />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ))}
+        </div>
       )}
+
+      <button
+        type="button"
+        onClick={addItem}
+        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30"
+      >
+        <Plus size={14} />
+        Add item
+      </button>
     </div>
   );
 }

@@ -12,11 +12,13 @@ export function BooleanField({
   const checked = typeof value === "boolean" ? value : false;
 
   return (
-    <div className="flex items-center justify-between gap-2 py-1">
-      <div>
+    <div className="flex items-center justify-between gap-3">
+      <div className="space-y-0.5">
         <Label htmlFor={path}>{label}</Label>
         {schema.description && (
-          <p className="text-xs text-muted-foreground">{schema.description}</p>
+          <p className="text-xs leading-normal text-muted-foreground">
+            {schema.description}
+          </p>
         )}
       </div>
       <Switch

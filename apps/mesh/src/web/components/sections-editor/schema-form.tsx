@@ -135,11 +135,15 @@ export function SchemaForm({
   value,
   onChange,
   basePath,
+  breadcrumbPath = [],
+  onBreadcrumbChange,
 }: {
   schema: SchemaProperty;
   value: unknown;
   onChange: (value: unknown) => void;
   basePath: string;
+  breadcrumbPath?: string[];
+  onBreadcrumbChange?: (path: string[]) => void;
 }) {
   const properties = schema.properties;
   if (!properties) return null;
@@ -164,7 +168,7 @@ export function SchemaForm({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-6">
       {keys.map((key) => {
         const propSchema = properties[key];
         if (!propSchema) return null;
@@ -177,6 +181,8 @@ export function SchemaForm({
           onChange: (val) => updateField(key, val),
           path: fieldPath,
           label,
+          breadcrumbPath,
+          onBreadcrumbChange,
         });
       })}
     </div>

@@ -6,4 +6,6 @@ export interface FieldProps {
   onChange: (value: unknown) => void;
   path: string;
   label: string;
+  breadcrumbPath?: string[];
+  onBreadcrumbChange?: (path: string[]) => void;
 }
