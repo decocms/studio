@@ -2,7 +2,7 @@ apiVersion: v2
 name: chart-deco-studio
 description: A Helm chart for deco Studio self-hosted deployment
 type: application
-version: 0.6.4
+version: 0.6.5
 appVersion: "latest"
 
 dependencies:

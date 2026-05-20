@@ -173,7 +173,13 @@ if (ingressEligible) {
 // import chain). Launch DBOS afterwards so the registry is sealed before
 // the executor starts dequeueing workflows.
 const app = await createApp();
-await DBOS.launch();
+// Conductor opt-in via env (SDK defaults conductorURL to wss://cloud.dbos.dev/...).
+const conductorKey = process.env.DBOS_CONDUCTOR_KEY?.trim();
+const conductorURL = process.env.DBOS_CONDUCTOR_URL?.trim();
+await DBOS.launch({
+  ...(conductorKey ? { conductorKey } : {}),
+  ...(conductorKey && conductorURL ? { conductorURL } : {}),
+});
 // Post-launch DBOS setup (queue registration, schedule reconciliation).
 // Must run after launch because registerQueue / listSchedules require an
 // initialized executor.

@@ -231,6 +231,24 @@ nats:
           size: 10Gi
           storageClassName: ""  # empty = use cluster default StorageClass
 
+# DBOS Conductor — opt-in management service for DBOS workflows.
+# https://docs.dbos.dev/production/conductor
+# When enabled, the app dials wss:// to the conductor URL for workflow
+# recovery, observability, and retention. Disconnects don't affect the
+# request path. Requires outbound egress to the conductor URL.
+dbosConductor:
+  enabled: false
+  # Inline API key — written into the chart-managed Secret as DBOS_CONDUCTOR_KEY.
+  # Leave empty when supplying the key via existingSecret.
+  key: ""
+  # Optional WS URL override. SDK default: wss://cloud.dbos.dev/conductor/v1alpha1
+  url: ""
+  # Pre-existing Secret with the conductor key. When set, the chart skips
+  # writing the key and references this Secret instead. Mutually exclusive
+  # with `key`.
+  existingSecret: ""
+  existingSecretKey: "DBOS_CONDUCTOR_KEY"
+
 # Additional environment variables (merged with existing envs)
 env: []
 # env:
