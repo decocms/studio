@@ -156,9 +156,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: |
             MESH_VERSION=${{ needs.prepare.outputs.version }}
-          outputs: |
-            type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-            type=image,name=${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO }},push-by-digest=true,name-canonical=true,push=true
+          outputs: 'type=image,"name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO }}",push-by-digest=true,name-canonical=true,push=true'
           cache-from: type=gha,scope=mesh-${{ matrix.suffix }}
           cache-to: type=gha,mode=max,scope=mesh-${{ matrix.suffix }}
       - name: Export digest
