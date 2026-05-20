@@ -20,226 +20,285 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/mesh
+  ECR_REPO: deco/mesh
 
 jobs:
-  release:
-    name: Release npm + Docker
+  prepare:
+    name: Prepare release metadata
     runs-on: ubuntu-latest
-    # Skip if triggered by push AND commit is from release-tagging workflow
-    # This prevents double-runs when release-tagging.yaml bumps the version
     if: |
       github.event_name == 'workflow_dispatch' ||
       !startsWith(github.event.head_commit.message, '[release]:')
     permissions:
-      contents: write
-      packages: write
-      id-token: write
-
+      contents: read
+      packages: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version-changed: ${{ steps.version.outputs.version-changed }}
+      npm-tag: ${{ steps.version.outputs.npm-tag }}
+      image-exists: ${{ steps.image.outputs.image-exists }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Read version + check npm
+        id: version
+        working-directory: apps/mesh
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          if npm view decocms@$CURRENT_VERSION version >/dev/null 2>&1; then
+            echo "version-changed=false" >> $GITHUB_OUTPUT
+            echo "Version $CURRENT_VERSION already published"
+          else
+            echo "version-changed=true" >> $GITHUB_OUTPUT
+            echo "Version $CURRENT_VERSION not found in npm, will publish"
+          fi
+          if [[ "$CURRENT_VERSION" == *-* ]]; then
+            echo "npm-tag=next" >> $GITHUB_OUTPUT
+          else
+            echo "npm-tag=latest" >> $GITHUB_OUTPUT
+          fi
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          fetch-depth: 0
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check if Docker image exists
+        id: image
+        run: |
+          if docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }} >/dev/null 2>&1; then
+            echo "image-exists=true" >> $GITHUB_OUTPUT
+            echo "Image ${{ steps.version.outputs.version }} already in GHCR"
+          else
+            echo "image-exists=false" >> $GITHUB_OUTPUT
+            echo "Image ${{ steps.version.outputs.version }} not in GHCR, will build"
+          fi
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+  publish-npm:
+    name: Publish to NPM
+    needs: prepare
+    if: needs.prepare.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
-
       - name: Install dependencies
         run: bun install
-
-      - name: Build package
-        run: |
-          bun run build:client
-          bun run build:server
-        working-directory: apps/mesh
-
-      # ==================== NPM PUBLISH ====================
-      - name: Check if version changed
-        id: version-check
-        run: |
-          # Get the current version from package.json
-          CURRENT_VERSION=$(bun -e "console.log(require('./package.json').version)")
-
-          # Check if this specific version already exists in npm
-          # This works for both stable and prerelease versions (unlike checking 'latest' tag)
-          if npm view decocms@$CURRENT_VERSION version >/dev/null 2>&1; then
-            echo "version-changed=false" >> $GITHUB_OUTPUT
-            echo "⏭️ Version $CURRENT_VERSION already published, skipping publish"
-          else
-            echo "version-changed=true" >> $GITHUB_OUTPUT
-            echo "✅ Version $CURRENT_VERSION not found in npm, will publish"
-          fi
-
-          echo "current-version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-
-          # Check if this is a prerelease version (contains a hyphen)
-          if [[ "$CURRENT_VERSION" == *-* ]]; then
-            echo "npm-tag=next" >> $GITHUB_OUTPUT
-            echo "📦 Prerelease version detected, will publish with tag 'next'"
-          else
-            echo "npm-tag=latest" >> $GITHUB_OUTPUT
-            echo "📦 Stable version detected, will publish with tag 'latest'"
-          fi
-        working-directory: apps/mesh
-
       - name: Publish to NPM
-        if: steps.version-check.outputs.version-changed == 'true'
-        run: npm publish --access public --tag ${{ steps.version-check.outputs.npm-tag }} --provenance
+        run: npm publish --access public --tag ${{ needs.prepare.outputs.npm-tag }} --provenance
         working-directory: apps/mesh
-
       - name: Wait for npm propagation
-        if: steps.version-check.outputs.version-changed == 'true'
         run: |
           echo "Waiting for npm registry propagation..."
           for i in $(seq 1 12); do
-            if npm view decocms@${{ steps.version-check.outputs.current-version }} version >/dev/null 2>&1; then
-              echo "✅ Version available on npm after $((i * 10))s"
+            if npm view decocms@${{ needs.prepare.outputs.version }} version >/dev/null 2>&1; then
+              echo "Version available on npm after $((i * 10))s"
               exit 0
             fi
-            echo "⏳ Attempt $i/12 - not yet available, waiting 10s..."
+            echo "Attempt $i/12 - not yet available, waiting 10s..."
             sleep 10
           done
-          echo "❌ Version not available on npm after 120s"
+          echo "Version not available on npm after 120s"
           exit 1
 
-      # ==================== DOCKER BUILD & PUSH ====================
-      # ==================== REGISTRY LOGIN ====================
+  build-docker:
+    name: Build Docker (${{ matrix.platform }})
+    needs: [prepare, publish-npm]
+    if: |
+      always() &&
+      needs.prepare.outputs.image-exists == 'false' &&
+      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::578348582779:role/github-actions-ecr-push-mesh
           aws-region: sa-east-1
-
       - name: Login to Amazon ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
-
-      # ==================== DOCKER BUILD & PUSH ====================
-      - name: Check if Docker image exists
-        id: image-check
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/mesh
+          file: ./apps/mesh/Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            MESH_VERSION=${{ needs.prepare.outputs.version }}
+          outputs: |
+            type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=mesh-${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=mesh-${{ matrix.suffix }}
+      - name: Export digest
         run: |
-          VERSION="${{ steps.version-check.outputs.current-version }}"
-          # Check if image already exists in GHCR (requires login above for private packages)
-          if docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION} >/dev/null 2>&1; then
-            echo "image-exists=true" >> $GITHUB_OUTPUT
-            echo "⏭️ Docker image ${VERSION} already exists in GHCR"
-          else
-            echo "image-exists=false" >> $GITHUB_OUTPUT
-            echo "✅ Docker image ${VERSION} not found in GHCR, will build"
-          fi
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.suffix }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Set up QEMU
-        if: steps.image-check.outputs.image-exists == 'false'
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        if: steps.image-check.outputs.image-exists == 'false'
-        uses: docker/setup-buildx-action@v3
-
+  merge-docker:
+    name: Merge multi-arch manifest
+    needs: [prepare, build-docker]
+    if: needs.prepare.outputs.image-exists == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::578348582779:role/github-actions-ecr-push-mesh
+          aws-region: sa-east-1
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
       - name: Extract metadata (tags, labels)
-        if: steps.image-check.outputs.image-exists == 'false'
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-            ${{ steps.ecr-login.outputs.registry }}/deco/mesh
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO }}
           tags: |
-            type=semver,pattern={{version}},value=${{ steps.version-check.outputs.current-version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version-check.outputs.current-version }}
+            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.version }}
             type=raw,value=latest
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        env:
+          GHCR_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          ECR_IMAGE: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO }}
+        run: |
+          GHCR_TAGS=$(jq -cr --arg p "$GHCR_IMAGE:" '.tags | map(select(startswith($p))) | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          ECR_TAGS=$(jq -cr --arg p "$ECR_IMAGE:" '.tags | map(select(startswith($p))) | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools create $GHCR_TAGS \
+            $(printf "$GHCR_IMAGE@sha256:%s " *)
+          docker buildx imagetools create $ECR_TAGS \
+            $(printf "$ECR_IMAGE@sha256:%s " *)
 
-      - name: Build and push Docker image
-        if: steps.image-check.outputs.image-exists == 'false'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./apps/mesh
-          file: ./apps/mesh/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            MESH_VERSION=${{ steps.version-check.outputs.current-version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-
-      # ==================== GITHUB RELEASE ====================
+  release:
+    name: GitHub Release + Deployment
+    needs: [prepare, publish-npm, build-docker, merge-docker]
+    if: |
+      always() &&
+      (needs.prepare.outputs.version-changed == 'true' || needs.prepare.outputs.image-exists == 'false') &&
+      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
+      (needs.build-docker.result == 'success' || needs.build-docker.result == 'skipped') &&
+      (needs.merge-docker.result == 'success' || needs.merge-docker.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
       - name: Create GitHub Release
-        if: steps.version-check.outputs.version-changed == 'true' || steps.image-check.outputs.image-exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version-check.outputs.current-version }}
-          name: "@decocms/mesh v${{ steps.version-check.outputs.current-version }}"
+          tag_name: v${{ needs.prepare.outputs.version }}
+          name: "@decocms/mesh v${{ needs.prepare.outputs.version }}"
           body: |
-            ## MCP Mesh v${{ steps.version-check.outputs.current-version }}
+            ## MCP Mesh v${{ needs.prepare.outputs.version }}
 
             Self-hostable Virtual MCP for managing AI connections and tools.
 
             ### Install via npm
             ```bash
-            bunx @decocms/mesh@${{ steps.version-check.outputs.current-version }}
+            bunx @decocms/mesh@${{ needs.prepare.outputs.version }}
             ```
 
             ### Install via Docker
             ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version-check.outputs.current-version }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
 
             docker run -d \
               -p 3000:3000 \
               -v mesh-data:/app/data \
               --name mesh \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version-check.outputs.current-version }}
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
             ```
 
             ### Documentation
             https://github.com/decocms/mesh
           draft: false
-          prerelease: ${{ contains(steps.version-check.outputs.current-version, 'alpha') || contains(steps.version-check.outputs.current-version, 'beta') || contains(steps.version-check.outputs.current-version, 'rc') }}
-
+          prerelease: ${{ contains(needs.prepare.outputs.version, 'alpha') || contains(needs.prepare.outputs.version, 'beta') || contains(needs.prepare.outputs.version, 'rc') }}
       - name: Generate release summary
-        if: steps.version-check.outputs.version-changed == 'true' || steps.image-check.outputs.image-exists == 'false'
         run: |
           echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🎉 **@decocms/mesh v${{ steps.version-check.outputs.current-version }} Released**" >> $GITHUB_STEP_SUMMARY
+          echo "**@decocms/mesh v${{ needs.prepare.outputs.version }} Released**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### npm" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "bunx @decocms/mesh@${{ steps.version-check.outputs.current-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "bunx @decocms/mesh@${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Docker" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version-check.outputs.current-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
-      # ==================== ARGOCD DEPLOYMENT ====================
       - name: Trigger deployment update
-        if: inputs.deploy_to_production == 'true' && (steps.version-check.outputs.version-changed == 'true' || steps.image-check.outputs.image-exists == 'false')
+        if: inputs.deploy_to_production == 'true'
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DEPLOY_REPO_TOKEN }}
           repository: deco-cx/argo-deploy-mesh
           event-type: image-update
-          client-payload: '{"image_tag": "${{ steps.version-check.outputs.current-version }}"}'
-
+          client-payload: '{"image_tag": "${{ needs.prepare.outputs.version }}"}'
       - name: Deployment summary
-        if: inputs.deploy_to_production == 'true' && (steps.version-check.outputs.version-changed == 'true' || steps.image-check.outputs.image-exists == 'false')
+        if: inputs.deploy_to_production == 'true'
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Deployment" >> $GITHUB_STEP_SUMMARY
-          echo "🚀 Triggered ArgoCD deployment with image tag \`${{ steps.version-check.outputs.current-version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Triggered ArgoCD deployment with image tag \`${{ needs.prepare.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
