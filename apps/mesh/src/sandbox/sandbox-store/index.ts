@@ -33,7 +33,9 @@ export function pickStoreFromEnv({
       region: process.env.SANDBOX_SNAPSHOTS_REGION,
       prefix: process.env.SANDBOX_SNAPSHOTS_PREFIX ?? "sandbox-snapshots",
       endpoint: process.env.SANDBOX_SNAPSHOTS_ENDPOINT,
-      forcePathStyle: process.env.SANDBOX_SNAPSHOTS_FORCE_PATH_STYLE === "1",
+      forcePathStyle: ["1", "true"].includes(
+        process.env.SANDBOX_SNAPSHOTS_FORCE_PATH_STYLE ?? "",
+      ),
     });
   }
   return new LocalFsStore(join(dataDir, "sandbox-snapshots"));

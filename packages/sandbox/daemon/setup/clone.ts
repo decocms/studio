@@ -91,18 +91,9 @@ async function runNetworkStep(cmd: string, deps: CloneDeps): Promise<number> {
         deps.onChunk(src, data);
       },
     };
-    try {
-      const code = await runStep(cmd, tee);
-      if (code === 0) return 0;
-      if (!isTransient(output) || attempt >= CLONE_MAX_RETRIES) return code;
-    } catch (err) {
-      // Spawn-level failure (node-pty's posix_spawnp fails to fork before
-      // the command even runs). Treat as transient and retry; throw on the
-      // last attempt so the orchestrator's catch path surfaces the error.
-      const msg = err instanceof Error ? err.message : String(err);
-      deps.onChunk("setup", `\r\n[clone] spawn error: ${msg}\r\n`);
-      if (!isTransient(msg) || attempt >= CLONE_MAX_RETRIES) throw err;
-    }
+    const code = await runStep(cmd, tee);
+    if (code === 0) return 0;
+    if (!isTransient(output) || attempt >= CLONE_MAX_RETRIES) return code;
   }
   return 1;
 }

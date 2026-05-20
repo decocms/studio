@@ -12,8 +12,9 @@
  */
 
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 
@@ -21,34 +22,16 @@ import { jsonResponse } from "./body-parser";
 
 export interface SnapshotDeps {
   /** Workspace root tarred on create / untarred on restore. */
-  repoDir: string;
+  workDir: string;
 }
 
-/**
- * Directories excluded from `snapshot/create`. `tmp` is the daemon's own
- * scratch space — restoring it would clobber whatever the next sandbox
- * incarnation puts there. `/.git/index.lock` and similar transient files
- * inside `.git/` are accepted as restored: they're harmless, and excluding
- * them risks missing real history during a save mid-operation.
- */
+// tmp is daemon scratch space — restoring it would clobber the next incarnation's state.
 const TAR_EXCLUDES = ["./tmp"];
 
-/**
- * POST /_decopilot_vm/snapshot/create
- *
- * Streams `tar -cf - --exclude=./tmp .` from `repoDir`. The body is the
- * raw tar archive (Content-Type: application/x-tar). Mesh pipes the body
- * straight into `SandboxStore.put(key, …)` — no buffering on either side.
- *
- * Returns 404 when `repoDir` doesn't exist (daemon hasn't been configured
- * yet). Tar's own exit code is surfaced via HTTP trailers / connection
- * close; a non-zero exit closes the response stream early so the receiver
- * sees a truncated archive and treats the upload as failed.
- */
 export function makeSnapshotCreateHandler(deps: SnapshotDeps) {
   return async (): Promise<Response> => {
-    if (!existsSync(deps.repoDir)) {
-      return jsonResponse({ error: "repoDir does not exist" }, 404);
+    if (!existsSync(deps.workDir)) {
+      return jsonResponse({ error: "workDir does not exist" }, 404);
     }
 
     const args = ["-cf", "-"];
@@ -56,7 +39,7 @@ export function makeSnapshotCreateHandler(deps: SnapshotDeps) {
     args.push(".");
 
     const child = spawn("tar", args, {
-      cwd: deps.repoDir,
+      cwd: deps.workDir,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -91,32 +74,18 @@ export function makeSnapshotCreateHandler(deps: SnapshotDeps) {
   };
 }
 
-/**
- * POST /_decopilot_vm/snapshot/restore
- *
- * Reads raw tar bytes from the request body and untars into `repoDir`
- * via `tar -xf - -C <repoDir>`. The repoDir is ensured to exist (mkdir
- * recursive) so restore on a fresh emptyDir mount works without a
- * pre-step.
- *
- * Returns 200 `{ ok: true }` on success or 500 with tar's stderr when
- * the archive is malformed. Callers that get 500 should fall back to
- * the fresh-clone path — no partial state stays in repoDir because we
- * untar into the workdir root and any pre-existing files there are
- * expected to be empty (cold-start) or overwritten (warm restart).
- */
 export function makeSnapshotRestoreHandler(deps: SnapshotDeps) {
   return async (req: Request): Promise<Response> => {
     if (!req.body) {
       return jsonResponse({ error: "request body required" }, 400);
     }
 
-    // Ensure the target exists — on agent-sandbox the workdir is an
-    // emptyDir that mounts as an empty directory, but on the host runner
-    // the directory may not have been created yet for fresh handles.
-    await mkdir(deps.repoDir, { recursive: true });
+    // Extract into a temp dir first; rename-swap on success so a failed or
+    // truncated restore never leaves the workDir in a half-written state.
+    const tmpDir = `${deps.workDir}.restore.${randomUUID().slice(0, 8)}`;
+    await mkdir(tmpDir, { recursive: true });
 
-    const child = spawn("tar", ["-xf", "-", "-C", deps.repoDir], {
+    const child = spawn("tar", ["-xf", "-", "-C", tmpDir], {
       stdio: ["pipe", "pipe", "pipe"],
     });
 
@@ -126,9 +95,6 @@ export function makeSnapshotRestoreHandler(deps: SnapshotDeps) {
       if (stderrBuf.length > 4096) stderrBuf = stderrBuf.slice(-4096);
     });
 
-    // Pipe request body → tar's stdin. The promise resolves on tar's exit;
-    // if the body errors mid-stream tar sees an EOF and exits non-zero,
-    // which we surface as a 500.
     const bodyStream = Readable.fromWeb(
       req.body as unknown as NodeWebReadableStream<Uint8Array>,
     );
@@ -146,6 +112,7 @@ export function makeSnapshotRestoreHandler(deps: SnapshotDeps) {
     });
 
     if (exit.code !== 0) {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
       return jsonResponse(
         {
           error: `tar restore exited code=${exit.code} signal=${exit.signal}`,
@@ -154,6 +121,11 @@ export function makeSnapshotRestoreHandler(deps: SnapshotDeps) {
         500,
       );
     }
+
+    // Atomic swap: remove current workDir then rename the freshly-extracted temp.
+    await rm(deps.workDir, { recursive: true, force: true });
+    await rename(tmpDir, deps.workDir);
+
     return jsonResponse({ ok: true });
   };
 }

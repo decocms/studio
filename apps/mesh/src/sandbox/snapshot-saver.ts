@@ -1,17 +1,6 @@
 /**
- * Snapshot saver — polls daemon `/idle` for each tracked sandbox and uploads
- * a tar via `/snapshot/create` → `SandboxStore.put`.
- *
- * Save triggers:
- *   - tick (every POLL_INTERVAL_MS) when `idleMs > IDLE_THRESHOLD_MS` AND
- *     the user has done work since the last save.
- *   - explicit `saveAllSnapshotsOnShutdown()` on mesh SIGTERM, ignoring the
- *     idle gate so active sessions still survive a pod recycle.
- *
- * Sandboxes register on VM_START and unregister on VM_DELETE. Mesh restart
- * loses the in-memory registry — outstanding sandboxes won't be auto-saved
- * until their next VM_START, but their daemons' own SIGTERM commit handler
- * still runs on pod recycle. Acceptable for v1.
+ * Polls tracked sandboxes for idle activity and uploads a tar snapshot via
+ * `SandboxStore.put`. Also flushes all on SIGTERM so work survives pod recycles.
  */
 
 import type { SandboxRunner } from "@decocms/sandbox/runner";
@@ -38,6 +27,7 @@ const POLL_INTERVAL_MS = 30_000;
 
 const tracked = new Map<string, Tracked>();
 let timer: ReturnType<typeof setInterval> | null = null;
+let tickRunning = false;
 
 export function trackSandbox(s: {
   orgId: string;
@@ -61,17 +51,13 @@ export function __resetSnapshotSaverForTests(): void {
   tracked.clear();
   if (timer) clearInterval(timer);
   timer = null;
+  tickRunning = false;
 }
 
 function resolveStore(): SandboxStore {
   return pickStoreFromEnv({ dataDir: getSettings().dataDir });
 }
 
-/**
- * Save one sandbox. `idleGate=true` only saves when the daemon's idleMs
- * exceeds the threshold AND the user did work since the last save.
- * `idleGate=false` (shutdown sweep) saves unconditionally.
- */
 async function saveOne(
   runner: SandboxRunner,
   store: SandboxStore,
@@ -101,6 +87,9 @@ async function saveOne(
   );
   if (!tarRes.ok || !tarRes.body) return;
 
+  // Record before upload: activity during the upload window should trigger
+  // another save on the next tick, not be silently swallowed.
+  const savedAt = Date.now();
   await store.put(
     snapshotKey({
       orgId: t.orgId,
@@ -109,17 +98,23 @@ async function saveOne(
     }),
     tarRes.body as ReadableStream<Uint8Array>,
   );
-  t.lastSavedAt = Date.now();
+  t.lastSavedAt = savedAt;
 }
 
 async function tick(): Promise<void> {
-  const runner = getSharedRunnerIfInit();
-  if (!runner) return;
-  const store = resolveStore();
-  for (const t of tracked.values()) {
-    await saveOne(runner, store, t, true).catch((err) =>
-      console.warn(`[snapshot-saver] tick ${t.handle}: ${err}`),
-    );
+  if (tickRunning) return;
+  tickRunning = true;
+  try {
+    const runner = getSharedRunnerIfInit();
+    if (!runner) return;
+    const store = resolveStore();
+    for (const t of tracked.values()) {
+      await saveOne(runner, store, t, true).catch((err) =>
+        console.warn(`[snapshot-saver] tick ${t.handle}: ${err}`),
+      );
+    }
+  } finally {
+    tickRunning = false;
   }
 }
 

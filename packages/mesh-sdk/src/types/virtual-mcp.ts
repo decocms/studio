@@ -170,6 +170,9 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 const CloneUrlSchema = z
   .string()
   .url()
+  .refine((url) => url.startsWith("https://"), {
+    message: "cloneUrl must use https://",
+  })
   .nullable()
   .optional()
   .describe(

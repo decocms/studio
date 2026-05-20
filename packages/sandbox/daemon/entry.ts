@@ -300,10 +300,8 @@ const setupCloneH = makeSetupHandler("clone", { orchestrator });
 const setupInstallH = makeSetupHandler("install", { orchestrator });
 const setupStartH = makeSetupHandler("start", { orchestrator });
 
-// Snapshot routes — tar produce/consume against the workspace root.
-// Reuses the same `repoDir` the rest of the daemon is configured around.
-const snapshotCreateH = makeSnapshotCreateHandler({ repoDir });
-const snapshotRestoreH = makeSnapshotRestoreHandler({ repoDir });
+const snapshotCreateH = makeSnapshotCreateHandler({ workDir: appRoot });
+const snapshotRestoreH = makeSnapshotRestoreHandler({ workDir: appRoot });
 
 // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
 const isReady = () => lifecycle.current().phase === "running";

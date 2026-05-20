@@ -24,28 +24,19 @@ export interface SnapshotHead {
 }
 
 export interface SandboxStore {
-  /**
-   * Write a snapshot atomically. Implementations write to a temp path and
-   * rename so a partial upload never overwrites a good prior snapshot.
-   */
+  /** Atomic write — partial uploads must never overwrite a prior snapshot. */
   put(
     key: string,
     body: ReadableStream<Uint8Array> | Uint8Array,
   ): Promise<void>;
 
-  /**
-   * Read a snapshot. Returns null when the key is absent — callers use this
-   * to decide "restore vs fresh clone" without needing a separate `head`.
-   */
+  /** Returns null when absent. */
   get(key: string): Promise<ReadableStream<Uint8Array> | null>;
 
-  /**
-   * Existence + size probe. Returns null when absent. Cheaper than `get` and
-   * used by VM_START's restore-vs-clone decision.
-   */
+  /** Existence + size probe. Returns null when absent. */
   head(key: string): Promise<SnapshotHead | null>;
 
-  /** Remove a snapshot. Idempotent — deleting a missing key is a no-op. */
+  /** Idempotent — missing key is a no-op. */
   delete(key: string): Promise<void>;
 }
 

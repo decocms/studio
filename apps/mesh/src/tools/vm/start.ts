@@ -354,20 +354,28 @@ async function provisionSandbox(
     daemonUrl: string;
     daemonToken: string;
   }) => {
-    const body = await store.get(snapKey);
-    if (!body) return;
-    const res = await fetch(`${rdy.daemonUrl}/_decopilot_vm/snapshot/restore`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${rdy.daemonToken}` },
-      body,
-      // Streaming request bodies require `duplex: half`; not yet in the
-      // standard fetch lib types.
-      ...({ duplex: "half" } as object),
-    });
-    if (!res.ok) {
-      console.warn(
-        `[vm-start] snapshot restore failed: ${res.status} ${await res.text()}`,
+    try {
+      const body = await store.get(snapKey);
+      if (!body) return;
+      const res = await fetch(
+        `${rdy.daemonUrl}/_decopilot_vm/snapshot/restore`,
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${rdy.daemonToken}` },
+          body,
+          // Streaming request bodies require `duplex: half`; not yet in the
+          // standard fetch lib types.
+          ...({ duplex: "half" } as object),
+        },
       );
+      if (!res.ok) {
+        console.warn(
+          `[vm-start] snapshot restore failed: ${res.status} ${await res.text()}`,
+        );
+      }
+    } catch (err) {
+      // Restore is best-effort — fall through to fresh clone.
+      console.warn("[vm-start] snapshot restore error, continuing:", err);
     }
   };
 
@@ -404,7 +412,6 @@ async function provisionSandbox(
     },
   };
 
-  // Register with the snapshot saver so idle/shutdown auto-saves the workdir.
   trackSandbox({ orgId, virtualMcpId, branch, handle: sandbox.handle });
 
   await setVmMapEntry(

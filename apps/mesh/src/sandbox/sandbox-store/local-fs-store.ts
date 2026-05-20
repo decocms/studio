@@ -12,6 +12,7 @@
  * store still refuses to read or write outside its own directory.
  */
 
+import { randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -41,7 +42,7 @@ export class LocalFsStore implements SandboxStore {
     // Atomic write: stream into a sibling temp file, then rename. Rename on
     // the same filesystem is atomic, so a reader either sees the old bytes
     // or the complete new bytes — never a half-written tar.
-    const tempPath = `${target}.tmp.${process.pid}.${Date.now()}`;
+    const tempPath = `${target}.tmp.${randomUUID()}`;
     try {
       const ws = createWriteStream(tempPath);
       if (body instanceof Uint8Array) {
