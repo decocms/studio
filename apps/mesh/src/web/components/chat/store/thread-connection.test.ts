@@ -844,6 +844,163 @@ describe("boot buffering", () => {
   });
 });
 
+// ─── fetchOlderMessages ──────────────────────────────────────────────────────
+
+describe("fetchOlderMessages", () => {
+  function makeQueuedClient(
+    pages: Array<{ items: unknown[]; hasMore: boolean }>,
+  ) {
+    const calls: Array<{ name: string; arguments: unknown }> = [];
+    let cursor = 0;
+    return {
+      calls,
+      client: {
+        callTool: async (req: { name: string; arguments: unknown }) => {
+          calls.push(req);
+          const page = pages[cursor++];
+          if (!page)
+            return { structuredContent: { items: [], hasMore: false } };
+          return { structuredContent: page };
+        },
+      },
+    };
+  }
+
+  test("loads next older page and increments serverFetchedCount", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const pages = [
+      // initial page (newest 5, desc; mergeAndSort flips to ascending in store)
+      {
+        items: [
+          {
+            id: "m-5",
+            role: "user",
+            parts: [],
+            metadata: { created_at: "2026-01-01T00:00:05Z" },
+          },
+          {
+            id: "m-4",
+            role: "user",
+            parts: [],
+            metadata: { created_at: "2026-01-01T00:00:04Z" },
+          },
+          {
+            id: "m-3",
+            role: "user",
+            parts: [],
+            metadata: { created_at: "2026-01-01T00:00:03Z" },
+          },
+          {
+            id: "m-2",
+            role: "user",
+            parts: [],
+            metadata: { created_at: "2026-01-01T00:00:02Z" },
+          },
+          {
+            id: "m-1",
+            role: "user",
+            parts: [],
+            metadata: { created_at: "2026-01-01T00:00:01Z" },
+          },
+        ],
+        hasMore: true,
+      },
+      // older page
+      {
+        items: [
+          {
+            id: "m-0",
+            role: "user",
+            parts: [],
+            metadata: { created_at: "2026-01-01T00:00:00Z" },
+          },
+        ],
+        hasMore: false,
+      },
+    ];
+    const harness = makeQueuedClient(pages);
+    const conn = getOrOpenStream("acme", "thread-fetch-older", {
+      client: harness.client as never,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(conn.hasMoreOlder.get()).toBe(true);
+    expect(conn.messages.get()).toHaveLength(5);
+
+    await conn.fetchOlderMessages();
+
+    expect(conn.messages.get().map((m) => m.id)).toEqual([
+      "m-0",
+      "m-1",
+      "m-2",
+      "m-3",
+      "m-4",
+      "m-5",
+    ]);
+    expect(conn.hasMoreOlder.get()).toBe(false);
+
+    // Second call short-circuits because hasMoreOlder is now false — no extra MCP call.
+    await conn.fetchOlderMessages();
+    expect(harness.calls.length).toBe(2);
+  });
+
+  test("guards against concurrent calls via isFetchingOlder", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    // biome-ignore lint/style/useConst: assigned inside a closure
+    let resolveSecond: ((value: unknown) => void) | null = null;
+    let callIdx = 0;
+    const client = {
+      callTool: (_req: unknown) => {
+        callIdx++;
+        if (callIdx === 1) {
+          // initial page
+          return Promise.resolve({
+            structuredContent: {
+              items: Array.from({ length: 5 }, (_, i) => ({
+                id: `m-${i}`,
+                role: "user",
+                parts: [],
+                metadata: { created_at: `2026-01-01T00:00:0${i}Z` },
+              })),
+              hasMore: true,
+            },
+          });
+        }
+        // older page — controllable
+        return new Promise((res) => {
+          resolveSecond = res;
+        });
+      },
+    };
+
+    const conn = getOrOpenStream("acme", "thread-fetch-guard", {
+      client: client as never,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const p1 = conn.fetchOlderMessages();
+    // Second call must short-circuit while the first is in flight.
+    expect(conn.isFetchingOlder.get()).toBe(true);
+    const p2 = conn.fetchOlderMessages();
+    await p2; // resolves immediately because of the guard
+
+    expect(callIdx).toBe(2); // only first older-page call was issued
+
+    // biome-ignore lint/style/noNonNullAssertion: assigned by the closure above
+    resolveSecond!({ structuredContent: { items: [], hasMore: false } });
+    await p1;
+    expect(conn.isFetchingOlder.get()).toBe(false);
+  });
+});
+
 // ─── reconnect refetch ───────────────────────────────────────────────────────
 
 describe("reconnect refetch", () => {

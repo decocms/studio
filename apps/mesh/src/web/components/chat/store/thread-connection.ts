@@ -48,6 +48,7 @@ import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
 import type { SimpleModeTier } from "@/tools/organization/schema";
 import { Store } from "./store-primitive";
 import type { ChatMode } from "../types";
+import { toast } from "sonner";
 
 export { Store };
 
@@ -237,7 +238,6 @@ export class ThreadConnection {
    */
   private waitingForNewRun = false;
   private client: MCPClient | null;
-  // @ts-expect-error TS6133 — written here, read by fetchOlderMessages in T8
   private serverFetchedCount = 0;
   private readonly pageSize = 5;
   /**
@@ -429,6 +429,61 @@ export class ThreadConnection {
       }
     } catch (err) {
       console.warn("[chat-store] refetchLatestPage failed:", err);
+    }
+  }
+
+  /**
+   * Fetch the next older page of messages. Triggered by the top-of-list
+   * sentinel + IntersectionObserver in the chat UI.
+   *
+   * Uses `serverFetchedCount` as the offset cursor. With orderBy
+   * created_at desc and append-only thread messages (server inserts only
+   * at the head), offset pagination produces overlap on concurrent
+   * inserts but never gaps — overlap is absorbed by mergeAndSort's
+   * upsert-by-id.
+   *
+   * Guards: noop if no client, no more older pages, or another fetch is
+   * already in flight (the sentinel can re-trigger rapidly on small pages).
+   */
+  async fetchOlderMessages(): Promise<void> {
+    if (!this.client) return;
+    if (!this.hasMoreOlder.get()) return;
+    if (this.isFetchingOlder.get()) return;
+    this.isFetchingOlder.set(true);
+    try {
+      const result = await this.client.callTool({
+        name: "COLLECTION_THREAD_MESSAGES_LIST",
+        arguments: {
+          thread_id: this.threadId,
+          limit: this.pageSize,
+          offset: this.serverFetchedCount,
+          orderBy: [{ field: ["created_at"], direction: "desc" }],
+        },
+      });
+      if (this.abort.signal.aborted) return;
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error(
+          extractToolErrorMessage(
+            result,
+            "COLLECTION_THREAD_MESSAGES_LIST failed",
+          ),
+        );
+      }
+      const payload = ((result as { structuredContent?: unknown })
+        .structuredContent ?? result) as {
+        items?: UIMessage[];
+        hasMore?: boolean;
+      };
+      const items = payload.items ?? [];
+      this.messages.update((curr) => mergeAndSort(curr, items));
+      this.serverFetchedCount += items.length;
+      this.hasMoreOlder.set(payload.hasMore ?? false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn("[chat-store] fetchOlderMessages failed:", msg);
+      toast.error(`Could not load older messages: ${msg}`);
+    } finally {
+      this.isFetchingOlder.set(false);
     }
   }
 
