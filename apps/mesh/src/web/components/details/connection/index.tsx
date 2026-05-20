@@ -375,6 +375,7 @@ function ConnectionInspectorViewWithConnection({
     await queryClient.invalidateQueries({
       queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
     });
+    await queryClient.invalidateQueries({ queryKey: ["mcp", "client"] });
 
     toast.success("Authentication successful");
   };
