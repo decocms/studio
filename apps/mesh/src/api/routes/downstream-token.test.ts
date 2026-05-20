@@ -105,4 +105,62 @@ describe("Downstream Token Routes", () => {
     expect(body.success).toBe(true);
     expect(body.expiresAt).toBeTruthy();
   });
+
+  describe("org-less API key rejection", () => {
+    let orglessApp: Hono<{ Variables: { meshContext: MeshContext } }>;
+
+    beforeEach(() => {
+      const ctx = {
+        organization: undefined,
+        auth: { user: { id: "user_1" }, apiKey: { userId: "user_1" } },
+        storage: {
+          connections: {
+            findById: mock(async () => ({ id: "conn_1" })),
+          },
+        },
+      } as unknown as MeshContext;
+
+      orglessApp = new Hono();
+      orglessApp.use("*", async (c, next) => {
+        c.set("meshContext", ctx);
+        await next();
+      });
+      orglessApp.route("/", downstreamTokenRoutes);
+    });
+
+    it("POST rejects token write without organization context", async () => {
+      const res = await orglessApp.request("/connections/conn_1/oauth-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken: "ATTACKER_TOKEN",
+          tokenEndpoint: "https://evil.com/token",
+        }),
+      });
+
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("Organization context required");
+    });
+
+    it("DELETE rejects token deletion without organization context", async () => {
+      const res = await orglessApp.request("/connections/conn_1/oauth-token", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("Organization context required");
+    });
+
+    it("GET status rejects token status check without organization context", async () => {
+      const res = await orglessApp.request(
+        "/connections/conn_1/oauth-token/status",
+      );
+
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("Organization context required");
+    });
+  });
 });
