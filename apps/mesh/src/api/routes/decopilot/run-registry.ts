@@ -180,10 +180,14 @@ export class RunRegistry {
       const batch = orphans.slice(i, i + CONCURRENCY);
       await Promise.allSettled(
         batch.map(async (thread) => {
+          // CAS on the thread's current owner so concurrent claimers
+          // serialize. First to flip the column wins; the rest see the
+          // new owner and bail.
           const claimed = await this.deps.storage.claimOrphanedRun(
             thread.id,
             thread.organization_id,
             this.podId,
+            thread.run_owner_pod ?? null,
           );
           if (!claimed) return; // Another pod got it
 
@@ -232,10 +236,17 @@ export class RunRegistry {
       await Promise.allSettled(
         batch.map(async (thread) => {
           if (this.isRunning(thread.id)) return;
+          // CAS on `deadPodId` so the first survivor wins. The race
+          // ISN'T hypothetical: with parallel heartbeat pollers on
+          // every survivor, two pods regularly detect the same dead
+          // peer within the same tick. Without this CAS both claim,
+          // both dispatch a resumed run, and the per-thread JetStream
+          // subject gets two copies of every chunk.
           const claimed = await this.deps.storage.claimOrphanedRun(
             thread.id,
             thread.organization_id,
             this.podId,
+            deadPodId,
           );
           if (!claimed) return;
 

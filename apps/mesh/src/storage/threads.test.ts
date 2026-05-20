@@ -182,7 +182,7 @@ describe("SqlThreadStorage", () => {
           created_by: "user_1",
           status: "in_progress",
         });
-        await storage.claimOrphanedRun(thread.id, "org_1", "pod-1");
+        await storage.claimOrphanedRun(thread.id, "org_1", "pod-1", null);
         const loaded = await storage.get(thread.id, "org_1");
         expect(loaded?.run_owner_pod).toBe("pod-1");
       });
@@ -197,9 +197,13 @@ describe("SqlThreadStorage", () => {
         await storage.update(thread.id, "org_1", {
           run_owner_pod: "dead-pod",
         });
-        // New pod should be able to claim it (verify via side effect —
-        // PGlite doesn't report numUpdatedRows correctly)
-        await storage.claimOrphanedRun(thread.id, "org_1", "new-pod");
+        // New pod claims by passing the stale owner as expectedCurrentOwner.
+        await storage.claimOrphanedRun(
+          thread.id,
+          "org_1",
+          "new-pod",
+          "dead-pod",
+        );
         const loaded = await storage.get(thread.id, "org_1");
         expect(loaded?.run_owner_pod).toBe("new-pod");
       });
@@ -210,10 +214,42 @@ describe("SqlThreadStorage", () => {
           created_by: "user_1",
           status: "completed",
         });
-        await storage.claimOrphanedRun(thread.id, "org_1", "pod-1");
+        await storage.claimOrphanedRun(thread.id, "org_1", "pod-1", null);
         const loaded = await storage.get(thread.id, "org_1");
         // Should not have been claimed
         expect(loaded?.run_owner_pod).toBeNull();
+      });
+
+      it("loses the CAS when expectedCurrentOwner is stale", async () => {
+        // Two concurrent survivors both observed run_owner_pod = dead-pod
+        // and both call claim. The second one's CAS must fail because the
+        // row now reads first-survivor, not dead-pod.
+        const thread = await storage.create({
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "in_progress",
+        });
+        await storage.update(thread.id, "org_1", {
+          run_owner_pod: "dead-pod",
+        });
+
+        const firstWon = await storage.claimOrphanedRun(
+          thread.id,
+          "org_1",
+          "survivor-A",
+          "dead-pod",
+        );
+        const secondWon = await storage.claimOrphanedRun(
+          thread.id,
+          "org_1",
+          "survivor-B",
+          "dead-pod",
+        );
+
+        expect(firstWon).toBe(true);
+        expect(secondWon).toBe(false);
+        const loaded = await storage.get(thread.id, "org_1");
+        expect(loaded?.run_owner_pod).toBe("survivor-A");
       });
 
       it("claims when run is recorded against the SAME pod (registry-lost recovery)", async () => {
@@ -232,7 +268,7 @@ describe("SqlThreadStorage", () => {
           run_owner_pod: "pod-1",
         });
 
-        await storage.claimOrphanedRun(thread.id, "org_1", "pod-1");
+        await storage.claimOrphanedRun(thread.id, "org_1", "pod-1", "pod-1");
 
         const loaded = await storage.get(thread.id, "org_1");
         expect(loaded?.run_owner_pod).toBe("pod-1");

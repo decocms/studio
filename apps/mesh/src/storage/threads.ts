@@ -633,30 +633,34 @@ export class SqlThreadStorage implements ThreadStoragePort {
     taskId: string,
     organizationId: string,
     podId: string,
+    expectedCurrentOwner: string | null,
   ): Promise<boolean> {
-    // Claim any in-progress run, regardless of which pod is recorded as the
-    // current owner. Callers MUST verify that this pod's RunRegistry has no
-    // live entry for `taskId` before invoking this — that's the orphan
-    // precondition. Same-pod claims are intentionally allowed because:
+    // Real CAS on `run_owner_pod`: the UPDATE matches only when the row's
+    // current owner is still what the caller read into hand. Two survivors
+    // racing on the same dead pod's orphan both call with
+    // `expectedCurrentOwner = deadPodId`; the first UPDATE flips the
+    // column to its podId, the second's WHERE filter no longer matches,
+    // and it returns false. Without this, concurrent
+    // `handlePodDeath`/`recoverOrphanedRuns` would both claim and both
+    // dispatch a resumed run, duplicating chunks on the per-thread
+    // JetStream subject.
     //
-    //   1. K8s rolling restarts re-use the StatefulSet pod name, so a
-    //      previous incarnation may have left `run_owner_pod = currentPodId`
-    //      while the new process has an empty registry.
-    //   2. If the run was projected out of memory (e.g. a transient DB
-    //      failure in the reactor between in-memory projection and the
-    //      `run_owner_pod = NULL` write on terminal status), the same pod is
-    //      the only authority that can recover it without restarting.
-    //
-    // Excluding same-pod claims here used to lock those threads in
-    // `in_progress` indefinitely on single-pod self-hosted deploys.
-    const result = await this.db
-      .updateTable("threads")
-      .set({ run_owner_pod: podId, updated_at: new Date().toISOString() })
-      .where("id", "=", taskId)
-      .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
-      .executeTakeFirst();
-    return (result?.numUpdatedRows ?? 0n) > 0n;
+    // Same-pod claims (`expectedCurrentOwner === podId`) still succeed,
+    // covering the K8s rolling-restart case where a previous incarnation
+    // left `run_owner_pod = currentPodId` while the new process has an
+    // empty registry. `IS NOT DISTINCT FROM` keeps NULL as a comparable
+    // value so claimers passing `expectedCurrentOwner = null` match
+    // genuinely-unowned rows without tripping SQL three-valued logic.
+    const result = await sql<{ id: string }>`
+      UPDATE threads
+         SET run_owner_pod = ${podId}, updated_at = ${new Date().toISOString()}
+       WHERE id = ${taskId}
+         AND organization_id = ${organizationId}
+         AND status = 'in_progress'
+         AND run_owner_pod IS NOT DISTINCT FROM ${expectedCurrentOwner}
+       RETURNING id
+    `.execute(this.db);
+    return result.rows.length > 0;
   }
 
   async listOrphanedRuns(_currentPodId: string): Promise<Thread[]> {
