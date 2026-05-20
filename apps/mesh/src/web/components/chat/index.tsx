@@ -148,6 +148,7 @@ function ChatMessages() {
   return (
     <div
       ref={scrollRef}
+      data-chat-scroller
       className="w-full min-w-0 max-w-full overflow-y-auto h-full overflow-x-hidden"
       style={{ paddingBottom }}
     >

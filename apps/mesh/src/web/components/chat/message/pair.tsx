@@ -63,6 +63,14 @@ interface MessagePairProps {
 
 export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
   const pairRef = useRef<HTMLDivElement>(null);
+  /**
+   * Initial-scroll once per MessagePair mount. The ref callback below fires
+   * on every render (its identity is unstable by design), so this gate keeps
+   * `scrollIntoView` / scroll-to-bottom from re-firing on every commit during
+   * streaming — the sticky `top-4` on MessageUser keeps the user message
+   * pinned visually without re-scrolling.
+   */
+  const didInitialScroll = useRef(false);
 
   const scrollToPair = () => {
     if (pairRef.current) {
@@ -75,9 +83,27 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
 
   const handlePairRef = (node: HTMLDivElement | null) => {
     pairRef.current = node;
+    if (!isLastPair || !node || didInitialScroll.current) return;
+    didInitialScroll.current = true;
 
-    if (isLastPair) {
-      node?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Active run: pin the user message at the top so the streaming assistant
+    // content reveals beneath it. Matches the historical behavior.
+    if (status === "submitted" || status === "streaming") {
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    // Completed thread on open: land at the bottom of the assistant content
+    // (latest content visible) — the standard chat-UI anchor. Walk up to the
+    // chat scroll container by data attribute rather than threading a ref
+    // through props.
+    const scroller = node.closest<HTMLElement>("[data-chat-scroller]");
+    if (scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+    } else {
+      // Fallback: if the marker isn't present, at least put the last pair
+      // start in view rather than leaving the scroller at zero.
+      node.scrollIntoView({ behavior: "instant", block: "start" });
     }
   };
 
