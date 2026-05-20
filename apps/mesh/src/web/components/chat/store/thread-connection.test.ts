@@ -592,6 +592,9 @@ describe("submit defers POST", () => {
 // ─── mergeAndSort ────────────────────────────────────────────────────────────
 
 describe("mergeAndSort", () => {
+  // Persisted ThreadMessage rows put `created_at` at the top level. We model
+  // that here, not on `metadata`, because the production tool's output schema
+  // is `ThreadMessageEntitySchema` which declares created_at at top level.
   function msg(
     id: string,
     createdAt: string | undefined,
@@ -601,7 +604,7 @@ describe("mergeAndSort", () => {
       id,
       role,
       parts: [{ type: "text", text: id }],
-      metadata: createdAt ? { created_at: createdAt } : undefined,
+      ...(createdAt !== undefined ? { created_at: createdAt } : {}),
       // biome-ignore lint/suspicious/noExplicitAny: test helper
     } as any;
   }
@@ -659,9 +662,7 @@ describe("mergeAndSort", () => {
     const prev = [msg("a", "2026-01-01T00:00:00Z")];
     const numericMsg = {
       ...msg("b", undefined),
-      metadata: {
-        created_at: new Date("2026-01-01T00:00:01Z").getTime(),
-      },
+      created_at: new Date("2026-01-01T00:00:01Z").getTime(),
     } as UIMessage;
     expect(mergeAndSort(prev, [numericMsg]).map((m) => m.id)).toEqual([
       "a",
@@ -677,6 +678,34 @@ describe("mergeAndSort", () => {
     const out = mergeAndSort([], incoming);
     expect(out).toHaveLength(1);
     expect(out[0]?.role).toBe("assistant");
+  });
+
+  test("metadata.created_at is ignored — only top-level created_at is used", () => {
+    // Regression: persisted assistant rows in the wild carry
+    // `metadata.created_at` stamped at the run-start time, which is EARLIER
+    // than the user message they answer. If readTimestamp pulled from
+    // metadata, the assistant would sort before its preceding user, and
+    // useMessagePairs would discard it as an orphan → "No response was
+    // generated" empty-state bug.
+    const userMsg = {
+      id: "u-1",
+      role: "user",
+      parts: [{ type: "text", text: "hi" }],
+      created_at: "2026-05-20T18:10:04.851Z",
+      // biome-ignore lint/suspicious/noExplicitAny: test helper
+    } as any;
+    const assistantMsg = {
+      id: "msg_A",
+      role: "assistant",
+      parts: [{ type: "text", text: "hello" }],
+      created_at: "2026-05-20T18:10:06.953Z", // actually persisted later
+      metadata: { created_at: "2026-05-20T18:10:04.876Z" }, // stamped at run-start
+      // biome-ignore lint/suspicious/noExplicitAny: test helper
+    } as any;
+    expect(mergeAndSort([], [assistantMsg, userMsg]).map((m) => m.id)).toEqual([
+      "u-1",
+      "msg_A",
+    ]);
   });
 });
 
@@ -750,7 +779,7 @@ describe("boot buffering", () => {
         id: "m-persisted",
         role: "user",
         parts: [{ type: "text", text: "earlier" }],
-        metadata: { created_at: "2026-01-01T00:00:00Z" },
+        created_at: "2026-01-01T00:00:00Z",
       },
     ]);
     await new Promise((r) => setTimeout(r, 20));
@@ -880,31 +909,31 @@ describe("fetchOlderMessages", () => {
             id: "m-5",
             role: "user",
             parts: [],
-            metadata: { created_at: "2026-01-01T00:00:05Z" },
+            created_at: "2026-01-01T00:00:05Z",
           },
           {
             id: "m-4",
             role: "user",
             parts: [],
-            metadata: { created_at: "2026-01-01T00:00:04Z" },
+            created_at: "2026-01-01T00:00:04Z",
           },
           {
             id: "m-3",
             role: "user",
             parts: [],
-            metadata: { created_at: "2026-01-01T00:00:03Z" },
+            created_at: "2026-01-01T00:00:03Z",
           },
           {
             id: "m-2",
             role: "user",
             parts: [],
-            metadata: { created_at: "2026-01-01T00:00:02Z" },
+            created_at: "2026-01-01T00:00:02Z",
           },
           {
             id: "m-1",
             role: "user",
             parts: [],
-            metadata: { created_at: "2026-01-01T00:00:01Z" },
+            created_at: "2026-01-01T00:00:01Z",
           },
         ],
         hasMore: true,
@@ -916,7 +945,7 @@ describe("fetchOlderMessages", () => {
             id: "m-0",
             role: "user",
             parts: [],
-            metadata: { created_at: "2026-01-01T00:00:00Z" },
+            created_at: "2026-01-01T00:00:00Z",
           },
         ],
         hasMore: false,
@@ -968,7 +997,7 @@ describe("fetchOlderMessages", () => {
                 id: `m-${i}`,
                 role: "user",
                 parts: [],
-                metadata: { created_at: `2026-01-01T00:00:0${i}Z` },
+                created_at: `2026-01-01T00:00:0${i}Z`,
               })),
               hasMore: true,
             },
@@ -1034,7 +1063,7 @@ describe("reconnect refetch", () => {
         id: "m-1",
         role: "user",
         parts: [],
-        metadata: { created_at: "2026-01-01T00:00:00Z" },
+        created_at: "2026-01-01T00:00:00Z",
       },
     ]);
     await new Promise((r) => setTimeout(r, 20));
@@ -1058,13 +1087,13 @@ describe("reconnect refetch", () => {
         id: "m-2",
         role: "user",
         parts: [],
-        metadata: { created_at: "2026-01-01T00:00:01Z" },
+        created_at: "2026-01-01T00:00:01Z",
       },
       {
         id: "m-1",
         role: "user",
         parts: [],
-        metadata: { created_at: "2026-01-01T00:00:00Z" },
+        created_at: "2026-01-01T00:00:00Z",
       },
     ]);
     await new Promise((r) => setTimeout(r, 20));

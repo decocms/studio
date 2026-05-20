@@ -821,7 +821,7 @@ function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {
 
 /**
  * Merge `incoming` rows into `prev` (upsert by id), then sort the result
- * ascending by `(metadata.created_at, id)`. The id tiebreaker mirrors
+ * ascending by `(created_at, id)`. The id tiebreaker mirrors
  * `storage.threads.listMessages`'s `ORDER BY created_at, id` for stability
  * across batched inserts.
  *
@@ -846,10 +846,20 @@ export function mergeAndSort(
   return merged;
 }
 
+/**
+ * Persisted messages from COLLECTION_THREAD_MESSAGES_LIST carry the DB row's
+ * `created_at` at the top level. AI-SDK UIMessages don't declare that field,
+ * so we read it via a defensive cast. Some assistant messages additionally
+ * stamp a `metadata.created_at` at the run-start time — that field reflects
+ * the user-turn timestamp, NOT when the assistant row was actually written,
+ * so it sorts the assistant BEFORE the user it answered. We deliberately
+ * ignore `metadata.created_at` for ordering and trust only the top-level
+ * persisted timestamp.
+ */
 function readTimestamp(m: UIMessage): number {
-  const md = m.metadata as { created_at?: string | number | Date } | undefined;
-  if (md?.created_at == null) return Number.POSITIVE_INFINITY;
-  return new Date(md.created_at).getTime();
+  const withTs = m as unknown as { created_at?: string | number | Date };
+  if (withTs.created_at == null) return Number.POSITIVE_INFINITY;
+  return new Date(withTs.created_at).getTime();
 }
 
 // ─── Module-scoped slot ──────────────────────────────────────────────────────
