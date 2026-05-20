@@ -82,7 +82,11 @@ describe("waitForPort", () => {
     const port = await ephemeralPort();
     const promise = waitForPort(port, { intervalMs: 20 });
     setTimeout(() => {
-      void listenOn("127.0.0.1", port);
+      // Port may have been grabbed by another process between ephemeralPort()
+      // and here; suppress the rejection so Bun doesn't count it as an
+      // unhandled-rejection error — waitForPort will still detect the port
+      // as in-use and resolve regardless of who bound it.
+      listenOn("127.0.0.1", port).catch(() => {});
     }, 60);
     expect(await promise).toBe("127.0.0.1");
   });
