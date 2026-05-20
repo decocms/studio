@@ -118,6 +118,9 @@ export interface ChatStreamContextValue {
   isChatEmpty: boolean;
   isWaitingForApprovals: boolean;
   isRunInProgress: boolean;
+  hasMoreOlder: boolean;
+  isFetchingOlder: boolean;
+  fetchOlderMessages: () => Promise<void>;
 }
 
 export interface ChatTaskContextValue {
@@ -689,6 +692,8 @@ export function ActiveTaskProvider({
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
   const finishReason = useStore(conn.finishReason);
+  const hasMoreOlder = useStore(conn.hasMoreOlder);
+  const isFetchingOlder = useStore(conn.isFetchingOlder);
 
   // Stable callback ref so the observer wrapper sees the latest consumer
   // callbacks without re-running the effect on every render.
@@ -918,6 +923,9 @@ export function ActiveTaskProvider({
     isChatEmpty,
     isWaitingForApprovals: isWaitingForApprovals ?? false,
     isRunInProgress,
+    hasMoreOlder,
+    isFetchingOlder,
+    fetchOlderMessages: () => conn.fetchOlderMessages(),
   };
 
   return (
