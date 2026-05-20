@@ -22,7 +22,7 @@
  *   - No notification channel needed — Postgres is the single source
  *     of truth, and the periodic poll runs against a cheap query.
  *
- * Pod registry: `mesh_pods` table (one row per live pod id). Each pod
+ * Pod registry: `studio_pods` table (one row per live pod id). Each pod
  * INSERTs on `start()` and DELETEs on `stop()` (graceful). When the
  * poll loop detects a dead peer, it DELETEs that row too — so the
  * table stays a faithful view of who's actually alive, modulo a
@@ -37,7 +37,12 @@ export interface PodHeartbeat {
   init(): Promise<void>;
   /** True once the dedicated liveness connection is established. */
   isReady(): boolean;
-  start(podId: string): void;
+  /**
+   * Acquire the liveness lock and publish our row to the registry.
+   * Returns once both are committed so callers can sequence on it
+   * (e.g. avoid logging "Started" before peers can observe us alive).
+   */
+  start(podId: string): Promise<void>;
   /** Watch for pod deaths. Callback receives the dead podId. */
   onPodDeath(callback: (deadPodId: string) => void): void;
   stop(): Promise<void>;
@@ -118,33 +123,33 @@ export class PgPodHeartbeat implements PodHeartbeat {
     return this.livenessClient !== null;
   }
 
-  start(podId: string): void {
+  async start(podId: string): Promise<void> {
     if (!this.livenessClient) return;
-    // Allow re-call after a reconnect (this.podId is already set from
-    // the original start). The pod registry insert is idempotent and
-    // the advisory lock is re-acquired below.
+    // Allow re-call after a reconnect (this.podId may already be set
+    // from the original start). The lock is re-acquired below and the
+    // INSERT is idempotent.
     this.podId = podId;
+    const client = this.livenessClient;
 
-    // Insert pod into the registry. ON CONFLICT covers reconnect
-    // (we never deleted the row) and any cross-pod race.
-    this.deps.pool
-      .query(
-        "INSERT INTO mesh_pods (pod_id) VALUES ($1) ON CONFLICT (pod_id) DO NOTHING",
+    // Order matters: acquire the lock FIRST, then make the row
+    // visible. A peer poll that races our start would otherwise see
+    // the row before the lock is held, win pg_try_advisory_xact_lock,
+    // and falsely declare us dead. Holding the lock before the row
+    // appears means any probe of our id either finds no row (nothing
+    // to probe) or finds the row + the lock held (alive).
+    //
+    // Session-scoped advisory locks are reference-counted on the same
+    // session, so re-acquiring on reconnect is a no-op-or-stack —
+    // either way the lock stays held.
+    try {
+      await client.query("SELECT pg_advisory_lock(hashtext($1))", [podId]);
+      await this.deps.pool.query(
+        "INSERT INTO studio_pods (pod_id) VALUES ($1) ON CONFLICT (pod_id) DO NOTHING",
         [podId],
-      )
-      .catch((err) =>
-        console.error("[PodHeartbeat] pod register failed:", err),
       );
-
-    // Take the liveness lock on the dedicated connection. Stays held
-    // until that connection ends. Session-scoped advisory locks don't
-    // double-count if re-acquired on the same session, so this is
-    // safe to call again on reconnect.
-    this.livenessClient
-      .query("SELECT pg_advisory_lock(hashtext($1))", [podId])
-      .catch((err) =>
-        console.error("[PodHeartbeat] lock acquire failed:", err),
-      );
+    } catch (err) {
+      console.error("[PodHeartbeat] start sequence failed:", err);
+    }
 
     // Activate death detection — either from a pre-init registration
     // or from a previous run that we're resuming after reconnect.
@@ -172,23 +177,27 @@ export class PgPodHeartbeat implements PodHeartbeat {
       try {
         const { rows: peers } = await this.deps.pool.query<{
           pod_id: string;
-        }>("SELECT pod_id FROM mesh_pods WHERE pod_id != $1", [this.podId]);
+        }>("SELECT pod_id FROM studio_pods WHERE pod_id != $1", [this.podId]);
         for (const { pod_id: peerId } of peers) {
+          // Transaction-scoped advisory lock: auto-released when the
+          // implicit single-statement transaction commits, so we never
+          // need an explicit unlock. Crucially, this is safe against
+          // the pool serving the try_lock and the (former) unlock from
+          // different clients — session-scoped locks would have leaked
+          // on the try_lock's client, blocking future probes for that
+          // peer id until the connection was recycled.
           const probe = await this.deps.pool.query<{ got: boolean }>(
-            "SELECT pg_try_advisory_lock(hashtext($1)) AS got",
+            "SELECT pg_try_advisory_xact_lock(hashtext($1)) AS got",
             [peerId],
           );
           const got = probe.rows[0]?.got === true;
           if (!got) continue;
-          // We acquired the lock — nobody holds it — peer is dead.
-          // Release immediately so we don't accidentally hold someone
-          // else's liveness lock while running recovery, and clean up
-          // their registry row.
+          // Lock acquired (and already released by xact commit) →
+          // nobody holds the session lock → peer is dead. Clean up
+          // their registry row so subsequent polls don't keep
+          // re-detecting and re-firing the callback.
           await this.deps.pool
-            .query("SELECT pg_advisory_unlock(hashtext($1))", [peerId])
-            .catch(() => {});
-          await this.deps.pool
-            .query("DELETE FROM mesh_pods WHERE pod_id = $1", [peerId])
+            .query("DELETE FROM studio_pods WHERE pod_id = $1", [peerId])
             .catch(() => {});
           console.log(`[PodHeartbeat:poll] detected vanished pod: ${peerId}`);
           callback(peerId);
@@ -218,7 +227,7 @@ export class PgPodHeartbeat implements PodHeartbeat {
     // stop targeting us right away.
     if (this.podId) {
       await this.deps.pool
-        .query("DELETE FROM mesh_pods WHERE pod_id = $1", [this.podId])
+        .query("DELETE FROM studio_pods WHERE pod_id = $1", [this.podId])
         .catch(() => {});
     }
     if (this.livenessClient) {

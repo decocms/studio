@@ -64,7 +64,15 @@ export interface StreamBuffer {
   ): Promise<ReadableStream | null>;
 
   /** Purge buffered data for a thread (best-effort, fire-and-forget). */
-  purge(taskId: string): void;
+  /**
+   * Remove all buffered chunks for `taskId`. Returns a Promise so
+   * callers in the dispatch hot path can `await` purge completion
+   * before publishing fresh chunks — without that ordering, a /stream
+   * tail that subscribes during the gap can replay the stale prefix.
+   * Caller errors are swallowed: purge is best-effort cleanup, not
+   * load-bearing for any single message's delivery.
+   */
+  purge(taskId: string): Promise<void>;
 
   /** Release resources (clear references, called on shutdown). */
   teardown(): void;

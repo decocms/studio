@@ -575,7 +575,7 @@ async function prepareRun(
     // reply rendered twice. A proper fix would publish a "reset"
     // sentinel to the subject before the resume pump starts so all
     // consumers flush their UI buffer; left as a follow-up.
-    streamBuffer?.purge(mem.thread.id);
+    await streamBuffer?.purge(mem.thread.id);
 
     // Split system messages from user message
     const systemMessages = input.messages.filter((m) => m.role === "system");

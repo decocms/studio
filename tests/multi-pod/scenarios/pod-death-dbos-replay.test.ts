@@ -15,16 +15,21 @@
  *   3. Wait for chunk-2 on any watcher — proof the run is flowing.
  *   4. Read `threads.run_owner_pod` (POD_NAME maps 1:1 to the compose
  *      service name) and SIGKILL that pod.
- *   5. The heartbeat poller on a survivor pod (kv.keys() diff every
- *      10s) detects the vanished heartbeat key and fires
+ *   5. The heartbeat poller on a survivor pod (probes each peer in
+ *      `studio_pods` via `pg_try_advisory_xact_lock` every 5s)
+ *      detects the freed advisory lock — Postgres released it the
+ *      moment the dead pod's TCP connection closed — and fires
  *      `runRegistry.handlePodDeath`, which claims the orphan and
  *      re-dispatches with `isResume: true`.
- *   6. Wait until a survivor sees chunk-10 — far enough past chunk-2
- *      (the kill trigger) that no kill-latency timing variant could
- *      have let the dead pod publish chunk-10 itself. So chunk-10 is
- *      provably from the resumed run, meaning prepareRun has already
- *      purged the per-thread subject. Then open a fresh /stream
- *      against a survivor.
+ *   6. Wait for a chunk whose mock-ai call-start timestamp is *after*
+ *      the kill — mock-ai stamps every chunk with `t<ms>` for the
+ *      wall-clock moment the call began. A chunk with `t > killTime`
+ *      provably came from a mock-ai call started after the kill,
+ *      which can only be the resumed pump. No chunk-count heuristic,
+ *      no "kill should be done by chunk-N" timing argument. By the
+ *      time we see such a chunk, prepareRun has run (including its
+ *      purge of the per-thread subject), so opening a fresh /stream
+ *      now is guaranteed to see only the resumed run's chunks.
  *   7. Assert: the late /stream sees chunks 1..20 EXACTLY ONCE — i.e.,
  *      `chunk-1 ` appears once in its joined stream. If the resumed
  *      run had pumped on top of the dead pod's leftover prefix in
@@ -34,20 +39,28 @@
  *
  * ── What had to be fixed for this to pass ────────────────────────────
  *
- *   - **Heartbeat polling fallback**: NATS KV TTL expiry doesn't fire
- *     watcher events. Without a poll, SIGKILL'd pods are never
- *     detected. (`apps/mesh/src/nats/pod-heartbeat.ts`)
+ *   - **Postgres-advisory-lock heartbeat**: each pod holds
+ *     `pg_advisory_lock(hashtext(podId))` on a dedicated long-lived
+ *     pg.Client; SIGKILL closes the TCP connection and Postgres
+ *     releases the lock immediately. Survivors poll the `studio_pods`
+ *     registry every 5s and probe each peer via
+ *     `pg_try_advisory_xact_lock`; success means the lock isn't held
+ *     and the peer is dead. (`apps/mesh/src/core/pod-heartbeat.ts`,
+ *     migration `apps/mesh/migrations/078-studio-pods.ts`)
  *
  *   - **streamBuffer in recovery dispatch**: `resumeOrphanedThread`
  *     was deliberately dropping streamBuffer when calling
  *     dispatchRunAndWait, so the resumed run streamed to /dev/null.
  *     (`apps/mesh/src/api/app.ts`)
  *
- *   - **Keep the unconditional purge**: an early version of this PR
- *     skipped `streamBuffer.purge()` on resume, but that left the
- *     dead pod's prefix in JetStream and any /stream opened after
- *     recovery would see the response duplicated. The chunk-1 count
- *     assertion below is the regression guard for this.
+ *   - **Keep the unconditional purge AND await it**: an early version
+ *     of this PR skipped `streamBuffer.purge()` on resume, but that
+ *     left the dead pod's prefix in JetStream and any /stream opened
+ *     after recovery would see the response duplicated. Purge was
+ *     also fire-and-forget; the dispatch's first chunk could land
+ *     before purge completed, racing the late /stream's "all" replay.
+ *     Purge is now awaited in prepareRun. The chunk-1 count assertion
+ *     below is the regression guard.
  *     (`apps/mesh/src/api/routes/decopilot/dispatch-run.ts`)
  */
 
@@ -192,6 +205,10 @@ describe("pod-death + DBOS replay", () => {
     expect(["mesh-1", "mesh-2", "mesh-3"]).toContain(ownerRaw);
 
     console.log(`  → run owned by ${ownerRaw}; SIGKILLing it`);
+    // Record the wall-clock time of the kill so we can later
+    // discriminate dead-pod chunks (mock-ai call started before this)
+    // from resumed-pump chunks (mock-ai call started after this).
+    const killTime = Date.now();
     await kill(ownerRaw);
 
     // Survivor watchers (everything except the killed pod) must
@@ -201,20 +218,28 @@ describe("pod-death + DBOS replay", () => {
     const survivors = watchers.filter((w) => w.pod.service !== ownerRaw);
     let lateWatcher: Watcher | null = null;
     try {
-      // First: wait until a survivor sees a chunk that's *provably*
-      // from the resumed run. Between the kill trigger (chunk-2) and
-      // SIGKILL actually taking effect there's ~400-1000ms of latency
-      // (DB query for run_owner_pod + docker compose kill + SIGKILL
-      // propagation), during which the dead pod can keep publishing
-      // — typically up to chunk-4. So chunk-3 and chunk-4 are racy;
-      // they might still be the dead pod's. chunk-10 is 5s past the
-      // mock's start time, well past any kill-window variance, and
-      // can ONLY come from the resumed pump. Gating on chunk-10 also
-      // guarantees prepareRun's purge has already run, so a /stream
-      // opened from this moment forward sees only the resumed run's
-      // chunks, not the dead pod's prefix.
+      // Deterministic gate: wait for a chunk whose mock-ai call-start
+      // timestamp is strictly later than the kill. mock-ai stamps
+      // every emitted chunk with `t<ms>` for the wall-clock moment the
+      // call began (see tests/multi-pod/mock-ai/server.ts). A chunk
+      // with `t > killTime` provably came from a mock-ai call started
+      // AFTER the kill — which can only be the resumed pump on a
+      // survivor pod. No chunk-count timing argument; no "should be
+      // done by chunk-N" guess.
+      //
+      // Side effect: by the time we observe such a chunk, the resumed
+      // pump's prepareRun has run (including its purge of the
+      // per-thread subject). So a /stream opened from this moment
+      // forward sees only the resumed run's chunks, not the dead
+      // pod's prefix.
       await pollUntil(
-        async () => survivors.some((w) => w.joined.includes("chunk-10")),
+        async () =>
+          survivors.some((w) => {
+            for (const m of w.joined.matchAll(/t(\d+) chunk-/g)) {
+              if (Number(m[1]) > killTime) return true;
+            }
+            return false;
+          }),
         {
           timeoutMs: 75_000,
           intervalMs: 500,
@@ -242,9 +267,11 @@ describe("pod-death + DBOS replay", () => {
       await pollUntil(
         async () => survivors.some((w) => w.joined.includes("chunk-20")),
         {
-          // Window has to cover: heartbeat KV TTL (45s) + poller tick +
+          // Window has to cover: PG-advisory-lock detection (sub-second
+          // for SIGKILL, since TCP close releases the dedicated client's
+          // session lock immediately) + one poll tick (≤5s) +
           // handlePodDeath claim + dispatchRunAndWait resume + ~10s of
-          // mock chunks ≈ 70s worst case. 90s leaves comfortable margin
+          // mock chunks ≈ 20s worst case. 90s leaves comfortable margin
           // for cold-boot variance without dragging green runs.
           timeoutMs: 90_000,
           intervalMs: 500,

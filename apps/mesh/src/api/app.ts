@@ -748,7 +748,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         })();
       },
       createTailStream: async () => null,
-      purge: () => {},
+      purge: async () => {},
       teardown: () => {},
     };
   } else {
@@ -850,8 +850,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   podHeartbeat
     .init()
+    .then(() => podHeartbeat.start(POD_ID))
     .then(() => {
-      podHeartbeat.start(POD_ID);
       console.log(`[PodHeartbeat] Started (pod=${POD_ID})`);
     })
     .catch((err: unknown) => {

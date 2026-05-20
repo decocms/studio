@@ -108,6 +108,12 @@ async function streamCompletion(req: Request): Promise<Response> {
   const reqBody = (await req.json().catch(() => ({}))) as CompletionsBody;
   const { chunks: numChunks, delayMs } = parseHints(reqBody);
   const id = `chatcmpl-${crypto.randomUUID()}`;
+  // Stamp every chunk with the wall-clock time at which THIS request
+  // (this call to the mock) began. Lets the pod-death scenario tell
+  // dead-pod chunks (call started before kill) apart from resumed-pump
+  // chunks (call started after kill) without resorting to chunk-count
+  // timing heuristics.
+  const callStartedAt = Date.now();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -118,7 +124,11 @@ async function streamCompletion(req: Request): Promise<Response> {
       for (let i = 0; i < numChunks; i++) {
         if (delayMs > 0) await Bun.sleep(delayMs);
         controller.enqueue(
-          frame(buildChunk(id, { content: `chunk-${i + 1} ` })),
+          frame(
+            buildChunk(id, {
+              content: `t${callStartedAt} chunk-${i + 1} `,
+            }),
+          ),
         );
       }
 

@@ -62,7 +62,7 @@ async function handleTerminalStatus(
     run_config: null,
     run_started_at: null,
   });
-  streamBuffer.purge(taskId);
+  void streamBuffer.purge(taskId);
   sseHub.emit(
     orgId,
     createDecopilotThreadStatusEvent(taskId, status, {
@@ -168,7 +168,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           run_started_at: null,
         });
       }
-      streamBuffer.purge(event.taskId);
+      void streamBuffer.purge(event.taskId);
       const failedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(
         event.orgId,

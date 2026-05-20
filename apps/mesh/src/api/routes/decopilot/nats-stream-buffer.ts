@@ -249,11 +249,15 @@ export class NatsStreamBuffer implements StreamBuffer {
     });
   }
 
-  purge(taskId: string): void {
+  async purge(taskId: string): Promise<void> {
     if (!this.jsm) return;
-    this.jsm.streams
-      .purge(STREAM_NAME, { filter: streamSubject(taskId) })
-      .catch(() => {});
+    try {
+      await this.jsm.streams.purge(STREAM_NAME, {
+        filter: streamSubject(taskId),
+      });
+    } catch {
+      // Best-effort cleanup; never propagate to the caller.
+    }
   }
 
   teardown(): void {
