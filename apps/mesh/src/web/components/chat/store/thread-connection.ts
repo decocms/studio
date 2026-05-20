@@ -5,13 +5,15 @@
  *   • one persistent SSE GET /stream loop (reconnect+backoff)
  *   • one-shot POST /messages for sends + continuations
  *   • a single `messages` Store that's the only source of truth
- *   • `status` and `finishReason` Stores read by the React layer
+ *   • `status`, `finishReason`, `hasMoreOlder`, `isFetchingOlder` Stores
+ *     read by the React layer
  *
  * Lifecycle:
- *   constructor → bootstrap() opens the SSE. The server emits an
- *   `event: snapshot` SSE frame as the FIRST frame on every connect; that
- *   frame seeds `messages`. Subsequent frames are UIMessageChunk events
- *   that fold into the in-progress assistant message.
+ *   constructor → bootstrap() opens the SSE and calls
+ *   COLLECTION_THREAD_MESSAGES_LIST in parallel to seed the initial page
+ *   (latest 5 messages). The SSE delivers UIMessageChunk events that fold
+ *   into the messages list via mergeAndSort. Chunks arriving before the
+ *   initial page resolves are buffered and drained afterwards.
  *   dispose() aborts everything.
  *
  * Mutation:
@@ -26,11 +28,11 @@
  *   No silent no-ops: if a toolOutput / approval target isn't found in
  *   the current `messages`, submit() throws.
  *
- * Server-snapshot reconciliation:
- *   On every SSE reconnect the server re-emits `event: snapshot`, which
- *   replaces `messages` — except while a submit is in flight
- *   (status="submitted"), in which case the snapshot is dropped to avoid
- *   transiently overwriting the local optimistic patch.
+ * Server reconciliation:
+ *   On every SSE reconnect the connection re-fetches the latest page via
+ *   COLLECTION_THREAD_MESSAGES_LIST and merges via mergeAndSort. The
+ *   merge is upsert-by-id then sort by (created_at, id), so optimistic
+ *   local rows and in-flight streaming rows are preserved correctly.
  */
 
 import {
@@ -523,21 +525,10 @@ export class ThreadConnection {
     if (dataLines.length === 0) return;
     const data = dataLines.join("\n");
 
-    if (event === "snapshot") {
-      // Drop the snapshot if a local submit is in flight — the optimistic
-      // patch in `messages` is fresher than the server-side persisted state.
-      if (this.status.get().kind === "submitted") return;
-      try {
-        const parsed = JSON.parse(data) as { messages: UIMessage[] };
-        this.messages.set(parsed.messages);
-        if (this.status.get().kind === "loading") {
-          this.status.set({ kind: "ready" });
-        }
-      } catch {
-        // Malformed snapshot frame — ignore. Subsequent frames still process.
-      }
-      return;
-    }
+    // The server no longer emits `event: snapshot` (initial state comes
+    // from COLLECTION_THREAD_MESSAGES_LIST). Any non-"message" SSE event
+    // received from a stale server is silently ignored.
+    if (event !== "message") return;
 
     // Default: a UIMessageChunk JSON payload.
     let payload: unknown;

@@ -810,4 +810,36 @@ describe("boot buffering", () => {
 
     expect(conn.status.get().kind).toBe("error");
   });
+
+  test("a stray non-chunk SSE event is silently ignored", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const ctrl = makeControllableClient();
+    const conn = getOrOpenStream("acme", "thread-stray-snapshot", {
+      client: ctrl.client as never,
+    });
+
+    // Yield enough microtasks for loadInitialPage to reach callTool, then
+    // resolve the initial page with an empty list.
+    await new Promise((r) => setTimeout(r, 10));
+    ctrl.resolve([]);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(conn.messages.get()).toEqual([]);
+
+    // Send real chunks — these should fold normally. The test name + the
+    // chunk-only path together guard against a regression where the
+    // snapshot branch returns and silently consumes legitimate chunks.
+    stream.enqueue({ type: "start", messageId: "real" });
+    stream.enqueue({ type: "text-start", id: "p-real" });
+    stream.enqueue({ type: "text-delta", id: "p-real", delta: "hi" });
+    stream.enqueue({ type: "text-end", id: "p-real" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const ids = conn.messages.get().map((m) => m.id);
+    expect(ids).toEqual(["real"]);
+  });
 });
