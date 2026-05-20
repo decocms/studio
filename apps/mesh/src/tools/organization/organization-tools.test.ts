@@ -108,8 +108,10 @@ const createMockBoundAuth = (
         headers: new Headers(),
       });
     }),
-    get: vi.fn(async () => {
-      return mockAuth.api.getFullOrganization();
+    get: vi.fn(async (organizationId?: string) => {
+      return mockAuth.api.getFullOrganization({
+        query: organizationId ? { organizationId } : undefined,
+      });
     }),
     list: vi.fn(async (userId) => {
       return mockAuth.api.listOrganizations({
@@ -323,18 +325,33 @@ describe("Organization Tools", () => {
   });
 
   describe("ORGANIZATION_GET", () => {
-    it("should get active organization", async () => {
+    it("should forward the path-resolved org id to Better Auth", async () => {
       const mockAuth = createMockAuth();
       const ctx = createMockContext(mockAuth);
 
       const result = await ORGANIZATION_GET.execute({}, ctx);
 
-      expect(mockAuth.api.getFullOrganization).toHaveBeenCalled();
+      // Must pass organizationId — falling back to session.activeOrganizationId
+      // leaks the wrong org across tabs.
+      expect(mockAuth.api.getFullOrganization).toHaveBeenCalledWith({
+        query: { organizationId: "org_123" },
+      });
       expect(result.id).toBe("org_123");
       expect(result.slug).toBe("test-org");
     });
 
-    it("should throw when no active organization", async () => {
+    it("should throw when ctx.organization is missing", async () => {
+      const mockAuth = createMockAuth();
+      const ctx = createMockContext(mockAuth);
+      ctx.organization = undefined;
+
+      await expect(ORGANIZATION_GET.execute({}, ctx)).rejects.toThrow(
+        "Organization ID required",
+      );
+      expect(mockAuth.api.getFullOrganization).not.toHaveBeenCalled();
+    });
+
+    it("should throw when Better Auth returns null", async () => {
       const mockAuth = createMockAuth();
       mockAuth.api.getFullOrganization.mockResolvedValue(null);
       const ctx = createMockContext(mockAuth);
