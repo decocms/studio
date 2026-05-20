@@ -108,7 +108,9 @@ export class ThreadManagerStore {
   }
 
   setActive(threadId: string): ThreadConnection {
-    const conn = getOrOpenStream(this.orgSlug, threadId);
+    const conn = getOrOpenStream(this.orgSlug, threadId, {
+      client: this.client,
+    });
     if (this.active.get() !== conn) this.active.set(conn);
     return conn;
   }

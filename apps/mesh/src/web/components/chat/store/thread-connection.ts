@@ -231,7 +231,9 @@ export class ThreadConnection {
    * user has queued in the meantime.
    */
   private waitingForNewRun = false;
-  private client: MCPClient | null;
+  // Set here; first real read added in the loadInitialPage path of a later commit.
+  // @ts-expect-error TS6133 — intentionally unused until T5 plumbs loadInitialPage
+  private _client: MCPClient | null;
 
   constructor(
     readonly orgSlug: string,
@@ -239,7 +241,7 @@ export class ThreadConnection {
     opts: ThreadConnectionOptions = {},
   ) {
     this.key = `${orgSlug}::${threadId}`;
-    this.client = opts.client ?? null;
+    this._client = opts.client ?? null;
     void this.bootstrap();
   }
 
