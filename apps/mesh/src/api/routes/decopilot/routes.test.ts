@@ -96,7 +96,7 @@ describe("computeIdempotencyKey", () => {
 });
 
 // ============================================================================
-// Stream Endpoint — snapshot event on connect
+// Stream Endpoint — pure live tail (no snapshot)
 // ============================================================================
 
 interface StreamTestSetup {
@@ -185,7 +185,7 @@ async function readSseBody(res: Response): Promise<string> {
 }
 
 describe("GET /:org/decopilot/threads/:threadId/stream", () => {
-  test("emits a snapshot SSE event before any other frames", async () => {
+  test("does not call listMessages or emit a snapshot frame", async () => {
     const messages = [
       {
         id: "msg_1",
@@ -194,14 +194,6 @@ describe("GET /:org/decopilot/threads/:threadId/stream", () => {
         parts: [{ type: "text", text: "hello" }],
         created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z",
-      },
-      {
-        id: "msg_2",
-        thread_id: "thread_1",
-        role: "assistant",
-        parts: [{ type: "text", text: "world" }],
-        created_at: "2026-01-01T00:00:01.000Z",
-        updated_at: "2026-01-01T00:00:01.000Z",
       },
     ];
     const setup = makeStreamApp({ messages });
@@ -214,67 +206,22 @@ describe("GET /:org/decopilot/threads/:threadId/stream", () => {
 
     const body = await readSseBody(res);
 
-    // The snapshot frame must come first (modulo keepalive comments).
-    const snapshotIdx = body.indexOf("event: snapshot");
-    expect(snapshotIdx).toBeGreaterThanOrEqual(0);
+    // No snapshot frame anywhere in the response — the client owns initial
+    // load via COLLECTION_THREAD_MESSAGES_LIST.
+    expect(body).not.toContain("event: snapshot");
 
-    // Nothing other than keepalive comments may precede the snapshot frame.
-    const prefix = body.slice(0, snapshotIdx);
-    for (const line of prefix.split("\n")) {
-      if (line === "" || line.startsWith(":")) continue;
-      throw new Error(
-        `unexpected non-comment SSE line before snapshot: ${JSON.stringify(line)}`,
-      );
-    }
-
-    // The snapshot data line should parse to { messages: [...] }
-    const afterEvent = body.slice(snapshotIdx);
-    const dataMatch = afterEvent.match(/^data: (.*)$/m);
-    expect(dataMatch).not.toBeNull();
-    const dataJson = dataMatch?.[1] ?? "";
-    const parsed = JSON.parse(dataJson) as { messages: unknown[] };
-    expect(parsed.messages).toHaveLength(2);
-    expect((parsed.messages[0] as { id: string }).id).toBe("msg_1");
-    expect((parsed.messages[1] as { id: string }).id).toBe("msg_2");
+    // Handler never touches storage.threads.listMessages.
+    expect(setup.listMessagesCalls).toBe(0);
   });
 
-  test("emits a snapshot SSE event even when the thread has no messages", async () => {
-    const setup = makeStreamApp({ messages: [] });
-
-    const res = await setup.app.request(
-      "/acme/decopilot/threads/thread_1/stream",
-    );
-    expect(res.status).toBe(200);
-
-    const body = await readSseBody(res);
-    expect(body).toContain("event: snapshot");
-    const m = body.match(/event: snapshot\ndata: (.*)\n/);
-    expect(m).not.toBeNull();
-    expect(JSON.parse(m?.[1] ?? "")).toEqual({ messages: [] });
-  });
-
-  test("snapshot precedes tail chunks from streamBuffer", async () => {
-    const messages = [
-      {
-        id: "msg_1",
-        thread_id: "thread_1",
-        role: "user",
-        parts: [{ type: "text", text: "ping" }],
-        created_at: "2026-01-01T00:00:00.000Z",
-        updated_at: "2026-01-01T00:00:00.000Z",
-      },
-    ];
-
-    // The tail emits a UI message chunk (which the AI SDK serializes to
-    // `data: {...}\n\n`). The snapshot frame must come strictly before it.
+  test("forwards tail chunks from streamBuffer with no preceding snapshot", async () => {
     const tail = new ReadableStream({
       start(controller) {
         controller.enqueue({ type: "start" });
         controller.close();
       },
     });
-
-    const setup = makeStreamApp({ messages, tailChunks: tail });
+    const setup = makeStreamApp({ messages: [], tailChunks: tail });
 
     const res = await setup.app.request(
       "/acme/decopilot/threads/thread_1/stream",
@@ -282,9 +229,7 @@ describe("GET /:org/decopilot/threads/:threadId/stream", () => {
     expect(res.status).toBe(200);
 
     const body = await readSseBody(res);
-    const snapshotIdx = body.indexOf("event: snapshot");
-    const tailIdx = body.indexOf('"type":"start"');
-    expect(snapshotIdx).toBeGreaterThanOrEqual(0);
-    expect(tailIdx).toBeGreaterThan(snapshotIdx);
+    expect(body).not.toContain("event: snapshot");
+    expect(body).toContain('"type":"start"');
   });
 });
