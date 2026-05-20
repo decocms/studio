@@ -248,6 +248,18 @@ export class ThreadConnection {
    */
   private chunkBuffer: UIMessageChunk[] | null = [];
 
+  /**
+   * Resolves once the initial page load settles (success, error, or
+   * null-client fallback). Consumers `use()` this to suspend the chat tree
+   * via the `<Suspense fallback={<Chat.Skeleton />}>` boundary in
+   * side-panel-chat.tsx so the first paint isn't an empty message list.
+   * Resolves only — never rejects; error states are surfaced through
+   * `status` so the UI can render an inline error instead of an
+   * ErrorBoundary fallback.
+   */
+  readonly ready: Promise<void>;
+  private resolveReady!: () => void;
+
   constructor(
     readonly orgSlug: string,
     readonly threadId: string,
@@ -255,6 +267,9 @@ export class ThreadConnection {
   ) {
     this.key = `${orgSlug}::${threadId}`;
     this.client = opts.client ?? null;
+    this.ready = new Promise<void>((res) => {
+      this.resolveReady = res;
+    });
     void this.bootstrap();
   }
 
@@ -351,6 +366,7 @@ export class ThreadConnection {
         this.status.set({ kind: "ready" });
       }
       this.drainChunkBuffer();
+      this.resolveReady();
       return;
     }
     try {
@@ -363,7 +379,10 @@ export class ThreadConnection {
           orderBy: [{ field: ["created_at"], direction: "desc" }],
         },
       });
-      if (this.abort.signal.aborted) return;
+      if (this.abort.signal.aborted) {
+        this.resolveReady();
+        return;
+      }
       if ((result as { isError?: boolean }).isError) {
         throw new Error(
           extractToolErrorMessage(
@@ -387,6 +406,8 @@ export class ThreadConnection {
       this.drainChunkBuffer();
     } catch (err) {
       this.failTo(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      this.resolveReady();
     }
   }
 

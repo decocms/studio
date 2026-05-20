@@ -16,6 +16,7 @@
 
 import {
   createContext,
+  use,
   useContext,
   useEffect,
   useRef,
@@ -689,6 +690,13 @@ export function ActiveTaskProvider({
     orgSlug: org.slug,
   });
   const conn = getOrOpenStream(org.slug, taskId, { client });
+  // Suspend until the initial-page MCP fetch settles. The Suspense boundary
+  // in side-panel-chat.tsx (`<Suspense fallback={<Chat.Skeleton />}>`)
+  // catches this and shows the skeleton instead of an empty message list.
+  // `conn.ready` resolves on success, error, and null-client paths so the
+  // chat unsuspends in every terminal case; error states are surfaced via
+  // `status` and rendered inline.
+  use(conn.ready);
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
   const finishReason = useStore(conn.finishReason);
