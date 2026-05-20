@@ -638,6 +638,39 @@ function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {
   return next;
 }
 
+/**
+ * Merge `incoming` rows into `prev` (upsert by id), then sort the result
+ * ascending by `(metadata.created_at, id)`. The id tiebreaker mirrors
+ * `storage.threads.listMessages`'s `ORDER BY created_at, id` for stability
+ * across batched inserts.
+ *
+ * Messages without a `created_at` (an in-flight optimistic message before
+ * the server has persisted it) sort to the end (treated as +Infinity).
+ * They are the newest by construction; once the persisted row arrives,
+ * the upsert replaces them and the sort resettles.
+ */
+export function mergeAndSort(
+  prev: UIMessage[],
+  incoming: UIMessage[],
+): UIMessage[] {
+  const byId = new Map(prev.map((m) => [m.id, m] as const));
+  for (const m of incoming) byId.set(m.id, m);
+  const merged = [...byId.values()];
+  merged.sort((a, b) => {
+    const ta = readTimestamp(a);
+    const tb = readTimestamp(b);
+    if (ta !== tb) return ta - tb;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return merged;
+}
+
+function readTimestamp(m: UIMessage): number {
+  const md = m.metadata as { created_at?: string | number | Date } | undefined;
+  if (!md?.created_at) return Number.POSITIVE_INFINITY;
+  return new Date(md.created_at).getTime();
+}
+
 // ─── Module-scoped slot ──────────────────────────────────────────────────────
 
 let current: ThreadConnection | null = null;

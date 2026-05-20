@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   __resetRegistry,
   getOrOpenStream,
+  mergeAndSort,
   type RequestOptions,
   type ThreadObserver,
 } from "./thread-connection";
+import type { UIMessage } from "ai";
 
 // ─── Fetch mock builders ─────────────────────────────────────────────────────
 
@@ -605,5 +607,68 @@ describe("submit defers POST", () => {
 
     expect(observedHeaders).not.toBeNull();
     expect(observedHeaders!.get("x-idempotency-key")).toBeNull();
+  });
+});
+
+// ─── mergeAndSort ────────────────────────────────────────────────────────────
+
+describe("mergeAndSort", () => {
+  function msg(
+    id: string,
+    createdAt: string | undefined,
+    role: "user" | "assistant" = "user",
+  ): UIMessage {
+    return {
+      id,
+      role,
+      parts: [{ type: "text", text: id }],
+      metadata: createdAt ? { created_at: createdAt } : undefined,
+      // biome-ignore lint/suspicious/noExplicitAny: test helper
+    } as any;
+  }
+
+  test("empty prev + ordered incoming → returns incoming sorted ascending", () => {
+    const incoming = [
+      msg("a", "2026-01-01T00:00:00Z"),
+      msg("b", "2026-01-01T00:00:02Z"),
+      msg("c", "2026-01-01T00:00:01Z"),
+    ];
+    const out = mergeAndSort([], incoming);
+    expect(out.map((m) => m.id)).toEqual(["a", "c", "b"]);
+  });
+
+  test("upserts an id present in both — incoming wins", () => {
+    const prev = [msg("a", "2026-01-01T00:00:00Z", "user")];
+    const incoming = [msg("a", "2026-01-01T00:00:00Z", "assistant")];
+    const out = mergeAndSort(prev, incoming);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.role).toBe("assistant");
+  });
+
+  test("interleaves an incoming row between two prev rows by timestamp", () => {
+    const prev = [
+      msg("a", "2026-01-01T00:00:00Z"),
+      msg("c", "2026-01-01T00:00:02Z"),
+    ];
+    const incoming = [msg("b", "2026-01-01T00:00:01Z")];
+    expect(mergeAndSort(prev, incoming).map((m) => m.id)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  test("messages without created_at sort to the end (newest position)", () => {
+    const prev = [msg("a", "2026-01-01T00:00:00Z")];
+    const incoming = [msg("opt", undefined)];
+    expect(mergeAndSort(prev, incoming).map((m) => m.id)).toEqual(["a", "opt"]);
+  });
+
+  test("stable id tiebreaker when two rows share a timestamp", () => {
+    const incoming = [
+      msg("z", "2026-01-01T00:00:00Z"),
+      msg("a", "2026-01-01T00:00:00Z"),
+    ];
+    expect(mergeAndSort([], incoming).map((m) => m.id)).toEqual(["a", "z"]);
   });
 });
