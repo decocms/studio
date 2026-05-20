@@ -402,16 +402,16 @@ export class TaskManager {
         env: task.spec.env as NodeJS.ProcessEnv | undefined,
       });
     } catch (e) {
-      const msg = `spawn error: ${(e as Error).message}\n`;
+      // node-pty's forkpty can fail deterministically on some hosts
+      // (observed: bun + libuv on macOS throwing `posix_spawnp failed`).
+      // Fall back to the non-PTY pipe spawn so the dev server still boots;
+      // the user loses colored output and progress bars but everything else
+      // works.
+      const msg = `[pty fallback] ${(e as Error).message} — using non-PTY spawn\n`;
       task.stderr.append(msg);
       task.tee.write(msg);
       this.fanOut(task, { stream: "stderr", data: msg });
-      // Defer finalize so callers awaiting `finished` see the same shape
-      // as a normal exit; spawn() returning synchronously must observe a
-      // running task for one tick before it resolves to failed.
-      queueMicrotask(() =>
-        this.finalize(task, { exitCode: -1, timedOut: false }),
-      );
+      this.startPipe(task);
       return;
     }
     task.pid = child.pid;
@@ -445,10 +445,23 @@ export class TaskManager {
   }
 
   private startPipe(task: TaskInternal): void {
+    // child_process.spawn REPLACES the env when given an `env` option (unlike
+    // the PTY path which merges with process.env). The task spec only carries
+    // overrides like HOST/PORT — without PATH the child can't find `node`,
+    // `npm`, `bun`, etc. Merge process.env in to preserve the shell environment.
+    const mergedEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) {
+      if (typeof v === "string") mergedEnv[k] = v;
+    }
+    if (task.spec.env) {
+      for (const [k, v] of Object.entries(task.spec.env)) {
+        if (typeof v === "string") mergedEnv[k] = v;
+      }
+    }
     const opts: Parameters<typeof nodeSpawn>[2] = {
       cwd: task.spec.cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      env: task.spec.env,
+      env: mergedEnv,
       detached: true,
     };
     const child: ChildProcess = nodeSpawn(
