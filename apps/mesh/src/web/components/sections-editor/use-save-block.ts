@@ -2,14 +2,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 
 interface UseSaveBlockParams {
-  previewUrl: string;
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
 }
 
 export function useSaveBlock({
-  previewUrl,
   orgSlug,
   virtualMcpId,
   branch,
@@ -44,8 +42,9 @@ export function useSaveBlock({
       return res.json();
     },
     onSuccess: () => {
+      const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       queryClient.invalidateQueries({
-        queryKey: KEYS.decofile(previewUrl),
+        queryKey: KEYS.decofile(cacheKey),
       });
     },
   });

@@ -1,15 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 
-export function useDecofile(previewUrl: string | null) {
+interface UseDecofileParams {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+}
+
+export function useDecofile(params: UseDecofileParams | null) {
+  const key = params
+    ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`
+    : "";
   return useQuery({
-    queryKey: KEYS.decofile(previewUrl ?? ""),
+    queryKey: KEYS.decofile(key),
     queryFn: async () => {
-      const res = await fetch(`${previewUrl}/.decofile`);
+      const search = new URLSearchParams({
+        virtualMcpId: params!.virtualMcpId,
+        branch: params!.branch,
+        path: "/.decofile",
+      });
+      const res = await fetch(
+        `/api/${params!.orgSlug}/vm-preview-fetch?${search.toString()}`,
+      );
       if (!res.ok) throw new Error(`Failed to fetch decofile: ${res.status}`);
       return (await res.json()) as Record<string, unknown>;
     },
-    enabled: !!previewUrl,
+    enabled: !!params,
     staleTime: 30_000,
   });
 }

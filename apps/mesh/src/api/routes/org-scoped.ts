@@ -20,6 +20,7 @@ import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createVmEventsRoutes } from "./vm-events";
 import { createVmExecRoutes } from "./vm-exec";
 import { createVmFileRoutes } from "./vm-file";
+import { createVmPreviewFetchRoutes } from "./vm-preview-fetch";
 import { createVmSetupRoutes } from "./vm-setup";
 
 interface OrgScopedDeps {
@@ -68,6 +69,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/vm-events", createVmEventsRoutes()); // /api/:org/vm-events
   app.route("/vm-exec", createVmExecRoutes()); // /api/:org/vm-exec/{exec,kill}/:script
   app.route("/vm-file", createVmFileRoutes()); // /api/:org/vm-file/{write,read}
+  app.route("/vm-preview-fetch", createVmPreviewFetchRoutes()); // /api/:org/vm-preview-fetch?path=...
   app.route("/vm-setup", createVmSetupRoutes()); // /api/:org/vm-setup/:step
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
