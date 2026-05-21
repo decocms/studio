@@ -1,0 +1,2 @@
+[test]
+preload = ["./apps/mesh/src/test/setup.ts"]
