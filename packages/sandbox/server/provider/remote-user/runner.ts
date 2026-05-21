@@ -98,7 +98,12 @@ export class RemoteUserSandboxProvider implements SandboxProvider {
   }
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
-    const handle = computeHandle(id, opts.repo?.branch);
+    // hashLen=16 mirrors agent-sandbox and the cluster's `computeClaimHandle`
+    // — `<handle>.deco.host` is a public hostname, so a short hash is
+    // brute-forceable at the deco.host gateway. If this changes, the
+    // matching constant in `apps/mesh/src/sandbox/claim-handle.ts` must
+    // change too or the cluster's state-store lookup will silently miss.
+    const handle = computeHandle(id, opts.repo?.branch, { hashLen: 16 });
 
     const cached = this.records.get(handle);
     if (cached) return this.toSandbox(cached);
