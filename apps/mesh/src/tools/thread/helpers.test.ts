@@ -22,7 +22,6 @@ const BASE_THREAD: Thread = {
   run_owner_pod: null,
   run_config: null,
   run_started_at: null,
-  inflight_async_jobs: null,
   virtual_mcp_id: "",
   branch: null,
   metadata: {},

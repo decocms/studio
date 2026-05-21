@@ -81,6 +81,7 @@ describe("Connection Tools", () => {
         } as never,
         monitoring: null as never,
         threads: null as never,
+        asyncResearchJobs: null as never,
         virtualMcps: null as never,
         users: null as never,
         tags: null as never,

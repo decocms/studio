@@ -852,12 +852,116 @@ export interface Thread {
   run_owner_pod: string | null;
   run_config: Record<string, unknown> | null;
   run_started_at: string | null;
-  inflight_async_jobs: InflightAsyncJob[] | null;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
   metadata: ThreadMetadata;
+}
+
+/**
+ * Lifecycle states for a single async research job.
+ *
+ * pending   — row inserted, provider job not yet submitted (rare; the gap
+ *             between INSERT and the submit call).
+ * polling   — submitted to the provider, driving to terminal state.
+ * completed — provider returned a final report.
+ * failed    — provider reported terminal failure.
+ * cancelled — user aborted; provider job (best-effort) cancelled too.
+ * abandoned — sweeper flipped a stale polling row whose `last_polled_at`
+ *             is older than the staleness threshold. Visible in audit logs;
+ *             contrast with the old approach that silently filtered stale
+ *             rows at read time.
+ */
+const ASYNC_RESEARCH_JOB_STATUSES = [
+  "pending",
+  "polling",
+  "completed",
+  "failed",
+  "cancelled",
+  "abandoned",
+] as const;
+export type AsyncResearchJobStatus =
+  (typeof ASYNC_RESEARCH_JOB_STATUSES)[number];
+
+export interface AsyncResearchJobCitation {
+  url: string;
+  title?: string;
+}
+
+export interface AsyncResearchJobTable {
+  id: ColumnType<string, string | undefined, never>;
+  interaction_id: string | null;
+  tool_call_id: string;
+
+  organization_id: string;
+  thread_id: string;
+  message_id: string | null;
+
+  provider: string;
+  model_id: string;
+  query: string;
+
+  status: AsyncResearchJobStatus;
+  attempts: number;
+  last_polled_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  last_error: string | null;
+
+  input_tokens: number | null;
+  output_tokens: number | null;
+  citations: JsonArray<AsyncResearchJobCitation> | null;
+  result_uri: string | null;
+  result_preview: string | null;
+  /**
+   * Full report text for inline-sized completed jobs. NULL when the
+   * report was offloaded to blob storage via `result_uri`. Drives the
+   * replay path so a re-entry with the same tool_call_id returns the
+   * exact original content (not the truncated preview).
+   */
+  result_content: string | null;
+
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+  completed_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+}
+
+/** Runtime representation of an async research job (decoded JSON columns). */
+export interface AsyncResearchJob {
+  id: string;
+  interactionId: string | null;
+  toolCallId: string;
+
+  organizationId: string;
+  threadId: string;
+  messageId: string | null;
+
+  provider: string;
+  modelId: string;
+  query: string;
+
+  status: AsyncResearchJobStatus;
+  attempts: number;
+  lastPolledAt: string | null;
+  lastError: string | null;
+
+  inputTokens: number | null;
+  outputTokens: number | null;
+  citations: AsyncResearchJobCitation[] | null;
+  resultUri: string | null;
+  resultPreview: string | null;
+  resultContent: string | null;
+
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
 }
 
 export interface ThreadMessageTable {
@@ -1174,6 +1278,7 @@ export interface Database {
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
+  async_research_jobs: AsyncResearchJobTable;
 
   // Member tags tables
   organization_tags: OrganizationTagTable;

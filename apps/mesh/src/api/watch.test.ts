@@ -135,7 +135,6 @@ function makeThread(overrides: Partial<Thread>): Thread {
     run_owner_pod: overrides.run_owner_pod ?? null,
     run_config: overrides.run_config ?? null,
     run_started_at: overrides.run_started_at ?? null,
-    inflight_async_jobs: overrides.inflight_async_jobs ?? null,
     virtual_mcp_id: overrides.virtual_mcp_id ?? "",
     branch: overrides.branch ?? null,
     metadata: overrides.metadata ?? {},

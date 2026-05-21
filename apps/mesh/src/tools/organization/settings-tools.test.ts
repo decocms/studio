@@ -73,6 +73,7 @@ const createMockContext = (
       virtualMcps: null as never,
       users: null as never,
       threads: null as never,
+      asyncResearchJobs: null as never,
       tags: null as never,
       virtualMcpPluginConfigs: null as never,
       aiProviderKeys: null as never,
