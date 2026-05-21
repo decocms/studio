@@ -77,6 +77,7 @@ import * as migration075threadinflightasyncjobs from "./075-thread-inflight-asyn
 import * as migration076automationsdropagentjson from "./076-automations-drop-agent-json.ts";
 import * as migration077tieronlymodelselection from "./077-tier-only-model-selection.ts";
 import * as migration078automationtoolcallkind from "./078-automation-tool-call-kind.ts";
+import * as migration079asyncresearchjobs from "./079-async-research-jobs.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -169,6 +170,7 @@ const migrations: Record<string, Migration> = {
   "076-automations-drop-agent-json": migration076automationsdropagentjson,
   "077-tier-only-model-selection": migration077tieronlymodelselection,
   "078-automation-tool-call-kind": migration078automationtoolcallkind,
+  "079-async-research-jobs": migration079asyncresearchjobs,
 };
 
 export default migrations;

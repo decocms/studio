@@ -242,6 +242,7 @@ export interface RequestMetadata {
 import type { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import type { BetterAuthInstance } from "@/auth";
 import type { OrgScopedThreadStorage } from "@/storage/threads";
+import type { OrgScopedAsyncResearchJobStorage } from "@/storage/async-research-jobs";
 import type { EventBus } from "../event-bus/interface";
 import type { ConnectionStorage } from "../storage/connection";
 import type {
@@ -287,6 +288,7 @@ export interface MeshStorage {
   virtualMcps: VirtualMCPStorage;
   users: UserStorage;
   threads: OrgScopedThreadStorage;
+  asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
   aiProviderKeys: AIProviderKeyStorage;
   oauthPkceStates: OAuthPkceStateStorage;

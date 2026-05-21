@@ -424,6 +424,10 @@ import { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import { ConnectionEntity } from "@/tools/connection/schema";
 import { BUILTIN_ROLES } from "../auth/roles";
 import { OrgScopedThreadStorage, SqlThreadStorage } from "@/storage/threads";
+import {
+  OrgScopedAsyncResearchJobStorage,
+  SqlAsyncResearchJobStorage,
+} from "@/storage/async-research-jobs";
 import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
@@ -997,6 +1001,7 @@ export async function createMeshContextFactory(
 
   // Create storage adapters once (singleton pattern)
   const threadDb = new SqlThreadStorage(config.db);
+  const asyncResearchJobDb = new SqlAsyncResearchJobStorage(config.db);
   const baseStorage = {
     connections: new ConnectionStorage(config.db, vault),
     organizationSettings: new OrganizationSettingsStorage(config.db),
@@ -1128,6 +1133,10 @@ export async function createMeshContextFactory(
     const storage = {
       ...baseStorage,
       threads: new OrgScopedThreadStorage(threadDb, organization?.id),
+      asyncResearchJobs: new OrgScopedAsyncResearchJobStorage(
+        asyncResearchJobDb,
+        organization?.id,
+      ),
     };
 
     const aiProviderFactory = new AIProviderFactory(

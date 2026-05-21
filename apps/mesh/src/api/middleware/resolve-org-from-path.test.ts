@@ -48,6 +48,7 @@ const buildApp = (db: TestDatabase, auth: FakeAuth) => {
           },
           _orgIds: threadOrgIds,
         },
+        asyncResearchJobs: { setOrganizationId: () => {} },
       },
       objectStorage: null,
     } as unknown as MeshContext);
@@ -159,7 +160,10 @@ describe("resolveOrgFromPath", () => {
           setOrganizationId: () => {},
           setRole: () => {},
         },
-        storage: { threads: { setOrganizationId: () => {} } },
+        storage: {
+          threads: { setOrganizationId: () => {} },
+          asyncResearchJobs: { setOrganizationId: () => {} },
+        },
         objectStorage: null,
       } as unknown as MeshContext);
       await next();

@@ -37,6 +37,7 @@ const createMockContext = (): MeshContext => ({
       upsert: vi.fn(),
     } as never,
     threads: null as never,
+    asyncResearchJobs: null as never,
     monitoring: {
       log: vi.fn().mockResolvedValue(undefined),
       logBatch: vi.fn().mockResolvedValue(undefined),
