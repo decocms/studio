@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ChevronDown,
+  Code02,
   CursorClick01,
   DotsHorizontal,
   TextInput,
@@ -73,6 +74,12 @@ const SectionsEditor = lazy(() =>
   })),
 );
 
+const FileExplorer = lazy(() =>
+  import("./file-explorer/file-explorer").then((m) => ({
+    default: m.FileExplorer,
+  })),
+);
+
 /** Delay before reloading the preview iframe after a save, giving the dev server time to pick up file changes. */
 const DEV_SERVER_SETTLE_MS = 500;
 
@@ -92,18 +99,16 @@ function drawerStatusFromPreview(
   return "idle";
 }
 
-type PreviewViewMode = "preview" | "visual";
+type PreviewViewMode = "preview" | "visual" | "code";
 
-const VIEW_MODE_OPTIONS: [
-  ViewModeOption<PreviewViewMode>,
-  ViewModeOption<PreviewViewMode>,
-] = [
+const VIEW_MODE_OPTIONS: ViewModeOption<PreviewViewMode>[] = [
   { value: "preview", icon: <Monitor04 size={14} />, tooltip: "Interactive" },
   {
     value: "visual",
     icon: <CursorClick01 size={14} />,
     tooltip: "Visual Editor",
   },
+  { value: "code", icon: <Code02 size={14} />, tooltip: "Code Editor" },
 ];
 
 export function PreviewContent() {
@@ -533,8 +538,13 @@ export function PreviewContent() {
             )}
           </div>
 
-          {/* Group 2: nav + url */}
-          <div className="flex min-w-0 flex-1 items-center gap-0.5">
+          {/* Group 2: nav + url (hidden in code mode) */}
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-0.5",
+              viewMode === "code" && "hidden",
+            )}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -663,8 +673,13 @@ export function PreviewContent() {
             </div>
           </div>
 
-          {/* Group 3: open in new tab + more actions */}
-          <div className="flex shrink-0 items-center gap-0.5">
+          {/* Group 3: open in new tab + more actions (hidden in code mode) */}
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-0.5",
+              viewMode === "code" && "hidden",
+            )}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -842,6 +857,31 @@ export function PreviewContent() {
               onDismiss={() => setVisualElement(null)}
             />
           )}
+          {/* File explorer (code mode) */}
+          {viewMode === "code" &&
+            previewState.kind === "iframe" &&
+            virtualMcpId &&
+            branch && (
+              <div className="absolute inset-0 z-10 bg-background">
+                <Suspense
+                  fallback={
+                    <div className="h-full flex items-center justify-center">
+                      <Loading01
+                        size={20}
+                        className="animate-spin text-muted-foreground"
+                      />
+                    </div>
+                  }
+                >
+                  <FileExplorer
+                    orgSlug={org.slug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                  />
+                </Suspense>
+              </div>
+            )}
+
           {previewState.kind === "iframe" && (
             <iframe
               // Key on previewUrl: `src` mutations don't reliably refetch in all
@@ -849,7 +889,10 @@ export function PreviewContent() {
               key={previewState.previewUrl}
               ref={previewIframeRef}
               src={previewState.previewUrl}
-              className="w-full h-full border-0"
+              className={cn(
+                "w-full h-full border-0",
+                viewMode === "code" && "invisible",
+              )}
               title="Dev Server Preview"
               tabIndex={sectionsOpen ? -1 : undefined}
               onLoad={() => {

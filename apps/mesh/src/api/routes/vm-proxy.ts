@@ -197,6 +197,9 @@ export const createVmRoutes = () => {
   app.post("/:vmId/:branch/read", (c) =>
     proxyDaemon(c, "/_decopilot_vm/read", { forwardJsonBody: true }),
   );
+  app.post("/:vmId/:branch/glob", (c) =>
+    proxyDaemon(c, "/_decopilot_vm/glob", { forwardJsonBody: true }),
+  );
 
   // -- Script exec/kill -----------------------------------------------------
   app.post("/:vmId/:branch/exec/:script", (c) => {
