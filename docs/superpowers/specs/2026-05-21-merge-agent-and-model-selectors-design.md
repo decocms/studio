@@ -23,6 +23,18 @@ Today the user has to use two surfaces to fully reconfigure their next message: 
 
 ## Decisions
 
+### Scope: drop `decopilot-laptop`
+
+Today there are four `AgentOption`s: `decopilot`, `decopilot-laptop`, `claude-code-laptop`, `codex-laptop`. The `decopilot-laptop` variant ran cloud Decopilot through the local sandbox runtime. We **remove it entirely** — the popover surfaces three sections (`decopilot`, `claude-code`, `codex`) and `decopilot-laptop` is dropped from the `AgentOption` type, `AGENT_OPTION_PINS`, `computeAgentOptions` callers, and its localStorage value migrates silently to `null` (existing validation already falls back when the stored string isn't in `AGENT_OPTION_PINS`).
+
+### What can NOT be deleted (constraints found during exploration)
+
+- `SimpleModeTierDropdown` — still used by `apps/mesh/src/web/views/automations/automation-detail.tsx`. Stays.
+- `ModelSelectorBody` / `ModelSelectorStandaloneBody` / `LaptopCliModelSelectorBody` — still used by the `ModelSelector` wrapper in `apps/mesh/src/web/components/chat/select-model.tsx`, which is called from `apps/mesh/src/web/views/settings/ai-providers/simple-mode-section.tsx`. They stay (the chat input simply stops calling them).
+- `AGENT_OPTION_PINS`, `pinsForOption`, `pinsToOption` — still used by `chat-context.tsx` and `thread-pills.tsx` to map the persisted option to `(harness, sandbox)`. Stay.
+
+What CAN be deleted: `AgentPill`, `computeAgentOptions`, `AGENT_OPTION_LABELS`, `AgentOptionsInput`, the `ORDER` array, and the `decopilot-laptop` entries.
+
 ### UI surface
 
 **Closed trigger (in the chat input).** Same position as today (right side of bottom action row). Renders logo + current selection label.
@@ -144,8 +156,13 @@ No e2e changes needed — message routing semantics didn't change.
 
 ## Removals
 
-- `apps/mesh/src/web/components/chat/pills/agent-pill.tsx`
-- `apps/mesh/src/web/components/chat/pills/agent-options.ts`
-- `apps/mesh/src/web/components/chat/select-model/laptop-cli.tsx`
-- `apps/mesh/src/web/components/chat/select-model/index.tsx` (if no other callers; verify during execution)
-- `SimpleModeTierDropdown` (if no other callers; verify during execution)
+- `apps/mesh/src/web/components/chat/pills/agent-pill.tsx` — full file deleted.
+- From `apps/mesh/src/web/components/chat/pills/agent-options.ts`: remove `decopilot-laptop` from `AgentOption` union and `AGENT_OPTION_PINS`; remove `computeAgentOptions`, `AGENT_OPTION_LABELS`, `AgentOptionsInput`, and the local `ORDER` array. Keep `AGENT_OPTION_PINS`, `pinsForOption`, `pinsToOption`, the `AgentOption` type itself, and the `AgentPins` interface.
+- From `apps/mesh/src/web/components/chat/pills/thread-pills.tsx`: remove the AgentPill JSX, its imports, the `setPendingAgentOption` callback, the `useAiProviderKeys`/`useCurrentLink`/`useVmStart`/`startVm.mutate` plumbing (moves into the popover's row handler), and the surrounding `·` separator. `BranchPill` and its props stay.
+- From `apps/mesh/src/web/components/chat/agent-model-trigger.tsx`: the `SimpleModeTierDropdown` fallback path goes away — the trigger always renders `AgentModelPopover` now.
+
+What stays:
+
+- `SimpleModeTierDropdown` (still used by `automation-detail.tsx`).
+- `ModelSelectorBody` / `ModelSelectorStandaloneBody` / `LaptopCliModelSelectorBody` (still used by the settings page via the `ModelSelector` wrapper).
+- `AGENT_OPTION_PINS`, `pinsForOption`, `pinsToOption` (still used by `chat-context.tsx`).
