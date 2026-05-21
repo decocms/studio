@@ -174,6 +174,7 @@ export function FileExplorer({
 
   function openFile(path: string) {
     setSelectedFile(path);
+    setAskAi(null);
     if (!openTabs.includes(path)) {
       setOpenTabs((prev) => [...prev, path]);
     }
@@ -268,13 +269,8 @@ export function FileExplorer({
     ];
     if (askAi.selectedCode) {
       const lang = getLanguageFromPath(askAi.filePath);
-      lines.push(
-        "",
-        "**Selected code:**",
-        "```" + lang,
-        askAi.selectedCode,
-        "```",
-      );
+      const safeCode = askAi.selectedCode.replace(/```/g, "`` `");
+      lines.push("", "**Selected code:**", "```" + lang, safeCode, "```");
     }
     lines.push(
       "",
