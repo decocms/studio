@@ -59,6 +59,7 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
+  slackNewOrgWebhookUrl: string | undefined;
 }
 
 export interface CliFlags {

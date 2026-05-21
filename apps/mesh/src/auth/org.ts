@@ -22,6 +22,38 @@ import { getSettings } from "../settings";
 import { auth } from "./index";
 import { mintGatewayJwt } from "./jwt";
 
+export async function sendNewOrgSlackNotification(
+  orgName: string,
+  orgSlug: string,
+  createdBy: string,
+): Promise<void> {
+  const settings = getSettings();
+  if (!settings.slackNewOrgWebhookUrl) return;
+
+  try {
+    const database = getDb();
+    const user = await database.db
+      .selectFrom("user")
+      .select(["email", "name"])
+      .where("id", "=", createdBy)
+      .executeTakeFirst();
+
+    const userLabel = user?.name
+      ? `${user.name} (${user.email})`
+      : (user?.email ?? createdBy);
+
+    await fetch(settings.slackNewOrgWebhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: `🎉 Nova org criada no Studio: *${orgName}* (\`${orgSlug}\`)\n👤 Criada por: ${userLabel}`,
+      }),
+    });
+  } catch (err) {
+    console.error("Failed to send new org Slack notification:", err);
+  }
+}
+
 interface MCPCreationSpec {
   data: ConnectionCreateData;
   permissions?: Permission;

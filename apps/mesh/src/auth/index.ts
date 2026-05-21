@@ -42,7 +42,7 @@ import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
-import { seedOrgDb } from "./org";
+import { seedOrgDb, sendNewOrgSlackNotification } from "./org";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
 import { createSSOConfig } from "./sso";
@@ -208,6 +208,11 @@ const plugins = [
     organizationCreation: {
       afterCreate: async (data) => {
         await seedOrgDb(data.organization.id, data.member.userId);
+        void sendNewOrgSlackNotification(
+          data.organization.name,
+          data.organization.slug,
+          data.member.userId,
+        );
       },
     },
     ac,
