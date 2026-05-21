@@ -49,6 +49,13 @@ export const KEYS = {
   mcpTools: (url: string, token?: string | null) =>
     ["mcp", "tools", url, token] as const,
 
+  // Prefix for all mesh-sdk mcp-client queries (mcpClient, mcpToolsList,
+  // mcpResourcesList, mcpPromptsList, mcpReadResource, mcpGetPrompt,
+  // mcpToolCall — all start with ["mcp", "client", ...]). Use with
+  // invalidateQueries to blow away every cached client query at once,
+  // e.g. after an MCP connection re-authenticates.
+  mcpClientPrefix: () => ["mcp", "client"] as const,
+
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
 
