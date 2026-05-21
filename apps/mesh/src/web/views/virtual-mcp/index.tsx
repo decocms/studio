@@ -1817,7 +1817,12 @@ Define step-by-step how the agent should handle requests.
                 <CardContent className="p-0 space-y-5">
                   <RepoRow repo={runtimeCardRepo} />
                   <RuntimeFields control={form.control} />
-                  <EnvVarsField control={form.control} form={form} />
+                  <EnvVarsField
+                    control={form.control}
+                    form={form}
+                    virtualMcpId={virtualMcp.id}
+                    orgSlug={org.slug}
+                  />
                 </CardContent>
               </Card>
             </div>

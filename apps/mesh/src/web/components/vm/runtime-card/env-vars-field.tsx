@@ -34,15 +34,19 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
+  AlertTriangle,
   ClipboardCheck,
   Key01,
+  Loading01,
   Lock01,
   Plus,
+  RefreshCw01,
   Save01,
   Trash01,
   User01,
   Users01,
 } from "@untitledui/icons";
+import { authClient } from "@/web/lib/auth-client";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { parseDotenv } from "@/web/components/vm/preview/drawer/parse-dotenv";
 import {
@@ -58,6 +62,10 @@ const SECRET_NAME_RE = /^[A-Za-z0-9_.-]+$/;
 export interface EnvVarsFieldProps<T extends FieldValues> {
   control: Control<T>;
   form: UseFormReturn<T>;
+  /** Used to scope the restart request to the right agent. */
+  virtualMcpId: string;
+  /** Used to build the /vm/.../setup/start URL for the restart action. */
+  orgSlug: string;
 }
 
 /**
@@ -71,6 +79,8 @@ export interface EnvVarsFieldProps<T extends FieldValues> {
 export function EnvVarsField<T extends FieldValues>({
   control,
   form,
+  virtualMcpId,
+  orgSlug,
 }: EnvVarsFieldProps<T>) {
   return (
     <div className="space-y-2">
@@ -83,6 +93,12 @@ export function EnvVarsField<T extends FieldValues>({
         Injected into the sandbox on every start. Reference an org/user secret
         to keep values out of metadata; literals are stored inline.
       </p>
+      <RunningSandboxNotice
+        control={control}
+        form={form}
+        virtualMcpId={virtualMcpId}
+        orgSlug={orgSlug}
+      />
       <ErrorBoundary
         fallback={({ error }) => (
           <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
@@ -94,6 +110,114 @@ export function EnvVarsField<T extends FieldValues>({
           <EnvVarsEditor control={control} form={form} />
         </Suspense>
       </ErrorBoundary>
+    </div>
+  );
+}
+
+interface RunningSandboxNoticeProps<T extends FieldValues> {
+  control: Control<T>;
+  form: UseFormReturn<T>;
+  virtualMcpId: string;
+  orgSlug: string;
+}
+
+/**
+ * Banner shown above the env list when:
+ *   (a) the caller already has a sandbox provisioned for this agent
+ *       (vmMap has an entry under their userId), and
+ *   (b) the env array changed since the page loaded.
+ *
+ * The push to the daemon happens on VM_START's `resolveAndPushEnv`, but a
+ * daemon already running a dev script won't pick up new env until that
+ * process restarts. The notice tells the user that, and the button POSTs
+ * /setup/start for each of their branches to recycle the dev script.
+ *
+ * Baseline is captured on mount via a ref — autosave running between
+ * keystrokes does NOT clear the banner; the user has to actually restart
+ * (or reload the page after a manual restart) to clear it.
+ */
+function RunningSandboxNotice<T extends FieldValues>({
+  control,
+  form,
+  virtualMcpId,
+  orgSlug,
+}: RunningSandboxNoticeProps<T>) {
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id;
+
+  const fieldPath = "metadata.runtime.env" as FieldPath<T>;
+  const vmMapPath = "metadata.vmMap" as FieldPath<T>;
+
+  // Baseline is held in component state (not a ref) so a successful restart
+  // can re-baseline and trigger a re-render that hides the banner.
+  const [baseline, setBaseline] = useState(() =>
+    JSON.stringify(form.getValues(fieldPath) ?? []),
+  );
+  const current = useWatch({ control, name: fieldPath });
+  const envChanged = JSON.stringify(current ?? []) !== baseline;
+
+  const vmMap = form.getValues(vmMapPath) as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  const userBranches = userId ? Object.keys(vmMap?.[userId] ?? {}) : [];
+  const hasActiveSandbox = userBranches.length > 0;
+
+  const [isRestarting, setRestarting] = useState(false);
+
+  if (!envChanged || !hasActiveSandbox) return null;
+
+  const handleRestart = async () => {
+    setRestarting(true);
+    const results = await Promise.allSettled(
+      userBranches.map(async (branch) => {
+        const url = `/api/${encodeURIComponent(orgSlug)}/vm/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/setup/start`;
+        const res = await fetch(url, { method: "POST" });
+        if (!res.ok) {
+          const body = await res.text().catch(() => res.statusText);
+          throw new Error(body || res.statusText);
+        }
+      }),
+    );
+    setRestarting(false);
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed === 0) {
+      // Match baseline so the banner self-clears; further edits surface it again.
+      setBaseline(JSON.stringify(form.getValues(fieldPath) ?? []));
+      toast.success(
+        userBranches.length === 1
+          ? "Restarted dev with new env"
+          : `Restarted ${userBranches.length} branches with new env`,
+      );
+    } else {
+      toast.error(
+        `Failed to restart ${failed} of ${userBranches.length} branch(es)`,
+      );
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs dark:border-amber-900/40 dark:bg-amber-950/30">
+      <div className="flex min-w-0 items-center gap-2 text-amber-900 dark:text-amber-200">
+        <AlertTriangle className="size-3.5 shrink-0" />
+        <span className="truncate">
+          Your sandbox is running. Restart the dev script to apply the new env.
+        </span>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleRestart}
+        disabled={isRestarting}
+        className="shrink-0"
+      >
+        {isRestarting ? (
+          <Loading01 className="size-3.5 animate-spin" />
+        ) : (
+          <RefreshCw01 className="size-3.5" />
+        )}
+        {isRestarting ? "Restarting…" : "Restart dev"}
+      </Button>
     </div>
   );
 }
@@ -111,10 +235,15 @@ type SecretDialogMode =
   // the value in the dialog; on save the row's secretId snaps to the new id.
   | { kind: "create-new"; index: number; presetKey: string };
 
+interface EnvVarsEditorProps<T extends FieldValues> {
+  control: Control<T>;
+  form: UseFormReturn<T>;
+}
+
 function EnvVarsEditor<T extends FieldValues>({
   control,
   form,
-}: EnvVarsFieldProps<T>) {
+}: EnvVarsEditorProps<T>) {
   const fieldPath = "metadata.runtime.env" as FieldPath<T>;
   // useFieldArray rejects string literals on the generic form path; the
   // runtime contract for `metadata.runtime.env` is asserted via the same
