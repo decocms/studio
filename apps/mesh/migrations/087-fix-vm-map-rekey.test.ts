@@ -19,7 +19,7 @@ import {
   createTestSchema,
   seedCommonTestFixtures,
 } from "../src/storage/test-helpers";
-import { up as up086 } from "./086-fix-vm-map-rekey";
+import { up as up087 } from "./087-fix-vm-map-rekey";
 
 const USER = "user_test";
 const ORG = "org_test";
@@ -88,7 +88,7 @@ describe("migration 082 — fix vmMap rekey", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up086(database.db as any);
+    await up087(database.db as any);
 
     const meta = await getMetadata(database, "vir_v1_kind");
     expect(meta).toEqual({
@@ -126,7 +126,7 @@ describe("migration 082 — fix vmMap rekey", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up086(database.db as any);
+    await up087(database.db as any);
 
     const meta = (await getMetadata(database, "vir_v1_runner")) as {
       vmMap: Record<string, Record<string, Record<string, unknown>>>;
@@ -165,7 +165,7 @@ describe("migration 082 — fix vmMap rekey", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up086(database.db as any);
+    await up087(database.db as any);
 
     const meta = await getMetadata(database, "vir_v2_runner");
     expect(meta).toEqual({
@@ -201,10 +201,10 @@ describe("migration 082 — fix vmMap rekey", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up086(database.db as any);
+    await up087(database.db as any);
     const after1 = await getMetadata(database, "vir_idem");
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up086(database.db as any);
+    await up087(database.db as any);
     const after2 = await getMetadata(database, "vir_idem");
 
     expect(after2).toEqual(after1);
@@ -216,7 +216,7 @@ describe("migration 082 — fix vmMap rekey", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up086(database.db as any);
+    await up087(database.db as any);
 
     const meta = await getMetadata(database, "vir_no_map");
     expect(meta).toEqual({ instructions: "hello" });

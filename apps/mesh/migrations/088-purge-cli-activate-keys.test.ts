@@ -17,7 +17,7 @@ import {
   createTestSchema,
   seedCommonTestFixtures,
 } from "../src/storage/test-helpers";
-import { up as up087 } from "./087-purge-cli-activate-keys";
+import { up as up088 } from "./088-purge-cli-activate-keys";
 
 const ORG = "org_test";
 const USER = "user_test";
@@ -65,7 +65,7 @@ describe("migration 083 — purge cli-activate sentinel keys", () => {
     await insertProviderKey(database, "apk_codex", "codex");
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up087(database.db as any);
+    await up088(database.db as any);
 
     expect(await countByProvider(database, "claude-code")).toBe(0);
     expect(await countByProvider(database, "codex")).toBe(0);
@@ -76,7 +76,7 @@ describe("migration 083 — purge cli-activate sentinel keys", () => {
     await insertProviderKey(database, "apk_claude", "claude-code");
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up087(database.db as any);
+    await up088(database.db as any);
 
     expect(await countByProvider(database, "openai")).toBe(1);
     expect(await countByProvider(database, "claude-code")).toBe(0);
@@ -84,6 +84,6 @@ describe("migration 083 — purge cli-activate sentinel keys", () => {
 
   it("is a no-op when no matching rows exist", async () => {
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await expect(up087(database.db as any)).resolves.toBeUndefined();
+    await expect(up088(database.db as any)).resolves.toBeUndefined();
   });
 });
