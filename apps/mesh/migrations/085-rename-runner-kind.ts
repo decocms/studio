@@ -33,25 +33,32 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       SET metadata = jsonb_set(
         v.metadata,
         '{vmMap}',
-        (
-          SELECT jsonb_object_agg(
-            user_key,
-            (
-              SELECT jsonb_object_agg(
-                branch_key,
-                CASE
-                  WHEN entry ? 'runnerKind' AND NOT entry ? 'sandboxProviderKind'
-                    THEN jsonb_set(entry, '{sandboxProviderKind}', entry->'runnerKind') - 'runnerKind'
-                  ELSE entry
-                END
+        COALESCE(
+          (
+            SELECT jsonb_object_agg(
+              user_key,
+              COALESCE(
+                (
+                  SELECT jsonb_object_agg(
+                    branch_key,
+                    CASE
+                      WHEN entry ? 'runnerKind' AND NOT entry ? 'sandboxProviderKind'
+                        THEN jsonb_set(entry, '{sandboxProviderKind}', entry->'runnerKind') - 'runnerKind'
+                      ELSE entry
+                    END
+                  )
+                  FROM jsonb_each(user_map) AS branches(branch_key, entry)
+                ),
+                '{}'::jsonb
               )
-              FROM jsonb_each(user_map) AS branches(branch_key, entry)
             )
-          )
-          FROM jsonb_each(v.metadata->'vmMap') AS users(user_key, user_map)
+            FROM jsonb_each(v.metadata->'vmMap') AS users(user_key, user_map)
+          ),
+          '{}'::jsonb
         )
       )
-      WHERE v.metadata ? 'vmMap';
+      WHERE v.metadata ? 'vmMap'
+        AND jsonb_typeof(v.metadata->'vmMap') = 'object';
     EXCEPTION WHEN undefined_table THEN
       NULL;
     END; $$
@@ -81,25 +88,32 @@ export async function down(db: Kysely<unknown>): Promise<void> {
       SET metadata = jsonb_set(
         v.metadata,
         '{vmMap}',
-        (
-          SELECT jsonb_object_agg(
-            user_key,
-            (
-              SELECT jsonb_object_agg(
-                branch_key,
-                CASE
-                  WHEN entry ? 'sandboxProviderKind' AND NOT entry ? 'runnerKind'
-                    THEN jsonb_set(entry, '{runnerKind}', entry->'sandboxProviderKind') - 'sandboxProviderKind'
-                  ELSE entry
-                END
+        COALESCE(
+          (
+            SELECT jsonb_object_agg(
+              user_key,
+              COALESCE(
+                (
+                  SELECT jsonb_object_agg(
+                    branch_key,
+                    CASE
+                      WHEN entry ? 'sandboxProviderKind' AND NOT entry ? 'runnerKind'
+                        THEN jsonb_set(entry, '{runnerKind}', entry->'sandboxProviderKind') - 'sandboxProviderKind'
+                      ELSE entry
+                    END
+                  )
+                  FROM jsonb_each(user_map) AS branches(branch_key, entry)
+                ),
+                '{}'::jsonb
               )
-              FROM jsonb_each(user_map) AS branches(branch_key, entry)
             )
-          )
-          FROM jsonb_each(v.metadata->'vmMap') AS users(user_key, user_map)
+            FROM jsonb_each(v.metadata->'vmMap') AS users(user_key, user_map)
+          ),
+          '{}'::jsonb
         )
       )
-      WHERE v.metadata ? 'vmMap';
+      WHERE v.metadata ? 'vmMap'
+        AND jsonb_typeof(v.metadata->'vmMap') = 'object';
     EXCEPTION WHEN undefined_table THEN
       NULL;
     END; $$
