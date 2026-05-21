@@ -1,4 +1,4 @@
-import { Suspense, useState } from "react";
+import { Suspense, useReducer, useRef, useState } from "react";
 import type {
   Control,
   FieldPath,
@@ -125,16 +125,18 @@ interface RunningSandboxNoticeProps<T extends FieldValues> {
  * Banner shown above the env list when:
  *   (a) the caller already has a sandbox provisioned for this agent
  *       (vmMap has an entry under their userId), and
- *   (b) the env array changed since the page loaded.
+ *   (b) the env array changed since the last push to the daemon.
  *
- * The push to the daemon happens on VM_START's `resolveAndPushEnv`, but a
- * daemon already running a dev script won't pick up new env until that
- * process restarts. The notice tells the user that, and the button POSTs
- * /setup/start for each of their branches to recycle the dev script.
+ * The push to the daemon happens server-side on /setup/start (which
+ * resolves secrets + PUTs /config before proxying to the daemon's
+ * orchestrator). A daemon already running a dev script won't pick up new
+ * env until that process restarts, so this notice + button recycle the
+ * dev script for each of the caller's branches.
  *
- * Baseline is captured on mount via a ref — autosave running between
- * keystrokes does NOT clear the banner; the user has to actually restart
- * (or reload the page after a manual restart) to clear it.
+ * Baseline is held in a ref initialized from the same `useWatch` value
+ * that `current` reads. That guarantees they match on first render —
+ * without this, getValues vs useWatch could diverge before subscriptions
+ * settled and the banner surfaced before the user touched anything.
  */
 function RunningSandboxNotice<T extends FieldValues>({
   control,
@@ -148,13 +150,16 @@ function RunningSandboxNotice<T extends FieldValues>({
   const fieldPath = "metadata.runtime.env" as FieldPath<T>;
   const vmMapPath = "metadata.vmMap" as FieldPath<T>;
 
-  // Baseline is held in component state (not a ref) so a successful restart
-  // can re-baseline and trigger a re-render that hides the banner.
-  const [baseline, setBaseline] = useState(() =>
-    JSON.stringify(form.getValues(fieldPath) ?? []),
-  );
   const current = useWatch({ control, name: fieldPath });
-  const envChanged = JSON.stringify(current ?? []) !== baseline;
+  // Drop in-progress rows (no key / invalid key / secret without secretId)
+  // before comparing. Adding an empty row via "+ Add env var" or starting
+  // to type a key wouldn't otherwise be sent to the daemon by autosave,
+  // so it shouldn't surface a restart banner either.
+  const currentStr = JSON.stringify(normalizeEnvForCompare(current));
+
+  const baselineRef = useRef(currentStr);
+  const [, bumpBaseline] = useReducer((x: number) => x + 1, 0);
+  const envChanged = currentStr !== baselineRef.current;
 
   const vmMap = form.getValues(vmMapPath) as
     | Record<string, Record<string, unknown>>
@@ -181,8 +186,8 @@ function RunningSandboxNotice<T extends FieldValues>({
     setRestarting(false);
     const failed = results.filter((r) => r.status === "rejected").length;
     if (failed === 0) {
-      // Match baseline so the banner self-clears; further edits surface it again.
-      setBaseline(JSON.stringify(form.getValues(fieldPath) ?? []));
+      baselineRef.current = currentStr;
+      bumpBaseline();
       toast.success(
         userBranches.length === 1
           ? "Restarted dev with new env"
@@ -851,6 +856,32 @@ function SaveAsSecretDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+// Mirrors `stripIncompleteEnvEntries` in views/virtual-mcp/index.tsx so the
+// banner's notion of "changed" matches what autosave actually sends.
+function normalizeEnvForCompare(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  const out: unknown[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as {
+      key?: string;
+      kind?: string;
+      value?: string;
+      secretId?: string;
+    };
+    const key = (e.key ?? "").trim();
+    if (!key || !ENV_VAR_KEY_RE.test(key)) continue;
+    if (e.kind === "literal") {
+      out.push({ key, kind: "literal", value: e.value ?? "" });
+      continue;
+    }
+    if (e.kind === "secret" && e.secretId) {
+      out.push({ key, kind: "secret", secretId: e.secretId });
+    }
+  }
+  return out;
 }
 
 function sanitizeSecretName(envKey: string): string {
