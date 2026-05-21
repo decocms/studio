@@ -26,6 +26,7 @@ export function LaptopCliModelSelectorBody({
     <div className="flex flex-col p-2 w-[320px]">
       {TIER_ROWS.map(({ tier, description }) => {
         const entry = modelSet.tiers[tier];
+        if (!entry.modelId) return null;
         const model = lookup[entry.modelId];
         if (!model) return null;
         const isSelected = selectedModelId === entry.modelId;
