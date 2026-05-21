@@ -240,8 +240,13 @@ if (command === "link") {
   // (for the server command). Only honor it for `deco link` if the user
   // actually passed `--port`/`-p` on the command line — otherwise
   // `runLinkCommand` falls back to the daemon's own default of 5174.
-  const portExplicit =
-    process.argv.includes("--port") || process.argv.includes("-p");
+  const portExplicit = process.argv.some(
+    (a) =>
+      a === "--port" ||
+      a === "-p" ||
+      a.startsWith("--port=") ||
+      a.startsWith("-p="),
+  );
   const code = await runLinkCommand({
     port: portExplicit ? Number(values.port) : undefined,
     noTunnel: values["no-tunnel"] === true,
