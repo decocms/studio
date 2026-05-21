@@ -276,6 +276,36 @@ export interface ProviderKeyInfo {
   createdAt: string;
 }
 
+export type SecretScopeKind = "user" | "organization";
+
+export interface SecretTable {
+  id: string;
+  organization_id: string;
+  scope: SecretScopeKind;
+  user_id: string | null;
+  name: string;
+  encrypted_value: string;
+  description: string | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/** Public DTO for a secret — never exposes the encrypted value. */
+export interface SecretInfo {
+  id: string;
+  organizationId: string;
+  scope: SecretScopeKind;
+  userId: string | null;
+  name: string;
+  description: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
 /**
  * Short-lived PKCE state table — stores codeVerifier server-side during OAuth flow.
  * Records expire after 10 minutes and are deleted on consumption (single-use).
@@ -1154,6 +1184,9 @@ export interface Database {
 
   // AI Provider keys tables
   ai_provider_keys: AIProviderKeyTable;
+
+  // Generic secrets vault (org and user scoped)
+  secrets: SecretTable;
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;

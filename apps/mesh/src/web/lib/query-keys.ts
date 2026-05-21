@@ -271,6 +271,9 @@ export const KEYS = {
   // AI provider stored keys (scoped by org)
   aiProviderKeys: (orgId: string) => ["ai-provider-keys", orgId] as const,
 
+  // Secrets (scoped by org; user-scope filtering happens server-side)
+  secrets: (orgId: string) => ["secrets", orgId] as const,
+
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>
     ["ai-provider-credits", orgId, keyId] as const,

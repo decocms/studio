@@ -38,6 +38,7 @@ import {
   User01,
   Users03,
   Zap,
+  Key01,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -88,6 +89,12 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "AI Providers",
           icon: <CpuChip01 size={14} />,
           to: "/$org/settings/ai-providers",
+        },
+        {
+          key: "secrets",
+          label: "Secrets",
+          icon: <Key01 size={14} />,
+          to: "/$org/settings/secrets",
         },
       ],
     },

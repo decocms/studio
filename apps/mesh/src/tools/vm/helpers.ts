@@ -6,7 +6,7 @@
  * - Runtime detection logic (resolveRuntimeConfig)
  */
 
-import type { VmMapEntry } from "@decocms/mesh-sdk";
+import type { RuntimeEnvEntry, VmMapEntry } from "@decocms/mesh-sdk";
 
 import {
   requireAuth,
@@ -23,6 +23,7 @@ export type RuntimeConfigMeta = {
     selected?: string | null;
     port?: string | null;
     path?: string | null;
+    env?: RuntimeEnvEntry[] | null;
   } | null;
 };
 

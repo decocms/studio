@@ -116,6 +116,28 @@ const VirtualMcpUISchema = z.object({
 export type VirtualMcpUI = z.infer<typeof VirtualMcpUISchema>;
 
 /**
+ * One env var declaration on a virtual MCP. Literal values live inline in
+ * metadata; secret values store a stable secretId that mesh resolves against
+ * the credential vault on every VM_START. The env var KEY is independent of
+ * the secret's NAME — a single secret can back multiple env keys across
+ * different agents.
+ */
+const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
+  z.object({
+    key: z.string().min(1),
+    kind: z.literal("literal"),
+    value: z.string(),
+  }),
+  z.object({
+    key: z.string().min(1),
+    kind: z.literal("secret"),
+    secretId: z.string().min(1),
+  }),
+]);
+
+export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
+
+/**
  * User-pinned runtime configuration stored under `metadata.runtime`. Empty
  * fields fall back to autodetect on the next VM_START.
  */
@@ -140,6 +162,13 @@ const RuntimeMetadataSchema = z.object({
     .optional()
     .describe(
       "Optional path (relative to repo root) to the directory containing package.json. Null/absent means repo root. Forwarded as `application.packageManager.path` to the daemon config.",
+    ),
+  env: z
+    .array(RuntimeEnvEntrySchema)
+    .nullable()
+    .optional()
+    .describe(
+      "Env vars injected on every VM_START. Literal entries inline their value; secret entries store a secretId that mesh resolves via the credential vault before posting /_decopilot_vm/config.",
     ),
 });
 

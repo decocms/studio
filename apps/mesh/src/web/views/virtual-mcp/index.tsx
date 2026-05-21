@@ -98,6 +98,7 @@ import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { FIXED_SYSTEM_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
+import { EnvVarsField } from "@/web/components/vm/runtime-card/env-vars-field";
 import { RepoRow } from "@/web/components/vm/runtime-card/repo-row";
 import { RuntimeFields } from "@/web/components/vm/runtime-card/runtime-fields";
 
@@ -178,6 +179,39 @@ function editSessionReducer(
     case "reset":
       return null;
   }
+}
+
+/**
+ * Drops in-progress env rows (empty key, or kind=secret with empty secretId)
+ * from the payload sent on autosave. Keeps the partial row in form state so
+ * the user can keep typing — the next save will include it once it's valid.
+ */
+function stripIncompleteEnvEntries(
+  data: VirtualMcpFormData,
+): VirtualMcpFormData {
+  const env = data.metadata?.runtime?.env;
+  if (!env || env.length === 0) return data;
+  const cleaned = env.filter((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const key = ((entry as { key?: string }).key ?? "").trim();
+    if (!key) return false;
+    if (entry.kind === "literal") return true;
+    if (entry.kind === "secret") {
+      return Boolean((entry as { secretId?: string }).secretId);
+    }
+    return false;
+  });
+  if (cleaned.length === env.length) return data;
+  return {
+    ...data,
+    metadata: {
+      ...data.metadata,
+      runtime: {
+        ...(data.metadata?.runtime ?? {}),
+        env: cleaned,
+      },
+    },
+  };
 }
 
 /**
@@ -1169,9 +1203,14 @@ function VirtualMcpDetailViewWithData({
     // current form values; only _defaultValues advances.
     form.reset(formData, { keepValues: true });
 
+    // Strip in-progress env rows (no key, or kind=secret with no secretId).
+    // The partial row stays in the form state so the user keeps editing it,
+    // but the request body only carries entries the server schema accepts.
+    const payload = stripIncompleteEnvEntries(formData);
+
     await actions.update.mutateAsync({
       id: virtualMcp.id,
-      data: formData,
+      data: payload,
     });
 
     // Accumulate into the current edit session and (re)schedule a flush
@@ -1778,6 +1817,7 @@ Define step-by-step how the agent should handle requests.
                 <CardContent className="p-0 space-y-5">
                   <RepoRow repo={runtimeCardRepo} />
                   <RuntimeFields control={form.control} />
+                  <EnvVarsField control={form.control} form={form} />
                 </CardContent>
               </Card>
             </div>

@@ -1,4 +1,4 @@
-export const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function parseDotenv(text: string): Record<string, string> {
   const out: Record<string, string> = {};

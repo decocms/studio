@@ -17,6 +17,7 @@ type IdPrefixes =
   | "pc"
   | "dash"
   | "aik"
+  | "sec"
   | "vpc";
 
 export function generatePrefixedId(prefix: IdPrefixes) {

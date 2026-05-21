@@ -30,6 +30,7 @@ import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
+import * as SecretsTools from "./secrets";
 import { getPrompts, getResources } from "./guides";
 import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
@@ -147,6 +148,10 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
   AiProvidersTools.AI_PROVIDER_CLI_ACTIVATE,
+
+  // Secrets tools
+  SecretsTools.SECRET_CREATE,
+  SecretsTools.SECRET_LIST,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,
