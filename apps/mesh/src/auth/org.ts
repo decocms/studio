@@ -28,7 +28,7 @@ export async function sendNewOrgSlackNotification(
   createdBy: string,
 ): Promise<void> {
   const settings = getSettings();
-  if (!settings.slackNewOrgWebhookUrl) return;
+  if (!settings.discordNewOrgWebhookUrl) return;
 
   try {
     const database = getDb();
@@ -42,15 +42,15 @@ export async function sendNewOrgSlackNotification(
       ? `${user.name} (${user.email})`
       : (user?.email ?? createdBy);
 
-    await fetch(settings.slackNewOrgWebhookUrl, {
+    await fetch(settings.discordNewOrgWebhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        text: `🎉 Nova org criada no Studio: *${orgName}* (\`${orgSlug}\`)\n👤 Criada por: ${userLabel}`,
+        content: `🎉 Nova org criada no Studio: **${orgName}** (\`${orgSlug}\`)\n👤 Criada por: ${userLabel}`,
       }),
     });
   } catch (err) {
-    console.error("Failed to send new org Slack notification:", err);
+    console.error("Failed to send new org Discord notification:", err);
   }
 }
 
