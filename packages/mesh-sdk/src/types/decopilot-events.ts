@@ -81,6 +81,12 @@ export interface DecopilotThreadStatusEvent extends BaseDecopilotEvent {
     created_at?: string;
     /** Last update timestamp; useful for the client to sort/dedupe. Absent if caller didn't load the row. */
     updated_at?: string;
+    /** Free-form thread metadata snapshot. The chat UI keys off
+     *  metadata.kind to switch between agent-thread and tool_call_run
+     *  renderings (avatar, message-renderer), so the workflow that
+     *  spawns those threads must include it on the first event or the
+     *  row renders with the wrong icon until a refetch. */
+    metadata?: Record<string, unknown>;
   };
 }
 
@@ -139,6 +145,7 @@ export function createDecopilotThreadStatusEvent(
     branch?: string | null;
     createdAt?: string;
     updatedAt?: string;
+    metadata?: Record<string, unknown>;
   },
 ): DecopilotThreadStatusEvent {
   return {
@@ -157,6 +164,7 @@ export function createDecopilotThreadStatusEvent(
       ...(opts?.branch !== undefined && { branch: opts.branch }),
       ...(opts?.createdAt !== undefined && { created_at: opts.createdAt }),
       ...(opts?.updatedAt !== undefined && { updated_at: opts.updatedAt }),
+      ...(opts?.metadata !== undefined && { metadata: opts.metadata }),
     },
     time: new Date().toISOString(),
   };

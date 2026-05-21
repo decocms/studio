@@ -47,6 +47,12 @@ export const AUTOMATION_UPDATE = defineTool({
       })
       .optional(),
     temperature: z.number().optional(),
+    // Tool-call updates. The automation's kind is immutable (create a new
+    // one if you need a different kind), but the fixed args / target tool
+    // can be edited on a kind='tool_call' automation.
+    connection_id: z.string().optional(),
+    tool_name: z.string().optional(),
+    tool_input: z.record(z.string(), z.unknown()).optional(),
   }),
   outputSchema: z.object({
     id: z.string(),
@@ -80,6 +86,38 @@ export const AUTOMATION_UPDATE = defineTool({
       updateData.models = JSON.stringify(input.models);
     if (input.temperature !== undefined)
       updateData.temperature = input.temperature;
+    if (
+      input.connection_id !== undefined ||
+      input.tool_name !== undefined ||
+      input.tool_input !== undefined
+    ) {
+      if (existing.kind !== "tool_call") {
+        throw new Error(
+          "connection_id / tool_name / tool_input can only be set on kind='tool_call' automations",
+        );
+      }
+      if (input.connection_id !== undefined) {
+        // Cross-org isolation. Workflow re-checks at fire time; this is
+        // the earlier rejection. Empty string is allowed because the UI
+        // creates blank tool_call automations and lets the user fill in
+        // the connection on the detail screen.
+        if (input.connection_id !== "") {
+          const exists = await ctx.storage.connections.findById(
+            input.connection_id,
+            organization.id,
+          );
+          if (!exists) {
+            throw new Error(
+              `connection ${input.connection_id} not found in this organization`,
+            );
+          }
+        }
+        updateData.connection_id = input.connection_id;
+      }
+      if (input.tool_name !== undefined) updateData.tool_name = input.tool_name;
+      if (input.tool_input !== undefined)
+        updateData.tool_input = JSON.stringify(input.tool_input);
+    }
     const automation = await ctx.storage.automations.update(
       input.id,
       organization.id,

@@ -12,7 +12,12 @@
 
 import { type Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
-import type { Database, Automation, AutomationTrigger } from "./types";
+import type {
+  Database,
+  Automation,
+  AutomationKind,
+  AutomationTrigger,
+} from "./types";
 
 // ============================================================================
 // Input Types
@@ -26,7 +31,13 @@ export interface CreateAutomationInput {
   messages: string; // JSON
   models: string; // JSON
   temperature?: number;
-  virtual_mcp_id: string;
+  kind: AutomationKind;
+  // kind='agent' requires this; kind='tool_call' must omit / set null.
+  virtual_mcp_id?: string | null;
+  // kind='tool_call' requires these; kind='agent' must omit / set null.
+  connection_id?: string | null;
+  tool_name?: string | null;
+  tool_input?: string | null; // JSON
 }
 
 export interface UpdateAutomationInput {
@@ -35,6 +46,11 @@ export interface UpdateAutomationInput {
   messages?: string;
   models?: string;
   temperature?: number;
+  // Tool-call edits. Only meaningful on kind='tool_call' rows; kind itself
+  // is immutable.
+  connection_id?: string;
+  tool_name?: string;
+  tool_input?: string;
 }
 
 export interface CreateTriggerInput {
@@ -94,7 +110,16 @@ export interface AutomationsStorage {
     automation: Automation,
     triggerId: string | null,
   ): Promise<string>;
+  // Spawns a thread for a kind='tool_call' run. Uses empty-string
+  // virtual_mcp_id (the same sentinel migration 057 reserves for
+  // agent-less threads) and stamps metadata.kind so the UI can render
+  // the row + thread detail differently from agent runs.
+  createToolCallRunThread(
+    automation: Automation,
+    triggerId: string | null,
+  ): Promise<string>;
   markRunFailed(taskId: string): Promise<void>;
+  markRunCompleted(taskId: string): Promise<void>;
   updateTriggerLastRunAt(triggerId: string, lastRunAt: string): Promise<void>;
   deactivateAutomation(id: string): Promise<void>;
 }
@@ -116,10 +141,19 @@ function automationFromDbRow(row: {
   messages: string;
   models: string;
   temperature: number;
-  virtual_mcp_id: string;
+  virtual_mcp_id: string | null;
+  kind?: string | null;
+  connection_id?: string | null;
+  tool_name?: string | null;
+  tool_input?: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 }): Automation {
+  // Default to 'agent' so rows from older code paths that haven't been updated
+  // to select `kind` still type-check at runtime. The DB column itself is
+  // NOT NULL with a default of 'agent', so any row read with selectAll() will
+  // carry the real value.
+  const kind: AutomationKind = row.kind === "tool_call" ? "tool_call" : "agent";
   return {
     id: row.id,
     organization_id: row.organization_id,
@@ -130,6 +164,10 @@ function automationFromDbRow(row: {
     models: row.models,
     temperature: row.temperature,
     virtual_mcp_id: row.virtual_mcp_id,
+    kind,
+    connection_id: row.connection_id ?? null,
+    tool_name: row.tool_name ?? null,
+    tool_input: row.tool_input ?? null,
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
   };
@@ -161,6 +199,64 @@ function triggerFromDbRow(row: {
   };
 }
 
+// Shared between findActiveEventTriggers and findAllCronTriggers — both join
+// `automations as a` and need the full automation row reconstructed from
+// aliased columns. Keeping the alias list in one place means new columns
+// (like kind / tool_call_* in migration 078) only need updating here.
+const TRIGGER_JOIN_AUTOMATION_COLUMNS = [
+  "a.id as a_id",
+  "a.organization_id as a_organization_id",
+  "a.name as a_name",
+  "a.active as a_active",
+  "a.created_by as a_created_by",
+  "a.messages as a_messages",
+  "a.models as a_models",
+  "a.temperature as a_temperature",
+  "a.virtual_mcp_id as a_virtual_mcp_id",
+  "a.kind as a_kind",
+  "a.connection_id as a_connection_id",
+  "a.tool_name as a_tool_name",
+  "a.tool_input as a_tool_input",
+  "a.created_at as a_created_at",
+  "a.updated_at as a_updated_at",
+] as const;
+
+function automationFromAliasedRow(row: {
+  a_id: string;
+  a_organization_id: string;
+  a_name: string;
+  a_active: boolean | number;
+  a_created_by: string;
+  a_messages: string;
+  a_models: string;
+  a_temperature: number;
+  a_virtual_mcp_id: string | null;
+  a_kind: string | null;
+  a_connection_id: string | null;
+  a_tool_name: string | null;
+  a_tool_input: string | null;
+  a_created_at: Date | string;
+  a_updated_at: Date | string;
+}): Automation {
+  return automationFromDbRow({
+    id: row.a_id,
+    organization_id: row.a_organization_id,
+    name: row.a_name,
+    active: row.a_active,
+    created_by: row.a_created_by,
+    messages: row.a_messages,
+    models: row.a_models,
+    temperature: row.a_temperature,
+    virtual_mcp_id: row.a_virtual_mcp_id,
+    kind: row.a_kind,
+    connection_id: row.a_connection_id,
+    tool_name: row.a_tool_name,
+    tool_input: row.a_tool_input,
+    created_at: row.a_created_at,
+    updated_at: row.a_updated_at,
+  });
+}
+
 // ============================================================================
 // KyselyAutomationsStorage Implementation
 // ============================================================================
@@ -181,7 +277,11 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       messages: input.messages,
       models: input.models,
       temperature: input.temperature ?? 0.5,
-      virtual_mcp_id: input.virtual_mcp_id,
+      virtual_mcp_id: input.virtual_mcp_id ?? null,
+      kind: input.kind,
+      connection_id: input.connection_id ?? null,
+      tool_name: input.tool_name ?? null,
+      tool_input: input.tool_input ?? null,
       created_at: now,
       updated_at: now,
     };
@@ -237,6 +337,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.models",
         "a.temperature",
         "a.virtual_mcp_id",
+        "a.kind",
+        "a.connection_id",
+        "a.tool_name",
+        "a.tool_input",
         "a.created_at",
         "a.updated_at",
       ])
@@ -259,6 +363,10 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.models",
         "a.temperature",
         "a.virtual_mcp_id",
+        "a.kind",
+        "a.connection_id",
+        "a.tool_name",
+        "a.tool_input",
         "a.created_at",
         "a.updated_at",
       ])
@@ -288,6 +396,11 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     if (input.models !== undefined) updateData.models = input.models;
     if (input.temperature !== undefined)
       updateData.temperature = input.temperature;
+    if (input.connection_id !== undefined)
+      updateData.connection_id = input.connection_id;
+    if (input.tool_name !== undefined) updateData.tool_name = input.tool_name;
+    if (input.tool_input !== undefined)
+      updateData.tool_input = input.tool_input;
 
     await this.db
       .updateTable("automations")
@@ -395,17 +508,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "t.params",
         "t.last_run_at",
         "t.created_at",
-        "a.id as a_id",
-        "a.organization_id as a_organization_id",
-        "a.name as a_name",
-        "a.active as a_active",
-        "a.created_by as a_created_by",
-        "a.messages as a_messages",
-        "a.models as a_models",
-        "a.temperature as a_temperature",
-        "a.virtual_mcp_id as a_virtual_mcp_id",
-        "a.created_at as a_created_at",
-        "a.updated_at as a_updated_at",
+        ...TRIGGER_JOIN_AUTOMATION_COLUMNS,
       ])
       .where("t.type", "=", "event")
       .where("t.connection_id", "=", connectionId)
@@ -416,19 +519,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
 
     return rows.map((row) => ({
       ...triggerFromDbRow(row),
-      automation: automationFromDbRow({
-        id: row.a_id,
-        organization_id: row.a_organization_id,
-        name: row.a_name,
-        active: row.a_active,
-        created_by: row.a_created_by,
-        messages: row.a_messages,
-        models: row.a_models,
-        temperature: row.a_temperature,
-        virtual_mcp_id: row.a_virtual_mcp_id,
-        created_at: row.a_created_at,
-        updated_at: row.a_updated_at,
-      }),
+      automation: automationFromAliasedRow(row),
     }));
   }
 
@@ -448,36 +539,14 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "t.params",
         "t.last_run_at",
         "t.created_at",
-        "a.id as a_id",
-        "a.organization_id as a_organization_id",
-        "a.name as a_name",
-        "a.active as a_active",
-        "a.created_by as a_created_by",
-        "a.messages as a_messages",
-        "a.models as a_models",
-        "a.temperature as a_temperature",
-        "a.virtual_mcp_id as a_virtual_mcp_id",
-        "a.created_at as a_created_at",
-        "a.updated_at as a_updated_at",
+        ...TRIGGER_JOIN_AUTOMATION_COLUMNS,
       ])
       .where("t.type", "=", "cron")
       .execute();
 
     return rows.map((row) => ({
       ...triggerFromDbRow(row),
-      automation: automationFromDbRow({
-        id: row.a_id,
-        organization_id: row.a_organization_id,
-        name: row.a_name,
-        active: row.a_active,
-        created_by: row.a_created_by,
-        messages: row.a_messages,
-        models: row.a_models,
-        temperature: row.a_temperature,
-        virtual_mcp_id: row.a_virtual_mcp_id,
-        created_at: row.a_created_at,
-        updated_at: row.a_updated_at,
-      }),
+      automation: automationFromAliasedRow(row),
     }));
   }
 
@@ -496,6 +565,13 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     automation: Automation,
     triggerId: string | null,
   ): Promise<string> {
+    if (!automation.virtual_mcp_id) {
+      // Only agent-kind automations dispatch a chat thread. Tool-call
+      // automations spawn their thread via createToolCallRunThread.
+      throw new Error(
+        "createAutomationRunThread requires an agent-kind automation",
+      );
+    }
     const taskId = generatePrefixedId("thrd");
     const now = new Date().toISOString();
     await this.db
@@ -518,10 +594,52 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     return taskId;
   }
 
+  async createToolCallRunThread(
+    automation: Automation,
+    triggerId: string | null,
+  ): Promise<string> {
+    if (automation.kind !== "tool_call") {
+      throw new Error(
+        "createToolCallRunThread requires a tool_call-kind automation",
+      );
+    }
+    const taskId = generatePrefixedId("thrd");
+    const now = new Date().toISOString();
+    await this.db
+      .insertInto("threads")
+      .values({
+        id: taskId,
+        organization_id: automation.organization_id,
+        title: `Automation: ${automation.name}`,
+        description: null,
+        status: "in_progress",
+        trigger_id: triggerId,
+        // No agent; the UI keys off metadata.kind below.
+        virtual_mcp_id: "",
+        hidden: false,
+        metadata: JSON.stringify({ kind: "tool_call_run" }),
+        created_at: now,
+        updated_at: now,
+        created_by: automation.created_by,
+        updated_by: null,
+      })
+      .execute();
+    return taskId;
+  }
+
   async markRunFailed(taskId: string): Promise<void> {
     await this.db
       .updateTable("threads")
       .set({ status: "failed", updated_at: new Date().toISOString() })
+      .where("id", "=", taskId)
+      .where("status", "=", "in_progress")
+      .execute();
+  }
+
+  async markRunCompleted(taskId: string): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ status: "completed", updated_at: new Date().toISOString() })
       .where("id", "=", taskId)
       .where("status", "=", "in_progress")
       .execute();

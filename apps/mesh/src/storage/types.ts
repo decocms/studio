@@ -923,13 +923,25 @@ export interface AutomationTable {
   name: string;
   active: boolean;
   created_by: string;
-  messages: string; // JSON string: UIMessage[]
-  models: string; // JSON string: { tier: "fast" | "smart" | "thinking" } (post-migration 077)
+  // For kind='agent': UIMessage[]. For kind='tool_call': vestigial (stored as '[]').
+  messages: string;
+  // For kind='agent': { tier: "fast" | "smart" | "thinking" }. For kind='tool_call': vestigial.
+  models: string;
   temperature: number;
-  virtual_mcp_id: string;
+  // kind='agent' rows: required. kind='tool_call' rows: null. Enforced by CHECK.
+  virtual_mcp_id: string | null;
+  // 'agent' | 'tool_call'. Discriminator added in migration 078.
+  kind: string;
+  // kind='tool_call' rows: required. kind='agent' rows: null. Enforced by CHECK.
+  connection_id: string | null;
+  tool_name: string | null;
+  // JSON-stringified object passed as arguments to the MCP tool.
+  tool_input: string | null;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
+
+export type AutomationKind = "agent" | "tool_call";
 
 /**
  * Automation entity - Runtime representation
@@ -943,7 +955,11 @@ export interface Automation {
   messages: string;
   models: string;
   temperature: number;
-  virtual_mcp_id: string;
+  virtual_mcp_id: string | null;
+  kind: AutomationKind;
+  connection_id: string | null;
+  tool_name: string | null;
+  tool_input: string | null;
   created_at: string;
   updated_at: string;
 }

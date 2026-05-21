@@ -114,7 +114,12 @@ export interface AutomationListItem {
   created_by: string;
   created_at: string;
   trigger_count: number;
-  virtual_mcp_id: string;
+  // 'agent' or 'tool_call'. 'tool_call' rows have virtual_mcp_id=null
+  // and instead carry connection_id + tool_name.
+  kind: "agent" | "tool_call";
+  virtual_mcp_id: string | null;
+  connection_id: string | null;
+  tool_name: string | null;
   nearest_next_run_at: string | null;
 }
 
@@ -137,7 +142,11 @@ export interface AutomationDetail {
   created_by: string;
   created_at: string;
   updated_at: string;
-  virtual_mcp_id: string;
+  kind: "agent" | "tool_call";
+  virtual_mcp_id: string | null;
+  connection_id: string | null;
+  tool_name: string | null;
+  tool_input: Record<string, unknown> | null;
   messages: unknown[];
   models: {
     tier?: "fast" | "smart" | "thinking";
@@ -218,6 +227,19 @@ export function buildDefaultAutomationInput(virtualMcpId: string) {
     temperature: 0.5,
     active: true,
     virtual_mcp_id: virtualMcpId,
+  };
+}
+
+export function buildDefaultToolCallAutomationInput() {
+  return {
+    name: "New tool-call automation",
+    kind: "tool_call" as const,
+    // connection/tool/input are filled in on the detail screen; the
+    // workflow refuses to fire until they're set (invokeFixedToolStep).
+    connection_id: "",
+    tool_name: "",
+    tool_input: {},
+    active: true,
   };
 }
 
@@ -343,5 +365,40 @@ export function useAutomationActions() {
     },
   });
 
-  return { create, update, remove, triggerAdd, triggerRemove };
+  const run = useMutation({
+    mutationFn: async (id: string) => {
+      const result = (await client.callTool({
+        name: "AUTOMATION_RUN",
+        arguments: { id },
+      })) as {
+        structuredContent?: unknown;
+        isError?: boolean;
+        content?: Array<{ text?: string }>;
+      };
+      if (result.isError) {
+        const message = result.content?.[0]?.text ?? "Failed to run automation";
+        throw new Error(message);
+      }
+      return (result.structuredContent ?? result) as {
+        threadId?: string;
+        error?: string;
+        skipped?: string;
+      };
+    },
+    onSuccess: (data) => {
+      if (data.skipped) {
+        toast.info(`Automation skipped: ${data.skipped}`);
+      } else if (data.error) {
+        toast.error(`Automation failed: ${data.error}`);
+      } else {
+        toast.success("Automation triggered");
+      }
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to run automation: ${message}`);
+    },
+  });
+
+  return { create, update, remove, triggerAdd, triggerRemove, run };
 }
