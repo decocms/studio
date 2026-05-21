@@ -78,6 +78,33 @@ describe("POST /api/links", () => {
     expect(res.status).toBe(426);
   });
 
+  it("derives a lowercase tunnelUrl from a mixed-case userSub", async () => {
+    // hostnames are case-insensitive but Better Auth subs are case-sensitive
+    // nanoids — the cluster and the daemon both lowercase the sub when
+    // composing the deco.host hostname so the Warp DO's registration map
+    // (keyed by `domain`) matches the lookup (keyed by the lowercase Host
+    // header). Without this every mixed-case sub 503s on dispatch.
+    const { app, registry } = buildApp(false);
+    const res = await app.request("/api/links", {
+      method: "POST",
+      body: JSON.stringify({
+        machineId: "m1",
+        cliVersion: "1.0.0",
+        protocolVersion: 1,
+        capabilities: ["claude-code"],
+      }),
+      headers: {
+        "content-type": "application/json",
+        "x-test-sub": "ycoiLjsJJ87qAKNeANPPpb7UDoCKdqoy",
+      },
+    });
+    expect(res.status).toBe(200);
+    const stored = await registry.get("ycoiLjsJJ87qAKNeANPPpb7UDoCKdqoy");
+    expect(stored?.tunnelUrl).toBe(
+      "https://link-ycoiljsjj87qakneanpppb7udockdqoy.deco.host",
+    );
+  });
+
   it("rejects 409 when another machineId is active", async () => {
     const { app } = buildApp();
     const first = await app.request("/api/links", {

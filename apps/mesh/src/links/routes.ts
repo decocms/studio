@@ -53,7 +53,16 @@ export interface LinksRoutesDeps<E extends Env = Env> {
 }
 
 function expectedTunnelDomain(userSub: string): string {
-  return `https://link-${userSub}.deco.host`;
+  // Lowercase the sub because hostnames are case-insensitive but Better
+  // Auth subs are case-sensitive nanoids. The Warp DO behind deco.host
+  // keys its `hostToClientId` map by the literal `domain` field the
+  // client sent in the register message, while HTTP forwarding looks up
+  // by the request's Host header — which the WHATWG URL parser lowercased
+  // on the wire. Without this, every sub containing uppercase letters
+  // gets a permanent 503 "No registration for domain" on dispatch. The
+  // daemon does the same in `computeLinkSubDomain`; both sides must
+  // agree.
+  return `https://link-${userSub.toLowerCase()}.deco.host`;
 }
 
 function timingSafeEqualStrings(a: string, b: string): boolean {
