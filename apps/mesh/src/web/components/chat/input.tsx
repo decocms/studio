@@ -598,6 +598,8 @@ export function ChatInput({
                         agent={pendingHarnessId}
                         sandboxKind={pendingSandboxProviderKind}
                         tier={simpleModeTier}
+                        currentBranch={taskCtx?.currentBranch ?? null}
+                        virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
                         onSelect={setSimpleModeTier}
                       />
 
