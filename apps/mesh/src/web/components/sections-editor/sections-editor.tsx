@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { ArrowLeft, Loading01 } from "@untitledui/icons";
+import { ChevronRight, Loading01 } from "@untitledui/icons";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { toast } from "sonner";
@@ -345,12 +345,15 @@ export function SectionsEditor({
   virtualMcpId,
   branch,
   currentPath,
+  externalSelectedIndex,
   onSaved,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   currentPath: string;
+  /** Section index selected via click-through from the preview iframe. */
+  externalSelectedIndex?: number | null;
   /** Called after a successful auto-save so the parent can reload the preview. */
   onSaved?: () => void;
 }) {
@@ -370,11 +373,16 @@ export function SectionsEditor({
     null,
   );
   const [activeVariantIndex, setActiveVariantIndex] = useState(0);
+  const [prevExternalIdx, setPrevExternalIdx] = useState<
+    number | null | undefined
+  >(undefined);
   const [ruleFormValue, setRuleFormValue] = useState<Record<
     string,
     unknown
   > | null>(null);
   const [ruleResolveType, setRuleResolveType] = useState<string | null>(null);
+  const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
+  const [formResetKey, setFormResetKey] = useState(0);
 
   // Reset form state when the active page changes
   const [prevPath, setPrevPath] = useState(currentPath);
@@ -386,6 +394,8 @@ export function SectionsEditor({
     setActiveVariantIndex(0);
     setRuleFormValue(null);
     setRuleResolveType(null);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
@@ -458,6 +468,29 @@ export function SectionsEditor({
     pageVariants,
     variantIndex: safeVariantIndex,
   };
+
+  // Auto-select section when parent signals a click-through from the preview.
+  if (
+    externalSelectedIndex !== undefined &&
+    externalSelectedIndex !== prevExternalIdx
+  ) {
+    setPrevExternalIdx(externalSelectedIndex ?? null);
+    if (typeof externalSelectedIndex === "number") {
+      const rawSection = rawSections[externalSelectedIndex];
+      const parsed = parsedSections[externalSelectedIndex];
+      if (rawSection && parsed) {
+        const unwrapped = unwrapSection(rawSection, parsed, decofile);
+        setSelectedSectionIndex(externalSelectedIndex);
+        if (!unwrapped) {
+          setFormValue(null);
+          setActiveResolveType(null);
+        } else {
+          setFormValue(unwrapped.data);
+          setActiveResolveType(unwrapped.resolveType);
+        }
+      }
+    }
+  }
 
   const activeSchema =
     activeResolveType && meta ? resolveSchema(activeResolveType, meta) : null;
@@ -569,6 +602,8 @@ export function SectionsEditor({
 
   const handleSelectSection = (index: number) => {
     setSelectedSectionIndex(index);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
     const rawSection = rawSections[index];
     const parsed = parsedSections[index];
     if (!rawSection || !parsed) return;
@@ -736,24 +771,70 @@ export function SectionsEditor({
       : null;
 
   const isEditing = activeSchema && formValue && selectedParsed;
+  const editingBreadcrumbs = isEditing
+    ? [activePage.name, selectedParsed.label, ...fieldBreadcrumbs]
+    : [];
+  const exitSectionEditing = () => {
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+  };
+  const handleBreadcrumbClick = (index: number) => {
+    if (index === 0) {
+      exitSectionEditing();
+      return;
+    }
+
+    if (index === 1) {
+      setFieldBreadcrumbs([]);
+      setFormResetKey((key) => key + 1);
+      return;
+    }
+
+    setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index - 1));
+  };
 
   return (
     <div className="flex flex-col h-full">
       {/* Page header */}
       <div className="px-3 py-2.5 border-b shrink-0">
         {isEditing ? (
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedSectionIndex(null);
-              setFormValue(null);
-              setActiveResolveType(null);
-            }}
-            className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>{activePage.name}</span>
-          </button>
+          <div className="flex min-w-0 items-center overflow-hidden">
+            <nav
+              aria-label="Editing breadcrumb"
+              className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
+            >
+              {editingBreadcrumbs.map((crumb, index) => {
+                const isLast = index === editingBreadcrumbs.length - 1;
+
+                return (
+                  <span
+                    key={`${crumb}-${index}`}
+                    className="flex min-w-0 items-center gap-1 overflow-hidden"
+                  >
+                    {index > 0 && (
+                      <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleBreadcrumbClick(index)}
+                      title={crumb}
+                      className={cn(
+                        "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
+                        isLast
+                          ? "font-medium text-foreground"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {crumb}
+                    </button>
+                  </span>
+                );
+              })}
+            </nav>
+          </div>
         ) : (
           <PageHeaderInputs
             pageKey={activePageKey!}
@@ -776,6 +857,7 @@ export function SectionsEditor({
                 setSelectedSectionIndex(null);
                 setFormValue(null);
                 setActiveResolveType(null);
+                setFieldBreadcrumbs([]);
                 const variantRule = pageVariants[i]?.rule;
                 const variantRuleRt =
                   (variantRule?.__resolveType as string) ?? "";
@@ -804,14 +886,14 @@ export function SectionsEditor({
       {isEditing ? (
         <ScrollArea className="flex-1 min-h-0">
           <div className="p-4">
-            <h2 className="text-sm font-semibold mb-4">
-              {selectedParsed.label}
-            </h2>
             <SchemaForm
+              key={formResetKey}
               schema={activeSchema}
               value={formValue}
               onChange={handleFormChange}
               basePath=""
+              breadcrumbPath={[]}
+              onBreadcrumbChange={setFieldBreadcrumbs}
             />
           </div>
         </ScrollArea>
@@ -820,8 +902,8 @@ export function SectionsEditor({
           {/* Variant rule editor */}
           {hasMultipleVariants && ruleResolveType !== null && (
             <div className="px-3 py-3 border-b space-y-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Rule
+              <span className="text-xs font-medium text-muted-foreground">
+                Variant rule
               </span>
               <MatcherPicker
                 currentRt={ruleResolveType}
