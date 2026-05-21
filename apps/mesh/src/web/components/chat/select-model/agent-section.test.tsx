@@ -30,7 +30,7 @@ describe("AgentSection", () => {
     expect(header?.className).not.toMatch(/text-success/);
   });
 
-  test("local CLI section header uses text-success and · on this laptop suffix", () => {
+  test("local CLI section header uses text-success and · on desktop suffix", () => {
     const { container, getByText } = render(
       <AgentSection
         section={claude}
@@ -43,7 +43,7 @@ describe("AgentSection", () => {
       "[data-testid=agent-section-header]",
     );
     expect(header?.className).toMatch(/text-success/);
-    expect(getByText(/Claude Code · on this laptop/)).toBeInTheDocument();
+    expect(getByText(/Claude Code · on desktop/)).toBeInTheDocument();
   });
 
   test("disabled section sets aria-disabled and stops onSelect from firing", () => {

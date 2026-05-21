@@ -31,7 +31,7 @@ export interface AgentSection {
   kind: AgentKind;
   title: string;
   /** True for laptop-CLI agents (Claude Code, Codex). Drives the green
-   *  band + " · on this laptop" suffix in the popover, and the green
+   *  band + " · on desktop" suffix in the popover, and the green
    *  ring on the closed chat-input trigger. */
   isLocal: boolean;
   tiers: AgentTierMap;

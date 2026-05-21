@@ -9,6 +9,7 @@ interface Props {
   section: AgentSectionData;
   selectedTier: ChatTier | null;
   disabled: boolean;
+  hideHeader?: boolean;
   onSelect: (tier: ChatTier) => void;
 }
 
@@ -16,6 +17,7 @@ export function AgentSection({
   section,
   selectedTier,
   disabled,
+  hideHeader,
   onSelect,
 }: Props) {
   const localBand = section.isLocal && !disabled ? "bg-success/5" : "";
@@ -25,25 +27,26 @@ export function AgentSection({
       data-testid="agent-section"
       aria-disabled={disabled || undefined}
       className={cn(
-        "rounded-md p-1",
+        "p-1 flex flex-col gap-0.5",
+        section.isLocal ? "rounded-none" : "rounded-md",
         localBand,
         disabled && "opacity-40 pointer-events-none",
       )}
     >
-      <div
-        data-testid="agent-section-header"
-        className={cn(
-          "flex items-center justify-between px-2 py-1 text-xs font-medium",
-          section.isLocal ? "text-success" : "text-muted-foreground",
-        )}
-      >
-        <span>
-          {section.isLocal
-            ? `${section.title} · on this laptop`
-            : section.title}
-        </span>
-        {disabled && <Lock01 size={12} className="opacity-60" />}
-      </div>
+      {!hideHeader && (
+        <div
+          data-testid="agent-section-header"
+          className={cn(
+            "flex items-center justify-between px-2 py-1 text-xs font-medium",
+            section.isLocal ? "text-success" : "text-muted-foreground",
+          )}
+        >
+          <span>
+            {section.isLocal ? `${section.title} · on desktop` : section.title}
+          </span>
+          {disabled && <Lock01 size={12} className="opacity-60" />}
+        </div>
+      )}
 
       {TIER_ORDER.map((tier) => {
         const entry = section.tiers[tier];
