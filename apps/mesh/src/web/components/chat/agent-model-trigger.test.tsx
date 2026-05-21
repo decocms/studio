@@ -1,4 +1,5 @@
-import "../../../test/setup"; // happy-dom + jest-dom matchers
+import { setupComponentTest } from "../../../test/setup"; // happy-dom + jest-dom matchers
+setupComponentTest();
 import { describe, expect, test } from "bun:test";
 import { render } from "@testing-library/react";
 import "@testing-library/jest-dom";

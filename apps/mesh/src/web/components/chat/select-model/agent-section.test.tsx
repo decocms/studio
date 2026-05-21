@@ -1,4 +1,5 @@
-import "../../../../test/setup";
+import { setupComponentTest } from "../../../../test/setup";
+setupComponentTest();
 import { describe, expect, test, mock } from "bun:test";
 import { render } from "@testing-library/react";
 import "@testing-library/jest-dom";
