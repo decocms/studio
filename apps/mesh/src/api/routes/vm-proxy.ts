@@ -113,8 +113,6 @@ async function proxyDaemon(
   daemonPath: string,
   opts?: {
     method?: "GET" | "POST" | "PUT";
-    /** When true, base64-encode the raw request body (Cloudflare WAF bypass). */
-    encodeBody?: boolean;
     forwardJsonBody?: boolean;
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
@@ -129,11 +127,7 @@ async function proxyDaemon(
   let body: string | null = null;
   const headers = new Headers();
 
-  if (opts?.encodeBody) {
-    const rawBody = await c.req.text();
-    body = Buffer.from(rawBody, "utf-8").toString("base64");
-    headers.set("content-type", "application/json");
-  } else if (opts?.forwardJsonBody) {
+  if (opts?.forwardJsonBody) {
     body = await c.req.text();
     headers.set("content-type", "application/json");
   }
@@ -198,10 +192,10 @@ export const createVmRoutes = () => {
 
   // -- File write/read (base64-encoded body) --------------------------------
   app.post("/:vmId/:branch/write", (c) =>
-    proxyDaemon(c, "/_decopilot_vm/write", { encodeBody: true }),
+    proxyDaemon(c, "/_decopilot_vm/write", { forwardJsonBody: true }),
   );
   app.post("/:vmId/:branch/read", (c) =>
-    proxyDaemon(c, "/_decopilot_vm/read", { encodeBody: true }),
+    proxyDaemon(c, "/_decopilot_vm/read", { forwardJsonBody: true }),
   );
 
   // -- Script exec/kill -----------------------------------------------------

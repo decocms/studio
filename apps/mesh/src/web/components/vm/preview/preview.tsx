@@ -670,9 +670,19 @@ export function PreviewContent() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() =>
-                    window.open(previewState.previewUrl, "_blank", "noopener")
-                  }
+                  onClick={() => {
+                    let url = previewState.previewUrl;
+                    if (url && currentPath && currentPath !== "/") {
+                      try {
+                        const parsed = new URL(url);
+                        parsed.pathname = currentPath;
+                        url = parsed.href;
+                      } catch {
+                        // keep original url
+                      }
+                    }
+                    window.open(url, "_blank", "noopener");
+                  }}
                 >
                   <LinkExternal01 size={14} />
                 </Button>
