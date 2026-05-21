@@ -361,6 +361,14 @@ const settingsAiProvidersRoute = createRoute({
   ),
 });
 
+const settingsSecretsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/secrets",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/secrets.tsx"),
+  ),
+});
+
 const settingsMembersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/members",
@@ -543,6 +551,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsFeaturesRoute,
   settingsBrandContextRoute,
   settingsAiProvidersRoute,
+  settingsSecretsRoute,
   settingsMembersRoute,
   settingsRolesRoute,
   settingsSsoRoute,

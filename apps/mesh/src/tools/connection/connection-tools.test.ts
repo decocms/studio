@@ -87,6 +87,7 @@ describe("Connection Tools", () => {
         tags: null as never,
         virtualMcpPluginConfigs: null as never,
         aiProviderKeys: null as never,
+        secrets: null as never,
         oauthPkceStates: null as never,
         automations: null as never,
         orgSsoConfig: null as never,

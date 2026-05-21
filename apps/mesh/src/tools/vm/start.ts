@@ -29,6 +29,7 @@ import {
   resolveRuntimeConfig,
   type RuntimeConfigMeta,
 } from "./helpers";
+import { resolveAndPushEnv } from "./resolve-env";
 import { readVmMap, resolveVm } from "./vm-map";
 import {
   buildAnonymousCloneInfo,
@@ -317,6 +318,19 @@ async function provisionSandbox(
       tenant: { orgId, userId },
     },
   );
+
+  // Resolve declared env (literals + secret refs) and push to the daemon
+  // *before* it can start install/dev. Daemon deep-merges, so resuming an
+  // already-claimed sandbox stays idempotent.
+  const envEntries = (metadata as RuntimeConfigMeta).runtime?.env ?? null;
+  await resolveAndPushEnv({
+    ctx,
+    runner,
+    handle: sandbox.handle,
+    orgId,
+    userId,
+    entries: envEntries,
+  });
 
   // Preserve `createdAt` across resumes so the booting overlay's elapsed
   // timer doesn't reset on re-run.

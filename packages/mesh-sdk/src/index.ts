@@ -120,6 +120,8 @@ export {
   type VmMap,
   VmMapEntrySchema,
   type VmMapEntry,
+  type RuntimeMetadata,
+  type RuntimeEnvEntry,
   type GithubRepo,
   // Decopilot event types
   THREAD_STATUSES,

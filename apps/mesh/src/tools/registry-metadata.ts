@@ -29,6 +29,7 @@ export type ToolCategory =
   | "Event Bus"
   | "Tags"
   | "AI Providers"
+  | "Secrets"
   | "Automations"
   | "Object Storage"
   | "Registry"
@@ -138,6 +139,10 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_TOPUP_URL",
   "AI_PROVIDER_CREDITS",
   "AI_PROVIDER_CLI_ACTIVATE",
+
+  // Secrets vault tools
+  "SECRET_CREATE",
+  "SECRET_LIST",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -674,6 +679,17 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Activate Claude Code via local CLI",
     category: "AI Providers",
   },
+  // Secrets tools
+  {
+    name: "SECRET_CREATE",
+    description: "Create a secret in the credential vault",
+    category: "Secrets",
+  },
+  {
+    name: "SECRET_LIST",
+    description: "List secrets visible to the caller (no values returned)",
+    category: "Secrets",
+  },
   // Object Storage tools
   {
     name: "LIST_OBJECTS",
@@ -1031,6 +1047,14 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Access logs and usage statistics",
     section: "Monitoring",
     tools: ["MONITORING_LOG_GET", "MONITORING_LOGS_LIST", "MONITORING_STATS"],
+  },
+  // Secrets
+  {
+    id: "secrets:manage",
+    label: "Manage secrets",
+    description: "Create and list secrets stored in the credential vault",
+    section: "Organization",
+    tools: ["SECRET_CREATE", "SECRET_LIST"],
   },
   // AI Providers
   {
