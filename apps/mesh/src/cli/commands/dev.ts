@@ -5,6 +5,7 @@
  * buildSettings(). Spawns dev servers and reports progress via the CLI
  * store so the Ink UI can update live.
  */
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "path";
 import type { Subprocess } from "bun";
@@ -199,6 +200,29 @@ export async function startDevServer(
             }`,
           });
           return null;
+        }
+        // The cluster's port opens the instant `Bun.serve` listens, but
+        // `bootstrapDevLinkSession` (admin user seed + API key mint) runs
+        // async after that and is what writes `session.json`. On first boot
+        // it can take many seconds (embedded pg init + migrations + seed),
+        // and the link daemon throws "No session found" immediately on a
+        // missing file. Wait for the file before spawning so we don't lose
+        // the race and leave the Sandbox spinner pinned forever.
+        const sessionPath = join(linkDataDir, "session.json");
+        const sessionWaitDeadline = Date.now() + 60_000;
+        while (!existsSync(sessionPath)) {
+          if (Date.now() > sessionWaitDeadline) {
+            addLogEntry({
+              method: "",
+              path: "",
+              status: 0,
+              duration: 0,
+              timestamp: new Date(),
+              rawLine: `[link] gave up waiting for dev-link session at ${sessionPath} after 60s — skipping link spawn. Sandbox will stay pending.`,
+            });
+            return null;
+          }
+          await new Promise((r) => setTimeout(r, 500));
         }
         const proc = Bun.spawn(
           [
