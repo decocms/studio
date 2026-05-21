@@ -1,16 +1,11 @@
 import type { FlatNode, TreeNode } from "./types";
 
-export function normalizePath(path: string) {
+function normalizePath(path: string) {
   if (!path.trim()) {
     return "/";
   }
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return normalized.replace(/\/+/g, "/");
-}
-
-export function getBasename(path: string) {
-  const normalized = normalizePath(path);
-  return normalized.split("/").filter(Boolean).pop() ?? "/";
 }
 
 export function getLanguageFromPath(filepath: string | null) {
