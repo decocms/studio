@@ -82,6 +82,8 @@ Automations run agents in the background when a trigger fires. They are useful f
 - Use when an external system should trigger the automation directly.
 - Good for integrations that can POST to a URL.
 - Confirm the caller and expected payload shape.
+- AUTOMATION_TRIGGER_ADD with \`type: "webhook"\` returns a one-time \`webhook.url\` and \`webhook.token\` — the token is shown once and must be stored by the caller. Use AUTOMATION_TRIGGER_ROTATE_TOKEN to revoke the old token and issue a new one.
+- Senders POST JSON to the URL with either \`Authorization: Bearer <token>\` or path-embedded token at \`<url>/<token>\`. The body is forwarded to the automation as untrusted input.
 
 ## Common patterns
 

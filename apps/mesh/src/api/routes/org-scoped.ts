@@ -6,6 +6,7 @@ import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tok
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
 import type { Env } from "../hono-env";
 
+import { createAutomationWebhookRoutes } from "./automation-webhooks";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createDownstreamTokenRoutes } from "./downstream-token";
@@ -72,6 +73,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
       automationEventDispatcher: deps.automationEventDispatcher,
     }),
   ); // /api/:org/trigger-callback
+  app.route("/webhooks", createAutomationWebhookRoutes()); // /api/:org/webhooks/:triggerId[/:token]
 
   if (deps.mountDevAssets) {
     app.route("/dev-assets", createDevAssetsRoutes({ orgFromPath: true }));
