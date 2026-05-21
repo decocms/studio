@@ -187,6 +187,18 @@ Validate OTel collector/S3 configuration.
 {{- end }}
 
 {{/*
+Validates ExternalSecret configuration.
+*/}}
+{{- define "chart-deco-studio.validateExternalSecret" -}}
+{{- if and .Values.externalSecret.enabled .Values.secret.secretName }}
+{{- fail "chart-deco-studio: externalSecret.enabled=true and secret.secretName are mutually exclusive — remove secret.secretName when using ExternalSecret" -}}
+{{- end }}
+{{- if and .Values.externalSecret.enabled (not .Values.externalSecret.secretPath) }}
+{{- fail "chart-deco-studio: externalSecret.secretPath is required when externalSecret.enabled=true" -}}
+{{- end }}
+{{- end }}
+
+{{/*
 Formats OTEL headers map as key=value,key2=value2 format.
 */}}
 {{- define "chart-deco-studio.otelHeaders" -}}
