@@ -78,7 +78,7 @@ import * as migration076automationsdropagentjson from "./076-automations-drop-ag
 import * as migration077tieronlymodelselection from "./077-tier-only-model-selection.ts";
 import * as migration078automationtoolcallkind from "./078-automation-tool-call-kind.ts";
 import * as migration079striplegacyfreestylevmmapentries from "./079-strip-legacy-freestyle-vm-map-entries.ts";
-import * as migration081secrets from "./081-secrets.ts";
+import * as migration082secrets from "./082-secrets.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -173,7 +173,7 @@ const migrations: Record<string, Migration> = {
   "078-automation-tool-call-kind": migration078automationtoolcallkind,
   "079-strip-legacy-freestyle-vm-map-entries":
     migration079striplegacyfreestylevmmapentries,
-  "081-secrets": migration081secrets,
+  "082-secrets": migration082secrets,
 };
 
 export default migrations;

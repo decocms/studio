@@ -253,8 +253,18 @@ function EnvVarsEditor<T extends FieldValues>({
     control,
     name: fieldPath as never,
   });
-  const { fields, append, remove, update } = fieldArray;
-  const updateEntry = (i: number, entry: unknown) => update(i, entry as never);
+  const { fields, append, remove } = fieldArray;
+
+  // Replace a whole entry without going through useFieldArray.update — that
+  // remounts the row (new field.id) and we've seen the dirty-flag/autosave
+  // signal miss the swap. setValue with shouldDirty:true keeps the row
+  // mounted and reliably propagates the change to autosave + Controllers.
+  const updateEntry = (i: number, entry: unknown) => {
+    form.setValue(`${fieldPath}.${i}` as FieldPath<T>, entry as never, {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+  };
 
   const secrets = useSecrets();
   const secretById = new Map<string, SecretInfo>();
