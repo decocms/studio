@@ -461,6 +461,7 @@ describe("web_search async-research e2e", () => {
     const { writer } = makeWriter();
     const toolOutputMap = new Map<string, string>();
     const toolCallId = "tc_happy_path"; // same as the previous test
+    const replayQuery = "Different query — should be ignored on replay";
 
     const tool = createWebSearchTool(writer, {
       provider,
@@ -475,16 +476,22 @@ describe("web_search async-research e2e", () => {
         execute: (
           input: { query: string },
           opts: { toolCallId: string },
-        ) => Promise<{ success: boolean }>;
+        ) => Promise<{ success: boolean; content?: string }>;
       }
-    ).execute(
-      { query: "Different query — should be ignored on replay" },
-      { toolCallId },
-    );
+    ).execute({ query: replayQuery }, { toolCallId });
 
     expect(result.success).toBe(true);
     // No new provider job was submitted.
     expect(mock.interactions.size).toBe(sizeBefore);
+
+    // The replay returns the FULL report text (regression guard for
+    // the prior bug where only the truncated preview was persisted).
+    expect(result.content).toBe(REPORT_TEXT);
+
+    // toolOutputMap is keyed by toolCallId — never by the query (the
+    // model's read_tool_output tool looks up by toolCallId).
+    expect(toolOutputMap.get(toolCallId)).toBe(REPORT_TEXT);
+    expect(toolOutputMap.has(replayQuery)).toBe(false);
   });
 
   it("marks the row 'failed' and surfaces a terminal error when the provider says so", async () => {
@@ -537,5 +544,58 @@ describe("web_search async-research e2e", () => {
       // Restore happy-path mock url for any subsequent tests.
       process.env.GEMINI_INTERACTIONS_URL = mock.url;
     }
+  });
+
+  it("sweeper abandons stale pending rows even when last_polled_at is NULL", async () => {
+    // Regression guard: a row that never reached `markPolling` (e.g.
+    // submit succeeded but pod died before the polling-start update,
+    // or `markPolling` itself failed) has `last_polled_at = NULL`.
+    // The naive predicate `last_polled_at < cutoff` would evaluate to
+    // NULL for those rows and leave them stuck in 'pending' forever.
+    // The fix uses COALESCE(last_polled_at, created_at).
+    const innerStorage = new SqlAsyncResearchJobStorage(database.db);
+
+    // Insert a fresh pending row with an explicit old created_at.
+    // Bypass upsertPending so we control the timestamps.
+    const oldIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    await database.db
+      .insertInto("async_research_jobs")
+      .values({
+        organization_id: ORG_ID,
+        thread_id: THREAD_ID,
+        tool_call_id: "tc_stale_pending",
+        provider: "google",
+        model_id: DEEP_RESEARCH_MODEL.id,
+        query: "stale pending",
+        status: "pending",
+        attempts: 0,
+        created_at: oldIso,
+        updated_at: oldIso,
+      })
+      .execute();
+
+    // Sanity: the row really is pending with NULL last_polled_at and
+    // a 24h-old created_at — if any of those preconditions fail the
+    // sweeper assertion below would be testing the wrong thing.
+    const seed = await database.db
+      .selectFrom("async_research_jobs")
+      .select(["status", "last_polled_at", "created_at"])
+      .where("tool_call_id", "=", "tc_stale_pending")
+      .executeTakeFirst();
+    expect(seed).toBeDefined();
+    expect(seed!.status).toBe("pending");
+    expect(seed!.last_polled_at).toBeNull();
+    const seedAgeMs = Date.now() - new Date(seed!.created_at).getTime();
+    expect(seedAgeMs).toBeGreaterThan(60 * 60 * 1000);
+
+    // Run the sweeper with a 1-hour staleness — our row is 24h old.
+    const swept = await innerStorage.sweepAbandoned(60 * 60 * 1000);
+    expect(swept).toBeGreaterThanOrEqual(1);
+
+    const row = await storage.findByToolCall("tc_stale_pending");
+    expect(row).not.toBeNull();
+    expect(row!.status).toBe("abandoned");
+    expect(row!.completedAt).not.toBeNull();
+    expect(row!.lastError ?? "").toContain("abandoned by sweeper");
   });
 });

@@ -92,6 +92,7 @@ function rowToEntity(
     ),
     resultUri: (row.result_uri as string | null) ?? null,
     resultPreview: (row.result_preview as string | null) ?? null,
+    resultContent: (row.result_content as string | null) ?? null,
     createdAt: toIso(row.created_at as Date | string) ?? "",
     updatedAt: toIso(row.updated_at as Date | string) ?? "",
     completedAt: toIso(row.completed_at as Date | string | null),
@@ -169,6 +170,7 @@ export class OrgScopedAsyncResearchJobStorage {
       citations: AsyncResearchJobCitation[];
       resultUri: string | null;
       resultPreview: string;
+      resultContent: string | null;
     },
   ): Promise<void> {
     return this.inner.markCompleted(this.requireOrg(), toolCallId, result);
@@ -331,6 +333,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
       citations: AsyncResearchJobCitation[];
       resultUri: string | null;
       resultPreview: string;
+      resultContent: string | null;
     },
   ): Promise<void> {
     const now = new Date().toISOString();
@@ -344,6 +347,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
           citations: JSON.stringify(result.citations),
           result_uri: result.resultUri,
           result_preview: result.resultPreview,
+          result_content: result.resultContent,
           completed_at: now,
           updated_at: now,
         })
@@ -399,31 +403,48 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
   }
 
   async sweepAbandoned(staleAfterMs: number): Promise<number> {
-    const cutoff = new Date(Date.now() - staleAfterMs);
+    const cutoffIso = new Date(Date.now() - staleAfterMs).toISOString();
     const now = new Date().toISOString();
     return await this.db.transaction().execute(async (trx) => {
-      // Pull the soon-to-be-abandoned rows first so we know which stub
-      // messages to drop. SELECT + UPDATE in the same transaction keeps
-      // the window where a row's status disagrees with its stub closed.
+      // Anchor staleness on COALESCE(last_polled_at, created_at). A row
+      // in 'pending' never sets last_polled_at — that field is written
+      // by markPolling / recordPoll — so a naive `last_polled_at <
+      // cutoff` predicate evaluates to NULL (i.e. not-true) for pending
+      // rows and they'd be stuck forever. created_at is the right
+      // staleness anchor for those: it's set on insert and reflects
+      // when the runtime first saw the job.
+      //
+      // Inlined as a sql template (not `where(expr, "<", value)`) so the
+      // comparison side gets bound through Kysely's parameter pipeline
+      // with the right timestamptz coercion. Mixing a `sql` LHS with a
+      // JS Date RHS via `where(...)` rendered as a no-match query in
+      // testing.
+      // Two-step: SELECT the stale tool_call_ids, then UPDATE by ids.
+      // We use the SELECT count as the return value rather than the
+      // UPDATE's `numUpdatedRows` — the latter is unreliable under
+      // PGlite (always 0) even though the UPDATE itself applies. The
+      // SELECT runs inside the same transaction so the set of rows is
+      // consistent with what the UPDATE then mutates.
       const targets = await trx
         .selectFrom("async_research_jobs")
         .select(["tool_call_id"])
         .where("status", "in", ["pending", "polling"])
-        .where("last_polled_at", "<", cutoff)
+        .where(
+          sql<boolean>`COALESCE(last_polled_at, created_at) < ${cutoffIso}::timestamptz`,
+        )
         .execute();
       if (targets.length === 0) return 0;
 
-      const result = await trx
+      const toolCallIds = targets.map((t) => t.tool_call_id);
+      await trx
         .updateTable("async_research_jobs")
         .set({
           status: "abandoned",
           completed_at: now,
           updated_at: now,
-          // Tag the reason so the audit trail explains why this row moved.
           last_error: sql`COALESCE(last_error, '') || ' [abandoned by sweeper]'`,
         })
-        .where("status", "in", ["pending", "polling"])
-        .where("last_polled_at", "<", cutoff)
+        .where("tool_call_id", "in", toolCallIds)
         .execute();
 
       const stubIds = targets.map((t) => stubMessageId(t.tool_call_id));
@@ -432,7 +453,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
         .where("id", "in", stubIds)
         .execute();
 
-      return Number(result[0]?.numUpdatedRows ?? 0n);
+      return targets.length;
     });
   }
 }

@@ -843,7 +843,7 @@ export interface Thread {
  *             contrast with the old approach that silently filtered stale
  *             rows at read time.
  */
-export const ASYNC_RESEARCH_JOB_STATUSES = [
+const ASYNC_RESEARCH_JOB_STATUSES = [
   "pending",
   "polling",
   "completed",
@@ -886,6 +886,13 @@ export interface AsyncResearchJobTable {
   citations: JsonArray<AsyncResearchJobCitation> | null;
   result_uri: string | null;
   result_preview: string | null;
+  /**
+   * Full report text for inline-sized completed jobs. NULL when the
+   * report was offloaded to blob storage via `result_uri`. Drives the
+   * replay path so a re-entry with the same tool_call_id returns the
+   * exact original content (not the truncated preview).
+   */
+  result_content: string | null;
 
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
@@ -920,6 +927,7 @@ export interface AsyncResearchJob {
   citations: AsyncResearchJobCitation[] | null;
   resultUri: string | null;
   resultPreview: string | null;
+  resultContent: string | null;
 
   createdAt: string;
   updatedAt: string;

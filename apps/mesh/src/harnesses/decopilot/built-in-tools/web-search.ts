@@ -206,7 +206,7 @@ async function runAsyncResearch({
   // replays unfinished steps, but a duplicate dispatch can still race.
   if (job.status === "completed" && job.resultPreview != null) {
     log("info", "replay-completed", { ...logFields, job: job.id });
-    return finalizeCachedResult(job, input, toolOutputMap, modelId);
+    return finalizeCachedResult(job, input, toolOutputMap, modelId, toolCallId);
   }
   if (job.status === "failed" || job.status === "cancelled") {
     log("warn", `replay-${job.status}`, {
@@ -328,6 +328,11 @@ async function runAsyncResearch({
       citations: result.citations,
       resultUri,
       resultPreview: preview,
+      // Full text for inline results so a later replay of the same
+      // tool_call_id returns the original report instead of the
+      // truncated preview. NULL when offloaded to blob storage —
+      // the URI is the source of truth in that case.
+      resultContent: resultUri ? null : result.text,
     });
     log("info", "completed", {
       ...logFields,
@@ -376,15 +381,16 @@ function finalizeCachedResult(
   job: {
     resultUri: string | null;
     resultPreview: string | null;
+    resultContent: string | null;
     query: string;
   },
   input: WebSearchInput,
   toolOutputMap: Map<string, string>,
   modelId: string,
+  toolCallId: string,
 ) {
-  // We don't keep the full text in the row (only preview + optional uri).
-  // For the inline path we have to surface the preview as-is; large results
-  // are stored in blob storage and the model can fetch them via read_resource.
+  // Large results live in blob storage — the row carries just preview +
+  // uri, and the model fetches the full content via read_resource(uri).
   if (job.resultUri) {
     return {
       success: true as const,
@@ -395,10 +401,18 @@ function finalizeCachedResult(
       usage: { inputTokens: 0, outputTokens: 0 },
     };
   }
-  toolOutputMap.set(input.query, job.resultPreview ?? "");
+  // Inline path: `result_content` holds the full text written at
+  // completion time. Older completed rows (pre-migration 081) only
+  // have the truncated preview — fall back to that so they at least
+  // return something rather than an empty string.
+  const content = job.resultContent ?? job.resultPreview ?? "";
+  // read_tool_output is keyed by toolCallId everywhere; using
+  // input.query here was a copy-paste bug that broke the model's
+  // re-grep flow on replayed runs.
+  toolOutputMap.set(toolCallId, content);
   return {
     success: true as const,
-    content: job.resultPreview ?? "",
+    content,
     query: input.query,
     model: modelId,
     usage: { inputTokens: 0, outputTokens: 0 },

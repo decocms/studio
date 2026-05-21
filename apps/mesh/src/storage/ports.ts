@@ -187,8 +187,20 @@ export interface AsyncResearchJobStoragePort {
       inputTokens: number;
       outputTokens: number;
       citations: AsyncResearchJobCitation[];
+      /**
+       * Blob-storage URI when the report was offloaded for size, NULL
+       * for inline results. When set, `resultContent` is NULL and the
+       * full text is fetched from blob storage on read.
+       */
       resultUri: string | null;
+      /** Short truncated snippet for SQL-side inspection. */
       resultPreview: string;
+      /**
+       * Full report text for inline results; NULL when offloaded to
+       * blob. Used by replays of the same tool_call_id so a re-entry
+       * returns the original content rather than just the preview.
+       */
+      resultContent: string | null;
     },
   ): Promise<void>;
 
