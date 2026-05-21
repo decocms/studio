@@ -41,12 +41,21 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     CHECK (kind != 'agent' OR virtual_mcp_id IS NOT NULL)
   `.execute(db);
 
+  // tool_input is required too: the workflow uses `tool_input ? JSON.parse(…) : {}`
+  // and would happily fire a tool with no arguments on a missing value,
+  // which masks misconfigured rows. CREATE/UPDATE already write a JSON
+  // string (defaulting to `"{}"`) on every tool_call row, so this is a
+  // defense-in-depth invariant rather than a behaviour change.
   await sql`
     ALTER TABLE automations
     ADD CONSTRAINT chk_automation_tool_call_fields
     CHECK (
       kind != 'tool_call'
-      OR (connection_id IS NOT NULL AND tool_name IS NOT NULL)
+      OR (
+        connection_id IS NOT NULL
+        AND tool_name IS NOT NULL
+        AND tool_input IS NOT NULL
+      )
     )
   `.execute(db);
 }

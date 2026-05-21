@@ -68,16 +68,20 @@ export function ToolCallConfigFields({
         <ConnectionPicker
           connections={visible}
           selected={selectedConnection}
-          onSelect={(c) =>
-            // Clear the tool when the connection changes — tool names
-            // don't carry across MCPs.
+          onSelect={(c) => {
+            // No-op when the same connection is re-selected — otherwise
+            // closing the popover on the current selection would wipe the
+            // tool + input the user already configured.
+            if (c.id === value.connectionId) return;
+            // Tool names don't carry across MCPs, so clear them on a
+            // real change.
             onChange({
               ...value,
               connectionId: c.id,
               toolName: "",
               input: {},
-            })
-          }
+            });
+          }}
         />
       </div>
 
@@ -87,12 +91,14 @@ export function ToolCallConfigFields({
           <ToolPicker
             connection={selectedConnection}
             selectedToolName={value.toolName}
-            onSelect={(tool) =>
-              // Reset input when the tool changes — its schema is
-              // different. Pre-populating from the previous tool would
-              // surface stray keys that don't validate.
-              onChange({ ...value, toolName: tool.name, input: {} })
-            }
+            onSelect={(tool) => {
+              // Re-selecting the same tool is a no-op so the user's
+              // already-typed input isn't wiped.
+              if (tool.name === value.toolName) return;
+              // Different tool ⇒ different schema; pre-populating with
+              // the previous tool's keys would surface stray fields.
+              onChange({ ...value, toolName: tool.name, input: {} });
+            }}
           />
         ) : (
           <Button

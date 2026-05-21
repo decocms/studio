@@ -548,9 +548,10 @@ export function SettingsTab({
       return false;
     }
   };
-  const { schedule: scheduleToolCallSave } = useDebouncedAutosave({
-    save: () => saveToolCallConfig(toolCallConfig),
-  });
+  const { schedule: scheduleToolCallSave, flush: flushToolCallSave } =
+    useDebouncedAutosave({
+      save: () => saveToolCallConfig(toolCallConfig),
+    });
 
   const { schedule: scheduleSessionFlush, flush: forceSessionFlush } =
     useDebouncedAutosave({
@@ -593,7 +594,10 @@ export function SettingsTab({
     if (automation.kind === "tool_call") {
       // Persist any pending edits before firing — otherwise we'd run the
       // previously-saved config and the user would see stale behavior.
-      const saved = await saveToolCallConfig(toolCallConfig);
+      // `flush` also cancels the pending debounce timer, so we don't
+      // race with a delayed autosave firing a duplicate update after
+      // this explicit save returns.
+      const saved = await flushToolCallSave();
       if (!saved) return;
       try {
         await runMutation.mutateAsync(automationId);
