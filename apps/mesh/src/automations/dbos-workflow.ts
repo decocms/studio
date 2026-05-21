@@ -439,13 +439,19 @@ async function invokeFixedToolStep(
     return { ok: false, error: "creator membership lost mid-fire" };
   }
 
+  // Scope by org. Without the second arg, `findById` matches across all
+  // organizations — a tool_call automation saved with a foreign-org
+  // connection id (via API misuse) would then invoke that connection on
+  // each fire. CREATE/UPDATE also reject foreign ids; this is the
+  // load-bearing defense at fire time.
   const connection = await meshCtx.storage.connections.findById(
     automation.connection_id,
+    automation.organization_id,
   );
   if (!connection) {
     return {
       ok: false,
-      error: `connection ${automation.connection_id} not found`,
+      error: `connection ${automation.connection_id} not found in org`,
     };
   }
 
@@ -488,6 +494,7 @@ async function invokeFixedToolStep(
 async function persistToolCallResultStep(
   automation: Automation,
   taskId: string,
+  triggerId: string | null,
   result: ToolCallInvocation,
 ): Promise<void> {
   const rt = requireRuntime();
@@ -594,7 +601,11 @@ async function persistToolCallResultStep(
       {
         virtualMcpId: undefined,
         createdBy: automation.created_by,
-        triggerId: null,
+        // Carry through the trigger id so cron/event-driven runs appear
+        // with the automation badge immediately. Manual fires from the
+        // detail page pass null, matching how the thread row itself was
+        // created.
+        triggerId,
         title: `Automation: ${automation.name}`,
         branch: null,
         createdAt: assistantTime,
@@ -631,7 +642,7 @@ async function runToolCallFire(
   });
 
   await DBOS.runStep(
-    () => persistToolCallResultStep(automation, taskId, invocation),
+    () => persistToolCallResultStep(automation, taskId, triggerId, invocation),
     { name: "persistToolCallResult" },
   );
 

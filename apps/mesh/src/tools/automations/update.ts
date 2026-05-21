@@ -96,8 +96,24 @@ export const AUTOMATION_UPDATE = defineTool({
           "connection_id / tool_name / tool_input can only be set on kind='tool_call' automations",
         );
       }
-      if (input.connection_id !== undefined)
+      if (input.connection_id !== undefined) {
+        // Cross-org isolation. Workflow re-checks at fire time; this is
+        // the earlier rejection. Empty string is allowed because the UI
+        // creates blank tool_call automations and lets the user fill in
+        // the connection on the detail screen.
+        if (input.connection_id !== "") {
+          const exists = await ctx.storage.connections.findById(
+            input.connection_id,
+            organization.id,
+          );
+          if (!exists) {
+            throw new Error(
+              `connection ${input.connection_id} not found in this organization`,
+            );
+          }
+        }
         updateData.connection_id = input.connection_id;
+      }
       if (input.tool_name !== undefined) updateData.tool_name = input.tool_name;
       if (input.tool_input !== undefined)
         updateData.tool_input = JSON.stringify(input.tool_input);

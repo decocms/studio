@@ -112,6 +112,13 @@ export function ToolCallConfigFields({
           <Label>Input</Label>
           <div className="rounded-md border border-border p-3">
             <ToolInputForm
+              // Key on (connection, tool) so the input subtree is fully
+              // remounted when either changes. RawJsonField inside has
+              // local state for the JSON textarea — without a remount,
+              // switching between two raw-JSON tools keeps the previous
+              // tool's text visible while the parent's `input` is reset
+              // to {}, so Test would run different args than displayed.
+              key={`${selectedConnection.id}:${value.toolName}`}
               connection={selectedConnection}
               toolName={value.toolName}
               input={value.input}

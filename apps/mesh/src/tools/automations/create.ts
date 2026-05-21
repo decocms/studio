@@ -98,6 +98,20 @@ export const AUTOMATION_CREATE = defineTool({
     // only enforces NOT NULL on connection_id + tool_name, so we store
     // empty strings here and rely on the workflow's invokeFixedToolStep
     // to refuse to fire until those values are populated.
+    if (input.kind === "tool_call" && input.connection_id) {
+      // Cross-org isolation: reject ids that don't resolve in this org.
+      // The workflow scopes by org at fire time too; this is the
+      // earlier, friendlier rejection.
+      const exists = await ctx.storage.connections.findById(
+        input.connection_id,
+        organization.id,
+      );
+      if (!exists) {
+        throw new Error(
+          `connection ${input.connection_id} not found in this organization`,
+        );
+      }
+    }
 
     // For tool_call kind, messages/models/temperature are vestigial — the
     // workflow branch never reads them. Store inert defaults so the
