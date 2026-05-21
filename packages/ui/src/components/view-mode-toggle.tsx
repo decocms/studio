@@ -19,7 +19,7 @@ type ViewModeSize = "sm" | "md" | "lg";
 interface ViewModeToggleProps<T extends string = string> {
   value: T;
   onValueChange: (value: T) => void;
-  options: [ViewModeOption<T>, ViewModeOption<T>];
+  options: ViewModeOption<T>[];
   size?: ViewModeSize;
   fullWidth?: boolean;
   className?: string;
@@ -48,20 +48,19 @@ export function ViewModeToggle<T extends string = string>({
   fullWidth = false,
   className,
 }: ViewModeToggleProps<T>) {
-  const firstRef = useRef<HTMLButtonElement>(null);
-  const secondRef = useRef<HTMLButtonElement>(null);
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const [indicatorPosition, setIndicatorPosition] = useState({
     left: 0,
     width: 0,
     opacity: 0,
   });
 
-  const updateIndicator = (ref: React.RefObject<HTMLButtonElement | null>) => {
-    if (!ref.current) return;
-    const { offsetLeft, offsetWidth } = ref.current;
+  const updateIndicator = (index: number) => {
+    const el = refs.current[index];
+    if (!el) return;
     setIndicatorPosition({
-      left: offsetLeft,
-      width: offsetWidth,
+      left: el.offsetLeft,
+      width: el.offsetWidth,
       opacity: 1,
     });
   };
@@ -69,8 +68,8 @@ export function ViewModeToggle<T extends string = string>({
   // Initialize indicator position based on current value
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
-    const ref = value === options[0].value ? firstRef : secondRef;
-    updateIndicator(ref);
+    const idx = options.findIndex((o) => o.value === value);
+    if (idx >= 0) updateIndicator(idx);
   }, [value, options]);
 
   const config = sizeConfig[size];
@@ -78,10 +77,11 @@ export function ViewModeToggle<T extends string = string>({
   return (
     <div className={cn("relative flex gap-0 bg-muted rounded-lg", className)}>
       {options.map((option, i) => {
-        const ref = i === 0 ? firstRef : secondRef;
         const btn = (
           <button
-            ref={ref}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
             key={option.value}
             type="button"
             onClick={() => onValueChange(option.value)}
