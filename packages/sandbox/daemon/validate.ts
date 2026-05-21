@@ -56,7 +56,7 @@ function validateEnv(env: NonNullable<TenantConfig["env"]>): ValidationResult {
     if (v.includes("\0")) {
       return { kind: "invalid", reason: `env value for ${k} contains NUL` };
     }
-    if (v.length > ENV_VALUE_MAX) {
+    if (Buffer.byteLength(v, "utf8") > ENV_VALUE_MAX) {
       return {
         kind: "invalid",
         reason: `env value for ${k} exceeds ${ENV_VALUE_MAX} bytes`,

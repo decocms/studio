@@ -198,6 +198,11 @@ export function EnvPanel({ orgSlug, virtualMcpId, branch }: EnvPanelProps) {
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">
             Loading…
           </p>
+        ) : keysQuery.isError ? (
+          <p className="px-3 py-6 text-center text-sm text-destructive">
+            Failed to load env vars:{" "}
+            {(keysQuery.error as Error | undefined)?.message ?? "unknown error"}
+          </p>
         ) : !hasAnyRows ? (
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">
             No env vars set.

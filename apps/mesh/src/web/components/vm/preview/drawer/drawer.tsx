@@ -248,15 +248,15 @@ function DrawerBody({
   hasData: boolean;
   onRunActive: () => void;
 }) {
-  // When the sandbox isn't running, the preview area's never-started card
-  // owns the single empty-state CTA. Rendering anything here (xterm shell
-  // or "no output" copy) would compete with it.
-  if (!vmId) return null;
   if (active === ENV_TAB) {
     return (
       <EnvPanel orgSlug={orgSlug} virtualMcpId={virtualMcpId} branch={branch} />
     );
   }
+  // When the sandbox isn't running, the preview area's never-started card
+  // owns the single empty-state CTA. Rendering anything here (xterm shell
+  // or "no output" copy) would compete with it.
+  if (!vmId) return null;
   if (active === DEFAULT_TAB || hasData) {
     return <VmTerminal key={active} source={active} className="h-full" />;
   }
