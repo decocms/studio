@@ -74,7 +74,7 @@ export function makeControlPlaneHandler(
           headers: { "content-type": "application/json" },
         });
       }
-      if (!parsed.handle) {
+      if (typeof parsed.handle !== "string" || parsed.handle.length === 0) {
         return new Response(JSON.stringify({ error: "missing_handle" }), {
           status: 400,
           headers: { "content-type": "application/json" },
