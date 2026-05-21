@@ -43,5 +43,6 @@ export type RowPatch = Pick<Task, "id"> &
       | "created_by"
       | "trigger_id"
       | "virtual_mcp_id"
+      | "metadata"
     >
   >;

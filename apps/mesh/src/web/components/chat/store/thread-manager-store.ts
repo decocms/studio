@@ -421,6 +421,9 @@ export class ThreadManagerStore {
       ...(parsed.data.created_at !== undefined && {
         created_at: parsed.data.created_at,
       }),
+      ...(parsed.data.metadata !== undefined && {
+        metadata: parsed.data.metadata as Task["metadata"],
+      }),
     };
     if (this.eventBuffer !== null) {
       this.eventBuffer.push(patch);

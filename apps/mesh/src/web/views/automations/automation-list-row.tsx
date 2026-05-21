@@ -17,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { Clock, DotsVertical, Trash01, Zap } from "@untitledui/icons";
+import { Clock, DotsVertical, Tool02, Trash01, Zap } from "@untitledui/icons";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import {
@@ -36,8 +36,9 @@ export function AutomationListRow({
 }) {
   const { remove } = useAutomationActions();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const isToolCall = automation.kind === "tool_call";
   const agent = useVirtualMCP(
-    showAgent ? automation.virtual_mcp_id : undefined,
+    showAgent && !isToolCall ? automation.virtual_mcp_id : undefined,
   );
 
   const handleDelete = () => {
@@ -78,21 +79,34 @@ export function AutomationListRow({
           }
         />
 
-        {showAgent && (
-          <AgentAvatar
-            icon={agent?.icon ?? null}
-            name={agent?.title ?? automation.name}
-            size="xs"
-            className="shrink-0"
-          />
-        )}
+        {showAgent &&
+          (isToolCall ? (
+            <span
+              className="flex size-6 items-center justify-center rounded-md bg-muted text-muted-foreground shrink-0"
+              aria-label="Tool-call automation"
+            >
+              <Tool02 size={14} />
+            </span>
+          ) : (
+            <AgentAvatar
+              icon={agent?.icon ?? null}
+              name={agent?.title ?? automation.name}
+              size="xs"
+              className="shrink-0"
+            />
+          ))}
 
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-medium text-foreground truncate">
               {automation.name}
             </span>
-            {showAgent && agent && (
+            {showAgent && isToolCall && automation.tool_name && (
+              <span className="text-xs text-muted-foreground truncate font-mono">
+                · {automation.tool_name}
+              </span>
+            )}
+            {showAgent && !isToolCall && agent && (
               <span className="text-xs text-muted-foreground truncate">
                 · {agent.title}
               </span>

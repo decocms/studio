@@ -55,7 +55,10 @@ export function buildStreamRequest(
       credentialId: resolved.credentialId,
       thinking: resolved.thinking,
     },
-    agent: { id: automation.virtual_mcp_id },
+    // Caller guarantees `automation.kind === "agent"` (the workflow only
+    // takes the agent branch when this invariant holds), so virtual_mcp_id
+    // is non-null. The `!` is the cheapest way to express that here.
+    agent: { id: automation.virtual_mcp_id! },
     temperature: automation.temperature ?? 0.5,
     toolApprovalLevel: "auto",
     mode: "default",
