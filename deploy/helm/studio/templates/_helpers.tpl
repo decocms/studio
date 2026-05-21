@@ -116,7 +116,7 @@ Global validations to ensure scaling requirements are met.
 {{- if and .Values.autoscaling.enabled (not (or $distributed $usesPostgres)) }}
 {{- fail "chart-deco-studio: autoscaling.enabled=true exige storage distribuído (persistence.distributed=true ou accessMode=ReadWriteMany) ou database.engine=postgresql" -}}
 {{- end }}
-{{- if and $usesPostgres (not .Values.database.url) (not .Values.secret.secretName) }}
+{{- if and $usesPostgres (not .Values.database.url) (not .Values.secret.secretName) (not .Values.externalSecret.enabled) }}
 {{- fail "chart-deco-studio: defina database.url quando database.engine=postgresql ou use secret.secretName para fornecer DATABASE_URL via Secret" -}}
 {{- end }}
 {{- end }}
