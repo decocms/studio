@@ -11,13 +11,12 @@
  *    `finish-step.providerMetadata["claude-code"].sessionId`. The harness
  *    just forwards that opaque token to the SDK's `resume` setting.
  *
- * Working-directory resolution mirrors the inline original at
- * `apps/mesh/src/api/routes/decopilot/stream-core.ts` lines ~864–886:
- * github-linked virtual MCPs get a per-branch sandbox handle; the
- * underlying `host` runner exposes `localWorkdir(handle)` to map that
- * handle to a real filesystem path. Ephemeral agents (no `githubRepo`)
- * fall through to `undefined`, which means the SDK defaults to
- * `process.cwd()` — same as the inline original.
+ * Working-directory resolution: the cluster used to inject a
+ * `processLocal.resolveCwd` callback that mapped to the `host` runner's
+ * `localWorkdir(handle)`. That runner has been retired; the cluster no
+ * longer supplies a resolver, and this harness falls through to
+ * `process.cwd()` on the laptop daemon (spawned with workdir = sandbox
+ * path) or to `undefined` (SDK default) inside the cluster.
  *
  * Behavior parity with stream-core: the inline call at lines 888–906
  * passes `mcpServers` (single `cms` entry), `toolApprovalLevel`,
@@ -31,30 +30,38 @@
  */
 
 import { streamText, type UIMessageChunk } from "ai";
-import {
-  createClaudeCodeModel,
-  resolveClaudeCodeModelId,
-} from "../../ai-providers/adapters/claude-code";
-import type { MeshContext } from "../../core/mesh-context";
-import { getSharedRunner } from "../../sandbox/lifecycle";
+import { createClaudeCodeModel, resolveClaudeCodeModelId } from "./model";
 import { prepCliMessages } from "../cli-message-prep";
-import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
+import type {
+  Harness,
+  HarnessContext,
+  HarnessFactory,
+  HarnessStreamInput,
+} from "../types";
 import { createUsageAccumulator } from "../usage-accumulator";
 
 /**
  * Compute the Claude Code working directory.
  *
- * Mirrors stream-core.ts lines ~864–886. Returns `undefined` when:
- *  - The agent has no githubRepo (ephemeral agent → use SDK default cwd).
- *  - No userId is available (defensive — branch resolution needs it).
- *  - The shared runner is not the local `host` kind (Docker / remote
- *    runners don't expose a local filesystem path).
- *  - `localWorkdir(handle)` returns null (the handle isn't materialized
- *    on this pod yet).
+ * Returns `undefined` when the agent has no `githubRepo` (ephemeral
+ * agent → SDK default cwd) or no userId is available (defensive).
+ *
+ * Otherwise:
+ *   - Laptop daemon (no `processLocal`): the sandbox daemon is spawned
+ *     with `cwd = <appRoot>`, but the cloned repo lives at
+ *     `<appRoot>/repo` (see `packages/sandbox/daemon/entry.ts` — it
+ *     joins APP_ROOT with "repo" to form `repoDir`). Prefer the env
+ *     vars the sandbox sets (`WORKDIR` / `APP_ROOT`) and fall through
+ *     to `<cwd>/repo` so Claude Code actually runs inside the
+ *     checkout. Final fallback is `process.cwd()` for non-sandbox
+ *     environments (e.g. tests, ad-hoc invocations).
+ *   - Cluster: no on-disk sandbox to point at after the host runner was
+ *     retired, so fall through to `undefined` (SDK default). The
+ *     `processLocal.resolveCwd` callback is kept as an extension point
+ *     for future cluster-side runners that materialize files locally.
  */
 async function resolveClaudeCodeCwd(
   input: HarnessStreamInput,
-  ctx: MeshContext,
 ): Promise<string | undefined> {
   const vmMetadata = input.virtualMcp.metadata as {
     githubRepo?: unknown;
@@ -62,32 +69,20 @@ async function resolveClaudeCodeCwd(
   if (!vmMetadata?.githubRepo) return undefined;
   if (!input.user?.id) return undefined;
 
-  const isEphemeralAgent = !vmMetadata.githubRepo;
-  const branch = isEphemeralAgent
-    ? "ephemeral"
-    : (input.branch ?? `thread:${input.threadId}`);
+  if (!input.processLocal) {
+    const appRoot =
+      process.env.WORKDIR || process.env.APP_ROOT || process.cwd();
+    return `${appRoot.replace(/\/$/, "")}/repo`;
+  }
 
-  const runner = await getSharedRunner(ctx);
-  if (runner.kind !== "host") return undefined;
-
-  const { computeHandle, composeSandboxRef } = await import(
-    "@decocms/sandbox/runner"
-  );
-  const projectRef = composeSandboxRef({
-    orgId: input.organizationId,
-    virtualMcpId: input.agent.id,
-    branch,
-  });
-  const handle = computeHandle({ userId: input.user.id, projectRef }, branch);
-  const hostRunner = runner as unknown as {
-    localWorkdir(h: string): Promise<string | null>;
-  };
-  return (await hostRunner.localWorkdir(handle)) ?? undefined;
+  const resolveCwd = input.processLocal.resolveCwd;
+  if (!resolveCwd) return undefined;
+  return await resolveCwd();
 }
 
 export const claudeCodeHarnessFactory: HarnessFactory = {
   id: "claude-code",
-  create(ctx: MeshContext): Harness {
+  create(_ctx: HarnessContext): Harness {
     return {
       id: "claude-code",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
@@ -99,7 +94,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         // 2. Compute the working directory for the CLI subprocess —
         //    github-linked agents get a per-branch sandbox path, ephemeral
         //    agents fall through to undefined (SDK default).
-        const cwd = await resolveClaudeCodeCwd(input, ctx);
+        const cwd = await resolveClaudeCodeCwd(input);
 
         // 3. Build the Claude Code language model. The MCP URL + headers
         //    are already minted by the shared layer (it owns the

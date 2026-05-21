@@ -1,14 +1,14 @@
 /**
- * VM_DELETE. Dispatches on the entry's persisted `runnerKind` (not env),
- * so a pod that flipped STUDIO_SANDBOX_RUNNER between start and stop still
- * tears down the right kind of VM.
+ * VM_DELETE. Dispatches on the caller-supplied `sandboxProviderKind` (not
+ * env), so a pod that flipped STUDIO_SANDBOX_RUNNER between start and stop
+ * still tears down the right kind of VM.
  */
 
 import { z } from "zod";
-import type { RunnerKind } from "@decocms/sandbox/runner";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
-import { getRunnerByKind } from "../../sandbox/lifecycle";
+import { getSandboxProviderByKind } from "../../sandbox/lifecycle";
 import { removeVmMapEntry } from "./vm-map";
 
 export const VM_DELETE = defineTool({
@@ -28,15 +28,29 @@ export const VM_DELETE = defineTool({
       .string()
       .min(1)
       .describe("Branch whose vm should be deleted (vmMap[userId][branch])"),
+    sandboxProviderKind: z
+      .enum(["docker", "agent-sandbox", "remote-user"])
+      .describe(
+        "Kind of sandbox provider the VM was started with. Used to locate the correct 3-level vmMap entry.",
+      ),
   }),
   outputSchema: z.object({
     success: z.boolean(),
   }),
 
   handler: async (input, ctx) => {
+    // Legacy "host" value can sneak in from pre-removal callers; coalesce to
+    // the dev-mode replacement so the stop path doesn't crash.
+    const rawKind = input.sandboxProviderKind as string;
+    const kind: SandboxProviderKind =
+      rawKind === "host" ? "remote-user" : (rawKind as SandboxProviderKind);
+
     let vmEntry: Awaited<ReturnType<typeof requireVmEntry>>;
     try {
-      vmEntry = await requireVmEntry(input, ctx);
+      vmEntry = await requireVmEntry(
+        { ...input, sandboxProviderKind: kind },
+        ctx,
+      );
     } catch (err) {
       if (err instanceof Error && err.message === "Virtual MCP not found") {
         return { success: true };
@@ -56,13 +70,10 @@ export const VM_DELETE = defineTool({
       userId,
       userId,
       input.branch,
+      kind,
     );
 
-    if (!entry.runnerKind) {
-      return { success: true };
-    }
-    const kind: RunnerKind = entry.runnerKind;
-    const runner = await getRunnerByKind(ctx, kind);
+    const runner = await getSandboxProviderByKind(ctx, kind);
     await runner
       .delete(entry.vmId)
       .catch((err) =>

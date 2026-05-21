@@ -1,13 +1,15 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { VmMap, VmMapEntry } from "@decocms/mesh-sdk";
 import type { MeshContext } from "../../core/mesh-context";
+import type { LinkRegistry } from "../../links/link-registry";
+import type { LinkEntry } from "@/links/protocol";
 import type {
   EnsureOptions,
   Sandbox,
   SandboxId,
-  SandboxRunner,
-} from "@decocms/sandbox/runner";
-import { composeSandboxRef } from "@decocms/sandbox/runner";
+  SandboxProvider,
+} from "@decocms/sandbox/provider";
+import { composeSandboxRef } from "@decocms/sandbox/provider";
 
 // Pin runner kind — the dev env flips STUDIO_SANDBOX_RUNNER and VM_START
 // reads it at handler time.
@@ -30,7 +32,7 @@ async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-const mockDockerRunner: SandboxRunner = {
+const mockDockerRunner: SandboxProvider = {
   kind: "docker",
   ensure: (id, opts) => mockEnsure(id, opts),
   exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
@@ -41,11 +43,13 @@ const mockDockerRunner: SandboxRunner = {
   watchClaimLifecycle: () => readyOnly(),
 };
 
-const mockAgentSandboxRunner: SandboxRunner = {
-  kind: "agent-sandbox",
+const mockRemoteUserDelete = mock(async (_handle: string) => {});
+
+const mockRemoteUserRunner: SandboxProvider = {
+  kind: "remote-user",
   ensure: (id, opts) => mockEnsure(id, opts),
   exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
-  delete: (handle) => mockAgentSandboxDelete(handle),
+  delete: (handle) => mockRemoteUserDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
   proxyDaemonRequest: async () => new Response(null, { status: 204 }),
@@ -53,10 +57,20 @@ const mockAgentSandboxRunner: SandboxRunner = {
 };
 
 mock.module("../../sandbox/lifecycle", () => ({
-  getSharedRunner: () => mockDockerRunner,
-  getRunnerByKind: (_ctx: unknown, kind: "docker" | "agent-sandbox") =>
-    kind === "docker" ? mockDockerRunner : mockAgentSandboxRunner,
-  getSharedRunnerIfInit: () => mockDockerRunner,
+  getSharedSandboxProvider: (ctx: MeshContext) => {
+    if (
+      ctx.sandboxPreference === "remote-user" &&
+      ctx.linkForCurrentRun !== undefined
+    ) {
+      return mockRemoteUserRunner;
+    }
+    return mockDockerRunner;
+  },
+  getSandboxProviderByKind: (
+    _ctx: unknown,
+    kind: "docker" | "agent-sandbox",
+  ) => (kind === "docker" ? mockDockerRunner : mockDockerRunner),
+  getSharedSandboxProviderIfInit: () => mockDockerRunner,
   getOrInitSharedRunner: async () => mockDockerRunner,
   asDockerRunner: () => null,
   // Bun's mock.module persists across test files in the same shard. Other
@@ -193,12 +207,14 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
+  linkRegistry?: LinkRegistry;
 }): MeshContext {
   const {
     orgId = ORG_ID,
     userId = USER_ID,
     virtualMcp,
     updateSpy = mock(async () => {}),
+    linkRegistry,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -254,6 +270,7 @@ function makeCtx(overrides: {
     getOrCreateClient: null as never,
     pendingRevalidations: [],
     monitoring: null as never,
+    linkRegistry,
   } as unknown as MeshContext;
 }
 
@@ -262,8 +279,10 @@ describe("VM_START", () => {
     mockEnsure.mockReset();
     mockDockerDelete.mockReset();
     mockAgentSandboxDelete.mockReset();
+    mockRemoteUserDelete.mockReset();
     mockDockerDelete.mockImplementation(async () => {});
     mockAgentSandboxDelete.mockImplementation(async () => {});
+    mockRemoteUserDelete.mockImplementation(async () => {});
     mockTokenGet.mockReset();
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
@@ -315,7 +334,7 @@ describe("VM_START", () => {
     });
   });
 
-  it("persists vmMap entry with handle + previewUrl + runnerKind", async () => {
+  it("persists vmMap entry with handle + previewUrl + sandboxProviderKind", async () => {
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
       workdir: "/app",
@@ -334,20 +353,25 @@ describe("VM_START", () => {
     expect(result.previewUrl).toBe("https://stub.preview/");
     expect(result.branch).toBe(BRANCH);
     expect(result.isNewVm).toBe(true);
-    expect(result.runnerKind).toBe("docker");
+    expect(result.sandboxProviderKind).toBe("docker");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
-    const stored = updated.vmMap[USER_ID]?.[BRANCH];
+    // 3-level key: vmMap[userId][branch][kind]
+    const stored = (
+      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+    )?.["docker"];
     expect(stored).toMatchObject({
       vmId: "vm_xyz",
       previewUrl: "https://stub.preview/",
-      runnerKind: "docker",
+      sandboxProviderKind: "docker",
     });
     // Server-stamped; assert recency, not exact value.
-    expect(typeof stored?.createdAt).toBe("number");
-    expect(stored?.createdAt).toBeGreaterThan(Date.now() - 60_000);
+    expect(typeof (stored as VmMapEntry)?.createdAt).toBe("number");
+    expect((stored as VmMapEntry)?.createdAt).toBeGreaterThan(
+      Date.now() - 60_000,
+    );
   });
 
   it("snapshots metadata.runtime selected/port/path into startedWith", async () => {
@@ -369,7 +393,10 @@ describe("VM_START", () => {
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
-    const stored = updated.vmMap[USER_ID]?.[BRANCH];
+    // 3-level key: vmMap[userId][branch][kind]
+    const stored = (
+      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+    )?.["docker"] as VmMapEntry | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: "pnpm",
       port: "4321",
@@ -401,7 +428,10 @@ describe("VM_START", () => {
     });
     expect(vmMapCall).toBeDefined();
     const updated = (vmMapCall![2] as { metadata: { vmMap: VmMap } }).metadata;
-    const stored = updated.vmMap[USER_ID]?.[BRANCH];
+    // 3-level key: vmMap[userId][branch][kind]
+    const stored = (
+      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+    )?.["docker"] as VmMapEntry | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: null,
       port: null,
@@ -417,7 +447,8 @@ describe("VM_START", () => {
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
-      vmMap: { [USER_ID]: { [BRANCH]: CACHED_ENTRY } },
+      // 3-level: kind (docker) → entry
+      vmMap: { [USER_ID]: { [BRANCH]: { docker: CACHED_ENTRY } } },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -533,84 +564,49 @@ describe("VM_START", () => {
     expect(opts.repo?.cloneUrl).not.toContain("ghu_stale_token");
   });
 
-  it("tears down the stale VM under its prior runner when the env runner flipped", async () => {
-    const staleEntry: VmMapEntry = {
-      vmId: "vm_agent_sandbox_stale",
-      previewUrl: "https://agent-sandbox.preview/",
-      runnerKind: "agent-sandbox",
+  it("provisions a new remote-user VM even when a docker entry exists under the same branch — kinds are siblings", async () => {
+    // With kind-in-key, different kinds coexist — no teardown occurs.
+    const dockerEntry: VmMapEntry = {
+      vmId: "vm_docker_existing",
+      previewUrl: "https://docker.preview/",
+      sandboxProviderKind: "docker",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
-      vmMap: { [USER_ID]: { [BRANCH]: staleEntry } },
+      // 3-level: docker entry lives under its own key
+      vmMap: {
+        [USER_ID]: {
+          [BRANCH]: { docker: dockerEntry },
+        },
+      },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-    const ctx = makeCtx({ virtualMcp });
+    // Link registry with online link so resolveDefaultSandboxProviderKind picks remote-user
+    const linkRegistry: LinkRegistry = {
+      get: async (_userId: string) => ({
+        machineId: "machine_1",
+        tunnelUrl: "https://tunnel.example.com",
+        linkSecret: "secret_abc",
+        cliVersion: "1.0.0",
+        protocolVersion: 1,
+        capabilities: [],
+        createdAt: new Date().toISOString(),
+      }),
+      put: async () => {},
+      delete: async () => {},
+    };
+    const ctx = makeCtx({ virtualMcp, linkRegistry });
 
+    // Link is online → kind resolves to remote-user; no docker entry for remote-user → provision a new one
     const result = await VM_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
       ctx,
     );
 
-    expect(mockAgentSandboxDelete).toHaveBeenCalledTimes(1);
-    expect(mockAgentSandboxDelete).toHaveBeenCalledWith(
-      "vm_agent_sandbox_stale",
-    );
+    // No teardown of the docker entry (kinds are siblings)
     expect(mockDockerDelete).not.toHaveBeenCalled();
     expect(mockEnsure).toHaveBeenCalledTimes(1);
-    expect(result.runnerKind).toBe("docker");
-    expect(result.isNewVm).toBe(true);
-  });
-
-  it("still provisions the new VM when the stale-runner teardown throws", async () => {
-    mockAgentSandboxDelete.mockImplementation(async () => {
-      throw new Error("agent-sandbox runner gone");
-    });
-    const staleEntry: VmMapEntry = {
-      vmId: "vm_agent_sandbox_stale",
-      previewUrl: "https://agent-sandbox.preview/",
-      runnerKind: "agent-sandbox",
-    };
-    const metadata: Metadata = {
-      ...BASE_METADATA,
-      vmMap: { [USER_ID]: { [BRANCH]: staleEntry } },
-    };
-    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-    const ctx = makeCtx({ virtualMcp });
-
-    const result = await VM_START.handler(
-      { virtualMcpId: VMCP_ID, branch: BRANCH },
-      ctx,
-    );
-
-    expect(mockAgentSandboxDelete).toHaveBeenCalledTimes(1);
-    expect(mockEnsure).toHaveBeenCalledTimes(1);
-    expect(result.vmId).toBe("vm_xyz");
-    expect(result.runnerKind).toBe("docker");
-    expect(result.isNewVm).toBe(true);
-  });
-
-  it("skips teardown for legacy entries (no runnerKind)", async () => {
-    const legacyEntry: VmMapEntry = {
-      vmId: "vm_legacy",
-      previewUrl: "https://legacy.preview/",
-      // no runnerKind
-    };
-    const metadata: Metadata = {
-      ...BASE_METADATA,
-      vmMap: { [USER_ID]: { [BRANCH]: legacyEntry } },
-    };
-    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-    const ctx = makeCtx({ virtualMcp });
-
-    const result = await VM_START.handler(
-      { virtualMcpId: VMCP_ID, branch: BRANCH },
-      ctx,
-    );
-
-    expect(mockAgentSandboxDelete).not.toHaveBeenCalled();
-    expect(mockDockerDelete).not.toHaveBeenCalled();
-    expect(mockEnsure).toHaveBeenCalledTimes(1);
-    expect(result.runnerKind).toBe("docker");
+    expect(result.sandboxProviderKind).toBe("remote-user");
     expect(result.isNewVm).toBe(true);
   });
 
@@ -618,11 +614,15 @@ describe("VM_START", () => {
     const sameRunnerEntry: VmMapEntry = {
       vmId: "vm_docker_existing",
       previewUrl: "https://docker.preview/",
-      runnerKind: "docker",
+      sandboxProviderKind: "docker",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
-      vmMap: { [USER_ID]: { [BRANCH]: sameRunnerEntry } },
+      vmMap: {
+        [USER_ID]: {
+          [BRANCH]: { docker: sameRunnerEntry },
+        },
+      },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -631,6 +631,97 @@ describe("VM_START", () => {
 
     expect(mockAgentSandboxDelete).not.toHaveBeenCalled();
     expect(mockDockerDelete).not.toHaveBeenCalled();
+  });
+
+  // -----------------------------------------------------------------------
+  // sandboxProviderKind default-resolution tests
+  // -----------------------------------------------------------------------
+
+  const STUB_LINK: LinkEntry = {
+    machineId: "machine_1",
+    tunnelUrl: "https://tunnel.example.com",
+    linkSecret: "secret_abc",
+    cliVersion: "1.0.0",
+    protocolVersion: 1,
+    capabilities: [],
+    createdAt: new Date().toISOString(),
+  };
+
+  it("VM_START with no sandboxProviderKind picks remote-user when the link is online", async () => {
+    const linkRegistry: LinkRegistry = {
+      get: async (_userId: string) => STUB_LINK,
+      put: async () => {},
+      delete: async () => {},
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
+
+    const result = await VM_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      ctx,
+    );
+
+    expect(result.sandboxProviderKind).toBe("remote-user");
+    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
+    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
+    // 3-level key: vmMap[userId][branch][kind]
+    const stored = (
+      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+    )?.["remote-user"] as VmMapEntry | undefined;
+    expect(stored?.sandboxProviderKind).toBe("remote-user");
+  });
+
+  it("VM_START with no sandboxProviderKind picks env kind when no link", async () => {
+    // STUDIO_SANDBOX_RUNNER is "docker" at module load time (top of file)
+    const linkRegistry: LinkRegistry = {
+      get: async (_userId: string) => null,
+      put: async () => {},
+      delete: async () => {},
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
+
+    const result = await VM_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      ctx,
+    );
+
+    expect(result.sandboxProviderKind).toBe("docker");
+    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
+    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
+    // 3-level key: vmMap[userId][branch][kind]
+    const stored = (
+      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+    )?.["docker"] as VmMapEntry | undefined;
+    expect(stored?.sandboxProviderKind).toBe("docker");
+  });
+
+  it("VM_START with explicit sandboxProviderKind ignores defaults", async () => {
+    // Link is online, env is "docker" — but explicit "docker" must win (and remote-user would also be overrideable).
+    const linkRegistry: LinkRegistry = {
+      get: async (_userId: string) => STUB_LINK,
+      put: async () => {},
+      delete: async () => {},
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
+
+    const result = await VM_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH, sandboxProviderKind: "docker" },
+      ctx,
+    );
+
+    expect(result.sandboxProviderKind).toBe("docker");
+    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
+    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
+    // 3-level key: vmMap[userId][branch][kind]
+    const stored = (
+      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+    )?.["docker"] as VmMapEntry | undefined;
+    expect(stored?.sandboxProviderKind).toBe("docker");
   });
 
   it("throws RECONNECT_ERROR when refreshing an expired token fails", async () => {

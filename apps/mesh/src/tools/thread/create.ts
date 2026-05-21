@@ -48,22 +48,35 @@ type GithubRepoMeta = {
 };
 
 type VmMapMeta = {
-  vmMap?: Record<string, Record<string, { createdAt?: number }>>;
+  vmMap?: Record<
+    string,
+    Record<string, Record<string, { createdAt?: number }>>
+  >;
 };
 
 /**
- * Pick the user's most-recently-touched branch from vmMap. Returns undefined
+ * Pick the user's most-recently-touched branch from vmMap (3-level shape:
+ * vmMap[userId][branch][sandboxProviderKind] → VmMapEntry). Returns undefined
  * when the user has no entries (caller falls back to generateBranchName).
  */
 function pickWarmBranchFromVmMap(
   vmMap: VmMapMeta["vmMap"],
   userId: string,
 ): string | undefined {
-  const entries = vmMap?.[userId];
-  if (!entries) return undefined;
-  const sorted = Object.entries(entries).sort(
-    ([, a], [, b]) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
-  );
+  const branchMap = vmMap?.[userId];
+  if (!branchMap) return undefined;
+  // For each branch, take the max createdAt across all sandboxProviderKind entries.
+  const sorted = Object.entries(branchMap).sort(([, aKinds], [, bKinds]) => {
+    const aMax = Math.max(
+      0,
+      ...Object.values(aKinds).map((e) => e.createdAt ?? 0),
+    );
+    const bMax = Math.max(
+      0,
+      ...Object.values(bKinds).map((e) => e.createdAt ?? 0),
+    );
+    return bMax - aMax;
+  });
   return sorted[0]?.[0];
 }
 

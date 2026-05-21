@@ -36,6 +36,7 @@ import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
 import * as VmTools from "./vm";
 import * as GitHubTools from "./github";
+import * as LinkTools from "./links";
 import { ToolName } from "./registry-metadata";
 // Core tools - always available
 const CORE_TOOLS = [
@@ -147,8 +148,6 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_PROVISION_KEY,
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
-  AiProvidersTools.AI_PROVIDER_CLI_ACTIVATE,
-
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,
@@ -170,6 +169,9 @@ const CORE_TOOLS = [
 
   // GitHub tools (app-only)
   GitHubTools.GITHUB_LIST_USER_ORGS,
+
+  // Link tools
+  LinkTools.LINK_CURRENT_GET,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

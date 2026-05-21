@@ -23,7 +23,8 @@ interface Props {
   orgId: string;
   orgSlug: string;
   userId: string;
-  connectionId: string;
+  virtualMcpId: string;
+  connectionId: string | null;
   owner: string;
   repo: string;
   vmMap: VmMap | undefined;
@@ -39,6 +40,10 @@ export function BranchPicker({
   orgId,
   orgSlug,
   userId,
+  // virtualMcpId is consumed by callers via Props (e.g. ThreadPills);
+  // BranchPicker itself doesn't use it directly. Kept on the Props
+  // contract so v2's pill container can pass it down uniformly.
+  virtualMcpId: _virtualMcpId,
   connectionId,
   owner,
   repo,

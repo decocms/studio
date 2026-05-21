@@ -68,21 +68,13 @@ export function ProviderGrid({
   onShowAll,
 }: ProviderGridProps) {
   const deco = providers.find((p) => p.id === "deco");
-  const local = providers.filter(
-    (p) => p.id !== "deco" && p.supportedMethods.includes("cli-activate"),
-  );
   const CLOUD_ORDER: Record<string, number> = {
     openrouter: 0,
     anthropic: 1,
     google: 2,
   };
   const cloud = providers
-    .filter(
-      (p) =>
-        p.id !== "deco" &&
-        !p.supportedMethods.includes("cli-activate") &&
-        p.id !== "openai-compatible",
-    )
+    .filter((p) => p.id !== "deco" && p.id !== "openai-compatible")
     .sort((a, b) => {
       const ai = CLOUD_ORDER[a.id] ?? Number.MAX_SAFE_INTEGER;
       const bi = CLOUD_ORDER[b.id] ?? Number.MAX_SAFE_INTEGER;
@@ -176,28 +168,6 @@ export function ProviderGrid({
                 description={deco.description}
                 onClick={() => onSelect({ kind: "provider", provider: deco })}
               />
-            </SettingsCard>
-          </div>
-        </SettingsSection>
-      )}
-
-      {local.length > 0 && (
-        <SettingsSection>
-          <div className="relative rounded-xl border border-lime-400/30 bg-gradient-to-br from-lime-50/50 via-transparent to-yellow-50/30 dark:from-lime-950/20 dark:to-yellow-950/10 p-1.5">
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-lime-400/5 to-yellow-400/5 pointer-events-none" />
-            <p className="text-xs font-medium text-lime-700 dark:text-lime-400 mb-1.5 px-2 pt-2 relative">
-              Bring your Claude or ChatGPT subscription
-            </p>
-            <SettingsCard className="relative">
-              {local.map((provider) => (
-                <ProviderTile
-                  key={provider.id}
-                  logo={provider.logo}
-                  name={provider.name}
-                  description={provider.description}
-                  onClick={() => onSelect({ kind: "provider", provider })}
-                />
-              ))}
             </SettingsCard>
           </div>
         </SettingsSection>

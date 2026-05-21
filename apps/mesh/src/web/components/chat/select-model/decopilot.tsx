@@ -1,0 +1,878 @@
+import { Button } from "@deco/ui/components/button.tsx";
+import { Checkbox } from "@deco/ui/components/checkbox.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
+import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ChevronSelectorVertical,
+  Key01,
+  RefreshCcw01,
+  SearchMd,
+  Settings02,
+} from "@untitledui/icons";
+import {
+  startTransition,
+  Suspense,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  type AiProviderModel,
+  useAiProviderKeys,
+  useAiProviderModels,
+  useAiProviders,
+} from "../../../hooks/collections/use-ai-providers";
+import { ErrorBoundary } from "../../error-boundary";
+import { track } from "@/web/lib/posthog-client";
+import { useChatPrefs } from "../context";
+import { getProviderLogo } from "@/web/utils/ai-providers-logos";
+import { getPreset } from "@/web/utils/openai-compatible-presets";
+import { useNavigate } from "@tanstack/react-router";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { NoAiProviderEmptyState } from "../no-ai-provider-empty-state";
+import { ModelDetailsPanel, parseModelTitle } from "./shared";
+
+// ============================================================================
+// Tier Classification
+// ============================================================================
+
+const TIER_IDS = ["smarter", "faster", "cheaper"] as const;
+type TierId = (typeof TIER_IDS)[number];
+
+const TIER_LABELS: Record<TierId, string> = {
+  smarter: "Smarter",
+  faster: "Faster",
+  cheaper: "Cheaper",
+};
+
+const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
+  {
+    tier: "smarter",
+    prefixes: [
+      "anthropic/claude-opus-4.7",
+      "anthropic/claude-sonnet-4.6",
+      "anthropic/claude-4.6-sonnet",
+      "openai/gpt-5.3-codex",
+      "google/gemini-3-pro",
+      "google/gemini-2.5-pro",
+      "cohere/command-r-plus",
+      "cohere/command-a",
+    ],
+  },
+  {
+    tier: "faster",
+    prefixes: [
+      "anthropic/claude-haiku-4.5",
+      "anthropic/claude-4.5-haiku",
+      "google/gemini-3-flash",
+      "openai/gpt-5.1-codex-mini",
+      "x-ai/grok-code-fast",
+      "x-ai/grok-3",
+      "mistralai/mistral-large",
+      "mistralai/codestral",
+      "mistralai/mistral-medium",
+      "minimax/minimax-m1",
+    ],
+  },
+  {
+    tier: "cheaper",
+    prefixes: [
+      "google/gemini-2.5-flash-lite",
+      "google/gemini-2.5-flash",
+      "google/gemini-2.0-flash",
+      "deepseek/deepseek-v3",
+      "openai/gpt-oss-120b",
+      "mistralai/mistral-small",
+      "mistralai/pixtral",
+      "cohere/command-r",
+    ],
+  },
+];
+
+// Sort rules longest-prefix-first for specificity
+const SORTED_TIER_RULES = TIER_PATTERNS.flatMap(({ tier, prefixes }) =>
+  prefixes.map((prefix) => ({ tier, prefix })),
+).sort((a, b) => b.prefix.length - a.prefix.length);
+
+// Only exact matches (no named sub-variants); date suffixes (digits) are fine
+const EXACT_ONLY_PREFIXES = new Set(["google/gemini-2.5-pro"]);
+
+const tierCache = new Map<string, TierId | null>();
+
+function classifyModel(modelId: string): TierId | null {
+  const cached = tierCache.get(modelId);
+  if (cached !== undefined) return cached;
+
+  let result: TierId | null = null;
+  if (modelId.endsWith(":free")) {
+    result = "cheaper";
+  } else {
+    outer: for (const { tier, prefix } of SORTED_TIER_RULES) {
+      if (modelId.startsWith(prefix)) {
+        if (EXACT_ONLY_PREFIXES.has(prefix) && modelId.length > prefix.length) {
+          const nextChar = modelId[prefix.length];
+          if (nextChar === "-") {
+            const charAfterHyphen = modelId[prefix.length + 1];
+            if (!charAfterHyphen || !/\d/.test(charAfterHyphen)) continue outer;
+          }
+        }
+        result = tier;
+        break;
+      }
+    }
+  }
+
+  tierCache.set(modelId, result);
+  return result;
+}
+
+function groupByTier(
+  models: AiProviderModel[],
+): Record<TierId | "other", AiProviderModel[]> {
+  const groups: Record<TierId | "other", AiProviderModel[]> = {
+    smarter: [],
+    faster: [],
+    cheaper: [],
+    other: [],
+  };
+  for (const m of models) {
+    const tier = classifyModel(m.modelId);
+    groups[tier ?? "other"].push(m);
+  }
+  for (const key of Object.keys(groups) as Array<TierId | "other">) {
+    groups[key].sort((a, b) => a.title.localeCompare(b.title));
+  }
+  return groups;
+}
+
+// ============================================================================
+// Model Shortlist (localStorage)
+// ============================================================================
+
+const SHORTLIST_KEY_PREFIX = "mesh:model-shortlist:";
+
+const DEFAULT_SHORTLIST = new Set([
+  // Smarter
+  "anthropic/claude-opus-4.7",
+  "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-4.6-sonnet",
+  "anthropic/claude-sonnet-4.6:extended",
+  "openai/gpt-5.3-codex",
+  "google/gemini-3-pro-preview",
+  "google/gemini-2.5-pro",
+  // Faster
+  "anthropic/claude-haiku-4.5",
+  "anthropic/claude-haiku-4.5-20251001",
+  "anthropic/claude-4.5-haiku",
+  "google/gemini-3-flash-preview",
+  "openai/gpt-5.1-codex-mini",
+  "x-ai/grok-code-fast-1",
+  // Cheaper
+  "google/gemini-2.5-flash",
+  "deepseek/deepseek-v3.2",
+  "google/gemini-2.5-flash-lite",
+  "openai/gpt-oss-120b:free",
+]);
+
+function readShortlist(keyId: string): Set<string> | null {
+  try {
+    const raw = localStorage.getItem(SHORTLIST_KEY_PREFIX + keyId);
+    return raw ? new Set(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeShortlist(keyId: string, ids: Set<string>) {
+  localStorage.setItem(SHORTLIST_KEY_PREFIX + keyId, JSON.stringify([...ids]));
+}
+
+// ============================================================================
+// UI Components
+// ============================================================================
+
+function ModelItemContent({
+  model,
+  onHover,
+}: {
+  model: AiProviderModel;
+  onHover: (model: AiProviderModel) => void;
+}) {
+  const { displayName, provider } = parseModelTitle(model);
+
+  const providerLogo = getProviderLogo(model);
+
+  return (
+    <div
+      className="flex items-center gap-2.5 py-2 px-3 hover:bg-accent cursor-pointer rounded-lg"
+      onMouseEnter={() => onHover(model)}
+    >
+      <img
+        src={providerLogo}
+        className="w-4 h-4 shrink-0 rounded-sm dark:bg-white dark:rounded-sm dark:p-px"
+        alt={model.title}
+      />
+      <div className="flex flex-col flex-1 min-w-0">
+        <span className="text-sm text-foreground leading-tight truncate">
+          {displayName}
+        </span>
+        <span className="text-xs text-muted-foreground/60 leading-tight">
+          {provider}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ModelListErrorFallback({
+  error,
+  onRetry,
+}: {
+  error: Error | null;
+  onRetry: () => void;
+  credentialId: string | undefined;
+  orgSlug?: string;
+}) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+      <div className="bg-destructive/10 p-2 rounded-full">
+        <AlertTriangle className="size-5 text-destructive" />
+      </div>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-foreground">
+          Failed to load models
+        </p>
+        <p className="text-xs text-muted-foreground max-w-[260px]">
+          {error?.message || "Could not fetch models from this provider."}
+          {" Try another provider or retry."}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRetry}
+          className="gap-1.5"
+        >
+          <RefreshCcw01 className="size-3.5" />
+          Retry
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ModelListSkeleton() {
+  return (
+    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-2 min-h-8 py-3 px-3 rounded-lg"
+        >
+          <Skeleton className="size-5 shrink-0 rounded-sm" />
+          <Skeleton className="flex-1 h-4" />
+          <Skeleton className="w-16 h-5 shrink-0 rounded-md" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================================
+// ConnectionModelList — browse + manage modes
+// ============================================================================
+
+function ModelTierSection({
+  label,
+  models,
+  onSelect,
+  onHover,
+}: {
+  label: string;
+  models: AiProviderModel[];
+  onSelect: (m: AiProviderModel) => void;
+  onHover: (m: AiProviderModel) => void;
+}) {
+  if (models.length === 0) return null;
+  return (
+    <div>
+      <div className="text-xs font-medium text-muted-foreground px-3 pt-3 pb-1">
+        {label}
+      </div>
+      {models.map((m) => (
+        <div
+          key={m.modelId}
+          onClick={() => onSelect(m)}
+          className="cursor-pointer"
+        >
+          <ModelItemContent model={m} onHover={onHover} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Each row is its own component so the React Compiler can memoize them
+// individually — only the toggled item re-renders, not all 500.
+function ManageModelItem({
+  model,
+  isChecked,
+  onToggle,
+  onHover,
+}: {
+  model: AiProviderModel;
+  isChecked: boolean;
+  onToggle: (modelId: string) => void;
+  onHover: (m: AiProviderModel) => void;
+}) {
+  // Local state gives instant visual feedback; parent shortlistSet updates
+  // asynchronously via startTransition so it never blocks the checkbox.
+  const [checked, setChecked] = useState(isChecked);
+  if (checked !== isChecked) {
+    setChecked(isChecked);
+  }
+  const logo = getProviderLogo(model);
+
+  return (
+    <label
+      className="flex items-center gap-3 min-h-8 py-2.5 px-3 hover:bg-accent cursor-pointer rounded-lg"
+      onMouseEnter={() => onHover(model)}
+    >
+      <Checkbox
+        checked={checked}
+        onCheckedChange={() => {
+          setChecked((v) => !v);
+          onToggle(model.modelId);
+        }}
+      />
+      <img
+        src={logo}
+        className="w-5 h-5 shrink-0 rounded-sm dark:bg-white dark:rounded-sm dark:p-px"
+        alt={model.title}
+      />
+      <span className="text-sm text-foreground flex-1 min-w-0 line-clamp-1">
+        {model.title}
+      </span>
+    </label>
+  );
+}
+
+type ManageVirtualItem =
+  | { type: "header"; label: string }
+  | { type: "model"; model: AiProviderModel };
+
+function buildManageItems(
+  grouped: Record<TierId | "other", AiProviderModel[]>,
+): ManageVirtualItem[] {
+  const items: ManageVirtualItem[] = [];
+  for (const tierId of TIER_IDS) {
+    if (grouped[tierId].length > 0) {
+      items.push({ type: "header", label: TIER_LABELS[tierId] });
+      for (const m of grouped[tierId]) items.push({ type: "model", model: m });
+    }
+  }
+  if (grouped.other.length > 0) {
+    items.push({ type: "header", label: "Other" });
+    for (const m of grouped.other) items.push({ type: "model", model: m });
+  }
+  return items;
+}
+
+function VirtualManageList({
+  items,
+  shortlistSet,
+  onToggle,
+  onHover,
+}: {
+  items: ManageVirtualItem[];
+  shortlistSet: Set<string>;
+  onToggle: (modelId: string) => void;
+  onHover: (m: AiProviderModel) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => (items[i]?.type === "header" ? 36 : 44),
+    overscan: 6,
+  });
+
+  return (
+    <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((vItem) => {
+          const item = items[vItem.index];
+          if (!item) return null;
+          return (
+            <div
+              key={vItem.key}
+              data-index={vItem.index}
+              ref={virtualizer.measureElement}
+              className="absolute left-0 right-0 top-0 px-0.5"
+              style={{ transform: `translateY(${vItem.start}px)` }}
+            >
+              {item.type === "header" ? (
+                <div className="text-xs font-medium text-muted-foreground px-3 pt-3 pb-1">
+                  {item.label}
+                </div>
+              ) : (
+                <ManageModelItem
+                  model={item.model}
+                  isChecked={shortlistSet.has(item.model.modelId)}
+                  onToggle={onToggle}
+                  onHover={onHover}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ConnectionModelList({
+  keyId,
+  searchTerm,
+  onHover,
+  onModelSelect,
+  managing,
+  onToggleManage,
+  filterModels: filterModelsProp,
+}: {
+  keyId: string | undefined;
+  searchTerm: string;
+  onModelSelect: (model: AiProviderModel) => void;
+  onHover: (model: AiProviderModel) => void;
+  managing: boolean;
+  onToggleManage: () => void;
+  filterModels?: (m: AiProviderModel) => boolean;
+}) {
+  const { models: rawModels } = useAiProviderModels(keyId);
+  // When no explicit filter is given, hide async-research-only models
+  // (e.g. Gemini Deep Research). They aren't usable as a Thinking/Coding/
+  // Fast model — the agent loop's `streamText` rejects them. Callers that
+  // want to expose them (the deep-research slot) pass their own filter that
+  // opts them back in.
+  const allModels = filterModelsProp
+    ? rawModels.filter(filterModelsProp)
+    : rawModels.filter((m) => m.asyncResearch !== true);
+  const [shortlistSet, setShortlistSet] = useState<Set<string>>(
+    () => (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST,
+  );
+  const [, startShortlistTransition] = useTransition();
+
+  const handleToggle = (modelId: string) => {
+    if (!keyId) return;
+    // Deferred: ManageModelItem's local state already gave instant feedback,
+    // so this heavier reconciliation can happen in a transition.
+    startShortlistTransition(() => {
+      setShortlistSet((current) => {
+        const next = new Set(current);
+        if (next.has(modelId)) {
+          next.delete(modelId);
+        } else {
+          next.add(modelId);
+        }
+        writeShortlist(keyId, next);
+        return next;
+      });
+    });
+  };
+
+  const normalizedSearch = searchTerm.toLowerCase().trim();
+  const applySearch = (models: AiProviderModel[]) =>
+    normalizedSearch
+      ? models.filter(
+          (m) =>
+            m.title.toLowerCase().includes(normalizedSearch) ||
+            m.modelId.toLowerCase().includes(normalizedSearch),
+        )
+      : models;
+
+  if (managing) {
+    const grouped = groupByTier(applySearch(allModels));
+    const flatItems = buildManageItems(grouped);
+    const selectedCount = allModels.filter((m) =>
+      shortlistSet.has(m.modelId),
+    ).length;
+
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <button
+            type="button"
+            onClick={onToggleManage}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
+          >
+            <ArrowLeft size={14} />
+            Back
+          </button>
+          <span className="text-xs text-muted-foreground">
+            {selectedCount} selected
+          </span>
+        </div>
+        <VirtualManageList
+          items={flatItems}
+          shortlistSet={shortlistSet}
+          onToggle={handleToggle}
+          onHover={onHover}
+        />
+      </div>
+    );
+  }
+
+  // Browse mode: show shortlisted models (fall back to all if none match)
+  const shortlisted = allModels.filter((m) => shortlistSet.has(m.modelId));
+  const browseable = shortlisted.length > 0 ? shortlisted : allModels;
+  const grouped = groupByTier(applySearch(browseable));
+
+  return (
+    <div className="flex-1 overflow-y-auto px-0.5 pt-1 [touch-action:pan-y]">
+      {TIER_IDS.map((tierId) => (
+        <ModelTierSection
+          key={tierId}
+          label={TIER_LABELS[tierId]}
+          models={grouped[tierId]}
+          onSelect={onModelSelect}
+          onHover={onHover}
+        />
+      ))}
+      <ModelTierSection
+        label="Other"
+        models={grouped.other}
+        onSelect={onModelSelect}
+        onHover={onHover}
+      />
+    </div>
+  );
+}
+
+// ============================================================================
+// ModelSelectorContent — fixed size popover, no resize on manage toggle
+// ============================================================================
+
+function ModelSelectorContentFallback() {
+  return (
+    <div className="flex flex-col md:flex-row h-full sm:h-[460px] min-h-0">
+      <div className="flex-1 flex flex-col md:border-r md:w-[420px] md:min-w-[420px] min-h-0 overflow-hidden">
+        <div className="border-b border-border h-12 bg-background/95 backdrop-blur sticky top-0 z-10">
+          <div className="flex items-center gap-2.5 h-12 px-4">
+            <Skeleton className="size-4 shrink-0" />
+            <Skeleton className="flex-1 h-6" />
+            <Skeleton className="w-[140px] h-8 shrink-0" />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 min-h-8 py-3 px-3 rounded-lg"
+            >
+              <Skeleton className="size-5 shrink-0 rounded-sm" />
+              <Skeleton className="flex-1 h-4" />
+              <Skeleton className="w-16 h-5 shrink-0 rounded-md" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="hidden md:block md:w-[320px] md:shrink-0 p-3">
+        <div className="flex flex-col gap-3 py-1 px-1.5">
+          <div className="flex flex-col gap-3 py-2 px-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <Skeleton className="size-6 shrink-0" />
+              <Skeleton className="h-6 w-32" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-6 w-20 rounded-md" />
+              <Skeleton className="h-6 w-24 rounded-md" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-40" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ModelSelectorInnerProps {
+  onClose: () => void;
+  credentialId: string | null;
+  onCredentialChange: (id: string | null) => void;
+  selectedModel: AiProviderModel | null;
+  onModelChange: (model: AiProviderModel) => void;
+  filterModels?: (m: AiProviderModel) => boolean;
+}
+
+function ModelSelectorInner({
+  onClose,
+  credentialId,
+  onCredentialChange,
+  selectedModel,
+  onModelChange,
+  filterModels,
+}: ModelSelectorInnerProps) {
+  const [hoveredModel, setHoveredModel] = useState<AiProviderModel | null>(
+    null,
+  );
+  const [searchTerm, setSearchTerm] = useState("");
+  const [managing, setManaging] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const aiProviders = useAiProviders();
+  const keys = useAiProviderKeys();
+
+  const providerMap = Object.fromEntries(
+    (aiProviders?.providers ?? []).map((p) => [p.id, p]),
+  );
+  const settingsNavigate = useNavigate();
+  const { org: settingsOrg } = useProjectContext();
+
+  const handleKeyChange = (keyId: string) => {
+    onCredentialChange(keyId);
+    setHoveredModel(null);
+  };
+
+  const handleModelSelect = (model: AiProviderModel) => {
+    if (!credentialId) return;
+    onModelChange(model);
+    setSearchTerm("");
+    onClose();
+  };
+
+  if (keys.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-8 w-full sm:w-[740px]">
+        <NoAiProviderEmptyState />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col md:flex-row h-full sm:h-[460px] min-h-0">
+      <div className="flex-1 flex flex-col md:border-r md:w-[420px] md:min-w-[420px] min-h-0 overflow-hidden">
+        <div className="border-b border-border h-12 bg-background/95 backdrop-blur sticky top-0 z-10">
+          <label className="flex items-center gap-2.5 h-12 px-4 pr-12 md:pr-4 cursor-text">
+            <SearchMd size={16} className="text-muted-foreground shrink-0" />
+            <Input
+              ref={searchInputRef}
+              type="text"
+              placeholder={
+                managing ? "Search all models..." : "Search for a model..."
+              }
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1 min-w-0 border-0 !shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
+            />
+            {keys.length > 0 && (
+              <Select
+                value={credentialId ?? ""}
+                onValueChange={handleKeyChange}
+              >
+                <SelectTrigger
+                  size="sm"
+                  className="w-auto max-w-[140px] h-8 shrink-0 gap-1.5 px-2 [&>svg:last-child]:hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <SelectValue placeholder="Key">
+                    {(() => {
+                      const key = keys.find((k) => k.id === credentialId);
+                      const provider = key
+                        ? providerMap[key.providerId]
+                        : undefined;
+                      const preset = getPreset(key?.presetId);
+                      const logo = preset?.logo ?? provider?.logo;
+                      const name =
+                        preset?.name ??
+                        provider?.name ??
+                        key?.providerId ??
+                        "Key";
+                      return (
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          {logo ? (
+                            <img
+                              src={logo}
+                              alt={name}
+                              className="w-4 h-4 rounded shrink-0 dark:bg-white dark:rounded-sm dark:p-px"
+                            />
+                          ) : (
+                            <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+                              {name.slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="text-xs truncate">{name}</span>
+                        </span>
+                      );
+                    })()}
+                  </SelectValue>
+                  <ChevronSelectorVertical className="size-4 opacity-50 shrink-0 pointer-events-none" />
+                </SelectTrigger>
+                <SelectContent>
+                  {keys.map((key) => {
+                    const provider = providerMap[key.providerId];
+                    const preset = getPreset(key.presetId);
+                    const logo = preset?.logo ?? provider?.logo;
+                    const name =
+                      preset?.name ?? provider?.name ?? key.providerId;
+                    return (
+                      <SelectItem key={key.id} value={key.id}>
+                        <div className="flex items-center gap-2">
+                          {logo ? (
+                            <img
+                              src={logo}
+                              alt={name}
+                              className="w-4 h-4 rounded dark:bg-white dark:rounded-sm dark:p-px"
+                            />
+                          ) : (
+                            <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                              {name.slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <span>
+                            {name} — {key.label}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            )}
+          </label>
+        </div>
+
+        <ErrorBoundary
+          key={credentialId}
+          fallback={({ error, resetError }) => (
+            <ModelListErrorFallback
+              error={error}
+              onRetry={resetError}
+              credentialId={credentialId ?? undefined}
+            />
+          )}
+        >
+          <Suspense fallback={<ModelListSkeleton />}>
+            <ConnectionModelList
+              keyId={credentialId ?? undefined}
+              searchTerm={searchTerm}
+              onHover={setHoveredModel}
+              onModelSelect={handleModelSelect}
+              managing={managing}
+              onToggleManage={() => setManaging((v) => !v)}
+              filterModels={filterModels}
+            />
+          </Suspense>
+        </ErrorBoundary>
+        {!managing && (
+          <div className="border-t border-border flex">
+            <button
+              type="button"
+              onClick={() => startTransition(() => setManaging(true))}
+              className="flex items-center gap-2 flex-1 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
+            >
+              <Settings02 className="size-3.5 shrink-0" />
+              Manage models
+            </button>
+            <div className="w-px bg-border shrink-0" />
+            <button
+              type="button"
+              onClick={() =>
+                settingsNavigate({
+                  to: "/$org/settings/ai-providers",
+                  params: { org: settingsOrg.slug },
+                })
+              }
+              className="flex items-center gap-2 flex-1 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
+            >
+              <Key01 className="size-3.5 shrink-0" />
+              Manage API keys
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="hidden md:flex md:flex-col md:w-[320px] md:shrink-0 p-3">
+        <ModelDetailsPanel model={hoveredModel ?? selectedModel ?? null} />
+      </div>
+    </div>
+  );
+}
+
+function ModelSelectorContent({ onClose }: { onClose: () => void }) {
+  const { credentialId, setCredentialId, selectedModel, setModel } =
+    useChatPrefs();
+
+  return (
+    <ModelSelectorInner
+      onClose={onClose}
+      credentialId={credentialId}
+      onCredentialChange={(id) => {
+        track("chat_credential_changed", { credential_id: id });
+        setCredentialId(id);
+      }}
+      selectedModel={selectedModel}
+      onModelChange={(model) => {
+        if (!credentialId) return;
+        track("chat_model_changed", {
+          from_model_id: selectedModel?.modelId ?? null,
+          to_model_id: model.modelId,
+          to_model_provider: model.providerId ?? null,
+          credential_id: credentialId,
+        });
+        setModel({ ...model, keyId: credentialId });
+      }}
+    />
+  );
+}
+
+// ============================================================================
+// Public Exports (Decopilot variant)
+// ============================================================================
+
+/**
+ * Decopilot model selector body — uses useChatPrefs for credential/model state.
+ * Mount this inside the Dialog/Drawer wrapper from ModelSelector.
+ */
+export function DecopilotModelSelectorBody({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  return <ModelSelectorContent onClose={onClose} />;
+}
+
+/**
+ * Decopilot model selector in standalone mode — receives credential/model state
+ * as props (bypasses useChatPrefs). Mount this inside the Dialog/Drawer wrapper
+ * from ModelSelector.
+ */
+export function DecopilotModelSelectorStandalone(
+  props: ModelSelectorInnerProps,
+) {
+  return <ModelSelectorInner {...props} />;
+}
+
+/**
+ * Re-export the loading fallback so ModelSelector can use it in the outer
+ * Suspense boundary without importing from a private path.
+ */
+export { ModelSelectorContentFallback };

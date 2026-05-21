@@ -19,7 +19,7 @@
   "scripts": {
     "dev": "bun run --env-file=.env scripts/dev.ts",
     "dev:worktree": "bun run scripts/dev-worktree.ts",
-    "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree",
+    "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree -- --local-sandbox-provider",
     "fmt": "biome format --write",
     "lint": "oxlint",
     "check": "bun run --workspaces check",

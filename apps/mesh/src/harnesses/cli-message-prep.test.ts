@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ChatMessage } from "../api/routes/decopilot/types";
+import type { ChatMessage } from "./types";
 import { prepCliMessages } from "./cli-message-prep";
 
 describe("prepCliMessages", () => {

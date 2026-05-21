@@ -24,6 +24,8 @@ const BASE_THREAD: Thread = {
   run_started_at: null,
   virtual_mcp_id: "",
   branch: null,
+  sandbox_provider_kind: null,
+  harness_id: null,
   metadata: {},
 };
 

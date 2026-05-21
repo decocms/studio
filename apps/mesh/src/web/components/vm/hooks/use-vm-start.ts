@@ -27,6 +27,12 @@ export interface VmStartArgs {
   virtualMcpId: string;
   /** Optional — VM_START generates one when omitted. */
   branch?: string;
+  /**
+   * Optional explicit sandbox provider kind. When omitted the server picks
+   * via resolveDefaultSandboxProviderKind (link-online ⇒ remote-user, else
+   * the env kind). Used by the v2 RunnerPill to materialize a specific kind.
+   */
+  sandboxProviderKind?: "docker" | "agent-sandbox" | "remote-user";
 }
 
 export interface VmStartResult {
@@ -34,7 +40,7 @@ export interface VmStartResult {
   vmId: string;
   branch: string;
   isNewVm: boolean;
-  runnerKind?: "host" | "docker" | "agent-sandbox";
+  sandboxProviderKind?: "docker" | "agent-sandbox" | "remote-user";
 }
 
 const inflightStarts = new Map<string, Promise<VmStartResult>>();

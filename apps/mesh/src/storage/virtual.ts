@@ -15,6 +15,7 @@ import { generatePrefixedId } from "@/shared/utils/generate-id";
 import {
   getWellKnownDecopilotVirtualMCP,
   isDecopilot,
+  normalizeVmMap,
 } from "@decocms/mesh-sdk";
 import type {
   VirtualMCPCreateData,
@@ -492,7 +493,19 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     const status: "active" | "inactive" =
       row.status === "active" ? "active" : "inactive";
 
-    const metadata = this.parseJson<{ instructions?: string }>(row.metadata);
+    const rawMetadata = this.parseJson<{
+      instructions?: string;
+      vmMap?: unknown;
+    }>(row.metadata);
+
+    // Normalize vmMap into v2 shape on read. Rows written before migration
+    // 082 actually ran still carry the v1 2-level layout (or `runnerKind`
+    // entries). The output schema VirtualMCPEntitySchema is strict v2 and
+    // would reject those without this normalization. Strip `vmMap` from
+    // the rest spread so its `unknown` type doesn't leak into the result.
+    const { vmMap: rawVmMap, ...metadataRest } = rawMetadata ?? {};
+    const normalizedVmMap =
+      rawVmMap !== undefined ? normalizeVmMap(rawVmMap) : undefined;
 
     return {
       id: row.id,
@@ -507,8 +520,9 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       created_by: row.created_by,
       updated_by: row.updated_by ?? undefined,
       metadata: {
-        ...metadata,
-        instructions: metadata?.instructions ?? null,
+        ...metadataRest,
+        instructions: rawMetadata?.instructions ?? null,
+        ...(normalizedVmMap !== undefined ? { vmMap: normalizedVmMap } : {}),
       },
       connections: aggregationRows.map((agg) => ({
         connection_id: agg.child_connection_id,

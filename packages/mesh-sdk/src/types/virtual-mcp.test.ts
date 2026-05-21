@@ -4,6 +4,8 @@ import {
   VirtualMcpUILayoutSchema,
   VirtualMCPUpdateDataSchema,
   VmMapEntrySchema,
+  parseVmMapEntry,
+  parseBranchMap,
 } from "./virtual-mcp";
 
 describe("VirtualMcpUILayoutSchema tabs", () => {
@@ -116,4 +118,83 @@ test("VmMapEntry.startedWith is optional with nullable packageManager/port/path"
   expect(c.startedWith?.packageManager).toBeNull();
   expect(c.startedWith?.port).toBeNull();
   expect(c.startedWith?.path).toBeNull();
+});
+
+describe("parseBranchMap tolerant reader", () => {
+  test("parses 3-level (kind-keyed) map", () => {
+    const result = parseBranchMap({
+      docker: { vmId: "v1", previewUrl: null, sandboxProviderKind: "docker" },
+      "remote-user": {
+        vmId: "v2",
+        previewUrl: null,
+        sandboxProviderKind: "remote-user",
+      },
+    });
+    expect(result.docker?.vmId).toBe("v1");
+    expect(result["remote-user"]?.vmId).toBe("v2");
+  });
+
+  test("wraps 2-level legacy entry under its sandboxProviderKind", () => {
+    const result = parseBranchMap({
+      vmId: "v-legacy",
+      previewUrl: null,
+      sandboxProviderKind: "remote-user",
+    });
+    expect(result["remote-user"]?.vmId).toBe("v-legacy");
+    expect(result.docker).toBeUndefined();
+  });
+
+  test("coalesces a legacy freestyle entry to docker on read", () => {
+    const result = parseBranchMap({
+      vmId: "v-very-legacy",
+      previewUrl: null,
+      runnerKind: "freestyle",
+    });
+    // freestyle runner no longer exists; legacy rows fall back to docker.
+    expect(result.docker?.vmId).toBe("v-very-legacy");
+  });
+
+  test("returns empty object for null/undefined/arrays", () => {
+    expect(parseBranchMap(null)).toEqual({});
+    expect(parseBranchMap(undefined)).toEqual({});
+    expect(parseBranchMap([])).toEqual({});
+  });
+
+  test("legacy entry without sandboxProviderKind defaults to 'docker'", () => {
+    const result = parseBranchMap({ vmId: "v-orphan", previewUrl: null });
+    expect(result.docker?.vmId).toBe("v-orphan");
+  });
+});
+
+describe("parseVmMapEntry tolerant reader", () => {
+  test("accepts new sandboxProviderKind field", () => {
+    const result = parseVmMapEntry({
+      vmId: "v1",
+      previewUrl: null,
+      sandboxProviderKind: "docker",
+    });
+    expect(result.sandboxProviderKind).toBe("docker");
+  });
+
+  test("normalizes legacy runnerKind into sandboxProviderKind", () => {
+    const result = parseVmMapEntry({
+      vmId: "v1",
+      previewUrl: null,
+      runnerKind: "remote-user",
+    });
+    expect(result.sandboxProviderKind).toBe("remote-user");
+    expect(
+      (result as unknown as { runnerKind?: unknown }).runnerKind,
+    ).toBeUndefined();
+  });
+
+  test("prefers explicit sandboxProviderKind when both keys present", () => {
+    const result = parseVmMapEntry({
+      vmId: "v1",
+      previewUrl: null,
+      runnerKind: "docker",
+      sandboxProviderKind: "remote-user",
+    });
+    expect(result.sandboxProviderKind).toBe("remote-user");
+  });
 });

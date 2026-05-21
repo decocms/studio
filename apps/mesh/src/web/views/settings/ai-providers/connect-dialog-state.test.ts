@@ -21,8 +21,6 @@ describe("connect-dialog reducer", () => {
       { kind: "grid" },
       { kind: "form", providerId: "openai", presetId: null },
       { kind: "oauth-pending", providerId: "anthropic", stateToken: "x" },
-      { kind: "cli-pending", providerId: "claude-code" },
-      { kind: "cli-error", providerId: "claude-code", error: "x" },
       { kind: "provision-pending", providerId: "deco" },
       { kind: "provision-error", providerId: "deco", error: "x" },
     ];
@@ -36,8 +34,6 @@ describe("connect-dialog reducer", () => {
       { kind: "grid" },
       { kind: "form", providerId: "openai", presetId: null },
       { kind: "oauth-pending", providerId: "anthropic", stateToken: "abc" },
-      { kind: "cli-pending", providerId: "claude-code" },
-      { kind: "cli-error", providerId: "claude-code", error: "no cli" },
       { kind: "provision-pending", providerId: "deco" },
       { kind: "provision-error", providerId: "deco", error: "boom" },
     ];
@@ -89,37 +85,6 @@ describe("connect-dialog reducer", () => {
     });
   });
 
-  test("select-cli transitions grid → cli-pending", () => {
-    expect(
-      reducer(
-        { kind: "grid" },
-        { type: "select-cli", providerId: "claude-code" },
-      ),
-    ).toEqual({ kind: "cli-pending", providerId: "claude-code" });
-  });
-
-  test("cli-error transitions cli-pending → cli-error", () => {
-    expect(
-      reducer(
-        { kind: "cli-pending", providerId: "claude-code" },
-        { type: "cli-error", error: "CLI not signed in" },
-      ),
-    ).toEqual({
-      kind: "cli-error",
-      providerId: "claude-code",
-      error: "CLI not signed in",
-    });
-  });
-
-  test("retry-cli transitions cli-error → cli-pending", () => {
-    expect(
-      reducer(
-        { kind: "cli-error", providerId: "claude-code", error: "x" },
-        { type: "retry-cli" },
-      ),
-    ).toEqual({ kind: "cli-pending", providerId: "claude-code" });
-  });
-
   test("select-provision transitions grid → provision-pending", () => {
     expect(
       reducer(
@@ -155,8 +120,6 @@ describe("connect-dialog reducer", () => {
     const intermediate: DialogState[] = [
       { kind: "form", providerId: "openai", presetId: null },
       { kind: "oauth-pending", providerId: "anthropic", stateToken: "x" },
-      { kind: "cli-pending", providerId: "claude-code" },
-      { kind: "cli-error", providerId: "claude-code", error: "x" },
       { kind: "provision-pending", providerId: "deco" },
       { kind: "provision-error", providerId: "deco", error: "x" },
     ];
@@ -189,9 +152,6 @@ describe("connect-dialog reducer", () => {
       providerId: "openai",
       presetId: null,
     };
-    expect(
-      reducer(s, { type: "select-cli", providerId: "claude-code" }),
-    ).toEqual(s);
     expect(
       reducer(s, { type: "select-provision", providerId: "deco" }),
     ).toEqual(s);

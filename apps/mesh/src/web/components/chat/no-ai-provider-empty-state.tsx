@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Zap } from "@untitledui/icons";
+import { Check, Laptop01, Zap } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ConnectProviderDialog } from "@/web/views/settings/ai-providers/connect-provider-dialog";
 import {
@@ -7,16 +7,25 @@ import {
   type ProviderSelection,
 } from "@/web/views/settings/ai-providers/provider-grid";
 import {
+  SettingsCard,
+  SettingsCardItem,
+} from "@/web/components/settings/settings-section";
+import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useAiProviders } from "@/web/hooks/collections/use-ai-providers";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
+import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 import { useQuery } from "@tanstack/react-query";
 import type { BrandContext } from "@/storage/types";
+import {
+  ConnectLaptopDialog,
+  visibleCapabilities,
+} from "./connect-laptop-dialog";
 
 interface NoAiProviderEmptyStateProps {
   title?: string;
@@ -83,6 +92,8 @@ export function NoAiProviderEmptyState({
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
+  const [laptopOpen, setLaptopOpen] = useState(false);
+  const link = useCurrentLink();
 
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
@@ -99,8 +110,8 @@ export function NoAiProviderEmptyState({
   const subtitle =
     description ??
     (localMode
-      ? "Connect a provider to get started — local models and existing subscriptions work too."
-      : "Choose how to power your AI team.");
+      ? "Connect a provider, or run `bunx decocms link` on your desktop for Claude Code, Codex, and local files."
+      : "Connect a provider — or run `bunx decocms link` on your desktop to use Claude Code, Codex, or your local files.");
 
   // Badge styles: use brand color if available, otherwise lime gradient
   const hasBrandStyle = !!(brandIcon || primaryColor);
@@ -150,6 +161,35 @@ export function NoAiProviderEmptyState({
         />
       </div>
 
+      <div className="w-full">
+        <SettingsCard>
+          {link.online ? (
+            <SettingsCardItem
+              onClick={() => setLaptopOpen(true)}
+              icon={
+                <div className="size-8 rounded-md bg-success/10 flex items-center justify-center text-success">
+                  <Check size={16} />
+                </div>
+              }
+              title="Desktop connected"
+              description={(() => {
+                const labels = visibleCapabilities(link.capabilities);
+                return labels.length > 0
+                  ? `Available: ${labels.join(", ")}`
+                  : "No CLI agents detected on this desktop";
+              })()}
+            />
+          ) : (
+            <SettingsCardItem
+              onClick={() => setLaptopOpen(true)}
+              icon={<Laptop01 size={16} />}
+              title="Connect your desktop"
+              description="Use Claude Code, Codex, or your local files via the link CLI."
+            />
+          )}
+        </SettingsCard>
+      </div>
+
       <ConnectProviderDialog
         open={pendingProvider !== null || gridOpen}
         onOpenChange={(o) => {
@@ -160,6 +200,8 @@ export function NoAiProviderEmptyState({
         }}
         initialProvider={pendingProvider ?? undefined}
       />
+
+      <ConnectLaptopDialog open={laptopOpen} onOpenChange={setLaptopOpen} />
     </div>
   );
 }

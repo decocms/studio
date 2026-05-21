@@ -11,8 +11,12 @@
   },
   "exports": {
     "./shared": "./shared.ts",
-    "./runner": "./server/runner/index.ts",
-    "./runner/agent-sandbox": "./server/runner/agent-sandbox/index.ts"
+    "./provider": "./server/provider/index.ts",
+    "./provider/agent-sandbox": "./server/provider/agent-sandbox/index.ts",
+    "./daemon-spawn": "./server/daemon-spawn.ts",
+    "./provider/remote-user": "./server/provider/remote-user/index.ts",
+    "./daemon-client": "./server/daemon-client.ts",
+    "./daemon/routes/dispatch": "./daemon/routes/dispatch.ts"
   },
   "dependencies": {
     "@kubernetes/client-node": "^1.4.0",

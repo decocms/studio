@@ -40,6 +40,9 @@ import {
   type SubmitAction,
   type ThreadObserver,
 } from "./store/thread-connection";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import type { HarnessId } from "@/harnesses";
+import { AGENT_OPTION_PINS, type AgentOption } from "./pills/agent-options";
 import {
   pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
@@ -92,6 +95,7 @@ import type { Task } from "./task/types";
 import type { SendMessageParams, SetAppContextParams } from "./store/types";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { chatModeForTransportRef } from "../../lib/chat-mode-sync";
+import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
@@ -174,6 +178,28 @@ export interface ChatPrefsContextValue {
   /** The currently selected tier in Simple Model Mode */
   simpleModeTier: SimpleTier;
   setSimpleModeTier: (tier: SimpleTier) => void;
+  /**
+   * The agent option the chat will use for the next first message
+   * (`Decopilot` / `Decopilot desktop` / `Claude Code desktop` /
+   * `Codex desktop`). Single source of truth for the (harness, sandbox)
+   * pair — see `AGENT_OPTION_PINS` in `./pills/agent-options`.
+   *
+   * This is the **effective** value: the user's persisted pick filtered
+   * through what the active agent can actually run. If the user picked a
+   * desktop variant but the current agent has no clonable source
+   * (Decopilot-only / ephemeral), this falls back to plain Decopilot.
+   * The persisted pick is unchanged and returns when navigating back to
+   * an agent with a checkout. The setter writes to the raw underlying state.
+   *
+   * Null = server picks the default. Persisted to localStorage so the
+   * choice survives page reloads.
+   */
+  pendingAgentOption: AgentOption | null;
+  setPendingAgentOption: (option: AgentOption | null) => void;
+  /** Derived from `pendingAgentOption`. Read-only. */
+  pendingHarnessId: HarnessId | null;
+  /** Derived from `pendingAgentOption`. Read-only. */
+  pendingSandboxProviderKind: SandboxProviderKind | null;
 }
 
 // ============================================================================
@@ -449,6 +475,63 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     });
   };
 
+  // Pending agent — single source of truth for the user's pre-message
+  // pick (`Decopilot` / `Decopilot desktop` / `Claude Code desktop` /
+  // `Codex desktop`). Persisted to localStorage so the choice survives
+  // page reloads.
+  //
+  // Everything else (`pendingHarnessId`, `pendingSandboxProviderKind`,
+  // the request body's harnessId/sandboxProviderKind) derives from this
+  // through `AGENT_OPTION_PINS`, so the pill display and the submit can
+  // never disagree.
+  const [pendingAgentOption, setPendingAgentOptionState] =
+    useState<AgentOption | null>(() => {
+      try {
+        const stored = localStorage.getItem(
+          "chat:lastAgentOption",
+        ) as AgentOption | null;
+        return stored && stored in AGENT_OPTION_PINS ? stored : null;
+      } catch {
+        return null;
+      }
+    });
+  const setPendingAgentOption = (option: AgentOption | null) => {
+    setPendingAgentOptionState(option);
+    try {
+      if (option === null) {
+        localStorage.removeItem("chat:lastAgentOption");
+      } else {
+        localStorage.setItem("chat:lastAgentOption", option);
+      }
+    } catch {
+      // ignore storage errors (private browsing, quota exceeded, etc.)
+    }
+  };
+
+  // Effective option: the user's pick filtered through what the current
+  // agent can actually run. Laptop-CLI options (Claude Code / Codex /
+  // Decopilot desktop) need a git branch to check out on the user's
+  // desktop; if the user picked a desktop variant but the current agent
+  // has no clonable source (Decopilot-only / ephemeral), this falls back
+  // to plain Decopilot. The persisted pick is unchanged and returns when
+  // navigating back to an agent with a checkout.
+  const hasClonableSource = agentHasClonableSource(
+    selectedVirtualMcpData?.metadata,
+  );
+  const effectiveAgentOption: AgentOption | null =
+    pendingAgentOption === null
+      ? null
+      : !hasClonableSource &&
+          AGENT_OPTION_PINS[pendingAgentOption].sandbox === "remote-user"
+        ? "decopilot"
+        : pendingAgentOption;
+
+  const effectivePins = effectiveAgentOption
+    ? AGENT_OPTION_PINS[effectiveAgentOption]
+    : null;
+  const pendingHarnessId = effectivePins?.harness ?? null;
+  const pendingSandboxProviderKind = effectivePins?.sandbox ?? null;
+
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
   const tiptapDocRef = useRef<Metadata["tiptapDoc"]>(tiptapDoc);
@@ -486,6 +569,10 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     resetInteraction: () => {},
     simpleModeTier: activeTier,
     setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
+    pendingAgentOption: effectiveAgentOption,
+    setPendingAgentOption,
+    pendingHarnessId,
+    pendingSandboxProviderKind,
   };
 
   return (
@@ -663,6 +750,8 @@ export function ActiveTaskProvider({
     appContexts,
     setTiptapDoc,
     simpleModeTier: activeTier,
+    pendingSandboxProviderKind,
+    pendingHarnessId,
   } = useChatPrefs();
   const internals = useContext(TaskInternalsCtx);
   if (!internals) {
@@ -859,6 +948,8 @@ export function ActiveTaskProvider({
         agent: { id: capturedVirtualMcpId },
         thread_id: capturedTaskId,
         branch: currentBranch,
+        sandboxProviderKind: pendingSandboxProviderKind || undefined,
+        harnessId: pendingHarnessId || undefined,
       },
     );
   }

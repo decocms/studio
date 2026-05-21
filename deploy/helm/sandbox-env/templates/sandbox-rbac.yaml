@@ -1,5 +1,5 @@
 # RBAC for the mesh ServiceAccount to drive the agent-sandbox operator from
-# inside the cluster. The runner (packages/sandbox/server/runner/agent-sandbox/) needs:
+# inside the cluster. The runner (packages/sandbox/server/provider/agent-sandbox/) needs:
 #   - sandboxclaims CRUD/patch (per-tenant claim lifecycle, idle TTL refresh)
 #   - sandboxes get/list/watch (waitForSandboxReady streams `?watch=true`)
 #   - pods/portforward create (kubectl-style tunnel to the daemon container)

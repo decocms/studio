@@ -318,6 +318,13 @@ export const KEYS = {
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
   liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
 
+  // Link daemon status (user-scoped; the cluster derives the userSub
+  // from the bearer session, so we don't include it in the key).
+  linkStatus: () => ["link-status"] as const,
+
+  // Current link info (org-scoped; includes capabilities, machineId, cliVersion).
+  currentLink: (orgId: string) => ["current-link", orgId] as const,
+
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>
     ["github-user-orgs", orgId, connectionId] as const,

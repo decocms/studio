@@ -2,13 +2,13 @@
  * VM File Tools — runner-agnostic.
  *
  * Registers the six LLM-visible tools (read/write/edit/grep/glob/bash) on
- * top of any `SandboxRunner.proxyDaemonRequest`. All runners speak the
+ * top of any `SandboxProvider.proxyDaemonRequest`. All runners speak the
  * unified `/_decopilot_vm/*` surface with plain JSON bodies.
  */
 
 import { tool, zodSchema } from "ai";
 import path from "node:path";
-import type { SandboxRunner } from "@decocms/sandbox/runner";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
 import { maybeTruncate } from "./common";
 import {
   buildBashDescription,
@@ -103,7 +103,7 @@ function toFileDownloadUrl(
 export type { VmToolsParams } from "./types";
 
 async function daemonRequest(
-  runner: SandboxRunner,
+  runner: SandboxProvider,
   handle: string,
   path: string,
   body: Record<string, unknown> | null,

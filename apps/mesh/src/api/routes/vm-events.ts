@@ -38,12 +38,16 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
   composeSandboxRef,
-  resolveRunnerKindFromEnv,
-} from "@decocms/sandbox/runner";
-import type { ClaimPhase } from "@decocms/sandbox/runner";
+  resolveSandboxProviderKindFromEnv,
+} from "@decocms/sandbox/provider";
+import type {
+  ClaimPhase,
+  SandboxProviderKind,
+} from "@decocms/sandbox/provider";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
   getOrInitSharedRunner,
+  getSharedSandboxProvider,
   subscribeLifecycle,
 } from "../../sandbox/lifecycle";
 import {
@@ -52,7 +56,7 @@ import {
   requireOrganization,
   type MeshContext,
 } from "../../core/mesh-context";
-import { KyselySandboxRunnerStateStore } from "../../storage/sandbox-runner-state";
+import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import { readVmMap, resolveVm } from "../../tools/vm/vm-map";
 import type { Env } from "../hono-env";
 
@@ -111,7 +115,7 @@ export const createVmEventsRoutes = () => {
       branch,
     });
     const claimName = computeClaimHandle({ userId, projectRef }, branch);
-    const runnerKind = resolveRunnerKindFromEnv();
+    const providerKind = resolveSandboxProviderKindFromEnv();
 
     // Snapshot vmMap from the same metadata read used for the org-ownership
     // check. Used below to gate the stale-handle probe: we only run it when
@@ -125,14 +129,32 @@ export const createVmEventsRoutes = () => {
       readVmMap(virtualMcp.metadata as Record<string, unknown> | null),
       userId,
       branch,
+      providerKind,
     );
     const expectingHandle = existingVmEntry?.vmId === claimName;
-    const existingRunnerKind = existingVmEntry?.runnerKind ?? null;
 
-    const runner = await getOrInitSharedRunner();
+    // User-scoped resolution: for `remote-user` this picks the acting
+    // user's link daemon; for other kinds it falls through to the env
+    // singleton. Wrapped in a try because the remote-user path throws a
+    // typed error when no link is registered — in that case we want to
+    // emit a `failed` phase with a user-actionable message, NOT fall
+    // through to `getOrInitSharedRunner()` (which would re-throw the
+    // same error from `instantiate("remote-user")`).
+    let runner: Awaited<ReturnType<typeof getSharedSandboxProvider>> | null;
+    let resolveError: Error | null = null;
+    try {
+      runner = await getSharedSandboxProvider(ctx);
+    } catch (err) {
+      resolveError = err instanceof Error ? err : new Error(String(err));
+      // For non-remote-user kinds, try the env singleton as a last
+      // resort. For remote-user the throw IS the answer.
+      if (providerKind !== "remote-user") {
+        runner = await getOrInitSharedRunner().catch(() => null);
+      } else {
+        runner = null;
+      }
+    }
 
-    // No runner configured at all → can't proxy daemon SSE. Surface a failed
-    // phase rather than a silent close so the UI shows a meaningful error.
     if (!runner) {
       return streamSSE(c, async (stream) => {
         await stream.writeSSE({
@@ -140,7 +162,9 @@ export const createVmEventsRoutes = () => {
           data: JSON.stringify({
             kind: "failed",
             reason: "unknown",
-            message: "No sandbox runner configured on this mesh.",
+            message:
+              resolveError?.message ??
+              "No sandbox runner configured on this mesh.",
           } satisfies ClaimPhase),
         });
       });
@@ -178,7 +202,7 @@ export const createVmEventsRoutes = () => {
               claimName,
               userId,
               projectRef,
-              runnerKind: existingRunnerKind ?? runnerKind,
+              sandboxProviderKind: providerKind,
             });
             await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
             return;
@@ -239,7 +263,7 @@ async function isStaleHandle(
  *
  * `runner.delete` is idempotent: it 404-tolerantly tries to delete the
  * SandboxClaim, closes any forwarder, drops in-memory + state-store rows.
- * The runner-kind dispatch matches the *prior* kind (existingRunnerKind)
+ * The provider-kind dispatch matches the *prior* kind (existingRunnerKind)
  * so we don't leave behind rows in the wrong table when the env's runner
  * has flipped between starts and stops.
  *
@@ -263,9 +287,16 @@ async function cleanupStaleEntry(args: {
   claimName: string;
   userId: string;
   projectRef: string;
-  runnerKind: "host" | "docker" | "agent-sandbox";
+  sandboxProviderKind: SandboxProviderKind;
 }): Promise<void> {
-  const { ctx, runner, claimName, userId, projectRef, runnerKind } = args;
+  const {
+    ctx,
+    runner,
+    claimName,
+    userId,
+    projectRef,
+    sandboxProviderKind: providerKind,
+  } = args;
   try {
     await runner.delete(claimName);
   } catch (err) {
@@ -276,11 +307,11 @@ async function cleanupStaleEntry(args: {
     );
   }
   try {
-    const stateStore = new KyselySandboxRunnerStateStore(ctx.db);
-    await stateStore.delete({ userId, projectRef }, runnerKind);
+    const stateStore = new KyselySandboxProviderStateStore(ctx.db);
+    await stateStore.delete({ userId, projectRef }, providerKind);
   } catch (err) {
     console.warn(
-      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${runnerKind}: ${
+      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${providerKind}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

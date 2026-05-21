@@ -1,5 +1,5 @@
 import type { RuntimeEnvEntry } from "@decocms/mesh-sdk";
-import type { SandboxRunner } from "@decocms/sandbox/runner";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
 import {
   SecretAccessDeniedError,
   SecretNotFoundError,
@@ -8,7 +8,7 @@ import type { MeshContext } from "../../core/mesh-context";
 
 interface ResolveAndPushParams {
   ctx: MeshContext;
-  runner: SandboxRunner;
+  runner: SandboxProvider;
   handle: string;
   orgId: string;
   userId: string;

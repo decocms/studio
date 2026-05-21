@@ -9,12 +9,15 @@
 
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { resolveRunnerKindFromEnv } from "@decocms/sandbox/runner";
-import type { ClaimPhase } from "@decocms/sandbox/runner";
+import {
+  resolveSandboxProviderKindFromEnv,
+  type SandboxProviderKind,
+  type SandboxProvider,
+} from "@decocms/sandbox/provider";
+import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
-import type { SandboxRunner } from "@decocms/sandbox/runner";
 import type { MeshContext } from "../../core/mesh-context";
-import { KyselySandboxRunnerStateStore } from "../../storage/sandbox-runner-state";
+import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import { readVmMap, resolveVm } from "../../tools/vm/vm-map";
 import type { Env } from "../hono-env";
 
@@ -40,7 +43,7 @@ const PROXY_OPEN_RETRY_DELAY_MS = 500;
 export interface VmEventsHandlerArgs {
   ctx: MeshContext;
   claimName: string;
-  runner: SandboxRunner;
+  runner: SandboxProvider;
   branch: string;
   userId: string;
   projectRef: string;
@@ -57,15 +60,19 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     projectRef,
     virtualMcpMetadata,
   } = args;
-  const runnerKind = resolveRunnerKindFromEnv();
+  const providerKind = resolveSandboxProviderKindFromEnv();
 
   const existingVmEntry = resolveVm(
     readVmMap(virtualMcpMetadata),
     userId,
     branch,
+    providerKind,
   );
   const expectingHandle = existingVmEntry?.vmId === claimName;
-  const existingRunnerKind = existingVmEntry?.runnerKind ?? null;
+  // Coalesce legacy kinds ("host", "freestyle") to the current env kind.
+  const rawKind = existingVmEntry?.sandboxProviderKind;
+  const existingProviderKind: SandboxProviderKind | null =
+    rawKind === "host" || rawKind === "freestyle" ? null : (rawKind ?? null);
 
   c.header("X-Accel-Buffering", "no");
   c.header("Content-Encoding", "identity");
@@ -92,7 +99,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
             claimName,
             userId,
             projectRef,
-            runnerKind: existingRunnerKind ?? runnerKind,
+            sandboxProviderKind: existingProviderKind ?? providerKind,
           });
           await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
           return;
@@ -122,7 +129,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
 }
 
 async function isStaleHandle(
-  runner: SandboxRunner,
+  runner: SandboxProvider,
   claimName: string,
 ): Promise<boolean> {
   try {
@@ -140,13 +147,14 @@ async function isStaleHandle(
 
 async function cleanupStaleEntry(args: {
   ctx: MeshContext;
-  runner: SandboxRunner;
+  runner: SandboxProvider;
   claimName: string;
   userId: string;
   projectRef: string;
-  runnerKind: "host" | "docker" | "agent-sandbox";
+  sandboxProviderKind: SandboxProviderKind;
 }): Promise<void> {
-  const { ctx, runner, claimName, userId, projectRef, runnerKind } = args;
+  const { ctx, runner, claimName, userId, projectRef, sandboxProviderKind } =
+    args;
   try {
     await runner.delete(claimName);
   } catch (err) {
@@ -157,11 +165,11 @@ async function cleanupStaleEntry(args: {
     );
   }
   try {
-    const stateStore = new KyselySandboxRunnerStateStore(ctx.db);
-    await stateStore.delete({ userId, projectRef }, runnerKind);
+    const stateStore = new KyselySandboxProviderStateStore(ctx.db);
+    await stateStore.delete({ userId, projectRef }, sandboxProviderKind);
   } catch (err) {
     console.warn(
-      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${runnerKind}: ${
+      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${sandboxProviderKind}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -171,7 +179,7 @@ async function cleanupStaleEntry(args: {
 async function emitLifecycle(args: {
   stream: import("hono/streaming").SSEStreamingApi;
   claimName: string;
-  runner: SandboxRunner;
+  runner: SandboxProvider;
   signal: AbortSignal;
 }): Promise<boolean> {
   const { stream, claimName, runner, signal } = args;
@@ -223,7 +231,7 @@ async function emitLifecycle(args: {
 
 async function proxyDaemonEvents(args: {
   stream: import("hono/streaming").SSEStreamingApi;
-  runner: SandboxRunner;
+  runner: SandboxProvider;
   claimName: string;
   signal: AbortSignal;
 }): Promise<void> {

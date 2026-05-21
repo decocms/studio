@@ -17,7 +17,7 @@
  * the admin surface stays uncallable from preview hosts.
  */
 
-import type { AgentSandboxRunner } from "@decocms/sandbox/runner/agent-sandbox";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 
 /**
  * Cap on frames buffered between client upgrade and upstream WS open. Vite
@@ -94,7 +94,7 @@ export interface PreviewProxyDeps {
    * the agent-sandbox runner — the caller treats null as "not a preview
    * deployment" and falls through.
    */
-  getRunner: () => Promise<AgentSandboxRunner | null>;
+  getRunner: () => Promise<AgentSandboxProvider | null>;
   baseDomain: string;
 }
 

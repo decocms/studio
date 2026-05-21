@@ -6,7 +6,7 @@
 import type { ConfigPatch } from "../daemon/config-store/types";
 import type { TenantConfig } from "../daemon/types";
 import { sleep } from "../shared";
-import type { ExecInput, ExecOutput } from "./runner/types";
+import type { ExecInput, ExecOutput } from "./provider/types";
 
 export type { ConfigPatch };
 

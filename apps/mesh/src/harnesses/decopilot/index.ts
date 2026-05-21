@@ -28,22 +28,80 @@
  * leaking raw JSON into every subsequent turn.
  */
 
-import type { UIMessageChunk } from "ai";
+import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { HarnessContext } from "../../core/harness-context";
 import type { MeshContext } from "../../core/mesh-context";
 import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
+import type { MeshProvider } from "../../ai-providers/types";
+import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
+import type { ChatMessage } from "../../api/routes/decopilot/types";
+import type { ChatMode } from "../../api/routes/decopilot/mode-config";
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 import { processConversation } from "../../api/routes/decopilot/conversation";
 import { DEFAULT_WINDOW_SIZE } from "../../api/routes/decopilot/constants";
 import { assembleDecopilotTools } from "./tools";
 import { assembleDecopilotPrompt } from "./prompt";
 import { runDecopilotStream } from "./run-stream";
+import type { PendingImage } from "./built-in-tools";
+
+/** Narrowed view of `HarnessStreamInput.processLocal` for the cluster
+ *  decopilot harness. The package types those structurally-deep fields
+ *  as `unknown` so the package stays portable to the laptop daemon; the
+ *  cluster knows it builds richer values and narrows here at the
+ *  harness boundary. */
+interface ClusterProcessLocal {
+  writer: UIMessageStreamWriter;
+  toolOutputMap: Map<string, string>;
+  pendingImages: PendingImage[];
+  threadId: string;
+  currentThreadTitle: string;
+  registrySignal: AbortSignal;
+  runRegistry: RunRegistry;
+  provider: MeshProvider | null;
+  registerPendingOp: (op: Promise<void>) => void;
+  isStreamFinished: () => boolean;
+  onUsageAggregated: (totalUsage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }) => void;
+  onTitleUpdated?: (title: string) => void | Promise<void>;
+}
+
+/** Narrowed view of the cluster's richer input fields, mirroring what
+ *  `dispatch-run.ts` actually builds. */
+interface ClusterInputView {
+  messages: ChatMessage[];
+  mode: ChatMode;
+  virtualMcp: VirtualMCPEntity;
+}
 
 export const decopilotHarnessFactory: HarnessFactory = {
   id: "decopilot",
-  create(ctx: MeshContext): Harness {
+  create(harnessCtx: HarnessContext): Harness {
+    // `stream()` refuses to run without processLocal, so any cluster-only
+    // ctx field reads only happen on a real MeshContext value. The widening
+    // cast here is a TS-level erasure; the defensive check below catches a
+    // narrow HarnessContext smuggled in via misuse (e.g. a non-decopilot
+    // caller mistakenly invoking this factory on the laptop).
+    //
+    // `storage` and `db` are required fields on MeshContext but absent
+    // from HarnessContext, so their presence reliably distinguishes the
+    // two at runtime.
+    if (!("storage" in harnessCtx) || !("db" in harnessCtx)) {
+      throw new Error(
+        "decopilot harness requires MeshContext (cluster-side only); " +
+          "got narrow HarnessContext",
+      );
+    }
+    const ctx = harnessCtx as MeshContext;
     return {
       id: "decopilot",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
-        const pl = input.processLocal;
+        // Package types are intentionally loose so the harness package
+        // is daemon-portable; narrow back to cluster-rich types here.
+        const pl = input.processLocal as ClusterProcessLocal | undefined;
+        const clusterInput = input as HarnessStreamInput & ClusterInputView;
         if (!pl) {
           throw new Error(
             "Decopilot harness requires HarnessStreamInput.processLocal in this build. " +
@@ -80,7 +138,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
             systemMessages: processedSystemMessages,
             messages: processedMessages,
             originalMessages,
-          } = await processConversation(input.messages, {
+          } = await processConversation(clusterInput.messages, {
             windowSize: DEFAULT_WINDOW_SIZE,
             models: input.models,
             tools: tools.tools,

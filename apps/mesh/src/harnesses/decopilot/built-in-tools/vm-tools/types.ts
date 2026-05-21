@@ -1,9 +1,9 @@
-import type { SandboxRunner } from "@decocms/sandbox/runner";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { MeshContext } from "@/core/mesh-context";
 import type { PendingImage } from "../take-screenshot";
 
 export interface VmToolsParams {
-  readonly runner: SandboxRunner;
+  readonly runner: SandboxProvider;
   /**
    * Lazy handle resolver. Invoked on every tool call; caller is expected
    * to memoise so the first invocation provisions and later calls reuse.

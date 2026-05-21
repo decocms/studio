@@ -14,9 +14,16 @@ import { Chat } from "./index";
 import { useChatStream, useChatPrefs, useChatTask } from "./context";
 import { ChatContextPanel } from "./context-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
-import { BranchPicker } from "../thread/github/branch-picker.tsx";
+import { ThreadPills } from "./pills/thread-pills";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import type { HarnessId } from "@/harnesses";
 
+import {
+  agentHasClonableSource,
+  hasLocalCliHarness,
+} from "@/web/lib/agent-capabilities";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 
 // ---------- Default sidebar empty state ----------
@@ -25,15 +32,22 @@ function SidebarEmptyState() {
   const { org } = useProjectContext();
   const { selectedVirtualMcp } = useChatPrefs();
   const { data: session } = authClient.useSession();
-  const { currentBranch, setCurrentTaskBranch } = useChatTask();
+  const { activeTask, currentBranch, setCurrentTaskBranch } = useChatTask();
 
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
   const fullVm = useVirtualMCP(displayAgent.id);
 
   const userId = session?.user?.id ?? "";
+  const agentId = displayAgent.id;
   const githubRepo = fullVm?.metadata?.githubRepo ?? null;
-  const showBranchPicker = !!githubRepo?.connectionId && !!userId;
+  const showBranchPicker =
+    agentHasClonableSource(fullVm?.metadata) && !!userId && !!agentId;
+
+  // Active thread's pinned kind + harness (null on a brand-new thread).
+  const threadKind = (activeTask?.sandbox_provider_kind ??
+    null) as SandboxProviderKind | null;
+  const threadHarness = (activeTask?.harness_id ?? null) as HarnessId | null;
 
   return (
     <div className="h-full w-full flex flex-col items-center justify-center gap-6 px-4">
@@ -54,16 +68,19 @@ function SidebarEmptyState() {
         </div>
         {showBranchPicker && (
           <div className="mt-2">
-            <BranchPicker
+            <ThreadPills
               orgId={org.id}
               orgSlug={org.slug}
               userId={userId}
-              connectionId={githubRepo.connectionId!}
-              owner={githubRepo.owner}
-              repo={githubRepo.name}
+              virtualMcpId={agentId!}
+              connectionId={githubRepo?.connectionId ?? ""}
+              owner={githubRepo?.owner ?? ""}
+              repo={githubRepo?.name ?? ""}
               vmMap={fullVm?.metadata?.vmMap}
-              value={currentBranch ?? undefined}
-              onChange={setCurrentTaskBranch}
+              currentBranch={currentBranch}
+              onBranchChange={setCurrentTaskBranch}
+              threadKind={threadKind}
+              threadHarness={threadHarness}
             />
           </div>
         )}
@@ -83,8 +100,21 @@ function ChatPanelContent() {
   const { isChatEmpty } = useChatStream();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
+  const { selectedVirtualMcp } = useChatPrefs();
+  const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
+  const displayAgent = selectedVirtualMcp ?? defaultAgent;
+  const fullVm = useVirtualMCP(displayAgent.id);
+  const link = useCurrentLink();
 
-  if (allKeys.length === 0) {
+  // Clonable agents (Start Website + GitHub-imported) can route through
+  // a laptop CLI harness when one is online, so the no-provider gate
+  // only fires for them if neither a cloud provider nor a local CLI is
+  // available.
+  const isClonableAgent = agentHasClonableSource(fullVm?.metadata);
+  const showProviderEmptyState =
+    allKeys.length === 0 && !(isClonableAgent && hasLocalCliHarness(link));
+
+  if (showProviderEmptyState) {
     return (
       <Chat className="animate-in fade-in-0 duration-200">
         <Chat.Main className="flex flex-col items-center">

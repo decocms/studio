@@ -1,7 +1,7 @@
 /**
  * Kysely-backed RunnerStateStore. `state` jsonb is opaque — each runner
  * serialises its own fields. See
- * packages/@decocms/sandbox/server/runner/.
+ * packages/@decocms/sandbox/server/provider/.
  *
  * Method implementations take an explicit executor (db or trx) so the scoped
  * store handed to `withLock` callbacks can reuse the lock's connection. If
@@ -19,7 +19,7 @@ import type {
   RunnerStateStore,
   RunnerStateStoreOps,
   SandboxId,
-} from "@decocms/sandbox/runner";
+} from "@decocms/sandbox/provider";
 import type { Database } from "./types";
 
 type Executor = Kysely<Database>;
@@ -49,7 +49,7 @@ async function getRow(
     .select(["handle", "state", "updated_at"])
     .where("user_id", "=", id.userId)
     .where("project_ref", "=", id.projectRef)
-    .where("runner_kind", "=", kind)
+    .where("sandbox_provider_kind", "=", kind)
     .executeTakeFirst();
   if (!row) return null;
   return {
@@ -67,7 +67,7 @@ async function getByHandleRow(
   const row = await exec
     .selectFrom("sandbox_runner_state")
     .select(["user_id", "project_ref", "handle", "state", "updated_at"])
-    .where("runner_kind", "=", kind)
+    .where("sandbox_provider_kind", "=", kind)
     .where("handle", "=", handle)
     .executeTakeFirst();
   if (!row) return null;
@@ -92,17 +92,19 @@ async function putRow(
     .values({
       user_id: id.userId,
       project_ref: id.projectRef,
-      runner_kind: kind,
+      sandbox_provider_kind: kind,
       handle: entry.handle,
       state: stateJson,
       updated_at: now,
     })
     .onConflict((oc) =>
-      oc.columns(["user_id", "project_ref", "runner_kind"]).doUpdateSet({
-        handle: entry.handle,
-        state: stateJson,
-        updated_at: now,
-      }),
+      oc
+        .columns(["user_id", "project_ref", "sandbox_provider_kind"])
+        .doUpdateSet({
+          handle: entry.handle,
+          state: stateJson,
+          updated_at: now,
+        }),
     )
     .execute();
 }
@@ -116,7 +118,7 @@ async function deleteRow(
     .deleteFrom("sandbox_runner_state")
     .where("user_id", "=", id.userId)
     .where("project_ref", "=", id.projectRef)
-    .where("runner_kind", "=", kind)
+    .where("sandbox_provider_kind", "=", kind)
     .execute();
 }
 
@@ -127,7 +129,7 @@ async function deleteByHandleRow(
 ): Promise<void> {
   await exec
     .deleteFrom("sandbox_runner_state")
-    .where("runner_kind", "=", kind)
+    .where("sandbox_provider_kind", "=", kind)
     .where("handle", "=", handle)
     .execute();
 }
@@ -142,7 +144,7 @@ function scopedStore(exec: Executor): RunnerStateStoreOps {
   };
 }
 
-export class KyselySandboxRunnerStateStore implements RunnerStateStore {
+export class KyselySandboxProviderStateStore implements RunnerStateStore {
   constructor(private db: Kysely<Database>) {}
 
   get(id: SandboxId, kind: string): Promise<RunnerStateRecord | null> {

@@ -86,6 +86,20 @@ export const ThreadEntitySchema = z.object({
     .nullable()
     .optional()
     .describe("Git branch this thread is pinned to (GitHub-linked vms only)"),
+  sandbox_provider_kind: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Pinned on first message; identifies which VM to dispatch to (e.g. 'docker', 'freestyle', 'agent-sandbox', 'remote-user').",
+    ),
+  harness_id: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Pinned on first message; selects which harness runs the thread (e.g. 'claude-code', 'codex', 'decopilot').",
+    ),
   metadata: ThreadMetadataSchema.optional().describe(
     "Free-form per-thread UI state (e.g. expanded_tools)",
   ),

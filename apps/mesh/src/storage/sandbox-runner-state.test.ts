@@ -1,21 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import type { SandboxId } from "@decocms/sandbox/runner";
+import type { SandboxId } from "@decocms/sandbox/provider";
 import {
   closeTestDatabase,
   createTestDatabase,
   type TestDatabase,
 } from "../database/test-db";
-import { KyselySandboxRunnerStateStore } from "./sandbox-runner-state";
+import { KyselySandboxProviderStateStore } from "./sandbox-runner-state";
 import { createTestSchema } from "./test-helpers";
 
-describe("KyselySandboxRunnerStateStore", () => {
+describe("KyselySandboxProviderStateStore", () => {
   let database: TestDatabase;
-  let store: KyselySandboxRunnerStateStore;
+  let store: KyselySandboxProviderStateStore;
 
   beforeAll(async () => {
     database = await createTestDatabase();
     await createTestSchema(database.db);
-    store = new KyselySandboxRunnerStateStore(database.db);
+    store = new KyselySandboxProviderStateStore(database.db);
   });
 
   afterAll(async () => {
@@ -50,7 +50,7 @@ describe("KyselySandboxRunnerStateStore", () => {
     expect(row!.updatedAt.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
   });
 
-  it("put UPSERTs on same (user_id, project_ref, runner_kind)", async () => {
+  it("put UPSERTs on same (user_id, project_ref, sandbox_provider_kind)", async () => {
     const id = mkId("upsert");
     await store.put(id, "docker", {
       handle: "upsert-handle-1",
@@ -69,7 +69,7 @@ describe("KyselySandboxRunnerStateStore", () => {
     // Verify only one row exists for this (user, project, kind).
     const { rows } = await database.pglite.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM sandbox_runner_state
-         WHERE user_id = $1 AND project_ref = $2 AND runner_kind = $3`,
+         WHERE user_id = $1 AND project_ref = $2 AND sandbox_provider_kind = $3`,
       [id.userId, id.projectRef, "docker"],
     );
     expect(rows[0]!.count).toBe("1");

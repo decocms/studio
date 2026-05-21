@@ -816,6 +816,10 @@ export interface ThreadTable {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
+  /** Sandbox provider kind pinned on first message (e.g. "docker", "freestyle") */
+  sandbox_provider_kind: string | null;
+  /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
+  harness_id: string | null;
   /** Per-task UI state (e.g., expanded_tools for right-panel tabs) */
   metadata: ColumnType<ThreadMetadata, string | undefined, string>;
   created_at: ColumnType<Date, Date | string, never>;
@@ -856,6 +860,10 @@ export interface Thread {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
+  /** Sandbox provider kind pinned on first message (e.g. "docker", "freestyle") */
+  sandbox_provider_kind: string | null;
+  /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
+  harness_id: string | null;
   metadata: ThreadMetadata;
 }
 
@@ -1157,10 +1165,10 @@ export interface KVTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
-export interface SandboxRunnerStateTable {
+export interface SandboxProviderStateTable {
   user_id: string;
   project_ref: string;
-  runner_kind: string;
+  sandbox_provider_kind: string;
   handle: string;
   state: ColumnType<Record<string, unknown>, string, string>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
@@ -1316,5 +1324,5 @@ export interface Database {
   // Organization domain claims (for auto-join)
   organization_domains: OrganizationDomainTable;
 
-  sandbox_runner_state: SandboxRunnerStateTable;
+  sandbox_runner_state: SandboxProviderStateTable;
 }

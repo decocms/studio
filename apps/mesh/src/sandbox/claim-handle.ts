@@ -1,8 +1,8 @@
 import {
   computeHandle,
-  resolveRunnerKindFromEnv,
+  resolveSandboxProviderKindFromEnv,
   type SandboxId,
-} from "@decocms/sandbox/runner";
+} from "@decocms/sandbox/provider";
 
 /**
  * Compute the claim handle for a sandbox using the correct hashLen for the
@@ -14,10 +14,10 @@ import {
  * what a runner stored (vm-events, vm-exec, etc.).
  */
 export function computeClaimHandle(id: SandboxId, branch: string): string {
-  const runnerKind = resolveRunnerKindFromEnv();
+  const providerKind = resolveSandboxProviderKindFromEnv();
   return computeHandle(
     id,
     branch,
-    runnerKind === "agent-sandbox" ? { hashLen: 16 } : {},
+    providerKind === "agent-sandbox" ? { hashLen: 16 } : {},
   );
 }
