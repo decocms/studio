@@ -77,7 +77,16 @@ export async function openTunnel(
  * the cluster's `expectedTunnelDomain(userSub)` in
  * `apps/mesh/src/links/routes.ts` — both sides derive the host from the
  * authenticated userSub independently.
+ *
+ * userSub is lowercased because hostnames are case-insensitive (RFC 3986
+ * §3.2.2) but Better Auth subs are case-sensitive nanoids. WHATWG URL
+ * parsing lowercases the host on the wire, so a mixed-case sub
+ * registered as `domain` in the Warp protocol won't match the lowercase
+ * Host header on incoming HTTP requests — the deco.host DO's
+ * `hostToClientId` map misses and returns 503 "No registration for
+ * domain". Lowercase here keeps the application-layer registration in
+ * sync with what the transport actually sees.
  */
 export function computeLinkSubDomain(userSub: string): string {
-  return `link-${userSub}.deco.host`;
+  return `link-${userSub.toLowerCase()}.deco.host`;
 }
