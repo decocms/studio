@@ -116,6 +116,19 @@ const VirtualMcpUISchema = z.object({
 export type VirtualMcpUI = z.infer<typeof VirtualMcpUISchema>;
 
 /**
+ * Shell-portable env var name: must start with a letter or underscore and
+ * contain only letters, digits, and underscores. Same shape parse-dotenv
+ * enforces on imports. Single source of truth — the form editor and the
+ * paste flow both validate against this.
+ */
+export const ENV_VAR_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+const envVarKey = z.string().min(1).regex(ENV_VAR_KEY_RE, {
+  message:
+    "Env var key must start with a letter or underscore and contain only letters, digits, and underscores.",
+});
+
+/**
  * One env var declaration on a virtual MCP. Literal values live inline in
  * metadata; secret values store a stable secretId that mesh resolves against
  * the credential vault on every VM_START. The env var KEY is independent of
@@ -124,12 +137,12 @@ export type VirtualMcpUI = z.infer<typeof VirtualMcpUISchema>;
  */
 const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
   z.object({
-    key: z.string().min(1),
+    key: envVarKey,
     kind: z.literal("literal"),
     value: z.string(),
   }),
   z.object({
-    key: z.string().min(1),
+    key: envVarKey,
     kind: z.literal("secret"),
     secretId: z.string().min(1),
   }),

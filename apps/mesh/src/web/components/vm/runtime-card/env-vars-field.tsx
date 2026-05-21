@@ -7,6 +7,7 @@ import type {
 } from "react-hook-form";
 import { Controller, useFieldArray, useWatch } from "react-hook-form";
 import { toast } from "sonner";
+import { ENV_VAR_KEY_RE } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Dialog,
@@ -56,7 +57,6 @@ import {
   useSecrets,
 } from "@/web/hooks/use-secrets";
 
-const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SECRET_NAME_RE = /^[A-Za-z0-9_.-]+$/;
 
 export interface EnvVarsFieldProps<T extends FieldValues> {
@@ -125,16 +125,17 @@ interface RunningSandboxNoticeProps<T extends FieldValues> {
  * Banner shown above the env list when:
  *   (a) the caller already has a sandbox provisioned for this agent
  *       (vmMap has an entry under their userId), and
- *   (b) the env array changed since the page loaded.
+ *   (b) the env array changed since the last push to the daemon.
  *
- * The push to the daemon happens on VM_START's `resolveAndPushEnv`, but a
- * daemon already running a dev script won't pick up new env until that
- * process restarts. The notice tells the user that, and the button POSTs
- * /setup/start for each of their branches to recycle the dev script.
+ * The push to the daemon happens server-side on /setup/start (which
+ * resolves secrets + PUTs /config before proxying to the daemon's
+ * orchestrator). A daemon already running a dev script won't pick up new
+ * env until that process restarts, so this notice + button recycle the
+ * dev script for each of the caller's branches.
  *
- * Baseline is captured on mount via a ref — autosave running between
- * keystrokes does NOT clear the banner; the user has to actually restart
- * (or reload the page after a manual restart) to clear it.
+ * Both baseline and `current` are passed through `normalizeEnvForCompare`
+ * so in-progress rows (no key, invalid key, secret without secretId) —
+ * which autosave already strips — never count as a real change.
  */
 function RunningSandboxNotice<T extends FieldValues>({
   control,
@@ -148,13 +149,12 @@ function RunningSandboxNotice<T extends FieldValues>({
   const fieldPath = "metadata.runtime.env" as FieldPath<T>;
   const vmMapPath = "metadata.vmMap" as FieldPath<T>;
 
-  // Baseline is held in component state (not a ref) so a successful restart
-  // can re-baseline and trigger a re-render that hides the banner.
   const [baseline, setBaseline] = useState(() =>
-    JSON.stringify(form.getValues(fieldPath) ?? []),
+    JSON.stringify(normalizeEnvForCompare(form.getValues(fieldPath))),
   );
   const current = useWatch({ control, name: fieldPath });
-  const envChanged = JSON.stringify(current ?? []) !== baseline;
+  const currentStr = JSON.stringify(normalizeEnvForCompare(current));
+  const envChanged = currentStr !== baseline;
 
   const vmMap = form.getValues(vmMapPath) as
     | Record<string, Record<string, unknown>>
@@ -181,8 +181,7 @@ function RunningSandboxNotice<T extends FieldValues>({
     setRestarting(false);
     const failed = results.filter((r) => r.status === "rejected").length;
     if (failed === 0) {
-      // Match baseline so the banner self-clears; further edits surface it again.
-      setBaseline(JSON.stringify(form.getValues(fieldPath) ?? []));
+      setBaseline(currentStr);
       toast.success(
         userBranches.length === 1
           ? "Restarted dev with new env"
@@ -488,24 +487,41 @@ function EnvRow<T extends FieldValues>({
         <Controller
           control={control}
           name={keyName}
-          render={({ field }) => (
-            <Input
-              {...field}
-              value={(field.value as string | undefined) ?? ""}
-              placeholder="KEY"
-              spellCheck={false}
-              autoComplete="off"
-              autoCapitalize="off"
-              autoCorrect="off"
-              className="font-mono"
-              aria-label={`Env var ${index + 1} key`}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                field.onChange(v);
-                field.onBlur();
-              }}
-            />
-          )}
+          render={({ field }) => {
+            const v = ((field.value as string | undefined) ?? "").trim();
+            const invalid = v.length > 0 && !ENV_VAR_KEY_RE.test(v);
+            return (
+              <div className="space-y-1">
+                <Input
+                  {...field}
+                  value={(field.value as string | undefined) ?? ""}
+                  placeholder="KEY"
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  className={cn(
+                    "font-mono",
+                    invalid &&
+                      "border-destructive focus-visible:ring-destructive",
+                  )}
+                  aria-invalid={invalid}
+                  aria-label={`Env var ${index + 1} key`}
+                  onBlur={(e) => {
+                    const next = e.target.value.trim();
+                    field.onChange(next);
+                    field.onBlur();
+                  }}
+                />
+                {invalid ? (
+                  <p className="text-[11px] text-destructive">
+                    Letters, digits, underscores. Must start with a letter or
+                    underscore.
+                  </p>
+                ) : null}
+              </div>
+            );
+          }}
         />
       </div>
 
@@ -836,11 +852,37 @@ function SaveAsSecretDialog({
   );
 }
 
+// Mirrors `stripIncompleteEnvEntries` in views/virtual-mcp/index.tsx so the
+// banner's notion of "changed" matches what autosave actually sends.
+function normalizeEnvForCompare(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  const out: unknown[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as {
+      key?: string;
+      kind?: string;
+      value?: string;
+      secretId?: string;
+    };
+    const key = (e.key ?? "").trim();
+    if (!key || !ENV_VAR_KEY_RE.test(key)) continue;
+    if (e.kind === "literal") {
+      out.push({ key, kind: "literal", value: e.value ?? "" });
+      continue;
+    }
+    if (e.kind === "secret" && e.secretId) {
+      out.push({ key, kind: "secret", secretId: e.secretId });
+    }
+  }
+  return out;
+}
+
 function sanitizeSecretName(envKey: string): string {
   const stripped = envKey.trim();
   if (!stripped) return "";
   // Env keys already constrain to [A-Za-z_][A-Za-z0-9_]*, which is a subset
   // of the secret-name charset — pass-through is safe and gives users a
   // predictable default.
-  return ENV_KEY_RE.test(stripped) ? stripped : "";
+  return ENV_VAR_KEY_RE.test(stripped) ? stripped : "";
 }

@@ -25,6 +25,8 @@ import {
 } from "../../core/mesh-context";
 import type { Env } from "../hono-env";
 import { handleVmEvents } from "./vm-events-handler";
+import { resolveAndPushEnv } from "../../tools/vm/resolve-env";
+import { readValidatedRuntimeEnv } from "../../tools/vm/helpers";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -233,13 +235,41 @@ export const createVmRoutes = () => {
   );
 
   // -- Setup retry ----------------------------------------------------------
-  app.post("/:vmId/:branch/setup/:step", (c) => {
+  app.post("/:vmId/:branch/setup/:step", async (c) => {
     const step = c.req.param("step");
     if (!step || !isSetupStep(step)) {
       return c.json(
         { error: `step must be one of: ${SETUP_STEPS.join(", ")}` },
         400,
       );
+    }
+    // On "start", refresh the daemon's env from the virtual MCP's current
+    // `metadata.runtime.env`. The dev script inherits env at spawn time, so
+    // edits made after the last VM_START don't reach a running process
+    // unless we push the freshly-resolved env to /config before the
+    // orchestrator restarts it.
+    if (step === "start") {
+      const claim = c.get("vmClaim");
+      if (claim.runner) {
+        const organization = requireOrganization(c.var.meshContext);
+        const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
+        try {
+          await resolveAndPushEnv({
+            ctx: c.var.meshContext,
+            runner: claim.runner,
+            handle: claim.claimName,
+            orgId: organization.id,
+            userId: claim.userId,
+            entries,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return c.json(
+            { error: `Failed to push env to daemon: ${message}` },
+            502,
+          );
+        }
+      }
     }
     return proxyDaemon(c, `/_decopilot_vm/setup/${step}`, {
       signal: c.req.raw.signal,
