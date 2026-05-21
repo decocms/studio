@@ -119,6 +119,14 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
     setDescription("");
   }
 
+  // Single close path so Cancel and Radix's outside-click/Escape both clear
+  // the form. Calling onOpenChange(false) directly skips the wrapper below,
+  // because Radix only fires its onOpenChange when *it* initiates the close.
+  function handleClose() {
+    reset();
+    onOpenChange(false);
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!name.trim() || !value) return;
@@ -130,8 +138,7 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
         description: description.trim() || undefined,
       });
       toast.success(`Secret "${name.trim()}" created`);
-      reset();
-      onOpenChange(false);
+      handleClose();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to create secret",
@@ -143,8 +150,8 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        if (!o) reset();
-        onOpenChange(o);
+        if (!o) handleClose();
+        else onOpenChange(o);
       }}
     >
       <DialogContent className="sm:max-w-lg">
@@ -218,7 +225,7 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={handleClose}
               disabled={createSecret.isPending}
             >
               Cancel

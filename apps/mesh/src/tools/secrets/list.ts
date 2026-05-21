@@ -1,18 +1,7 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
-
-const secretInfoSchema = z.object({
-  id: z.string(),
-  scope: z.enum(["user", "organization"]),
-  userId: z.string().nullable(),
-  name: z.string(),
-  description: z.string().nullable(),
-  createdBy: z.string(),
-  createdAt: z.string(),
-  updatedBy: z.string(),
-  updatedAt: z.string(),
-});
+import { secretInfoSchema } from "./schema";
 
 export const SECRET_LIST = defineTool({
   name: "SECRET_LIST",

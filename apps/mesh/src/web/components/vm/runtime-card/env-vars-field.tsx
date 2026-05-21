@@ -7,6 +7,7 @@ import type {
 } from "react-hook-form";
 import { Controller, useFieldArray, useWatch } from "react-hook-form";
 import { toast } from "sonner";
+import { ENV_VAR_KEY_RE } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Dialog,
@@ -56,7 +57,6 @@ import {
   useSecrets,
 } from "@/web/hooks/use-secrets";
 
-const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SECRET_NAME_RE = /^[A-Za-z0-9_.-]+$/;
 
 export interface EnvVarsFieldProps<T extends FieldValues> {
@@ -488,24 +488,41 @@ function EnvRow<T extends FieldValues>({
         <Controller
           control={control}
           name={keyName}
-          render={({ field }) => (
-            <Input
-              {...field}
-              value={(field.value as string | undefined) ?? ""}
-              placeholder="KEY"
-              spellCheck={false}
-              autoComplete="off"
-              autoCapitalize="off"
-              autoCorrect="off"
-              className="font-mono"
-              aria-label={`Env var ${index + 1} key`}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                field.onChange(v);
-                field.onBlur();
-              }}
-            />
-          )}
+          render={({ field }) => {
+            const v = ((field.value as string | undefined) ?? "").trim();
+            const invalid = v.length > 0 && !ENV_VAR_KEY_RE.test(v);
+            return (
+              <div className="space-y-1">
+                <Input
+                  {...field}
+                  value={(field.value as string | undefined) ?? ""}
+                  placeholder="KEY"
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  className={cn(
+                    "font-mono",
+                    invalid &&
+                      "border-destructive focus-visible:ring-destructive",
+                  )}
+                  aria-invalid={invalid}
+                  aria-label={`Env var ${index + 1} key`}
+                  onBlur={(e) => {
+                    const next = e.target.value.trim();
+                    field.onChange(next);
+                    field.onBlur();
+                  }}
+                />
+                {invalid ? (
+                  <p className="text-[11px] text-destructive">
+                    Letters, digits, underscores. Must start with a letter or
+                    underscore.
+                  </p>
+                ) : null}
+              </div>
+            );
+          }}
         />
       </div>
 
@@ -842,5 +859,5 @@ function sanitizeSecretName(envKey: string): string {
   // Env keys already constrain to [A-Za-z_][A-Za-z0-9_]*, which is a subset
   // of the secret-name charset — pass-through is safe and gives users a
   // predictable default.
-  return ENV_KEY_RE.test(stripped) ? stripped : "";
+  return ENV_VAR_KEY_RE.test(stripped) ? stripped : "";
 }

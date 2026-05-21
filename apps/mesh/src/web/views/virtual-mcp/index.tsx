@@ -55,6 +55,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   type ConnectionEntity,
+  ENV_VAR_KEY_RE,
   SELF_MCP_ALIAS_ID,
   StudioPackAgentId,
   useConnection,
@@ -182,9 +183,12 @@ function editSessionReducer(
 }
 
 /**
- * Drops in-progress env rows (empty key, or kind=secret with empty secretId)
- * from the payload sent on autosave. Keeps the partial row in form state so
- * the user can keep typing — the next save will include it once it's valid.
+ * Drops in-progress / invalid env rows from the autosave payload. A row is
+ * stripped when: key is empty, key fails the shell-portable regex, or it's a
+ * secret-kind row with no secretId. The partial/invalid row stays in form
+ * state so the user can keep editing; the server-side Zod schema would
+ * reject these anyway and we'd surface a noisy validation error on every
+ * keystroke without this filter.
  */
 function stripIncompleteEnvEntries(
   data: VirtualMcpFormData,
@@ -194,7 +198,7 @@ function stripIncompleteEnvEntries(
   const cleaned = env.filter((entry) => {
     if (!entry || typeof entry !== "object") return false;
     const key = ((entry as { key?: string }).key ?? "").trim();
-    if (!key) return false;
+    if (!key || !ENV_VAR_KEY_RE.test(key)) return false;
     if (entry.kind === "literal") return true;
     if (entry.kind === "secret") {
       return Boolean((entry as { secretId?: string }).secretId);
@@ -1527,7 +1531,7 @@ Define step-by-step how the agent should handle requests.
                       size="sm"
                       onClick={handleTestAgent}
                     >
-                      <Play size={14} className="!size-[14px]" />
+                      <Play size={14} className="size-[14px]!" />
                       Test Agent
                     </Button>
                     <Button
