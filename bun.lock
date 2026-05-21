@@ -53,7 +53,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.339.0",
+      "version": "2.339.2",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -160,7 +160,6 @@
         "croner": "^9.1.0",
         "date-fns": "^4.1.0",
         "degit": "^2.8.4",
-        "happy-dom": "^20.9.0",
         "hono": "^4.10.7",
         "input-otp": "^1.4.2",
         "jose": "^6.0.11",
