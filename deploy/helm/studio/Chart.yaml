@@ -1,6 +1,6 @@
 apiVersion: v2
 name: chart-deco-studio
-description: A Helm chart for deco Studio self-hosted deployment
+description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
 version: 0.7.0
 appVersion: "latest"
