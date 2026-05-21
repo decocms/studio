@@ -81,6 +81,12 @@ import * as migration079striplegacyfreestylevmmapentries from "./079-strip-legac
 import * as migration080asyncresearchjobs from "./080-async-research-jobs.ts";
 import * as migration081asyncresearchjobsresultcontent from "./081-async-research-jobs-result-content.ts";
 import * as migration082secrets from "./082-secrets.ts";
+import * as migration082threadrunlocally from "./082-thread-run-locally.ts";
+import * as migration083drophostsandboxrows from "./083-drop-host-sandbox-rows.ts";
+import * as migration084renamerunnerkindd from "./084-rename-runner-kind.ts";
+import * as migration085threadpinsandvmmaprekey from "./085-thread-pins-and-vm-map-rekey.ts";
+import * as migration086fixvmmaprekey from "./086-fix-vm-map-rekey.ts";
+import * as migration087purgecliactivatekeys from "./087-purge-cli-activate-keys.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -179,6 +185,12 @@ const migrations: Record<string, Migration> = {
   "081-async-research-jobs-result-content":
     migration081asyncresearchjobsresultcontent,
   "082-secrets": migration082secrets,
+  "082-thread-run-locally": migration082threadrunlocally,
+  "083-drop-host-sandbox-rows": migration083drophostsandboxrows,
+  "084-rename-runner-kind": migration084renamerunnerkindd,
+  "085-thread-pins-and-vm-map-rekey": migration085threadpinsandvmmaprekey,
+  "086-fix-vm-map-rekey": migration086fixvmmaprekey,
+  "087-purge-cli-activate-keys": migration087purgecliactivatekeys,
 };
 
 export default migrations;

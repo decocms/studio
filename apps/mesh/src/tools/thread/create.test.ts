@@ -138,14 +138,18 @@ describe("COLLECTION_THREADS_CREATE", () => {
           vmMap: {
             [env.userId]: {
               "deco/old-branch": {
-                vmId: "vm_old",
-                previewUrl: null,
-                createdAt: 1000,
+                freestyle: {
+                  vmId: "vm_old",
+                  previewUrl: null,
+                  createdAt: 1000,
+                },
               },
               "deco/new-branch": {
-                vmId: "vm_new",
-                previewUrl: null,
-                createdAt: 2000,
+                freestyle: {
+                  vmId: "vm_new",
+                  previewUrl: null,
+                  createdAt: 2000,
+                },
               },
             },
           },

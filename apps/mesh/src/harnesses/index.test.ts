@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { claudeCodeHarnessFactory } from "./claude-code";
 import { codexHarnessFactory } from "./codex";
-import { decopilotHarnessFactory } from "./decopilot";
 import { getHarnessFactory, registerHarnessFactory } from "./registry";
+import { decopilotHarnessFactory } from "./decopilot";
 
 describe("harness registration", () => {
   // Re-register explicitly here so the test doesn't depend on test-file

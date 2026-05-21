@@ -37,7 +37,38 @@
 
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import type { LanguageModelUsage } from "ai";
-import { addCacheStep } from "../api/routes/decopilot/cache-instrumentation";
+
+/**
+ * Per-step cache-token accumulator. Mirrors
+ * `apps/mesh/src/api/routes/decopilot/cache-instrumentation.ts:addCacheStep` —
+ * inlined here so the package stays free of cluster-side dependencies.
+ * Both implementations must stay in sync; the cluster's version is also
+ * the source of truth for OTel attribute emission on the dispatch-run
+ * path.
+ */
+interface CacheAccumulator {
+  read: number;
+  write: number;
+  input: number;
+}
+
+interface CacheStepUsage {
+  inputTokens?: number;
+  inputTokenDetails?: {
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  };
+}
+
+function addCacheStep(
+  acc: CacheAccumulator,
+  usage: CacheStepUsage | undefined,
+): void {
+  if (!usage) return;
+  acc.read += usage.inputTokenDetails?.cacheReadTokens ?? 0;
+  acc.write += usage.inputTokenDetails?.cacheWriteTokens ?? 0;
+  acc.input += usage.inputTokens ?? 0;
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Types

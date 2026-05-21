@@ -46,7 +46,6 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   const [editing, setEditing] = useState(false);
   const [draftLabel, setDraftLabel] = useState(providerKey.label);
 
-  const isCli = provider.supportedMethods.includes("cli-activate");
   const isOpenAICompatible = provider.id === "openai-compatible";
 
   const preset: OpenAICompatiblePreset | undefined =
@@ -62,7 +61,6 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   const logo = preset?.logo ?? provider.logo;
 
   const description = (() => {
-    if (isCli) return "Authenticated via CLI";
     if (isOpenAICompatible) {
       return providerKey.label;
     }
@@ -171,16 +169,14 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
               </>
             ) : (
               <>
-                {!isCli && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                    onClick={startEdit}
-                  >
-                    <Edit01 size={14} />
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={startEdit}
+                >
+                  <Edit01 size={14} />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"

@@ -50,6 +50,8 @@ import { Store } from "./store-primitive";
 import { extractToolErrorMessage } from "./mcp-utils";
 import type { ChatMode } from "../types";
 import { toast } from "sonner";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import type { HarnessId } from "@/harnesses";
 
 export { Store };
 
@@ -64,6 +66,12 @@ export interface RequestOptions {
   agent?: { id: string };
   branch?: string | null;
   thread_id?: string;
+  /**
+   * Optional pins sent on first message. The server persists them onto the
+   * thread row and ignores them on subsequent messages.
+   */
+  sandboxProviderKind?: SandboxProviderKind;
+  harnessId?: HarnessId;
 }
 
 // ─── Status ──────────────────────────────────────────────────────────────────

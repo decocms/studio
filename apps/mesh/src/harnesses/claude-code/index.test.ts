@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { claudeCodeHarnessFactory } from "./index";
-import type { MeshContext } from "../../core/mesh-context";
+import type { HarnessContext } from "../types";
 
 /**
  * Contract tests for the Claude Code harness factory.
@@ -18,7 +18,7 @@ describe("claudeCodeHarnessFactory", () => {
   });
 
   test("create() returns a Harness with id 'claude-code' and a stream() method", () => {
-    const harness = claudeCodeHarnessFactory.create({} as MeshContext);
+    const harness = claudeCodeHarnessFactory.create({} as HarnessContext);
     expect(harness.id).toBe("claude-code");
     expect(typeof harness.stream).toBe("function");
   });

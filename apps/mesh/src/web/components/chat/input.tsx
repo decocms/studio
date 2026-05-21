@@ -32,7 +32,7 @@ import { useThreadActions } from "./store/hooks";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
-import { SimpleModeTierDropdown } from "./simple-mode-tier-dropdown";
+import { AgentModelTrigger } from "./agent-model-trigger";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
   UnsupportedFileDialog,
@@ -209,10 +209,14 @@ function useHomeSubmit() {
       // Toast already surfaced by the store; navigate anyway — the route's
       // ensure-fallback will retry if the row is missing.
     }
+    const search: Record<string, string> = {
+      virtualmcpid: targetVmcp,
+      autosend: AUTOSEND_QUERY_VALUE,
+    };
     navigate({
       to: "/$org/$taskId",
       params: { org: org.slug, taskId: newId },
-      search: { virtualmcpid: targetVmcp, autosend: AUTOSEND_QUERY_VALUE },
+      search,
     });
   };
 }
@@ -243,6 +247,8 @@ export function ChatInput({
     setChatMode,
     simpleModeTier,
     setSimpleModeTier,
+    pendingHarnessId,
+    pendingSandboxProviderKind,
   } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
@@ -588,7 +594,9 @@ export function ChatInput({
 
                     {/* Right Actions (mic, model, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <SimpleModeTierDropdown
+                      <AgentModelTrigger
+                        agent={pendingHarnessId}
+                        sandboxKind={pendingSandboxProviderKind}
                         tier={simpleModeTier}
                         onSelect={setSimpleModeTier}
                       />

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { MeshContext } from "../../core/mesh-context";
+import type { HarnessContext } from "../types";
 import { codexHarnessFactory } from "./index";
 
 /**
@@ -23,7 +23,7 @@ describe("codexHarnessFactory", () => {
   });
 
   test("create() returns a Harness with id 'codex' and a stream() method", () => {
-    const harness = codexHarnessFactory.create({} as MeshContext);
+    const harness = codexHarnessFactory.create({} as HarnessContext);
     expect(harness.id).toBe("codex");
     expect(typeof harness.stream).toBe("function");
   });

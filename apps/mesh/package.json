@@ -33,9 +33,11 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "better-auth:migrate": "bunx --bun @better-auth/cli migrate -y --config src/auth/index.ts",
+    "smoke:link": "bun run scripts/smoke-link.ts",
     "prepublishOnly": "bun run build:client && bun run build:server"
   },
   "optionalDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.141",
     "@duckdb/node-api": "^1.5.0-r.1"
   },
   "dependencies": {
@@ -73,7 +75,6 @@
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.10",
     "@ai-sdk/react": "^3.0.184",
-    "@anthropic-ai/claude-agent-sdk": "^0.2.141",
     "@better-auth/sso": "1.4.1",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@deco/ui": "workspace:*",

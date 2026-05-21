@@ -219,8 +219,15 @@ async function threadGateWorkflowFn(
     name: "trackMessageStarted",
   });
   try {
+    // The dispatch step is non-retriable for v1. If a pod dies mid-stream,
+    // the laptop daemon (if remote-cli) keeps running, and a DBOS replay
+    // would open a second concurrent dispatch against the same workdir —
+    // racing on git state and tool output. Marking the step non-retriable
+    // converts pod death into a clean "run failed" rather than a corruption
+    // hazard. Re-attach semantics (stable runId, daemon-side dedupe) are v2.
     await DBOS.runStep(() => dispatchRunAndWaitStep(ctx), {
       name: "dispatchRunAndWait",
+      retriesAllowed: false,
     });
   } catch (err) {
     // Setup errors (prepareRun) propagate out of `dispatchRunAndWait`; in-flight

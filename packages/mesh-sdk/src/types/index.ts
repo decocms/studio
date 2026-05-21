@@ -35,6 +35,9 @@ export {
   type RuntimeMetadata,
   type RuntimeEnvEntry,
   ENV_VAR_KEY_RE,
+  parseVmMapEntry,
+  parseBranchMap,
+  normalizeVmMap,
 } from "./virtual-mcp";
 
 export {

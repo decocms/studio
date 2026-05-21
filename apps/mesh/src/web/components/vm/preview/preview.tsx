@@ -6,6 +6,7 @@ import {
   useMCPClient,
   useProjectContext,
   SELF_MCP_ALIAS_ID,
+  parseBranchMap,
 } from "@decocms/mesh-sdk";
 
 import {
@@ -134,11 +135,19 @@ export function PreviewContent() {
   // Current iframe path (for sections editor)
   const [currentPath, setCurrentPath] = useState("/");
 
-  // vmMap[userId][branch] -> { vmId, previewUrl, runnerKind? }
+  // vmMap[userId][branch][sandboxProviderKind] -> { vmId, previewUrl, ... }
+  // Use parseBranchMap to handle both legacy 2-level and current 3-level shapes.
+  // For the preview surface we pick the first non-remote-user entry (cloud VMs
+  // have an accessible previewUrl), falling back to the first entry of any kind.
+  // There is typically only one entry per branch in normal usage.
   const userId = session?.user?.id;
   const metadata = inset?.entity?.metadata;
+  const branchMap =
+    userId && branch ? parseBranchMap(metadata?.vmMap?.[userId]?.[branch]) : {};
+  const branchMapEntries = Object.values(branchMap);
   const vmEntry =
-    userId && branch ? metadata?.vmMap?.[userId]?.[branch] : undefined;
+    branchMapEntries.find((e) => e.sandboxProviderKind !== "remote-user") ??
+    branchMapEntries[0];
   const previewUrl = vmEntry?.previewUrl ?? null;
 
   const virtualMcpId = inset?.entity?.id ?? null;
@@ -354,16 +363,24 @@ export function PreviewContent() {
   const openDrawer = () => handleDrawerOpenChange(true);
 
   // Stop / restart. VM_DELETE is best-effort; the vmMap query refetch is
-  // what actually flips the UI to idle.
+  // what actually flips the UI to idle. VM_DELETE requires the kind because
+  // vmMap is keyed by (user, branch, kind); we delete whichever sibling the
+  // preview surface is currently displaying.
   const handleStop = async () => {
     if (!virtualMcpId) return;
     const branchToStop = branch;
     if (!branchToStop) return;
+    const kindToStop = vmEntry?.sandboxProviderKind;
+    if (!kindToStop) return;
     vmUserStop.mark(virtualMcpId, branchToStop);
     try {
       await mcpClient.callTool({
         name: "VM_DELETE",
-        arguments: { virtualMcpId, branch: branchToStop },
+        arguments: {
+          virtualMcpId,
+          branch: branchToStop,
+          sandboxProviderKind: kindToStop,
+        },
       });
     } catch {
       // Best effort

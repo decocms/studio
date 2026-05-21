@@ -213,7 +213,7 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 /**
  * A single vm entry in vmMap — the vmId plus the preview URL the UI renders.
  *
- * `runnerKind` lets the UI construct daemon URLs correctly:
+ * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
  *  - docker: daemon is reached via the mesh proxy at `/api/sandbox/<vmId>/_daemon/*`
  *  - agent-sandbox: daemon is reached via the mesh proxy (same transport as docker);
  *    preview URL is the per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
@@ -230,7 +230,19 @@ export const VmMapEntrySchema = z.object({
     .describe(
       "URL where the VM's iframe-proxied UI is served, or null when the sandbox has no dev server (blank / tool sandboxes).",
     ),
-  runnerKind: z.enum(["host", "docker", "agent-sandbox"]).optional(),
+  sandboxUrl: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for remote-user; null/absent for runners that route through cluster ingress (docker, agent-sandbox).",
+    ),
+  sandboxProviderKind: z
+    // Legacy values ("freestyle", "host") are tolerated on read for
+    // pre-removal vmMap entries; writers use one of the active kinds.
+    // The tolerant readers (parseVmMapEntry, parseBranchMap) normalize.
+    .enum(["docker", "agent-sandbox", "remote-user", "freestyle", "host"])
+    .optional(),
   createdAt: z
     .number()
     .optional()
@@ -264,16 +276,136 @@ export const VmMapEntrySchema = z.object({
 export type VmMapEntry = z.infer<typeof VmMapEntrySchema>;
 
 /**
- * Maps a user to their vm entries per branch.
- * Lookup: vmMap[userId][branch] -> { vmId, previewUrl }
- * Multiple threads with the same (userId, branch) share one vm.
+ * Tolerant reader: pre-rename rows persisted the field as `runnerKind`. Until
+ * a full re-write touches every entry, this function normalizes the legacy key
+ * into `sandboxProviderKind`. Writers always use the new key.
+ *
+ * Use this function wherever raw JSON from the database is parsed into a
+ * `VmMapEntry` — never cast unknown JSON directly as `VmMapEntry`.
+ *
+ * TODO(2026-06-20): drop this tolerant reader once migration 080 has run
+ * everywhere and a write has touched every vmMap entry. See spec
+ * docs/superpowers/specs/2026-05-20-vm-as-runtime-identity-design.md.
+ */
+export function parseVmMapEntry(raw: unknown): VmMapEntry {
+  let normalized = raw;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    if (obj.runnerKind !== undefined && obj.sandboxProviderKind === undefined) {
+      const { runnerKind, ...rest } = obj;
+      normalized = { ...rest, sandboxProviderKind: runnerKind };
+    }
+  }
+  return VmMapEntrySchema.parse(normalized);
+}
+
+/** The active sandbox provider kinds (excludes legacy "freestyle", "host"). */
+type SandboxProviderKind = "docker" | "agent-sandbox" | "remote-user";
+
+/**
+ * Tolerant reader at the branch-map level.
+ *
+ * In v2, a branch's value is itself a map of `sandboxProviderKind → VmMapEntry`
+ * (so cloud + local can coexist on the same branch). Legacy v1 rows stored a
+ * single `VmMapEntry` directly at the branch level. This function accepts
+ * either shape and returns a normalized v2 partial record.
+ *
+ * TODO(2026-06-20): drop the 2-level wrap path once migration 081 has run
+ * everywhere and writers have touched every entry.
+ */
+export function parseBranchMap(
+  raw: unknown,
+): Partial<Record<SandboxProviderKind, VmMapEntry>> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const obj = raw as Record<string, unknown>;
+
+  // Legacy 2-level: the value at this level is itself a VmMapEntry (has vmId).
+  if (typeof obj.vmId === "string") {
+    const entry = parseVmMapEntry(obj);
+    // Coalesce legacy "freestyle"/"host" values to "docker" since those
+    // runners no longer exist; rows from before the removal still parse.
+    const raw = entry.sandboxProviderKind;
+    const kind: SandboxProviderKind =
+      raw === "docker" || raw === "agent-sandbox" || raw === "remote-user"
+        ? raw
+        : "docker";
+    return { [kind]: entry };
+  }
+
+  // New 3-level: kind → entry.
+  const out: Partial<Record<SandboxProviderKind, VmMapEntry>> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!v || typeof v !== "object") continue;
+    try {
+      out[k as SandboxProviderKind] = parseVmMapEntry(v);
+    } catch {
+      // Skip malformed entries rather than throw — readers are tolerant by design.
+    }
+  }
+  return out;
+}
+
+/**
+ * Maps a user to their vm entries per (branch, sandboxProviderKind).
+ * Lookup: vmMap[userId][branch][sandboxProviderKind] -> VmMapEntry
+ *
+ * Multiple threads on the same (userId, branch, kind) share one VM.
+ * Cloud and local VMs can coexist on the same branch as siblings.
+ *
+ * The schema is strict v2. Reads of legacy v1 data MUST be normalized via
+ * `normalizeVmMap` (this file) BEFORE Zod validation — strict input/output
+ * types here are load-bearing for `useForm<…>(zodResolver(…))` callers,
+ * whose generic depends on `z.input` being identical to `z.output`. A
+ * `z.preprocess` here widens `z.input` to `unknown` and breaks the form.
  */
 export const VmMapSchema = z.record(
   z.string().describe("userId"),
-  z.record(z.string().describe("branch"), VmMapEntrySchema),
+  z.record(
+    z.string().describe("branch"),
+    z.record(z.string().describe("sandboxProviderKind"), VmMapEntrySchema),
+  ),
 );
 
 export type VmMap = z.infer<typeof VmMapSchema>;
+
+/**
+ * Normalize a raw `metadata.vmMap` value into v2 shape on read. Use this in
+ * storage adapters BEFORE returning data that will be Zod-validated against
+ * `VirtualMCPEntitySchema` (or any schema embedding `VmMapSchema`).
+ *
+ * Tolerates two legacy on-disk shapes from rows written before migration
+ * 082 actually rewrote them:
+ *   1. v1 2-level layout:  vmMap[user][branch] = VmMapEntry
+ *   2. `runnerKind` field on entries instead of `sandboxProviderKind`
+ *
+ * Returns `{}` for missing / malformed input rather than throwing — readers
+ * should never crash on bad on-disk data; the strict schema catches any
+ * residual issues at validation time.
+ */
+export function normalizeVmMap(raw: unknown): VmMap {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: VmMap = {};
+  for (const [userId, userVal] of Object.entries(
+    raw as Record<string, unknown>,
+  )) {
+    if (!userVal || typeof userVal !== "object" || Array.isArray(userVal)) {
+      continue;
+    }
+    const userOut: VmMap[string] = {};
+    for (const [branch, branchVal] of Object.entries(
+      userVal as Record<string, unknown>,
+    )) {
+      const normalized = parseBranchMap(branchVal);
+      if (Object.keys(normalized).length > 0) {
+        userOut[branch] = normalized as VmMap[string][string];
+      }
+    }
+    if (Object.keys(userOut).length > 0) {
+      out[userId] = userOut;
+    }
+  }
+  return out;
+}
 
 /**
  * Virtual MCP entity schema - single source of truth

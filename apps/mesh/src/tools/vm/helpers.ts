@@ -11,6 +11,7 @@ import {
   type RuntimeEnvEntry,
   type VmMapEntry,
 } from "@decocms/mesh-sdk";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 import {
   requireAuth,
@@ -71,10 +72,14 @@ export function readValidatedRuntimeEnv(
  * Extracts common auth + lookup boilerplate shared by all VM tools.
  * Validates auth, checks access, fetches and validates the Virtual MCP,
  * and returns the metadata and vmMap entry for the current user on the
- * specified branch. `entry` is null when no vm is registered for that pair.
+ * specified branch + kind. `entry` is null when no vm is registered for that triple.
  */
 export async function requireVmEntry(
-  input: { virtualMcpId: string; branch: string },
+  input: {
+    virtualMcpId: string;
+    branch: string;
+    sandboxProviderKind: SandboxProviderKind;
+  },
   ctx: MeshContext,
 ) {
   requireAuth(ctx);
@@ -88,7 +93,12 @@ export async function requireVmEntry(
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
   const vmMap = readVmMap(metadata);
-  const entry: VmMapEntry | null = resolveVm(vmMap, userId, input.branch);
+  const entry: VmMapEntry | null = resolveVm(
+    vmMap,
+    userId,
+    input.branch,
+    input.sandboxProviderKind,
+  );
   return { virtualMcp, metadata, userId, entry, organization };
 }
 

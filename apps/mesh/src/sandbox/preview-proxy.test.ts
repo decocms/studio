@@ -8,7 +8,7 @@ import {
 
 /**
  * Inline mirror of `applyPreviewPattern` from
- * `packages/sandbox/server/runner/shared/preview-url.ts` — kept here as a
+ * `packages/sandbox/server/provider/shared/preview-url.ts` — kept here as a
  * fixture so the round-trip test below has no cross-package coupling. If the
  * real implementation drifts, the round-trip test will fail and force this
  * mirror to update too.

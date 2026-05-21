@@ -30,7 +30,8 @@ describe("readVmMap", () => {
   });
 
   test("returns the vmMap when present", () => {
-    const vmMap = { "user-1": { main: ENTRY_A } };
+    // 3-level: userId → branch → kind → entry
+    const vmMap = { "user-1": { main: { docker: ENTRY_A } } };
     expect(readVmMap({ vmMap })).toEqual(vmMap);
   });
 
@@ -41,25 +42,48 @@ describe("readVmMap", () => {
 
 describe("resolveVm", () => {
   test("returns null when user is absent", () => {
-    expect(resolveVm({}, "user-1", "main")).toBeNull();
+    expect(resolveVm({}, "user-1", "main", "docker")).toBeNull();
   });
 
   test("returns null when branch is absent for that user", () => {
-    const vmMap = { "user-1": { main: ENTRY_A } };
-    expect(resolveVm(vmMap, "user-1", "feat/x")).toBeNull();
+    const vmMap = { "user-1": { main: { docker: ENTRY_A } } };
+    expect(resolveVm(vmMap, "user-1", "feat/x", "docker")).toBeNull();
   });
 
-  test("returns the entry when both are present", () => {
-    const vmMap = { "user-1": { main: ENTRY_A, "feat/x": ENTRY_B } };
-    expect(resolveVm(vmMap, "user-1", "feat/x")).toEqual(ENTRY_B);
+  test("returns the entry when userId, branch, and kind are all present", () => {
+    const vmMap = {
+      "user-1": {
+        main: { docker: ENTRY_A },
+        "feat/x": { docker: ENTRY_B },
+      },
+    };
+    expect(resolveVm(vmMap, "user-1", "feat/x", "docker")).toEqual(ENTRY_B);
   });
 
   test("isolates users from each other", () => {
     const vmMap = {
-      "user-1": { main: ENTRY_A },
-      "user-2": { main: ENTRY_B },
+      "user-1": { main: { docker: ENTRY_A } },
+      "user-2": { main: { docker: ENTRY_B } },
     };
-    expect(resolveVm(vmMap, "user-1", "main")).toEqual(ENTRY_A);
-    expect(resolveVm(vmMap, "user-2", "main")).toEqual(ENTRY_B);
+    expect(resolveVm(vmMap, "user-1", "main", "docker")).toEqual(ENTRY_A);
+    expect(resolveVm(vmMap, "user-2", "main", "docker")).toEqual(ENTRY_B);
+  });
+
+  test("returns null when the kind is absent but another kind exists", () => {
+    const vmMap = {
+      "user-1": { main: { docker: ENTRY_A } },
+    };
+    // looking up "agent-sandbox" when only "docker" exists → null
+    expect(resolveVm(vmMap, "user-1", "main", "agent-sandbox")).toBeNull();
+  });
+
+  test("returns the entry for the requested kind when multiple kinds coexist", () => {
+    const vmMap = {
+      "user-1": { main: { docker: ENTRY_A, "agent-sandbox": ENTRY_B } },
+    };
+    expect(resolveVm(vmMap, "user-1", "main", "docker")).toEqual(ENTRY_A);
+    expect(resolveVm(vmMap, "user-1", "main", "agent-sandbox")).toEqual(
+      ENTRY_B,
+    );
   });
 });

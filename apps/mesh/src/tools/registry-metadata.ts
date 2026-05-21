@@ -34,7 +34,8 @@ export type ToolCategory =
   | "Object Storage"
   | "Registry"
   | "GitHub"
-  | "VM";
+  | "VM"
+  | "Links";
 
 /**
  * All tool names - keep in sync with ALL_TOOLS in index.ts
@@ -138,7 +139,6 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_PROVISION_KEY",
   "AI_PROVIDER_TOPUP_URL",
   "AI_PROVIDER_CREDITS",
-  "AI_PROVIDER_CLI_ACTIVATE",
 
   // Secrets vault tools
   "SECRET_CREATE",
@@ -192,6 +192,9 @@ const ALL_TOOL_NAMES = [
 
   // GitHub tools (app-only)
   "GITHUB_LIST_USER_ORGS",
+
+  // Link tools
+  "LINK_CURRENT_GET",
 ] as const;
 
 /**
@@ -674,11 +677,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Get current credit balance for a provider",
     category: "AI Providers",
   },
-  {
-    name: "AI_PROVIDER_CLI_ACTIVATE",
-    description: "Activate Claude Code via local CLI",
-    category: "AI Providers",
-  },
   // Secrets tools
   {
     name: "SECRET_CREATE",
@@ -690,6 +688,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List secrets visible to the caller (no values returned)",
     category: "Secrets",
   },
+
   // Object Storage tools
   {
     name: "LIST_OBJECTS",
@@ -902,6 +901,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
   },
+  // Link tools
+  {
+    name: "LINK_CURRENT_GET",
+    description:
+      "Return the calling user's current laptop link status (online/offline, capabilities)",
+    category: "Links",
+  },
 ];
 
 // ============================================================================
@@ -1072,7 +1078,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_PROVISION_KEY",
       "AI_PROVIDER_TOPUP_URL",
       "AI_PROVIDER_CREDITS",
-      "AI_PROVIDER_CLI_ACTIVATE",
     ],
   },
   // Organization (tags moved here from Developer)
@@ -1270,6 +1275,7 @@ export function getToolsByCategory() {
     Registry: [],
     GitHub: [],
     VM: [],
+    Links: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

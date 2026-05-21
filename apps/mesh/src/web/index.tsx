@@ -224,6 +224,10 @@ const unifiedChatSearchSchema = z.object({
   mainOpen: z.number().optional(),
   chat: z.number().optional(),
   autosend: z.string().optional(),
+  /** Carried from the homepage composer so the new thread's first send
+   *  inherits the "Run locally" toggle state. ChatPrefsProvider seeds
+   *  runLocally from this on mount. */
+  runLocally: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({

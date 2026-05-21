@@ -127,7 +127,10 @@ export async function assembleDecopilotTools(
   // tool (GitHub, Slack, etc.) for users who don't have explicit per-tool
   // permissions configured — the wrong enforcement layer for chat.
   const passthroughClient = await createVirtualClientFrom(
-    input.virtualMcp,
+    // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`; the
+    // package widens the field to a loose bag so the daemon can ship
+    // without the cluster's storage types. Narrow back here.
+    input.virtualMcp as Parameters<typeof createVirtualClientFrom>[0],
     ctx,
     "passthrough",
     true,

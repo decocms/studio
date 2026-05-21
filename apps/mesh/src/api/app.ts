@@ -25,7 +25,10 @@ import {
 } from "../core/context-factory";
 import type { MeshContext } from "../core/mesh-context";
 import { closeDatabase, getDb, type MeshDatabase } from "../database";
-import { asDockerRunner, getSharedRunnerIfInit } from "../sandbox/lifecycle";
+import {
+  asDockerRunner,
+  getSharedSandboxProviderIfInit,
+} from "../sandbox/lifecycle";
 import { createEventBus, type EventBus } from "../event-bus";
 import {
   flushMonitoringData,
@@ -89,6 +92,12 @@ import {
 import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
 import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
+import {
+  createInMemoryLinkRegistry,
+  type LinkRegistry,
+  NatsLinkRegistry,
+} from "../links/link-registry";
+import { registerLinksRoutes } from "../links/routes";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
@@ -712,6 +721,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   let modelListCache: ModelListCache;
   let cancelBroadcast: CancelBroadcast;
   let streamBuffer: StreamBuffer;
+  let linkRegistry: LinkRegistry;
   let natsProvider: NatsConnectionProvider | null = null;
 
   if (options.eventBus) {
@@ -734,6 +744,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       broadcast: () => {},
       stop: async () => {},
     };
+    // Test/no-NATS branch: an in-memory link registry keeps the link routes
+    // testable without a live NATS cluster.
+    linkRegistry = createInMemoryLinkRegistry({
+      nowSeconds: () => Math.floor(Date.now() / 1000),
+    });
     streamBuffer = {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
@@ -785,6 +800,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       getJetStream: () => natsProvider!.getJetStream(),
     });
 
+    const natsLinkRegistry = new NatsLinkRegistry({
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    natsLinkRegistry.init().catch(() => {});
+    linkRegistry = natsLinkRegistry;
+
     eventBus = createEventBus(database, natsProvider);
 
     // When NATS connects, (re-)initialize all deferred consumers
@@ -798,6 +819,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       streamBuffer.init().catch((err: unknown) => {
         console.warn(
           "[StreamBuffer] Deferred init failed, late-join disabled:",
+          err,
+        );
+      });
+      natsLinkRegistry.init().catch((err: unknown) => {
+        console.warn(
+          "[LinkRegistry] Deferred init failed, link dispatch disabled:",
           err,
         );
       });
@@ -1050,7 +1077,21 @@ export async function createApp(options: CreateAppOptions = {}) {
   // mounted via `createOrgScopedApi` below.
   const legacyWellKnownProtectedResource =
     createLegacyWellKnownProtectedResourceRoutes();
-  legacyWellKnownProtectedResource.use("*", logDeprecatedRoute);
+  // Scope the deprecation log to the two specific legacy paths this sub-app
+  // owns, NOT `use("*", ...)`. Because this sub-app is mounted at `/`, a
+  // wildcard middleware fires for every request to the root app — and the
+  // suppression logic in `log-deprecated-route.ts` can't reliably tell
+  // root-app handlers (e.g. `/api/links/heartbeat`) apart from this
+  // sub-app's handlers via basePath alone. Pinning the middleware to the
+  // actual deprecated patterns avoids the false-positive entirely.
+  legacyWellKnownProtectedResource.use(
+    "/.well-known/oauth-protected-resource/mcp/:connectionId",
+    logDeprecatedRoute,
+  );
+  legacyWellKnownProtectedResource.use(
+    "/mcp/:connectionId/.well-known/oauth-protected-resource",
+    logDeprecatedRoute,
+  );
   app.route("/", legacyWellKnownProtectedResource);
 
   // Well-known *prefix* discovery for the new org-scoped server URL shape.
@@ -1132,6 +1173,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     eventBus,
     modelListCache,
     memberRoleCache,
+    linkRegistry,
   });
   ContextFactory.set(factory);
 
@@ -1570,8 +1612,22 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast,
     streamBuffer,
     runRegistry,
+    linkRegistry,
   });
   app.route("/api", decopilotRoutes);
+
+  // `/api/links/*` — link daemon registration, heartbeat, status.
+  // Session auth uses the same Better-Auth flow as every other authed
+  // route: `meshContext.auth.user.id` is the userSub. Bearer auth on
+  // heartbeat is the `linkSecret` (verified inside the route).
+  registerLinksRoutes(app, {
+    linkRegistry,
+    getAuthenticatedUserSub: (c) => {
+      const ctx = c.get("meshContext");
+      return ctx?.auth?.user?.id ?? null;
+    },
+    allowLocalhostLinks: process.env.MESH_ALLOW_LOCALHOST_LINKS === "1",
+  });
 
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs)
   app.route("/api", filesRoutes);
@@ -1783,10 +1839,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     // Sweep sandbox containers — Docker only. Other runners' sandboxes
     // outlive mesh by design, so a generic sweep would nuke active user VMs.
     // Must run before NATS/DB close (sweep writes state).
-    const dockerRunner = asDockerRunner(getSharedRunnerIfInit());
+    const dockerRunner = asDockerRunner(getSharedSandboxProviderIfInit());
     if (dockerRunner) {
       const { sweepDockerOrphansOnShutdown } = await import(
-        "@decocms/sandbox/runner"
+        "@decocms/sandbox/provider"
       );
       await sweepDockerOrphansOnShutdown(dockerRunner);
     }

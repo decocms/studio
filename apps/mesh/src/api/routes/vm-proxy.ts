@@ -14,10 +14,20 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
-import { composeSandboxRef } from "@decocms/sandbox/runner";
-import type { ClaimPhase, SandboxRunner } from "@decocms/sandbox/runner";
+import {
+  composeSandboxRef,
+  resolveSandboxProviderKindFromEnv,
+} from "@decocms/sandbox/provider";
+import type {
+  SandboxProvider,
+  SandboxProviderKind,
+} from "@decocms/sandbox/provider";
+import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
-import { getOrInitSharedRunner } from "../../sandbox/lifecycle";
+import {
+  getOrInitSharedRunner,
+  getSharedSandboxProvider,
+} from "../../sandbox/lifecycle";
 import {
   getUserId,
   requireAuth,
@@ -33,7 +43,7 @@ import { readValidatedRuntimeEnv } from "../../tools/vm/helpers";
 interface VmClaim {
   claimName: string;
   /** Null when no sandbox runner is configured on this mesh instance. */
-  runner: SandboxRunner | null;
+  runner: SandboxProvider | null;
   virtualMcpId: string;
   branch: string;
   userId: string;
@@ -84,7 +94,29 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     branch,
   });
   const claimName = computeClaimHandle({ userId, projectRef }, branch);
-  const runner = await getOrInitSharedRunner();
+
+  // User-scoped resolution: for `remote-user` this picks the acting user's
+  // link daemon via `ctx.linkRegistry`; for `docker` / `agent-sandbox` it
+  // returns the cached env-resolved singleton. Falls back to the env
+  // singleton ONLY for non-`remote-user` kinds — for `remote-user` the
+  // throw IS the answer (no link daemon → `requireRunner`/events handler
+  // surface the 503/`failed` phase). Pattern mirrors the legacy
+  // `/api/vm-events` handler at vm-events.ts:143-156.
+  let providerKind: SandboxProviderKind | null;
+  try {
+    providerKind = resolveSandboxProviderKindFromEnv();
+  } catch {
+    providerKind = null;
+  }
+  let runner: SandboxProvider | null;
+  try {
+    runner = await getSharedSandboxProvider(ctx);
+  } catch {
+    runner =
+      providerKind === "remote-user"
+        ? null
+        : await getOrInitSharedRunner().catch(() => null);
+  }
 
   c.set("vmClaim", {
     claimName,
@@ -100,7 +132,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
 });
 
 /** Guard for routes that need a non-null runner. Returns the runner or a 503. */
-function requireRunner(c: Context<VmEnv>): SandboxRunner | Response {
+function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
   const { runner } = c.get("vmClaim");
   if (!runner) {
     return c.json({ error: "No sandbox runner configured" }, 503);

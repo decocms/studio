@@ -27,7 +27,7 @@
  */
 
 import { convertToModelMessages, type ModelMessage } from "ai";
-import type { ChatMessage } from "../api/routes/decopilot/types";
+import type { ChatMessage } from "./types";
 
 /** Convert harness UIMessages to ModelMessages for CLI harness streamText
  *  calls. See file-level comment for the why. */

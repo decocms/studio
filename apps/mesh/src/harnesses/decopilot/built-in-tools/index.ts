@@ -37,8 +37,10 @@ import { createReadPromptTool } from "./prompts";
 import { createReadResourceTool } from "./resources";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createVmTools } from "./vm-tools";
-import { getSharedRunner } from "@/sandbox/lifecycle";
-import { ensureVmForBranch } from "@/tools/vm/start";
+import { getSharedSandboxProvider } from "@/sandbox/lifecycle";
+import { ensureVm } from "@/tools/vm/start";
+import { resolveDefaultSandboxProviderKind } from "@/sandbox/resolve-default-provider-kind";
+import { resolveSandboxProviderKindFromEnv } from "@decocms/sandbox/provider";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import { todoWriteTool } from "./todo-write";
@@ -152,14 +154,26 @@ async function buildAllTools(
   const vmNeedsApproval =
     toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false;
   if (vmContext) {
-    const runner = await getSharedRunner(ctx);
+    const runner = await getSharedSandboxProvider(ctx);
     let cached: Promise<string> | null = null;
     const ensureHandle = () => {
       if (!cached) {
-        cached = ensureVmForBranch(
-          { virtualMcpId: vmContext.virtualMcpId, branch: vmContext.branch },
-          ctx,
-        ).then((entry) => entry.vmId);
+        const userId = vmContext.userId;
+        cached = resolveDefaultSandboxProviderKind(userId, {
+          linkRegistry: ctx.linkRegistry!,
+          resolveEnvKind: resolveSandboxProviderKindFromEnv,
+        })
+          .then((sandboxProviderKind) =>
+            ensureVm(
+              {
+                virtualMcpId: vmContext.virtualMcpId,
+                branch: vmContext.branch,
+                sandboxProviderKind,
+              },
+              ctx,
+            ),
+          )
+          .then((entry) => entry.vmId);
         // Reset on failure so the next tool call retries instead of
         // permanently caching a rejected promise.
         cached.catch(() => {

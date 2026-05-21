@@ -60,8 +60,9 @@ import {
   useMCPClient,
   useProjectContext,
   useVirtualMCP,
+  parseBranchMap,
 } from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPEntity, VmMap } from "@decocms/mesh-sdk/types";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useVmStart } from "@/web/components/vm/hooks/use-vm-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
@@ -78,7 +79,6 @@ import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { VmEventsProvider } from "@/web/components/vm/hooks/vm-events-context.tsx";
-import type { VmMapEntry } from "@decocms/mesh-sdk";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 
 // ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ function VmEventsBridge({
 }: {
   virtualMcpId: string;
   hasActiveGithubRepo: boolean;
-  vmMap: Record<string, Record<string, VmMapEntry>> | undefined;
+  vmMap: VmMap | undefined;
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
@@ -212,10 +212,12 @@ function VmEventsBridge({
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
-  // Auto-start the VM when the active task points at a branch without a
-  // registered vmMap entry. Routed through useVmStart so concurrent mounts
-  // (preview, env, this bridge) for the same (virtualMcpId, branch) collapse
-  // onto one in-flight upstream call.
+  // Auto-start the VM when the active task points at a branch without any
+  // registered vmMap entry (regardless of kind). Routed through useVmStart so
+  // concurrent mounts (preview, env, this bridge) for the same
+  // (virtualMcpId, branch) collapse onto one in-flight upstream call.
+  // The server's resolveDefaultSandboxProviderKind decides the kind when
+  // sandboxProviderKind is omitted — this is intentional for implicit auto-start.
   const autoStartClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -231,7 +233,11 @@ function VmEventsBridge({
     if (!hasActiveGithubRepo) return;
     if (!userId) return;
     if (!currentBranch) return;
-    if (vmMap?.[userId]?.[currentBranch]) {
+    // Use parseBranchMap to handle both legacy 2-level and current 3-level shapes.
+    // If any entry exists for this (user, branch) — regardless of kind — a VM is
+    // already running; don't auto-start.
+    const branchMap = parseBranchMap(vmMap?.[userId]?.[currentBranch]);
+    if (Object.keys(branchMap).length > 0) {
       // VM is already running — record the branch so a user stop won't
       // re-trigger auto-start within this mount.
       autoStartAttemptedRef.current.add(currentBranch);

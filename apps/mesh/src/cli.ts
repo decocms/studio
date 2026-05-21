@@ -56,6 +56,14 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
+    "local-sandbox-provider": {
+      type: "boolean",
+      default: false,
+    },
+    "no-tunnel": {
+      type: "boolean",
+      default: false,
+    },
     vibe: {
       type: "boolean",
       default: false,
@@ -77,7 +85,7 @@ Usage:
   deco services <up|down|status>     Manage services (Postgres, NATS)
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
-  deco link [options] [-- <cmd>]     Tunnel a local port to a stable deco.host URL
+  deco link [options]                Start the laptop-side link daemon
   deco completion [shell]            Install shell completions
 
 Server Options:
@@ -91,17 +99,17 @@ Server Options:
   -v, --version         Show version
 
 Dev Options:
-  --vite-port <port>    Vite dev server port (default: 4000)
-  --base-url <url>      Base URL for the server
+  --vite-port <port>            Vite dev server port (default: 4000)
+  --base-url <url>              Base URL for the server
+  --local-sandbox-provider      Auto-spawn the local link daemon (remote-user sandbox provider)
 
 Auth Options:
   --target <url>        Decocms target (default: https://studio.decocms.com)
 
 Link Options:
-  -p, --port <port>     Local port to tunnel (default: 8787)
-  -e, --env <name>      Env var to inject the tunnel URL into when spawning
-                        a child command (default: BASE_URL)
-  -- <command>          Optional command to spawn after the tunnel opens
+  --port <port>     Local port for the daemon (default: 5174)
+  --no-tunnel       Skip Warp tunnel (requires MESH_ALLOW_LOCALHOST_LINKS=1
+                    on the cluster)
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
@@ -118,8 +126,6 @@ Examples:
   deco init my-app                Scaffold a new MCP app
   deco auth login                 Log in to studio.decocms.com
   deco auth whoami                Show current session
-  deco link -p 3000 -- bun dev    Tunnel localhost:3000, run "bun dev"
-  deco link -p 8787               Tunnel an already-running service on 8787
 
 Documentation:
   https://decocms.com/studio
@@ -229,34 +235,18 @@ if (command === "auth") {
 
 // ── Link command ───────────────────────────────────────────────────────
 if (command === "link") {
-  const dataDir = resolveDataDir();
-  const port = Number(values.port);
-  if (!Number.isInteger(port) || port <= 0) {
-    console.error(`Invalid --port value: ${values.port}`);
-    process.exit(1);
-  }
-  const env = values.env ?? "BASE_URL";
-
-  // Trailing args after `--` are the run command. parseArgs gives us positionals
-  // including everything after `--`; we re-derive the boundary from the raw argv.
-  const dashDashIdx = process.argv.indexOf("--");
-  const runCommand =
-    dashDashIdx >= 0 ? process.argv.slice(dashDashIdx + 1) : [];
-
-  const { linkCommand } = await import("./cli/commands/link");
-  const result = linkCommand({
-    cwd: process.cwd(),
-    dataDir,
-    port,
-    env,
-    runCommand,
+  const { runLinkCommand } = await import("./cli/commands/link");
+  // The top-level `parseArgs` declares `--port` with a default of 3000
+  // (for the server command). Only honor it for `deco link` if the user
+  // actually passed `--port`/`-p` on the command line — otherwise
+  // `runLinkCommand` falls back to the daemon's own default of 5174.
+  const portExplicit =
+    process.argv.includes("--port") || process.argv.includes("-p");
+  const code = await runLinkCommand({
+    port: portExplicit ? Number(values.port) : undefined,
+    noTunnel: values["no-tunnel"] === true,
   });
-
-  // Forward Ctrl-C to the link command for graceful shutdown.
-  process.on("SIGINT", () => void result.cancel());
-  process.on("SIGTERM", () => void result.cancel());
-
-  process.exit(await result.exit);
+  process.exit(code);
 }
 
 // ── Dev command (Ink TUI + dev servers) ─────────────────────────────────
@@ -269,6 +259,7 @@ if (command === "dev") {
 
   const noTui = values["no-tui"] === true || !process.stdout.isTTY;
 
+  const localSandboxProvider = values["local-sandbox-provider"] === true;
   const devOptions = {
     port: values.port!,
     vitePort: values["vite-port"]!,
@@ -277,6 +268,7 @@ if (command === "dev") {
     skipMigrations: values["skip-migrations"] === true,
     noTui,
     localMode: values["no-local-mode"] !== true,
+    localSandboxProvider,
   };
 
   if (noTui) {
@@ -305,7 +297,7 @@ if (command === "dev") {
     const { setDevMode, setVibe, setDataDir } = await import("./cli/cli-store");
 
     const displayHome = decoHome.replace(homedir(), "~");
-    setDevMode();
+    setDevMode({ localSandboxProvider });
     setDataDir(decoHome);
     render(createElement(App, { home: displayHome }), {
       patchConsole: false,

@@ -34,7 +34,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import type {
   ClaimFailureReason,
   ClaimPhase,
-} from "@decocms/sandbox/runner/agent-sandbox";
+} from "@decocms/sandbox/provider/agent-sandbox";
 
 export type { ClaimFailureReason, ClaimPhase };
 

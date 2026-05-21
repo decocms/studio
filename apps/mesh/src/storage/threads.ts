@@ -165,6 +165,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
       trigger_id: data.trigger_id ?? null,
       virtual_mcp_id: data.virtual_mcp_id ?? "",
       branch: data.branch ?? null,
+      sandbox_provider_kind: null,
+      harness_id: null,
       created_at: now,
       updated_at: now,
       created_by: data.created_by,
@@ -253,7 +255,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.branch !== undefined) {
       updateData.branch = data.branch;
     }
-
+    if (data.sandbox_provider_kind !== undefined) {
+      updateData.sandbox_provider_kind = data.sandbox_provider_kind;
+    }
+    if (data.harness_id !== undefined) {
+      updateData.harness_id = data.harness_id;
+    }
     await this.db
       .updateTable("threads")
       .set(updateData)
@@ -710,6 +717,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
     run_started_at?: Date | string | null;
     virtual_mcp_id?: string | null;
     branch?: string | null;
+    sandbox_provider_kind?: string | null;
+    harness_id?: string | null;
     metadata?: ThreadMetadata | string | null;
     created_at: Date | string;
     updated_at: Date | string;
@@ -749,6 +758,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
         : null,
       virtual_mcp_id: row.virtual_mcp_id ?? "",
       branch: row.branch ?? null,
+      sandbox_provider_kind: row.sandbox_provider_kind ?? null,
+      harness_id: row.harness_id ?? null,
       metadata,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),

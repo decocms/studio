@@ -1,22 +1,21 @@
 /**
- * VM_START. Keyed by (userId, branch) in the Virtual MCP's `vmMap`.
- * Runner-agnostic — dispatches through the active `SandboxRunner`; this
+ * VM_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual MCP's `vmMap`.
+ * Runner-agnostic — dispatches through the active `SandboxProvider`; this
  * handler only does `vmMap` bookkeeping. Branch defaults to
  * `deco/<adjective>-<noun>` when omitted.
  *
- * Runner flips: if the existing entry's `runnerKind` differs from the env's
- * current runner, the stale VM is torn down under its original runner before
- * the new one is provisioned. Old VMs are ephemeral — not preserved.
+ * Different sandbox provider kinds coexist as siblings under the same
+ * (user, branch) key — no stale-VM teardown is needed on kind change.
  */
 
 import { z } from "zod";
 import type { VmMapEntry } from "@decocms/mesh-sdk";
 import {
   composeSandboxRef,
-  resolveRunnerKindFromEnv,
-  type RunnerKind,
+  resolveSandboxProviderKindFromEnv,
+  type SandboxProviderKind,
   type Workload,
-} from "@decocms/sandbox/runner";
+} from "@decocms/sandbox/provider";
 import { defineTool } from "../../core/define-tool";
 import {
   getUserId,
@@ -41,9 +40,13 @@ import {
 } from "../../shared/github-runtime-detect";
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
-import { getRunnerByKind, getSharedRunner } from "../../sandbox/lifecycle";
+import {
+  getSandboxProviderByKind,
+  getSharedSandboxProvider,
+} from "../../sandbox/lifecycle";
 import { setVmMapEntry } from "./vm-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
+import { resolveDefaultSandboxProviderKind } from "../../sandbox/resolve-default-provider-kind";
 
 type GithubRepo = {
   owner: string;
@@ -75,31 +78,54 @@ export const VM_START = defineTool({
       .describe(
         "Optional git branch to check out. When omitted the handler generates `deco/<adjective>-<noun>` and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
+    sandboxProviderKind: z
+      .enum(["docker", "agent-sandbox", "remote-user"])
+      .optional()
+      .describe(
+        "Explicit runtime choice. When omitted, defaults to `remote-user` if the acting user's link daemon is online, else the cluster env kind.",
+      ),
   }),
   outputSchema: z.object({
     previewUrl: z.string().nullable(),
     vmId: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    runnerKind: z.enum(["host", "docker", "agent-sandbox"]),
+    sandboxProviderKind: z.enum(["docker", "agent-sandbox", "remote-user"]),
   }),
 
   handler: async (input, ctx) => {
+    requireAuth(ctx);
     const resolvedBranch = input.branch ?? generateBranchName();
+
+    // Resolve kind before requireVmEntry so the 3-level lookup uses the right key.
+    // getUserId may return null here; requireVmEntry will throw if so.
+    const earlyUserId = getUserId(ctx);
+    if (!earlyUserId) throw new Error("User ID required");
+
+    const providerKind: SandboxProviderKind =
+      input.sandboxProviderKind ??
+      (ctx.linkRegistry
+        ? await resolveDefaultSandboxProviderKind(earlyUserId, {
+            linkRegistry: ctx.linkRegistry,
+            resolveEnvKind: resolveSandboxProviderKindFromEnv,
+          })
+        : resolveSandboxProviderKindFromEnv());
+
     const {
       metadata,
       userId,
       organization,
       entry: existing,
     } = await requireVmEntry(
-      { virtualMcpId: input.virtualMcpId, branch: resolvedBranch },
+      {
+        virtualMcpId: input.virtualMcpId,
+        branch: resolvedBranch,
+        sandboxProviderKind: providerKind,
+      },
       ctx,
     );
 
     const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
-
-    const runnerKind = resolveRunnerKindFromEnv();
-    await reapStaleRunner(ctx, existing, runnerKind);
 
     const { entry, isNewVm } = await provisionSandbox({
       ctx,
@@ -110,12 +136,13 @@ export const VM_START = defineTool({
       metadata,
       githubRepo,
       existing,
+      providerKind,
     });
     return {
       ...entry,
       branch: resolvedBranch,
       isNewVm,
-      runnerKind,
+      sandboxProviderKind: providerKind,
     };
   },
 });
@@ -124,11 +151,18 @@ export const VM_START = defineTool({
  * Lazy provisioner for the always-on VM tools path. Mirrors VM_START's
  * flow but: (a) tolerates a missing GitHub repo (boots blank under Docker),
  * and (b) takes a fast path when the existing vmMap entry already matches
- * the current runner kind — avoiding a full `runner.ensure` round-trip on
+ * the requested kind — avoiding a full `runner.ensure` round-trip on
  * every fresh stream when the VM is already registered.
+ *
+ * Unlike VM_START, `sandboxProviderKind` is required — callers (e.g. POST
+ * /messages) must resolve the kind before calling this function.
  */
-export async function ensureVmForBranch(
-  input: { virtualMcpId: string; branch: string },
+export async function ensureVm(
+  input: {
+    virtualMcpId: string;
+    branch: string;
+    sandboxProviderKind: SandboxProviderKind;
+  },
   ctx: MeshContext,
 ): Promise<VmMapEntry> {
   // Inline auth + lookup; the standard `requireVmEntry` runs
@@ -149,17 +183,17 @@ export async function ensureVmForBranch(
     readVmMap(metadata),
     userId,
     input.branch,
+    input.sandboxProviderKind,
   );
 
-  const runnerKind = resolveRunnerKindFromEnv();
+  const providerKind = input.sandboxProviderKind;
 
-  // Fast path: vmMap already has an entry under the current runner. Trust
-  // it; matches the prior `activeVm` behavior in built-in-tools.
-  if (existing && existing.runnerKind === runnerKind) {
+  // Fast path: vmMap already has an entry under the requested kind.
+  // No reap needed: with kind in the key, there's no stale-kind entry to
+  // tear down. Different kinds coexist as siblings.
+  if (existing) {
     return existing;
   }
-
-  await reapStaleRunner(ctx, existing, runnerKind);
 
   const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
   const { entry } = await provisionSandbox({
@@ -170,29 +204,10 @@ export async function ensureVmForBranch(
     branch: input.branch,
     metadata,
     githubRepo,
-    existing,
+    existing: null,
+    providerKind,
   });
   return entry;
-}
-
-async function reapStaleRunner(
-  ctx: MeshContext,
-  existing: VmMapEntry | null,
-  currentKind: RunnerKind,
-): Promise<void> {
-  if (!existing?.runnerKind) return;
-  if (existing.runnerKind === currentKind) return;
-
-  try {
-    const priorRunner = await getRunnerByKind(ctx, existing.runnerKind);
-    await priorRunner.delete(existing.vmId);
-  } catch (err) {
-    console.error(
-      `[VM_START] stale ${existing.runnerKind} ${existing.vmId}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
 }
 
 type StartParams = {
@@ -204,6 +219,7 @@ type StartParams = {
   metadata: Record<string, unknown>;
   githubRepo: GithubRepo | null;
   existing: VmMapEntry | null;
+  providerKind: SandboxProviderKind;
 };
 
 async function provisionSandbox(
@@ -218,6 +234,7 @@ async function provisionSandbox(
     metadata,
     githubRepo,
     existing,
+    providerKind,
   } = params;
 
   let { runtime, packageManager, port, packageManagerPath } =
@@ -309,7 +326,31 @@ async function provisionSandbox(
     virtualMcpId,
     branch,
   });
-  const runner = await getSharedRunner(ctx);
+
+  // Dispatch to the correct runner for the resolved provider kind.
+  // - remote-user: look up the link and set ctx fields so the getSharedSandboxProvider
+  //   per-user branch fires correctly (it builds a fresh RemoteUserSandboxProvider).
+  // - all other kinds: go straight through getSandboxProviderByKind so the explicit
+  //   kind is honoured even when env says something different.
+  let runner;
+  if (providerKind === "remote-user") {
+    if (!ctx.linkRegistry) {
+      throw new Error(
+        "remote-user sandbox provider requires ctx.linkRegistry to be wired (set on MeshContextConfig).",
+      );
+    }
+    const link = await ctx.linkRegistry.get(userId);
+    if (!link) {
+      throw new Error(
+        `No link daemon registered for user "${userId}". Start one with \`deco link\` (or run \`bun run dev --local-sandbox-provider\` for dev).`,
+      );
+    }
+    ctx.sandboxPreference = "remote-user";
+    ctx.linkForCurrentRun = link;
+    runner = await getSharedSandboxProvider(ctx);
+  } else {
+    runner = await getSandboxProviderByKind(ctx, providerKind);
+  }
   const sandbox = await runner.ensure(
     { userId, projectRef },
     {
@@ -346,7 +387,8 @@ async function provisionSandbox(
   const entry: VmMapEntry = {
     vmId: sandbox.handle,
     previewUrl: sandbox.previewUrl,
-    runnerKind: runner.kind,
+    sandboxUrl: sandbox.previewUrl, // for remote-user the two are equal
+    sandboxProviderKind: runner.kind,
     createdAt,
     startedWith: {
       packageManager: runtimeSelected,
@@ -361,6 +403,7 @@ async function provisionSandbox(
     userId,
     userId,
     branch,
+    params.providerKind,
     entry,
   );
 

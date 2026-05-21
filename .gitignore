@@ -80,8 +80,13 @@ studio-demo/
 apps/mesh/test-results/
 apps/mesh/playwright-report/
 
-# Generated docs (root-level only, not apps/docs/)
-/docs
+# Generated docs (root-level only, not apps/docs/). Use /docs/* not /docs
+# so we can un-ignore specific subdirs below — git won't traverse into an
+# ignored directory.
+/docs/*
+# Hand-written specs/plans (superpowers brainstorming + writing-plans output)
+# are first-class engineering artifacts and should be tracked.
+!/docs/superpowers/
 
 # Local dev data directory
 .deco
