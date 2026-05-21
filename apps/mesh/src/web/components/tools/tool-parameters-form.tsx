@@ -27,6 +27,7 @@ import {
 } from "@deco/ui/components/select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { useState } from "react";
 
 type Property = {
   type?: string | string[];
@@ -138,10 +139,14 @@ function PropertyField({
   onChange: (next: unknown) => void;
 }) {
   if (prop.enum && prop.enum.length > 0) {
+    // Map the stringified form back to the original option so a
+    // numeric / boolean enum (e.g. `enum: [1, 2, 3]` or `[true, false]`)
+    // is persisted as its original type — not as `"1"` / `"true"`.
+    const byString = new Map(prop.enum.map((opt) => [String(opt), opt]));
     return (
       <Select
         value={value !== undefined ? String(value) : ""}
-        onValueChange={(v) => onChange(v)}
+        onValueChange={(v) => onChange(byString.get(v) ?? v)}
       >
         <SelectTrigger id={id}>
           <SelectValue placeholder={`Select ${propKey}…`} />
@@ -247,8 +252,14 @@ function RawJsonField({
   value: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
 }) {
-  const text =
-    Object.keys(value).length === 0 ? "{}" : JSON.stringify(value, null, 2);
+  // Keep raw text locally so the user can type intermediate-invalid JSON
+  // (a single `{` or a partially-edited string) without the textarea
+  // snapping back to the last valid stringified value. The component is
+  // mounted fresh whenever the tool changes (parent resets input to {}),
+  // so we don't need to sync from `value` after mount.
+  const [text, setText] = useState(() =>
+    Object.keys(value).length === 0 ? "{}" : JSON.stringify(value, null, 2),
+  );
   return (
     <div className="space-y-2">
       <label
@@ -263,10 +274,15 @@ function RawJsonField({
         value={text}
         spellCheck={false}
         onChange={(e) => {
-          const raw = e.currentTarget.value.trim();
-          if (raw === "") return onChange({});
+          const raw = e.currentTarget.value;
+          setText(raw);
+          const trimmed = raw.trim();
+          if (trimmed === "") {
+            onChange({});
+            return;
+          }
           try {
-            const parsed = JSON.parse(raw);
+            const parsed = JSON.parse(trimmed);
             if (
               parsed &&
               typeof parsed === "object" &&
@@ -275,7 +291,8 @@ function RawJsonField({
               onChange(parsed as Record<string, unknown>);
             }
           } catch {
-            // Keep the textarea editable; parent save path will catch.
+            // Keep typing; the parent's last-known-good value stays as-is
+            // until the JSON parses again.
           }
         }}
         placeholder='e.g. { "foo": "bar" }'

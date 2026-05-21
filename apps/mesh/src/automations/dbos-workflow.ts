@@ -453,10 +453,27 @@ async function invokeFixedToolStep(
   const { createLazyClient } = await import("@/mcp-clients/lazy-client");
   const client = createLazyClient(connection, meshCtx, false);
   try {
-    const result = await client.callTool({
+    const result = (await client.callTool({
       name: automation.tool_name,
       arguments: args,
-    });
+    })) as {
+      isError?: boolean;
+      content?: Array<{ type?: string; text?: string }>;
+    };
+    // MCP convention: tools signal application-level failures by
+    // returning { isError: true, content: [...] } rather than throwing.
+    // Treat these the same as a thrown error — mark the run failed and
+    // show the message — otherwise the thread is left in 'completed'
+    // with a misleading "output-available" card.
+    if (result.isError) {
+      const message =
+        result.content
+          ?.map((c) => (c.type === "text" ? c.text : undefined))
+          .filter((t): t is string => typeof t === "string")
+          .join("\n")
+          .trim() || "Tool returned an error";
+      return { ok: false, error: message };
+    }
     return { ok: true, output: result };
   } catch (err) {
     return {
