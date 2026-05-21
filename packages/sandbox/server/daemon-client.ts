@@ -3,9 +3,12 @@
  * under `/_decopilot_vm/*` (except `/health` at root, which is unauth).
  */
 
+import type { ConfigPatch } from "../daemon/config-store/types";
 import type { TenantConfig } from "../daemon/types";
 import { sleep } from "../shared";
 import type { ExecInput, ExecOutput } from "./runner/types";
+
+export type { ConfigPatch };
 
 const DEFAULT_EXEC_TIMEOUT_MS = 60_000;
 const HEALTH_PROBE_TIMEOUT_MS = 500;
@@ -98,7 +101,7 @@ export interface ConfigAuthPatch {
 export async function postConfig(
   daemonUrl: string,
   token: string,
-  payload: Partial<TenantConfig>,
+  payload: ConfigPatch,
   auth?: ConfigAuthPatch,
 ): Promise<ConfigResponse> {
   return configRequest(daemonUrl, token, "POST", payload, auth);
@@ -108,7 +111,7 @@ async function configRequest(
   daemonUrl: string,
   token: string,
   method: "POST" | "PUT",
-  payload: Partial<TenantConfig>,
+  payload: ConfigPatch,
   auth?: ConfigAuthPatch,
 ): Promise<ConfigResponse> {
   const wire: Record<string, unknown> = { ...payload };

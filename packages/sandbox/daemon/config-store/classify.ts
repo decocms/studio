@@ -38,6 +38,8 @@ export function classify(
     return { kind: "bootstrap", config: after };
   }
   if (before === null) {
+    const envDiff = diffEnv(undefined, after.env);
+    if (envDiff) return { kind: "env-change", changed: envDiff };
     return { kind: "no-op" };
   }
 
@@ -76,7 +78,30 @@ export function classify(
     };
   }
 
+  const envDiff = diffEnv(before.env, after.env);
+  if (envDiff) {
+    return { kind: "env-change", changed: envDiff };
+  }
+
   return { kind: "no-op" };
+}
+
+function diffEnv(
+  before: Readonly<Record<string, string>> | undefined,
+  after: Readonly<Record<string, string>> | undefined,
+): { set: string[]; deleted: string[] } | null {
+  const b = before ?? {};
+  const a = after ?? {};
+  const set: string[] = [];
+  for (const [k, v] of Object.entries(a)) {
+    if (b[k] !== v) set.push(k);
+  }
+  const deleted: string[] = [];
+  for (const k of Object.keys(b)) {
+    if (!(k in a)) deleted.push(k);
+  }
+  if (set.length === 0 && deleted.length === 0) return null;
+  return { set, deleted };
 }
 
 function stripCredentials(rawUrl: string): string {

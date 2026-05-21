@@ -24,7 +24,11 @@ import {
   proxyDaemonRequest,
   daemonBash,
 } from "../../daemon-client";
-import type { ConfigResponse, DaemonHealth } from "../../daemon-client";
+import type {
+  ConfigPatch,
+  ConfigResponse,
+  DaemonHealth,
+} from "../../daemon-client";
 import {
   applyPreviewPattern,
   buildConfigPayload,
@@ -41,7 +45,6 @@ import type {
   SandboxRunner,
 } from "../types";
 import type { ClaimPhase } from "../lifecycle-types";
-import type { TenantConfig } from "../../../daemon/types";
 
 const RUNNER_KIND = "host" as const;
 const READY_TIMEOUT_MS = 30_000;
@@ -61,7 +64,7 @@ type HealthProbeFn = (daemonUrl: string) => Promise<DaemonHealth | null>;
 type PostConfigFn = (
   daemonUrl: string,
   token: string,
-  payload: Partial<TenantConfig>,
+  payload: ConfigPatch,
 ) => Promise<ConfigResponse>;
 type KillFn = (pid: number, signal: NodeJS.Signals) => void;
 type IsAliveFn = (pid: number) => boolean;

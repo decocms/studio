@@ -331,6 +331,8 @@ export const KEYS = {
       installationLogin,
       query,
     ] as const,
+  vmEnv: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["vm-env", orgSlug, virtualMcpId, branch] as const,
 } as const;
 
 export function invalidateVirtualMcpQueries(

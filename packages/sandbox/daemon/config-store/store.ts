@@ -3,12 +3,17 @@ import { validateTenantConfig } from "../validate";
 import { classify } from "./classify";
 import { enrich } from "./derive";
 import { deepMerge } from "./merge";
-import { REJECTION_REASONS, type ApplyEvent, type ApplyResult } from "./types";
+import {
+  REJECTION_REASONS,
+  type ApplyEvent,
+  type ApplyResult,
+  type ConfigPatch,
+} from "./types";
 
-type Compute = (current: TenantConfig | null) => Partial<TenantConfig> | null;
+type Compute = (current: TenantConfig | null) => ConfigPatch | null;
 
 interface QueueEntry {
-  patch?: Partial<TenantConfig>;
+  patch?: ConfigPatch;
   compute?: Compute;
   /** When true, skip subscriber notification (e.g. orchestrator-internal fills). */
   silent?: boolean;
@@ -59,7 +64,7 @@ export class TenantConfigStore {
     this.current = null;
   }
 
-  apply(patch: Partial<TenantConfig>): Promise<ApplyResult> {
+  apply(patch: ConfigPatch): Promise<ApplyResult> {
     return new Promise((resolve) => {
       this.queue.push({ patch, resolve });
       void this.drain();
@@ -179,5 +184,6 @@ function plainConfig(enriched: EnrichedTenantConfig): TenantConfig {
   return {
     git: enriched.git,
     application: enriched.application,
+    env: enriched.env,
   };
 }

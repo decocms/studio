@@ -105,6 +105,7 @@ function setStatus(next: DaemonStatus) {
 const store = new TenantConfigStore();
 const installState = new InstallState();
 const lifecycle = new LifecycleManager({ broadcaster });
+let resetProbeState = (): void => {};
 // Drop the sniffed port whenever we leave `running` — the next dev start
 // may bind somewhere else and we need to re-sniff its announcement.
 const lifecycleTransitionRaw = lifecycle.transition.bind(lifecycle);
@@ -113,7 +114,10 @@ lifecycle.transition = (next) => {
   const prev = lifecycle.current().phase;
   const wasRunning = prev === "running";
   lifecycleTransitionRaw(next);
-  if (wasRunning && next.phase !== "running") portSniffer.reset();
+  if (wasRunning && next.phase !== "running") {
+    portSniffer.reset();
+    resetProbeState();
+  }
   if (prev !== next.phase) {
     console.log(`[lifecycle] ${prev} → ${next.phase}`);
   }
@@ -217,11 +221,13 @@ const lastProbe = startUpstreamProbe({
         return;
       }
       lastRunningPort = s.port;
+      const wasDown = phase === "starting" || phase === "crashed";
       lifecycle.transition({
         phase: "running",
         port: s.port,
         htmlSupport: s.htmlSupport,
       });
+      if (wasDown) broadcaster.emit("reload", {});
       if (!baselineTimer) {
         baselineTimer = setTimeout(() => {
           baselineTimer = null;
@@ -245,6 +251,11 @@ const lastProbe = startUpstreamProbe({
   },
   onLog: (msg) => broadcaster.broadcastChunk("setup", msg),
 });
+resetProbeState = () => {
+  lastProbe.status = "booting";
+  lastProbe.port = null;
+  lastProbe.htmlSupport = false;
+};
 
 // HTTP/WS proxy forwards to the same port the probe is HEAD-checking.
 // `application.port` is what mesh configured, but vite/etc. routinely

@@ -300,6 +300,7 @@ export class SetupOrchestrator {
     const installTee = new LogTee(installLogPath, INSTALL_LOG_MAX_BYTES);
     const installPromise = spawnInstall({
       config,
+      env: config.env,
       onChunk: (_src, data) => {
         this.rawChunk(data);
         installTee.write(data);
@@ -364,7 +365,7 @@ export class SetupOrchestrator {
     await this.deps.taskManager.spawn({
       command: command.cmd,
       cwd: command.cwd,
-      env: buildDevEnv(config),
+      env: buildDevEnv(config, config.env),
       label: command.label,
       mode: "pty",
       logName: command.source,
@@ -607,6 +608,7 @@ function transitionToStep(t: Transition): Step | null {
       return "install";
     case "port-change":
       return "start";
+    case "env-change":
     case "identity-conflict":
     case "no-op":
       return null;

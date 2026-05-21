@@ -60,6 +60,7 @@ export interface Application {
 export interface TenantConfig {
   readonly git?: GitConfig;
   readonly application?: Application;
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 /** In-memory enriched view: TenantConfig + derivations. */

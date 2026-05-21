@@ -112,9 +112,10 @@ async function proxyDaemon(
   c: Context<VmEnv>,
   daemonPath: string,
   opts?: {
+    method?: "GET" | "POST" | "PUT";
     /** When true, base64-encode the raw request body (Cloudflare WAF bypass). */
     encodeBody?: boolean;
-    /** Forward the request abort signal to the daemon. */
+    forwardJsonBody?: boolean;
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
@@ -124,6 +125,7 @@ async function proxyDaemon(
   if (runner instanceof Response) return runner;
 
   const { claimName } = c.get("vmClaim");
+  const method = opts?.method ?? "POST";
   let body: string | null = null;
   const headers = new Headers();
 
@@ -131,12 +133,15 @@ async function proxyDaemon(
     const rawBody = await c.req.text();
     body = Buffer.from(rawBody, "utf-8").toString("base64");
     headers.set("content-type", "application/json");
+  } else if (opts?.forwardJsonBody) {
+    body = await c.req.text();
+    headers.set("content-type", "application/json");
   }
 
   let upstream: Response;
   try {
     upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
-      method: "POST",
+      method,
       headers,
       body,
       ...(opts?.signal ? { signal: opts.signal } : {}),
@@ -214,6 +219,21 @@ export const createVmRoutes = () => {
       `/_decopilot_vm/exec/${encodeURIComponent(script)}/kill`,
     );
   });
+
+  // -- Tenant config --------------------------------------------------------
+  app.get("/:vmId/:branch/config", (c) =>
+    proxyDaemon(c, "/_decopilot_vm/config", {
+      method: "GET",
+      map404to410: true,
+    }),
+  );
+  app.put("/:vmId/:branch/config", (c) =>
+    proxyDaemon(c, "/_decopilot_vm/config", {
+      method: "PUT",
+      forwardJsonBody: true,
+      map404to410: true,
+    }),
+  );
 
   // -- Setup retry ----------------------------------------------------------
   app.post("/:vmId/:branch/setup/:step", (c) => {

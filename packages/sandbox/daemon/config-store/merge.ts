@@ -1,4 +1,5 @@
 import type { TenantConfig } from "../types";
+import type { ConfigPatch } from "./types";
 
 /**
  * Deep-merge a partial patch into the current TenantConfig.
@@ -8,18 +9,32 @@ import type { TenantConfig } from "../types";
  *   - field present (incl. null where the type allows) → set
  *   - nested objects merge field-by-field
  *   - primitives and arrays replace wholesale
- *
- * Anything in `current` that isn't shadowed by `patch` is preserved.
+ *   - env is per-key: string → upsert, null → delete that key only
  */
 export function deepMerge(
   current: TenantConfig | null,
-  patch: Partial<TenantConfig>,
+  patch: ConfigPatch,
 ): TenantConfig {
   const base: TenantConfig = current ?? {};
   return {
     git: mergeOptional(base.git, patch.git),
     application: mergeOptional(base.application, patch.application),
+    env: mergeEnv(base.env, patch.env),
   };
+}
+
+function mergeEnv(
+  current: Readonly<Record<string, string>> | undefined,
+  patch: Record<string, string | null> | undefined,
+): Record<string, string> | undefined {
+  if (patch === undefined) return current ? { ...current } : undefined;
+  const out: Record<string, string> = { ...(current ?? {}) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete out[k];
+    else if (typeof v === "string") out[k] = v;
+    else (out as Record<string, unknown>)[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function mergeOptional<T extends object>(

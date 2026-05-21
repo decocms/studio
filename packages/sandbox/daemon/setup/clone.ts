@@ -39,7 +39,9 @@ function runStep(cmd: string, deps: CloneDeps): Promise<number> {
     ...deps,
     onChunk: (src, data) => deps.onChunk(src, normalizeCarriageReturns(data)),
   };
-  return spawnSetupStep(cmd, normalized.onChunk, deps.dropPrivileges);
+  return spawnSetupStep(cmd, normalized.onChunk, {
+    dropPrivileges: deps.dropPrivileges,
+  });
 }
 
 const TRANSIENT_ERRORS = [

@@ -19,6 +19,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ChevronDown,
+  Key01,
   Loading01,
   Play,
   Plus,
@@ -31,6 +32,8 @@ import type { DrawerStatus } from "./status-pill";
 
 /** The always-present tab. Catch-all for clone + install logs. */
 export const DEFAULT_TAB = "setup";
+/** Env-vars editor tab. */
+export const ENV_TAB = "env";
 
 export type { DrawerStatus } from "./status-pill";
 
@@ -80,6 +83,10 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           active={props.active === DEFAULT_TAB}
           open={props.open}
           onClick={handleSetupClick}
+        />
+        <EnvTab
+          active={props.active === ENV_TAB}
+          onClick={() => props.onSelectTab(ENV_TAB)}
         />
         {props.scriptTabs.map((t) => (
           <TabButton
@@ -143,6 +150,25 @@ function SetupTab({
     >
       <Terminal className="size-3.5" />
       sandbox
+    </button>
+  );
+}
+
+function EnvTab({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs",
+        active
+          ? "border-border bg-background font-medium text-foreground shadow-sm"
+          : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
+      )}
+    >
+      <Key01 className="size-3.5" />
+      env
     </button>
   );
 }

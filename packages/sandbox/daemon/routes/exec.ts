@@ -83,7 +83,7 @@ export function makeExecHandler(deps: ExecDeps) {
     // a blocking response opt in via mode: "await".
     const mode: ExecMode = body.mode === "await" ? "await" : "background";
 
-    const env = buildDevEnv(config, body.env);
+    const env = buildDevEnv(config, { ...config.env, ...body.env });
     const { cmd, label } = pmRunCommand(
       config.runtimePathPrefix,
       cwd,
