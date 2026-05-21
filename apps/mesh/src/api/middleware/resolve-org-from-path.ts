@@ -78,6 +78,7 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // means `organization` was not yet resolved). Without this, any thread
   // operation throws "thread operations require an authenticated organization".
   ctx.storage.threads.setOrganizationId(org.id);
+  ctx.storage.asyncResearchJobs.setOrganizationId(org.id);
   // objectStorage is also constructed eagerly (null when no org). Rebuild it
   // here using the same logic as context-factory so OBJECT_STORAGE binding
   // resolves on the new path family.

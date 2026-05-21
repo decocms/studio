@@ -92,6 +92,8 @@ import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
+import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
+import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import type { Thread } from "../storage/types";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -822,6 +824,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   const POD_ID = getPodId();
   const runRegistry = new RunRegistry(cancelReactorDeps, POD_ID);
 
+  // Shared async-research-job storage — used both by the background
+  // sweeper and by the automation context factory below, which rebinds it
+  // with the right org for dispatched runs (without that rebind, the
+  // web_search tool throws on its first call).
+  const asyncResearchJobStorage = new SqlAsyncResearchJobStorage(database.db);
+
+  // Background sweeper for the async_research_jobs table. Marks rows that
+  // have been stuck in pending/polling longer than the staleness window as
+  // 'abandoned' so they show up in audit queries instead of silently rotting.
+  const asyncResearchJobSweeper = new AsyncResearchJobSweeper(
+    asyncResearchJobStorage,
+  );
+  asyncResearchJobSweeper.start();
+
   cancelBroadcast
     .start((taskId) => {
       runRegistry.execute({ type: "CANCEL", taskId }).catch((err) => {
@@ -879,6 +895,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     await podHeartbeat?.stop();
     await runRegistry.stopAll();
     runRegistry.dispose();
+    asyncResearchJobSweeper.dispose();
     cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();
     mcpListCache.teardown();
@@ -1157,6 +1174,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   const automationContextFactory = createAutomationContextFactory({
     db: database.db,
     threadStorage,
+    asyncResearchJobStorage,
   });
 
   // Stash deps for the DBOS workflow body. Safe to call before DBOS.launch():

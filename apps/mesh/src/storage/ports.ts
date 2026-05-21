@@ -16,8 +16,9 @@ import type {
   VirtualMCPUpdateData,
 } from "../tools/virtual/schema";
 import type {
+  AsyncResearchJob,
+  AsyncResearchJobCitation,
   BrandContext,
-  InflightAsyncJob,
   MonitoringLog,
   OrganizationDomain,
   OrganizationSettings,
@@ -92,34 +93,6 @@ export interface ThreadStoragePort {
   /** Release ownership for all runs owned by this pod (graceful shutdown). */
   orphanRunsByPod(podId: string): Promise<string[]>;
 
-  /** Append an entry to threads.inflight_async_jobs. Atomic via jsonb concat. */
-  addInflightAsyncJob(
-    taskId: string,
-    organizationId: string,
-    entry: InflightAsyncJob,
-  ): Promise<void>;
-
-  /**
-   * Find an in-flight async job for this thread matching provider + modelId + query.
-   * Returns the most recently submitted match, or null.
-   */
-  findInflightAsyncJob(
-    taskId: string,
-    organizationId: string,
-    provider: string,
-    modelId: string,
-    query: string,
-  ): Promise<InflightAsyncJob | null>;
-
-  /** Remove all entries matching provider + modelId + query from threads.inflight_async_jobs. */
-  removeInflightAsyncJob(
-    taskId: string,
-    organizationId: string,
-    provider: string,
-    modelId: string,
-    query: string,
-  ): Promise<void>;
-
   // Message operations - upserts by id (updates existing rows)
   saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;
   listMessages(
@@ -131,6 +104,124 @@ export interface ThreadStoragePort {
       sort?: "asc" | "desc";
     },
   ): Promise<{ messages: ThreadMessage[]; total: number }>;
+}
+
+// ============================================================================
+// Async Research Jobs Storage Port
+// ============================================================================
+
+/**
+ * Persistent store for async research jobs (Gemini Deep Research et al).
+ *
+ * Each `web_search` tool call that goes through a submit-then-poll provider
+ * gets one row here. The row is the source of truth for the job's lifecycle:
+ * the runtime reads it on resume, writes status transitions as the job
+ * progresses, and never deletes rows so the table doubles as an audit log.
+ *
+ * Idempotency on (organizationId, toolCallId) — DBOS replay of the tool
+ * step MUST find the existing row instead of submitting a duplicate
+ * provider job.
+ */
+export interface AsyncResearchJobStoragePort {
+  /**
+   * Insert a new row in status='pending'. Returns the existing row if one
+   * already exists for (organizationId, toolCallId) — that's the resume
+   * path on DBOS step replay or pod handoff.
+   */
+  upsertPending(input: {
+    organizationId: string;
+    threadId: string;
+    toolCallId: string;
+    messageId?: string | null;
+    provider: string;
+    modelId: string;
+    query: string;
+  }): Promise<AsyncResearchJob>;
+
+  findByToolCall(
+    organizationId: string,
+    toolCallId: string,
+  ): Promise<AsyncResearchJob | null>;
+
+  /**
+   * Transition pending → polling once the provider has accepted the job
+   * and returned an interaction id. The interaction id is the only key
+   * Studio operators have for cross-referencing logs with the upstream
+   * provider's console.
+   *
+   * Atomically writes a stub `thread_messages` row that carries the
+   * `tool-input-available` part. Without that stub, a browser refresh
+   * during the long polling window leaves `loadInitialPage` with no
+   * assistant message to seed the AI SDK reader, and the eventual
+   * `tool-output-available` chunk on reconnect throws "No tool
+   * invocation found for tool call ID …" (ai/dist/index.mjs:5398).
+   *
+   * The stub uses the deterministic id `msg_async_stub_<toolCallId>`
+   * and is deleted by `markCompleted` / `markFailed` / `markCancelled`
+   * in the same transaction as the status flip — so callers never
+   * observe a half-state of "polling row exists but no stub" or vice
+   * versa.
+   */
+  markPolling(
+    organizationId: string,
+    toolCallId: string,
+    interactionId: string,
+    stub: {
+      threadId: string;
+      toolName: string;
+      query: string;
+    },
+  ): Promise<void>;
+
+  /** Bump `attempts` and refresh `last_polled_at`. Cheap UPDATE per tick. */
+  recordPoll(
+    organizationId: string,
+    toolCallId: string,
+    lastError?: string | null,
+  ): Promise<void>;
+
+  markCompleted(
+    organizationId: string,
+    toolCallId: string,
+    result: {
+      inputTokens: number;
+      outputTokens: number;
+      citations: AsyncResearchJobCitation[];
+      /**
+       * Blob-storage URI when the report was offloaded for size, NULL
+       * for inline results. When set, `resultContent` is NULL and the
+       * full text is fetched from blob storage on read.
+       */
+      resultUri: string | null;
+      /** Short truncated snippet for SQL-side inspection. */
+      resultPreview: string;
+      /**
+       * Full report text for inline results; NULL when offloaded to
+       * blob. Used by replays of the same tool_call_id so a re-entry
+       * returns the original content rather than just the preview.
+       */
+      resultContent: string | null;
+    },
+  ): Promise<void>;
+
+  markFailed(
+    organizationId: string,
+    toolCallId: string,
+    error: string,
+  ): Promise<void>;
+
+  markCancelled(
+    organizationId: string,
+    toolCallId: string,
+    reason?: string,
+  ): Promise<void>;
+
+  /**
+   * Flip any row in pending/polling that hasn't been touched within
+   * `staleAfterMs` to status='abandoned'. Returns the number of rows
+   * affected so the caller can log when it actually does something.
+   */
+  sweepAbandoned(staleAfterMs: number): Promise<number>;
 }
 
 // ============================================================================

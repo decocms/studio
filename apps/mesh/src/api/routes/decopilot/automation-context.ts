@@ -17,11 +17,16 @@ import type { Database } from "@/storage/types";
 import { OrgScopedThreadStorage } from "@/storage/threads";
 import type { Kysely } from "kysely";
 import type { SqlThreadStorage } from "@/storage/threads";
+import {
+  OrgScopedAsyncResearchJobStorage,
+  SqlAsyncResearchJobStorage,
+} from "@/storage/async-research-jobs";
 import type { MeshContextFactory } from "@/automations/fire";
 
 export interface BuildAutomationContextDeps {
   db: Kysely<Database>;
   threadStorage: SqlThreadStorage;
+  asyncResearchJobStorage: SqlAsyncResearchJobStorage;
 }
 
 /**
@@ -94,6 +99,14 @@ export function createAutomationContextFactory(
     // doesn't throw "thread operations require an authenticated organization".
     ctx.storage.threads = new OrgScopedThreadStorage(
       deps.threadStorage,
+      membership.orgId,
+    );
+    // Same fix for the async-research-job store. The web_search tool reads
+    // this from `ctx.storage.asyncResearchJobs` and would otherwise throw
+    // the matching "requires an authenticated organization" error the
+    // first time a deep-research call hits the persist step.
+    ctx.storage.asyncResearchJobs = new OrgScopedAsyncResearchJobStorage(
+      deps.asyncResearchJobStorage,
       membership.orgId,
     );
 

@@ -16,8 +16,20 @@
  */
 import { AsyncResearchTerminalError } from "../types";
 
-const INTERACTIONS_URL =
+/**
+ * Base URL for the Gemini Interactions API. Overridable via
+ * `GEMINI_INTERACTIONS_URL` so e2e tests can redirect to an in-process
+ * mock without monkey-patching `fetch`. Resolved per-call rather than
+ * at import time so tests can flip the env after the module is loaded.
+ * Production code leaves the env var unset and hits the real Google
+ * endpoint.
+ */
+const DEFAULT_INTERACTIONS_URL =
   "https://generativelanguage.googleapis.com/v1beta/interactions";
+
+function interactionsBaseUrl(): string {
+  return process.env.GEMINI_INTERACTIONS_URL ?? DEFAULT_INTERACTIONS_URL;
+}
 
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 
@@ -66,7 +78,7 @@ interface OutputBlock {
 export async function submitInteraction(
   opts: SubmitInteractionOptions,
 ): Promise<{ interactionId: string }> {
-  const res = await fetch(INTERACTIONS_URL, {
+  const res = await fetch(interactionsBaseUrl(), {
     method: "POST",
     headers: {
       "x-goog-api-key": opts.apiKey,
@@ -102,7 +114,7 @@ export async function submitInteraction(
 export async function pollInteraction(
   opts: PollInteractionOptions,
 ): Promise<InteractionsResearchResponse> {
-  const url = `${INTERACTIONS_URL}/${encodeURIComponent(opts.interactionId)}`;
+  const url = `${interactionsBaseUrl()}/${encodeURIComponent(opts.interactionId)}`;
   const interval = opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 
   while (true) {
