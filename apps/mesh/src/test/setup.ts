@@ -10,7 +10,10 @@ import { expect } from "bun:test";
 import * as matchers from "@testing-library/jest-dom/matchers";
 
 if (!GlobalRegistrator.isRegistered) {
-  GlobalRegistrator.register();
+  // Pass a concrete URL so modules that read window.location at import time
+  // (e.g. better-auth/react createAuthClient, which derives its baseURL from
+  // window.location.origin) don't blow up on the default `about:blank`.
+  GlobalRegistrator.register({ url: "http://localhost:4000/" });
 }
 // Cast bridges @testing-library/jest-dom matchers into bun:test's expect.extend signature.
 expect.extend(matchers as Parameters<typeof expect.extend>[0]);
