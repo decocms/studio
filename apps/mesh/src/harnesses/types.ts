@@ -5,7 +5,7 @@ import type { UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
  *
  * These types intentionally avoid importing from cluster-only paths
  * (`@/core/*`, `@/storage/*`, `@/api/*`, etc.) so this file stays portable
- * into the laptop daemon's bundle. The cluster-side shapes (`ChatMessage`
+ * into the desktop daemon's bundle. The cluster-side shapes (`ChatMessage`
  * with metadata + tools, full `MeshContext`, decopilot-only
  * `HarnessProcessLocal` internals) flow in via structural compatibility:
  * the cluster passes its richer types where the harness expects a
@@ -167,7 +167,7 @@ export interface HarnessStreamInput {
   // ===== Tool gateway =====
   /** MCP endpoint the harness should connect to. In-process (decopilot,
    *  cluster-side claude-code/codex) uses `getInternalUrl()/mcp/virtual-mcp/<agentId>`;
-   *  remote-cli (laptop daemon dispatch) uses the cluster's public URL.
+   *  remote-cli (desktop daemon dispatch) uses the cluster's public URL.
    *  The Bearer token is a 1h-TTL temp key — `expiresAt` carries its
    *  absolute deadline so remote daemons can refresh proactively. */
   mcp: {
@@ -241,7 +241,7 @@ export interface Harness {
  *  cluster-side code path on `HarnessStreamInput.processLocal` (today,
  *  only decopilot does this).
  *
- *  The laptop's daemon constructs a HarnessContext directly to invoke
+ *  The desktop's daemon constructs a HarnessContext directly to invoke
  *  `claudeCodeHarnessFactory.create()` / `codexHarnessFactory.create()`
  *  without depending on cluster-only modules.
  *

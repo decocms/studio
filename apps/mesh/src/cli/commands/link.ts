@@ -1,5 +1,5 @@
 /**
- * `deco link` — the laptop-side link daemon command.
+ * `deco link` — the desktop-side link daemon command.
  *
  * Boots a local Bun.serve on `--port` (default 5174), opens a Warp
  * tunnel to deco.host so the cluster can reach it, registers with the

@@ -1,7 +1,7 @@
 /**
  * Shared daemon spawn / executable resolution.
  *
- * Used by the `deco link` daemon (laptop-side, where the link binary
+ * Used by the `deco link` daemon (desktop-side, where the link binary
  * fronts the sandbox daemon for the cluster's remote-harness dispatcher).
  *
  * In dev (source tree present), spawn `bun run <daemon/entry.ts>` so the

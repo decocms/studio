@@ -193,7 +193,7 @@ function lookupResumeSessionRef(
  *   - `"local"` — `getInternalUrl()` (loopback; the harness runs inside
  *     the cluster pod alongside the API).
  *   - `"remote-cli"` — `getPublicUrl()` (the harness runs on the user's
- *     laptop and dials the cluster back over the public network — or, in
+ *     desktop and dials the cluster back over the public network — or, in
  *     dev mode, localhost via `MESH_ALLOW_LOCALHOST_LINKS=1`).
  */
 const MCP_KEY_TTL_SECONDS = 3600;
@@ -275,9 +275,9 @@ export interface DispatchRunInput {
    * body. When omitted, falls back to deriving from the credential's
    * provider id (legacy behavior; still correct for Decopilot).
    *
-   * Necessary because the laptop-CLI harnesses no longer have an
+   * Necessary because the desktop-CLI harnesses no longer have an
    * `ai_provider_keys` row to drive the credential→harness lookup —
-   * their `credentialId` is the sentinel `laptop:<harness>`.
+   * their `credentialId` is the sentinel `desktop:<harness>`.
    */
   harnessId?: HarnessId | null;
 }
@@ -434,7 +434,7 @@ async function prepareRun(
     const credentialKey = await ctx.storage.aiProviderKeys
       .findById(input.models.credentialId, input.organizationId)
       .catch(() => null);
-    // Prefer the pre-resolved pin from POST /messages (covers laptop-CLI
+    // Prefer the pre-resolved pin from POST /messages (covers desktop-CLI
     // harnesses whose synthetic credentialId doesn't match any row);
     // fall back to deriving from the credential's provider id for legacy
     // callers (e.g. older automation paths) that don't set `harnessId`.
@@ -799,7 +799,7 @@ async function prepareRun(
         // claude-code cwd resolution: with the `host` runner gone, the
         // cluster never has a local on-disk workdir to point the CLI at,
         // so the harness falls back to its own ambient cwd. Remote-user
-        // dispatch runs the harness inside the laptop daemon, where the
+        // dispatch runs the harness inside the desktop daemon, where the
         // daemon is spawned with workdir = sandbox path; remote-cli runs
         // claude-code in-process on the user's machine (no resolver
         // needed). Production runners (docker, agent-sandbox, freestyle)

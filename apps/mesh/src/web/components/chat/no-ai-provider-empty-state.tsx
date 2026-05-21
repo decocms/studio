@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Laptop01, Zap } from "@untitledui/icons";
+import { Check, Monitor01, Zap } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ConnectProviderDialog } from "@/web/views/settings/ai-providers/connect-provider-dialog";
 import {
@@ -23,9 +23,9 @@ import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 import { useQuery } from "@tanstack/react-query";
 import type { BrandContext } from "@/storage/types";
 import {
-  ConnectLaptopDialog,
+  ConnectDesktopDialog,
   visibleCapabilities,
-} from "./connect-laptop-dialog";
+} from "./connect-desktop-dialog";
 
 interface NoAiProviderEmptyStateProps {
   title?: string;
@@ -92,7 +92,7 @@ export function NoAiProviderEmptyState({
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
-  const [laptopOpen, setLaptopOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(false);
   const link = useCurrentLink();
 
   const aiProviders = useAiProviders();
@@ -165,7 +165,7 @@ export function NoAiProviderEmptyState({
         <SettingsCard>
           {link.online ? (
             <SettingsCardItem
-              onClick={() => setLaptopOpen(true)}
+              onClick={() => setDesktopOpen(true)}
               icon={
                 <div className="size-8 rounded-md bg-success/10 flex items-center justify-center text-success">
                   <Check size={16} />
@@ -181,8 +181,8 @@ export function NoAiProviderEmptyState({
             />
           ) : (
             <SettingsCardItem
-              onClick={() => setLaptopOpen(true)}
-              icon={<Laptop01 size={16} />}
+              onClick={() => setDesktopOpen(true)}
+              icon={<Monitor01 size={16} />}
               title="Connect your desktop"
               description="Use Claude Code, Codex, or your local files via the link CLI."
             />
@@ -201,7 +201,7 @@ export function NoAiProviderEmptyState({
         initialProvider={pendingProvider ?? undefined}
       />
 
-      <ConnectLaptopDialog open={laptopOpen} onOpenChange={setLaptopOpen} />
+      <ConnectDesktopDialog open={desktopOpen} onOpenChange={setDesktopOpen} />
     </div>
   );
 }

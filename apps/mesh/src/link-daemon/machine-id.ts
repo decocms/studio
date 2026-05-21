@@ -1,7 +1,7 @@
 /**
  * Machine-id is the stable identifier the link daemon presents at
  * registration. It lives at `<dataDir>/.deco/link/machine-id` and is
- * generated once per laptop.
+ * generated once per desktop.
  *
  * The cluster keys its `LinkRegistry` by the OAuth userSub, NOT by this
  * machineId — but it stores the value so it can detect "another machine

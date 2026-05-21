@@ -73,7 +73,7 @@ const RUNNER_KINDS: ReadonlySet<SandboxProviderKind> = new Set([
 /**
  * Single resolution rule:
  *   - explicit STUDIO_SANDBOX_RUNNER wins (validated against the kind set);
- *   - otherwise default to "remote-user" (the laptop-side link daemon —
+ *   - otherwise default to "remote-user" (the desktop-side link daemon —
  *     auto-spawned by `bun run dev` in local dev, and the supported
  *     topology for single-machine self-hosts running the link side-by-side).
  *

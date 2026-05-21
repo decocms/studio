@@ -31,15 +31,15 @@ export function visibleCapabilities(caps: readonly Capability[]): string[] {
     .filter((label): label is string => Boolean(label));
 }
 
-interface ConnectLaptopDialogProps {
+interface ConnectDesktopDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function ConnectLaptopDialog({
+export function ConnectDesktopDialog({
   open,
   onOpenChange,
-}: ConnectLaptopDialogProps) {
+}: ConnectDesktopDialogProps) {
   const link = useCurrentLink();
   const [copied, setCopied] = useState(false);
 

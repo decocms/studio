@@ -30,7 +30,7 @@ export type AgentTierMap = Record<ChatTier, AgentTierEntry>;
 export interface AgentSection {
   kind: AgentKind;
   title: string;
-  /** True for laptop-CLI agents (Claude Code, Codex). Drives the green
+  /** True for desktop-CLI agents (Claude Code, Codex). Drives the green
    *  band + " · on desktop" suffix in the popover, and the green
    *  ring on the closed chat-input trigger. */
   isLocal: boolean;
@@ -115,9 +115,9 @@ export interface AgentModelSet {
 }
 
 /**
- * Returns the laptop-CLI model set for an agent, or null for Decopilot
+ * Returns the desktop-CLI model set for an agent, or null for Decopilot
  * (which still uses the standard provider-key path on the settings page).
- * Kept for the settings flow that mounts `LaptopCliModelSelectorBody`.
+ * Kept for the settings flow that mounts `DesktopCliModelSelectorBody`.
  */
 export function getAgentModelSet(agent: HarnessId): AgentModelSet | null {
   if (agent === "claude-code") {
@@ -147,7 +147,7 @@ const SECTION_ORDER: AgentKind[] = ["decopilot", "claude-code", "codex"];
 /**
  * Pure eligibility function for the merged chat-input popover. Returns
  * sections in stable `SECTION_ORDER`. Mirrors the gates that
- * `computeAgentOptions` used to enforce, minus `decopilot-laptop`.
+ * `computeAgentOptions` used to enforce, minus `decopilot-desktop`.
  *
  * Gates:
  *   decopilot   → hasAnyKey

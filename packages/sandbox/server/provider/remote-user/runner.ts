@@ -1,7 +1,7 @@
 /**
  * remote-user sandbox provider — cluster-side stub that forwards every
  * `SandboxProvider` call to a per-user `link` binary running on the
- * developer's laptop. The link exposes:
+ * developer's desktop. The link exposes:
  *
  *   - `<tunnelUrl>/api/sandboxes`                 (POST: ensure, DELETE/<h>: tear down)
  *   - `<sandboxUrl>/_decopilot_vm/*`              (exec + daemon proxy passthrough)
@@ -20,7 +20,7 @@
  * miss. The `records` map becomes an advisory in-process cache; the state
  * store is the canonical lookup.
  *
- * `localWorkdir` returns null — the workdir lives on the laptop and is never
+ * `localWorkdir` returns null — the workdir lives on the desktop and is never
  * referenced by cluster code. `watchClaimLifecycle` emits a single synthetic
  * `ready` phase, matching host/docker semantics — by the time `ensure`
  * resolves the link has already brought the daemon up.
@@ -264,11 +264,11 @@ export class RemoteUserSandboxProvider implements SandboxProvider {
   }
 
   /**
-   * Workdir lives on the laptop; cluster code never references it. Returning
+   * Workdir lives on the desktop; cluster code never references it. Returning
    * null lets dispatch-run fall through to its default (`process.cwd()`),
    * which is fine because cluster-side dispatch for `remote-user` is the
    * decopilot Code Sandbox tool path — the harness itself runs on the
-   * laptop, where `localWorkdir` IS meaningful (different provider).
+   * desktop, where `localWorkdir` IS meaningful (different provider).
    */
   async localWorkdir(_handle: string): Promise<string | null> {
     return null;

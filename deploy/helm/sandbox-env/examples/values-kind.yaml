@@ -12,7 +12,7 @@ image:
   tag: local
   pullPolicy: Never
 
-# ── modest sandbox limits for laptop kind ──────────────────────────────
+# ── modest sandbox limits for desktop kind ──────────────────────────────
 # Bump back up when stress-testing.
 resources:
   requests:

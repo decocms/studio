@@ -37,7 +37,7 @@ export function getInternalUrl(): string {
  * Used when minting URLs that need to be resolvable from outside the
  * cluster — e.g. the MCP endpoint URL handed to a remote link daemon
  * (Phase 9 remote harness dispatch), which talks back to the cluster
- * over HTTP from the user's laptop.
+ * over HTTP from the user's desktop.
  *
  * In dev mode (`MESH_ALLOW_LOCALHOST_LINKS=1`) we deliberately advertise
  * a localhost URL so a link daemon running on the same machine can dial

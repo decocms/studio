@@ -905,7 +905,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "LINK_CURRENT_GET",
     description:
-      "Return the calling user's current laptop link status (online/offline, capabilities)",
+      "Return the calling user's current desktop link status (online/offline, capabilities)",
     category: "Links",
   },
 ];

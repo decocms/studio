@@ -2,12 +2,12 @@ import type { HarnessId } from "../harnesses";
 import type { ChatTier } from "@/tools/organization/schema";
 
 /**
- * Per-agent (laptop-CLI harness) tier → model mapping.
+ * Per-agent (desktop-CLI harness) tier → model mapping.
  *
  * Lives in the server-safe `ai-providers/` folder so both the cluster's
  * dispatch path (`resolvePerRequestModels`) and the web `agent-models.ts`
  * can read it. The cluster never has an `ai_provider_keys` row for these
- * harnesses — capability and credential live on the user's laptop link.
+ * harnesses — capability and credential live on the user's desktop link.
  */
 export interface AgentTierEntry {
   modelId: string;
@@ -35,7 +35,7 @@ function getAgentTiers(agent: HarnessId): AgentTierMap | null {
   return null;
 }
 
-/** Returns the model the laptop harness should run for the given tier,
+/** Returns the model the desktop harness should run for the given tier,
  *  or `null` when the harness is Decopilot (uses the AI provider path). */
 export function resolveAgentTier(
   agent: HarnessId,

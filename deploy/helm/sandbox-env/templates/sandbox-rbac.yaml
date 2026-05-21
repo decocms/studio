@@ -17,7 +17,7 @@
 #        waitForDaemonReady) on every code-execution. This path uses
 #        portforward unconditionally — see runner.ts:openForwarder. It
 #        works the same whether mesh runs in-cluster or on a developer's
-#        laptop, and routes through the apiserver so we don't have to
+#        desktop, and routes through the apiserver so we don't have to
 #        open daemon ingress on 9000 to mesh's pod selector.
 #   In production we *could* switch path 2 to in-cluster Service DNS and
 #   drop portforward from this Role; the daemon already enforces its own

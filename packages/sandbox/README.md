@@ -27,7 +27,7 @@ The host app calls `resolveSandboxProviderKindFromEnv()` to pick the runner. Sin
 
 1. `STUDIO_SANDBOX_RUNNER` is honored if set (one of `docker`,
    `agent-sandbox`, `remote-user`).
-2. Otherwise the runner defaults to `remote-user` (the laptop-side
+2. Otherwise the runner defaults to `remote-user` (the desktop-side
    `deco link` daemon — auto-spawned by `bun run dev --local-sandbox-provider`
    in local dev, and the supported topology for single-machine self-hosts
    running the link side-by-side).

@@ -3,7 +3,7 @@ import type { Capability } from "@/links/protocol";
 /**
  * Detected once at daemon startup. The result rides the existing
  * `capabilities: Capability[]` field on the registration payload, so the
- * cluster sees an accurate view of what this laptop can actually run.
+ * cluster sees an accurate view of what this desktop can actually run.
  *
  * `decopilot-sandbox` is unconditional — the daemon process IS the sandbox
  * host, so it can always serve that capability.

@@ -66,7 +66,7 @@ const activeRuns = new Map<string, AbortController>();
 /** Recently-cancelled runIds. A dispatch that arrives within
  *  `TOMBSTONE_MS` of a cancel is rejected with 410 Gone — this resolves
  *  the cancel-before-dispatch race that otherwise leaves an orphan
- *  harness running on the laptop. */
+ *  harness running on the desktop. */
 const tombstones = new Map<string, number>();
 
 /** Test-visible hook to reset module state between tests. The harness

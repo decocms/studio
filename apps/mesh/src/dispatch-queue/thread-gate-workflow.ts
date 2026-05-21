@@ -220,7 +220,7 @@ async function threadGateWorkflowFn(
   });
   try {
     // The dispatch step is non-retriable for v1. If a pod dies mid-stream,
-    // the laptop daemon (if remote-cli) keeps running, and a DBOS replay
+    // the desktop daemon (if remote-cli) keeps running, and a DBOS replay
     // would open a second concurrent dispatch against the same workdir —
     // racing on git state and tool output. Marking the step non-retriable
     // converts pod death into a clean "run failed" rather than a corruption

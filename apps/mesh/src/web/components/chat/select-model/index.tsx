@@ -4,7 +4,7 @@ import {
   DecopilotModelSelectorBody,
   DecopilotModelSelectorStandalone,
 } from "./decopilot";
-import { LaptopCliModelSelectorBody } from "./laptop-cli";
+import { DesktopCliModelSelectorBody } from "./desktop-cli";
 import { getAgentModelSet } from "./agent-models";
 import { useChatPrefs } from "../context";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
@@ -30,7 +30,7 @@ export function ModelSelectorBody({ onClose, agent }: BodyProps) {
   }
 
   return (
-    <LaptopCliModelSelectorBody
+    <DesktopCliModelSelectorBody
       modelSet={cli}
       selectedModelId={
         prefs.selectedModel?.modelId ?? cli.tiers[prefs.simpleModeTier].modelId
@@ -60,7 +60,7 @@ export function ModelSelectorStandaloneBody({
   const cli = agent ? getAgentModelSet(agent) : null;
   if (!cli) return <DecopilotModelSelectorStandalone {...rest} />;
   return (
-    <LaptopCliModelSelectorBody
+    <DesktopCliModelSelectorBody
       modelSet={cli}
       selectedModelId={rest.selectedModel?.modelId ?? cli.tiers.smart.modelId}
       onSelect={(model) => {

@@ -1,5 +1,5 @@
 /**
- * Laptop-side link daemon.
+ * Desktop-side link daemon.
  *
  * Boots a local Bun.serve, opens a Warp tunnel (unless `noTunnel`),
  * registers with the cluster's `/api/links` to receive a `linkSecret`,
@@ -23,7 +23,7 @@ import { makeControlPlaneHandler } from "./control-plane";
 import { loadOrCreateMachineId } from "./machine-id";
 import { registerWithCluster, startHeartbeatLoop } from "./registration";
 import {
-  createLaptopSandboxProvider,
+  createDesktopSandboxProvider,
   type SpawnResult,
 } from "./sandbox-provider";
 import { readSession } from "./session";
@@ -170,7 +170,7 @@ export async function startLinkDaemon(
     await waitForDaemonReady(`http://127.0.0.1:${port}`);
   };
 
-  const provider = createLaptopSandboxProvider({
+  const provider = createDesktopSandboxProvider({
     dataDir: opts.dataDir,
     spawnDaemon: spawnSandboxDaemon,
     postConfig: postSandboxConfig,
