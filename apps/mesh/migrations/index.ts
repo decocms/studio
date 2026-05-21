@@ -178,7 +178,7 @@ const migrations: Record<string, Migration> = {
   "080-async-research-jobs": migration080asyncresearchjobs,
   "081-async-research-jobs-result-content":
     migration081asyncresearchjobsresultcontent,
-  "082-secrets": migration082secrets
+  "082-secrets": migration082secrets,
 };
 
 export default migrations;
