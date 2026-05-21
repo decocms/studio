@@ -546,6 +546,63 @@ describe("web_search async-research e2e", () => {
     }
   });
 
+  it("sweeper leaves recent and terminal rows alone even when their tool_call_ids collide with stale ones", async () => {
+    // Regression guard for the SELECT-then-UPDATE-by-id pattern that
+    // could overwrite (a) a same-tool_call_id row in a different org
+    // or (b) a row that raced to terminal between SELECT and UPDATE.
+    // The current implementation keeps the status + staleness guards
+    // on the UPDATE itself, so neither situation is reachable. This
+    // test seeds the dangerous shape directly and checks the row
+    // states post-sweep.
+    const innerStorage = new SqlAsyncResearchJobStorage(database.db);
+    const oldIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const recentIso = new Date().toISOString();
+
+    // Seed a recent pending row — must NOT be swept (within staleness).
+    await database.db
+      .insertInto("async_research_jobs")
+      .values({
+        organization_id: ORG_ID,
+        thread_id: THREAD_ID,
+        tool_call_id: "tc_guard_recent_pending",
+        provider: "google",
+        model_id: DEEP_RESEARCH_MODEL.id,
+        query: "recent pending",
+        status: "pending",
+        attempts: 0,
+        created_at: recentIso,
+        updated_at: recentIso,
+      })
+      .execute();
+
+    // Seed a stale completed row — must NOT be swept (already terminal).
+    await database.db
+      .insertInto("async_research_jobs")
+      .values({
+        organization_id: ORG_ID,
+        thread_id: THREAD_ID,
+        tool_call_id: "tc_guard_stale_completed",
+        provider: "google",
+        model_id: DEEP_RESEARCH_MODEL.id,
+        query: "stale completed",
+        status: "completed",
+        attempts: 1,
+        created_at: oldIso,
+        updated_at: oldIso,
+        completed_at: oldIso,
+      })
+      .execute();
+
+    // Sweep with 1-hour staleness.
+    await innerStorage.sweepAbandoned(60 * 60 * 1000);
+
+    const recent = await storage.findByToolCall("tc_guard_recent_pending");
+    expect(recent!.status).toBe("pending");
+
+    const completed = await storage.findByToolCall("tc_guard_stale_completed");
+    expect(completed!.status).toBe("completed");
+  });
+
   it("sweeper abandons stale pending rows even when last_polled_at is NULL", async () => {
     // Regression guard: a row that never reached `markPolling` (e.g.
     // submit succeeded but pod died before the polling-start update,

@@ -406,37 +406,37 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
     const cutoffIso = new Date(Date.now() - staleAfterMs).toISOString();
     const now = new Date().toISOString();
     return await this.db.transaction().execute(async (trx) => {
-      // Anchor staleness on COALESCE(last_polled_at, created_at). A row
-      // in 'pending' never sets last_polled_at — that field is written
-      // by markPolling / recordPoll — so a naive `last_polled_at <
-      // cutoff` predicate evaluates to NULL (i.e. not-true) for pending
-      // rows and they'd be stuck forever. created_at is the right
-      // staleness anchor for those: it's set on insert and reflects
-      // when the runtime first saw the job.
+      // Single UPDATE … RETURNING with the status + staleness guards
+      // applied directly on the mutation. Two reasons we do it in one
+      // statement instead of SELECT-then-UPDATE-by-id:
       //
-      // Inlined as a sql template (not `where(expr, "<", value)`) so the
-      // comparison side gets bound through Kysely's parameter pipeline
-      // with the right timestamptz coercion. Mixing a `sql` LHS with a
-      // JS Date RHS via `where(...)` rendered as a no-match query in
-      // testing.
-      // Two-step: SELECT the stale tool_call_ids, then UPDATE by ids.
-      // We use the SELECT count as the return value rather than the
-      // UPDATE's `numUpdatedRows` — the latter is unreliable under
-      // PGlite (always 0) even though the UPDATE itself applies. The
-      // SELECT runs inside the same transaction so the set of rows is
-      // consistent with what the UPDATE then mutates.
-      const targets = await trx
-        .selectFrom("async_research_jobs")
-        .select(["tool_call_id"])
-        .where("status", "in", ["pending", "polling"])
-        .where(
-          sql<boolean>`COALESCE(last_polled_at, created_at) < ${cutoffIso}::timestamptz`,
-        )
-        .execute();
-      if (targets.length === 0) return 0;
-
-      const toolCallIds = targets.map((t) => t.tool_call_id);
-      await trx
+      //   1. Cross-org safety. `tool_call_id` is only unique per
+      //      (organization_id, tool_call_id) — an UPDATE that filters
+      //      by tool_call_id alone would happily mutate a same-id row
+      //      in a different org. Keeping the original guards on the
+      //      UPDATE means a "wrong" row would have to ALSO be stale
+      //      AND pending/polling to get hit, which is the right
+      //      semantics for a global sweeper.
+      //
+      //   2. State race. Under READ COMMITTED (PG default) the UPDATE
+      //      sees each row's currently-committed state, not the
+      //      snapshot from a prior SELECT. A concurrent markCompleted
+      //      or markFailed could land between the SELECT and the
+      //      UPDATE — `WHERE tool_call_id IN (...)` would then
+      //      overwrite the now-terminal row to 'abandoned'. Keeping
+      //      `status IN ('pending','polling')` on the UPDATE itself
+      //      makes the transition atomic per row.
+      //
+      // Staleness anchor on COALESCE(last_polled_at, created_at): a
+      // pending row never sets last_polled_at (that's a markPolling /
+      // recordPoll write), so the bare `last_polled_at < cutoff`
+      // predicate evaluates to NULL for those rows and they'd be
+      // stuck. created_at is the correct anchor for them.
+      //
+      // RETURNING gives us the rows that actually transitioned, which
+      // sidesteps Kysely + PGlite's unreliable `numUpdatedRows` count
+      // and tells us exactly which stub messages to drop.
+      const abandoned = await trx
         .updateTable("async_research_jobs")
         .set({
           status: "abandoned",
@@ -444,16 +444,21 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
           updated_at: now,
           last_error: sql`COALESCE(last_error, '') || ' [abandoned by sweeper]'`,
         })
-        .where("tool_call_id", "in", toolCallIds)
+        .where("status", "in", ["pending", "polling"])
+        .where(
+          sql<boolean>`COALESCE(last_polled_at, created_at) < ${cutoffIso}::timestamptz`,
+        )
+        .returning(["tool_call_id"])
         .execute();
+      if (abandoned.length === 0) return 0;
 
-      const stubIds = targets.map((t) => stubMessageId(t.tool_call_id));
+      const stubIds = abandoned.map((r) => stubMessageId(r.tool_call_id));
       await trx
         .deleteFrom("thread_messages")
         .where("id", "in", stubIds)
         .execute();
 
-      return targets.length;
+      return abandoned.length;
     });
   }
 }
