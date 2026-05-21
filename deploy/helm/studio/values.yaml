@@ -74,6 +74,20 @@ secret:
   # Generate with: openssl rand -base64 32
   ENCRYPTION_KEY: ""
 
+# ExternalSecret — pull all values from AWS Secrets Manager via external-secrets operator.
+# When enabled, creates a namespace-scoped SecretStore and an ExternalSecret using dataFrom
+# so every key in the SM JSON becomes an env var automatically.
+# Requires: external-secrets operator installed on the cluster.
+# Incompatible with: secret.secretName (both reference the same target Secret name).
+externalSecret:
+  enabled: false
+  # secretPath: ""  # Required when enabled. SM secret key path.
+  secretStoreName: "aws-secrets-manager"
+  refreshInterval: "1h"
+  provider:
+    aws:
+      region: "sa-east-1"
+
 volumes: []
 # - name: foo
 #   secret:
