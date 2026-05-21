@@ -6,7 +6,11 @@
  * - Runtime detection logic (resolveRuntimeConfig)
  */
 
-import type { RuntimeEnvEntry, VmMapEntry } from "@decocms/mesh-sdk";
+import {
+  ENV_VAR_KEY_RE,
+  type RuntimeEnvEntry,
+  type VmMapEntry,
+} from "@decocms/mesh-sdk";
 
 import {
   requireAuth,
@@ -47,7 +51,7 @@ export function readValidatedRuntimeEnv(
   for (const item of env) {
     if (!item || typeof item !== "object") continue;
     const e = item as Record<string, unknown>;
-    if (typeof e.key !== "string" || e.key.length === 0) continue;
+    if (typeof e.key !== "string" || !ENV_VAR_KEY_RE.test(e.key)) continue;
     if (e.kind === "literal" && typeof e.value === "string") {
       out.push({ key: e.key, kind: "literal", value: e.value });
       continue;
