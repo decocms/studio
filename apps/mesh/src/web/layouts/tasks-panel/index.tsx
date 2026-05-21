@@ -34,12 +34,6 @@ function TasksPanelContent() {
   const threads = filterThreads(allThreads, { hidden: false });
   const { hide } = useThreadActions();
 
-  const myTasks = filterThreads(threads, {
-    ownerUserId: currentUserId,
-    hasTrigger: false,
-  });
-  const automationTasks = filterThreads(threads, { hasTrigger: true });
-
   const { setTaskId, createNewTask } = usePanelActions();
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as {
@@ -49,7 +43,7 @@ function TasksPanelContent() {
 
   const activeTaskId = params.taskId ?? null;
 
-  const allTasks = [...myTasks, ...automationTasks].sort((a, b) =>
+  const allTasks = [...threads].sort((a, b) =>
     (b.updated_at ?? "").localeCompare(a.updated_at ?? ""),
   );
 
