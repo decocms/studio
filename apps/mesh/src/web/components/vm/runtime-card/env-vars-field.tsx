@@ -1,4 +1,4 @@
-import { Suspense, useReducer, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import type {
   Control,
   FieldPath,
@@ -133,10 +133,9 @@ interface RunningSandboxNoticeProps<T extends FieldValues> {
  * env until that process restarts, so this notice + button recycle the
  * dev script for each of the caller's branches.
  *
- * Baseline is held in a ref initialized from the same `useWatch` value
- * that `current` reads. That guarantees they match on first render —
- * without this, getValues vs useWatch could diverge before subscriptions
- * settled and the banner surfaced before the user touched anything.
+ * Both baseline and `current` are passed through `normalizeEnvForCompare`
+ * so in-progress rows (no key, invalid key, secret without secretId) —
+ * which autosave already strips — never count as a real change.
  */
 function RunningSandboxNotice<T extends FieldValues>({
   control,
@@ -150,16 +149,12 @@ function RunningSandboxNotice<T extends FieldValues>({
   const fieldPath = "metadata.runtime.env" as FieldPath<T>;
   const vmMapPath = "metadata.vmMap" as FieldPath<T>;
 
+  const [baseline, setBaseline] = useState(() =>
+    JSON.stringify(normalizeEnvForCompare(form.getValues(fieldPath))),
+  );
   const current = useWatch({ control, name: fieldPath });
-  // Drop in-progress rows (no key / invalid key / secret without secretId)
-  // before comparing. Adding an empty row via "+ Add env var" or starting
-  // to type a key wouldn't otherwise be sent to the daemon by autosave,
-  // so it shouldn't surface a restart banner either.
   const currentStr = JSON.stringify(normalizeEnvForCompare(current));
-
-  const baselineRef = useRef(currentStr);
-  const [, bumpBaseline] = useReducer((x: number) => x + 1, 0);
-  const envChanged = currentStr !== baselineRef.current;
+  const envChanged = currentStr !== baseline;
 
   const vmMap = form.getValues(vmMapPath) as
     | Record<string, Record<string, unknown>>
@@ -186,8 +181,7 @@ function RunningSandboxNotice<T extends FieldValues>({
     setRestarting(false);
     const failed = results.filter((r) => r.status === "rejected").length;
     if (failed === 0) {
-      baselineRef.current = currentStr;
-      bumpBaseline();
+      setBaseline(currentStr);
       toast.success(
         userBranches.length === 1
           ? "Restarted dev with new env"

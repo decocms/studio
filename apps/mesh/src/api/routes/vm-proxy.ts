@@ -26,7 +26,7 @@ import {
 import type { Env } from "../hono-env";
 import { handleVmEvents } from "./vm-events-handler";
 import { resolveAndPushEnv } from "../../tools/vm/resolve-env";
-import type { RuntimeConfigMeta } from "../../tools/vm/helpers";
+import { readValidatedRuntimeEnv } from "../../tools/vm/helpers";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -249,9 +249,7 @@ export const createVmRoutes = () => {
       const claim = c.get("vmClaim");
       if (claim.runner) {
         const organization = requireOrganization(c.var.meshContext);
-        const entries =
-          (claim.virtualMcpMetadata as RuntimeConfigMeta | null)?.runtime
-            ?.env ?? null;
+        const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
         try {
           await resolveAndPushEnv({
             ctx: c.var.meshContext,

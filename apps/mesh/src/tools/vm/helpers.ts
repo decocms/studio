@@ -28,6 +28,42 @@ export type RuntimeConfigMeta = {
 };
 
 /**
+ * Defensive reader for `metadata.runtime.env`. The DB column is JSON, so
+ * the static cast to `RuntimeConfigMeta` can't be trusted — older rows or
+ * hand-edited metadata may carry a non-array `env`, malformed entries, or
+ * the wrong types under the discriminator. Returns only entries that
+ * match the wire contract; everything else is silently dropped so a bad
+ * row can't crash `resolveAndPushEnv`'s `for...of`.
+ */
+export function readValidatedRuntimeEnv(
+  metadata: Record<string, unknown> | null | undefined,
+): RuntimeEnvEntry[] | null {
+  if (!metadata) return null;
+  const runtime = (metadata as { runtime?: unknown }).runtime;
+  if (!runtime || typeof runtime !== "object") return null;
+  const env = (runtime as { env?: unknown }).env;
+  if (!Array.isArray(env)) return null;
+  const out: RuntimeEnvEntry[] = [];
+  for (const item of env) {
+    if (!item || typeof item !== "object") continue;
+    const e = item as Record<string, unknown>;
+    if (typeof e.key !== "string" || e.key.length === 0) continue;
+    if (e.kind === "literal" && typeof e.value === "string") {
+      out.push({ key: e.key, kind: "literal", value: e.value });
+      continue;
+    }
+    if (
+      e.kind === "secret" &&
+      typeof e.secretId === "string" &&
+      e.secretId.length > 0
+    ) {
+      out.push({ key: e.key, kind: "secret", secretId: e.secretId });
+    }
+  }
+  return out.length === 0 ? null : out;
+}
+
+/**
  * Extracts common auth + lookup boilerplate shared by all VM tools.
  * Validates auth, checks access, fetches and validates the Virtual MCP,
  * and returns the metadata and vmMap entry for the current user on the
