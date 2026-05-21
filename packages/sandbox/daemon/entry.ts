@@ -88,7 +88,7 @@ const bootConfig = {
   // HMAC secret used to authenticate the cluster's harness-dispatch
   // calls (POST /_decopilot_vm/dispatch + DELETE /_decopilot_vm/runs/:id).
   // Equals the link's `linkSecret` from the cluster's `LinkRegistry`.
-  // Spawned by the `deco link` daemon for the laptop case; absent on legacy
+  // Spawned by the `deco link` daemon for the desktop case; absent on legacy
   // cluster-side runner daemons that don't accept remote harness
   // dispatch — in that case the dispatch routes refuse all requests
   // (HMAC verification with an empty secret never matches a valid

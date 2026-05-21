@@ -47,9 +47,9 @@ function optionForAgent(kind: AgentKind) {
     case "decopilot":
       return "decopilot" as const;
     case "claude-code":
-      return "claude-code-laptop" as const;
+      return "claude-code-desktop" as const;
     case "codex":
-      return "codex-laptop" as const;
+      return "codex-desktop" as const;
   }
 }
 
@@ -67,7 +67,7 @@ function agentKindFromHarness(
 /**
  * Trigger pill in the chat input that opens the merged sectioned
  * popover (Decopilot + Claude Code + Codex). When the active agent is
- * a laptop-CLI variant the pill turns `text-success` + `bg-success/10`
+ * a desktop-CLI variant the pill turns `text-success` + `bg-success/10`
  * to mirror the "Desktop connected" affordance in
  * `NoAiProviderEmptyState`. The popover handles agent + tier writes
  * atomically.

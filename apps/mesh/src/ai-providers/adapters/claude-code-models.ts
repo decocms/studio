@@ -1,7 +1,7 @@
 import type { ModelInfo } from "../types";
 
 /**
- * Browser-safe model list for the Claude Code laptop harness. Lives apart
+ * Browser-safe model list for the Claude Code desktop harness. Lives apart
  * from `claude-code.ts` because that file re-exports `createClaudeCodeModel`
  * from `../../harnesses/claude-code`, which transitively pulls
  * `ai-sdk-provider-claude-code` (and Node's `crypto`) into any bundle that

@@ -85,7 +85,7 @@ Usage:
   deco services <up|down|status>     Manage services (Postgres, NATS)
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
-  deco link [options]                Start the laptop-side link daemon
+  deco link [options]                Start the desktop-side link daemon
   deco completion [shell]            Install shell completions
 
 Server Options:

@@ -256,7 +256,7 @@ if (settings.localMode) {
         void seeded;
         // When the cluster is in dev mode (MESH_ALLOW_LOCALHOST_LINKS=1
         // set by `bun run dev`), bootstrap an API-key-backed session for
-        // the laptop-side link binary that `bun run dev` auto-spawns.
+        // the desktop-side link binary that `bun run dev` auto-spawns.
         // The link reads it from `<DATA_DIR>/dev-link/session.json` and
         // presents the API key as a Bearer token to POST /api/links.
         if (process.env.MESH_ALLOW_LOCALHOST_LINKS === "1") {

@@ -46,7 +46,7 @@ import type { PendingImage } from "./built-in-tools";
 
 /** Narrowed view of `HarnessStreamInput.processLocal` for the cluster
  *  decopilot harness. The package types those structurally-deep fields
- *  as `unknown` so the package stays portable to the laptop daemon; the
+ *  as `unknown` so the package stays portable to the desktop daemon; the
  *  cluster knows it builds richer values and narrows here at the
  *  harness boundary. */
 interface ClusterProcessLocal {
@@ -83,7 +83,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
     // ctx field reads only happen on a real MeshContext value. The widening
     // cast here is a TS-level erasure; the defensive check below catches a
     // narrow HarnessContext smuggled in via misuse (e.g. a non-decopilot
-    // caller mistakenly invoking this factory on the laptop).
+    // caller mistakenly invoking this factory on the desktop).
     //
     // `storage` and `db` are required fields on MeshContext but absent
     // from HarnessContext, so their presence reliably distinguishes the

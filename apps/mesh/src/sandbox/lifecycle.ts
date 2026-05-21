@@ -184,7 +184,7 @@ export async function getSharedSandboxProvider(
   ctx: MeshContext,
 ): Promise<SandboxProvider> {
   // Per-run override: decopilot runs whose dispatch target is the user's
-  // laptop forward Code Sandbox tool calls to the link daemon instead of
+  // desktop forward Code Sandbox tool calls to the link daemon instead of
   // the cluster-managed runner. We build a fresh provider per call because
   // its only state is an in-memory (handle → sandboxUrl) map and the link
   // identity is per-run — caching across runs would mix sandboxes from

@@ -32,7 +32,7 @@ export function AgentModelPopover({
     null;
 
   return (
-    <div className="flex flex-col gap-1 w-72">
+    <div className="flex flex-col gap-1 w-72 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
       {sections.map((section) => {
         const disabled = lockedAgent !== null && lockedAgent !== section.kind;
         const selectedTier =

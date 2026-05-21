@@ -6,7 +6,7 @@ import { requireAuth } from "../../core/mesh-context";
 export const LINK_CURRENT_GET = defineTool({
   name: "LINK_CURRENT_GET",
   description:
-    "Return the calling user's currently registered laptop link, or `online: false` if no link is registered or the TTL has expired. The `linkSecret` is never returned.",
+    "Return the calling user's currently registered desktop link, or `online: false` if no link is registered or the TTL has expired. The `linkSecret` is never returned.",
   inputSchema: z.object({}),
   outputSchema: z.object({
     online: z.boolean(),

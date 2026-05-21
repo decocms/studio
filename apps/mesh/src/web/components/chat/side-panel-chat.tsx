@@ -107,7 +107,7 @@ function ChatPanelContent() {
   const link = useCurrentLink();
 
   // Clonable agents (Start Website + GitHub-imported) can route through
-  // a laptop CLI harness when one is online, so the no-provider gate
+  // a desktop CLI harness when one is online, so the no-provider gate
   // only fires for them if neither a cloud provider nor a local CLI is
   // available.
   const isClonableAgent = agentHasClonableSource(fullVm?.metadata);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLaptopSandboxProvider } from "./sandbox-provider";
+import { createDesktopSandboxProvider } from "./sandbox-provider";
 
 function fakeDaemonSpawner() {
   return {
@@ -19,12 +19,12 @@ function tmpDataDir(): string {
   return mkdtempSync(join(tmpdir(), "link-prov-"));
 }
 
-describe("laptop sandbox provider", () => {
+describe("desktop sandbox provider", () => {
   it("creates a sandbox and returns sandboxUrl", async () => {
     const dataDir = tmpDataDir();
     try {
       let portCounter = 30000;
-      const provider = createLaptopSandboxProvider({
+      const provider = createDesktopSandboxProvider({
         dataDir,
         spawnDaemon: () => fakeDaemonSpawner(),
         postConfig: async () => {},
@@ -51,7 +51,7 @@ describe("laptop sandbox provider", () => {
     try {
       let spawnCount = 0;
       let portCounter = 30000;
-      const provider = createLaptopSandboxProvider({
+      const provider = createDesktopSandboxProvider({
         dataDir,
         spawnDaemon: () => {
           spawnCount++;
@@ -75,7 +75,7 @@ describe("laptop sandbox provider", () => {
     try {
       let spawnCount = 0;
       let portCounter = 30000;
-      const provider = createLaptopSandboxProvider({
+      const provider = createDesktopSandboxProvider({
         dataDir,
         spawnDaemon: () => {
           spawnCount++;
@@ -107,11 +107,11 @@ describe("laptop sandbox provider", () => {
   });
 });
 
-describe("LaptopSandboxProvider tunnel lifecycle", () => {
+describe("DesktopSandboxProvider tunnel lifecycle", () => {
   it("opens a tunnel after postConfig and returns the public URL", async () => {
     const tunnelHandles: Array<{ subDomain: string }> = [];
 
-    const provider = createLaptopSandboxProvider({
+    const provider = createDesktopSandboxProvider({
       dataDir: "/tmp/test",
       spawnDaemon: async ({ port }) => ({ port, kill: () => {} }),
       postConfig: async () => {},
@@ -140,7 +140,7 @@ describe("LaptopSandboxProvider tunnel lifecycle", () => {
   });
 
   it("falls back to 127.0.0.1 URL when openDaemonTunnel returns null", async () => {
-    const provider = createLaptopSandboxProvider({
+    const provider = createDesktopSandboxProvider({
       dataDir: "/tmp/test",
       spawnDaemon: async ({ port }) => ({ port, kill: () => {} }),
       postConfig: async () => {},
@@ -160,7 +160,7 @@ describe("LaptopSandboxProvider tunnel lifecycle", () => {
 
   it("closes the tunnel on deleteSandbox", async () => {
     const closes: string[] = [];
-    const provider = createLaptopSandboxProvider({
+    const provider = createDesktopSandboxProvider({
       dataDir: "/tmp/test",
       spawnDaemon: async ({ port }) => ({ port, kill: () => {} }),
       postConfig: async () => {},
@@ -187,7 +187,7 @@ describe("LaptopSandboxProvider tunnel lifecycle", () => {
       exitResolver = r;
     });
 
-    const provider = createLaptopSandboxProvider({
+    const provider = createDesktopSandboxProvider({
       dataDir: "/tmp/test",
       spawnDaemon: async ({ port }) => ({
         port,

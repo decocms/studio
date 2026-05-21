@@ -1,6 +1,6 @@
 /**
  * Dev-only helper to bootstrap an OAuth-ish session file for the
- * laptop-side link daemon when it auto-spawns out of `bun run dev`.
+ * desktop-side link daemon when it auto-spawns out of `bun run dev`.
  *
  * In production the link reads a real OAuth session minted by
  * `decocms auth login`. Locally we have no such login flow — the dev

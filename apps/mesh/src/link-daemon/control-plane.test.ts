@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { signRequest } from "@/links/protocol";
 import { makeControlPlaneHandler } from "./control-plane";
-import { createLaptopSandboxProvider } from "./sandbox-provider";
+import { createDesktopSandboxProvider } from "./sandbox-provider";
 
 const SECRET = "test-link-secret";
 
 function buildHandler() {
   let portCounter = 30000;
-  const provider = createLaptopSandboxProvider({
+  const provider = createDesktopSandboxProvider({
     dataDir: "/tmp/link-cp-test",
     spawnDaemon: () => ({ port: 0, kill: () => {} }),
     postConfig: async () => {},

@@ -3,7 +3,7 @@ import type { ChatTier } from "@/tools/organization/schema";
 import type { AgentModelSet } from "./agent-models";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 
-interface LaptopCliModelSelectorProps {
+interface DesktopCliModelSelectorProps {
   modelSet: AgentModelSet;
   selectedModelId: string | null;
   onSelect: (model: AiProviderModel) => void;
@@ -15,11 +15,11 @@ const TIER_ROWS: Array<{ tier: ChatTier; description: string }> = [
   { tier: "thinking", description: "Deeper reasoning" },
 ];
 
-export function LaptopCliModelSelectorBody({
+export function DesktopCliModelSelectorBody({
   modelSet,
   selectedModelId,
   onSelect,
-}: LaptopCliModelSelectorProps) {
+}: DesktopCliModelSelectorProps) {
   const lookup = Object.fromEntries(modelSet.models.map((m) => [m.modelId, m]));
 
   return (

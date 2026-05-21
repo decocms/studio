@@ -1,7 +1,7 @@
 import type { HarnessId } from "@/harnesses";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
-export type AgentOption = "decopilot" | "claude-code-laptop" | "codex-laptop";
+export type AgentOption = "decopilot" | "claude-code-desktop" | "codex-desktop";
 
 export interface AgentPins {
   harness: HarnessId;
@@ -16,6 +16,6 @@ export interface AgentPins {
  */
 export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
   decopilot: { harness: "decopilot", sandbox: null },
-  "claude-code-laptop": { harness: "claude-code", sandbox: "remote-user" },
-  "codex-laptop": { harness: "codex", sandbox: "remote-user" },
+  "claude-code-desktop": { harness: "claude-code", sandbox: "remote-user" },
+  "codex-desktop": { harness: "codex", sandbox: "remote-user" },
 };

@@ -1,7 +1,7 @@
 import type { ModelInfo } from "../types";
 
 /**
- * Browser-safe model list for the Codex laptop harness. Lives apart from
+ * Browser-safe model list for the Codex desktop harness. Lives apart from
  * `codex.ts` because that file re-exports `createCodexModel` from
  * `../../harnesses/codex`, which transitively pulls Node-only crypto
  * code into any bundle that imports it. The chat model selector only

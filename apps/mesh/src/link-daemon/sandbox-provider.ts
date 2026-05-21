@@ -1,5 +1,5 @@
 /**
- * LaptopSandboxProvider — owns per-handle sandbox daemons on the user's
+ * DesktopSandboxProvider — owns per-handle sandbox daemons on the user's
  * machine. Each `ensureSandbox` call either returns an existing
  * (handle, port) pair or spawns a fresh daemon process, posts the
  * initial tenant config, waits for `/health`, and tracks it for LRU
@@ -59,7 +59,7 @@ export interface SandboxState {
   activeDispatchCount: number;
 }
 
-export interface LaptopSandboxProvider {
+export interface DesktopSandboxProvider {
   ensureSandbox(
     input: EnsureSandboxInput,
   ): Promise<{ sandboxUrl: string; port: number }>;
@@ -79,7 +79,7 @@ export interface OpenTunnelDeps {
   localAddr: string;
 }
 
-export interface LaptopSandboxProviderDeps {
+export interface DesktopSandboxProviderDeps {
   dataDir: string;
   spawnDaemon: (args: {
     workdir: string;
@@ -104,9 +104,9 @@ export interface LaptopSandboxProviderDeps {
   maxSandboxes?: number;
 }
 
-export function createLaptopSandboxProvider(
-  deps: LaptopSandboxProviderDeps,
-): LaptopSandboxProvider {
+export function createDesktopSandboxProvider(
+  deps: DesktopSandboxProviderDeps,
+): DesktopSandboxProvider {
   const cap = deps.maxSandboxes ?? 20;
   const sandboxes = new Map<string, SandboxState>();
   const pickPort = deps.pickPort ?? allocateEphemeralPort;

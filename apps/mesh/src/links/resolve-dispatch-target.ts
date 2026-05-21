@@ -5,7 +5,7 @@
  * The VM entry's `sandboxProviderKind` is the single source of truth:
  *   - cloud kind (docker/freestyle/agent-sandbox) → cluster default sandbox
  *   - `remote-user` + decopilot → cluster decopilot, sandbox tools tunneled
- *   - `remote-user` + claude-code/codex → whole stream dispatched to the laptop
+ *   - `remote-user` + claude-code/codex → whole stream dispatched to the desktop
  *
  * Link health is checked only for `remote-user` VMs. Offline/missing-capability
  * paths return an `error` target which `POST /messages` surfaces as 409.

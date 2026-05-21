@@ -7,7 +7,7 @@
  *
  * Browser preview + cluster→daemon RPCs are NOT served here anymore —
  * each daemon has its own warp tunnel (<handle>.deco.host) opened by
- * the laptop provider at ensureSandbox time. The cluster reads the
+ * the desktop provider at ensureSandbox time. The cluster reads the
  * URL from the link's response, persists it in sandbox_runner_state,
  * and talks to the daemon directly.
  *
@@ -19,10 +19,10 @@
  */
 
 import { verifyRequest } from "@/links/protocol";
-import type { LaptopSandboxProvider, RepoRef } from "./sandbox-provider";
+import type { DesktopSandboxProvider, RepoRef } from "./sandbox-provider";
 
 export interface ControlPlaneDeps {
-  provider: LaptopSandboxProvider;
+  provider: DesktopSandboxProvider;
   linkSecret: string;
   seenNonce: (nonce: string) => boolean;
   recordNonce: (nonce: string) => void;

@@ -15,7 +15,7 @@
  * `processLocal.resolveCwd` callback that mapped to the `host` runner's
  * `localWorkdir(handle)`. That runner has been retired; the cluster no
  * longer supplies a resolver, and this harness falls through to
- * `process.cwd()` on the laptop daemon (spawned with workdir = sandbox
+ * `process.cwd()` on the desktop daemon (spawned with workdir = sandbox
  * path) or to `undefined` (SDK default) inside the cluster.
  *
  * Behavior parity with stream-core: the inline call at lines 888–906
@@ -47,7 +47,7 @@ import { createUsageAccumulator } from "../usage-accumulator";
  * agent → SDK default cwd) or no userId is available (defensive).
  *
  * Otherwise:
- *   - Laptop daemon (no `processLocal`): the sandbox daemon is spawned
+ *   - Desktop daemon (no `processLocal`): the sandbox daemon is spawned
  *     with `cwd = <appRoot>`, but the cloned repo lives at
  *     `<appRoot>/repo` (see `packages/sandbox/daemon/entry.ts` — it
  *     joins APP_ROOT with "repo" to form `repoDir`). Prefer the env

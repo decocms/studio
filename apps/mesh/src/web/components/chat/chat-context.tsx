@@ -509,7 +509,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   };
 
   // Effective option: the user's pick filtered through what the current
-  // agent can actually run. Laptop-CLI options (Claude Code / Codex /
+  // agent can actually run. Desktop-CLI options (Claude Code / Codex /
   // Decopilot desktop) need a git branch to check out on the user's
   // desktop; if the user picked a desktop variant but the current agent
   // has no clonable source (Decopilot-only / ephemeral), this falls back

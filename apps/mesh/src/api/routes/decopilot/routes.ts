@@ -177,8 +177,8 @@ async function tryResolveTier(ctx: MeshContext, tier: SimpleModeTier) {
  *   `image` and `web_research` tiers — when present they enable the
  *   `generate_image` and `web_search` built-in tools.
  *
- * - **Laptop-CLI harnesses (`claude-code`, `codex`):** the model lives
- *   on the user's laptop, not in any AI provider key. We synthesize the
+ * - **Desktop-CLI harnesses (`claude-code`, `codex`):** the model lives
+ *   on the user's desktop, not in any AI provider key. We synthesize the
  *   ModelsConfig from the agent's hardcoded tier map (`agent-tiers.ts`).
  *   The `credentialId` is a sentinel — the harness reads `models.thinking.id`
  *   to know which CLI sub-command to invoke and ignores the credential.
@@ -204,7 +204,7 @@ async function resolvePerRequestModels(
       );
     }
     return {
-      credentialId: `laptop:${harnessId}`,
+      credentialId: `desktop:${harnessId}`,
       thinking: {
         id: entry.modelId,
         title: entry.label,
@@ -425,12 +425,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         existingThread = null;
       }
 
-      const branch = existingThread?.branch ?? input.branch ?? null;
-      if (!branch) {
-        throw new HTTPException(400, {
-          message: "thread has no branch pinned",
-        });
-      }
+      // Fall back to the "ephemeral" synthetic branch when neither the
+      // thread row nor the request body pins one. Synthetic branches
+      // (see packages/sandbox/daemon/constants.ts:isSyntheticBranch) are
+      // accepted by the daemon as vmMap routing keys but never checked
+      // out — exactly the right semantics for Decopilot threads on
+      // agents with no clonable repo, where the branch is purely an
+      // isolation key.
+      const branch = existingThread?.branch ?? input.branch ?? "ephemeral";
+      const branchWasDefaulted = !existingThread?.branch && !input.branch;
 
       // Determine the pinned (kind, harness). If the thread row has them,
       // use those. Otherwise this is the first message — derive defaults and
@@ -448,7 +451,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       let pinnedHarness = (existingThread?.harness_id ??
         null) as HarnessId | null;
 
-      if (!pinnedKind || !pinnedHarness) {
+      if (!pinnedKind || !pinnedHarness || branchWasDefaulted) {
         pinnedKind =
           pinnedKind ??
           input.sandboxProviderKind ??
@@ -463,6 +466,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             await ctx.storage.threads?.update?.(taskId, {
               sandbox_provider_kind: pinnedKind,
               harness_id: pinnedHarness,
+              ...(branchWasDefaulted ? { branch } : {}),
             });
           } catch (err) {
             console.warn(

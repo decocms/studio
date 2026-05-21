@@ -20,7 +20,7 @@
  * `/_sandbox/<handle>/*` (that route was deleted with the per-daemon-tunnel
  * migration).
  *
- * Handle vs runId: for remote-cli (whole-harness dispatch), the laptop
+ * Handle vs runId: for remote-cli (whole-harness dispatch), the desktop
  * spins up an ephemeral per-run sandbox; the handle == `input.runId`.
  * This differs from the remote-user provider path (Task 5.1), where the
  * handle is `computeHandle(sandboxId, branch)` because the sandbox is
@@ -29,7 +29,7 @@
  * directly.
  *
  * Cancellation: on consumer abort, fires a DELETE to the runs endpoint
- * independent of SSE close so the laptop can abort its CLI subprocess
+ * independent of SSE close so the desktop can abort its CLI subprocess
  * promptly even if the response stream is still draining.
  */
 import type { UIMessageChunk } from "ai";
@@ -151,7 +151,7 @@ export interface RemoteDispatchDeps {
 export type RemoteDispatchLink = Pick<LinkEntry, "tunnelUrl" | "linkSecret">;
 
 /**
- * Ensure the laptop link has a sandbox registered at `handle` before the
+ * Ensure the desktop link has a sandbox registered at `handle` before the
  * cluster fires `remoteDispatch`. The link's `POST /api/sandboxes`
  * spawns (or reuses) a daemon for `handle` and returns the daemon's
  * `sandboxUrl` — a per-daemon tunnel (`https://<handle>.deco.host` in
