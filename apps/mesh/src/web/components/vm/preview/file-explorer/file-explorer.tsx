@@ -12,6 +12,8 @@ import {
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { useChatStream } from "@/web/components/chat/context";
+import { usePanelActions } from "@/web/layouts/shell-layout";
 import type { FileBuffer } from "./types";
 import {
   buildFileTree,
@@ -67,6 +69,16 @@ export function FileExplorer({
 
   // Editor ref for save
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+
+  // Ask AI inline prompt state
+  const [askAi, setAskAi] = useState<{
+    filePath: string;
+    lineStart: number;
+    lineEnd: number;
+    selectedCode: string;
+  } | null>(null);
+  const { sendMessage } = useChatStream();
+  const { setChatOpen } = usePanelActions();
 
   // Load file tree on first render
   const loadTreeCalledRef = useRef(false);
@@ -230,7 +242,48 @@ export function FileExplorer({
       const value = editor.getValue();
       await saveFile(selectedFile, value);
     });
+
+    // Ctrl+K / Cmd+K to open "Ask the AI" prompt
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+      const selection = editor.getSelection();
+      const model = editor.getModel();
+      if (!selection || !model || !selectedFile) return;
+      const selectedCode = model.getValueInRange(selection);
+      setAskAi({
+        filePath: selectedFile,
+        lineStart: selection.startLineNumber,
+        lineEnd: selection.endLineNumber,
+        selectedCode,
+      });
+    });
   };
+
+  function handleAskAiSend(prompt: string) {
+    if (!askAi) return;
+    const lines = [
+      `The user selected code in the file explorer and asked: **"${prompt.trim()}"**`,
+      "",
+      `**File:** \`${askAi.filePath}\``,
+      `**Lines:** ${askAi.lineStart}–${askAi.lineEnd}`,
+    ];
+    if (askAi.selectedCode) {
+      const lang = getLanguageFromPath(askAi.filePath);
+      lines.push(
+        "",
+        "**Selected code:**",
+        "```" + lang,
+        askAi.selectedCode,
+        "```",
+      );
+    }
+    lines.push(
+      "",
+      "Please read the source file, locate the code, and apply the requested change.",
+    );
+    setChatOpen(true);
+    sendMessage({ parts: [{ type: "text", text: lines.join("\n") }] });
+    setAskAi(null);
+  }
 
   if (loading && !treeLoaded) {
     return (
@@ -328,7 +381,7 @@ export function FileExplorer({
       </div>
 
       {/* Editor area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="relative flex-1 flex flex-col overflow-hidden">
         {/* Tab bar */}
         {openTabs.length > 0 && (
           <div className="flex items-center border-b overflow-x-auto shrink-0">
@@ -375,6 +428,62 @@ export function FileExplorer({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Ask AI inline prompt */}
+        {askAi && (
+          <div
+            className="absolute top-0 left-1/2 -translate-x-1/2 z-20 mt-2"
+            style={{ width: "360px" }}
+          >
+            <form
+              className="flex w-full items-center gap-1.5 rounded-xl border border-border bg-background/95 px-3 py-1.5 shadow-lg backdrop-blur"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const input = form.elements.namedItem(
+                  "askAiInput",
+                ) as HTMLInputElement;
+                if (input.value.trim()) {
+                  handleAskAiSend(input.value);
+                }
+              }}
+            >
+              <input
+                name="askAiInput"
+                autoFocus
+                type="text"
+                placeholder="Ask the AI..."
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Escape") setAskAi(null);
+                }}
+              />
+              <button
+                type="submit"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity"
+                title="Send"
+              >
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 10 10"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <title>Send</title>
+                  <path
+                    d="M5 9V1M1 5l4-4 4 4"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </form>
           </div>
         )}
 
