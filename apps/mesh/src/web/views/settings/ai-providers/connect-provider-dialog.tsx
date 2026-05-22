@@ -11,6 +11,7 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -309,9 +310,19 @@ export function ConnectProviderDialog({
     }
   };
 
+  const isNarrowState =
+    state.kind === "oauth-pending" ||
+    state.kind === "provision-pending" ||
+    state.kind === "provision-error";
+
   return (
     <Dialog open={state.kind !== "closed"} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className={cn(
+          "max-h-[90vh] overflow-y-auto",
+          isNarrowState ? "sm:max-w-md" : "sm:max-w-3xl",
+        )}
+      >
         <DialogHeader>
           <div className="flex items-center gap-2">
             {showBack && (
