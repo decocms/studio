@@ -20,13 +20,13 @@
  * `/_sandbox/<handle>/*` (that route was deleted with the per-daemon-tunnel
  * migration).
  *
- * Handle vs runId: for remote-cli (whole-harness dispatch), the desktop
- * spins up an ephemeral per-run sandbox; the handle == `input.runId`.
- * This differs from the desktop provider path (Task 5.1), where the
- * handle is `computeHandle(sandboxId, branch)` because the sandbox is
- * long-lived and shared across runs. The daemon's cancel route
- * (`/_decopilot_vm/runs/<runId>`) confirms this — it matches on runId
- * directly.
+ * Handle vs runId: remote-cli dispatch and VM_START now share the same
+ * sandbox — `dispatch-run` resolves the URL via `ensureVm`, so the
+ * handle is `computeHandle(sandboxId, branch)` in both paths. Per-run
+ * state stays keyed by `runId` inside the daemon (the cancel route
+ * `/_decopilot_vm/runs/<runId>` matches on runId directly), so multiple
+ * concurrent runs on the same branch share a workdir but each has its
+ * own run-registry entry.
  *
  * Cancellation: on consumer abort, fires a DELETE to the runs endpoint
  * independent of SSE close so the desktop can abort its CLI subprocess
@@ -149,71 +149,6 @@ export interface RemoteDispatchDeps {
  * the smaller shape makes test fakes cheaper to construct.
  */
 export type RemoteDispatchLink = Pick<LinkEntry, "tunnelUrl" | "linkSecret">;
-
-/**
- * Ensure the desktop link has a sandbox registered at `handle` before the
- * cluster fires `remoteDispatch`. The link's `POST /api/sandboxes`
- * spawns (or reuses) a daemon for `handle` and returns the daemon's
- * `sandboxUrl` — a per-daemon tunnel (`https://<handle>.deco.host` in
- * prod, `http://127.0.0.1:<port>` in dev `--no-tunnel`). The cluster
- * then talks to the daemon DIRECTLY at that URL; the link no longer
- * reverse-proxies `/_sandbox/<handle>/*` (that route was deleted with
- * the per-daemon-tunnel migration).
- *
- * Used by `remote-cli` dispatch where the handle equals `input.runId` —
- * a fresh, ephemeral per-run sandbox. We do NOT go through the
- * `desktop` SandboxProvider here because that provider derives its
- * handle via `computeHandle(sandboxId, branch)`, which would diverge
- * from the runId-keyed flow `remoteDispatch` uses.
- *
- * No `repo` is sent: ephemeral CLI runs operate on an empty workdir
- * the link auto-creates at `<dataDir>/sandboxes/<handle>/`.
- *
- * Idempotent on the link side — repeated POSTs with the same handle
- * return the existing sandbox unchanged.
- */
-export async function ensureRemoteCliSandbox(
-  link: RemoteDispatchLink,
-  handle: string,
-  deps: RemoteDispatchDeps = {},
-): Promise<{ sandboxUrl: string }> {
-  const fetcher = deps.fetchImpl ?? fetch;
-  const path = "/api/sandboxes";
-  const body = JSON.stringify({ handle });
-  const sigHeaders = signRequest({
-    secret: link.linkSecret,
-    method: "POST",
-    path,
-    body,
-  });
-  const res = await fetcher(`${link.tunnelUrl}${path}`, {
-    method: "POST",
-    body,
-    headers: {
-      ...sigHeaders,
-      "Content-Type": "application/json",
-    },
-  });
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const text = await res.text();
-      detail = text.length > 200 ? `${text.slice(0, 200)}…` : text;
-    } catch {
-      // ignore
-    }
-    throw new Error(
-      `ensureRemoteCliSandbox HTTP ${res.status}${detail ? ` ${detail}` : ""}`,
-    );
-  }
-  const parsed = (await res.json()) as { sandboxUrl?: unknown };
-  if (typeof parsed.sandboxUrl !== "string") {
-    throw new Error(
-      "ensureRemoteCliSandbox: link did not return a sandboxUrl string",
-    );
-  }
-  return { sandboxUrl: parsed.sandboxUrl };
-}
 
 export function remoteDispatch(
   id: HarnessId,

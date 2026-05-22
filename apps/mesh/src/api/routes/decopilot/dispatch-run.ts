@@ -26,10 +26,8 @@ import type { MeshContext } from "@/core/mesh-context";
 import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
 import { localDispatch } from "@/harnesses";
-import {
-  ensureRemoteCliSandbox,
-  remoteDispatch,
-} from "@/harnesses/remote-dispatch";
+import { remoteDispatch } from "@/harnesses/remote-dispatch";
+import { ensureVm } from "@/tools/vm/start";
 import { LinkOfflineError } from "../../../links/link-offline-error";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
@@ -816,20 +814,29 @@ async function prepareRun(
         //
         // Branch on the resolved target:
         //   - `remote-cli` — the whole stream is delegated to the user's
-        //     link daemon. We first POST `/api/sandboxes` with the runId
-        //     as the handle; the link spawns (or reuses) a daemon for
-        //     that handle and returns its `sandboxUrl` — a per-daemon
-        //     tunnel that the cluster talks to directly (no link
-        //     reverse-proxy hop). Without ensure() first there's no
-        //     sandboxUrl to dispatch against.
+        //     link daemon. `resolveRemoteCliSandboxUrl` calls `ensureVm`
+        //     (handle == `computeHandle(sandboxId, branch)`) so the
+        //     sandbox is the same one VM_START provisions — repo cloned,
+        //     env pushed, dev server primed. The cluster talks to the
+        //     daemon directly at the returned per-handle tunnel URL
+        //     (`https://<handle>.deco.host` in prod), no link
+        //     reverse-proxy hop. Per-run state inside the daemon stays
+        //     keyed by `runId` (cancellation via DELETE
+        //     /_decopilot_vm/runs/<runId>).
         //   - `local` (default OR desktop) — runs in-cluster.
         //     `desktop` only changes where the sandbox tool calls go;
         //     the harness still runs here.
         let harnessChunks;
         if (target.kind === "remote-cli") {
-          const { sandboxUrl } = await ensureRemoteCliSandbox(
-            target.link,
-            harnessInput.runId,
+          // Unify with VM_START: resolve the sandbox via `ensureVm` so
+          // claude-code/codex runs share the workdir VM_START already
+          // provisioned (cloned repo + env + lockfile probe). Falls
+          // through to a blank sandbox for ephemeral threads. See
+          // `resolveRemoteCliSandboxUrl` below for why the helper
+          // exists.
+          const sandboxUrl = await resolveRemoteCliSandboxUrl(
+            { agent: input.agent, branch: input.branch },
+            ctx,
           );
           harnessChunks = remoteDispatch(
             harnessId,
@@ -1013,4 +1020,41 @@ async function prepareRun(
 
     throw err;
   }
+}
+
+/**
+ * Resolve the sandbox URL the cluster should dispatch a `remote-cli`
+ * harness stream to. Calls `ensureVm` (lazy/idempotent — fast path
+ * returns the existing entry, slow path provisions through the
+ * desktop sandbox provider) so the resulting sandbox is the same one
+ * VM_START / the always-on VM tools use. Returns the daemon's
+ * `previewUrl`, which is the per-handle tunnel URL the cluster
+ * already talks to directly.
+ *
+ * Branch defaults to `"ephemeral"` to match
+ * `apps/mesh/src/api/routes/decopilot/routes.ts:434` — threads
+ * without a connected repo share one sandbox per virtualMcp under
+ * that synthetic branch.
+ *
+ * Exported so the unification can be unit-tested without standing up
+ * the full `dispatchRunAndWait` machinery.
+ */
+export async function resolveRemoteCliSandboxUrl(
+  input: { agent: { id: string }; branch?: string | null },
+  ctx: MeshContext,
+): Promise<string> {
+  const entry = await ensureVm(
+    {
+      virtualMcpId: input.agent.id,
+      branch: input.branch ?? "ephemeral",
+      sandboxProviderKind: "desktop",
+    },
+    ctx,
+  );
+  if (!entry.previewUrl) {
+    throw new Error(
+      `Sandbox for agent ${input.agent.id} has no previewUrl — the desktop daemon may still be starting`,
+    );
+  }
+  return entry.previewUrl;
 }
