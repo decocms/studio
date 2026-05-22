@@ -91,12 +91,16 @@ export async function resolveSandboxProvider(
   //    path consistently picks the one matching current intent
   //    (link online → `remote-user`, else env kind) instead of whatever
   //    `Object.keys` happens to enumerate first.
-  const recordedKinds = readRecordedKinds(virtualMcpMetadata, userId, branch);
-  if (recordedKinds.length > 0) {
+  const [firstRecorded, ...restRecorded] = readRecordedKinds(
+    virtualMcpMetadata,
+    userId,
+    branch,
+  );
+  if (firstRecorded) {
     const preferred =
-      recordedKinds.length === 1
-        ? recordedKinds[0]
-        : await pickRecordedKind(ctx, userId, recordedKinds);
+      restRecorded.length === 0
+        ? firstRecorded
+        : await pickRecordedKind(ctx, userId, firstRecorded, restRecorded);
     const provider = await bindProviderForKind(ctx, userId, preferred);
     return { provider, kind: preferred };
   }
@@ -134,11 +138,12 @@ function readRecordedKinds(
 async function pickRecordedKind(
   ctx: MeshContext,
   userId: string,
-  recorded: SandboxProviderKind[],
+  first: SandboxProviderKind,
+  rest: SandboxProviderKind[],
 ): Promise<SandboxProviderKind> {
   const preferred = await resolveDefaultKind(ctx, userId);
-  if (recorded.includes(preferred)) return preferred;
-  return recorded[0];
+  if (preferred === first || rest.includes(preferred)) return preferred;
+  return first;
 }
 
 async function resolveDefaultKind(
