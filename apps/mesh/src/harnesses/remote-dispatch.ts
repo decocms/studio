@@ -167,7 +167,7 @@ export type RemoteDispatchLink = Pick<LinkEntry, "tunnelUrl" | "linkSecret">;
  * from the runId-keyed flow `remoteDispatch` uses.
  *
  * No `repo` is sent: ephemeral CLI runs operate on an empty workdir
- * the link auto-creates at `<dataDir>/link/sandboxes/<handle>/`.
+ * the link auto-creates at `<dataDir>/sandboxes/<handle>/`.
  *
  * Idempotent on the link side — repeated POSTs with the same handle
  * return the existing sandbox unchanged.

@@ -1,6 +1,6 @@
 /**
  * Machine-id is the stable identifier the link daemon presents at
- * registration. It lives at `<dataDir>/link/machine-id` and is
+ * registration. It lives at `<dataDir>/machine-id` and is
  * generated once per desktop.
  *
  * The cluster keys its `LinkRegistry` by the OAuth userSub, NOT by this
@@ -15,7 +15,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 function machineIdPath(dataDir: string): string {
-  return join(dataDir, "link", "machine-id");
+  return join(dataDir, "machine-id");
 }
 
 export async function loadOrCreateMachineId(dataDir: string): Promise<string> {
