@@ -18,7 +18,9 @@ export function LinkedDesktopIndicator() {
   const labels = visibleCapabilities(link.capabilities);
   const tooltipContent = link.online ? (
     <div className="flex flex-col gap-0.5 text-xs">
-      <span className="font-medium">{link.machineId ?? "Desktop linked"}</span>
+      <span className="font-medium">
+        {link.hostname ?? link.machineId ?? "Desktop linked"}
+      </span>
       <span className="text-muted-foreground">
         {labels.length > 0
           ? `Available: ${labels.join(", ")}`

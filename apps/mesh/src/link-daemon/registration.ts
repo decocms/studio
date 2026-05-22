@@ -29,6 +29,8 @@ export interface RegistrationInput {
   /** OAuth access token from the user's CLI session. */
   sessionToken: string;
   machineId: string;
+  /** OS hostname, used as a human-readable display label in the cluster UI. */
+  hostname?: string;
   cliVersion: string;
   capabilities: Capability[];
   /**
@@ -47,6 +49,7 @@ export async function registerWithCluster(
     cliVersion: input.cliVersion,
     protocolVersion: LINK_PROTOCOL_VERSION,
     capabilities: input.capabilities,
+    ...(input.hostname ? { hostname: input.hostname } : {}),
     ...(input.tunnelUrl ? { tunnelUrl: input.tunnelUrl } : {}),
   };
   const res = await fetch(`${input.clusterBaseUrl}/api/links`, {

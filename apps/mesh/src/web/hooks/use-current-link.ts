@@ -11,6 +11,7 @@ import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 export interface CurrentLink {
   online: boolean;
   machineId?: string;
+  hostname?: string;
   cliVersion?: string;
   capabilities: Capability[];
 }

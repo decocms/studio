@@ -13,6 +13,13 @@ export const registrationPayloadSchema = z.object({
   protocolVersion: z.number().int().nonnegative(),
   capabilities: z.array(capabilitySchema).min(1),
   /**
+   * The operating-system hostname of the linked desktop. Used purely as a
+   * human-readable display label in the UI (tooltip, dialog). The
+   * collision-detection invariant still keys off `machineId`. Optional so
+   * older link daemons remain compatible.
+   */
+  hostname: z.string().min(1).optional(),
+  /**
    * Honored only when the cluster sets MESH_ALLOW_LOCALHOST_LINKS=1.
    * In production the cluster derives the expected Warp domain from
    * the authenticated userSub and ignores any value here.
@@ -23,6 +30,8 @@ export type RegistrationPayload = z.infer<typeof registrationPayloadSchema>;
 
 export const linkEntrySchema = z.object({
   machineId: z.string(),
+  /** Human-readable display label sent at registration. See registrationPayloadSchema. */
+  hostname: z.string().optional(),
   tunnelUrl: z.string().url(),
   /**
    * The raw bearer secret. Both the cluster and the link sign HMACs

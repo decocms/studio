@@ -11,6 +11,7 @@ export const LINK_CURRENT_GET = defineTool({
   outputSchema: z.object({
     online: z.boolean(),
     machineId: z.string().optional(),
+    hostname: z.string().optional(),
     cliVersion: z.string().optional(),
     capabilities: z.array(capabilitySchema).default([]),
   }),
@@ -27,6 +28,7 @@ export const LINK_CURRENT_GET = defineTool({
     return {
       online: true,
       machineId: entry.machineId,
+      hostname: entry.hostname,
       cliVersion: entry.cliVersion,
       capabilities: entry.capabilities,
     };

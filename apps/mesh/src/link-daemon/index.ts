@@ -12,6 +12,7 @@
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
+import { hostname as osHostname } from "node:os";
 import {
   postConfig as daemonPostConfig,
   waitForDaemonReady,
@@ -55,6 +56,7 @@ export async function startLinkDaemon(
 
   const machineId = await loadOrCreateMachineId(opts.dataDir);
   const cliVersion = process.env.npm_package_version ?? "0.0.0";
+  const hostname = osHostname() || undefined;
 
   let tunnel: {
     publicUrl: string;
@@ -82,12 +84,15 @@ export async function startLinkDaemon(
     clusterBaseUrl: opts.clusterBaseUrl,
     sessionToken: session.accessToken,
     machineId,
+    hostname,
     cliVersion,
     capabilities: await detectCapabilities(),
     tunnelUrl: opts.noTunnel ? tunnelBaseUrl : undefined,
   });
   console.log(
-    `Linked. Protocol v${LINK_PROTOCOL_VERSION}. machineId=${machineId}`,
+    `Linked. Protocol v${LINK_PROTOCOL_VERSION}. machineId=${machineId}${
+      hostname ? ` hostname=${hostname}` : ""
+    }`,
   );
 
   // Per-port DAEMON_TOKEN registry so postSandboxConfig can authenticate
