@@ -73,9 +73,9 @@ describe("getAgentSections", () => {
     expect(claude.tiers.fast.modelId).toBe("claude-code:haiku");
     expect(claude.tiers.smart.modelId).toBe("claude-code:sonnet");
     expect(claude.tiers.thinking.modelId).toBe("claude-code:opus");
-    expect(claude.tiers.fast.label).toBe("Haiku");
-    expect(claude.tiers.smart.label).toBe("Sonnet");
-    expect(claude.tiers.thinking.label).toBe("Opus");
+    expect(claude.tiers.fast.label).toBe("Haiku 4.5");
+    expect(claude.tiers.smart.label).toBe("Sonnet 4.6");
+    expect(claude.tiers.thinking.label).toBe("Opus 4.7");
   });
 
   test("codex section exposes the three Codex model labels", () => {

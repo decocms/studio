@@ -73,7 +73,7 @@ describe("AgentSection", () => {
         onSelect={onSelect}
       />,
     );
-    getByText("Haiku").click();
+    getByText("Haiku 4.5").click();
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith("fast");
   });
