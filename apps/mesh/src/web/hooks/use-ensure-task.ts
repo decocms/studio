@@ -19,8 +19,10 @@
  * Fetch path: when the store doesn't know the id AND the watcher has moved
  * past `loading`, call `manager.fetchThread(id)` first. This handles
  * direct links to threads beyond page 0 or archived threads without firing
- * a spurious CREATE. `fetchThread` merges the found row into the loaded list
- * so subsequent lookups hit the fast path and `chat-context` also sees the row.
+ * a spurious CREATE. `fetchThread` is a pure read — the resolved row is held
+ * in this hook's local state and passed downstream via the `task` prop on
+ * `Chat.Provider`, so archived/by-id GET results never pollute the
+ * panel-visible `threads` slot.
  *
  * Slow path (create): only fires when `fetchThread` returns null (the row
  * genuinely doesn't exist server-side). `COLLECTION_THREADS_CREATE` is
@@ -105,8 +107,6 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
 
   if (!id) return { status: "ready", task: null };
   if (localHit) return { status: "ready", task: localHit };
-  // fetchedTask is a Task when fetchThread returned a row (already in local list
-  // via merge, but localHit above may not have updated yet in the same render).
   if (fetchedTask && typeof fetchedTask === "object") {
     return { status: "ready", task: fetchedTask };
   }

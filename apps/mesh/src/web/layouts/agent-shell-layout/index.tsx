@@ -433,7 +433,11 @@ function AgentInsetProvider() {
     return (
       <InsetContext value={insetContextValue}>
         <div className="flex flex-col flex-1 bg-background min-h-0">
-          <Chat.Provider key={chatVirtualMcpId} virtualMcpId={chatVirtualMcpId}>
+          <Chat.Provider
+            key={chatVirtualMcpId}
+            virtualMcpId={chatVirtualMcpId}
+            task={ensureState.status === "ready" ? ensureState.task : null}
+          >
             <VmEventsBridge
               virtualMcpId={virtualMcpId}
               hasActiveGithubRepo={hasActiveGithubRepo}
@@ -509,7 +513,11 @@ function AgentInsetProvider() {
           />
         </Toolbar.Toggles>
 
-        <Chat.Provider key={chatVirtualMcpId} virtualMcpId={chatVirtualMcpId}>
+        <Chat.Provider
+          key={chatVirtualMcpId}
+          virtualMcpId={chatVirtualMcpId}
+          task={ensureState.status === "ready" ? ensureState.task : null}
+        >
           <Toolbar.Tabs>
             <MainPanelTabsBar
               virtualMcpId={virtualMcpId}
