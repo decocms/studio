@@ -42,7 +42,6 @@ import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { LinkRegistry } from "../../../links/link-registry";
 import { resolveDispatchTarget } from "../../../links/resolve-dispatch-target";
-import { ensureVm } from "@/tools/vm/start";
 import {
   resolveSandboxProviderKindFromEnv,
   type SandboxProviderKind,
@@ -477,17 +476,21 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         }
       }
 
-      const vm = await ensureVm(
-        {
-          virtualMcpId: input.agent.id,
-          branch,
-          sandboxProviderKind: pinnedKind,
-        },
-        ctx,
-      );
-
+      // `resolveDispatchTarget` only needs the resolved `sandboxProviderKind`
+      // — we pass it directly instead of provisioning a VM here. VM
+      // provisioning happens lazily inside the built-in tools layer
+      // (`apps/mesh/src/harnesses/decopilot/built-in-tools/index.ts`'s
+      // `ensureHandle`) on the first VM-tool invocation. Eagerly calling
+      // `ensureVm` at POST time used to fail in environments without a
+      // link daemon for the user even when the run never touches the
+      // sandbox (e.g. CI multi-pod tests that drive only the mock AI
+      // provider).
       const target = await resolveDispatchTarget(
-        { harnessId: pinnedHarness, vm, userId: input.userId },
+        {
+          harnessId: pinnedHarness,
+          sandboxProviderKind: pinnedKind,
+          userId: input.userId,
+        },
         { linkRegistry },
       );
       if (target.kind === "error") {

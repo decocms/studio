@@ -128,18 +128,13 @@ mock.module("@/dispatch-queue", () => ({
 // on the 409 path, and the real one already works against our stub context.
 // We do NOT mock the module, to keep the rest of the imports intact.
 
-// `ensureVm` is stubbed so tests don't try to provision real sandboxes.
-// The stub returns a vmMap entry with the sandboxProviderKind requested by each
-// test scenario via the module-level `vmKindForTest` variable.
+// The POST handler resolves the sandbox provider kind to feed
+// `resolveDispatchTarget` and to persist on the thread row, but no longer
+// eagerly provisions a sandbox — that happens lazily inside the built-in
+// tools layer on the first VM-tool call. We only need to stub the kind
+// resolver; each test pins it via the module-level `vmKindForTest`.
 type VmKind = "docker" | "agent-sandbox" | "remote-user";
 let vmKindForTest: VmKind = "docker";
-mock.module("@/tools/vm/start", () => ({
-  ensureVm: async () => ({
-    vmId: "vm_test",
-    previewUrl: null,
-    sandboxProviderKind: vmKindForTest,
-  }),
-}));
 
 mock.module("@/sandbox/resolve-default-provider-kind", () => ({
   resolveDefaultSandboxProviderKind: async () => vmKindForTest,

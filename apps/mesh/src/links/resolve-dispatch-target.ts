@@ -1,16 +1,21 @@
 /**
- * Resolve where a dispatch should execute, from the harness and the VM entry
- * the user has selected for this (virtualMcpId, branch).
+ * Resolve where a dispatch should execute, from the harness and the sandbox
+ * provider kind pinned for this (thread, virtualMcpId, branch).
  *
- * The VM entry's `sandboxProviderKind` is the single source of truth:
+ * `sandboxProviderKind` is the single source of truth:
  *   - cloud kind (docker/freestyle/agent-sandbox) → cluster default sandbox
  *   - `remote-user` + decopilot → cluster decopilot, sandbox tools tunneled
  *   - `remote-user` + claude-code/codex → whole stream dispatched to the desktop
  *
- * Link health is checked only for `remote-user` VMs. Offline/missing-capability
+ * Link health is checked only for `remote-user`. Offline/missing-capability
  * paths return an `error` target which `POST /messages` surfaces as 409.
+ *
+ * Takes the kind directly (not a `VmMapEntry`) so the POST handler can
+ * decide where to dispatch without eagerly provisioning a sandbox — VM
+ * provisioning is deferred to the built-in tools layer, which already
+ * resolves the handle lazily on first VM-tool invocation.
  */
-import type { VmMapEntry } from "@decocms/mesh-sdk";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { Capability, LinkEntry } from "./protocol";
 import type { LinkRegistry } from "./link-registry";
 import type { HarnessId } from "../harnesses";
@@ -26,7 +31,7 @@ export type DispatchTarget =
 
 interface Input {
   harnessId: HarnessId;
-  vm: VmMapEntry;
+  sandboxProviderKind: SandboxProviderKind;
   userId: string;
 }
 
@@ -45,7 +50,7 @@ export async function resolveDispatchTarget(
   input: Input,
   deps: Deps,
 ): Promise<DispatchTarget> {
-  const kind = input.vm.sandboxProviderKind;
+  const kind = input.sandboxProviderKind;
 
   if (kind !== "remote-user") {
     return { kind: "local", sandbox: "default" };
