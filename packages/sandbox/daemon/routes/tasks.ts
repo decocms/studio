@@ -38,7 +38,7 @@ const VALID_STATUS: ReadonlySet<TaskStatus> = new Set([
   "timeout",
 ]);
 
-/** GET /_decopilot_vm/tasks?status=running,exited */
+/** GET /_sandbox/tasks?status=running,exited */
 export function makeTasksListHandler(deps: TasksDeps) {
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
@@ -55,7 +55,7 @@ export function makeTasksListHandler(deps: TasksDeps) {
   };
 }
 
-/** GET /_decopilot_vm/tasks/:id */
+/** GET /_sandbox/tasks/:id */
 export function makeTasksGetHandler(deps: TasksDeps) {
   return async (req: Request): Promise<Response> => {
     const id = idFrom(req, "/tasks/");
@@ -72,7 +72,7 @@ export function makeTasksGetHandler(deps: TasksDeps) {
   };
 }
 
-/** POST /_decopilot_vm/tasks/:id/kill[?signal=SIGTERM|SIGKILL] */
+/** POST /_sandbox/tasks/:id/kill[?signal=SIGTERM|SIGKILL] */
 export function makeTasksKillHandler(deps: TasksDeps) {
   return async (req: Request): Promise<Response> => {
     const id = idFrom(req, "/tasks/", "/kill");
@@ -85,7 +85,7 @@ export function makeTasksKillHandler(deps: TasksDeps) {
   };
 }
 
-/** POST /_decopilot_vm/tasks/kill-all */
+/** POST /_sandbox/tasks/kill-all */
 export function makeTasksKillAllHandler(deps: TasksDeps) {
   return async (): Promise<Response> => {
     const count = deps.taskManager.killAll();
@@ -93,7 +93,7 @@ export function makeTasksKillAllHandler(deps: TasksDeps) {
   };
 }
 
-/** DELETE /_decopilot_vm/tasks/:id */
+/** DELETE /_sandbox/tasks/:id */
 export function makeTasksDeleteHandler(deps: TasksDeps) {
   return async (req: Request): Promise<Response> => {
     const id = idFrom(req, "/tasks/");
@@ -105,7 +105,7 @@ export function makeTasksDeleteHandler(deps: TasksDeps) {
   };
 }
 
-/** GET /_decopilot_vm/tasks/:id/stream — SSE: replay buffered output, then live. */
+/** GET /_sandbox/tasks/:id/stream — SSE: replay buffered output, then live. */
 export function makeTasksStreamHandler(deps: TasksDeps) {
   return async (req: Request): Promise<Response> => {
     const id = idFrom(req, "/tasks/", "/stream");

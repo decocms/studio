@@ -19,7 +19,7 @@ spec:
   # all claim env to come from the template. We bake a *sentinel* bearer
   # token (rendered into a Secret by sandbox-sentinel-secret.yaml) and
   # rotate to a per-claim token post-bind via mesh's first
-  # POST /_decopilot_vm/config call. envVarsInjectionPolicy stays Allowed
+  # POST /_sandbox/config call. envVarsInjectionPolicy stays Allowed
   # so single-env deploys that haven't yet adopted the sentinel can still
   # provision cold (warmpool=none) with claim env.
   envVarsInjectionPolicy: Allowed

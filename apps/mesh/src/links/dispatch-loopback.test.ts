@@ -174,7 +174,7 @@ describe("dispatch loopback (in-process)", () => {
       // `sandboxApiUrl` returned by the link's `POST /api/sandboxes`. In
       // this in-process loopback we point sandboxApiUrl at the same
       // TUNNEL_BASE_URL so the routed fetch still resolves to the
-      // daemon handler — the URL path (`/_decopilot_vm/dispatch`) is
+      // daemon handler — the URL path (`/_sandbox/dispatch`) is
       // what the daemon's HMAC verification matches against.
       const iter = remoteDispatch(
         "claude-code",

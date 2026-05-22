@@ -22,12 +22,12 @@ describe("requireHmacOrToken", () => {
     const sig = signRequest({
       secret: LINK_SECRET,
       method: "POST",
-      path: "/_decopilot_vm/exec",
+      path: "/_sandbox/exec",
       body: "",
     });
-    const req = makeRequest("POST", "/_decopilot_vm/exec", { headers: sig });
+    const req = makeRequest("POST", "/_sandbox/exec", { headers: sig });
     expect(
-      requireHmacOrToken(req, "/_decopilot_vm/exec", "", {
+      requireHmacOrToken(req, "/_sandbox/exec", "", {
         linkSecret: LINK_SECRET,
         daemonToken: DAEMON_TOKEN,
         seenNonce: () => false,
@@ -39,11 +39,11 @@ describe("requireHmacOrToken", () => {
     const sig = signRequest({
       secret: "wrong-secret-32-chars-min-aaaaaaaa",
       method: "POST",
-      path: "/_decopilot_vm/exec",
+      path: "/_sandbox/exec",
       body: "",
     });
-    const req = makeRequest("POST", "/_decopilot_vm/exec", { headers: sig });
-    const result = requireHmacOrToken(req, "/_decopilot_vm/exec", "", {
+    const req = makeRequest("POST", "/_sandbox/exec", { headers: sig });
+    const result = requireHmacOrToken(req, "/_sandbox/exec", "", {
       linkSecret: LINK_SECRET,
       daemonToken: DAEMON_TOKEN,
       seenNonce: () => false,
@@ -52,11 +52,11 @@ describe("requireHmacOrToken", () => {
   });
 
   it("accepts a valid bearer-token request when HMAC headers absent", async () => {
-    const req = makeRequest("POST", "/_decopilot_vm/exec", {
+    const req = makeRequest("POST", "/_sandbox/exec", {
       headers: { authorization: `Bearer ${DAEMON_TOKEN}` },
     });
     expect(
-      requireHmacOrToken(req, "/_decopilot_vm/exec", "", {
+      requireHmacOrToken(req, "/_sandbox/exec", "", {
         linkSecret: LINK_SECRET,
         daemonToken: DAEMON_TOKEN,
         seenNonce: () => false,
@@ -65,8 +65,8 @@ describe("requireHmacOrToken", () => {
   });
 
   it("rejects a request with neither HMAC nor bearer", () => {
-    const req = makeRequest("POST", "/_decopilot_vm/exec");
-    const result = requireHmacOrToken(req, "/_decopilot_vm/exec", "", {
+    const req = makeRequest("POST", "/_sandbox/exec");
+    const result = requireHmacOrToken(req, "/_sandbox/exec", "", {
       linkSecret: LINK_SECRET,
       daemonToken: DAEMON_TOKEN,
       seenNonce: () => false,
@@ -75,14 +75,14 @@ describe("requireHmacOrToken", () => {
   });
 
   it("rejects when HMAC headers are present but malformed, even with a valid bearer", async () => {
-    const req = makeRequest("POST", "/_decopilot_vm/exec", {
+    const req = makeRequest("POST", "/_sandbox/exec", {
       headers: {
         "X-Mesh-Signature": "garbage",
         authorization: `Bearer ${DAEMON_TOKEN}`,
       },
     });
     // Malformed HMAC is a hard reject — don't silently downgrade.
-    const result = requireHmacOrToken(req, "/_decopilot_vm/exec", "", {
+    const result = requireHmacOrToken(req, "/_sandbox/exec", "", {
       linkSecret: LINK_SECRET,
       daemonToken: DAEMON_TOKEN,
       seenNonce: () => false,

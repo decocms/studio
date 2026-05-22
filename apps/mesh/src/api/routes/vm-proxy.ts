@@ -6,7 +6,7 @@
  *
  *   /api/:org/vm/:vmId/:branch/*
  *
- * The URL shape mirrors the daemon's own `/_decopilot_vm/*` surface, making
+ * The URL shape mirrors the daemon's own `/_sandbox/*` surface, making
  * the proxy transparent and uniform. Auth + claim resolution is performed
  * once in the `resolveVmClaim` middleware and shared by all sub-routes.
  */
@@ -219,40 +219,37 @@ export const createVmRoutes = () => {
 
   // -- File write/read (base64-encoded body) --------------------------------
   app.post("/:vmId/:branch/write", (c) =>
-    proxyDaemon(c, "/_decopilot_vm/write", { forwardJsonBody: true }),
+    proxyDaemon(c, "/_sandbox/write", { forwardJsonBody: true }),
   );
   app.post("/:vmId/:branch/read", (c) =>
-    proxyDaemon(c, "/_decopilot_vm/read", { forwardJsonBody: true }),
+    proxyDaemon(c, "/_sandbox/read", { forwardJsonBody: true }),
   );
   app.post("/:vmId/:branch/glob", (c) =>
-    proxyDaemon(c, "/_decopilot_vm/glob", { forwardJsonBody: true }),
+    proxyDaemon(c, "/_sandbox/glob", { forwardJsonBody: true }),
   );
 
   // -- Script exec/kill -----------------------------------------------------
   app.post("/:vmId/:branch/exec/:script", (c) => {
     const script = c.req.param("script");
     if (!script) return c.json({ error: "missing script name" }, 400);
-    return proxyDaemon(c, `/_decopilot_vm/exec/${encodeURIComponent(script)}`);
+    return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}`);
   });
 
   app.post("/:vmId/:branch/exec/:script/kill", (c) => {
     const script = c.req.param("script");
     if (!script) return c.json({ error: "missing script name" }, 400);
-    return proxyDaemon(
-      c,
-      `/_decopilot_vm/exec/${encodeURIComponent(script)}/kill`,
-    );
+    return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}/kill`);
   });
 
   // -- Tenant config --------------------------------------------------------
   app.get("/:vmId/:branch/config", (c) =>
-    proxyDaemon(c, "/_decopilot_vm/config", {
+    proxyDaemon(c, "/_sandbox/config", {
       method: "GET",
       map404to410: true,
     }),
   );
   app.put("/:vmId/:branch/config", (c) =>
-    proxyDaemon(c, "/_decopilot_vm/config", {
+    proxyDaemon(c, "/_sandbox/config", {
       method: "PUT",
       forwardJsonBody: true,
       map404to410: true,
@@ -296,7 +293,7 @@ export const createVmRoutes = () => {
         }
       }
     }
-    return proxyDaemon(c, `/_decopilot_vm/setup/${step}`, {
+    return proxyDaemon(c, `/_sandbox/setup/${step}`, {
       signal: c.req.raw.signal,
       map404to410: true,
     });

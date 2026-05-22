@@ -9,7 +9,7 @@
  *      Agent-sandbox runner emits real K8s phases; other runners emit a
  *      single synthetic `ready`.
  *   2. Daemon events (`event: log|lifecycle|status|tasks|scripts|branch|reload`)
- *      — proxied from the in-pod daemon's `/_decopilot_vm/events` SSE once
+ *      — proxied from the in-pod daemon's `/_sandbox/events` SSE once
  *      lifecycle reaches `ready`. Wire format is preserved verbatim by raw
  *      byte-piping the upstream body, so daemon and client speak the same
  *      protocol they always have.
@@ -28,7 +28,7 @@
  *
  * Why one stream instead of two: prior design had the browser open
  * `/api/vm-lifecycle` (mesh) plus a direct EventSource to the daemon's public
- * `/_decopilot_vm/events`. The daemon endpoint is unauthenticated (Vercel-style
+ * `/_sandbox/events`. The daemon endpoint is unauthenticated (Vercel-style
  * "URL is the secret") and putting two long-lived SSEs in every tab burned
  * the EventSource budget. Routing through mesh authenticates the surface and
  * collapses to one connection per session.
@@ -401,7 +401,7 @@ const PROXY_OPEN_RETRY_BUDGET_MS = 60_000;
 const PROXY_OPEN_RETRY_DELAY_MS = 500;
 
 /**
- * Open the daemon's `/_decopilot_vm/events` SSE through the runner and pipe
+ * Open the daemon's `/_sandbox/events` SSE through the runner and pipe
  * raw bytes to the client. Daemon emits a stable wire format the browser's
  * EventSource already groks, so byte-passthrough preserves event names,
  * payloads, and frame boundaries without parsing.
@@ -429,16 +429,12 @@ async function proxyDaemonEvents(args: {
   while (!signal.aborted) {
     let attempt: Response | null = null;
     try {
-      attempt = await runner.proxyDaemonRequest(
-        claimName,
-        "/_decopilot_vm/events",
-        {
-          method: "GET",
-          headers: new Headers({ accept: "text/event-stream" }),
-          body: null,
-          signal,
-        },
-      );
+      attempt = await runner.proxyDaemonRequest(claimName, "/_sandbox/events", {
+        method: "GET",
+        headers: new Headers({ accept: "text/event-stream" }),
+        body: null,
+        signal,
+      });
     } catch (err) {
       if (signal.aborted) return;
       // Network-level failure (port-forward not yet open, daemon health

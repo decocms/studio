@@ -27,7 +27,7 @@ interface BashBody {
  *   - "await" (default): runs to completion and returns the full
  *     stdout/stderr/exitCode body. This is the legacy bash behavior.
  *   - "background": returns the taskId immediately. Caller can poll
- *     /_decopilot_vm/tasks/:id, stream output, or kill via the tasks API.
+ *     /_sandbox/tasks/:id, stream output, or kill via the tasks API.
  */
 export function makeBashHandler(deps: BashDeps) {
   return async (req: Request): Promise<Response> => {

@@ -161,7 +161,7 @@ describe("remoteDispatch", () => {
 
     expect(captured).not.toBeNull();
     const cap = captured!;
-    const expectedPath = "/_decopilot_vm/dispatch";
+    const expectedPath = "/_sandbox/dispatch";
     expect(cap.url).toBe(`${sandboxApiUrl}${expectedPath}`);
     expect(cap.method).toBe("POST");
 
@@ -261,7 +261,7 @@ describe("remoteDispatch", () => {
 
     const deleteCall = calls.find((c) => c.method === "DELETE");
     expect(deleteCall).toBeDefined();
-    const expectedCancelPath = "/_decopilot_vm/runs/run-xyz";
+    const expectedCancelPath = "/_sandbox/runs/run-xyz";
     expect(deleteCall!.url).toBe(`${sandboxApiUrl}${expectedCancelPath}`);
 
     // HMAC signature on the DELETE verifies against the same secret.

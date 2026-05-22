@@ -137,7 +137,7 @@ function makeStore(): RunnerStateStore & {
 }
 
 // -----------------------------------------------------------------------------
-// Fetch harness (for /health + /_decopilot_vm/*).
+// Fetch harness (for /health + /_sandbox/*).
 // -----------------------------------------------------------------------------
 
 interface FetchCall {
@@ -459,7 +459,7 @@ describe("DockerSandboxProvider.ensure() — resume from persisted state", () =>
 });
 
 describe("DockerSandboxProvider.ensure() — config bootstrap contract", () => {
-  it("plumbs only daemon-identity env into the container, then POSTs repo + workload via /_decopilot_vm/config", async () => {
+  it("plumbs only daemon-identity env into the container, then POSTs repo + workload via /_sandbox/config", async () => {
     const { exec, calls } = makeExec(defaultResponder);
     const fetchCalls: FetchCall[] = [];
     globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
@@ -469,7 +469,7 @@ describe("DockerSandboxProvider.ensure() — config bootstrap contract", () => {
       };
       fetchCalls.push(call);
       if (call.input.endsWith("/health")) return healthOkResponse();
-      if (call.input.endsWith("/_decopilot_vm/config")) {
+      if (call.input.endsWith("/_sandbox/config")) {
         return new Response(
           JSON.stringify({
             bootId: "test-boot-id",
@@ -528,7 +528,7 @@ describe("DockerSandboxProvider.ensure() — config bootstrap contract", () => {
     expect(envs.has("DAEMON_PORT")).toBe(false);
 
     const configCall = fetchCalls.find((c) =>
-      c.input.endsWith("/_decopilot_vm/config"),
+      c.input.endsWith("/_sandbox/config"),
     );
     expect(configCall).toBeDefined();
     expect(configCall!.init.method).toBe("POST");
@@ -580,9 +580,9 @@ describe("DockerSandboxProvider.ensure() — config bootstrap contract", () => {
     expect(keys).toContain("APP_ROOT");
     expect(keys).toContain("PROXY_PORT");
 
-    expect(
-      fetchCalls.some((c) => c.input.endsWith("/_decopilot_vm/config")),
-    ).toBe(false);
+    expect(fetchCalls.some((c) => c.input.endsWith("/_sandbox/config"))).toBe(
+      false,
+    );
   });
 });
 

@@ -305,7 +305,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const devContainerPort = opts.workload?.devPort ?? DEFAULT_DEV_PORT;
 
     // Bootstrap-only env: identity + ports. Repo + workload are pushed via
-    // POST /_decopilot_vm/config after the daemon is healthy. opts.env is
+    // POST /_sandbox/config after the daemon is healthy. opts.env is
     // spread last to match the host runner's escape-hatch semantics —
     // overriding daemon bootstrap names is rare and breaks things, but the
     // hatch stays.

@@ -4,7 +4,7 @@
  * developer's desktop. The link exposes:
  *
  *   - `<tunnelUrl>/api/sandboxes`                 (POST: ensure, DELETE/<h>: tear down)
- *   - `<sandboxApiUrl>/_decopilot_vm/*`              (exec + daemon proxy passthrough)
+ *   - `<sandboxApiUrl>/_sandbox/*`              (exec + daemon proxy passthrough)
  *   - `<sandboxApiUrl>/health`                       (alive probe)
  *
  * The control plane is authenticated with the link-protocol HMAC scheme. The
@@ -156,7 +156,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
       );
     }
     const bodyString = JSON.stringify(input);
-    const targetUrl = `${rec.sandboxApiUrl}/_decopilot_vm/exec`;
+    const targetUrl = `${rec.sandboxApiUrl}/_sandbox/exec`;
     const sig = signRequest({
       secret: this.link.linkSecret,
       method: "POST",

@@ -1,5 +1,5 @@
 /**
- * `POST /_decopilot_vm/dispatch` + `DELETE /_decopilot_vm/runs/:runId`.
+ * `POST /_sandbox/dispatch` + `DELETE /_sandbox/runs/:runId`.
  *
  * Authenticated by HMAC against the daemon's `linkSecret` (the same
  * value the cluster computed for the registered link entry — see
@@ -85,7 +85,7 @@ export async function handleDispatchRequest(
   const url = new URL(req.url);
 
   // When fronted by the link's reverse proxy, the cluster signed the
-  // request against the PRE-strip path (e.g. /_sandbox/<handle>/_decopilot_vm/dispatch),
+  // request against the PRE-strip path (e.g. /_sandbox/<handle>/_sandbox/dispatch),
   // not the post-strip path the daemon sees. The proxy forwards the
   // original via X-Forwarded-Path; fall back to url.pathname for direct
   // (non-proxied) callers like loopback tests.

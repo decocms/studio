@@ -206,7 +206,7 @@ describe("DesktopSandboxProvider.ensure", () => {
 });
 
 describe("DesktopSandboxProvider.exec", () => {
-  it("proxies to <sandboxApiUrl>/_decopilot_vm/exec with HMAC headers", async () => {
+  it("proxies to <sandboxApiUrl>/_sandbox/exec with HMAC headers", async () => {
     const { fetch, calls } = makeFakeFetch((call) => {
       if (call.url.endsWith("/api/sandboxes")) {
         return jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/h-1` });
@@ -229,7 +229,7 @@ describe("DesktopSandboxProvider.exec", () => {
     expect(out.exitCode).toBe(0);
     expect(out.stdout).toBe("ok");
     const execCall = calls[1];
-    expect(execCall.url).toBe(`${TUNNEL}/_sandbox/h-1/_decopilot_vm/exec`);
+    expect(execCall.url).toBe(`${TUNNEL}/_sandbox/h-1/_sandbox/exec`);
     expect(execCall.method).toBe("POST");
     verifyCallSignature(execCall);
   });
@@ -341,7 +341,7 @@ describe("DesktopSandboxProvider.proxyDaemonRequest", () => {
     const sandbox = await provider.ensure({ userId: "u", projectRef: "p" });
     const res = await provider.proxyDaemonRequest(
       sandbox.handle,
-      "/_decopilot_vm/status",
+      "/_sandbox/status",
       {
         method: "POST",
         headers: new Headers({ "content-type": "application/json" }),
@@ -350,7 +350,7 @@ describe("DesktopSandboxProvider.proxyDaemonRequest", () => {
     );
     expect(res.status).toBe(200);
     const proxyCall = calls[1];
-    expect(proxyCall.url).toBe(`${TUNNEL}/_sandbox/h-1/_decopilot_vm/status`);
+    expect(proxyCall.url).toBe(`${TUNNEL}/_sandbox/h-1/_sandbox/status`);
     expect(JSON.parse(proxyCall.body)).toEqual({ ping: true });
     verifyCallSignature(proxyCall);
   });
@@ -368,7 +368,7 @@ describe("DesktopSandboxProvider.proxyDaemonRequest", () => {
     });
     const res = await provider.proxyDaemonRequest(
       "any-handle",
-      "/_decopilot_vm/status",
+      "/_sandbox/status",
       {
         method: "GET",
         headers: new Headers(),
@@ -481,7 +481,7 @@ describe("DesktopSandboxProvider + state store", () => {
     });
     const res = await provider.proxyDaemonRequest(
       "proxy-handle",
-      "/_decopilot_vm/exec",
+      "/_sandbox/exec",
       {
         method: "POST",
         headers: new Headers(),
@@ -489,7 +489,7 @@ describe("DesktopSandboxProvider + state store", () => {
       },
     );
     expect(res.status).toBe(200);
-    expect(calls[0].url).toBe(`${TUNNEL}/_sandbox/proxy/_decopilot_vm/exec`);
+    expect(calls[0].url).toBe(`${TUNNEL}/_sandbox/proxy/_sandbox/exec`);
   });
 
   it("alive() returns false when state store has no row", async () => {

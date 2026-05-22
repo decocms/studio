@@ -7,7 +7,7 @@
  * lazily-opened 127.0.0.1 TCP listener that tunnels each inbound connection
  * to the daemon container port through the apiserver as a fresh WebSocket.
  *
- * The daemon owns the public surface: it serves `/_decopilot_vm/*` + `/health`
+ * The daemon owns the public surface: it serves `/_sandbox/*` + `/health`
  * in-process and reverse-proxies everything else to in-pod localhost:DEV_PORT
  * (CSP/X-Frame stripping + HMR bootstrap injection live in that proxy). One
  * port-forward per pod is therefore enough; opening a second forwarder for
@@ -111,7 +111,7 @@ const DAEMON_TOKEN_BYTES = 32;
  * + ports) — silently overriding any of them would break daemon startup.
  *
  * Workload (clone URL, branch, package manager, runtime, intent, dev port)
- * is no longer env-injected: it's POSTed to `/_decopilot_vm/config` after
+ * is no longer env-injected: it's POSTed to `/_sandbox/config` after
  * the daemon comes up healthy. See `buildConfigPayload`.
  */
 const RESERVED_ENV_KEYS = new Set([
@@ -276,7 +276,7 @@ export interface AgentSandboxProviderOptions {
    *     (the operator rejects per-claim env when warmpool != "none"),
    *   - mesh's first contact with the daemon authenticates with the
    *     sentinel and rotates to a per-claim token via
-   *     `auth.rotateToken` on POST /_decopilot_vm/config,
+   *     `auth.rotateToken` on POST /_sandbox/config,
    *   - subsequent calls use the per-claim token (persisted in
    *     RunnerStateStore.state.token).
    *
@@ -616,7 +616,9 @@ export class AgentSandboxProvider implements SandboxProvider {
    * Unauthenticated by design — preview URLs are open the same way Vercel
    * preview URLs are; the *handle* is the secret.
    *
-   * `/_decopilot_vm/*` access policy at the edge:
+   * `/_sandbox/*` access policy at the edge (legacy `/_decopilot_vm/*`
+   * dual-served by the daemon is also matched here for the duration of
+   * the rename rollout):
    *   - **GET** is allowed through. The daemon's `/events` SSE and `/scripts`
    *     are intentionally unauthenticated and CORS-enabled (`Allow-Origin: *`)
    *     because the studio UI consumes them cross-origin from the preview
@@ -649,6 +651,8 @@ export class AgentSandboxProvider implements SandboxProvider {
 
       const reqUrl = new URL(request.url);
       const isAdminPath =
+        reqUrl.pathname === "/_sandbox" ||
+        reqUrl.pathname.startsWith("/_sandbox/") ||
         reqUrl.pathname === "/_decopilot_vm" ||
         reqUrl.pathname.startsWith("/_decopilot_vm/");
       if (isAdminPath && request.method !== "GET") {
@@ -922,7 +926,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   ): SandboxClaim {
     // Warm-pool mode: the operator rejects claim.spec.env outright when
     // warmpool != "none". Mesh delivers the per-claim secret post-bind via
-    // POST /_decopilot_vm/config + auth.rotateToken instead.
+    // POST /_sandbox/config + auth.rotateToken instead.
     const warmPoolMode = this.sentinelToken !== null;
     const envEntries = warmPoolMode
       ? []
@@ -1497,7 +1501,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   }
 
   // Local mode: route preview traffic through the daemon port-forward, not
-  // a separate dev forwarder. The daemon serves /_decopilot_vm/* + /health
+  // a separate dev forwarder. The daemon serves /_sandbox/* + /health
   // in-process and reverse-proxies everything else to in-pod localhost:DEV_PORT
   // (with CSP/X-Frame stripping + HMR bootstrap injection). Pointing the URL
   // straight at the dev port would bypass that proxy and break SSE + iframe
@@ -1748,7 +1752,7 @@ function deterministicLocalPort(handle: string, containerPort: number): number {
 
 // CORS headers on synthesized preview-proxy responses. The studio iframe
 // renders under the studio origin and fetches the preview origin cross-site
-// (SSE at `/_decopilot_vm/events`, plus the EventSource probeMissing fetch);
+// (SSE at `/_sandbox/events`, plus the EventSource probeMissing fetch);
 // without ACAO the browser blocks the response *and* hides the actual status,
 // so a 404 from us looks like an opaque CORS failure in devtools. The daemon
 // already sets ACAO on its own responses — these headers only fire on errors

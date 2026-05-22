@@ -18,7 +18,7 @@ interface ResolveAndPushParams {
 /**
  * Resolves env entries declared on a virtual MCP (literal | secret) into
  * a flat KEY→value map and PUTs it to the sandbox daemon's
- * /_decopilot_vm/config so the resolved env is available before install +
+ * /_sandbox/config so the resolved env is available before install +
  * dev script run.
  *
  * Secrets that fail to resolve (deleted by the owner, or user-scoped to a
@@ -64,7 +64,7 @@ export async function resolveAndPushEnv({
 
   if (Object.keys(env).length === 0) return;
 
-  const res = await runner.proxyDaemonRequest(handle, "/_decopilot_vm/config", {
+  const res = await runner.proxyDaemonRequest(handle, "/_sandbox/config", {
     method: "PUT",
     headers: new Headers({ "content-type": "application/json" }),
     body: JSON.stringify({ env }),

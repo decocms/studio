@@ -817,7 +817,7 @@ async function prepareRun(
         //     per-handle tunnel URL (`https://<handle>.deco.host` in
         //     prod), no link reverse-proxy hop. Per-run state inside the
         //     daemon stays keyed by `runId` (cancellation via DELETE
-        //     /_decopilot_vm/runs/<runId>).
+        //     /_sandbox/runs/<runId>).
         //   - `runsIn === "cluster"` — runs in-cluster. When `sandbox`
         //     is `"user-desktop"` the sandbox tool calls are forwarded
         //     to the user's link daemon; the harness still runs here.

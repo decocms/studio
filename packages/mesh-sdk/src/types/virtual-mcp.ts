@@ -181,7 +181,7 @@ const RuntimeMetadataSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Env vars injected on every VM_START. Literal entries inline their value; secret entries store a secretId that mesh resolves via the credential vault before posting /_decopilot_vm/config.",
+      "Env vars injected on every VM_START. Literal entries inline their value; secret entries store a secretId that mesh resolves via the credential vault before posting /_sandbox/config.",
     ),
 });
 

@@ -32,10 +32,10 @@ function signedDispatch(body: string) {
   const sig = signRequest({
     secret: SECRET,
     method: "POST",
-    path: "/_decopilot_vm/dispatch",
+    path: "/_sandbox/dispatch",
     body,
   });
-  return new Request("http://localhost/_decopilot_vm/dispatch", {
+  return new Request("http://localhost/_sandbox/dispatch", {
     method: "POST",
     body,
     headers: { ...sig, "Content-Type": "application/json" },
@@ -43,7 +43,7 @@ function signedDispatch(body: string) {
 }
 
 function signedCancel(runId: string) {
-  const path = `/_decopilot_vm/runs/${runId}`;
+  const path = `/_sandbox/runs/${runId}`;
   const sig = signRequest({ secret: SECRET, method: "DELETE", path, body: "" });
   return new Request(`http://localhost${path}`, {
     method: "DELETE",
@@ -59,7 +59,7 @@ async function readSSE(res: Response): Promise<string[]> {
     .map((s) => s.slice("data: ".length));
 }
 
-describe("POST /_decopilot_vm/dispatch", () => {
+describe("POST /_sandbox/dispatch", () => {
   it("emits the harness's UIMessageChunks as SSE", async () => {
     const body = JSON.stringify({
       harnessId: "fake",
@@ -78,7 +78,7 @@ describe("POST /_decopilot_vm/dispatch", () => {
   });
 
   it("rejects an unsigned request", async () => {
-    const req = new Request("http://x/_decopilot_vm/dispatch", {
+    const req = new Request("http://x/_sandbox/dispatch", {
       method: "POST",
       body: "{}",
     });
@@ -91,10 +91,10 @@ describe("POST /_decopilot_vm/dispatch", () => {
     const sig = signRequest({
       secret: "wrong-secret-32-bytes-paddingpadding",
       method: "POST",
-      path: "/_decopilot_vm/dispatch",
+      path: "/_sandbox/dispatch",
       body,
     });
-    const req = new Request("http://localhost/_decopilot_vm/dispatch", {
+    const req = new Request("http://localhost/_sandbox/dispatch", {
       method: "POST",
       body,
       headers: { ...sig, "Content-Type": "application/json" },
@@ -152,7 +152,7 @@ describe("POST /_decopilot_vm/dispatch", () => {
   });
 });
 
-describe("DELETE /_decopilot_vm/runs/:runId", () => {
+describe("DELETE /_sandbox/runs/:runId", () => {
   it("returns 204 even for an unknown runId (idempotent)", async () => {
     const res = await handleCancelRequest(signedCancel("run-unknown-1"), {
       bearerSecret: SECRET,
@@ -162,7 +162,7 @@ describe("DELETE /_decopilot_vm/runs/:runId", () => {
   });
 
   it("rejects an unsigned cancel", async () => {
-    const path = "/_decopilot_vm/runs/run-x";
+    const path = "/_sandbox/runs/run-x";
     const req = new Request(`http://x${path}`, { method: "DELETE" });
     const res = await handleCancelRequest(req, {
       bearerSecret: SECRET,

@@ -9,7 +9,7 @@
  *      Surfaces what's happening between VM_START posting a SandboxClaim
  *      and the daemon coming online (capacity wait, image pull, etc).
  *   2. Daemon events (`event: log|lifecycle|status|tasks|scripts|branch|reload`) —
- *      passthrough from the in-pod daemon's `/_decopilot_vm/events`. Types
+ *      passthrough from the in-pod daemon's `/_sandbox/events`. Types
  *      come from `@decocms/sandbox/shared`.
  *
  *   3. `event: gone` — synthetic. Mesh's upstream daemon fetch returned 404

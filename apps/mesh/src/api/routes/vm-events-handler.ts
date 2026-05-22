@@ -246,16 +246,12 @@ async function proxyDaemonEvents(args: {
   while (!signal.aborted) {
     let attempt: Response | null = null;
     try {
-      attempt = await runner.proxyDaemonRequest(
-        claimName,
-        "/_decopilot_vm/events",
-        {
-          method: "GET",
-          headers: new Headers({ accept: "text/event-stream" }),
-          body: null,
-          signal,
-        },
-      );
+      attempt = await runner.proxyDaemonRequest(claimName, "/_sandbox/events", {
+        method: "GET",
+        headers: new Headers({ accept: "text/event-stream" }),
+        body: null,
+        signal,
+      });
     } catch (err) {
       if (signal.aborted) return;
       if (Date.now() - openedAt < PROXY_OPEN_RETRY_BUDGET_MS) {

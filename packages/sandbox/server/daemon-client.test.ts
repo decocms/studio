@@ -98,7 +98,7 @@ describe("probeDaemonHealth", () => {
 });
 
 describe("daemonBash", () => {
-  it("sends POST to {daemonUrl}/_decopilot_vm/bash with auth and JSON body", async () => {
+  it("sends POST to {daemonUrl}/_sandbox/bash with auth and JSON body", async () => {
     const { calls } = installFetch(
       () =>
         new Response(
@@ -119,7 +119,7 @@ describe("daemonBash", () => {
     });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.input).toBe("http://daemon:9000/_decopilot_vm/bash");
+    expect(calls[0]!.input).toBe("http://daemon:9000/_sandbox/bash");
     expect(calls[0]!.init.method).toBe("POST");
 
     const headers = new Headers(calls[0]!.init.headers as HeadersInit);
