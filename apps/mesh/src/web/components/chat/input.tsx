@@ -33,7 +33,7 @@ import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
 import { AgentModelTrigger } from "./agent-model-trigger";
-import { AgentSegmentedControl } from "./agent-segmented-control";
+import { AgentHarnessTrigger } from "./agent-harness-trigger";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
   UnsupportedFileDialog,
@@ -595,7 +595,7 @@ export function ChatInput({
 
                     {/* Right Actions (mic, model, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <AgentSegmentedControl
+                      <AgentHarnessTrigger
                         agent={pendingHarnessId}
                         sandboxKind={pendingSandboxProviderKind}
                         tier={simpleModeTier}

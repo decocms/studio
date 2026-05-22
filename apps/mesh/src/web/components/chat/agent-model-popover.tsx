@@ -28,13 +28,13 @@ export function AgentModelPopover({
     sections.find((s) => s.kind === activeAgent) ?? sections[0] ?? null;
 
   if (!section) {
-    return <div className="flex flex-col gap-1 w-60" />;
+    return <div className="flex flex-col gap-1 w-72" />;
   }
 
   const selectedTier = section.kind === activeAgent ? activeTier : null;
 
   return (
-    <div className="flex flex-col gap-1 w-60 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
+    <div className="flex flex-col gap-1 w-72 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
       <AgentSection
         section={section}
         selectedTier={selectedTier}
