@@ -36,20 +36,15 @@
 
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import {
-  composeSandboxRef,
-  resolveSandboxProviderKindFromEnv,
-} from "@decocms/sandbox/provider";
+import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type {
   ClaimPhase,
+  SandboxProvider,
   SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
-import {
-  getOrInitSharedRunner,
-  getSharedSandboxProvider,
-  subscribeLifecycle,
-} from "../../sandbox/lifecycle";
+import { subscribeLifecycle } from "../../sandbox/lifecycle";
+import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getUserId,
   requireAuth,
@@ -115,7 +110,31 @@ export const createVmEventsRoutes = () => {
       branch,
     });
     const claimName = computeClaimHandle({ userId, projectRef }, branch);
-    const providerKind = resolveSandboxProviderKindFromEnv();
+    const virtualMcpMetadata =
+      (virtualMcp.metadata as Record<string, unknown> | null) ?? null;
+
+    // Source of truth: vmMap. The resolver returns the provider bound for
+    // the recorded kind (or the link-or-env default when no entry exists
+    // yet), so a sandbox provisioned via `desktop` remains addressable
+    // via `desktop` even on a cluster whose env kind is `agent-sandbox`.
+    // The kind is needed for the stale-handle probe below — when a `gone`
+    // event must be emitted we route the state-store cleanup through the
+    // matching kind so we don't leave rows in the wrong table.
+    let runner: SandboxProvider | null;
+    let providerKind: SandboxProviderKind | null = null;
+    let resolveError: Error | null = null;
+    try {
+      const resolved = await resolveSandboxProvider(ctx, {
+        userId,
+        branch,
+        virtualMcpMetadata,
+      });
+      runner = resolved.provider;
+      providerKind = resolved.kind;
+    } catch (err) {
+      resolveError = err instanceof Error ? err : new Error(String(err));
+      runner = null;
+    }
 
     // Snapshot vmMap from the same metadata read used for the org-ownership
     // check. Used below to gate the stale-handle probe: we only run it when
@@ -125,35 +144,11 @@ export const createVmEventsRoutes = () => {
     // similar window for host/docker between `runner.ensure` returning and
     // `setVmMapEntry` writing the row). Without it, an SSE that opens during
     // that window would observe alive=false and emit a spurious `gone`.
-    const existingVmEntry = resolveVm(
-      readVmMap(virtualMcp.metadata as Record<string, unknown> | null),
-      userId,
-      branch,
-      providerKind,
-    );
-    const expectingHandle = existingVmEntry?.vmId === claimName;
-
-    // User-scoped resolution: for `remote-user` this picks the acting
-    // user's link daemon; for other kinds it falls through to the env
-    // singleton. Wrapped in a try because the remote-user path throws a
-    // typed error when no link is registered — in that case we want to
-    // emit a `failed` phase with a user-actionable message, NOT fall
-    // through to `getOrInitSharedRunner()` (which would re-throw the
-    // same error from `instantiate("remote-user")`).
-    let runner: Awaited<ReturnType<typeof getSharedSandboxProvider>> | null;
-    let resolveError: Error | null = null;
-    try {
-      runner = await getSharedSandboxProvider(ctx);
-    } catch (err) {
-      resolveError = err instanceof Error ? err : new Error(String(err));
-      // For non-remote-user kinds, try the env singleton as a last
-      // resort. For remote-user the throw IS the answer.
-      if (providerKind !== "remote-user") {
-        runner = await getOrInitSharedRunner().catch(() => null);
-      } else {
-        runner = null;
-      }
-    }
+    const existingVmEntry =
+      providerKind &&
+      resolveVm(readVmMap(virtualMcpMetadata), userId, branch, providerKind);
+    const expectingHandle =
+      !!existingVmEntry && existingVmEntry.vmId === claimName;
 
     if (!runner) {
       return streamSSE(c, async (stream) => {
@@ -193,7 +188,7 @@ export const createVmEventsRoutes = () => {
         // differs from the env's current runner, we route the stale-state
         // cleanup through the *prior* kind so we don't leave behind rows
         // in the wrong table.
-        if (expectingHandle) {
+        if (expectingHandle && providerKind) {
           const stale = await isStaleHandle(runner, claimName);
           if (stale) {
             await cleanupStaleEntry({
@@ -234,7 +229,7 @@ export const createVmEventsRoutes = () => {
 };
 
 async function isStaleHandle(
-  runner: NonNullable<Awaited<ReturnType<typeof getOrInitSharedRunner>>>,
+  runner: SandboxProvider,
   claimName: string,
 ): Promise<boolean> {
   try {
@@ -283,7 +278,7 @@ async function isStaleHandle(
  */
 async function cleanupStaleEntry(args: {
   ctx: MeshContext;
-  runner: NonNullable<Awaited<ReturnType<typeof getOrInitSharedRunner>>>;
+  runner: SandboxProvider;
   claimName: string;
   userId: string;
   projectRef: string;
@@ -331,7 +326,7 @@ async function cleanupStaleEntry(args: {
 async function emitLifecycle(args: {
   stream: import("hono/streaming").SSEStreamingApi;
   claimName: string;
-  runner: NonNullable<Awaited<ReturnType<typeof getOrInitSharedRunner>>>;
+  runner: SandboxProvider;
   signal: AbortSignal;
 }): Promise<boolean> {
   const { stream, claimName, runner, signal } = args;
@@ -417,7 +412,7 @@ const PROXY_OPEN_RETRY_DELAY_MS = 500;
  */
 async function proxyDaemonEvents(args: {
   stream: import("hono/streaming").SSEStreamingApi;
-  runner: NonNullable<Awaited<ReturnType<typeof getOrInitSharedRunner>>>;
+  runner: SandboxProvider;
   claimName: string;
   signal: AbortSignal;
 }): Promise<void> {

@@ -112,7 +112,7 @@ export function createDesktopSandboxProvider(
   const pickPort = deps.pickPort ?? allocateEphemeralPort;
 
   // In-flight ensureSandbox promises, keyed by handle. The cluster
-  // creates a fresh `RemoteUserSandboxProvider` for every request
+  // creates a fresh `DesktopSandboxProvider` for every request
   // (its `records` map is per-instance), so several concurrent
   // VM_START / preview / proxyDaemonRequest paths can race here
   // before any of them gets a chance to populate `sandboxes`. Without

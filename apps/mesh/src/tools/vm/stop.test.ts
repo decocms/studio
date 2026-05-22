@@ -37,7 +37,6 @@ function makeMockRunner(kind: SandboxProviderKind): SandboxProvider {
 }
 
 mock.module("../../sandbox/lifecycle", () => ({
-  getSharedSandboxProvider: () => makeMockRunner("docker"),
   getSandboxProviderByKind: (_ctx: unknown, kind: SandboxProviderKind) => {
     lastRequestedKind.value = kind;
     return makeMockRunner(kind);
@@ -240,10 +239,10 @@ describe("VM_DELETE", () => {
     }
   });
 
-  it("coalesces legacy 'host' kind input to 'remote-user'", async () => {
+  it("coalesces legacy 'host' kind input to 'desktop'", async () => {
     // Use a docker entry as a stand-in — what matters is the dispatch kind.
     const metadata: Metadata = {
-      vmMap: makeVmMap("user-1", BRANCH, "remote-user", DOCKER_ENTRY),
+      vmMap: makeVmMap("user-1", BRANCH, "desktop", DOCKER_ENTRY),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -259,7 +258,7 @@ describe("VM_DELETE", () => {
       ctx,
     );
 
-    expect(lastRequestedKind.value).toBe("remote-user");
+    expect(lastRequestedKind.value).toBe("desktop");
   });
 
   it("skips runner.delete and DB update when no vmMap entry for (user, branch, kind)", async () => {

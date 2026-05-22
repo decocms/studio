@@ -3,11 +3,11 @@
  * provider kind pinned for this (thread, virtualMcpId, branch).
  *
  * `sandboxProviderKind` is the single source of truth:
- *   - cloud kind (docker/freestyle/agent-sandbox) → cluster default sandbox
- *   - `remote-user` + decopilot → cluster decopilot, sandbox tools tunneled
- *   - `remote-user` + claude-code/codex → whole stream dispatched to the desktop
+ *   - cloud kind (docker/agent-sandbox) → cluster default sandbox
+ *   - `desktop` + decopilot → cluster decopilot, sandbox tools tunneled
+ *   - `desktop` + claude-code/codex → whole stream dispatched to the desktop
  *
- * Link health is checked only for `remote-user`. Offline/missing-capability
+ * Link health is checked only for `desktop`. Offline/missing-capability
  * paths return an `error` target which `POST /messages` surfaces as 409.
  *
  * Takes the kind directly (not a `VmMapEntry`) so the POST handler can
@@ -26,7 +26,7 @@ export type DispatchTarget =
       reason: "link_offline" | "capability_missing";
       activeCapabilities?: string[];
     }
-  | { kind: "local"; sandbox: "default" | "remote-user"; link?: LinkEntry }
+  | { kind: "local"; sandbox: "default" | "desktop"; link?: LinkEntry }
   | { kind: "remote-cli"; link: LinkEntry };
 
 interface Input {
@@ -52,7 +52,7 @@ export async function resolveDispatchTarget(
 ): Promise<DispatchTarget> {
   const kind = input.sandboxProviderKind;
 
-  if (kind !== "remote-user") {
+  if (kind !== "desktop") {
     return { kind: "local", sandbox: "default" };
   }
 
@@ -69,7 +69,7 @@ export async function resolveDispatchTarget(
   }
 
   if (input.harnessId === "decopilot") {
-    return { kind: "local", sandbox: "remote-user", link };
+    return { kind: "local", sandbox: "desktop", link };
   }
   return { kind: "remote-cli", link };
 }

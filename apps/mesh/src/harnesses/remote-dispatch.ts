@@ -22,7 +22,7 @@
  *
  * Handle vs runId: for remote-cli (whole-harness dispatch), the desktop
  * spins up an ephemeral per-run sandbox; the handle == `input.runId`.
- * This differs from the remote-user provider path (Task 5.1), where the
+ * This differs from the desktop provider path (Task 5.1), where the
  * handle is `computeHandle(sandboxId, branch)` because the sandbox is
  * long-lived and shared across runs. The daemon's cancel route
  * (`/_decopilot_vm/runs/<runId>`) confirms this — it matches on runId
@@ -162,7 +162,7 @@ export type RemoteDispatchLink = Pick<LinkEntry, "tunnelUrl" | "linkSecret">;
  *
  * Used by `remote-cli` dispatch where the handle equals `input.runId` —
  * a fresh, ephemeral per-run sandbox. We do NOT go through the
- * `remote-user` SandboxProvider here because that provider derives its
+ * `desktop` SandboxProvider here because that provider derives its
  * handle via `computeHandle(sandboxId, branch)`, which would diverge
  * from the runId-keyed flow `remoteDispatch` uses.
  *

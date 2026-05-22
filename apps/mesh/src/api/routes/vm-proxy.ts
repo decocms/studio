@@ -14,20 +14,11 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
-import {
-  composeSandboxRef,
-  resolveSandboxProviderKindFromEnv,
-} from "@decocms/sandbox/provider";
-import type {
-  SandboxProvider,
-  SandboxProviderKind,
-} from "@decocms/sandbox/provider";
+import { composeSandboxRef } from "@decocms/sandbox/provider";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
-import {
-  getOrInitSharedRunner,
-  getSharedSandboxProvider,
-} from "../../sandbox/lifecycle";
+import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getUserId,
   requireAuth,
@@ -94,28 +85,31 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     branch,
   });
   const claimName = computeClaimHandle({ userId, projectRef }, branch);
+  const virtualMcpMetadata =
+    (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
-  // User-scoped resolution: for `remote-user` this picks the acting user's
-  // link daemon via `ctx.linkRegistry`; for `docker` / `agent-sandbox` it
-  // returns the cached env-resolved singleton. Falls back to the env
-  // singleton ONLY for non-`remote-user` kinds — for `remote-user` the
-  // throw IS the answer (no link daemon → `requireRunner`/events handler
-  // surface the 503/`failed` phase). Pattern mirrors the legacy
-  // `/api/vm-events` handler at vm-events.ts:143-156.
-  let providerKind: SandboxProviderKind | null;
-  try {
-    providerKind = resolveSandboxProviderKindFromEnv();
-  } catch {
-    providerKind = null;
-  }
+  // Source of truth: vmMap. If an entry exists for (user, branch) we use
+  // that recorded kind — a sandbox provisioned via `desktop` must
+  // remain addressable via `desktop` even on a cluster whose env kind
+  // is `agent-sandbox` / `docker`. Pre-provision callers fall through to
+  // the link-or-env default policy inside `resolveSandboxProvider`.
+  //
+  // On failure (e.g. the recorded kind is `desktop` but the user's
+  // link daemon is offline) we surface `null` rather than falling back
+  // to the env singleton: rebinding a `desktop`-provisioned VM onto
+  // a different provider kind (say `agent-sandbox`) would forward traffic
+  // to a sandbox that doesn't host this VM. The events handler streams a
+  // `failed` phase from null; other handlers 503 via `requireRunner`.
   let runner: SandboxProvider | null;
   try {
-    runner = await getSharedSandboxProvider(ctx);
+    const resolved = await resolveSandboxProvider(ctx, {
+      userId,
+      branch,
+      virtualMcpMetadata,
+    });
+    runner = resolved.provider;
   } catch {
-    runner =
-      providerKind === "remote-user"
-        ? null
-        : await getOrInitSharedRunner().catch(() => null);
+    runner = null;
   }
 
   c.set("vmClaim", {
@@ -125,8 +119,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     branch,
     userId,
     projectRef,
-    virtualMcpMetadata:
-      (virtualMcp.metadata as Record<string, unknown>) ?? null,
+    virtualMcpMetadata,
   });
   return next();
 });

@@ -17,12 +17,12 @@ function stubRegistry(link: LinkEntry | null): LinkRegistry {
 }
 
 describe("resolveDefaultSandboxProviderKind", () => {
-  test("returns remote-user when the user's link is online", async () => {
+  test("returns desktop when the user's link is online", async () => {
     const kind = await resolveDefaultSandboxProviderKind("u-1", {
       linkRegistry: stubRegistry(linkOnline()),
       resolveEnvKind: () => "docker",
     });
-    expect(kind).toBe("remote-user");
+    expect(kind).toBe("desktop");
   });
 
   test("falls back to env kind when no link is registered", async () => {

@@ -6,7 +6,7 @@
  * sandbox daemon as a child of the mesh process. It has been retired in
  * favor of the laptop-side `deco link` daemon (auto-spawned by
  * `bun run dev --local-sandbox-provider`), which exercises the same
- * remote-cli + remote-user code paths production uses.
+ * remote-cli + desktop code paths production uses.
  *
  * Any `runner_kind = 'host'` rows left in dev databases are orphaned
  * pointers to daemon PIDs/ports that no longer exist; the new code path

@@ -16,6 +16,6 @@ export interface AgentPins {
  */
 export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
   decopilot: { harness: "decopilot", sandbox: null },
-  "claude-code-desktop": { harness: "claude-code", sandbox: "remote-user" },
-  "codex-desktop": { harness: "codex", sandbox: "remote-user" },
+  "claude-code-desktop": { harness: "claude-code", sandbox: "desktop" },
+  "codex-desktop": { harness: "codex", sandbox: "desktop" },
 };

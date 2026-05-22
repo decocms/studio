@@ -43,13 +43,13 @@ const mockDockerRunner: SandboxProvider = {
   watchClaimLifecycle: () => readyOnly(),
 };
 
-const mockRemoteUserDelete = mock(async (_handle: string) => {});
+const mockDesktopDelete = mock(async (_handle: string) => {});
 
-const mockRemoteUserRunner: SandboxProvider = {
-  kind: "remote-user",
+const mockDesktopRunner: SandboxProvider = {
+  kind: "desktop",
   ensure: (id, opts) => mockEnsure(id, opts),
   exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
-  delete: (handle) => mockRemoteUserDelete(handle),
+  delete: (handle) => mockDesktopDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
   proxyDaemonRequest: async () => new Response(null, { status: 204 }),
@@ -57,19 +57,15 @@ const mockRemoteUserRunner: SandboxProvider = {
 };
 
 mock.module("../../sandbox/lifecycle", () => ({
-  getSharedSandboxProvider: (ctx: MeshContext) => {
-    if (
-      ctx.sandboxPreference === "remote-user" &&
-      ctx.linkForCurrentRun !== undefined
-    ) {
-      return mockRemoteUserRunner;
-    }
-    return mockDockerRunner;
-  },
   getSandboxProviderByKind: (
     _ctx: unknown,
     kind: "docker" | "agent-sandbox",
   ) => (kind === "docker" ? mockDockerRunner : mockDockerRunner),
+  // The unified resolver in `resolve-provider.ts` calls
+  // `buildDesktopProvider` directly (no ctx side-effects), so a mock
+  // is needed for VM_START's desktop path to construct the expected
+  // runner under test.
+  buildDesktopProvider: async () => mockDesktopRunner,
   getSharedSandboxProviderIfInit: () => mockDockerRunner,
   getOrInitSharedRunner: async () => mockDockerRunner,
   asDockerRunner: () => null,
@@ -279,10 +275,10 @@ describe("VM_START", () => {
     mockEnsure.mockReset();
     mockDockerDelete.mockReset();
     mockAgentSandboxDelete.mockReset();
-    mockRemoteUserDelete.mockReset();
+    mockDesktopDelete.mockReset();
     mockDockerDelete.mockImplementation(async () => {});
     mockAgentSandboxDelete.mockImplementation(async () => {});
-    mockRemoteUserDelete.mockImplementation(async () => {});
+    mockDesktopDelete.mockImplementation(async () => {});
     mockTokenGet.mockReset();
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
@@ -564,7 +560,7 @@ describe("VM_START", () => {
     expect(opts.repo?.cloneUrl).not.toContain("ghu_stale_token");
   });
 
-  it("provisions a new remote-user VM even when a docker entry exists under the same branch — kinds are siblings", async () => {
+  it("provisions a new desktop VM even when a docker entry exists under the same branch — kinds are siblings", async () => {
     // With kind-in-key, different kinds coexist — no teardown occurs.
     const dockerEntry: VmMapEntry = {
       vmId: "vm_docker_existing",
@@ -581,7 +577,7 @@ describe("VM_START", () => {
       },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-    // Link registry with online link so resolveDefaultSandboxProviderKind picks remote-user
+    // Link registry with online link so resolveDefaultSandboxProviderKind picks desktop
     const linkRegistry: LinkRegistry = {
       get: async (_userId: string) => ({
         machineId: "machine_1",
@@ -597,7 +593,7 @@ describe("VM_START", () => {
     };
     const ctx = makeCtx({ virtualMcp, linkRegistry });
 
-    // Link is online → kind resolves to remote-user; no docker entry for remote-user → provision a new one
+    // Link is online → kind resolves to desktop; no docker entry for desktop → provision a new one
     const result = await VM_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
       ctx,
@@ -606,7 +602,7 @@ describe("VM_START", () => {
     // No teardown of the docker entry (kinds are siblings)
     expect(mockDockerDelete).not.toHaveBeenCalled();
     expect(mockEnsure).toHaveBeenCalledTimes(1);
-    expect(result.sandboxProviderKind).toBe("remote-user");
+    expect(result.sandboxProviderKind).toBe("desktop");
     expect(result.isNewVm).toBe(true);
   });
 
@@ -647,7 +643,7 @@ describe("VM_START", () => {
     createdAt: new Date().toISOString(),
   };
 
-  it("VM_START with no sandboxProviderKind picks remote-user when the link is online", async () => {
+  it("VM_START with no sandboxProviderKind picks desktop when the link is online", async () => {
     const linkRegistry: LinkRegistry = {
       get: async (_userId: string) => STUB_LINK,
       put: async () => {},
@@ -662,14 +658,14 @@ describe("VM_START", () => {
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("remote-user");
+    expect(result.sandboxProviderKind).toBe("desktop");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["remote-user"] as VmMapEntry | undefined;
-    expect(stored?.sandboxProviderKind).toBe("remote-user");
+    )?.["desktop"] as VmMapEntry | undefined;
+    expect(stored?.sandboxProviderKind).toBe("desktop");
   });
 
   it("VM_START with no sandboxProviderKind picks env kind when no link", async () => {
@@ -699,7 +695,7 @@ describe("VM_START", () => {
   });
 
   it("VM_START with explicit sandboxProviderKind ignores defaults", async () => {
-    // Link is online, env is "docker" — but explicit "docker" must win (and remote-user would also be overrideable).
+    // Link is online, env is "docker" — but explicit "docker" must win (and desktop would also be overrideable).
     const linkRegistry: LinkRegistry = {
       get: async (_userId: string) => STUB_LINK,
       put: async () => {},
