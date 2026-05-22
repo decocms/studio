@@ -59,7 +59,7 @@ export function AgentSection({
             disabled={disabled}
             onClick={() => onSelect(tier)}
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent",
+              "flex w-full items-center gap-2.5 rounded-md px-2 py-2.5 text-left text-sm hover:bg-accent",
               isSelected && "bg-accent",
             )}
           >
@@ -77,7 +77,7 @@ export function AgentSection({
             <span className="text-sm leading-tight truncate shrink-0">
               {entry.label}
             </span>
-            <span className="text-xs text-muted-foreground leading-tight truncate flex-1">
+            <span className="text-xs text-muted-foreground leading-tight truncate flex-1 text-right">
               {entry.description}
             </span>
             {isSelected && (

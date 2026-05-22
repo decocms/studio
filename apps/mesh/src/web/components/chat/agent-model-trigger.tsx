@@ -82,7 +82,7 @@ export function AgentModelTrigger({
 }: Props) {
   const keys = useAiProviderKeys();
   const link = useCurrentLink();
-  const { setPendingAgentOption } = useChatPrefs();
+  const { setPendingAgentOption, isAgentClonable } = useChatPrefs();
   const { org } = useProjectContext();
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -117,7 +117,7 @@ export function AgentModelTrigger({
       sections={sections}
       activeAgent={activeAgent}
       activeTier={tier}
-      lockedAgent={null /* lock comes from caller via ThreadPills later */}
+      lockedAgent={isAgentClonable ? null : "decopilot"}
       onSelect={handleSelect}
     />
   );

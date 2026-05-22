@@ -200,6 +200,13 @@ export interface ChatPrefsContextValue {
   pendingHarnessId: HarnessId | null;
   /** Derived from `pendingAgentOption`. Read-only. */
   pendingSandboxProviderKind: SandboxProviderKind | null;
+  /**
+   * True when the active agent has a clonable git source — only then can
+   * the chat route through a desktop CLI (Claude Code / Codex). Drives the
+   * model selector trigger: non-clonable agents lock the popover to
+   * Decopilot and hide the tab bar.
+   */
+  isAgentClonable: boolean;
 }
 
 // ============================================================================
@@ -572,6 +579,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     pendingAgentOption: effectiveAgentOption,
     setPendingAgentOption,
     pendingHarnessId,
+    isAgentClonable: hasClonableSource,
     pendingSandboxProviderKind,
   };
 
