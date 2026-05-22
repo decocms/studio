@@ -7,7 +7,7 @@ import {
   useProjectContext,
   useMCPClient,
   useMCPToolsList,
-  useMCPToolCall,
+  useMCPToolCallQuery,
 } from "@decocms/mesh-sdk";
 import type {
   McpUiDisplayMode,
@@ -57,7 +57,7 @@ function AppRenderer({
     return "fullscreen";
   };
   const toolInput = args ?? EMPTY_TOOL_INPUT;
-  const { data: toolResult } = useMCPToolCall({
+  const { data: toolResult } = useMCPToolCallQuery({
     client,
     toolName: tool.name,
     toolArguments: toolInput,
@@ -120,7 +120,24 @@ export function AppViewContent({
 
   const decodedToolName = stripMcpServerPrefix(decodeURIComponent(toolName));
 
-  const tool = toolsResult.tools.find((t) => t.name === decodedToolName);
+  // Try exact match first. If that fails, the decoded name may be the original
+  // (un-namespaced) tool name while the tools list has gateway-namespaced names
+  // (e.g. "render_html" vs "conn-abc_render_html"), or vice versa. Fall back to
+  // matching by the base name with the gateway namespace stripped from both sides.
+  const tool =
+    toolsResult.tools.find((t) => t.name === decodedToolName) ??
+    toolsResult.tools.find((t) => {
+      const clientId = getGatewayClientId(t._meta);
+      if (!clientId) return false;
+      // Case 1: decoded name is the base name, tool list has namespaced names
+      const baseName = stripToolNamespace(t.name, clientId);
+      if (baseName === decodedToolName) return true;
+      // Case 2: decoded name has namespace prefix, tool list has base names
+      const decodedBase = stripToolNamespace(decodedToolName, clientId);
+      if (decodedBase !== decodedToolName && t.name === decodedBase)
+        return true;
+      return false;
+    });
 
   const resourceURI = tool?._meta ? getUIResourceUri(tool._meta) : undefined;
 
