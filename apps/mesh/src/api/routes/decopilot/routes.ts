@@ -184,7 +184,7 @@ async function tryResolveTier(ctx: MeshContext, tier: SimpleModeTier) {
  *   `image` / `web_research` are not supported in this path; the
  *   corresponding built-in tools stay unregistered.
  */
-async function resolvePerRequestModels(
+export async function resolvePerRequestModels(
   ctx: MeshContext,
   tier: SimpleModeTier | undefined,
   harnessId: HarnessId | null | undefined,

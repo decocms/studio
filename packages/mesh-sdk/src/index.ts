@@ -193,6 +193,18 @@ export {
   type OAuthWindowMode,
 } from "./lib/mcp-oauth";
 
+// Preset task types (shared FE/BE)
+export type {
+  PresetTaskDisplay,
+  PresetTaskAction,
+  PresetTaskStatus,
+  PresetTaskStepStatus,
+  PresetTaskStep,
+  PresetTaskState,
+  VisiblePresetTask,
+  StartPresetTaskResult,
+} from "./lib/preset-tasks";
+
 // Usage utilities
 export {
   getCostFromUsage,
@@ -227,6 +239,14 @@ export {
   // Site Diagnostics utilities
   isSiteDiagnostics,
   getSiteDiagnosticsId,
+  // Brand-Context Setup utilities
+  isBrandContextSetup,
+  getBrandContextSetupId,
+  getWellKnownBrandContextSetupVirtualMCP,
+  // Web-Developer utilities
+  isWebDeveloper,
+  getWebDeveloperId,
+  getWellKnownWebDeveloperVirtualMCP,
   // Studio Pack utilities
   StudioPackAgentId,
   isStudioPackAgent,
