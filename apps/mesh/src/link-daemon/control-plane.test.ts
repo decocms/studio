@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { signRequest } from "@/links/protocol";
 import { makeControlPlaneHandler } from "./control-plane";
-import { createDesktopSandboxProvider } from "./sandbox-provider";
+import { createDesktopSandboxProvider } from "./user-desktop-provider";
 
 const SECRET = "test-link-secret";
 

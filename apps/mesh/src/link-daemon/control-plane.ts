@@ -19,7 +19,7 @@
  */
 
 import { verifyRequest } from "@/links/protocol";
-import type { DesktopSandboxProvider, RepoRef } from "./sandbox-provider";
+import type { DesktopSandboxProvider, RepoRef } from "./user-desktop-provider";
 
 export interface ControlPlaneDeps {
   provider: DesktopSandboxProvider;
