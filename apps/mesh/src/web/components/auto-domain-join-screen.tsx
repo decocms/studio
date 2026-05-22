@@ -1,7 +1,7 @@
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Building02 } from "@untitledui/icons";
-import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 export interface AutoDomainJoinScreenProps {
@@ -17,11 +17,8 @@ export function AutoDomainJoinScreen({
   orgLogo,
   domain,
 }: AutoDomainJoinScreenProps) {
-  const [isJoining, setIsJoining] = useState(false);
-
-  const handleJoin = async () => {
-    setIsJoining(true);
-    try {
+  const joinMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch("/api/auth/custom/domain-join", {
         method: "POST",
         credentials: "include",
@@ -32,16 +29,19 @@ export function AutoDomainJoinScreen({
         error?: string;
       };
       if (!res.ok || !data.success) {
-        toast.error(data.error ?? "Failed to join organization");
-        setIsJoining(false);
-        return;
+        throw new Error(data.error ?? "Failed to join organization");
       }
+      return data;
+    },
+    onSuccess: (data) => {
       window.location.href = `/${data.slug ?? orgSlug}`;
-    } catch {
-      toast.error("Failed to join organization");
-      setIsJoining(false);
-    }
-  };
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to join organization",
+      );
+    },
+  });
 
   const handleGoHome = () => {
     window.location.href = "/";
@@ -71,10 +71,17 @@ export function AutoDomainJoinScreen({
           </p>
         </div>
         <div className="flex flex-col gap-2 w-full">
-          <Button onClick={handleJoin} disabled={isJoining}>
-            {isJoining ? "Joining…" : `Enter ${orgName}`}
+          <Button
+            onClick={() => joinMutation.mutate()}
+            disabled={joinMutation.isPending}
+          >
+            {joinMutation.isPending ? "Joining…" : `Enter ${orgName}`}
           </Button>
-          <Button variant="ghost" onClick={handleGoHome} disabled={isJoining}>
+          <Button
+            variant="ghost"
+            onClick={handleGoHome}
+            disabled={joinMutation.isPending}
+          >
             Go to home
           </Button>
         </div>

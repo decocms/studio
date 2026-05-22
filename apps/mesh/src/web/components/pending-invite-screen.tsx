@@ -2,7 +2,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Mail01 } from "@untitledui/icons";
-import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 export interface PendingInviteScreenProps {
@@ -18,45 +18,44 @@ export function PendingInviteScreen({
   orgSlug,
   orgLogo,
 }: PendingInviteScreenProps) {
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [isRejecting, setIsRejecting] = useState(false);
-
-  const handleAccept = async () => {
-    setIsAccepting(true);
-    try {
+  const acceptMutation = useMutation({
+    mutationFn: async () => {
       const result = await authClient.organization.acceptInvitation({
         invitationId,
       });
-      if (result.error) {
-        toast.error(result.error.message);
-        setIsAccepting(false);
-        return;
-      }
+      if (result.error) throw new Error(result.error.message);
+      return result.data;
+    },
+    onSuccess: () => {
       window.location.href = `/${orgSlug}`;
-    } catch {
-      toast.error("Failed to accept invitation");
-      setIsAccepting(false);
-    }
-  };
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to accept invitation",
+      );
+    },
+  });
 
-  const handleReject = async () => {
-    setIsRejecting(true);
-    try {
+  const rejectMutation = useMutation({
+    mutationFn: async () => {
       const result = await authClient.organization.rejectInvitation({
         invitationId,
       });
-      if (result.error) {
-        toast.error(result.error.message);
-        setIsRejecting(false);
-        return;
-      }
+      if (result.error) throw new Error(result.error.message);
+      return result.data;
+    },
+    onSuccess: () => {
       toast.success("Invitation declined");
       window.location.href = "/";
-    } catch {
-      toast.error("Failed to decline invitation");
-      setIsRejecting(false);
-    }
-  };
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to decline invitation",
+      );
+    },
+  });
+
+  const isBusy = acceptMutation.isPending || rejectMutation.isPending;
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
@@ -83,15 +82,15 @@ export function PendingInviteScreen({
           </p>
         </div>
         <div className="flex flex-col gap-2 w-full">
-          <Button onClick={handleAccept} disabled={isAccepting || isRejecting}>
-            {isAccepting ? "Accepting…" : "Accept invitation"}
+          <Button onClick={() => acceptMutation.mutate()} disabled={isBusy}>
+            {acceptMutation.isPending ? "Accepting…" : "Accept invitation"}
           </Button>
           <Button
             variant="ghost"
-            onClick={handleReject}
-            disabled={isAccepting || isRejecting}
+            onClick={() => rejectMutation.mutate()}
+            disabled={isBusy}
           >
-            {isRejecting ? "Declining…" : "Decline"}
+            {rejectMutation.isPending ? "Declining…" : "Decline"}
           </Button>
         </div>
       </div>
