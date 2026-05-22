@@ -165,12 +165,14 @@ async function instantiate(
     case "remote-user": {
       // remote-user is never the cluster-wide default — there is no
       // ambient `LinkEntry` to bind to here. It is constructed per-run by
-      // `getSharedSandboxProvider` from `ctx.linkForCurrentRun`. Hitting
-      // this branch means VM_DELETE was called for a `remote-user` row
-      // without a live link context, which today should not happen (the
-      // remote-user provider doesn't write to `sandbox_runner_state`).
+      // `resolveSandboxProvider` (sandbox/resolve-provider.ts) from
+      // either the per-run ctx hint or the recorded vmMap kind, both of
+      // which carry the user's link. Hitting this branch means VM_DELETE
+      // was called for a `remote-user` row without a live link context,
+      // which today should not happen (the remote-user provider doesn't
+      // write to `sandbox_runner_state`).
       throw new Error(
-        "remote-user runner cannot be instantiated without a per-run LinkEntry — call getSharedSandboxProvider with ctx.linkForCurrentRun set.",
+        "remote-user runner cannot be instantiated without a per-run LinkEntry — call resolveSandboxProvider, which binds the link before constructing the provider.",
       );
     }
     default: {
@@ -180,53 +182,15 @@ async function instantiate(
   }
 }
 
-export async function getSharedSandboxProvider(
-  ctx: MeshContext,
-): Promise<SandboxProvider> {
-  // Per-run override: decopilot runs whose dispatch target is the user's
-  // desktop forward Code Sandbox tool calls to the link daemon instead of
-  // the cluster-managed runner. We build a fresh provider per call because
-  // its only state is an in-memory (handle → sandboxUrl) map and the link
-  // identity is per-run — caching across runs would mix sandboxes from
-  // different users.
-  if (
-    ctx.sandboxPreference === "remote-user" &&
-    ctx.linkForCurrentRun !== undefined
-  ) {
-    return buildRemoteUserProvider(ctx, ctx.linkForCurrentRun);
-  }
-
-  const kind = resolveSandboxProviderKindFromEnv();
-  // Auto-resolve for tools that don't go through `prepareRun` (VM_START,
-  // ensureVmForBranch, sandbox preview/event routes). When env says
-  // `remote-user`, there is no cluster-side singleton to fall back on —
-  // the provider is per-user. Resolve the acting user's link from the
-  // registry here so callers don't each have to do it.
-  if (kind === "remote-user") {
-    const userId = ctx.auth.user?.id;
-    if (!userId) {
-      throw new Error(
-        "remote-user sandbox provider requires an authenticated user — got an unauthenticated MeshContext.",
-      );
-    }
-    if (!ctx.linkRegistry) {
-      throw new Error(
-        "remote-user sandbox provider requires ctx.linkRegistry to be wired (set on MeshContextConfig).",
-      );
-    }
-    const link = await ctx.linkRegistry.get(userId);
-    if (!link) {
-      throw new Error(
-        `No link daemon registered for user "${userId}". Start one with \`deco link\` (or run \`bun run dev --local-sandbox-provider\` for dev).`,
-      );
-    }
-    return buildRemoteUserProvider(ctx, link);
-  }
-
-  return getSandboxProviderByKind(ctx, kind);
-}
-
-async function buildRemoteUserProvider(
+/**
+ * Construct a `RemoteUserSandboxProvider` bound to the given link entry.
+ * Exported so the unified resolver in `resolve-provider.ts` can build one
+ * without going through `getSharedSandboxProvider` (which requires
+ * pre-populating `ctx.sandboxPreference` / `ctx.linkForCurrentRun` as a
+ * side-effect — the resolver decides the kind from vmMap, not from those
+ * ctx fields, so the side-effect would be misleading).
+ */
+export async function buildRemoteUserProvider(
   ctx: MeshContext,
   link: NonNullable<MeshContext["linkForCurrentRun"]>,
 ): Promise<SandboxProvider> {

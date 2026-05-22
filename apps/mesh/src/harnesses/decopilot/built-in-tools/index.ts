@@ -37,10 +37,8 @@ import { createReadPromptTool } from "./prompts";
 import { createReadResourceTool } from "./resources";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createVmTools } from "./vm-tools";
-import { getSharedSandboxProvider } from "@/sandbox/lifecycle";
+import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { ensureVm } from "@/tools/vm/start";
-import { resolveDefaultSandboxProviderKind } from "@/sandbox/resolve-default-provider-kind";
-import { resolveSandboxProviderKindFromEnv } from "@decocms/sandbox/provider";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import { todoWriteTool } from "./todo-write";
@@ -154,26 +152,29 @@ async function buildAllTools(
   const vmNeedsApproval =
     toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false;
   if (vmContext) {
-    const runner = await getSharedSandboxProvider(ctx);
+    // `dispatch-run` already populated `ctx.sandboxPreference` /
+    // `ctx.linkForCurrentRun` from the resolved `DispatchTarget`, so the
+    // resolver short-circuits on those ctx hints without reading vmMap —
+    // no DB hit on the decopilot hot path. The same `kind` flows into
+    // `ensureVm` below so `runner` and the provisioned handle are
+    // guaranteed to come from the same provider.
+    const { provider: runner, kind: providerKind } =
+      await resolveSandboxProvider(ctx, {
+        userId: vmContext.userId,
+        branch: vmContext.branch,
+        virtualMcpMetadata: null,
+      });
     let cached: Promise<string> | null = null;
     const ensureHandle = () => {
       if (!cached) {
-        const userId = vmContext.userId;
-        cached = resolveDefaultSandboxProviderKind(userId, {
-          linkRegistry: ctx.linkRegistry!,
-          resolveEnvKind: resolveSandboxProviderKindFromEnv,
-        })
-          .then((sandboxProviderKind) =>
-            ensureVm(
-              {
-                virtualMcpId: vmContext.virtualMcpId,
-                branch: vmContext.branch,
-                sandboxProviderKind,
-              },
-              ctx,
-            ),
-          )
-          .then((entry) => entry.vmId);
+        cached = ensureVm(
+          {
+            virtualMcpId: vmContext.virtualMcpId,
+            branch: vmContext.branch,
+            sandboxProviderKind: providerKind,
+          },
+          ctx,
+        ).then((entry) => entry.vmId);
         // Reset on failure so the next tool call retries instead of
         // permanently caching a rejected promise.
         cached.catch(() => {
