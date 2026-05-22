@@ -173,7 +173,7 @@ async function connectUpstream(
       ws.close();
     } catch {}
   });
-  req.on("upgrade", (_res, socket) => {
+  req.on("upgrade", (_res, socket, head: Buffer) => {
     ws.data.upstream = socket;
     // Server frames (upstream → client) are never masked. Decode and forward.
     const decoder = createFrameDecoder((opcode, payload) => {
@@ -183,7 +183,6 @@ async function connectUpstream(
         } else if (opcode === 0x2) {
           ws.send(payload);
         } else if (opcode === 0x8) {
-          // close
           try {
             ws.close();
           } catch {}
@@ -191,6 +190,10 @@ async function connectUpstream(
         // ping/pong: Bun.serve handles its side; ignore upstream's.
       } catch {}
     });
+    // `head` carries any bytes that arrived in the same TCP segment as the
+    // upgrade response — feed them through the decoder before attaching the
+    // socket data listener, otherwise the first upstream frame is dropped.
+    if (head.length > 0) decoder(head);
     socket.on("data", (chunk: Buffer) => decoder(chunk));
     socket.on("close", () => {
       try {

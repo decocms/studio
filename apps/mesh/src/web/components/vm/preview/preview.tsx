@@ -286,6 +286,16 @@ export function PreviewContent() {
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
+  // `visual` and `cms` drop out of the toggle options when the iframe is
+  // gone (they require a live dev server to inject overlays into). Fall
+  // back to `preview` for the toggle binding + overlay renders so the
+  // toggle never carries a value not in its option list.
+  const effectiveViewMode: PreviewViewMode =
+    previewState.kind !== "iframe" &&
+    (viewMode === "visual" || viewMode === "cms")
+      ? "preview"
+      : viewMode;
+
   // ref-latest pattern: effects below depend only on upstream signals, not
   // on this closure's churning captures (branch, mutation, setter).
   const triggerStart = (reason: "auto-start" | "self-heal") => {
@@ -610,7 +620,7 @@ export function PreviewContent() {
               so the user can drop into code mode after a dev-script crash. */}
           <div className="flex shrink-0 items-center gap-1">
             <ViewModeToggle
-              value={viewMode}
+              value={effectiveViewMode}
               onValueChange={handleViewModeChange}
               options={viewModeOptions}
               size="sm"
@@ -989,13 +999,13 @@ export function PreviewContent() {
             </div>
           )}
 
-          {viewMode === "visual" && !visualElement && (
+          {effectiveViewMode === "visual" && !visualElement && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
               <CursorClick01 size={12} />
               Click any element to ask the AI
             </div>
           )}
-          {viewMode === "visual" && visualElement && (
+          {effectiveViewMode === "visual" && visualElement && (
             <VisualEditorPrompt
               element={visualElement}
               onDismiss={() => setVisualElement(null)}
