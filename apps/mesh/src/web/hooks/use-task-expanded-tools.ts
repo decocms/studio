@@ -110,8 +110,35 @@ export function useTaskExpandedTools(taskId: string) {
     },
   });
 
+  /**
+   * Synchronously patches the query cache and then fires the server mutation.
+   * Use this when code that runs immediately after (e.g. a navigate() call)
+   * needs the expanded_tools data to already be in the cache.
+   */
+  const addOrReplaceEager = (tool: Omit<ThreadExpandedTool, "expandedAt">) => {
+    const key = KEYS.ensureTask(org.id, taskId);
+    const previous = queryClient.getQueryData<Task | null>(key);
+    const currentTools: ThreadExpandedTool[] =
+      previous?.metadata?.expanded_tools ?? [];
+    const nextTools = currentTools.filter((t) => t.toolName !== tool.toolName);
+    nextTools.push({ ...tool, expandedAt: new Date().toISOString() });
+    queryClient.setQueryData<Task | null>(key, (prev) =>
+      prev
+        ? {
+            ...prev,
+            metadata: {
+              ...(prev.metadata ?? {}),
+              expanded_tools: nextTools,
+            },
+          }
+        : prev,
+    );
+    mutation.mutate(tool);
+  };
+
   return {
     addOrReplace: mutation.mutate,
+    addOrReplaceEager,
     isPending: mutation.isPending,
   };
 }
