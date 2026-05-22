@@ -203,7 +203,7 @@ function buildApp(opts: {
             vmMap: {
               user_1: {
                 [BRANCH]: {
-                  vmId: "vm_test",
+                  sandboxHandle: "vm_test",
                   previewUrl: null,
                   sandboxProviderKind: opts.vmKind,
                 },

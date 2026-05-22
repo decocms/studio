@@ -1,7 +1,7 @@
 /**
  * vmMap helpers — per-(user, branch, sandboxProviderKind) vm registry.
  *
- * Lookup: vmMap[userId][branch][sandboxProviderKind] -> VmMapEntry
+ * Lookup: vmMap[userId][branch][sandboxProviderKind] -> SandboxRecord
  *
  * Stored in the virtualmcp's metadata JSON column. Threads sharing the same
  * (user, branch, kind) triple share one vm.
@@ -12,7 +12,7 @@
  */
 
 import { parseBranchMap } from "@decocms/mesh-sdk";
-import type { VmMap, VmMapEntry } from "@decocms/mesh-sdk";
+import type { VmMap, SandboxRecord } from "@decocms/mesh-sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 import type { VirtualMCPStoragePort } from "../../storage/ports";
@@ -32,7 +32,7 @@ export function resolveVm(
   userId: string,
   branch: string,
   sandboxProviderKind: SandboxProviderKind,
-): VmMapEntry | null {
+): SandboxRecord | null {
   const raw = vmMap[userId]?.[branch];
   if (!raw) return null;
   const parsed = parseBranchMap(raw);
@@ -51,7 +51,7 @@ export async function setVmMapEntry(
   targetUserId: string,
   branch: string,
   sandboxProviderKind: SandboxProviderKind,
-  entry: VmMapEntry,
+  entry: SandboxRecord,
 ): Promise<void> {
   const virtualMcp = await storage.findById(virtualMcpId);
   if (!virtualMcp) return;

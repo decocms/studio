@@ -93,7 +93,7 @@ describe("resolveSandboxProvider", () => {
         "u-1": {
           "deco/foo": {
             cluster: {
-              vmId: "vm_xyz",
+              sandboxHandle: "vm_xyz",
               previewUrl: "https://p",
               sandboxUrl: "https://p",
               sandboxProviderKind: "cluster",
@@ -135,7 +135,7 @@ describe("resolveSandboxProvider", () => {
         "u-1": {
           "deco/foo": {
             "user-desktop": {
-              vmId: "vm_xyz",
+              sandboxHandle: "vm_xyz",
               previewUrl: "https://p",
               sandboxUrl: "https://p",
               sandboxProviderKind: "user-desktop",
@@ -175,7 +175,7 @@ describe("resolveSandboxProvider", () => {
         "u-1": {
           "deco/foo": {
             cluster: {
-              vmId: "vm_xyz",
+              sandboxHandle: "vm_xyz",
               previewUrl: "https://p",
               sandboxUrl: "https://p",
               sandboxProviderKind: "cluster",
@@ -259,7 +259,7 @@ describe("resolveSandboxProvider", () => {
         "u-1": {
           "deco/foo": {
             "user-desktop": {
-              vmId: "vm_xyz",
+              sandboxHandle: "vm_xyz",
               previewUrl: "https://p",
               sandboxUrl: "https://p",
               sandboxProviderKind: "user-desktop",

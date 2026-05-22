@@ -56,7 +56,7 @@ type VmMapMeta = {
 
 /**
  * Pick the user's most-recently-touched branch from vmMap (3-level shape:
- * vmMap[userId][branch][sandboxProviderKind] → VmMapEntry). Returns undefined
+ * vmMap[userId][branch][sandboxProviderKind] → SandboxRecord). Returns undefined
  * when the user has no entries (caller falls back to generateBranchName).
  */
 function pickWarmBranchFromVmMap(

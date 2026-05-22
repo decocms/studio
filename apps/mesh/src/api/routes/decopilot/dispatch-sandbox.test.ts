@@ -20,7 +20,7 @@ mock.module("@/tools/vm/start", () => ({
   }) => {
     ensureVmCalls.push(input);
     return {
-      vmId: "sleek-flint-0000000000000000",
+      sandboxHandle: "sleek-flint-0000000000000000",
       previewUrl: nextEnsureVmReturn.previewUrl,
       sandboxUrl: nextEnsureVmReturn.previewUrl,
       sandboxProviderKind: "user-desktop" as const,

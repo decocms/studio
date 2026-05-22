@@ -11,7 +11,7 @@
 import { z } from "zod";
 import {
   normalizeLegacySandboxProviderKind,
-  type VmMapEntry,
+  type SandboxRecord,
 } from "@decocms/mesh-sdk";
 import {
   composeSandboxRef,
@@ -96,7 +96,7 @@ export const VM_START = defineTool({
   }),
   outputSchema: z.object({
     previewUrl: z.string().nullable(),
-    vmId: z.string(),
+    sandboxHandle: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
     sandboxProviderKind: z.enum(["local-docker", "cluster", "user-desktop"]),
@@ -179,7 +179,7 @@ export async function ensureVm(
     sandboxProviderKind: SandboxProviderKind;
   },
   ctx: MeshContext,
-): Promise<VmMapEntry> {
+): Promise<SandboxRecord> {
   // Inline auth + lookup; the standard `requireVmEntry` runs
   // `ctx.access.check()`, which expects resource scoping that the
   // streaming turn doesn't carry. Storage writes below still go through
@@ -194,7 +194,7 @@ export async function ensureVm(
     throw new Error("Virtual MCP not found");
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  const existing: VmMapEntry | null = resolveVm(
+  const existing: SandboxRecord | null = resolveVm(
     readVmMap(metadata),
     userId,
     input.branch,
@@ -245,14 +245,14 @@ type StartParams = {
   branch: string;
   metadata: Record<string, unknown>;
   githubRepo: GithubRepo | null;
-  existing: VmMapEntry | null;
+  existing: SandboxRecord | null;
   providerKind: SandboxProviderKind;
   runner: SandboxProvider;
 };
 
 async function provisionSandbox(
   params: StartParams,
-): Promise<{ entry: VmMapEntry; isNewVm: boolean }> {
+): Promise<{ entry: SandboxRecord; isNewVm: boolean }> {
   const {
     ctx,
     userId,
@@ -379,7 +379,7 @@ async function provisionSandbox(
 
   // Preserve `createdAt` across resumes so the booting overlay's elapsed
   // timer doesn't reset on re-run.
-  const isResume = !!existing && existing.vmId === sandbox.handle;
+  const isResume = !!existing && existing.sandboxHandle === sandbox.handle;
   const createdAt =
     isResume && existing?.createdAt ? existing.createdAt : Date.now();
 
@@ -388,8 +388,8 @@ async function provisionSandbox(
   const runtimePort = (metadata as RuntimeConfigMeta).runtime?.port ?? null;
   const runtimePath = (metadata as RuntimeConfigMeta).runtime?.path ?? null;
 
-  const entry: VmMapEntry = {
-    vmId: sandbox.handle,
+  const entry: SandboxRecord = {
+    sandboxHandle: sandbox.handle,
     previewUrl: sandbox.previewUrl,
     sandboxUrl: sandbox.previewUrl, // for desktop the two are equal
     sandboxProviderKind: runner.kind,
@@ -412,7 +412,7 @@ async function provisionSandbox(
   );
 
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
-  const isNewVm = !existing || existing.vmId !== sandbox.handle;
+  const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
   return { entry, isNewVm };
 }
 

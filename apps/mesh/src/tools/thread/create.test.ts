@@ -139,14 +139,14 @@ describe("COLLECTION_THREADS_CREATE", () => {
             [env.userId]: {
               "deco/old-branch": {
                 freestyle: {
-                  vmId: "vm_old",
+                  sandboxHandle: "vm_old",
                   previewUrl: null,
                   createdAt: 1000,
                 },
               },
               "deco/new-branch": {
                 freestyle: {
-                  vmId: "vm_new",
+                  sandboxHandle: "vm_new",
                   previewUrl: null,
                   createdAt: 2000,
                 },

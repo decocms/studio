@@ -9,7 +9,7 @@
 import {
   ENV_VAR_KEY_RE,
   type RuntimeEnvEntry,
-  type VmMapEntry,
+  type SandboxRecord,
 } from "@decocms/mesh-sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
@@ -93,7 +93,7 @@ export async function requireVmEntry(
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
   const vmMap = readVmMap(metadata);
-  const entry: VmMapEntry | null = resolveVm(
+  const entry: SandboxRecord | null = resolveVm(
     vmMap,
     userId,
     input.branch,

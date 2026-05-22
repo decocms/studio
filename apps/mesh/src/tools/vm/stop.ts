@@ -78,10 +78,10 @@ export const VM_DELETE = defineTool({
 
     const runner = await getSandboxProviderByKind(ctx, kind);
     await runner
-      .delete(entry.vmId)
+      .delete(entry.sandboxHandle)
       .catch((err) =>
         console.error(
-          `[VM_DELETE] ${kind} ${entry.vmId}: ${
+          `[VM_DELETE] ${kind} ${entry.sandboxHandle}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         ),

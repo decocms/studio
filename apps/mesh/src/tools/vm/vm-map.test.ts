@@ -3,16 +3,16 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { VmMapEntry } from "@decocms/mesh-sdk";
+import type { SandboxRecord } from "@decocms/mesh-sdk";
 
 import { readVmMap, resolveVm } from "./vm-map";
 
-const ENTRY_A: VmMapEntry = {
-  vmId: "vm-1",
+const ENTRY_A: SandboxRecord = {
+  sandboxHandle: "vm-1",
   previewUrl: "https://vm-1.deco.studio",
 };
-const ENTRY_B: VmMapEntry = {
-  vmId: "vm-2",
+const ENTRY_B: SandboxRecord = {
+  sandboxHandle: "vm-2",
   previewUrl: "https://vm-2.deco.studio",
 };
 

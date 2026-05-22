@@ -37,7 +37,7 @@ export interface VmStartArgs {
 
 export interface VmStartResult {
   previewUrl: string | null;
-  vmId: string;
+  sandboxHandle: string;
   branch: string;
   isNewVm: boolean;
   sandboxProviderKind?: "local-docker" | "cluster" | "user-desktop";

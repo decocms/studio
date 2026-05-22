@@ -139,7 +139,7 @@ export const createVmEventsRoutes = () => {
     // Snapshot vmMap from the same metadata read used for the org-ownership
     // check. Used below to gate the stale-handle probe: we only run it when
     // this user already had a vmMap entry pointing at *this exact* claim.
-    // The vmId-match guard avoids racing VM_START's claim-creation window
+    // The handle-match guard avoids racing VM_START's claim-creation window
     // (~250ms–1.2s for agent-sandbox before `createSandboxClaim` lands;
     // similar window for host/docker between `runner.ensure` returning and
     // `setVmMapEntry` writing the row). Without it, an SSE that opens during
@@ -148,7 +148,7 @@ export const createVmEventsRoutes = () => {
       providerKind &&
       resolveVm(readVmMap(virtualMcpMetadata), userId, branch, providerKind);
     const expectingHandle =
-      !!existingVmEntry && existingVmEntry.vmId === claimName;
+      !!existingVmEntry && existingVmEntry.sandboxHandle === claimName;
 
     if (!runner) {
       return streamSSE(c, async (stream) => {

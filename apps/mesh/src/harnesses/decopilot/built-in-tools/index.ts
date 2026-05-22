@@ -174,7 +174,7 @@ async function buildAllTools(
             sandboxProviderKind: providerKind,
           },
           ctx,
-        ).then((entry) => entry.vmId);
+        ).then((entry) => entry.sandboxHandle);
         // Reset on failure so the next tool call retries instead of
         // permanently caching a rejected promise.
         cached.catch(() => {

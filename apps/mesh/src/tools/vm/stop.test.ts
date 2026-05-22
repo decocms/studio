@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import type { VmMap, VmMapEntry } from "@decocms/mesh-sdk";
+import type { VmMap, SandboxRecord } from "@decocms/mesh-sdk";
 import type { MeshContext } from "../../core/mesh-context";
 import type {
   SandboxProvider,
@@ -49,8 +49,8 @@ const { VM_DELETE } = await import("./stop");
 
 const BRANCH = "feat/example";
 
-const DOCKER_ENTRY: VmMapEntry = {
-  vmId: "f9e2fadeb813e08eb00eef6f962be2b2",
+const DOCKER_ENTRY: SandboxRecord = {
+  sandboxHandle: "f9e2fadeb813e08eb00eef6f962be2b2",
   previewUrl: "http://f9e2.localhost:7070/",
   sandboxProviderKind: "local-docker",
 };
@@ -65,7 +65,7 @@ function makeVmMap(
   userId: string,
   branch: string,
   kind: SandboxProviderKind,
-  entry: VmMapEntry,
+  entry: SandboxRecord,
 ): VmMap {
   return {
     [userId]: {
@@ -183,7 +183,7 @@ describe("VM_DELETE", () => {
 
     expect(result).toEqual({ success: true });
     expect(mockDelete).toHaveBeenCalledTimes(1);
-    expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.vmId);
+    expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.sandboxHandle);
     expect(lastRequestedKind.value).toBe("local-docker");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
@@ -209,7 +209,7 @@ describe("VM_DELETE", () => {
       ctx,
     );
 
-    expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.vmId);
+    expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.sandboxHandle);
     expect(lastRequestedKind.value).toBe("local-docker");
   });
 
@@ -235,7 +235,7 @@ describe("VM_DELETE", () => {
         ctx,
       );
 
-      expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.vmId);
+      expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.sandboxHandle);
       expect(lastRequestedKind.value).toBe("local-docker");
     } finally {
       if (original === undefined) delete process.env.STUDIO_SANDBOX_RUNNER;

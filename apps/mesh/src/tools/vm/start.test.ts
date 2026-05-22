@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import type { VmMap, VmMapEntry } from "@decocms/mesh-sdk";
+import type { VmMap, SandboxRecord } from "@decocms/mesh-sdk";
 import type { MeshContext } from "../../core/mesh-context";
 import type { LinkRegistry } from "../../links/link-registry";
 import type { LinkEntry } from "@/links/protocol";
@@ -181,8 +181,8 @@ const BASE_METADATA: Metadata = {
   runtime: { selected: "npm", port: "3000" },
 };
 
-const CACHED_ENTRY: VmMapEntry = {
-  vmId: "vm_cached",
+const CACHED_ENTRY: SandboxRecord = {
+  sandboxHandle: "vm_cached",
   previewUrl: "https://cached.preview/",
 };
 
@@ -345,7 +345,7 @@ describe("VM_START", () => {
       ctx,
     );
 
-    expect(result.vmId).toBe("vm_xyz");
+    expect(result.sandboxHandle).toBe("vm_xyz");
     expect(result.previewUrl).toBe("https://stub.preview/");
     expect(result.branch).toBe(BRANCH);
     expect(result.isNewVm).toBe(true);
@@ -359,13 +359,13 @@ describe("VM_START", () => {
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
     )?.["local-docker"];
     expect(stored).toMatchObject({
-      vmId: "vm_xyz",
+      sandboxHandle: "vm_xyz",
       previewUrl: "https://stub.preview/",
       sandboxProviderKind: "local-docker",
     });
     // Server-stamped; assert recency, not exact value.
-    expect(typeof (stored as VmMapEntry)?.createdAt).toBe("number");
-    expect((stored as VmMapEntry)?.createdAt).toBeGreaterThan(
+    expect(typeof (stored as SandboxRecord)?.createdAt).toBe("number");
+    expect((stored as SandboxRecord)?.createdAt).toBeGreaterThan(
       Date.now() - 60_000,
     );
   });
@@ -392,7 +392,7 @@ describe("VM_START", () => {
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["local-docker"] as VmMapEntry | undefined;
+    )?.["local-docker"] as SandboxRecord | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: "pnpm",
       port: "4321",
@@ -427,7 +427,7 @@ describe("VM_START", () => {
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["local-docker"] as VmMapEntry | undefined;
+    )?.["local-docker"] as SandboxRecord | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: null,
       port: null,
@@ -437,7 +437,7 @@ describe("VM_START", () => {
 
   it("returns isNewVm=false when runner.ensure returns the same handle as the existing entry", async () => {
     mockEnsure.mockImplementation(async () => ({
-      handle: CACHED_ENTRY.vmId,
+      handle: CACHED_ENTRY.sandboxHandle,
       workdir: "/app",
       previewUrl: CACHED_ENTRY.previewUrl,
     }));
@@ -454,7 +454,7 @@ describe("VM_START", () => {
       ctx,
     );
 
-    expect(result.vmId).toBe(CACHED_ENTRY.vmId);
+    expect(result.sandboxHandle).toBe(CACHED_ENTRY.sandboxHandle);
     expect(result.isNewVm).toBe(false);
   });
 
@@ -562,8 +562,8 @@ describe("VM_START", () => {
 
   it("provisions a new desktop VM even when a docker entry exists under the same branch — kinds are siblings", async () => {
     // With kind-in-key, different kinds coexist — no teardown occurs.
-    const dockerEntry: VmMapEntry = {
-      vmId: "vm_docker_existing",
+    const dockerEntry: SandboxRecord = {
+      sandboxHandle: "vm_docker_existing",
       previewUrl: "https://docker.preview/",
       sandboxProviderKind: "local-docker",
     };
@@ -607,8 +607,8 @@ describe("VM_START", () => {
   });
 
   it("does not tear down anything when the existing entry is on the same runner", async () => {
-    const sameRunnerEntry: VmMapEntry = {
-      vmId: "vm_docker_existing",
+    const sameRunnerEntry: SandboxRecord = {
+      sandboxHandle: "vm_docker_existing",
       previewUrl: "https://docker.preview/",
       sandboxProviderKind: "local-docker",
     };
@@ -664,7 +664,7 @@ describe("VM_START", () => {
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["user-desktop"] as VmMapEntry | undefined;
+    )?.["user-desktop"] as SandboxRecord | undefined;
     expect(stored?.sandboxProviderKind).toBe("user-desktop");
   });
 
@@ -690,7 +690,7 @@ describe("VM_START", () => {
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["local-docker"] as VmMapEntry | undefined;
+    )?.["local-docker"] as SandboxRecord | undefined;
     expect(stored?.sandboxProviderKind).toBe("local-docker");
   });
 
@@ -720,7 +720,7 @@ describe("VM_START", () => {
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["local-docker"] as VmMapEntry | undefined;
+    )?.["local-docker"] as SandboxRecord | undefined;
     expect(stored?.sandboxProviderKind).toBe("local-docker");
   });
 

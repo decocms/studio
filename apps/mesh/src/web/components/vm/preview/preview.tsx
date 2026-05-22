@@ -349,8 +349,8 @@ export function PreviewContent() {
     triggerStartRef.current("auto-start");
   }, [shouldAutoStart, taskId, userStopped]);
 
-  // Self-heal stale vmMap entries (SSE 404 → notFound). Dedup by dead vmId.
-  const deadVmId = vmEvents.notFound ? (vmEntry?.vmId ?? null) : null;
+  // Self-heal stale vmMap entries (SSE 404 → notFound). Dedup by dead handle.
+  const deadVmId = vmEvents.notFound ? (vmEntry?.sandboxHandle ?? null) : null;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — one-shot reprovision trigger gated on the notFound→deadVmId derivation
   useEffect(() => {
     if (!deadVmId || !virtualMcpId) return;
@@ -1054,7 +1054,7 @@ export function PreviewContent() {
                 // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
                 track("vm_preview_loaded", {
                   view_mode: viewMode,
-                  vm_id: vmEntry?.vmId ?? null,
+                  vm_id: vmEntry?.sandboxHandle ?? null,
                   // Intentionally excluding the full previewUrl — it can contain
                   // ephemeral tokens / user data in the query string.
                 });
@@ -1078,8 +1078,8 @@ export function PreviewContent() {
         // key forces a fresh drawer on each new VM so per-tab state
         // (active tab, scriptTabs, killingScripts, the auto-open ref)
         // resets cleanly without per-state reset plumbing.
-        key={vmEntry?.vmId ?? "no-vm"}
-        vmId={vmEntry?.vmId ?? null}
+        key={vmEntry?.sandboxHandle ?? "no-vm"}
+        vmId={vmEntry?.sandboxHandle ?? null}
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={branch}

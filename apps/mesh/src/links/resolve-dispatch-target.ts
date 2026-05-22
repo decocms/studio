@@ -10,7 +10,7 @@
  * Link health is checked only for `user-desktop`. Offline/missing-capability
  * paths return an `error` target which `POST /messages` surfaces as 409.
  *
- * Takes the kind directly (not a `VmMapEntry`) so the POST handler can
+ * Takes the kind directly (not a `SandboxRecord`) so the POST handler can
  * decide where to dispatch without eagerly provisioning a sandbox — VM
  * provisioning is deferred to the built-in tools layer, which already
  * resolves the handle lazily on first VM-tool invocation.

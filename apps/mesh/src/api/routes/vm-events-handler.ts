@@ -69,7 +69,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     branch,
     providerKind,
   );
-  const expectingHandle = existingVmEntry?.vmId === claimName;
+  const expectingHandle = existingVmEntry?.sandboxHandle === claimName;
   // Coalesce legacy kinds ("host", "freestyle") and pre-rename kinds
   // ("docker", "agent-sandbox", "desktop") to canonical values. Pre-rename
   // kinds are normalized by parseBranchMap/parseVmMapEntry on read, but the

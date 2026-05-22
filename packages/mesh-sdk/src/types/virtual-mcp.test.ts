@@ -3,7 +3,7 @@ import {
   VirtualMCPEntitySchema,
   VirtualMcpUILayoutSchema,
   VirtualMCPUpdateDataSchema,
-  VmMapEntrySchema,
+  SandboxRecordSchema,
   parseVmMapEntry,
   parseBranchMap,
 } from "./virtual-mcp";
@@ -99,19 +99,19 @@ test("VirtualMCPUpdateDataSchema accepts metadata.runtime", () => {
   expect(parsed.metadata?.runtime?.port).toBeNull();
 });
 
-test("VmMapEntry.startedWith is optional with nullable packageManager/port/path", () => {
-  const a = VmMapEntrySchema.parse({ vmId: "v", previewUrl: null });
+test("SandboxRecord.startedWith is optional with nullable packageManager/port/path", () => {
+  const a = SandboxRecordSchema.parse({ sandboxHandle: "v", previewUrl: null });
   expect(a.startedWith).toBeUndefined();
-  const b = VmMapEntrySchema.parse({
-    vmId: "v",
+  const b = SandboxRecordSchema.parse({
+    sandboxHandle: "v",
     previewUrl: null,
     startedWith: { packageManager: "pnpm", port: "3000", path: "apps/web" },
   });
   expect(b.startedWith?.packageManager).toBe("pnpm");
   expect(b.startedWith?.port).toBe("3000");
   expect(b.startedWith?.path).toBe("apps/web");
-  const c = VmMapEntrySchema.parse({
-    vmId: "v",
+  const c = SandboxRecordSchema.parse({
+    sandboxHandle: "v",
     previewUrl: null,
     startedWith: { packageManager: null, port: null, path: null },
   });
@@ -124,51 +124,55 @@ describe("parseBranchMap tolerant reader", () => {
   test("parses 3-level (kind-keyed) map with canonical kinds", () => {
     const result = parseBranchMap({
       "local-docker": {
-        vmId: "v1",
+        sandboxHandle: "v1",
         previewUrl: null,
         sandboxProviderKind: "local-docker",
       },
       "user-desktop": {
-        vmId: "v2",
+        sandboxHandle: "v2",
         previewUrl: null,
         sandboxProviderKind: "user-desktop",
       },
     });
-    expect(result["local-docker"]?.vmId).toBe("v1");
-    expect(result["user-desktop"]?.vmId).toBe("v2");
+    expect(result["local-docker"]?.sandboxHandle).toBe("v1");
+    expect(result["user-desktop"]?.sandboxHandle).toBe("v2");
   });
 
   test("normalizes legacy kind keys to canonical ones", () => {
     const result = parseBranchMap({
-      docker: { vmId: "v1", previewUrl: null, sandboxProviderKind: "docker" },
+      docker: {
+        sandboxHandle: "v1",
+        previewUrl: null,
+        sandboxProviderKind: "docker",
+      },
       desktop: {
-        vmId: "v2",
+        sandboxHandle: "v2",
         previewUrl: null,
         sandboxProviderKind: "desktop",
       },
     });
-    expect(result["local-docker"]?.vmId).toBe("v1");
-    expect(result["user-desktop"]?.vmId).toBe("v2");
+    expect(result["local-docker"]?.sandboxHandle).toBe("v1");
+    expect(result["user-desktop"]?.sandboxHandle).toBe("v2");
   });
 
   test("wraps 2-level legacy entry under its sandboxProviderKind", () => {
     const result = parseBranchMap({
-      vmId: "v-legacy",
+      sandboxHandle: "v-legacy",
       previewUrl: null,
       sandboxProviderKind: "desktop",
     });
-    expect(result["user-desktop"]?.vmId).toBe("v-legacy");
+    expect(result["user-desktop"]?.sandboxHandle).toBe("v-legacy");
     expect(result["local-docker"]).toBeUndefined();
   });
 
   test("coalesces a legacy freestyle entry to local-docker on read", () => {
     const result = parseBranchMap({
-      vmId: "v-very-legacy",
+      sandboxHandle: "v-very-legacy",
       previewUrl: null,
       runnerKind: "freestyle",
     });
     // freestyle runner no longer exists; legacy rows fall back to local-docker.
-    expect(result["local-docker"]?.vmId).toBe("v-very-legacy");
+    expect(result["local-docker"]?.sandboxHandle).toBe("v-very-legacy");
   });
 
   test("returns empty object for null/undefined/arrays", () => {
@@ -178,15 +182,38 @@ describe("parseBranchMap tolerant reader", () => {
   });
 
   test("legacy entry without sandboxProviderKind defaults to 'local-docker'", () => {
-    const result = parseBranchMap({ vmId: "v-orphan", previewUrl: null });
-    expect(result["local-docker"]?.vmId).toBe("v-orphan");
+    const result = parseBranchMap({
+      sandboxHandle: "v-orphan",
+      previewUrl: null,
+    });
+    expect(result["local-docker"]?.sandboxHandle).toBe("v-orphan");
+  });
+
+  test("tolerates legacy `vmId` field on read (pre-rename rows)", () => {
+    // Migration 091 will rewrite stored `vmId` keys to `sandboxHandle`; until
+    // it runs, both 2-level and 3-level shapes must still parse.
+    const twoLevel = parseBranchMap({
+      vmId: "v-pre-rename",
+      previewUrl: null,
+      sandboxProviderKind: "local-docker",
+    });
+    expect(twoLevel["local-docker"]?.sandboxHandle).toBe("v-pre-rename");
+
+    const threeLevel = parseBranchMap({
+      "local-docker": {
+        vmId: "v-pre-rename-2",
+        previewUrl: null,
+        sandboxProviderKind: "local-docker",
+      },
+    });
+    expect(threeLevel["local-docker"]?.sandboxHandle).toBe("v-pre-rename-2");
   });
 });
 
 describe("parseVmMapEntry tolerant reader", () => {
   test("accepts canonical sandboxProviderKind", () => {
     const result = parseVmMapEntry({
-      vmId: "v1",
+      sandboxHandle: "v1",
       previewUrl: null,
       sandboxProviderKind: "local-docker",
     });
@@ -195,7 +222,7 @@ describe("parseVmMapEntry tolerant reader", () => {
 
   test("normalizes legacy kind name to canonical", () => {
     const result = parseVmMapEntry({
-      vmId: "v1",
+      sandboxHandle: "v1",
       previewUrl: null,
       sandboxProviderKind: "docker",
     });
@@ -204,7 +231,7 @@ describe("parseVmMapEntry tolerant reader", () => {
 
   test("normalizes legacy runnerKind into sandboxProviderKind", () => {
     const result = parseVmMapEntry({
-      vmId: "v1",
+      sandboxHandle: "v1",
       previewUrl: null,
       runnerKind: "desktop",
     });
@@ -216,11 +243,34 @@ describe("parseVmMapEntry tolerant reader", () => {
 
   test("prefers explicit sandboxProviderKind when both keys present", () => {
     const result = parseVmMapEntry({
-      vmId: "v1",
+      sandboxHandle: "v1",
       previewUrl: null,
       runnerKind: "docker",
       sandboxProviderKind: "desktop",
     });
     expect(result.sandboxProviderKind).toBe("user-desktop");
+  });
+
+  test("normalizes legacy `vmId` field into `sandboxHandle`", () => {
+    // Pre-rename rows persisted the handle field as `vmId`; the tolerant
+    // reader maps it to the canonical `sandboxHandle` while migration 091
+    // is still in flight.
+    const result = parseVmMapEntry({
+      vmId: "v-pre-rename",
+      previewUrl: null,
+      sandboxProviderKind: "local-docker",
+    });
+    expect(result.sandboxHandle).toBe("v-pre-rename");
+    expect((result as unknown as { vmId?: unknown }).vmId).toBeUndefined();
+  });
+
+  test("prefers canonical `sandboxHandle` over legacy `vmId` when both present", () => {
+    const result = parseVmMapEntry({
+      vmId: "v-legacy",
+      sandboxHandle: "v-canonical",
+      previewUrl: null,
+      sandboxProviderKind: "local-docker",
+    });
+    expect(result.sandboxHandle).toBe("v-canonical");
   });
 });

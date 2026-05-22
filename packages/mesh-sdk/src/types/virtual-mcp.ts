@@ -211,10 +211,11 @@ const GithubRepoSchema = z.object({
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
 /**
- * A single vm entry in vmMap — the vmId plus the preview URL the UI renders.
+ * A single sandbox record in the per-(user, branch, kind) sandbox map — the
+ * runner-issued handle plus the preview URL the UI renders.
  *
  * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
- *  - local-docker: daemon is reached via the mesh proxy at `/api/sandbox/<vmId>/_daemon/*`
+ *  - local-docker: daemon is reached via the mesh proxy at `/api/sandbox/<sandboxHandle>/_daemon/*`
  *  - cluster: daemon is reached via the mesh proxy (same transport as local-docker);
  *    preview URL is the per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
  *  - user-desktop: daemon is reached directly via the user's link binary.
@@ -223,8 +224,8 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
  * server) have nothing to render. UI code MUST check before constructing
  * an iframe URL.
  */
-export const VmMapEntrySchema = z.object({
-  vmId: z.string().describe("Runner-specific handle"),
+export const SandboxRecordSchema = z.object({
+  sandboxHandle: z.string().describe("Runner-specific handle"),
   previewUrl: z
     .string()
     .nullable()
@@ -288,21 +289,23 @@ export const VmMapEntrySchema = z.object({
     ),
 });
 
-export type VmMapEntry = z.infer<typeof VmMapEntrySchema>;
+export type SandboxRecord = z.infer<typeof SandboxRecordSchema>;
 
 /**
- * Tolerant reader: pre-rename rows persisted the field as `runnerKind`. Until
- * a full re-write touches every entry, this function normalizes the legacy key
- * into `sandboxProviderKind`. Writers always use the new key.
+ * Tolerant reader: pre-rename rows persisted the field as `runnerKind`, and
+ * pre-rename rows from before this task persisted the handle field as `vmId`
+ * instead of `sandboxHandle`. Until a full re-write (migration 091, Task 14)
+ * touches every entry, this function normalizes the legacy keys into their
+ * canonical counterparts. Writers always emit only the new keys.
  *
  * Use this function wherever raw JSON from the database is parsed into a
- * `VmMapEntry` — never cast unknown JSON directly as `VmMapEntry`.
+ * `SandboxRecord` — never cast unknown JSON directly as `SandboxRecord`.
  *
- * TODO(2026-06-20): drop this tolerant reader once migration 080 has run
- * everywhere and a write has touched every vmMap entry. See spec
- * docs/superpowers/specs/2026-05-20-vm-as-runtime-identity-design.md.
+ * TODO(task-15 / 2026-06-20): drop this tolerant reader once migration 091
+ * has run everywhere and a write has touched every sandboxMap entry. See
+ * docs/superpowers/specs/2026-05-22-sandbox-naming-uniformization-design.md.
  */
-export function parseVmMapEntry(raw: unknown): VmMapEntry {
+export function parseVmMapEntry(raw: unknown): SandboxRecord {
   let normalized = raw;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Record<string, unknown>;
@@ -310,8 +313,16 @@ export function parseVmMapEntry(raw: unknown): VmMapEntry {
       const { runnerKind, ...rest } = obj;
       normalized = { ...rest, sandboxProviderKind: runnerKind };
     }
+    // Pre-rename rows used `vmId` for the handle field; normalize to
+    // `sandboxHandle` so the strict schema accepts them. Prefer the new key
+    // when both are present (canonical writers emit only `sandboxHandle`).
+    const cur = normalized as Record<string, unknown>;
+    if (cur.vmId !== undefined && cur.sandboxHandle === undefined) {
+      const { vmId, ...rest } = cur;
+      normalized = { ...rest, sandboxHandle: vmId };
+    }
   }
-  const parsed = VmMapEntrySchema.parse(normalized);
+  const parsed = SandboxRecordSchema.parse(normalized);
   // Normalize legacy kind names ("docker", "agent-sandbox", "desktop",
   // "freestyle", "host") to the canonical kinds so callers always see one of
   // ("local-docker", "cluster", "user-desktop").
@@ -328,9 +339,9 @@ export type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
 /**
  * Tolerant reader at the branch-map level.
  *
- * In v2, a branch's value is itself a map of `sandboxProviderKind → VmMapEntry`
+ * In v2, a branch's value is itself a map of `sandboxProviderKind → SandboxRecord`
  * (so cloud + local can coexist on the same branch). Legacy v1 rows stored a
- * single `VmMapEntry` directly at the branch level. This function accepts
+ * single `SandboxRecord` directly at the branch level. This function accepts
  * either shape and returns a normalized v2 partial record.
  *
  * TODO(2026-06-20): drop the 2-level wrap path once migration 081 has run
@@ -338,12 +349,14 @@ export type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
  */
 export function parseBranchMap(
   raw: unknown,
-): Partial<Record<SandboxProviderKind, VmMapEntry>> {
+): Partial<Record<SandboxProviderKind, SandboxRecord>> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const obj = raw as Record<string, unknown>;
 
-  // Legacy 2-level: the value at this level is itself a VmMapEntry (has vmId).
-  if (typeof obj.vmId === "string") {
+  // Legacy 2-level: the value at this level is itself a SandboxRecord (has a
+  // handle field — accept both the canonical `sandboxHandle` and the
+  // pre-rename `vmId` key while migration 091 is still in flight).
+  if (typeof obj.sandboxHandle === "string" || typeof obj.vmId === "string") {
     const entry = parseVmMapEntry(obj);
     // Coalesce legacy values: pre-removal "freestyle"/"host" → "local-docker",
     // and pre-rename "docker"/"agent-sandbox"/"desktop" → canonical kinds
@@ -357,7 +370,7 @@ export function parseBranchMap(
   // normalizing them to canonical kinds. parseVmMapEntry already normalizes
   // each entry's `sandboxProviderKind`, but doesn't add it if absent — leave
   // the field as-is when the original didn't have one.
-  const out: Partial<Record<SandboxProviderKind, VmMapEntry>> = {};
+  const out: Partial<Record<SandboxProviderKind, SandboxRecord>> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (!v || typeof v !== "object") continue;
     try {
@@ -411,11 +424,11 @@ export function normalizeLegacySandboxProviderKind(
 const normalizeProviderKind = normalizeLegacySandboxProviderKind;
 
 /**
- * Maps a user to their vm entries per (branch, sandboxProviderKind).
- * Lookup: vmMap[userId][branch][sandboxProviderKind] -> VmMapEntry
+ * Maps a user to their sandbox records per (branch, sandboxProviderKind).
+ * Lookup: vmMap[userId][branch][sandboxProviderKind] -> SandboxRecord
  *
- * Multiple threads on the same (userId, branch, kind) share one VM.
- * Cloud and local VMs can coexist on the same branch as siblings.
+ * Multiple threads on the same (userId, branch, kind) share one sandbox.
+ * Cloud and local sandboxes can coexist on the same branch as siblings.
  *
  * The schema is strict v2. Reads of legacy v1 data MUST be normalized via
  * `normalizeVmMap` (this file) BEFORE Zod validation — strict input/output
@@ -427,7 +440,7 @@ export const VmMapSchema = z.record(
   z.string().describe("userId"),
   z.record(
     z.string().describe("branch"),
-    z.record(z.string().describe("sandboxProviderKind"), VmMapEntrySchema),
+    z.record(z.string().describe("sandboxProviderKind"), SandboxRecordSchema),
   ),
 );
 
@@ -440,7 +453,7 @@ export type VmMap = z.infer<typeof VmMapSchema>;
  *
  * Tolerates two legacy on-disk shapes from rows written before migration
  * 082 actually rewrote them:
- *   1. v1 2-level layout:  vmMap[user][branch] = VmMapEntry
+ *   1. v1 2-level layout:  vmMap[user][branch] = SandboxRecord
  *   2. `runnerKind` field on entries instead of `sandboxProviderKind`
  *
  * Returns `{}` for missing / malformed input rather than throwing — readers
@@ -519,7 +532,7 @@ export const VirtualMCPEntitySchema = z.object({
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
       vmMap: VmMapSchema.optional().describe(
-        "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
+        "Per-user, per-branch sandbox mapping: vmMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
     })
     .loose()
@@ -576,7 +589,7 @@ export const VirtualMCPCreateDataSchema = z.object({
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
       vmMap: VmMapSchema.optional().describe(
-        "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
+        "Per-user, per-branch sandbox mapping: vmMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
     })
     .loose()
@@ -629,7 +642,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
       vmMap: VmMapSchema.optional().describe(
-        "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
+        "Per-user, per-branch sandbox mapping: vmMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
     })
     .loose()
