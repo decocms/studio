@@ -801,8 +801,12 @@ export class ThreadConnection {
     for await (const msg of iter) {
       last = msg;
       // Replace-by-id in place — the AI SDK reader emits the cumulative
-      // message each chunk; we mirror that into `messages`.
-      this.messages.update((curr) => upsertById(curr, msg));
+      // message each chunk; we mirror that into `messages`. `dropRedundantStubs`
+      // hides the persisted `msg_async_stub_*` row once the live message
+      // carries the same `tool-web_search` part (which happens on the
+      // first tool-input chunk), so we never render the stub alongside
+      // the real assistant turn on a reattach.
+      this.messages.update((curr) => dropRedundantStubs(upsertById(curr, msg)));
       if (this.status.get().kind !== "streaming") {
         this.status.set({ kind: "streaming" });
       }
@@ -840,6 +844,71 @@ function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {
   return next;
 }
 
+const ASYNC_STUB_ID_PREFIX = "msg_async_stub_";
+
+/**
+ * Drop `msg_async_stub_<toolCallId>` rows when another assistant message
+ * already carries the matching `tool-web_search` part.
+ *
+ * The stub is inserted by the server at `markPolling` time (see
+ * `apps/mesh/src/storage/async-research-jobs.ts`) so a browser refresh
+ * during the long polling window has something to seed
+ * `readUIMessageStream` against — without it, the SDK throws
+ * "No tool invocation found" when the eventual `tool-output-available`
+ * chunk arrives.
+ *
+ * The collateral was that on a proxy-driven SSE reattach (customer's
+ * infra cuts every ~2 min), the client ends up with TWO assistant
+ * messages for the same turn: the persisted stub (refetched from the
+ * DB after the cut) and the in-memory AI-SDK message built from the
+ * first connection's chunks. The fold writes to the in-memory one,
+ * the stub stays frozen on its `input-available` state, and the UI
+ * shows what looks like a stuck loading skeleton next to the actual
+ * (correct) content. Refreshing the page hides this because
+ * `markCompleted` has already deleted the stub by then.
+ *
+ * Once the live assistant row carries the same `tool-web_search`
+ * part, the stub is redundant. Filtering it out at the
+ * write-to-`messages` boundary keeps it from ever rendering as a
+ * phantom turn.
+ */
+export function dropRedundantStubs(messages: UIMessage[]): UIMessage[] {
+  let hasStub = false;
+  for (const m of messages) {
+    if (m.id.startsWith(ASYNC_STUB_ID_PREFIX)) {
+      hasStub = true;
+      break;
+    }
+  }
+  if (!hasStub) return messages;
+
+  // Tool-call ids covered by NON-stub assistant messages. A stub whose
+  // suffix matches one of these is redundant.
+  const covered = new Set<string>();
+  for (const m of messages) {
+    if (m.role !== "assistant") continue;
+    if (m.id.startsWith(ASYNC_STUB_ID_PREFIX)) continue;
+    for (const p of m.parts) {
+      if (
+        p &&
+        typeof p === "object" &&
+        "type" in p &&
+        (p as { type: string }).type === "tool-web_search" &&
+        "toolCallId" in p
+      ) {
+        covered.add((p as { toolCallId: string }).toolCallId);
+      }
+    }
+  }
+  if (covered.size === 0) return messages;
+
+  return messages.filter((m) => {
+    if (!m.id.startsWith(ASYNC_STUB_ID_PREFIX)) return true;
+    const toolCallId = m.id.slice(ASYNC_STUB_ID_PREFIX.length);
+    return !covered.has(toolCallId);
+  });
+}
+
 /**
  * Merge `incoming` rows into `prev` (upsert by id), then sort the result
  * ascending by `(created_at, id)`. The id tiebreaker mirrors
@@ -864,7 +933,7 @@ export function mergeAndSort(
     if (ta !== tb) return ta - tb;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
-  return merged;
+  return dropRedundantStubs(merged);
 }
 
 /**
