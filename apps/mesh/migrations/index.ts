@@ -81,6 +81,7 @@ import * as migration079striplegacyfreestylevmmapentries from "./079-strip-legac
 import * as migration080asyncresearchjobs from "./080-async-research-jobs.ts";
 import * as migration081asyncresearchjobsresultcontent from "./081-async-research-jobs-result-content.ts";
 import * as migration082secrets from "./082-secrets.ts";
+import * as migration083orgfileconfigs from "./083-org-file-configs.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -179,6 +180,7 @@ const migrations: Record<string, Migration> = {
   "081-async-research-jobs-result-content":
     migration081asyncresearchjobsresultcontent,
   "082-secrets": migration082secrets,
+  "083-org-file-configs": migration083orgfileconfigs,
 };
 
 export default migrations;

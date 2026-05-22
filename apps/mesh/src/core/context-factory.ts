@@ -431,6 +431,7 @@ import {
 import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
+import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { ModelListCache } from "@/ai-providers/model-list-cache";
@@ -1019,6 +1020,7 @@ export async function createMeshContextFactory(
     virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(config.db, vault),
     secrets: new SecretStorage(config.db, vault),
+    orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     automations: createAutomationsStorage(config.db),
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),

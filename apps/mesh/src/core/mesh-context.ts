@@ -264,6 +264,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
+import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { FireAutomationOutcome } from "../automations/dbos-workflow";
@@ -293,6 +294,7 @@ export interface MeshStorage {
   tags: TagStorage;
   aiProviderKeys: AIProviderKeyStorage;
   secrets: SecretStorage;
+  orgFileConfigs: OrgFileConfigStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   automations: AutomationsStorage;
   triggerCallbackTokens: TriggerCallbackTokenStorage;
