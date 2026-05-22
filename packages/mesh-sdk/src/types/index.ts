@@ -38,6 +38,8 @@ export {
   parseVmMapEntry,
   parseBranchMap,
   normalizeVmMap,
+  normalizeLegacySandboxProviderKind,
+  type SandboxProviderKind,
 } from "./virtual-mcp";
 
 export {

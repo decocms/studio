@@ -214,9 +214,10 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
  * A single vm entry in vmMap — the vmId plus the preview URL the UI renders.
  *
  * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
- *  - docker: daemon is reached via the mesh proxy at `/api/sandbox/<vmId>/_daemon/*`
- *  - agent-sandbox: daemon is reached via the mesh proxy (same transport as docker);
+ *  - local-docker: daemon is reached via the mesh proxy at `/api/sandbox/<vmId>/_daemon/*`
+ *  - cluster: daemon is reached via the mesh proxy (same transport as local-docker);
  *    preview URL is the per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
+ *  - user-desktop: daemon is reached directly via the user's link binary.
  *
  * `previewUrl` is nullable: blank / tool sandboxes (no `workload`, no dev
  * server) have nothing to render. UI code MUST check before constructing
@@ -244,6 +245,8 @@ export const VmMapEntrySchema = z.object({
     // normalize old kind names ("docker", "agent-sandbox", "desktop") to the
     // canonical ones. "freestyle"/"host" are pre-removal kinds still
     // tolerated on read for backward compatibility with very old rows.
+    // TODO(task-15): narrow back to canonical 3 values once migration 091 has
+    // run everywhere and rows containing legacy kinds are gone.
     .enum([
       "local-docker",
       "cluster",
@@ -320,7 +323,7 @@ export function parseVmMapEntry(raw: unknown): VmMapEntry {
 }
 
 /** The active sandbox provider kinds (excludes legacy "freestyle", "host"). */
-type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
+export type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
 
 /**
  * Tolerant reader at the branch-map level.
@@ -372,12 +375,16 @@ export function parseBranchMap(
 }
 
 /**
- * Normalize a raw sandbox provider kind value (from JSON / map keys) into the
- * canonical kind set. Returns `null` for unknown / undefined inputs so
- * callers can fall back or skip.
+ * Normalize a raw sandbox provider kind value (from JSON / map keys / RPC
+ * input) into the canonical kind set. Returns `null` for unknown / undefined
+ * / null inputs so callers can fall back or skip.
+ *
+ * Exported for reuse by input-schema transforms and mesh-side coalescers
+ * (vm-events-handler, vm/stop) — keeps the legacy → canonical mapping in one
+ * place. Pure: no Zod dependency.
  */
-function normalizeProviderKind(
-  raw: string | undefined,
+export function normalizeLegacySandboxProviderKind(
+  raw: string | null | undefined,
 ): SandboxProviderKind | null {
   switch (raw) {
     case "local-docker":
@@ -398,6 +405,10 @@ function normalizeProviderKind(
       return null;
   }
 }
+
+// Internal alias kept for the existing call sites in this file. Prefer the
+// exported `normalizeLegacySandboxProviderKind` from new code.
+const normalizeProviderKind = normalizeLegacySandboxProviderKind;
 
 /**
  * Maps a user to their vm entries per (branch, sandboxProviderKind).

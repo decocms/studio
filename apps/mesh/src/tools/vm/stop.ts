@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import { normalizeLegacySandboxProviderKind } from "@decocms/mesh-sdk";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
 import { getSandboxProviderByKind } from "../../sandbox/lifecycle";
@@ -39,11 +40,13 @@ export const VM_DELETE = defineTool({
   }),
 
   handler: async (input, ctx) => {
-    // Legacy "host" value can sneak in from pre-removal callers; coalesce to
-    // the dev-mode replacement so the stop path doesn't crash.
-    const rawKind = input.sandboxProviderKind as string;
+    // Legacy "host"/"freestyle" values and pre-rename kinds can sneak in
+    // from older callers; coalesce to canonical values so the stop path
+    // doesn't crash. The schema enum already constrains the input, but the
+    // normalizer is the single source of truth for legacy → canonical.
     const kind: SandboxProviderKind =
-      rawKind === "host" ? "user-desktop" : (rawKind as SandboxProviderKind);
+      normalizeLegacySandboxProviderKind(input.sandboxProviderKind) ??
+      input.sandboxProviderKind;
 
     let vmEntry: Awaited<ReturnType<typeof requireVmEntry>>;
     try {

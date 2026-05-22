@@ -126,6 +126,8 @@ export {
   parseVmMapEntry,
   parseBranchMap,
   normalizeVmMap,
+  normalizeLegacySandboxProviderKind,
+  type SandboxProviderKind,
   type GithubRepo,
   // Decopilot event types
   THREAD_STATUSES,
