@@ -31,6 +31,11 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
       NATS_URL: nats://localhost:4222
+      # Better Auth's per-endpoint signup limiter kicks in after a handful of
+      # /sign-up/email POSTs in a short window. Our e2e specs do multiple
+      # signups per run; without this they get 429s and only pass on retry,
+      # which masks real regressions as "flaky".
+      DISABLE_RATE_LIMIT: "true"
 
     steps:
       - name: Checkout repository
