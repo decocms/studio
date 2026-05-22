@@ -23,7 +23,7 @@ import { Hono } from "hono";
 import type { MeshContext } from "@/core/mesh-context";
 import type { CancelBroadcast } from "@/api/routes/decopilot/cancel-broadcast";
 import {
-  dispatchRun,
+  dispatchRunAndWait,
   type DispatchRunInput,
 } from "@/api/routes/decopilot/dispatch-run";
 import { resolvePerRequestModels } from "@/api/routes/decopilot/routes";
@@ -178,10 +178,20 @@ export function createPresetTaskRoutes(deps: PresetTaskRouteDeps) {
       taskId,
     };
 
-    await dispatchRun(input, mesh, {
+    // Fire-and-forget: kicks off the agent loop in the background. The FE
+    // attaches via SSE on the new thread to receive the stream. We don't
+    // block the HTTP response on agent completion — and we don't route this
+    // through the dispatch queue (no idempotency/recovery) for now since
+    // preset starts are user-initiated and naturally unique per click.
+    void dispatchRunAndWait(input, mesh, {
       runRegistry: deps.runRegistry,
       streamBuffer: deps.streamBuffer,
       cancelBroadcast: deps.cancelBroadcast,
+    }).catch((err) => {
+      console.error(
+        `[preset-tasks] dispatchRunAndWait("${presetId}") failed`,
+        err,
+      );
     });
 
     // Auto-pin a tile on the user's home board. The FE's GET /home-board

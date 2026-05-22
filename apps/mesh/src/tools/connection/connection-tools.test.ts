@@ -96,6 +96,7 @@ describe("Connection Tools", () => {
         registry: null as never,
         brandContext: null as never,
         organizationDomains: null as never,
+        presetTasks: null as never,
       },
       vault,
       authInstance: null as never,

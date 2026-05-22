@@ -437,7 +437,7 @@ export function ChatInput({
             <form
               onSubmit={handleSubmit}
               className={cn(
-                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-background dark:bg-muted card-shadow",
+                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-card card-shadow",
               )}
             >
               <FileDropZone

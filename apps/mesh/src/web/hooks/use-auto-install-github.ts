@@ -10,11 +10,11 @@ import {
   useProjectContext,
   type ConnectionEntity,
 } from "@decocms/mesh-sdk";
-import { authenticateMcp, isConnectionAuthenticated } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
 import { useRegistryApp } from "@/web/hooks/use-registry-app";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
-import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
+import { invalidateVirtualMcpQueries, KEYS } from "@/web/lib/query-keys";
+import { runOAuthHandshake } from "@/web/hooks/use-oauth-handshake";
 
 type Status = "idle" | "installing" | "authenticating" | "ready" | "error";
 
@@ -68,7 +68,6 @@ export function useAutoInstallGitHub(opts: {
     if (!registryItem || !session?.user?.id || !org) return;
 
     try {
-      // Step 1: Create connection from registry
       setStatus("installing");
       setError(null);
 
@@ -78,87 +77,34 @@ export function useAutoInstallGitHub(opts: {
         session.user.id,
         { remoteIndex: 0 },
       );
-
-      const remoteUrl = connectionData.connection_url;
-      if (!remoteUrl) {
+      if (!connectionData.connection_url) {
         throw new Error("Registry item is missing a remote URL for mcp-github");
       }
-
       const { id } = await actions.create.mutateAsync(connectionData);
 
-      // Step 2: Check if OAuth is needed
       setStatus("authenticating");
-      const mcpProxyUrl = new URL(
-        `/api/${org.slug}/mcp/${id}`,
-        window.location.origin,
-      );
-      const authStatus = await isConnectionAuthenticated({
-        url: mcpProxyUrl.href,
-        token: null,
-        orgId: org.id,
+      const result = await runOAuthHandshake({
+        connectionId: id,
+        org: { id: org.id, slug: org.slug },
+        onOAuthFailure: async (cid) => {
+          await actions.delete.mutateAsync(cid);
+        },
+        onPersistFallback: async (cid, token) => {
+          await actions.update.mutateAsync({
+            id: cid,
+            data: { connection_token: token },
+          });
+        },
       });
+      if (!result.ok) throw new Error(result.error);
 
-      if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-        // Step 3: Run OAuth flow
-        const {
-          token,
-          tokenInfo,
-          error: oauthError,
-        } = await authenticateMcp({
-          connectionId: id,
-          orgSlug: org.slug,
-          scope: "offline_access",
-        });
-
-        if (oauthError || !token) {
-          // OAuth failed or was cancelled — clean up the connection
-          try {
-            await actions.delete.mutateAsync(id);
-          } catch {
-            // Best-effort cleanup
-          }
-          throw new Error(oauthError ?? "No token received from GitHub");
-        }
-
-        // Step 4: Persist OAuth token
-        if (tokenInfo) {
-          try {
-            const response = await fetch(
-              `/api/${org.slug}/connections/${id}/oauth-token`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                  accessToken: tokenInfo.accessToken,
-                  refreshToken: tokenInfo.refreshToken,
-                  expiresIn: tokenInfo.expiresIn,
-                  scope: tokenInfo.scope,
-                  clientId: tokenInfo.clientId,
-                  clientSecret: tokenInfo.clientSecret,
-                  tokenEndpoint: tokenInfo.tokenEndpoint,
-                }),
-              },
-            );
-            if (!response.ok) {
-              await actions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            }
-          } catch {
-            await actions.update.mutateAsync({
-              id,
-              data: { connection_token: token },
-            });
-          }
-        }
-      }
-
-      // Step 5: Invalidate connection queries so picker re-renders
+      // Invalidate connection queries so picker re-renders.
+      // Also nudge the preset-tasks query — the "Install GitHub" card
+      // resolves off the existence of an mcp-github connection, so the
+      // home panel needs to flip to the next phase regardless of which
+      // surface triggered the install.
       invalidateVirtualMcpQueries(queryClient, org.id);
+      queryClient.invalidateQueries({ queryKey: KEYS.presetTasks(org.slug) });
 
       setConnection(connectionData as ConnectionEntity);
       setStatus("ready");

@@ -42,6 +42,11 @@ import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
 import {
+  DownstreamTokenStorage,
+  type DownstreamTokenData,
+} from "../storage/downstream-token";
+import { resolveOriginTokenEndpoint } from "../oauth/resolve-token-endpoint";
+import {
   createLogDeprecatedRoute,
   logDeprecatedRoute,
 } from "./middleware/log-deprecated-route";
@@ -131,8 +136,13 @@ import {
 } from "./routes/decopilot/run-config";
 import { getPodId } from "../core/pod-identity";
 import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
+import { PresetTaskRegistry } from "../preset-tasks";
+import { setBrandContextWorkflowDeps } from "../preset-tasks/brand-context-workflow";
+import { PRESET_TASK_DEFINITIONS } from "../preset-tasks/definitions";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
+import { HomeBoardStore } from "../storage/home-board";
+import { PresetTaskStore } from "../storage/preset-tasks";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 
@@ -423,16 +433,47 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   // For token endpoint, we may need to rewrite the 'resource' parameter in the body
   // (same reason as authorize: auth servers validate it's their actual endpoint)
   let requestBody: BodyInit | undefined;
+  // Capture client_id/client_secret from the token request so we can persist
+  // them server-side alongside the resulting access/refresh tokens. The DCR
+  // registration that minted these credentials happened in a prior request,
+  // so the body of /token is the only place we can read them on the proxy.
+  let capturedClientId: string | null = null;
+  let capturedClientSecret: string | null = null;
   if (c.req.method !== "GET" && c.req.method !== "HEAD") {
     if (
       endpoint === "token" &&
       contentType?.includes("application/x-www-form-urlencoded")
     ) {
+      // Per RFC 6749 §2.3.1, confidential clients may send credentials via
+      // HTTP Basic auth instead of the form body. Capture from the header
+      // first so the body parse below can still override when a client sends
+      // both — without this fallback, Basic-auth clients persist with a
+      // null clientId and become non-refreshable.
+      if (authorization?.toLowerCase().startsWith("basic ")) {
+        try {
+          const decoded = atob(authorization.slice(6).trim());
+          const colonIdx = decoded.indexOf(":");
+          if (colonIdx !== -1) {
+            // RFC 6749 §2.3.1: the credentials are form-urlencoded before
+            // being base64'd as the Basic value.
+            const id = decodeURIComponent(decoded.slice(0, colonIdx));
+            const secret = decodeURIComponent(decoded.slice(colonIdx + 1));
+            capturedClientId = id || null;
+            capturedClientSecret = secret || null;
+          }
+        } catch {
+          // Malformed Basic header — let origin reject the request.
+        }
+      }
       // Parse form body and rewrite resource if present
       const formData = await c.req.formData();
       if (formData.has("resource")) {
         formData.set("resource", connection.connection_url);
       }
+      const cidRaw = formData.get("client_id");
+      const csRaw = formData.get("client_secret");
+      if (typeof cidRaw === "string" && cidRaw) capturedClientId = cidRaw;
+      if (typeof csRaw === "string" && csRaw) capturedClientSecret = csRaw;
       // Convert back to URLSearchParams for form-urlencoded
       const params = new URLSearchParams();
       for (const [key, value] of formData.entries()) {
@@ -523,6 +564,62 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     if (!excludedHeaders.includes(key.toLowerCase())) {
       responseHeaders.set(key, value);
     }
+  }
+
+  // For successful token exchanges (initial code-for-token and refresh_token
+  // grants), persist the token server-side immediately. This decouples the
+  // OAuth flow from the browser's session cookie state — the client used to
+  // POST the token back to /api/:org/connections/:id/oauth-token with
+  // cookie auth, which 401s when the popup's redirect chain leaves the
+  // parent's session in an inconsistent state.
+  if (endpoint === "token" && response.ok) {
+    const bodyText = await response.text();
+    try {
+      const parsed = JSON.parse(bodyText) as {
+        access_token?: unknown;
+        refresh_token?: unknown;
+        expires_in?: unknown;
+        scope?: unknown;
+      };
+      if (typeof parsed.access_token === "string" && parsed.access_token) {
+        const expiresAt =
+          typeof parsed.expires_in === "number"
+            ? new Date(Date.now() + parsed.expires_in * 1000)
+            : null;
+        // Prefer the origin's real token endpoint so future refreshes don't
+        // self-loop through the proxy.
+        let tokenEndpoint: string | null = null;
+        try {
+          tokenEndpoint =
+            (await resolveOriginTokenEndpoint(connection.connection_url)) ??
+            originEndpointUrl;
+        } catch {
+          tokenEndpoint = originEndpointUrl;
+        }
+        const tokenData: DownstreamTokenData = {
+          connectionId,
+          accessToken: parsed.access_token,
+          refreshToken:
+            typeof parsed.refresh_token === "string"
+              ? parsed.refresh_token
+              : null,
+          scope: typeof parsed.scope === "string" ? parsed.scope : null,
+          expiresAt,
+          clientId: capturedClientId,
+          clientSecret: capturedClientSecret,
+          tokenEndpoint,
+        };
+        const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
+        await tokenStorage.upsert(tokenData);
+      }
+    } catch (err) {
+      console.error("[oauth-proxy] failed to persist downstream token:", err);
+    }
+    return new Response(bodyText, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
   }
 
   return new Response(response.body, {
@@ -969,6 +1066,11 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.use("*", async (c, next) => {
     await next();
+    // Org-scoped /files/* serves user content (HTML pages written by the
+    // web-developer agent, uploaded images, etc.) that we deliberately
+    // iframe back into the app. Same-origin only — auth middleware still
+    // gates access — and consumers are expected to sandbox the iframe.
+    if (c.req.path.includes("/files/")) return;
     c.header("X-Frame-Options", "DENY");
     c.header("Content-Security-Policy", "frame-ancestors 'none'");
   });
@@ -1678,6 +1780,24 @@ export async function createApp(options: CreateAppOptions = {}) {
   legacyKVRoutes.route("/", createKVRoutes({ kvStorage }));
   app.route("/api", legacyKVRoutes);
 
+  // Preset Tasks — typed wrapper over kvStorage + registry of definitions
+  // (visibility predicates, ids). Routes mounted under `/api/:org/preset-tasks`
+  // by createOrgScopedApi.
+  const presetTaskStore = new PresetTaskStore(kvStorage);
+  const presetTaskRegistry = new PresetTaskRegistry();
+  for (const def of PRESET_TASK_DEFINITIONS) {
+    presetTaskRegistry.register(def);
+  }
+
+  // Home board — per-user tile layout, BE-owned. Auto-pinned by the
+  // preset-task `/start` route; FE reads/mutates via /api/:org/home-board.
+  const homeBoardStore = new HomeBoardStore(kvStorage);
+
+  // Wire deps for the brand-context DBOS workflow. Safe to call before
+  // DBOS.launch() — just stashes a module-level pointer. The workflow body
+  // is registered at import time so recovery replay works after a crash.
+  setBrandContextWorkflowDeps({ presetTaskStore });
+
   // Public Events endpoint — legacy mount with deprecation log. New mount
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
   app.use("/org/:organizationId/events/:type", logDeprecatedRoute);
@@ -1767,6 +1887,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   // PR removes them after the deprecation window.
   const orgScopedApi = createOrgScopedApi({
     kvStorage,
+    homeBoardStore,
+    presetTaskStore,
+    presetTaskRegistry,
+    runRegistry,
+    streamBuffer,
+    cancelBroadcast,
     tokenStorage: triggerCallbackTokenStorage,
     automationEventDispatcher,
     mountDevAssets: usesLocalObjectStorage(),

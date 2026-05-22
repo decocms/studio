@@ -167,22 +167,15 @@ async function tryResolveTier(ctx: MeshContext, tier: SimpleModeTier) {
 }
 
 /**
- * Resolves a tier (defaulting to "smart") to a full ModelsConfig.
+ * Resolves a tier (defaulting to "smart") to a full ModelsConfig via the
+ * shared resolveTier(), which falls back to curated provider defaults when
+ * the org's tier slot is unset. Also resolves the "image" and "web_research"
+ * tiers — when present they enable the generate_image and web_search
+ * built-in tools (registration is conditional in built-in-tools/index.ts).
  *
- * Two paths:
- *
- * - **Decopilot:** goes through `resolveTier()`, which consults the org's
- *   AI provider keys + simple-mode slot configuration. Also resolves
- *   `image` and `web_research` tiers — when present they enable the
- *   `generate_image` and `web_search` built-in tools.
- *
- * - **Desktop-CLI harnesses (`claude-code`, `codex`):** the model lives
- *   on the user's desktop, not in any AI provider key. We synthesize the
- *   ModelsConfig from the agent's hardcoded tier map (`agent-tiers.ts`).
- *   The `credentialId` is a sentinel — the harness reads `models.thinking.id`
- *   to know which CLI sub-command to invoke and ignores the credential.
- *   `image` / `web_research` are not supported in this path; the
- *   corresponding built-in tools stay unregistered.
+ * Exported so server-initiated dispatch paths (e.g. preset-task /start)
+ * can compose a ModelsConfig the same way HTTP chat does, instead of
+ * duplicating the tier-resolution + tryResolve fallback logic.
  */
 export async function resolvePerRequestModels(
   ctx: MeshContext,

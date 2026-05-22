@@ -8,6 +8,7 @@
  *   - Expanded-from-chat: <toolName> (from task.metadata.expanded_tools)
  *   - Pinned view: "app:<connectionId>:<toolName>" (from metadata.ui.pinnedViews)
  *   - Ephemeral automation: "automation:<id>"
+ *   - Ephemeral web page: "web-page:<slug>" (web-developer agent preview)
  *   - "0" = closed sentinel (not an actual tab id)
  *
  * The "settings" tab bundles what used to be separate instructions,
@@ -65,6 +66,28 @@ export function parsePinnedViewTabId(
   const toolName = rest.slice(sep + 1);
   if (!connectionId || !toolName) return null;
   return { connectionId, toolName };
+}
+
+export interface WebPageTabParsed {
+  slug: string;
+}
+
+/**
+ * Composite tab id for the web-developer's live HTML preview. Carries the
+ * slug so the panel can pick the matching `write_html_page` tool call when
+ * the agent is iterating on multiple pages within a chat.
+ */
+export function formatWebPageTabId(slug: string): string {
+  return `web-page:${slug}`;
+}
+
+export function parseWebPageTabId(
+  tabId: string | undefined,
+): WebPageTabParsed | null {
+  if (!tabId || !tabId.startsWith("web-page:")) return null;
+  const slug = tabId.slice("web-page:".length);
+  if (!slug) return null;
+  return { slug };
 }
 
 export const FIXED_SYSTEM_TABS = [
