@@ -421,7 +421,7 @@ export function PreviewContent() {
     vmUserStop.mark(virtualMcpId, branchToStop);
     try {
       await mcpClient.callTool({
-        name: "VM_DELETE",
+        name: "SANDBOX_DELETE",
         arguments: {
           virtualMcpId,
           branch: branchToStop,

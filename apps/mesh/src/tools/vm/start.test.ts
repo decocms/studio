@@ -11,11 +11,11 @@ import type {
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 
-// Pin runner kind — the dev env flips STUDIO_SANDBOX_RUNNER and VM_START
+// Pin runner kind — the dev env flips STUDIO_SANDBOX_RUNNER and SANDBOX_START
 // reads it at handler time.
 process.env.STUDIO_SANDBOX_RUNNER = "local-docker";
 
-// Mock runner BEFORE importing VM_START — handler is runner-agnostic.
+// Mock runner BEFORE importing SANDBOX_START — handler is runner-agnostic.
 
 const mockEnsure = mock(
   async (_id: SandboxId, _opts?: EnsureOptions): Promise<Sandbox> => ({
@@ -63,7 +63,7 @@ mock.module("../../sandbox/lifecycle", () => ({
   ) => (kind === "local-docker" ? mockDockerRunner : mockDockerRunner),
   // The unified resolver in `resolve-provider.ts` calls
   // `buildDesktopProvider` directly (no ctx side-effects), so a mock
-  // is needed for VM_START's desktop path to construct the expected
+  // is needed for SANDBOX_START's desktop path to construct the expected
   // runner under test.
   buildDesktopProvider: async () => mockDesktopRunner,
   getSharedSandboxProviderIfInit: () => mockDockerRunner,
@@ -153,7 +153,7 @@ mock.module("@/oauth/refresh-access-token", () => ({
   refreshAccessToken: mockRefreshAccessToken,
 }));
 
-const { VM_START } = await import("./start");
+const { SANDBOX_START } = await import("./start");
 
 const BRANCH = "feat/example";
 const ORG_ID = "org_1";
@@ -270,7 +270,7 @@ function makeCtx(overrides: {
   } as unknown as MeshContext;
 }
 
-describe("VM_START", () => {
+describe("SANDBOX_START", () => {
   beforeEach(() => {
     mockEnsure.mockReset();
     mockDockerDelete.mockReset();
@@ -314,7 +314,7 @@ describe("VM_START", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
-    await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
 
     expect(mockTokenGet).toHaveBeenCalledWith("conn_github_1");
     expect(mockEnsure).toHaveBeenCalledTimes(1);
@@ -340,7 +340,7 @@ describe("VM_START", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
-    const result = await VM_START.handler(
+    const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
       ctx,
     );
@@ -385,7 +385,7 @@ describe("VM_START", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
-    await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -417,7 +417,7 @@ describe("VM_START", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
-    await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
 
     // Find the sandboxMap update (detectRepoRuntime may write a runtime update too).
     const sandboxMapCall = (updateSpy.mock.calls as unknown[][]).find(
@@ -456,7 +456,7 @@ describe("VM_START", () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
 
-    const result = await VM_START.handler(
+    const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
       ctx,
     );
@@ -470,7 +470,7 @@ describe("VM_START", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
-    const result = await VM_START.handler({ virtualMcpId: VMCP_ID }, ctx);
+    const result = await SANDBOX_START.handler({ virtualMcpId: VMCP_ID }, ctx);
 
     expect(result.branch.startsWith("deco/")).toBe(true);
     const [id] = mockEnsure.mock.calls[0]! as [SandboxId];
@@ -491,7 +491,7 @@ describe("VM_START", () => {
     const ctx = makeCtx({ virtualMcp });
 
     await expect(
-      VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
+      SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
     ).rejects.toThrow("runner blew up");
   });
 
@@ -499,7 +499,10 @@ describe("VM_START", () => {
     const ctx = makeCtx({ virtualMcp: null });
 
     await expect(
-      VM_START.handler({ virtualMcpId: "vmcp_missing", branch: BRANCH }, ctx),
+      SANDBOX_START.handler(
+        { virtualMcpId: "vmcp_missing", branch: BRANCH },
+        ctx,
+      ),
     ).rejects.toThrow("Virtual MCP not found");
   });
 
@@ -508,7 +511,7 @@ describe("VM_START", () => {
     const ctx = makeCtx({ orgId: ORG_ID, virtualMcp });
 
     await expect(
-      VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
+      SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
     ).rejects.toThrow("Virtual MCP not found");
   });
 
@@ -523,7 +526,7 @@ describe("VM_START", () => {
     const ctx = makeCtx({ virtualMcp });
 
     await expect(
-      VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
+      SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
     ).rejects.toThrow("No GitHub token found");
   });
 
@@ -553,7 +556,10 @@ describe("VM_START", () => {
     const virtualMcp = makeVirtualMcp("org_1", BASE_METADATA);
     const ctx = makeCtx({ virtualMcp });
 
-    await VM_START.handler({ virtualMcpId: "vmcp_1", branch: BRANCH }, ctx);
+    await SANDBOX_START.handler(
+      { virtualMcpId: "vmcp_1", branch: BRANCH },
+      ctx,
+    );
 
     expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
     expect(mockTokenUpsert).toHaveBeenCalledTimes(1);
@@ -601,7 +607,7 @@ describe("VM_START", () => {
     const ctx = makeCtx({ virtualMcp, linkRegistry });
 
     // Link is online → kind resolves to desktop; no docker entry for desktop → provision a new one
-    const result = await VM_START.handler(
+    const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
       ctx,
     );
@@ -630,7 +636,7 @@ describe("VM_START", () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
 
-    await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
 
     expect(mockAgentSandboxDelete).not.toHaveBeenCalled();
     expect(mockDockerDelete).not.toHaveBeenCalled();
@@ -650,7 +656,7 @@ describe("VM_START", () => {
     createdAt: new Date().toISOString(),
   };
 
-  it("VM_START with no sandboxProviderKind picks desktop when the link is online", async () => {
+  it("SANDBOX_START with no sandboxProviderKind picks desktop when the link is online", async () => {
     const linkRegistry: LinkRegistry = {
       get: async (_userId: string) => STUB_LINK,
       put: async () => {},
@@ -660,7 +666,7 @@ describe("VM_START", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
 
-    const result = await VM_START.handler(
+    const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
       ctx,
     );
@@ -676,7 +682,7 @@ describe("VM_START", () => {
     expect(stored?.sandboxProviderKind).toBe("user-desktop");
   });
 
-  it("VM_START with no sandboxProviderKind picks env kind when no link", async () => {
+  it("SANDBOX_START with no sandboxProviderKind picks env kind when no link", async () => {
     // STUDIO_SANDBOX_RUNNER is "local-docker" at module load time (top of file)
     const linkRegistry: LinkRegistry = {
       get: async (_userId: string) => null,
@@ -687,7 +693,7 @@ describe("VM_START", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
 
-    const result = await VM_START.handler(
+    const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
       ctx,
     );
@@ -703,7 +709,7 @@ describe("VM_START", () => {
     expect(stored?.sandboxProviderKind).toBe("local-docker");
   });
 
-  it("VM_START with explicit sandboxProviderKind ignores defaults", async () => {
+  it("SANDBOX_START with explicit sandboxProviderKind ignores defaults", async () => {
     // Link is online, env is "local-docker" — but explicit "local-docker" must win (and user-desktop would also be overrideable).
     const linkRegistry: LinkRegistry = {
       get: async (_userId: string) => STUB_LINK,
@@ -714,7 +720,7 @@ describe("VM_START", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
 
-    const result = await VM_START.handler(
+    const result = await SANDBOX_START.handler(
       {
         virtualMcpId: VMCP_ID,
         branch: BRANCH,
@@ -761,7 +767,7 @@ describe("VM_START", () => {
     const ctx = makeCtx({ virtualMcp });
 
     await expect(
-      VM_START.handler({ virtualMcpId: "vmcp_1", branch: BRANCH }, ctx),
+      SANDBOX_START.handler({ virtualMcpId: "vmcp_1", branch: BRANCH }, ctx),
     ).rejects.toThrow(
       "GitHub token refresh failed — reconnect the mcp-github integration.",
     );

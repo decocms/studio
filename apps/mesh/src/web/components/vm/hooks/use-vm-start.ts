@@ -14,7 +14,7 @@ import {
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { callVmTool } from "./call-vm-tool";
 
-const VM_START_MUTATION_KEY = ["VM_START"] as const;
+const VM_START_MUTATION_KEY = ["SANDBOX_START"] as const;
 
 interface MinimalMcpClient {
   callTool: (params: {
@@ -76,7 +76,7 @@ export function useVmStart(client: MinimalMcpClient) {
       const promise = (async () => {
         const result = await callVmTool(
           client,
-          "VM_START",
+          "SANDBOX_START",
           args as unknown as Record<string, unknown>,
         );
         return result.structuredContent as VmStartResult;

@@ -12,8 +12,8 @@ import { requireVmEntry } from "./helpers";
 import { getSandboxProviderByKind } from "../../sandbox/lifecycle";
 import { removeSandboxMapEntry } from "./vm-map";
 
-export const VM_DELETE = defineTool({
-  name: "VM_DELETE",
+export const SANDBOX_DELETE = defineTool({
+  name: "SANDBOX_DELETE",
   description: "Delete a sandbox.",
   annotations: {
     title: "Delete VM Preview",
@@ -83,7 +83,7 @@ export const VM_DELETE = defineTool({
       .delete(entry.sandboxHandle)
       .catch((err) =>
         console.error(
-          `[VM_DELETE] ${kind} ${entry.sandboxHandle}: ${
+          `[SANDBOX_DELETE] ${kind} ${entry.sandboxHandle}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         ),

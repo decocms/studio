@@ -54,7 +54,7 @@ export async function resolveAndPushEnv({
         err instanceof SecretAccessDeniedError
       ) {
         console.warn(
-          `[VM_START] skipping env ${entry.key}: ${err.message}. Re-link or recreate the secret to restore.`,
+          `[SANDBOX_START] skipping env ${entry.key}: ${err.message}. Re-link or recreate the secret to restore.`,
         );
         continue;
       }
@@ -72,7 +72,7 @@ export async function resolveAndPushEnv({
   if (!res.ok) {
     const body = await res.text().catch(() => res.statusText);
     console.warn(
-      `[VM_START] daemon rejected env patch (${res.status}): ${body}`,
+      `[SANDBOX_START] daemon rejected env patch (${res.status}): ${body}`,
     );
   }
 }

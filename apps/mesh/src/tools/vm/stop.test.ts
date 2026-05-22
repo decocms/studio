@@ -6,7 +6,7 @@ import type {
   SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 
-// Mock per-kind runner lookup BEFORE importing VM_DELETE.
+// Mock per-kind runner lookup BEFORE importing SANDBOX_DELETE.
 const mockDelete = mock(async (_handle: string): Promise<void> => {});
 const lastRequestedKind: { value: string | null } = { value: null };
 
@@ -45,7 +45,7 @@ mock.module("../../sandbox/lifecycle", () => ({
   asDockerRunner: () => null,
 }));
 
-const { VM_DELETE } = await import("./stop");
+const { SANDBOX_DELETE } = await import("./stop");
 
 const BRANCH = "feat/example";
 
@@ -157,7 +157,7 @@ function makeCtx(overrides: {
   } as unknown as MeshContext;
 }
 
-describe("VM_DELETE", () => {
+describe("SANDBOX_DELETE", () => {
   beforeEach(() => {
     mockDelete.mockReset();
     mockDelete.mockImplementation(async () => {});
@@ -177,7 +177,7 @@ describe("VM_DELETE", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
-    const result = await VM_DELETE.handler(
+    const result = await SANDBOX_DELETE.handler(
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
@@ -211,7 +211,7 @@ describe("VM_DELETE", () => {
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const ctx = makeCtx({ virtualMcp });
 
-    await VM_DELETE.handler(
+    await SANDBOX_DELETE.handler(
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
@@ -242,7 +242,7 @@ describe("VM_DELETE", () => {
       const virtualMcp = makeVirtualMcp("org_1", metadata);
       const ctx = makeCtx({ virtualMcp });
 
-      await VM_DELETE.handler(
+      await SANDBOX_DELETE.handler(
         {
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
@@ -277,7 +277,7 @@ describe("VM_DELETE", () => {
 
     // Cast through unknown to simulate a legacy caller sending "host" before
     // the enum was updated.
-    await VM_DELETE.handler(
+    await SANDBOX_DELETE.handler(
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
@@ -303,7 +303,7 @@ describe("VM_DELETE", () => {
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
-    const result = await VM_DELETE.handler(
+    const result = await SANDBOX_DELETE.handler(
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
@@ -320,7 +320,7 @@ describe("VM_DELETE", () => {
   it("returns success when virtualMcp not found (null from findById)", async () => {
     const ctx = makeCtx({ virtualMcp: null });
 
-    const result = await VM_DELETE.handler(
+    const result = await SANDBOX_DELETE.handler(
       {
         virtualMcpId: "vmcp_missing",
         branch: BRANCH,
@@ -342,7 +342,7 @@ describe("VM_DELETE", () => {
       undefined;
 
     await expect(
-      VM_DELETE.handler(
+      SANDBOX_DELETE.handler(
         {
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
