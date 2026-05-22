@@ -140,6 +140,14 @@ export function createAutomationWebhookRoutes() {
     if (!trigger || trigger.type !== "webhook") {
       return c.json({ error: "Webhook trigger not found" }, 404);
     }
+    // Enforce that the presented key is the trigger's *current* key.
+    // verifyApiKey only checks the FIRE permission, so a rotated-but-not-
+    // yet-deleted old key (e.g., if revocation failed during rotation)
+    // would still pass. Rejecting non-current keys guarantees rotation
+    // actually invalidates the previous token.
+    if (trigger.api_key_id && trigger.api_key_id !== verified.apiKeyId) {
+      return c.json({ error: "Stale token" }, 401);
+    }
     const automation = await ctx.storage.automations.findById(
       trigger.automation_id,
       ctx.organization.id,

@@ -35,6 +35,11 @@ export async function down(db: Kysely<unknown>): Promise<void> {
     .dropColumn("api_key_id")
     .execute();
 
+  // Restoring the narrower CHECK requires every row to have type IN
+  // ('cron', 'event'). Any webhook rows would block this, so the down
+  // migration deletes them before re-applying the constraint.
+  await sql`DELETE FROM automation_triggers WHERE type = 'webhook'`.execute(db);
+
   await sql`ALTER TABLE automation_triggers DROP CONSTRAINT chk_trigger_type`.execute(
     db,
   );
