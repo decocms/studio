@@ -829,7 +829,7 @@ async function prepareRun(
           // through to a blank sandbox for ephemeral threads. See
           // `resolveRemoteCliSandboxUrl` below for why the helper
           // exists.
-          const sandboxUrl = await resolveRemoteCliSandboxUrl(
+          const sandboxApiUrl = await resolveRemoteCliSandboxUrl(
             { agent: input.agent, branch: mem.thread.branch ?? input.branch },
             ctx,
           );
@@ -837,7 +837,7 @@ async function prepareRun(
             harnessId,
             harnessInput,
             target.link,
-            sandboxUrl,
+            sandboxApiUrl,
           );
         } else {
           harnessChunks = localDispatch(harnessId, harnessInput, ctx);

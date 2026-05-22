@@ -20,7 +20,7 @@ function tmpDataDir(): string {
 }
 
 describe("desktop sandbox provider", () => {
-  it("creates a sandbox and returns sandboxUrl", async () => {
+  it("creates a sandbox and returns sandboxApiUrl", async () => {
     const dataDir = tmpDataDir();
     try {
       let portCounter = 30000;
@@ -36,11 +36,11 @@ describe("desktop sandbox provider", () => {
         }),
         pickPort: () => portCounter++,
       });
-      const { sandboxUrl } = await provider.ensureSandbox({
+      const { sandboxApiUrl } = await provider.ensureSandbox({
         handle: "abc",
         repo: undefined,
       });
-      expect(sandboxUrl).toBe("https://abc.deco.host");
+      expect(sandboxApiUrl).toBe("https://abc.deco.host");
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }
@@ -130,10 +130,10 @@ describe("DesktopSandboxProvider tunnel lifecycle", () => {
       })(),
     });
 
-    const { sandboxUrl, port } = await provider.ensureSandbox({
+    const { sandboxApiUrl, port } = await provider.ensureSandbox({
       handle: "test-handle-abc",
     });
-    expect(sandboxUrl).toBe("https://test-handle-abc.deco.host");
+    expect(sandboxApiUrl).toBe("https://test-handle-abc.deco.host");
     expect(port).toBe(50_000);
     expect(tunnelHandles).toHaveLength(1);
     expect(tunnelHandles[0]?.subDomain).toBe("test-handle-abc.deco.host");
@@ -152,10 +152,10 @@ describe("DesktopSandboxProvider tunnel lifecycle", () => {
       })(),
     });
 
-    const { sandboxUrl } = await provider.ensureSandbox({
+    const { sandboxApiUrl } = await provider.ensureSandbox({
       handle: "test-handle-xyz",
     });
-    expect(sandboxUrl).toBe("http://127.0.0.1:50100");
+    expect(sandboxApiUrl).toBe("http://127.0.0.1:50100");
   });
 
   it("closes the tunnel on deleteSandbox", async () => {

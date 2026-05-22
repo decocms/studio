@@ -391,7 +391,7 @@ async function provisionSandbox(
   const entry: SandboxRecord = {
     sandboxHandle: sandbox.handle,
     previewUrl: sandbox.previewUrl,
-    sandboxUrl: sandbox.previewUrl, // for desktop the two are equal
+    sandboxApiUrl: sandbox.previewUrl, // for desktop the two are equal
     sandboxProviderKind: runner.kind,
     createdAt,
     startedWith: {

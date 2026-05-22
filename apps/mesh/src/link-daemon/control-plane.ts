@@ -80,8 +80,8 @@ export function makeControlPlaneHandler(
           headers: { "content-type": "application/json" },
         });
       }
-      const { sandboxUrl } = await deps.provider.ensureSandbox(parsed);
-      return new Response(JSON.stringify({ sandboxUrl }), {
+      const { sandboxApiUrl } = await deps.provider.ensureSandbox(parsed);
+      return new Response(JSON.stringify({ sandboxApiUrl }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });

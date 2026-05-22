@@ -22,7 +22,7 @@ mock.module("@/tools/vm/start", () => ({
     return {
       sandboxHandle: "sleek-flint-0000000000000000",
       previewUrl: nextEnsureSandboxReturn.previewUrl,
-      sandboxUrl: nextEnsureSandboxReturn.previewUrl,
+      sandboxApiUrl: nextEnsureSandboxReturn.previewUrl,
       sandboxProviderKind: "user-desktop" as const,
       createdAt: 0,
       startedWith: { packageManager: null, port: null, path: null },
@@ -45,7 +45,7 @@ const { resolveRemoteCliSandboxUrl } = await import("./dispatch-run");
 describe("resolveRemoteCliSandboxUrl", () => {
   it("calls ensureSandbox with the agent id, branch, and user-desktop kind", async () => {
     ensureSandboxCalls.length = 0;
-    const sandboxUrl = await resolveRemoteCliSandboxUrl(
+    const sandboxApiUrl = await resolveRemoteCliSandboxUrl(
       { agent: { id: "vm-1" }, branch: "deco/sleek-flint" },
       // The helper passes ctx straight to ensureSandbox; the mock ignores it.
       {} as never,
@@ -57,7 +57,9 @@ describe("resolveRemoteCliSandboxUrl", () => {
         sandboxProviderKind: "user-desktop",
       },
     ]);
-    expect(sandboxUrl).toBe("https://sleek-flint-0000000000000000.deco.host");
+    expect(sandboxApiUrl).toBe(
+      "https://sleek-flint-0000000000000000.deco.host",
+    );
   });
 
   it("falls back to 'ephemeral' when branch is missing", async () => {

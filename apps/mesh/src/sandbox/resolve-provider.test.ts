@@ -95,7 +95,7 @@ describe("resolveSandboxProvider", () => {
             cluster: {
               sandboxHandle: "vm_xyz",
               previewUrl: "https://p",
-              sandboxUrl: "https://p",
+              sandboxApiUrl: "https://p",
               sandboxProviderKind: "cluster",
               createdAt: 1,
               startedWith: { packageManager: null, port: null, path: null },
@@ -137,7 +137,7 @@ describe("resolveSandboxProvider", () => {
             "user-desktop": {
               sandboxHandle: "vm_xyz",
               previewUrl: "https://p",
-              sandboxUrl: "https://p",
+              sandboxApiUrl: "https://p",
               sandboxProviderKind: "user-desktop",
               createdAt: 1,
               startedWith: { packageManager: null, port: null, path: null },
@@ -177,7 +177,7 @@ describe("resolveSandboxProvider", () => {
             cluster: {
               sandboxHandle: "vm_xyz",
               previewUrl: "https://p",
-              sandboxUrl: "https://p",
+              sandboxApiUrl: "https://p",
               sandboxProviderKind: "cluster",
               createdAt: 1,
               startedWith: { packageManager: null, port: null, path: null },
@@ -261,7 +261,7 @@ describe("resolveSandboxProvider", () => {
             "user-desktop": {
               sandboxHandle: "vm_xyz",
               previewUrl: "https://p",
-              sandboxUrl: "https://p",
+              sandboxApiUrl: "https://p",
               sandboxProviderKind: "user-desktop",
               createdAt: 1,
               startedWith: { packageManager: null, port: null, path: null },

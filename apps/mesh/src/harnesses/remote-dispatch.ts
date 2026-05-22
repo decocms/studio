@@ -13,7 +13,7 @@
  * authenticate (no Bearer header — sending the signing key plaintext in
  * a header would defeat the point of HMAC, see Task 5.1).
  *
- * URL: `<sandboxUrl>/_decopilot_vm/dispatch` — the per-daemon tunnel URL
+ * URL: `<sandboxApiUrl>/_decopilot_vm/dispatch` — the per-daemon tunnel URL
  * (`https://<handle>.deco.host` in prod, `http://127.0.0.1:<port>` in dev
  * `--no-tunnel`) returned by the link's `POST /api/sandboxes`. The cluster
  * talks to the daemon directly; the link no longer reverse-proxies
@@ -154,7 +154,7 @@ export function remoteDispatch(
   id: HarnessId,
   input: HarnessStreamInput,
   link: RemoteDispatchLink,
-  sandboxUrl: string,
+  sandboxApiUrl: string,
   deps: RemoteDispatchDeps = {},
 ): AsyncIterable<UIMessageChunk> {
   const fetcher = deps.fetchImpl ?? fetch;
@@ -163,8 +163,8 @@ export function remoteDispatch(
   // HMAC signing key (the daemon shares it via DAEMON_LINK_SECRET, Task 1).
   // HMAC signs against the URL's pathname only (not the full URL); the
   // daemon verifies against `url.pathname` on its end.
-  const dispatchTarget = `${sandboxUrl}/_decopilot_vm/dispatch`;
-  const cancelTarget = `${sandboxUrl}/_decopilot_vm/runs/${input.runId}`;
+  const dispatchTarget = `${sandboxApiUrl}/_decopilot_vm/dispatch`;
+  const cancelTarget = `${sandboxApiUrl}/_decopilot_vm/runs/${input.runId}`;
   const dispatchPath = new URL(dispatchTarget).pathname;
   const cancelPath = new URL(cancelTarget).pathname;
 

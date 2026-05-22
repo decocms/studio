@@ -232,7 +232,7 @@ export const SandboxRecordSchema = z.object({
     .describe(
       "URL where the VM's iframe-proxied UI is served, or null when the sandbox has no dev server (blank / tool sandboxes).",
     ),
-  sandboxUrl: z
+  sandboxApiUrl: z
     .string()
     .nullable()
     .optional()

@@ -137,7 +137,7 @@ function makeFakeStateStore(): RunnerStateStoreOps & {
 describe("DesktopSandboxProvider.ensure", () => {
   it("POSTs /api/sandboxes with HMAC headers and returns a Sandbox", async () => {
     const { fetch, calls } = makeFakeFetch(() =>
-      jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/handle-abc` }),
+      jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/handle-abc` }),
     );
     const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
@@ -166,7 +166,7 @@ describe("DesktopSandboxProvider.ensure", () => {
     expect(sandbox.handle).toBeTruthy();
     // Handle should be the deterministic computeHandle output, NOT the
     // server-returned `handle-abc` — that string is just the
-    // sandboxUrl's path tail, not necessarily the same as the cluster's handle.
+    // sandboxApiUrl's path tail, not necessarily the same as the cluster's handle.
     expect(sandbox.workdir).toBe(`${TUNNEL}/_sandbox/handle-abc`);
     // previewUrl is now the same daemon URL — there's no separate
     // /preview/<handle>/ rewrite in the per-daemon-tunnel world.
@@ -175,7 +175,7 @@ describe("DesktopSandboxProvider.ensure", () => {
 
   it("returns the same Sandbox on re-ensure without a second POST", async () => {
     const { fetch, calls } = makeFakeFetch(() =>
-      jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/handle-abc` }),
+      jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/handle-abc` }),
     );
     const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
@@ -206,10 +206,10 @@ describe("DesktopSandboxProvider.ensure", () => {
 });
 
 describe("DesktopSandboxProvider.exec", () => {
-  it("proxies to <sandboxUrl>/_decopilot_vm/exec with HMAC headers", async () => {
+  it("proxies to <sandboxApiUrl>/_decopilot_vm/exec with HMAC headers", async () => {
     const { fetch, calls } = makeFakeFetch((call) => {
       if (call.url.endsWith("/api/sandboxes")) {
-        return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/h-1` });
+        return jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/h-1` });
       }
       return jsonResponse({
         stdout: "ok",
@@ -250,7 +250,7 @@ describe("DesktopSandboxProvider.delete", () => {
   it("calls DELETE /api/sandboxes/<handle>", async () => {
     const { fetch, calls } = makeFakeFetch((call) => {
       if (call.method === "POST")
-        return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/h-1` });
+        return jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/h-1` });
       return new Response(null, { status: 204 });
     });
     const provider = new DesktopSandboxProvider({
@@ -281,7 +281,7 @@ describe("DesktopSandboxProvider.delete", () => {
   it("tolerates 404 from the link (already gone)", async () => {
     const { fetch } = makeFakeFetch((call) => {
       if (call.method === "POST")
-        return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/h-1` });
+        return jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/h-1` });
       return new Response("not found", { status: 404 });
     });
     const provider = new DesktopSandboxProvider({
@@ -297,10 +297,10 @@ describe("DesktopSandboxProvider.delete", () => {
 describe("DesktopSandboxProvider.alive", () => {
   it("returns true after ensure() populated the in-process records cache", async () => {
     // ensure() populates `records`, so alive() reuses it without hitting
-    // the state store. Probe URL is `<sandboxUrl>/health`, unsigned.
+    // the state store. Probe URL is `<sandboxApiUrl>/health`, unsigned.
     const { fetch, calls } = makeFakeFetch((call) => {
       if (call.url.endsWith("/api/sandboxes"))
-        return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/alive-1` });
+        return jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/alive-1` });
       return new Response("", { status: 200 });
     });
     const provider = new DesktopSandboxProvider({
@@ -325,10 +325,10 @@ describe("DesktopSandboxProvider.alive", () => {
 });
 
 describe("DesktopSandboxProvider.proxyDaemonRequest", () => {
-  it("forwards to <sandboxUrl><path> with HMAC", async () => {
+  it("forwards to <sandboxApiUrl><path> with HMAC", async () => {
     const { fetch, calls } = makeFakeFetch((call) => {
       if (call.url.endsWith("/api/sandboxes"))
-        return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/h-1` });
+        return jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/h-1` });
       return new Response('{"ok":1}', {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -423,9 +423,9 @@ describe("DesktopSandboxProvider misc surface", () => {
 });
 
 describe("DesktopSandboxProvider + state store", () => {
-  it("persists {handle, sandboxUrl} on ensure", async () => {
+  it("persists {handle, sandboxApiUrl} on ensure", async () => {
     const { fetch } = makeFakeFetch(() =>
-      jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/persisted` }),
+      jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/persisted` }),
     );
     const stateStore = makeFakeStateStore();
     const provider = new DesktopSandboxProvider({
@@ -437,16 +437,16 @@ describe("DesktopSandboxProvider + state store", () => {
     const sandbox = await provider.ensure({ userId: "u", projectRef: "p" });
     const row = await stateStore.getByHandle("user-desktop", sandbox.handle);
     expect(row).not.toBeNull();
-    expect(row?.state.sandboxUrl).toBe(`${TUNNEL}/_sandbox/persisted`);
+    expect(row?.state.sandboxApiUrl).toBe(`${TUNNEL}/_sandbox/persisted`);
   });
 
-  it("alive() probes sandboxUrl from state store on cache miss", async () => {
+  it("alive() probes sandboxApiUrl from state store on cache miss", async () => {
     const stateStore = makeFakeStateStore();
     await stateStore.put({ userId: "u", projectRef: "p" }, "user-desktop", {
       handle: "fresh-handle",
       state: {
         handle: "fresh-handle",
-        sandboxUrl: `${TUNNEL}/_sandbox/fresh`,
+        sandboxApiUrl: `${TUNNEL}/_sandbox/fresh`,
       },
     });
     const { fetch, calls } = makeFakeFetch(
@@ -462,13 +462,13 @@ describe("DesktopSandboxProvider + state store", () => {
     expect(calls[0].url).toBe(`${TUNNEL}/_sandbox/fresh/health`);
   });
 
-  it("proxyDaemonRequest forwards to sandboxUrl from state store on cache miss", async () => {
+  it("proxyDaemonRequest forwards to sandboxApiUrl from state store on cache miss", async () => {
     const stateStore = makeFakeStateStore();
     await stateStore.put({ userId: "u", projectRef: "p" }, "user-desktop", {
       handle: "proxy-handle",
       state: {
         handle: "proxy-handle",
-        sandboxUrl: `${TUNNEL}/_sandbox/proxy`,
+        sandboxApiUrl: `${TUNNEL}/_sandbox/proxy`,
       },
     });
     const { fetch, calls } = makeFakeFetch(
@@ -507,7 +507,7 @@ describe("DesktopSandboxProvider + state store", () => {
     const stateStore = makeFakeStateStore();
     const { fetch } = makeFakeFetch((call) => {
       if (call.method === "POST")
-        return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/del` });
+        return jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/del` });
       return new Response(null, { status: 204 });
     });
     const provider = new DesktopSandboxProvider({

@@ -54,7 +54,7 @@ export interface SandboxState {
   /** Public URL the cluster + browser use to reach this daemon.
    *  - prod: `https://<handle>.deco.host` (the tunnel above)
    *  - dev (--no-tunnel): `http://127.0.0.1:<port>` */
-  sandboxUrl: string;
+  sandboxApiUrl: string;
   lastUsedAt: number;
   activeDispatchCount: number;
 }
@@ -62,7 +62,7 @@ export interface SandboxState {
 export interface DesktopSandboxProvider {
   ensureSandbox(
     input: EnsureSandboxInput,
-  ): Promise<{ sandboxUrl: string; port: number }>;
+  ): Promise<{ sandboxApiUrl: string; port: number }>;
   proxyPort(handle: string): number | null;
   recordHit(handle: string): void;
   acquireDispatch(handle: string): () => void;
@@ -121,7 +121,7 @@ export function createDesktopSandboxProvider(
   // Cleared on settle so a fresh ensure can take a clean swing.
   const inflight = new Map<
     string,
-    Promise<{ sandboxUrl: string; port: number }>
+    Promise<{ sandboxApiUrl: string; port: number }>
   >();
 
   function evictIfNeeded(): void {
@@ -146,7 +146,7 @@ export function createDesktopSandboxProvider(
 
   const buildEntry = async (
     input: EnsureSandboxInput,
-  ): Promise<{ sandboxUrl: string; port: number }> => {
+  ): Promise<{ sandboxApiUrl: string; port: number }> => {
     evictIfNeeded();
     const workdir = join(deps.dataDir, "sandboxes", input.handle);
     await mkdir(workdir, { recursive: true });
@@ -179,13 +179,13 @@ export function createDesktopSandboxProvider(
       }
       throw err;
     }
-    const sandboxUrl = tunnel?.publicUrl ?? `http://127.0.0.1:${port}`;
+    const sandboxApiUrl = tunnel?.publicUrl ?? `http://127.0.0.1:${port}`;
     const state: SandboxState = {
       handle: input.handle,
       port,
       process: spawned,
       tunnel,
-      sandboxUrl,
+      sandboxApiUrl,
       lastUsedAt: Date.now(),
       activeDispatchCount: 0,
     };
@@ -208,7 +208,7 @@ export function createDesktopSandboxProvider(
       });
     }
 
-    return { sandboxUrl, port };
+    return { sandboxApiUrl, port };
   };
 
   return {
@@ -216,7 +216,7 @@ export function createDesktopSandboxProvider(
       const existing = sandboxes.get(input.handle);
       if (existing) {
         existing.lastUsedAt = Date.now();
-        return { sandboxUrl: existing.sandboxUrl, port: existing.port };
+        return { sandboxApiUrl: existing.sandboxApiUrl, port: existing.port };
       }
       const pending = inflight.get(input.handle);
       if (pending) return pending;
