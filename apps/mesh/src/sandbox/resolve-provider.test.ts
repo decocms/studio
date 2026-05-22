@@ -11,7 +11,7 @@ import type { LinkEntry } from "../links/protocol";
 import type { LinkRegistry } from "../links/link-registry";
 
 // Pin env kind so resolver fallback is deterministic.
-process.env.STUDIO_SANDBOX_RUNNER = "local-docker";
+process.env.STUDIO_SANDBOX_PROVIDER = "local-docker";
 
 async function* readyOnly() {
   yield { kind: "ready" as const };
@@ -207,7 +207,7 @@ describe("resolveSandboxProvider", () => {
       branch: "deco/foo",
       virtualMcpMetadata: null,
     });
-    // STUDIO_SANDBOX_RUNNER=local-docker pinned at top of file.
+    // STUDIO_SANDBOX_PROVIDER=local-docker pinned at top of file.
     expect(kind).toBe("local-docker");
   });
 
@@ -217,8 +217,8 @@ describe("resolveSandboxProvider", () => {
     // env defaults to `user-desktop`. Before the fix this hit
     // `instantiate("user-desktop")` directly and threw the confusing
     // "user-desktop runner cannot be instantiated without a per-run LinkEntry".
-    const prev = process.env.STUDIO_SANDBOX_RUNNER;
-    process.env.STUDIO_SANDBOX_RUNNER = "user-desktop";
+    const prev = process.env.STUDIO_SANDBOX_PROVIDER;
+    process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
     try {
       const link = makeLink();
       const ctx = stubCtx(link, { sandboxPreference: "default" });
@@ -230,13 +230,13 @@ describe("resolveSandboxProvider", () => {
       expect(kind).toBe("user-desktop");
       expect(provider).toBe(stubDesktop);
     } finally {
-      process.env.STUDIO_SANDBOX_RUNNER = prev;
+      process.env.STUDIO_SANDBOX_PROVIDER = prev;
     }
   });
 
   test("sandboxPreference=default + env=user-desktop + no link → clear error", async () => {
-    const prev = process.env.STUDIO_SANDBOX_RUNNER;
-    process.env.STUDIO_SANDBOX_RUNNER = "user-desktop";
+    const prev = process.env.STUDIO_SANDBOX_PROVIDER;
+    process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
     try {
       const ctx = stubCtx(null, { sandboxPreference: "default" });
       await expect(
@@ -247,7 +247,7 @@ describe("resolveSandboxProvider", () => {
         }),
       ).rejects.toThrow(/No link daemon registered/);
     } finally {
-      process.env.STUDIO_SANDBOX_RUNNER = prev;
+      process.env.STUDIO_SANDBOX_PROVIDER = prev;
     }
   });
 

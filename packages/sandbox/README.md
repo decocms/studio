@@ -25,7 +25,7 @@ Three runner backends live behind the common `SandboxProvider` interface
 
 The host app calls `resolveSandboxProviderKindFromEnv()` to pick the runner. Single rule:
 
-1. `STUDIO_SANDBOX_RUNNER` is honored if set (one of `local-docker`,
+1. `STUDIO_SANDBOX_PROVIDER` is honored if set (one of `local-docker`,
    `cluster`, `user-desktop`).
 2. Otherwise the runner defaults to `user-desktop` (the desktop-side
    `deco link` daemon — auto-spawned by `bun run dev --local-sandbox-provider`
@@ -66,7 +66,7 @@ for this, you can remove them — they're no longer needed.
 
 ## Environment
 
-- `STUDIO_SANDBOX_RUNNER` — pin the runner: `local-docker`,
+- `STUDIO_SANDBOX_PROVIDER` — pin the runner: `local-docker`,
   `cluster`, or `user-desktop`. Defaults to `user-desktop`. Setting
   it explicitly is required for production deploys; auto-detection of
   Docker has been removed.

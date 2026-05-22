@@ -1,6 +1,6 @@
 /**
  * Runner singletons, one per kind. VM_DELETE dispatches on the entry's
- * recorded sandboxProviderKind (not env), so a pod that flipped STUDIO_SANDBOX_RUNNER
+ * recorded sandboxProviderKind (not env), so a pod that flipped STUDIO_SANDBOX_PROVIDER
  * between start and stop still tears down the right kind of VM.
  * Boot/shutdown sweeps are Docker-only — other runners' sandboxes outlive
  * mesh by design, so a generic sweep would nuke active user VMs.
@@ -144,7 +144,7 @@ async function instantiate(
       return new DockerSandboxProvider({ stateStore, previewUrlPattern });
     case "cluster": {
       // Dynamic import — @kubernetes/client-node is heavy and only needed
-      // when STUDIO_SANDBOX_RUNNER=cluster. Local-docker deploys never
+      // when STUDIO_SANDBOX_PROVIDER=cluster. Local-docker deploys never
       // load it.
       const { AgentSandboxProvider } = await import(
         "@decocms/sandbox/provider/agent-sandbox"

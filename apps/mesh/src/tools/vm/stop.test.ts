@@ -224,12 +224,12 @@ describe("SANDBOX_DELETE", () => {
     expect(lastRequestedKind.value).toBe("local-docker");
   });
 
-  // Regression guard: a pod that flipped STUDIO_SANDBOX_RUNNER between start
+  // Regression guard: a pod that flipped STUDIO_SANDBOX_PROVIDER between start
   // and stop must still tear down the runner the entry was created against.
   // The kind is now caller-supplied, so the env value is irrelevant.
-  it("dispatches on input.sandboxProviderKind even when STUDIO_SANDBOX_RUNNER env disagrees", async () => {
-    const original = process.env.STUDIO_SANDBOX_RUNNER;
-    process.env.STUDIO_SANDBOX_RUNNER = "cluster";
+  it("dispatches on input.sandboxProviderKind even when STUDIO_SANDBOX_PROVIDER env disagrees", async () => {
+    const original = process.env.STUDIO_SANDBOX_PROVIDER;
+    process.env.STUDIO_SANDBOX_PROVIDER = "cluster";
     try {
       const metadata: Metadata = {
         sandboxMap: makeSandboxMap(
@@ -254,8 +254,8 @@ describe("SANDBOX_DELETE", () => {
       expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.sandboxHandle);
       expect(lastRequestedKind.value).toBe("local-docker");
     } finally {
-      if (original === undefined) delete process.env.STUDIO_SANDBOX_RUNNER;
-      else process.env.STUDIO_SANDBOX_RUNNER = original;
+      if (original === undefined) delete process.env.STUDIO_SANDBOX_PROVIDER;
+      else process.env.STUDIO_SANDBOX_PROVIDER = original;
     }
   });
 

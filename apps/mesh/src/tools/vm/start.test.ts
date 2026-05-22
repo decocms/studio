@@ -11,9 +11,9 @@ import type {
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 
-// Pin runner kind — the dev env flips STUDIO_SANDBOX_RUNNER and SANDBOX_START
+// Pin runner kind — the dev env flips STUDIO_SANDBOX_PROVIDER and SANDBOX_START
 // reads it at handler time.
-process.env.STUDIO_SANDBOX_RUNNER = "local-docker";
+process.env.STUDIO_SANDBOX_PROVIDER = "local-docker";
 
 // Mock runner BEFORE importing SANDBOX_START — handler is runner-agnostic.
 
@@ -683,7 +683,7 @@ describe("SANDBOX_START", () => {
   });
 
   it("SANDBOX_START with no sandboxProviderKind picks env kind when no link", async () => {
-    // STUDIO_SANDBOX_RUNNER is "local-docker" at module load time (top of file)
+    // STUDIO_SANDBOX_PROVIDER is "local-docker" at module load time (top of file)
     const linkRegistry: LinkRegistry = {
       get: async (_userId: string) => null,
       put: async () => {},

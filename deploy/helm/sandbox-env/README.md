@@ -81,7 +81,7 @@ this runner:
 # in your studio values.yaml (for the staging install)
 configMap:
   meshConfig:
-    STUDIO_SANDBOX_RUNNER: "cluster"
+    STUDIO_SANDBOX_PROVIDER: "cluster"
     STUDIO_ENV: "staging"
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-staging"
     STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.staging.example.com"
