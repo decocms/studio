@@ -601,4 +601,112 @@ app.post("/domain-setup", async (c) => {
   }
 });
 
+/**
+ * Org Access Status Endpoint (authenticated)
+ *
+ * For the shell layout's "you visited /:org/... but aren't a member" branch.
+ * Resolves an org by slug and tells the frontend which screen to render:
+ *
+ *   member            — user is already a member (shell should re-fetch)
+ *   pending-invite    — there's a pending invitation for this email
+ *   auto-domain-join  — the org has auto_join_enabled for the user's verified domain
+ *   no-access         — none of the above
+ *   not-found         — slug doesn't resolve
+ *
+ * Route: GET /api/auth/custom/org-access-status/:slug
+ */
+app.get("/org-access-status/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const session = (await auth.api.getSession({
+    headers: c.req.raw.headers,
+  })) as {
+    user?: { id: string; email: string; emailVerified: boolean };
+  } | null;
+  if (!session?.user) {
+    return c.json({ success: false, error: "Authentication required" }, 401);
+  }
+
+  const db = getDb().db;
+
+  const org = await db
+    .selectFrom("organization")
+    .select(["id", "name", "slug", "logo"])
+    .where("slug", "=", slug)
+    .executeTakeFirst();
+
+  if (!org) {
+    return c.json({ status: "not-found" as const });
+  }
+
+  const orgPayload = {
+    id: org.id,
+    name: org.name,
+    slug: org.slug,
+    logo: org.logo,
+  };
+
+  const membership = await db
+    .selectFrom("member")
+    .select(["id"])
+    .where("userId", "=", session.user.id)
+    .where("organizationId", "=", org.id)
+    .executeTakeFirst();
+
+  if (membership) {
+    return c.json({ status: "member" as const, organization: orgPayload });
+  }
+
+  // Pending invite for this user's email targeting this org?
+  try {
+    const invitations = (await auth.api.listUserInvitations({
+      headers: c.req.raw.headers,
+    })) as Array<{
+      id: string;
+      organizationId: string;
+      status: string;
+      expiresAt: string | Date;
+    }>;
+    const now = Date.now();
+    const match = invitations.find(
+      (inv) =>
+        inv.organizationId === org.id &&
+        inv.status === "pending" &&
+        new Date(inv.expiresAt).getTime() > now,
+    );
+    if (match) {
+      return c.json({
+        status: "pending-invite" as const,
+        invitation: { id: match.id },
+        organization: orgPayload,
+      });
+    }
+  } catch (error) {
+    // listUserInvitations can fail for unverified emails or transient DB
+    // issues — fall through to the auto-domain-join / no-access checks
+    // rather than failing the whole status lookup.
+    console.error("[Auth] listUserInvitations failed:", error);
+  }
+
+  // Auto domain join: org claimed user's domain with auto_join_enabled.
+  if (session.user.emailVerified) {
+    const emailDomain = session.user.email?.split("@")[1]?.toLowerCase();
+    if (emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
+      const domainRecord = await new OrganizationDomainStorage(
+        db,
+      ).getByOrganizationId(org.id);
+      if (
+        domainRecord?.autoJoinEnabled &&
+        domainRecord.domain === emailDomain
+      ) {
+        return c.json({
+          status: "auto-domain-join" as const,
+          organization: { ...orgPayload, domain: emailDomain },
+        });
+      }
+    }
+  }
+
+  return c.json({ status: "no-access" as const, organization: orgPayload });
+});
+
 export default app;

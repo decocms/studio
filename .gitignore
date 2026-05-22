@@ -79,6 +79,7 @@ studio-demo/
 # Playwright
 apps/mesh/test-results/
 apps/mesh/playwright-report/
+apps/mesh/screenshots/
 
 # Generated docs (root-level only, not apps/docs/). Use /docs/* not /docs
 # so we can un-ignore specific subdirs below — git won't traverse into an

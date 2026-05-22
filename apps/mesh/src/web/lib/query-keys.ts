@@ -63,6 +63,9 @@ export const KEYS = {
   activeOrganization: (org: string | undefined) =>
     ["activeOrganization", org] as const,
 
+  // Org access status (for /:org gate — pending invite / auto-join / no access)
+  orgAccessStatus: (slug: string) => ["org-access-status", slug] as const,
+
   // Models list (scoped by organization)
   modelsList: (orgId: string) => ["models-list", orgId] as const,
 
