@@ -1,21 +1,22 @@
 /**
  * Direct DB access for Playwright e2e tests.
  *
- * The dev server (apps/mesh/src/services/ensure-services.ts) boots an
- * embedded-postgres instance on a **dynamic** port and writes its pid +
- * port to `<home>/services/postgres/state.json`. The home directory
- * depends on how the server was started:
- *   - `DATA_DIR` / `DECOCMS_HOME` env vars override everything
- *   - `deco dev`         → `<cwd>/.deco/` (CLI default)
- *   - `deco services up` → `~/deco/`     (services command default)
+ * Two ways the dev server's Postgres gets exposed to us:
  *
- * We check all three (env, cwd-relative, home-relative) so the fixture
- * works whichever way a dev brought the server up.
+ *   1. CI / explicit env: `DATABASE_URL` points at an external Postgres
+ *      (the e2e workflow boots a postgres:16 service on :5432 and sets
+ *      it). When present, we use it verbatim — no state.json lookup.
  *
- * Tests read state.json to discover the live port and connect with the
- * `pg` driver. This is deliberately a real DB connection — no mocks —
- * so seeding state for a scenario (orgs claiming a domain, a user with
- * verified email) hits the same Postgres the dev server is talking to.
+ *   2. Local dev: `bun run --cwd=apps/mesh dev` boots embedded-postgres
+ *      on a **dynamic** port and writes pid+port to
+ *      `<home>/services/postgres/state.json`. Home defaults to
+ *      `<cwd>/.deco/` (CLI default) or `~/deco/` (`deco services up`),
+ *      with `DATA_DIR` / `DECOCMS_HOME` overriding. We walk a few
+ *      candidate locations because the dev server's CWD differs from
+ *      Playwright's (apps/mesh).
+ *
+ * Tests connect with the `pg` driver — no mocks. Seeding state for a
+ * scenario hits the same Postgres the dev server is talking to.
  *
  * One client per test; close it in `afterAll` / `test.afterAll`.
  */
@@ -23,7 +24,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Client } from "pg";
+import { Client, type ClientConfig } from "pg";
 
 const PG_USER = "postgres";
 const PG_PASSWORD = "postgres";
@@ -67,20 +68,31 @@ function readDevDbPort(): number {
   }
   throw new Error(
     `Dev postgres state.json not found. Looked in:\n  ${tried.join("\n  ")}\n` +
-      `Start the dev server first (\`bun run --cwd=apps/mesh dev\` or \`deco services up\`).`,
+      `Start the dev server first (\`bun run --cwd=apps/mesh dev\` or \`deco services up\`), or set DATABASE_URL.`,
   );
+}
+
+/** Resolve a pg.Client config from DATABASE_URL or embedded state.json. */
+function resolveClientConfig(): ClientConfig {
+  // CI sets DATABASE_URL to a docker-services Postgres; local dev relies
+  // on the embedded-postgres state.json. Honor the env var first so CI
+  // doesn't have to fabricate a state.json.
+  const url = process.env.DATABASE_URL;
+  if (url && url.length > 0) {
+    return { connectionString: url };
+  }
+  return {
+    host: "127.0.0.1",
+    port: readDevDbPort(),
+    user: PG_USER,
+    password: PG_PASSWORD,
+    database: "postgres",
+  };
 }
 
 /** Open a pg.Client connected to the dev server's postgres. */
 export async function connectDevDb(): Promise<Client> {
-  const port = readDevDbPort();
-  const client = new Client({
-    host: "127.0.0.1",
-    port,
-    user: PG_USER,
-    password: PG_PASSWORD,
-    database: "postgres",
-  });
+  const client = new Client(resolveClientConfig());
   await client.connect();
   return client;
 }
