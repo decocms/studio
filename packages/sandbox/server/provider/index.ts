@@ -1,7 +1,7 @@
 /**
  * Public surface. Ships `DockerSandboxProvider` only via the default entry;
  * agent-sandbox sits behind its own subpath export (./provider/agent-sandbox)
- * because its SDK is heavy and not every deploy needs it. `remote-user` is
+ * because its SDK is heavy and not every deploy needs it. `desktop` is
  * constructed per-run from the acting user's link entry.
  */
 
@@ -67,13 +67,13 @@ export function createDockerProvider(
 const RUNNER_KINDS: ReadonlySet<SandboxProviderKind> = new Set([
   "docker",
   "agent-sandbox",
-  "remote-user",
+  "desktop",
 ]);
 
 /**
  * Single resolution rule:
  *   - explicit STUDIO_SANDBOX_RUNNER wins (validated against the kind set);
- *   - otherwise default to "remote-user" (the desktop-side link daemon —
+ *   - otherwise default to "desktop" (the user's desktop link daemon —
  *     auto-spawned by `bun run dev` in local dev, and the supported
  *     topology for single-machine self-hosts running the link side-by-side).
  *
@@ -83,12 +83,10 @@ const RUNNER_KINDS: ReadonlySet<SandboxProviderKind> = new Set([
  */
 export function resolveSandboxProviderKindFromEnv(): SandboxProviderKind {
   const raw = process.env.STUDIO_SANDBOX_RUNNER;
-  const kind = (
-    raw && raw.length > 0 ? raw : "remote-user"
-  ) as SandboxProviderKind;
+  const kind = (raw && raw.length > 0 ? raw : "desktop") as SandboxProviderKind;
   if (!RUNNER_KINDS.has(kind)) {
     throw new Error(
-      `Unknown STUDIO_SANDBOX_RUNNER="${raw}" — expected "docker", "agent-sandbox", or "remote-user".`,
+      `Unknown STUDIO_SANDBOX_RUNNER="${raw}" — expected "docker", "agent-sandbox", or "desktop".`,
     );
   }
   return kind;

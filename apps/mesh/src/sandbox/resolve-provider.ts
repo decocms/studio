@@ -5,7 +5,7 @@
  *
  *   1. **Caller override (`explicitKind`).** `VM_START` forwards
  *      `input.sandboxProviderKind` here; `ensureVm` callers pass the kind
- *      they already resolved. Binds the user's link for `remote-user`.
+ *      they already resolved. Binds the user's link for `desktop`.
  *
  *   2. **Per-run dispatch hint** (`ctx.sandboxPreference` /
  *      `ctx.linkForCurrentRun`). Set by `dispatch-run` from the resolved
@@ -14,13 +14,13 @@
  *      and any DB lookup here would just confirm what they already know.
  *
  *   3. **Recorded vmMap kind.** The post-provision source of truth: a
- *      sandbox provisioned via `remote-user` stays addressable through
- *      `remote-user` even on a cluster whose env kind is something else
+ *      sandbox provisioned via `desktop` stays addressable through
+ *      `desktop` even on a cluster whose env kind is something else
  *      (`agent-sandbox`, `docker`, …). This is what the events/proxy
  *      route uses — no ctx hint, just the recorded entry.
  *
  *   4. **Default policy** (`resolveDefaultSandboxProviderKind`). Pre-
- *      provision fall-through: live link → `remote-user`, else env kind.
+ *      provision fall-through: live link → `desktop`, else env kind.
  *
  * Returns a fully-bound `SandboxProvider` plus the resolved kind. Callers
  * never need to set `ctx.sandboxPreference` / `ctx.linkForCurrentRun`
@@ -36,11 +36,11 @@ import {
 
 import type { MeshContext } from "../core/mesh-context";
 import { readVmMap } from "../tools/vm/vm-map";
-import { buildRemoteUserProvider, getSandboxProviderByKind } from "./lifecycle";
+import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
 import { resolveDefaultSandboxProviderKind } from "./resolve-default-provider-kind";
 
 export interface ResolveSandboxProviderArgs {
-  /** User whose vmMap cell to read and (for `remote-user`) whose link to bind. */
+  /** User whose vmMap cell to read and (for `desktop`) whose link to bind. */
   userId: string;
   branch: string;
   /** Raw `virtualmcp.metadata` JSON column. May be null. */
@@ -48,7 +48,7 @@ export interface ResolveSandboxProviderArgs {
   /**
    * Caller-provided override (e.g. `VM_START`'s `input.sandboxProviderKind`).
    * When set, takes precedence over both the vmMap entry and the default
-   * policy. The resolver still binds the user's link for `remote-user`.
+   * policy. The resolver still binds the user's link for `desktop`.
    */
   explicitKind?: SandboxProviderKind;
 }
@@ -73,11 +73,11 @@ export async function resolveSandboxProvider(
   }
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
-  //    without touching vmMap. `remote-user` carries its link inline;
+  //    without touching vmMap. `desktop` carries its link inline;
   //    `default` means "use the cluster runner the env points to".
-  if (ctx.sandboxPreference === "remote-user" && ctx.linkForCurrentRun) {
-    const provider = await buildRemoteUserProvider(ctx, ctx.linkForCurrentRun);
-    return { provider, kind: "remote-user" };
+  if (ctx.sandboxPreference === "desktop" && ctx.linkForCurrentRun) {
+    const provider = await buildDesktopProvider(ctx, ctx.linkForCurrentRun);
+    return { provider, kind: "desktop" };
   }
   if (ctx.sandboxPreference === "default") {
     const kind = resolveSandboxProviderKindFromEnv();
@@ -89,7 +89,7 @@ export async function resolveSandboxProvider(
   //    multiple sibling kinds were persisted (e.g. the user ran VM_START
   //    twice with different `sandboxProviderKind` values), the events/proxy
   //    path consistently picks the one matching current intent
-  //    (link online → `remote-user`, else env kind) instead of whatever
+  //    (link online → `desktop`, else env kind) instead of whatever
   //    `Object.keys` happens to enumerate first.
   const [firstRecorded, ...restRecorded] = readRecordedKinds(
     virtualMcpMetadata,
@@ -130,7 +130,7 @@ function readRecordedKinds(
 
 /**
  * Picks one recorded kind when multiple siblings exist. Prefers the kind that
- * matches the current default policy (link online → `remote-user`, else env
+ * matches the current default policy (link online → `desktop`, else env
  * kind); otherwise falls back to the first recorded kind. This keeps the
  * events/proxy path deterministic across pods and matches what a fresh
  * VM_START with no explicit kind would have used.
@@ -162,11 +162,11 @@ async function bindProviderForKind(
   userId: string,
   kind: SandboxProviderKind,
 ): Promise<SandboxProvider> {
-  if (kind !== "remote-user") return getSandboxProviderByKind(ctx, kind);
+  if (kind !== "desktop") return getSandboxProviderByKind(ctx, kind);
 
   if (!ctx.linkRegistry) {
     throw new Error(
-      "remote-user sandbox provider requires ctx.linkRegistry to be wired (set on MeshContextConfig).",
+      "desktop sandbox provider requires ctx.linkRegistry to be wired (set on MeshContextConfig).",
     );
   }
   const link = await ctx.linkRegistry.get(userId);
@@ -175,5 +175,5 @@ async function bindProviderForKind(
       `No link daemon registered for user "${userId}". Start one with \`deco link\` (or run \`bun run dev --local-sandbox-provider\` for dev).`,
     );
   }
-  return buildRemoteUserProvider(ctx, link);
+  return buildDesktopProvider(ctx, link);
 }

@@ -89,14 +89,14 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
   // Source of truth: vmMap. If an entry exists for (user, branch) we use
-  // that recorded kind — a sandbox provisioned via `remote-user` must
-  // remain addressable via `remote-user` even on a cluster whose env kind
+  // that recorded kind — a sandbox provisioned via `desktop` must
+  // remain addressable via `desktop` even on a cluster whose env kind
   // is `agent-sandbox` / `docker`. Pre-provision callers fall through to
   // the link-or-env default policy inside `resolveSandboxProvider`.
   //
-  // On failure (e.g. the recorded kind is `remote-user` but the user's
+  // On failure (e.g. the recorded kind is `desktop` but the user's
   // link daemon is offline) we surface `null` rather than falling back
-  // to the env singleton: rebinding a `remote-user`-provisioned VM onto
+  // to the env singleton: rebinding a `desktop`-provisioned VM onto
   // a different provider kind (say `agent-sandbox`) would forward traffic
   // to a sandbox that doesn't host this VM. The events handler streams a
   // `failed` phase from null; other handlers 503 via `requireRunner`.

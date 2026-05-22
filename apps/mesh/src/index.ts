@@ -119,7 +119,7 @@ const previewProxyDeps = {
 };
 
 // Boot/dev wiring for the Docker runner. The boot sweep + local ingress
-// are Docker-only — other runners (freestyle, agent-sandbox, remote-user)
+// are Docker-only — other runners (agent-sandbox, desktop)
 // either don't run on this machine or expose previews via their own
 // publicly-reachable URLs.
 const { resolveSandboxProviderKindFromEnv } = await import(

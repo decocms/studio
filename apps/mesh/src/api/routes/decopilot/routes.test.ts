@@ -133,7 +133,7 @@ mock.module("@/dispatch-queue", () => ({
 // eagerly provisions a sandbox — that happens lazily inside the built-in
 // tools layer on the first VM-tool call. We only need to stub the kind
 // resolver; each test pins it via the module-level `vmKindForTest`.
-type VmKind = "docker" | "agent-sandbox" | "remote-user";
+type VmKind = "docker" | "agent-sandbox" | "desktop";
 let vmKindForTest: VmKind = "docker";
 
 mock.module("@/sandbox/resolve-default-provider-kind", () => ({
@@ -274,8 +274,8 @@ describe("POST /messages — VM-based dispatch", () => {
     temperature: 0.5,
   };
 
-  test("VM with remote-user kind + no online link → 409 link_offline", async () => {
-    const { app } = buildApp({ vmKind: "remote-user", linkOnline: false });
+  test("VM with desktop kind + no online link → 409 link_offline", async () => {
+    const { app } = buildApp({ vmKind: "desktop", linkOnline: false });
     const res = await app.request(
       `/api/org_1/decopilot/threads/${THREAD_ID}/messages`,
       {
@@ -290,9 +290,9 @@ describe("POST /messages — VM-based dispatch", () => {
     expect(body.code).toBe("link_offline");
   });
 
-  test("VM with remote-user kind + link missing capability → 409 capability_missing", async () => {
+  test("VM with desktop kind + link missing capability → 409 capability_missing", async () => {
     const { app, seedLink } = buildApp({
-      vmKind: "remote-user",
+      vmKind: "desktop",
       linkOnline: true,
       linkCapabilities: ["decopilot-sandbox"],
     });
@@ -354,7 +354,7 @@ describe("POST /messages — first-message pinning", () => {
 
   test("first message with explicit pins persists them and uses them", async () => {
     const { app, seedLink, threadUpdateSpy } = buildApp({
-      vmKind: "remote-user",
+      vmKind: "desktop",
       linkOnline: true,
       threadPins: { sandbox_provider_kind: null, harness_id: null },
     });
@@ -366,7 +366,7 @@ describe("POST /messages — first-message pinning", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...validBody,
-          sandboxProviderKind: "remote-user",
+          sandboxProviderKind: "desktop",
           harnessId: "claude-code",
         }),
       },
@@ -375,7 +375,7 @@ describe("POST /messages — first-message pinning", () => {
     expect(threadUpdateSpy).toHaveBeenCalledWith(
       THREAD_ID,
       expect.objectContaining({
-        sandbox_provider_kind: "remote-user",
+        sandbox_provider_kind: "desktop",
         harness_id: "claude-code",
       }),
     );
@@ -383,7 +383,7 @@ describe("POST /messages — first-message pinning", () => {
 
   test("first message without explicit pins derives defaults and persists", async () => {
     const { app, seedLink, threadUpdateSpy } = buildApp({
-      vmKind: "remote-user",
+      vmKind: "desktop",
       linkOnline: true,
       threadPins: { sandbox_provider_kind: null, harness_id: null },
     });
@@ -398,26 +398,26 @@ describe("POST /messages — first-message pinning", () => {
     );
     expect(res.status).toBe(202);
     // link is online → resolveDefaultSandboxProviderKind returns vmKindForTest
-    // which is "remote-user"
+    // which is "desktop"
     expect(threadUpdateSpy).toHaveBeenCalledWith(
       THREAD_ID,
       expect.objectContaining({
-        sandbox_provider_kind: "remote-user",
+        sandbox_provider_kind: "desktop",
       }),
     );
   });
 
   test("subsequent message ignores request pins and uses thread row", async () => {
-    // Thread is pinned to (remote-user, claude-code). The request body sends
+    // Thread is pinned to (desktop, claude-code). The request body sends
     // harnessId: "decopilot" which would require the decopilot-sandbox
     // capability. If the route mistakenly uses the body's harnessId, the link
     // check fails with 409 capability_missing. Using the pinned harness
     // (claude-code) instead → the link's claude-code capability matches → 202.
     const { app, seedLink, threadUpdateSpy } = buildApp({
-      vmKind: "remote-user",
+      vmKind: "desktop",
       linkOnline: true,
       threadPins: {
-        sandbox_provider_kind: "remote-user",
+        sandbox_provider_kind: "desktop",
         harness_id: "claude-code",
       },
     });
@@ -429,7 +429,7 @@ describe("POST /messages — first-message pinning", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...validBody,
-          sandboxProviderKind: "docker", // should be ignored — thread row has remote-user
+          sandboxProviderKind: "docker", // should be ignored — thread row has desktop
           harnessId: "decopilot", // should be ignored — thread row has claude-code
         }),
       },

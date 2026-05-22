@@ -75,10 +75,10 @@ export const VM_START = defineTool({
         "Optional git branch to check out. When omitted the handler generates `deco/<adjective>-<noun>` and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
     sandboxProviderKind: z
-      .enum(["docker", "agent-sandbox", "remote-user"])
+      .enum(["docker", "agent-sandbox", "desktop"])
       .optional()
       .describe(
-        "Explicit runtime choice. When omitted, defaults to `remote-user` if the acting user's link daemon is online, else the cluster env kind.",
+        "Explicit runtime choice. When omitted, defaults to `desktop` if the acting user's link daemon is online, else the cluster env kind.",
       ),
   }),
   outputSchema: z.object({
@@ -86,7 +86,7 @@ export const VM_START = defineTool({
     vmId: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    sandboxProviderKind: z.enum(["docker", "agent-sandbox", "remote-user"]),
+    sandboxProviderKind: z.enum(["docker", "agent-sandbox", "desktop"]),
   }),
 
   handler: async (input, ctx) => {
@@ -200,7 +200,7 @@ export async function ensureVm(
   // ensureVm is called from the always-on VM tools path which doesn't
   // pre-resolve the runner. `resolveSandboxProvider` here honors the
   // explicit kind from the caller (POST /messages already decided) and
-  // binds the user's link for `remote-user`.
+  // binds the user's link for `desktop`.
   const { provider: runner } = await resolveSandboxProvider(ctx, {
     userId,
     branch: input.branch,
@@ -378,7 +378,7 @@ async function provisionSandbox(
   const entry: VmMapEntry = {
     vmId: sandbox.handle,
     previewUrl: sandbox.previewUrl,
-    sandboxUrl: sandbox.previewUrl, // for remote-user the two are equal
+    sandboxUrl: sandbox.previewUrl, // for desktop the two are equal
     sandboxProviderKind: runner.kind,
     createdAt,
     startedWith: {

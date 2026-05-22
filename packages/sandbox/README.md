@@ -26,8 +26,8 @@ Three runner backends live behind the common `SandboxProvider` interface
 The host app calls `resolveSandboxProviderKindFromEnv()` to pick the runner. Single rule:
 
 1. `STUDIO_SANDBOX_RUNNER` is honored if set (one of `docker`,
-   `agent-sandbox`, `remote-user`).
-2. Otherwise the runner defaults to `remote-user` (the desktop-side
+   `agent-sandbox`, `desktop`).
+2. Otherwise the runner defaults to `desktop` (the desktop-side
    `deco link` daemon — auto-spawned by `bun run dev --local-sandbox-provider`
    in local dev, and the supported topology for single-machine self-hosts
    running the link side-by-side).
@@ -36,7 +36,7 @@ Preconditions:
 
 - `agent-sandbox` is opt-in only — never auto-selected.
 - The retired `host` runner kind is rejected. Local dev now exercises
-  `remote-user` against the auto-spawned link binary, matching the
+  `desktop` against the auto-spawned link binary, matching the
   production code path.
 
 ## URL shape
@@ -67,7 +67,7 @@ for this, you can remove them — they're no longer needed.
 ## Environment
 
 - `STUDIO_SANDBOX_RUNNER` — pin the runner: `docker`,
-  `agent-sandbox`, or `remote-user`. Defaults to `remote-user`. Setting
+  `agent-sandbox`, or `desktop`. Defaults to `desktop`. Setting
   it explicitly is required for production deploys; auto-detection of
   Docker has been removed.
 - `STUDIO_SANDBOX_IMAGE` — override the Docker runner image

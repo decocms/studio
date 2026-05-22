@@ -10,8 +10,8 @@ describe("resolveSandboxProviderKindFromEnv", () => {
     process.env = { ...ORIG };
   });
 
-  it("defaults to 'remote-user' when nothing is configured", () => {
-    expect(resolveSandboxProviderKindFromEnv()).toBe("remote-user");
+  it("defaults to 'desktop' when nothing is configured", () => {
+    expect(resolveSandboxProviderKindFromEnv()).toBe("desktop");
   });
 
   it("honors explicit STUDIO_SANDBOX_RUNNER=docker", () => {

@@ -57,9 +57,9 @@ function agentKindFromHarness(
   agent: HarnessId | null,
   sandboxKind: SandboxProviderKind | null,
 ): AgentKind | null {
-  if (agent === "claude-code" && sandboxKind === "remote-user")
+  if (agent === "claude-code" && sandboxKind === "desktop")
     return "claude-code";
-  if (agent === "codex" && sandboxKind === "remote-user") return "codex";
+  if (agent === "codex" && sandboxKind === "desktop") return "codex";
   if (agent === "decopilot") return "decopilot";
   return null;
 }
@@ -106,7 +106,7 @@ export function AgentModelTrigger({
       startVm.mutate({
         virtualMcpId,
         branch: currentBranch,
-        sandboxProviderKind: "remote-user" as const,
+        sandboxProviderKind: "desktop" as const,
       });
     }
     track("agent_model_selected", { agent: kind, tier: nextTier });

@@ -29,7 +29,7 @@ export interface DevOptions {
   noTui?: boolean;
   localMode: boolean;
   /** When true, auto-spawn the link daemon (`deco link`) so the
-   *  remote-user sandbox provider has a live target. Default false —
+   *  desktop sandbox provider has a live target. Default false —
    *  `dev:conductor` opts in. */
   localSandboxProvider: boolean;
 }
@@ -179,7 +179,7 @@ export async function startDevServer(
   // ── Auto-spawn `deco link --no-tunnel` (opt-in) ───────────────────
   // Gated on --local-sandbox-provider. When set, once the cluster is up
   // on :PORT, spawn the link daemon so the dev session exercises the
-  // remote-cli + remote-user code paths end-to-end. The link reads its
+  // remote-cli + desktop code paths end-to-end. The link reads its
   // session from <dataDir>/dev-link/session.json (auto-minted by the
   // cluster on first boot — see apps/mesh/src/auth/dev-link-session.ts).
   const linkPort = 5174;

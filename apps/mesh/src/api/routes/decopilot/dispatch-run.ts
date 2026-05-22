@@ -460,7 +460,7 @@ async function prepareRun(
     }
 
     // Stash the resolved target on the context so downstream consumers
-    // (Phase 5's remote-user sandbox provider, Phase 6's remote-cli
+    // (Phase 5's desktop sandbox provider, Phase 6's remote-cli
     // dispatch) can read it without re-querying the registry.
     if (target.kind === "local") {
       ctx.sandboxPreference = target.sandbox;
@@ -822,8 +822,8 @@ async function prepareRun(
         //     tunnel that the cluster talks to directly (no link
         //     reverse-proxy hop). Without ensure() first there's no
         //     sandboxUrl to dispatch against.
-        //   - `local` (default OR remote-user) — runs in-cluster.
-        //     `remote-user` only changes where the sandbox tool calls go;
+        //   - `local` (default OR desktop) — runs in-cluster.
+        //     `desktop` only changes where the sandbox tool calls go;
         //     the harness still runs here.
         let harnessChunks;
         if (target.kind === "remote-cli") {

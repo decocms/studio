@@ -25,24 +25,24 @@ describe("resolveDispatchTarget", () => {
     if (t.kind === "local") expect(t.sandbox).toBe("default");
   });
 
-  test("remote-user + decopilot + link online → local/remote-user", async () => {
+  test("desktop + decopilot + link online → local/desktop", async () => {
     const t = await resolveDispatchTarget(
       {
         harnessId: "decopilot",
-        sandboxProviderKind: "remote-user",
+        sandboxProviderKind: "desktop",
         userId: "u",
       },
       { linkRegistry: stubRegistry(linkOnline()) },
     );
     expect(t.kind).toBe("local");
-    if (t.kind === "local") expect(t.sandbox).toBe("remote-user");
+    if (t.kind === "local") expect(t.sandbox).toBe("desktop");
   });
 
-  test("remote-user + claude-code + link online → remote-cli", async () => {
+  test("desktop + claude-code + link online → remote-cli", async () => {
     const t = await resolveDispatchTarget(
       {
         harnessId: "claude-code",
-        sandboxProviderKind: "remote-user",
+        sandboxProviderKind: "desktop",
         userId: "u",
       },
       { linkRegistry: stubRegistry(linkOnline()) },
@@ -50,19 +50,19 @@ describe("resolveDispatchTarget", () => {
     expect(t.kind).toBe("remote-cli");
   });
 
-  test("remote-user + codex + link online → remote-cli", async () => {
+  test("desktop + codex + link online → remote-cli", async () => {
     const t = await resolveDispatchTarget(
-      { harnessId: "codex", sandboxProviderKind: "remote-user", userId: "u" },
+      { harnessId: "codex", sandboxProviderKind: "desktop", userId: "u" },
       { linkRegistry: stubRegistry(linkOnline()) },
     );
     expect(t.kind).toBe("remote-cli");
   });
 
-  test("remote-user + link offline → error/link_offline", async () => {
+  test("desktop + link offline → error/link_offline", async () => {
     const t = await resolveDispatchTarget(
       {
         harnessId: "claude-code",
-        sandboxProviderKind: "remote-user",
+        sandboxProviderKind: "desktop",
         userId: "u",
       },
       { linkRegistry: stubRegistry(null) },
@@ -71,11 +71,11 @@ describe("resolveDispatchTarget", () => {
     if (t.kind === "error") expect(t.reason).toBe("link_offline");
   });
 
-  test("remote-user + link missing capability → error/capability_missing", async () => {
+  test("desktop + link missing capability → error/capability_missing", async () => {
     const t = await resolveDispatchTarget(
       {
         harnessId: "claude-code",
-        sandboxProviderKind: "remote-user",
+        sandboxProviderKind: "desktop",
         userId: "u",
       },
       { linkRegistry: stubRegistry(linkOnline(["decopilot-sandbox"])) },

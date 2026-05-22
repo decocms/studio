@@ -113,7 +113,7 @@ export interface MeshContextConfig {
   eventBus: EventBus;
   modelListCache?: ModelListCache;
   memberRoleCache?: MemberRoleCache;
-  /** Required for remote-user sandbox auto-resolution; tests may omit. */
+  /** Required for desktop sandbox auto-resolution; tests may omit. */
   linkRegistry?: LinkRegistry;
 }
 
