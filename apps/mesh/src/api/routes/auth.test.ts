@@ -1,15 +1,16 @@
 /**
- * HTTP integration tests for the custom auth routes — specifically the
- * /org-access-status/:slug endpoint that drives the shell layout's
- * "you visited an org you don't belong to" branch.
+ * HTTP integration tests for the custom auth routes.
  *
- * Each test exercises a distinct status branch:
- *   - not-found:        unknown slug
- *   - member:           caller is already in the org
- *   - pending-invite:   caller has a non-expired invitation
- *   - auto-domain-join: org claims the caller's verified email domain
- *   - no-access:        none of the above
- *   - 401:              unauthenticated
+ * Covers:
+ *   - /org-access-status/:slug — the shell layout's "you visited an org
+ *     you don't belong to" branch (status: member / pending-invite /
+ *     auto-domain-join / no-access / not-found / 401).
+ *   - /domain-lookup           — onboarding "do any orgs claim my email
+ *     domain?" lookup, including the multi-org case where several orgs
+ *     have all claimed the same corporate domain.
+ *   - /domain-join             — onboarding "join this org" action,
+ *     including the new requiresSelection 409 when more than one
+ *     auto-join-eligible org exists and the caller didn't pick.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
@@ -301,5 +302,401 @@ describe("GET /api/auth/custom/org-access-status/:slug", () => {
     };
     expect(body.status).toBe("no-access");
     expect(body.organization.slug).toBe("org_456");
+  });
+});
+
+// ============================================================================
+// /domain-lookup and /domain-join — onboarding auto-join flow.
+//
+// These tests exercise the multi-org claim path that landed alongside
+// migration 091: dropping the UNIQUE on organization_domains.domain lets
+// several orgs all claim the same corporate domain. The endpoints have to
+// (a) return ALL matching orgs from /domain-lookup so the UI can render a
+// picker, and (b) demand an explicit `organizationSlug` from /domain-join
+// whenever more than one auto-join-eligible org matches.
+// ============================================================================
+
+describe("Onboarding auto-join endpoints", () => {
+  let database: TestDatabase;
+  let app: Awaited<ReturnType<typeof createApp>>;
+
+  beforeEach(async () => {
+    database = await createTestDatabase();
+    await createTestSchema(database.db);
+    await seedCommonTestFixtures(database.db);
+
+    __setDbForTesting(database);
+
+    const now = new Date().toISOString();
+
+    // Add a verified corporate user plus two orgs that both claim
+    // `acme.test`. Auto-join is enabled on both by default; individual
+    // tests flip the flag with raw UPDATEs when they need an "no auto-
+    // join" variant. user_solo has no matching claims at all — used by
+    // the "no match" and "generic domain" tests.
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES ('user_corp', 'corp@acme.test', 1, 'Corp', ${now}, ${now}),
+             ('user_solo', 'solo@example.com', 1, 'Solo', ${now}, ${now}),
+             ('user_unverified', 'unverified@acme.test', 0, 'Unverified', ${now}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+
+    // Two orgs that both claim acme.test with auto-join enabled. The
+    // shared seed already created org_1, org_123, and org_456 (slugs:
+    // "org_1" / "org_123" / "org_456").
+    await sql`
+      INSERT INTO organization_domains
+        (organization_id, domain, auto_join_enabled, created_at, updated_at)
+      VALUES ('org_1', 'acme.test', true, ${now}, ${now}),
+             ('org_123', 'acme.test', true, ${now}, ${now})
+    `.execute(database.db);
+
+    app = await createApp({ database, eventBus: createMockEventBus() });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    __setDbForTesting(null);
+    await closeTestDatabase(database);
+  });
+
+  // --------------------------------------------------------------------
+  // /domain-lookup
+  // --------------------------------------------------------------------
+
+  describe("GET /api/auth/custom/domain-lookup", () => {
+    it("returns 401 when unauthenticated", async () => {
+      mockSession(null);
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-lookup"),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("returns found:false for an unverified email", async () => {
+      mockSession({
+        id: "user_unverified",
+        email: "unverified@acme.test",
+        emailVerified: false,
+      });
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-lookup"),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ found: false, organizations: [] });
+    });
+
+    it("returns found:false for a generic email domain", async () => {
+      mockSession({
+        id: "user_solo",
+        email: "solo@gmail.com",
+        emailVerified: true,
+      });
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-lookup"),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ found: false, organizations: [] });
+    });
+
+    it("returns found:false when no org claims the domain", async () => {
+      mockSession({
+        id: "user_solo",
+        email: "solo@example.com",
+        emailVerified: true,
+      });
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-lookup"),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ found: false, organizations: [] });
+    });
+
+    it("returns ALL orgs that claim the same domain (multi-org)", async () => {
+      mockSession({
+        id: "user_corp",
+        email: "corp@acme.test",
+        emailVerified: true,
+      });
+
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-lookup"),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        found: boolean;
+        organizations: Array<{
+          id: string;
+          slug: string;
+          autoJoinEnabled: boolean;
+        }>;
+      };
+
+      expect(body.found).toBe(true);
+      expect(body.organizations).toHaveLength(2);
+      // Order isn't part of the contract — compare as sets.
+      const slugs = body.organizations.map((o) => o.slug).sort();
+      expect(slugs).toEqual(["org_1", "org_123"]);
+      expect(body.organizations.every((o) => o.autoJoinEnabled)).toBe(true);
+    });
+
+    it("includes orgs whose auto_join_enabled is false (caller decides)", async () => {
+      // Flip one org's flag to false. The lookup endpoint should still
+      // surface it — the picker's job is to decide what to render based
+      // on `autoJoinEnabled` per row, not the server's job to filter.
+      await sql`
+        UPDATE organization_domains
+        SET auto_join_enabled = false
+        WHERE organization_id = 'org_123'
+      `.execute(database.db);
+
+      mockSession({
+        id: "user_corp",
+        email: "corp@acme.test",
+        emailVerified: true,
+      });
+
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-lookup"),
+      );
+      const body = (await res.json()) as {
+        organizations: Array<{ slug: string; autoJoinEnabled: boolean }>;
+      };
+      const byOrg = Object.fromEntries(
+        body.organizations.map((o) => [o.slug, o.autoJoinEnabled]),
+      );
+      expect(byOrg).toEqual({ org_1: true, org_123: false });
+    });
+  });
+
+  // --------------------------------------------------------------------
+  // /domain-join
+  // --------------------------------------------------------------------
+
+  describe("POST /api/auth/custom/domain-join", () => {
+    /** Stub `auth.api.addMember` with a direct INSERT into `member` so the
+     *  test can later assert membership without wiring the full Better
+     *  Auth adapter. Returns the spy so individual tests can inspect
+     *  call args. */
+    function stubAddMember() {
+      return vi
+        .spyOn(auth.api, "addMember")
+        .mockImplementation(async (args: unknown) => {
+          const { body } = args as {
+            body: { userId: string; organizationId: string; role: string };
+          };
+          const now = new Date().toISOString();
+          await sql`
+            INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+            VALUES (
+              ${"mem_" + body.userId + "_" + body.organizationId},
+              ${body.userId},
+              ${body.organizationId},
+              ${body.role},
+              ${now}
+            )
+            ON CONFLICT (id) DO NOTHING
+          `.execute(database.db);
+          return {} as never;
+        });
+    }
+
+    async function isMember(userId: string, orgId: string): Promise<boolean> {
+      const row = await database.db
+        .selectFrom("member")
+        .select(["id"])
+        .where("userId", "=", userId)
+        .where("organizationId", "=", orgId)
+        .executeTakeFirst();
+      return !!row;
+    }
+
+    it("returns 401 when unauthenticated", async () => {
+      mockSession(null);
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-join", {
+          method: "POST",
+        }),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 403 for unverified email", async () => {
+      mockSession({
+        id: "user_unverified",
+        email: "unverified@acme.test",
+        emailVerified: false,
+      });
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-join", {
+          method: "POST",
+        }),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 for a generic email domain", async () => {
+      mockSession({
+        id: "user_solo",
+        email: "solo@gmail.com",
+        emailVerified: true,
+      });
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-join", {
+          method: "POST",
+        }),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when no org claims the domain with auto-join", async () => {
+      // Disable auto-join on both claims for this scenario.
+      await sql`
+        UPDATE organization_domains SET auto_join_enabled = false
+        WHERE domain = 'acme.test'
+      `.execute(database.db);
+
+      mockSession({
+        id: "user_corp",
+        email: "corp@acme.test",
+        emailVerified: true,
+      });
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-join", {
+          method: "POST",
+        }),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("joins the only auto-join-eligible org when slug is omitted", async () => {
+      // Leave only org_1 with auto-join enabled.
+      await sql`
+        UPDATE organization_domains SET auto_join_enabled = false
+        WHERE organization_id = 'org_123'
+      `.execute(database.db);
+
+      const addMember = stubAddMember();
+      mockSession({
+        id: "user_corp",
+        email: "corp@acme.test",
+        emailVerified: true,
+      });
+
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-join", {
+          method: "POST",
+        }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { success: boolean; slug: string };
+      expect(body.success).toBe(true);
+      expect(body.slug).toBe("org_1");
+      expect(addMember).toHaveBeenCalledTimes(1);
+      expect(await isMember("user_corp", "org_1")).toBe(true);
+    });
+
+    it("returns 409 requiresSelection when multiple orgs match and no slug is given", async () => {
+      // Both orgs already auto-join eligible from beforeEach.
+      const addMember = stubAddMember();
+      mockSession({
+        id: "user_corp",
+        email: "corp@acme.test",
+        emailVerified: true,
+      });
+
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-join", {
+          method: "POST",
+        }),
+      );
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as {
+        success: boolean;
+        requiresSelection?: boolean;
+      };
+      expect(body.success).toBe(false);
+      expect(body.requiresSelection).toBe(true);
+      expect(addMember).not.toHaveBeenCalled();
+      // No membership row should have been written.
+      expect(await isMember("user_corp", "org_1")).toBe(false);
+      expect(await isMember("user_corp", "org_123")).toBe(false);
+    });
+
+    it("joins the specific org when caller picks a slug from a multi-org match", async () => {
+      const addMember = stubAddMember();
+      mockSession({
+        id: "user_corp",
+        email: "corp@acme.test",
+        emailVerified: true,
+      });
+
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organizationSlug: "org_123" }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { success: boolean; slug: string };
+      expect(body.success).toBe(true);
+      expect(body.slug).toBe("org_123");
+      expect(addMember).toHaveBeenCalledTimes(1);
+      const addArgs = addMember.mock.calls[0]![0] as {
+        body: { organizationId: string };
+      };
+      expect(addArgs.body.organizationId).toBe("org_123");
+      // The OTHER eligible org must NOT have been joined.
+      expect(await isMember("user_corp", "org_123")).toBe(true);
+      expect(await isMember("user_corp", "org_1")).toBe(false);
+    });
+
+    it("returns 403 when the picked slug does not claim the caller's domain", async () => {
+      // org_456 exists (seeded) but doesn't claim acme.test.
+      const addMember = stubAddMember();
+      mockSession({
+        id: "user_corp",
+        email: "corp@acme.test",
+        emailVerified: true,
+      });
+
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organizationSlug: "org_456" }),
+        }),
+      );
+      expect(res.status).toBe(403);
+      expect(addMember).not.toHaveBeenCalled();
+      expect(await isMember("user_corp", "org_456")).toBe(false);
+    });
+
+    it("returns 403 when the picked slug is auto-join-disabled, even if it claims the domain", async () => {
+      // Turn off auto-join for the org the caller is trying to pick.
+      await sql`
+        UPDATE organization_domains SET auto_join_enabled = false
+        WHERE organization_id = 'org_123'
+      `.execute(database.db);
+
+      const addMember = stubAddMember();
+      mockSession({
+        id: "user_corp",
+        email: "corp@acme.test",
+        emailVerified: true,
+      });
+
+      const res = await app.fetch(
+        new Request("http://test/api/auth/custom/domain-join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organizationSlug: "org_123" }),
+        }),
+      );
+      expect(res.status).toBe(403);
+      expect(addMember).not.toHaveBeenCalled();
+    });
   });
 });
