@@ -110,15 +110,26 @@ Behavior is unchanged. `resolveDispatchTarget` still returns errors for offline/
 
 ## Daemon Protocol Routes
 
-Today the user-desktop daemon serves harness-named routes. They become harness-agnostic.
+Today the user-desktop daemon serves harness-named routes. Every route under the `/_decopilot_vm/*` prefix moves to `/_sandbox/*`.
 
 | Old | New |
 |---|---|
 | `POST /_decopilot_vm/dispatch` | `POST /_sandbox/dispatch` |
 | `DELETE /_decopilot_vm/runs/<runId>` | `DELETE /_sandbox/runs/<runId>` |
+| `POST /_decopilot_vm/config` | `POST /_sandbox/config` |
+| `GET /_decopilot_vm/idle` | `GET /_sandbox/idle` |
+| `GET /_decopilot_vm/events` (SSE) | `GET /_sandbox/events` |
+| `POST /_decopilot_vm/read` | `POST /_sandbox/read` |
+| `POST /_decopilot_vm/write` | `POST /_sandbox/write` |
+| `POST /_decopilot_vm/edit` | `POST /_sandbox/edit` |
+| `POST /_decopilot_vm/grep` | `POST /_sandbox/grep` |
+| `POST /_decopilot_vm/glob` | `POST /_sandbox/glob` |
+| `POST /_decopilot_vm/bash` | `POST /_sandbox/bash` |
+| `POST /_decopilot_vm/write_from_url` | `POST /_sandbox/write_from_url` |
+| `POST /_decopilot_vm/upload_to_url` | `POST /_sandbox/upload_to_url` |
 | `POST /api/sandboxes` | unchanged |
 
-**Compat strategy:** the daemon dual-serves both prefixes for one release. The cluster speaks only the new prefix from day one. The next-next release removes the old handlers from the daemon. This avoids breaking pinned/firewalled daemons during the transition.
+**Compat strategy:** the daemon dual-serves both prefixes for one release — handlers register the new path and the legacy path resolves to the same handler. The cluster speaks only the new prefix from day one. The housekeeping sweep script (`deploy/helm/sandbox-env/files/housekeeper-sweep.sh`) probes `/_sandbox/idle` with a fallback to the old path for one release window. The next-next release removes the legacy handlers from the daemon.
 
 ## URL Fields
 
