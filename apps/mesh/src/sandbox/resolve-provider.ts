@@ -85,11 +85,20 @@ export async function resolveSandboxProvider(
     return { provider, kind };
   }
 
-  // 3. Recorded vmMap kind.
-  const recorded = readRecordedKind(virtualMcpMetadata, userId, branch);
-  if (recorded) {
-    const provider = await bindProviderForKind(ctx, userId, recorded);
-    return { provider, kind: recorded };
+  // 3. Recorded vmMap kind. Tiebreak against the default policy so that when
+  //    multiple sibling kinds were persisted (e.g. the user ran VM_START
+  //    twice with different `sandboxProviderKind` values), the events/proxy
+  //    path consistently picks the one matching current intent
+  //    (link online → `remote-user`, else env kind) instead of whatever
+  //    `Object.keys` happens to enumerate first.
+  const recordedKinds = readRecordedKinds(virtualMcpMetadata, userId, branch);
+  if (recordedKinds.length > 0) {
+    const preferred =
+      recordedKinds.length === 1
+        ? recordedKinds[0]
+        : await pickRecordedKind(ctx, userId, recordedKinds);
+    const provider = await bindProviderForKind(ctx, userId, preferred);
+    return { provider, kind: preferred };
   }
 
   // 4. Default policy.
@@ -99,22 +108,37 @@ export async function resolveSandboxProvider(
 }
 
 /**
- * The first recorded kind under `vmMap[userId][branch]`. Today the cell holds
- * at most one entry in normal usage; if multiple sibling kinds were ever
- * persisted under the same (user, branch) we'd need an explicit preference
- * here, but that case doesn't arise in practice and `VM_DELETE`'s explicit
- * kind dispatch would surface a stale row before this would.
+ * All kinds recorded under `vmMap[userId][branch]`. Multiple kinds can coexist
+ * as siblings — `VM_START` accepts an explicit `sandboxProviderKind`, and
+ * `setVmMapEntry` preserves siblings. Callers that need exactly one kind
+ * (`readRecordedKind`) tiebreak against the default policy.
  */
-function readRecordedKind(
+function readRecordedKinds(
   metadata: Record<string, unknown> | null,
   userId: string,
   branch: string,
-): SandboxProviderKind | null {
+): SandboxProviderKind[] {
   const cell = readVmMap(metadata)[userId]?.[branch];
-  if (!cell) return null;
+  if (!cell) return [];
   const parsed = parseBranchMap(cell);
-  const kinds = Object.keys(parsed) as SandboxProviderKind[];
-  return kinds[0] ?? null;
+  return Object.keys(parsed) as SandboxProviderKind[];
+}
+
+/**
+ * Picks one recorded kind when multiple siblings exist. Prefers the kind that
+ * matches the current default policy (link online → `remote-user`, else env
+ * kind); otherwise falls back to the first recorded kind. This keeps the
+ * events/proxy path deterministic across pods and matches what a fresh
+ * VM_START with no explicit kind would have used.
+ */
+async function pickRecordedKind(
+  ctx: MeshContext,
+  userId: string,
+  recorded: SandboxProviderKind[],
+): Promise<SandboxProviderKind> {
+  const preferred = await resolveDefaultKind(ctx, userId);
+  if (recorded.includes(preferred)) return preferred;
+  return recorded[0];
 }
 
 async function resolveDefaultKind(
