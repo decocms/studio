@@ -25,9 +25,9 @@ import {
   requireOrganization,
 } from "../../core/mesh-context";
 import type { Env } from "../hono-env";
-import { handleVmEvents } from "./vm-events-handler";
-import { resolveAndPushEnv } from "../../tools/vm/resolve-env";
-import { readValidatedRuntimeEnv } from "../../tools/vm/helpers";
+import { handleVmEvents } from "./sandbox-events-handler";
+import { resolveAndPushEnv } from "../../tools/sandbox/resolve-env";
+import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
 
 // ---- Middleware types -------------------------------------------------------
 

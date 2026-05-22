@@ -1,4 +1,4 @@
-import type { ClaimPhase } from "./hooks/vm-events-context";
+import type { ClaimPhase } from "./hooks/sandbox-events-context";
 
 /**
  * Shared copy for pre-daemon claim phases. The booting visual uses `long`

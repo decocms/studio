@@ -32,7 +32,7 @@ import {
   type RuntimeConfigMeta,
 } from "./helpers";
 import { resolveAndPushEnv } from "./resolve-env";
-import { readSandboxMap, resolveVm } from "./vm-map";
+import { readSandboxMap, resolveVm } from "./sandbox-map";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
@@ -44,7 +44,7 @@ import {
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
-import { setSandboxMapEntry } from "./vm-map";
+import { setSandboxMapEntry } from "./sandbox-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
 type GithubRepo = {

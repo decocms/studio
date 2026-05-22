@@ -21,7 +21,7 @@ import {
 } from "../../core/mesh-context";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import type { PackageManager } from "../../shared/runtime-defaults";
-import { readSandboxMap, resolveVm } from "./vm-map";
+import { readSandboxMap, resolveVm } from "./sandbox-map";
 
 export type RuntimeConfigMeta = {
   runtime?: {

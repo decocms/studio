@@ -1,5 +1,5 @@
 import type { LifecycleState } from "@decocms/sandbox/shared";
-import type { ClaimPhase } from "../hooks/vm-events-context";
+import type { ClaimPhase } from "../hooks/sandbox-events-context";
 
 export const PHASE_ORDER = ["provision", "cloning", "install", "dev"] as const;
 

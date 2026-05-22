@@ -1,7 +1,7 @@
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import { GridLoader } from "@/web/components/grid-loader";
-import type { ClaimPhase } from "../hooks/vm-events-context";
+import type { ClaimPhase } from "../hooks/sandbox-events-context";
 import { CLAIM_PHASE_COPY } from "../claim-phase-copy";
 import type { PhaseKey, PhaseProgress } from "./derive-phase-progress";
 import { activePhaseIndex } from "./state-card-helpers";

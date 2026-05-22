@@ -10,8 +10,8 @@ import {
   Terminal,
 } from "@untitledui/icons";
 import { BootingVisual } from "./booting-visual";
-import { VmTerminal } from "./drawer/terminal";
-import type { ClaimPhase } from "../hooks/vm-events-context";
+import { SandboxTerminal } from "./drawer/terminal";
+import type { ClaimPhase } from "../hooks/sandbox-events-context";
 import type { PhaseProgress, PhaseStatus } from "./derive-phase-progress";
 import {
   headlineFor,
@@ -20,7 +20,7 @@ import {
 } from "./state-card-helpers";
 import type { StateCardKind } from "./state-card-types";
 
-export type VmStateCardProps =
+export type SandboxStateCardProps =
   | { kind: "never-started"; onStart: () => void }
   | {
       kind: "starting-now";
@@ -50,7 +50,7 @@ export type VmStateCardProps =
   | { kind: "suspended"; onResume: () => void }
   | { kind: "crashed"; onOpenTerminal: () => void };
 
-export function VmStateCard(props: VmStateCardProps) {
+export function SandboxStateCard(props: SandboxStateCardProps) {
   if (props.kind === "starting-now") {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background p-6">
@@ -103,7 +103,9 @@ function Headline({ kind }: { kind: NonBootingKind }) {
   return <h3 className="text-lg font-medium">{headlineFor(kind)}</h3>;
 }
 
-function Subline(props: Exclude<VmStateCardProps, { kind: "starting-now" }>) {
+function Subline(
+  props: Exclude<SandboxStateCardProps, { kind: "starting-now" }>,
+) {
   switch (props.kind) {
     case "never-started":
       return (
@@ -198,13 +200,15 @@ function LogPeek({ source }: { source: string }) {
   return (
     <div className="flex w-[min(78%,560px)] flex-col items-stretch gap-1.5">
       <div className="h-32 overflow-hidden rounded-md [&_.xterm-viewport::-webkit-scrollbar]:hidden [&_.xterm-viewport]:!overflow-hidden">
-        <VmTerminal source={source} className="h-full" />
+        <SandboxTerminal source={source} className="h-full" />
       </div>
     </div>
   );
 }
 
-function Footer(props: Exclude<VmStateCardProps, { kind: "starting-now" }>) {
+function Footer(
+  props: Exclude<SandboxStateCardProps, { kind: "starting-now" }>,
+) {
   switch (props.kind) {
     case "never-started":
       return (

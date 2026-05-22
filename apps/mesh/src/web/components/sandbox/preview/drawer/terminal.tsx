@@ -3,9 +3,12 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { useVmChunkHandler, useVmEvents } from "../../hooks/use-vm-events";
+import {
+  useSandboxChunkHandler,
+  useSandboxEvents,
+} from "../../hooks/use-sandbox-events";
 
-interface VmTerminalProps {
+interface SandboxTerminalProps {
   /**
    * Log source this terminal renders ("setup", "daemon", or a script name
    * like "dev"). The terminal pulls the replay buffer at mount and subscribes
@@ -17,25 +20,25 @@ interface VmTerminalProps {
   className?: string;
 }
 
-export function VmTerminal({
+export function SandboxTerminal({
   source,
   onReady,
   onSelectionChange,
   className,
-}: VmTerminalProps) {
+}: SandboxTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const onSelectionChangeRef = useRef(onSelectionChange);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onSelectionChangeRef.current = onSelectionChange;
-  const vmEvents = useVmEvents();
+  const vmEvents = useSandboxEvents();
   // Stable ref so the chunk handler (registered once on mount) always sees
   // the current source; no dep churn on prop changes.
   const sourceRef = useRef(source);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   sourceRef.current = source;
 
-  useVmChunkHandler((chunkSource, data) => {
+  useSandboxChunkHandler((chunkSource, data) => {
     if (chunkSource !== sourceRef.current) return;
     terminalRef.current?.write(data);
   });

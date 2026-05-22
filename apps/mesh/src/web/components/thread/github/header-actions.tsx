@@ -13,7 +13,7 @@ import { useChatTask } from "../../chat/index";
 import { MergeSplitButton } from "./merge-split-button.tsx";
 import { selectHeaderButton, type HeaderButton } from "./panel-state.ts";
 import * as tpl from "./message-templates.ts";
-import { useVmEvents } from "@/web/components/vm/hooks/use-vm-events.ts";
+import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 
@@ -39,7 +39,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const githubRepo = vm?.metadata?.githubRepo ?? null;
 
-  const { lifecycle, branch: branchMeta, phase: claimPhase } = useVmEvents();
+  const {
+    lifecycle,
+    branch: branchMeta,
+    phase: claimPhase,
+  } = useSandboxEvents();
 
   const prQuery = usePrByBranch({
     orgId: org.id,

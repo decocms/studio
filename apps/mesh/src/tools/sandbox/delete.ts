@@ -10,7 +10,7 @@ import { normalizeLegacySandboxProviderKind } from "@decocms/mesh-sdk";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
 import { getSandboxProviderByKind } from "../../sandbox/lifecycle";
-import { removeSandboxMapEntry } from "./vm-map";
+import { removeSandboxMapEntry } from "./sandbox-map";
 
 export const SANDBOX_DELETE = defineTool({
   name: "SANDBOX_DELETE",

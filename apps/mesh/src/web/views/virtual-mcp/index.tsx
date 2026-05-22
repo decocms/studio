@@ -99,9 +99,9 @@ import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { FIXED_SYSTEM_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
-import { EnvVarsField } from "@/web/components/vm/runtime-card/env-vars-field";
-import { RepoRow } from "@/web/components/vm/runtime-card/repo-row";
-import { RuntimeFields } from "@/web/components/vm/runtime-card/runtime-fields";
+import { EnvVarsField } from "@/web/components/sandbox/runtime-card/env-vars-field";
+import { RepoRow } from "@/web/components/sandbox/runtime-card/repo-row";
+import { RuntimeFields } from "@/web/components/sandbox/runtime-card/runtime-fields";
 
 type DialogState = {
   shareDialogOpen: boolean;

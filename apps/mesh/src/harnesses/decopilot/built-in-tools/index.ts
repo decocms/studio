@@ -38,7 +38,7 @@ import { createReadResourceTool } from "./resources";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createVmTools } from "./vm-tools";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
-import { ensureSandbox } from "@/tools/vm/start";
+import { ensureSandbox } from "@/tools/sandbox/start";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import { todoWriteTool } from "./todo-write";

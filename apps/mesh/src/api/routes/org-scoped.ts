@@ -18,7 +18,7 @@ import { createSelfRoutes } from "./self";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
-import { createVmRoutes } from "./vm-proxy";
+import { createVmRoutes } from "./sandbox-proxy";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;

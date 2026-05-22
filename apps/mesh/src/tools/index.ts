@@ -34,7 +34,7 @@ import * as SecretsTools from "./secrets";
 import { getPrompts, getResources } from "./guides";
 import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
-import * as VmTools from "./vm";
+import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
 import * as LinkTools from "./links";
 import { ToolName } from "./registry-metadata";
@@ -165,8 +165,8 @@ const CORE_TOOLS = [
   ...RegistryTools.tools,
 
   // VM tools (app-only)
-  VmTools.SANDBOX_START,
-  VmTools.SANDBOX_DELETE,
+  SandboxTools.SANDBOX_START,
+  SandboxTools.SANDBOX_DELETE,
 
   // GitHub tools (app-only)
   GitHubTools.GITHUB_LIST_USER_ORGS,

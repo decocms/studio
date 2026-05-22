@@ -35,7 +35,7 @@ import {
 } from "@decocms/sandbox/provider";
 
 import type { MeshContext } from "../core/mesh-context";
-import { readSandboxMap } from "../tools/vm/vm-map";
+import { readSandboxMap } from "../tools/sandbox/sandbox-map";
 import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
 import { resolveDefaultSandboxProviderKind } from "./resolve-default-provider-kind";
 

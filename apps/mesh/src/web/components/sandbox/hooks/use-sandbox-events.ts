@@ -1,11 +1,11 @@
-/** Thin hooks over VmEventsContext. EventSource lifecycle lives in the provider. */
+/** Thin hooks over SandboxEventsContext. EventSource lifecycle lives in the provider. */
 
 import { use, useEffect, useRef } from "react";
 import {
-  VmEventsContext,
+  SandboxEventsContext,
   type ChunkHandler,
   type ReloadHandler,
-} from "./vm-events-context.tsx";
+} from "./sandbox-events-context.tsx";
 
 export type {
   BranchMeta,
@@ -13,14 +13,14 @@ export type {
   DaemonStatus,
   LifecycleState,
   ReloadHandler,
-} from "./vm-events-context.tsx";
+} from "./sandbox-events-context.tsx";
 
-export function useVmEvents() {
-  return use(VmEventsContext);
+export function useSandboxEvents() {
+  return use(SandboxEventsContext);
 }
 
-export function useVmChunkHandler(handler: ChunkHandler | null) {
-  const { subscribeChunks } = useVmEvents();
+export function useSandboxChunkHandler(handler: ChunkHandler | null) {
+  const { subscribeChunks } = useSandboxEvents();
   const handlerRef = useRef(handler);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   handlerRef.current = handler;
@@ -36,8 +36,8 @@ export function useVmChunkHandler(handler: ChunkHandler | null) {
 }
 
 /** Daemon "reload" = config edits framework HMR won't catch (.ts/.tsx uses framework HMR). */
-export function useVmReloadHandler(handler: ReloadHandler | null) {
-  const { subscribeReload } = useVmEvents();
+export function useSandboxReloadHandler(handler: ReloadHandler | null) {
+  const { subscribeReload } = useSandboxEvents();
   const handlerRef = useRef(handler);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   handlerRef.current = handler;

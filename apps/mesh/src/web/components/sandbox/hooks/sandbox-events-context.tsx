@@ -51,7 +51,7 @@ export type { BranchMeta, DaemonStatus, LifecycleState };
 export type ChunkHandler = (source: string, data: string) => void;
 export type ReloadHandler = () => void;
 
-export interface VmEventsValue {
+export interface SandboxEventsValue {
   /**
    * Latest `ClaimPhase` from the lifecycle portion of the stream. Null until
    * the first phase arrives. Stays at `ready`/`failed` after a terminal
@@ -78,7 +78,7 @@ export interface VmEventsValue {
   subscribeReload: (handler: ReloadHandler) => () => void;
 }
 
-const DEFAULT_VALUE: VmEventsValue = {
+const DEFAULT_VALUE: SandboxEventsValue = {
   phase: null,
   lifecycle: { phase: "idle" },
   status: { state: "running" },
@@ -93,7 +93,8 @@ const DEFAULT_VALUE: VmEventsValue = {
   subscribeReload: () => () => {},
 };
 
-export const VmEventsContext = createContext<VmEventsValue>(DEFAULT_VALUE);
+export const SandboxEventsContext =
+  createContext<SandboxEventsValue>(DEFAULT_VALUE);
 
 const BUFFER_BYTES = 16384;
 
@@ -132,7 +133,7 @@ const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
 // `log` is broadcast separately — same SSE stream, different shape.
 const LOG_EVENT = "log" as const;
 
-export function VmEventsProvider({
+export function SandboxEventsProvider({
   virtualMcpId,
   branch,
   children,
@@ -377,7 +378,7 @@ export function VmEventsProvider({
     };
   }, [virtualMcpId, branch, org.slug]);
 
-  const value: VmEventsValue = {
+  const value: SandboxEventsValue = {
     phase,
     lifecycle,
     status,
@@ -403,5 +404,5 @@ export function VmEventsProvider({
     },
   };
 
-  return <VmEventsContext value={value}>{children}</VmEventsContext>;
+  return <SandboxEventsContext value={value}>{children}</SandboxEventsContext>;
 }

@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SandboxRecord } from "@decocms/mesh-sdk";
 
-import { readSandboxMap, resolveVm } from "./vm-map";
+import { readSandboxMap, resolveVm } from "./sandbox-map";
 
 const ENTRY_A: SandboxRecord = {
   sandboxHandle: "vm-1",
@@ -145,7 +145,7 @@ describe("setSandboxMapEntry", () => {
   // setSandboxMapEntry so we can assert the legacy key is dropped and the new
   // key carries the merged shape.
   test("writes new key and drops legacy vmMap key", async () => {
-    const { setSandboxMapEntry } = await import("./vm-map");
+    const { setSandboxMapEntry } = await import("./sandbox-map");
     const legacyEntry: SandboxRecord = {
       sandboxHandle: "old",
       previewUrl: null,

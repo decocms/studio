@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
 import { toast } from "sonner";
-import { useVmEvents } from "../../hooks/use-vm-events";
+import { useSandboxEvents } from "../../hooks/use-sandbox-events";
 import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
-import { VmTerminal } from "./terminal";
+import { SandboxTerminal } from "./terminal";
 
 const WELL_KNOWN_STARTERS = ["dev", "start"];
 
@@ -24,7 +24,7 @@ export interface PreviewDrawerProps {
 }
 
 export function PreviewDrawer(props: PreviewDrawerProps) {
-  const vmEvents = useVmEvents();
+  const vmEvents = useSandboxEvents();
   const [active, setActive] = useState<string>(DEFAULT_TAB);
   const [scriptTabs, setScriptTabs] = useState<string[]>([]);
   const [killingScripts, setKillingScripts] = useState<Set<string>>(new Set());
@@ -238,7 +238,7 @@ function DrawerBody({
   // or "no output" copy) would compete with it.
   if (!vmId) return null;
   if (active === DEFAULT_TAB || hasData) {
-    return <VmTerminal key={active} source={active} className="h-full" />;
+    return <SandboxTerminal key={active} source={active} className="h-full" />;
   }
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">

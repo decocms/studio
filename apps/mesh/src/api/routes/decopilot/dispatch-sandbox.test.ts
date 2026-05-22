@@ -6,13 +6,13 @@
  */
 import { describe, expect, it, mock } from "bun:test";
 
-// `ensureSandbox` lives in tools/vm/start; we mock the module so the
+// `ensureSandbox` lives in tools/sandbox/start; we mock the module so the
 // test doesn't need to wire up storage, link registry, or the sandbox
 // provider. The route file imports `ensureSandbox` from this path.
 //
 // `nextEnsureSandboxReturn` lets individual tests override the previewUrl
 // (e.g. force `null` to exercise the helper's defensive throw).
-mock.module("@/tools/vm/start", () => ({
+mock.module("@/tools/sandbox/start", () => ({
   ensureSandbox: async (input: {
     virtualMcpId: string;
     branch: string;

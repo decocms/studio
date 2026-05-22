@@ -1,7 +1,7 @@
 /**
  * MCP SDK does NOT throw on server-side tool errors — it returns a resolved
  * promise with `{ isError: true, ... }`. `.catch()` misses everything. Use
- * this wrapper so VM bootstrap failures don't hang the UI on "Booting…".
+ * this wrapper so sandbox bootstrap failures don't hang the UI on "Booting…".
  */
 
 interface MinimalMcpClient {
@@ -17,7 +17,7 @@ interface McpToolResult {
   structuredContent?: unknown;
 }
 
-export async function callVmTool(
+export async function callSandboxTool(
   client: MinimalMcpClient,
   name: string,
   args: Record<string, unknown>,

@@ -49,7 +49,7 @@ import {
 } from "@untitledui/icons";
 import { authClient } from "@/web/lib/auth-client";
 import { ErrorBoundary } from "@/web/components/error-boundary";
-import { parseDotenv } from "@/web/components/vm/preview/drawer/parse-dotenv";
+import { parseDotenv } from "@/web/components/sandbox/preview/drawer/parse-dotenv";
 import {
   type SecretInfo,
   type SecretScopeKind,

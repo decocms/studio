@@ -64,7 +64,7 @@ import {
 } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/mesh-sdk/types";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useVmStart } from "@/web/components/vm/hooks/use-vm-start";
+import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -78,7 +78,7 @@ import { ToggleButtons } from "./toggle-buttons";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
-import { VmEventsProvider } from "@/web/components/vm/hooks/vm-events-context.tsx";
+import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 
 // ---------------------------------------------------------------------------
@@ -213,7 +213,7 @@ function VmEventsBridge({
   const userId = session?.user?.id;
 
   // Auto-start the VM when the active task points at a branch without any
-  // registered sandboxMap entry (regardless of kind). Routed through useVmStart so
+  // registered sandboxMap entry (regardless of kind). Routed through useSandboxStart so
   // concurrent mounts (preview, env, this bridge) for the same
   // (virtualMcpId, branch) collapse onto one in-flight upstream call.
   // The server's resolveDefaultSandboxProviderKind decides the kind when
@@ -223,7 +223,7 @@ function VmEventsBridge({
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const { mutate: triggerAutoStart } = useVmStart(autoStartClient);
+  const { mutate: triggerAutoStart } = useSandboxStart(autoStartClient);
   // Attempt at most one auto-start per (branch, mount). A user VM_DELETE
   // removes the sandboxMap entry — without a permanent guard the effect would
   // re-fire and resurrect the VM the user just stopped.
@@ -263,12 +263,12 @@ function VmEventsBridge({
   ]);
 
   return (
-    <VmEventsProvider
+    <SandboxEventsProvider
       virtualMcpId={virtualMcpId}
       branch={currentBranch ?? null}
     >
       {children}
-    </VmEventsProvider>
+    </SandboxEventsProvider>
   );
 }
 

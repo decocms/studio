@@ -27,7 +27,7 @@ import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
-import { ensureSandbox } from "@/tools/vm/start";
+import { ensureSandbox } from "@/tools/sandbox/start";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
   HarnessId,

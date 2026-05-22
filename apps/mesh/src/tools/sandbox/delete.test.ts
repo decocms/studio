@@ -45,7 +45,7 @@ mock.module("../../sandbox/lifecycle", () => ({
   asDockerRunner: () => null,
 }));
 
-const { SANDBOX_DELETE } = await import("./stop");
+const { SANDBOX_DELETE } = await import("./delete");
 
 const BRANCH = "feat/example";
 

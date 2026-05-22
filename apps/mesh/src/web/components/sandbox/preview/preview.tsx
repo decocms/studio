@@ -50,19 +50,22 @@ import {
 } from "./visual-editor-script";
 import { CMS_EDITOR_SCRIPT, CmsEditorPayloadSchema } from "./cms-editor-script";
 import { VisualEditorPrompt } from "./visual-editor-prompt";
-import { useVmEvents, useVmReloadHandler } from "../hooks/use-vm-events";
 import {
-  useIsVmStartPending,
-  useVmStart,
-  vmUserStop,
-  type VmStartArgs,
-} from "../hooks/use-vm-start";
+  useSandboxEvents,
+  useSandboxReloadHandler,
+} from "../hooks/use-sandbox-events";
+import {
+  useIsSandboxStartPending,
+  useSandboxStart,
+  sandboxUserStop,
+  type SandboxStartArgs,
+} from "../hooks/use-sandbox-start";
 import {
   computePreviewState,
   type LifecycleFailure,
   type PreviewState,
 } from "./preview-state";
-import { VmStateCard } from "./state-card";
+import { SandboxStateCard } from "./state-card";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import {
   PreviewDrawer,
@@ -169,8 +172,8 @@ export function PreviewContent() {
   const currentPageName = pages.find((p) => p.path === currentPath)?.name;
 
   // "reload" fires on config edits framework HMR won't catch (.ts/.tsx use HMR).
-  const vmEvents = useVmEvents();
-  useVmReloadHandler(() => {
+  const vmEvents = useSandboxEvents();
+  useSandboxReloadHandler(() => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
     // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
@@ -226,9 +229,9 @@ export function PreviewContent() {
     orgId: inset?.entity?.organization_id ?? "",
     orgSlug: org.slug,
   });
-  const startVm = useVmStart(mcpClient);
+  const startVm = useSandboxStart(mcpClient);
   const lastStartError = startVm.error?.message ?? null;
-  const vmStartPending = useIsVmStartPending(
+  const vmStartPending = useIsSandboxStartPending(
     virtualMcpId ?? undefined,
     branch ?? undefined,
   );
@@ -243,7 +246,9 @@ export function PreviewContent() {
   });
 
   const userStopped =
-    !!virtualMcpId && !!branch && vmUserStop.isStopped(virtualMcpId, branch);
+    !!virtualMcpId &&
+    !!branch &&
+    sandboxUserStop.isStopped(virtualMcpId, branch);
 
   // Terminal lifecycle failures from the daemon (clone/install/dev script
   // exited non-zero). Distinct from `lastStartError`, which is a VM_START
@@ -302,7 +307,7 @@ export function PreviewContent() {
   // on this closure's churning captures (branch, mutation, setter).
   const triggerStart = (reason: "auto-start" | "self-heal") => {
     if (!virtualMcpId) return;
-    const args: VmStartArgs = { virtualMcpId };
+    const args: SandboxStartArgs = { virtualMcpId };
     if (branch) args.branch = branch;
     startVm.mutate(args, {
       onSuccess: (data) => {
@@ -328,7 +333,7 @@ export function PreviewContent() {
     autoStartedForTaskRef.current = taskId;
   }
   // Branch must be resolved before firing: VmEventsBridge keys auto-start on
-  // `currentBranch`, and `useVmStart` dedupes by (virtualMcpId, branch).
+  // `currentBranch`, and `useSandboxStart` dedupes by (virtualMcpId, branch).
   // Firing here with branch=null uses a different dedup key AND asks the
   // server to generate a fresh branch — that's a different sandbox than the
   // one the page is actually on.
@@ -360,7 +365,7 @@ export function PreviewContent() {
     if (reprovisionedForVmIdRef.current === deadVmId) return;
     // Don't self-heal a VM the user explicitly stopped: the SSE "gone" event
     // can arrive before the sandboxMap query refetch clears the stale entry.
-    if (branch && vmUserStop.isStopped(virtualMcpId, branch)) return;
+    if (branch && sandboxUserStop.isStopped(virtualMcpId, branch)) return;
     reprovisionedForVmIdRef.current = deadVmId;
     triggerStartRef.current("self-heal");
   }, [deadVmId, virtualMcpId, lastStartError, startVm.isPending, branch]);
@@ -393,7 +398,7 @@ export function PreviewContent() {
     setDrawerOpen(readPersistedDrawerOpen(drawerStorageKey));
   }
   // Collapse to toolbar-only when the sandbox isn't running. Covers Stop
-  // (transitions to never-started via vmUserStop) and the initial idle
+  // (transitions to never-started via sandboxUserStop) and the initial idle
   // state. Persisted preference is untouched so the drawer restores to
   // the user's last open/closed state once the sandbox boots again.
   // `null` (pre-hydration) is treated as closed so the drawer doesn't
@@ -418,7 +423,7 @@ export function PreviewContent() {
     if (!branchToStop) return;
     const kindToStop = vmEntry?.sandboxProviderKind;
     if (!kindToStop) return;
-    vmUserStop.mark(virtualMcpId, branchToStop);
+    sandboxUserStop.mark(virtualMcpId, branchToStop);
     try {
       await mcpClient.callTool({
         name: "SANDBOX_DELETE",
@@ -914,7 +919,7 @@ export function PreviewContent() {
         <div className="flex-1 relative overflow-hidden">
           {previewState.kind === "never-started" && (
             <div className="absolute inset-0 z-30">
-              <VmStateCard
+              <SandboxStateCard
                 kind="never-started"
                 onStart={() => {
                   // Force the drawer closed so transitioning out of
@@ -929,7 +934,7 @@ export function PreviewContent() {
 
           {previewState.kind === "starting-now" && (
             <div className="absolute inset-0 z-30">
-              <VmStateCard
+              <SandboxStateCard
                 kind="starting-now"
                 progress={progress}
                 claimPhase={claimPhase}
@@ -939,7 +944,7 @@ export function PreviewContent() {
 
           {previewState.kind === "errored" && (
             <div className="absolute inset-0 z-40">
-              <VmStateCard
+              <SandboxStateCard
                 kind="errored"
                 progress={progress}
                 logSource="setup"
@@ -957,7 +962,7 @@ export function PreviewContent() {
               into the FileExplorer to debug what went wrong. */}
           {previewState.kind === "dev-script-failed" && viewMode !== "code" && (
             <div className="absolute inset-0 z-40">
-              <VmStateCard
+              <SandboxStateCard
                 kind="dev-script-failed"
                 progress={progress}
                 logSource={
@@ -976,13 +981,13 @@ export function PreviewContent() {
 
           {previewState.kind === "suspended" && (
             <div className="absolute inset-0 z-30">
-              <VmStateCard kind="suspended" onResume={retryAutoStart} />
+              <SandboxStateCard kind="suspended" onResume={retryAutoStart} />
             </div>
           )}
 
           {previewState.kind === "crashed" && (
             <div className="absolute inset-0 z-30">
-              <VmStateCard kind="crashed" onOpenTerminal={openDrawer} />
+              <SandboxStateCard kind="crashed" onOpenTerminal={openDrawer} />
             </div>
           )}
 
