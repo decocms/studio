@@ -1,5 +1,5 @@
 /**
- * Read the OAuth session from `<dataDir>/.deco/session.json`, matching
+ * Read the OAuth session from `<dataDir>/session.json`, matching
  * the shape `decocms auth login` writes (see
  * `apps/mesh/src/cli/lib/session.ts`). Reading is read-only on the
  * link side — minting a new session must go through the `decocms`

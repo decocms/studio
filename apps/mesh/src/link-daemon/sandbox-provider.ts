@@ -148,13 +148,7 @@ export function createDesktopSandboxProvider(
     input: EnsureSandboxInput,
   ): Promise<{ sandboxUrl: string; port: number }> => {
     evictIfNeeded();
-    const workdir = join(
-      deps.dataDir,
-      ".deco",
-      "link",
-      "sandboxes",
-      input.handle,
-    );
+    const workdir = join(deps.dataDir, "link", "sandboxes", input.handle);
     await mkdir(workdir, { recursive: true });
     // Two ephemeral ports per sandbox: one for the daemon's HTTP/proxy
     // (port) and one for the dev script the orchestrator will spawn
