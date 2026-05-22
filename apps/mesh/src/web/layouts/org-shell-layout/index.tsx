@@ -22,6 +22,7 @@ import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
 import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
 import { TasksPanelStateProvider } from "@/web/hooks/use-tasks-panel-state";
+import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { TasksPanelColumn } from "@/web/layouts/agent-shell-layout/tasks-panel-column";
 import { TasksPanel } from "@/web/layouts/tasks-panel";
@@ -111,6 +112,7 @@ export default function OrgShellLayout() {
                       <Toolbar.Header>
                         <Toolbar.LeftColumn>
                           <Toolbar.Nav />
+                          <LinkedDesktopIndicator />
                           <Toolbar.TogglesSlot />
                         </Toolbar.LeftColumn>
                         <Toolbar.CenterSlot />
