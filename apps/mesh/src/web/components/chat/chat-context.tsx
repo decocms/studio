@@ -87,7 +87,7 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 }
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
-import { useThreadActions, useThreadManager, useThreads } from "./store/hooks";
+import { useThreadActions, useThreadManager } from "./store/hooks";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
@@ -586,8 +586,9 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
 
 export function ChatContextProvider({
   virtualMcpId,
+  task,
   children,
-}: PropsWithChildren<{ virtualMcpId: string }>) {
+}: PropsWithChildren<{ virtualMcpId: string; task: Task | null }>) {
   const { locator } = useProjectContext();
   const { data: session } = authClient.useSession();
   const user = session?.user ?? null;
@@ -603,8 +604,6 @@ export function ChatContextProvider({
   const [preferences] = usePreferences();
   const { markTaskRead } = useTaskReadState();
 
-  // Resolve the active thread directly from the manager's snapshot by id.
-  const { threads: allThreads } = useThreads();
   const threadActions = useThreadActions();
 
   // taskId always comes from the URL (seeded by router's validateSearch)
@@ -627,9 +626,12 @@ export function ChatContextProvider({
     });
   };
 
-  const activeTask = effectiveTaskId
-    ? (allThreads.find((t) => t.id === effectiveTaskId) ?? null)
-    : null;
+  // The active task row is resolved by the route layout via `useEnsureTask`
+  // and threaded in as a prop, so this provider doesn't need to read the
+  // panel-visible threads slot. Guard against transient prop/URL skew during
+  // navigation by only honoring the prop when ids match.
+  const activeTask =
+    effectiveTaskId && task?.id === effectiveTaskId ? task : null;
   const currentBranch = activeTask?.branch ?? null;
   const isBranchLocked = !!activeTask?.branch;
 
