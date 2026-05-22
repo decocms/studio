@@ -103,19 +103,19 @@ const DECOPILOT_TIERS: AgentTierMap = {
 const CLAUDE_CODE_TIERS: AgentTierMap = {
   fast: {
     modelId: "claude-code:haiku",
-    label: "Haiku",
+    label: "Haiku 4.5",
     description: "Quicker responses",
     iconNode: <ClaudeCodeIcon size={16} />,
   },
   smart: {
     modelId: "claude-code:sonnet",
-    label: "Sonnet",
+    label: "Sonnet 4.6",
     description: "Balanced quality",
     iconNode: <ClaudeCodeIcon size={16} />,
   },
   thinking: {
     modelId: "claude-code:opus",
-    label: "Opus",
+    label: "Opus 4.7",
     description: "Deeper reasoning",
     iconNode: <ClaudeCodeIcon size={16} />,
   },
