@@ -34,7 +34,10 @@ test.describe("Org access gate", () => {
     await expect(
       page.getByRole("button", { name: "Go to home" }),
     ).toBeVisible();
-    await page.screenshot({ path: "screenshots/not-found.png", fullPage: true });
+    await page.screenshot({
+      path: "screenshots/not-found.png",
+      fullPage: true,
+    });
   });
 
   test("shows the no-access screen for an existing org the user isn't in", async ({
@@ -71,7 +74,10 @@ test.describe("Org access gate", () => {
     await expect(page.getByRole("heading", { name: "No access" })).toBeVisible({
       timeout: 10_000,
     });
-    await page.screenshot({ path: "screenshots/no-access.png", fullPage: true });
+    await page.screenshot({
+      path: "screenshots/no-access.png",
+      fullPage: true,
+    });
   });
 
   test("shows the pending-invite screen and accepting it lands in the org", async ({
