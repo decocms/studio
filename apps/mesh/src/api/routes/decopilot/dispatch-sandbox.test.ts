@@ -16,14 +16,14 @@ mock.module("@/tools/vm/start", () => ({
   ensureVm: async (input: {
     virtualMcpId: string;
     branch: string;
-    sandboxProviderKind: "desktop";
+    sandboxProviderKind: "user-desktop";
   }) => {
     ensureVmCalls.push(input);
     return {
       vmId: "sleek-flint-0000000000000000",
       previewUrl: nextEnsureVmReturn.previewUrl,
       sandboxUrl: nextEnsureVmReturn.previewUrl,
-      sandboxProviderKind: "desktop" as const,
+      sandboxProviderKind: "user-desktop" as const,
       createdAt: 0,
       startedWith: { packageManager: null, port: null, path: null },
     };
@@ -43,7 +43,7 @@ const nextEnsureVmReturn: { previewUrl: string | null } = {
 const { resolveRemoteCliSandboxUrl } = await import("./dispatch-run");
 
 describe("resolveRemoteCliSandboxUrl", () => {
-  it("calls ensureVm with the agent id, branch, and desktop kind", async () => {
+  it("calls ensureVm with the agent id, branch, and user-desktop kind", async () => {
     ensureVmCalls.length = 0;
     const sandboxUrl = await resolveRemoteCliSandboxUrl(
       { agent: { id: "vm-1" }, branch: "deco/sleek-flint" },
@@ -54,7 +54,7 @@ describe("resolveRemoteCliSandboxUrl", () => {
       {
         virtualMcpId: "vm-1",
         branch: "deco/sleek-flint",
-        sandboxProviderKind: "desktop",
+        sandboxProviderKind: "user-desktop",
       },
     ]);
     expect(sandboxUrl).toBe("https://sleek-flint-0000000000000000.deco.host");

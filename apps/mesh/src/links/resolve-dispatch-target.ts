@@ -3,11 +3,11 @@
  * provider kind pinned for this (thread, virtualMcpId, branch).
  *
  * `sandboxProviderKind` is the single source of truth:
- *   - cloud kind (docker/agent-sandbox) → cluster default sandbox
- *   - `desktop` + decopilot → cluster decopilot, sandbox tools tunneled
- *   - `desktop` + claude-code/codex → whole stream dispatched to the desktop
+ *   - cloud kind (local-docker/cluster) → cluster default sandbox
+ *   - `user-desktop` + decopilot → cluster decopilot, sandbox tools tunneled
+ *   - `user-desktop` + claude-code/codex → whole stream dispatched to the desktop
  *
- * Link health is checked only for `desktop`. Offline/missing-capability
+ * Link health is checked only for `user-desktop`. Offline/missing-capability
  * paths return an `error` target which `POST /messages` surfaces as 409.
  *
  * Takes the kind directly (not a `VmMapEntry`) so the POST handler can
@@ -52,7 +52,7 @@ export async function resolveDispatchTarget(
 ): Promise<DispatchTarget> {
   const kind = input.sandboxProviderKind;
 
-  if (kind !== "desktop") {
+  if (kind !== "user-desktop") {
     return { kind: "local", sandbox: "default" };
   }
 

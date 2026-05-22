@@ -121,7 +121,24 @@ test("VmMapEntry.startedWith is optional with nullable packageManager/port/path"
 });
 
 describe("parseBranchMap tolerant reader", () => {
-  test("parses 3-level (kind-keyed) map", () => {
+  test("parses 3-level (kind-keyed) map with canonical kinds", () => {
+    const result = parseBranchMap({
+      "local-docker": {
+        vmId: "v1",
+        previewUrl: null,
+        sandboxProviderKind: "local-docker",
+      },
+      "user-desktop": {
+        vmId: "v2",
+        previewUrl: null,
+        sandboxProviderKind: "user-desktop",
+      },
+    });
+    expect(result["local-docker"]?.vmId).toBe("v1");
+    expect(result["user-desktop"]?.vmId).toBe("v2");
+  });
+
+  test("normalizes legacy kind keys to canonical ones", () => {
     const result = parseBranchMap({
       docker: { vmId: "v1", previewUrl: null, sandboxProviderKind: "docker" },
       desktop: {
@@ -130,8 +147,8 @@ describe("parseBranchMap tolerant reader", () => {
         sandboxProviderKind: "desktop",
       },
     });
-    expect(result.docker?.vmId).toBe("v1");
-    expect(result.desktop?.vmId).toBe("v2");
+    expect(result["local-docker"]?.vmId).toBe("v1");
+    expect(result["user-desktop"]?.vmId).toBe("v2");
   });
 
   test("wraps 2-level legacy entry under its sandboxProviderKind", () => {
@@ -140,18 +157,18 @@ describe("parseBranchMap tolerant reader", () => {
       previewUrl: null,
       sandboxProviderKind: "desktop",
     });
-    expect(result.desktop?.vmId).toBe("v-legacy");
-    expect(result.docker).toBeUndefined();
+    expect(result["user-desktop"]?.vmId).toBe("v-legacy");
+    expect(result["local-docker"]).toBeUndefined();
   });
 
-  test("coalesces a legacy freestyle entry to docker on read", () => {
+  test("coalesces a legacy freestyle entry to local-docker on read", () => {
     const result = parseBranchMap({
       vmId: "v-very-legacy",
       previewUrl: null,
       runnerKind: "freestyle",
     });
-    // freestyle runner no longer exists; legacy rows fall back to docker.
-    expect(result.docker?.vmId).toBe("v-very-legacy");
+    // freestyle runner no longer exists; legacy rows fall back to local-docker.
+    expect(result["local-docker"]?.vmId).toBe("v-very-legacy");
   });
 
   test("returns empty object for null/undefined/arrays", () => {
@@ -160,20 +177,29 @@ describe("parseBranchMap tolerant reader", () => {
     expect(parseBranchMap([])).toEqual({});
   });
 
-  test("legacy entry without sandboxProviderKind defaults to 'docker'", () => {
+  test("legacy entry without sandboxProviderKind defaults to 'local-docker'", () => {
     const result = parseBranchMap({ vmId: "v-orphan", previewUrl: null });
-    expect(result.docker?.vmId).toBe("v-orphan");
+    expect(result["local-docker"]?.vmId).toBe("v-orphan");
   });
 });
 
 describe("parseVmMapEntry tolerant reader", () => {
-  test("accepts new sandboxProviderKind field", () => {
+  test("accepts canonical sandboxProviderKind", () => {
+    const result = parseVmMapEntry({
+      vmId: "v1",
+      previewUrl: null,
+      sandboxProviderKind: "local-docker",
+    });
+    expect(result.sandboxProviderKind).toBe("local-docker");
+  });
+
+  test("normalizes legacy kind name to canonical", () => {
     const result = parseVmMapEntry({
       vmId: "v1",
       previewUrl: null,
       sandboxProviderKind: "docker",
     });
-    expect(result.sandboxProviderKind).toBe("docker");
+    expect(result.sandboxProviderKind).toBe("local-docker");
   });
 
   test("normalizes legacy runnerKind into sandboxProviderKind", () => {
@@ -182,7 +208,7 @@ describe("parseVmMapEntry tolerant reader", () => {
       previewUrl: null,
       runnerKind: "desktop",
     });
-    expect(result.sandboxProviderKind).toBe("desktop");
+    expect(result.sandboxProviderKind).toBe("user-desktop");
     expect(
       (result as unknown as { runnerKind?: unknown }).runnerKind,
     ).toBeUndefined();
@@ -195,6 +221,6 @@ describe("parseVmMapEntry tolerant reader", () => {
       runnerKind: "docker",
       sandboxProviderKind: "desktop",
     });
-    expect(result.sandboxProviderKind).toBe("desktop");
+    expect(result.sandboxProviderKind).toBe("user-desktop");
   });
 });

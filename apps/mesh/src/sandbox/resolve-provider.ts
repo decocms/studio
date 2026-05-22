@@ -5,7 +5,7 @@
  *
  *   1. **Caller override (`explicitKind`).** `VM_START` forwards
  *      `input.sandboxProviderKind` here; `ensureVm` callers pass the kind
- *      they already resolved. Binds the user's link for `desktop`.
+ *      they already resolved. Binds the user's link for `user-desktop`.
  *
  *   2. **Per-run dispatch hint** (`ctx.sandboxPreference` /
  *      `ctx.linkForCurrentRun`). Set by `dispatch-run` from the resolved
@@ -14,13 +14,13 @@
  *      and any DB lookup here would just confirm what they already know.
  *
  *   3. **Recorded vmMap kind.** The post-provision source of truth: a
- *      sandbox provisioned via `desktop` stays addressable through
- *      `desktop` even on a cluster whose env kind is something else
- *      (`agent-sandbox`, `docker`, …). This is what the events/proxy
+ *      sandbox provisioned via `user-desktop` stays addressable through
+ *      `user-desktop` even on a cluster whose env kind is something else
+ *      (`cluster`, `local-docker`, …). This is what the events/proxy
  *      route uses — no ctx hint, just the recorded entry.
  *
  *   4. **Default policy** (`resolveDefaultSandboxProviderKind`). Pre-
- *      provision fall-through: live link → `desktop`, else env kind.
+ *      provision fall-through: live link → `user-desktop`, else env kind.
  *
  * Returns a fully-bound `SandboxProvider` plus the resolved kind. Callers
  * never need to set `ctx.sandboxPreference` / `ctx.linkForCurrentRun`
@@ -48,7 +48,7 @@ export interface ResolveSandboxProviderArgs {
   /**
    * Caller-provided override (e.g. `VM_START`'s `input.sandboxProviderKind`).
    * When set, takes precedence over both the vmMap entry and the default
-   * policy. The resolver still binds the user's link for `desktop`.
+   * policy. The resolver still binds the user's link for `user-desktop`.
    */
   explicitKind?: SandboxProviderKind;
 }
@@ -77,12 +77,12 @@ export async function resolveSandboxProvider(
   //    `default` means "use the cluster runner the env points to".
   if (ctx.sandboxPreference === "desktop" && ctx.linkForCurrentRun) {
     const provider = await buildDesktopProvider(ctx, ctx.linkForCurrentRun);
-    return { provider, kind: "desktop" };
+    return { provider, kind: "user-desktop" };
   }
   if (ctx.sandboxPreference === "default") {
-    // Route through `bindProviderForKind` so that env kind === "desktop"
+    // Route through `bindProviderForKind` so that env kind === "user-desktop"
     // (the default in local dev) still binds the user's link instead of
-    // calling `instantiate("desktop")` directly, which throws. Without
+    // calling `instantiate("user-desktop")` directly, which throws. Without
     // this, background fires (cron/webhook/event automations) blow up
     // here because `dispatch-run` defaults their target to local/default
     // and never sets `sandboxPreference="desktop"` with a link.
@@ -136,7 +136,7 @@ function readRecordedKinds(
 
 /**
  * Picks one recorded kind when multiple siblings exist. Prefers the kind that
- * matches the current default policy (link online → `desktop`, else env
+ * matches the current default policy (link online → `user-desktop`, else env
  * kind); otherwise falls back to the first recorded kind. This keeps the
  * events/proxy path deterministic across pods and matches what a fresh
  * VM_START with no explicit kind would have used.
@@ -168,11 +168,11 @@ async function bindProviderForKind(
   userId: string,
   kind: SandboxProviderKind,
 ): Promise<SandboxProvider> {
-  if (kind !== "desktop") return getSandboxProviderByKind(ctx, kind);
+  if (kind !== "user-desktop") return getSandboxProviderByKind(ctx, kind);
 
   if (!ctx.linkRegistry) {
     throw new Error(
-      "desktop sandbox provider requires ctx.linkRegistry to be wired (set on MeshContextConfig).",
+      "user-desktop sandbox provider requires ctx.linkRegistry to be wired (set on MeshContextConfig).",
     );
   }
   const link = await ctx.linkRegistry.get(userId);

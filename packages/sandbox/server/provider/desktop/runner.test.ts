@@ -435,14 +435,14 @@ describe("DesktopSandboxProvider + state store", () => {
     });
 
     const sandbox = await provider.ensure({ userId: "u", projectRef: "p" });
-    const row = await stateStore.getByHandle("desktop", sandbox.handle);
+    const row = await stateStore.getByHandle("user-desktop", sandbox.handle);
     expect(row).not.toBeNull();
     expect(row?.state.sandboxUrl).toBe(`${TUNNEL}/_sandbox/persisted`);
   });
 
   it("alive() probes sandboxUrl from state store on cache miss", async () => {
     const stateStore = makeFakeStateStore();
-    await stateStore.put({ userId: "u", projectRef: "p" }, "desktop", {
+    await stateStore.put({ userId: "u", projectRef: "p" }, "user-desktop", {
       handle: "fresh-handle",
       state: {
         handle: "fresh-handle",
@@ -464,7 +464,7 @@ describe("DesktopSandboxProvider + state store", () => {
 
   it("proxyDaemonRequest forwards to sandboxUrl from state store on cache miss", async () => {
     const stateStore = makeFakeStateStore();
-    await stateStore.put({ userId: "u", projectRef: "p" }, "desktop", {
+    await stateStore.put({ userId: "u", projectRef: "p" }, "user-desktop", {
       handle: "proxy-handle",
       state: {
         handle: "proxy-handle",

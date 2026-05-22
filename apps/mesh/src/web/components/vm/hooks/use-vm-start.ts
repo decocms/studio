@@ -29,10 +29,10 @@ export interface VmStartArgs {
   branch?: string;
   /**
    * Optional explicit sandbox provider kind. When omitted the server picks
-   * via resolveDefaultSandboxProviderKind (link-online ⇒ desktop, else
+   * via resolveDefaultSandboxProviderKind (link-online ⇒ user-desktop, else
    * the env kind). Used by the v2 RunnerPill to materialize a specific kind.
    */
-  sandboxProviderKind?: "docker" | "agent-sandbox" | "desktop";
+  sandboxProviderKind?: "local-docker" | "cluster" | "user-desktop";
 }
 
 export interface VmStartResult {
@@ -40,7 +40,7 @@ export interface VmStartResult {
   vmId: string;
   branch: string;
   isNewVm: boolean;
-  sandboxProviderKind?: "docker" | "agent-sandbox" | "desktop";
+  sandboxProviderKind?: "local-docker" | "cluster" | "user-desktop";
 }
 
 const inflightStarts = new Map<string, Promise<VmStartResult>>();

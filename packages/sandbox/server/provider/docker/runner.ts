@@ -45,7 +45,7 @@ import type {
 } from "../types";
 import type { ClaimPhase } from "../lifecycle-types";
 
-const RUNNER_KIND = "docker" as const;
+const RUNNER_KIND = "local-docker" as const;
 const LABEL_ROOT = "studio-sandbox";
 const LABEL_ID = "studio-sandbox.id";
 const DEFAULT_DEV_PORT = 3000;

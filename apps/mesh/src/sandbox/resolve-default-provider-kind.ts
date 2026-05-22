@@ -3,8 +3,8 @@
  * caller hasn't explicitly chosen one.
  *
  * Policy:
- *   - link online for this user → "desktop"
- *   - otherwise → whatever the env's cluster runner is (docker/agent-sandbox)
+ *   - link online for this user → "user-desktop"
+ *   - otherwise → whatever the env's cluster runner is (local-docker/cluster)
  *
  * The link probe is the same one `resolveDispatchTarget` uses, so manual VM
  * start (from the branch picker) and auto-start (from VmEventsBridge) agree.
@@ -22,6 +22,6 @@ export async function resolveDefaultSandboxProviderKind(
   deps: ResolveDefaultDeps,
 ): Promise<SandboxProviderKind> {
   const link = await deps.linkRegistry.get(userId);
-  if (link) return "desktop";
+  if (link) return "user-desktop";
   return deps.resolveEnvKind();
 }

@@ -150,7 +150,7 @@ export function PreviewContent() {
     userId && branch ? parseBranchMap(metadata?.vmMap?.[userId]?.[branch]) : {};
   const branchMapEntries = Object.values(branchMap);
   const vmEntry =
-    branchMapEntries.find((e) => e.sandboxProviderKind !== "desktop") ??
+    branchMapEntries.find((e) => e.sandboxProviderKind !== "user-desktop") ??
     branchMapEntries[0];
   const previewUrl = vmEntry?.previewUrl ?? null;
 

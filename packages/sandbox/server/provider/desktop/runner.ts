@@ -40,7 +40,7 @@ import type {
   SandboxProvider,
 } from "../types";
 
-const RUNNER_KIND = "desktop" as const;
+const RUNNER_KIND = "user-desktop" as const;
 
 /**
  * Subset of `LinkEntry` the provider actually needs. The dispatch path passes

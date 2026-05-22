@@ -13,7 +13,7 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 
 // Pin runner kind — the dev env flips STUDIO_SANDBOX_RUNNER and VM_START
 // reads it at handler time.
-process.env.STUDIO_SANDBOX_RUNNER = "docker";
+process.env.STUDIO_SANDBOX_RUNNER = "local-docker";
 
 // Mock runner BEFORE importing VM_START — handler is runner-agnostic.
 
@@ -33,7 +33,7 @@ async function* readyOnly() {
 }
 
 const mockDockerRunner: SandboxProvider = {
-  kind: "docker",
+  kind: "local-docker",
   ensure: (id, opts) => mockEnsure(id, opts),
   exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
   delete: (handle) => mockDockerDelete(handle),
@@ -46,7 +46,7 @@ const mockDockerRunner: SandboxProvider = {
 const mockDesktopDelete = mock(async (_handle: string) => {});
 
 const mockDesktopRunner: SandboxProvider = {
-  kind: "desktop",
+  kind: "user-desktop",
   ensure: (id, opts) => mockEnsure(id, opts),
   exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
   delete: (handle) => mockDesktopDelete(handle),
@@ -59,8 +59,8 @@ const mockDesktopRunner: SandboxProvider = {
 mock.module("../../sandbox/lifecycle", () => ({
   getSandboxProviderByKind: (
     _ctx: unknown,
-    kind: "docker" | "agent-sandbox",
-  ) => (kind === "docker" ? mockDockerRunner : mockDockerRunner),
+    kind: "local-docker" | "cluster",
+  ) => (kind === "local-docker" ? mockDockerRunner : mockDockerRunner),
   // The unified resolver in `resolve-provider.ts` calls
   // `buildDesktopProvider` directly (no ctx side-effects), so a mock
   // is needed for VM_START's desktop path to construct the expected
@@ -349,7 +349,7 @@ describe("VM_START", () => {
     expect(result.previewUrl).toBe("https://stub.preview/");
     expect(result.branch).toBe(BRANCH);
     expect(result.isNewVm).toBe(true);
-    expect(result.sandboxProviderKind).toBe("docker");
+    expect(result.sandboxProviderKind).toBe("local-docker");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -357,11 +357,11 @@ describe("VM_START", () => {
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["docker"];
+    )?.["local-docker"];
     expect(stored).toMatchObject({
       vmId: "vm_xyz",
       previewUrl: "https://stub.preview/",
-      sandboxProviderKind: "docker",
+      sandboxProviderKind: "local-docker",
     });
     // Server-stamped; assert recency, not exact value.
     expect(typeof (stored as VmMapEntry)?.createdAt).toBe("number");
@@ -392,7 +392,7 @@ describe("VM_START", () => {
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["docker"] as VmMapEntry | undefined;
+    )?.["local-docker"] as VmMapEntry | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: "pnpm",
       port: "4321",
@@ -427,7 +427,7 @@ describe("VM_START", () => {
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["docker"] as VmMapEntry | undefined;
+    )?.["local-docker"] as VmMapEntry | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: null,
       port: null,
@@ -444,7 +444,7 @@ describe("VM_START", () => {
     const metadata: Metadata = {
       ...BASE_METADATA,
       // 3-level: kind (docker) → entry
-      vmMap: { [USER_ID]: { [BRANCH]: { docker: CACHED_ENTRY } } },
+      vmMap: { [USER_ID]: { [BRANCH]: { "local-docker": CACHED_ENTRY } } },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -565,14 +565,14 @@ describe("VM_START", () => {
     const dockerEntry: VmMapEntry = {
       vmId: "vm_docker_existing",
       previewUrl: "https://docker.preview/",
-      sandboxProviderKind: "docker",
+      sandboxProviderKind: "local-docker",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
       // 3-level: docker entry lives under its own key
       vmMap: {
         [USER_ID]: {
-          [BRANCH]: { docker: dockerEntry },
+          [BRANCH]: { "local-docker": dockerEntry },
         },
       },
     };
@@ -602,7 +602,7 @@ describe("VM_START", () => {
     // No teardown of the docker entry (kinds are siblings)
     expect(mockDockerDelete).not.toHaveBeenCalled();
     expect(mockEnsure).toHaveBeenCalledTimes(1);
-    expect(result.sandboxProviderKind).toBe("desktop");
+    expect(result.sandboxProviderKind).toBe("user-desktop");
     expect(result.isNewVm).toBe(true);
   });
 
@@ -610,13 +610,13 @@ describe("VM_START", () => {
     const sameRunnerEntry: VmMapEntry = {
       vmId: "vm_docker_existing",
       previewUrl: "https://docker.preview/",
-      sandboxProviderKind: "docker",
+      sandboxProviderKind: "local-docker",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
       vmMap: {
         [USER_ID]: {
-          [BRANCH]: { docker: sameRunnerEntry },
+          [BRANCH]: { "local-docker": sameRunnerEntry },
         },
       },
     };
@@ -658,18 +658,18 @@ describe("VM_START", () => {
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("desktop");
+    expect(result.sandboxProviderKind).toBe("user-desktop");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["desktop"] as VmMapEntry | undefined;
-    expect(stored?.sandboxProviderKind).toBe("desktop");
+    )?.["user-desktop"] as VmMapEntry | undefined;
+    expect(stored?.sandboxProviderKind).toBe("user-desktop");
   });
 
   it("VM_START with no sandboxProviderKind picks env kind when no link", async () => {
-    // STUDIO_SANDBOX_RUNNER is "docker" at module load time (top of file)
+    // STUDIO_SANDBOX_RUNNER is "local-docker" at module load time (top of file)
     const linkRegistry: LinkRegistry = {
       get: async (_userId: string) => null,
       put: async () => {},
@@ -684,18 +684,18 @@ describe("VM_START", () => {
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("docker");
+    expect(result.sandboxProviderKind).toBe("local-docker");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["docker"] as VmMapEntry | undefined;
-    expect(stored?.sandboxProviderKind).toBe("docker");
+    )?.["local-docker"] as VmMapEntry | undefined;
+    expect(stored?.sandboxProviderKind).toBe("local-docker");
   });
 
   it("VM_START with explicit sandboxProviderKind ignores defaults", async () => {
-    // Link is online, env is "docker" — but explicit "docker" must win (and desktop would also be overrideable).
+    // Link is online, env is "local-docker" — but explicit "local-docker" must win (and user-desktop would also be overrideable).
     const linkRegistry: LinkRegistry = {
       get: async (_userId: string) => STUB_LINK,
       put: async () => {},
@@ -706,18 +706,22 @@ describe("VM_START", () => {
     const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
 
     const result = await VM_START.handler(
-      { virtualMcpId: VMCP_ID, branch: BRANCH, sandboxProviderKind: "docker" },
+      {
+        virtualMcpId: VMCP_ID,
+        branch: BRANCH,
+        sandboxProviderKind: "local-docker",
+      },
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("docker");
+    expect(result.sandboxProviderKind).toBe("local-docker");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
     // 3-level key: vmMap[userId][branch][kind]
     const stored = (
       updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["docker"] as VmMapEntry | undefined;
-    expect(stored?.sandboxProviderKind).toBe("docker");
+    )?.["local-docker"] as VmMapEntry | undefined;
+    expect(stored?.sandboxProviderKind).toBe("local-docker");
   });
 
   it("throws RECONNECT_ERROR when refreshing an expired token fails", async () => {

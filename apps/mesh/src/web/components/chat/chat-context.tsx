@@ -522,7 +522,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     pendingAgentOption === null
       ? null
       : !hasClonableSource &&
-          AGENT_OPTION_PINS[pendingAgentOption].sandbox === "desktop"
+          AGENT_OPTION_PINS[pendingAgentOption].sandbox === "user-desktop"
         ? "decopilot"
         : pendingAgentOption;
 

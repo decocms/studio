@@ -52,7 +52,7 @@ const BRANCH = "feat/example";
 const DOCKER_ENTRY: VmMapEntry = {
   vmId: "f9e2fadeb813e08eb00eef6f962be2b2",
   previewUrl: "http://f9e2.localhost:7070/",
-  sandboxProviderKind: "docker",
+  sandboxProviderKind: "local-docker",
 };
 
 /**
@@ -166,7 +166,7 @@ describe("VM_DELETE", () => {
 
   it("calls runner.delete with the entry's handle and removes vmMap entry", async () => {
     const metadata: Metadata = {
-      vmMap: makeVmMap("user-1", BRANCH, "docker", DOCKER_ENTRY),
+      vmMap: makeVmMap("user-1", BRANCH, "local-docker", DOCKER_ENTRY),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});
@@ -176,7 +176,7 @@ describe("VM_DELETE", () => {
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "docker",
+        sandboxProviderKind: "local-docker",
       },
       ctx,
     );
@@ -184,7 +184,7 @@ describe("VM_DELETE", () => {
     expect(result).toEqual({ success: true });
     expect(mockDelete).toHaveBeenCalledTimes(1);
     expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.vmId);
-    expect(lastRequestedKind.value).toBe("docker");
+    expect(lastRequestedKind.value).toBe("local-docker");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -193,20 +193,24 @@ describe("VM_DELETE", () => {
     expect(updated.vmMap["user-1"]).toBeUndefined();
   });
 
-  it("dispatches to the docker runner when input.sandboxProviderKind is 'docker'", async () => {
+  it("dispatches to the docker runner when input.sandboxProviderKind is 'local-docker'", async () => {
     const metadata: Metadata = {
-      vmMap: makeVmMap("user-1", BRANCH, "docker", DOCKER_ENTRY),
+      vmMap: makeVmMap("user-1", BRANCH, "local-docker", DOCKER_ENTRY),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const ctx = makeCtx({ virtualMcp });
 
     await VM_DELETE.handler(
-      { virtualMcpId: "vmcp_1", branch: BRANCH, sandboxProviderKind: "docker" },
+      {
+        virtualMcpId: "vmcp_1",
+        branch: BRANCH,
+        sandboxProviderKind: "local-docker",
+      },
       ctx,
     );
 
     expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.vmId);
-    expect(lastRequestedKind.value).toBe("docker");
+    expect(lastRequestedKind.value).toBe("local-docker");
   });
 
   // Regression guard: a pod that flipped STUDIO_SANDBOX_RUNNER between start
@@ -214,10 +218,10 @@ describe("VM_DELETE", () => {
   // The kind is now caller-supplied, so the env value is irrelevant.
   it("dispatches on input.sandboxProviderKind even when STUDIO_SANDBOX_RUNNER env disagrees", async () => {
     const original = process.env.STUDIO_SANDBOX_RUNNER;
-    process.env.STUDIO_SANDBOX_RUNNER = "agent-sandbox";
+    process.env.STUDIO_SANDBOX_RUNNER = "cluster";
     try {
       const metadata: Metadata = {
-        vmMap: makeVmMap("user-1", BRANCH, "docker", DOCKER_ENTRY),
+        vmMap: makeVmMap("user-1", BRANCH, "local-docker", DOCKER_ENTRY),
       };
       const virtualMcp = makeVirtualMcp("org_1", metadata);
       const ctx = makeCtx({ virtualMcp });
@@ -226,23 +230,23 @@ describe("VM_DELETE", () => {
         {
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
-          sandboxProviderKind: "docker",
+          sandboxProviderKind: "local-docker",
         },
         ctx,
       );
 
       expect(mockDelete).toHaveBeenCalledWith(DOCKER_ENTRY.vmId);
-      expect(lastRequestedKind.value).toBe("docker");
+      expect(lastRequestedKind.value).toBe("local-docker");
     } finally {
       if (original === undefined) delete process.env.STUDIO_SANDBOX_RUNNER;
       else process.env.STUDIO_SANDBOX_RUNNER = original;
     }
   });
 
-  it("coalesces legacy 'host' kind input to 'desktop'", async () => {
+  it("coalesces legacy 'host' kind input to 'user-desktop'", async () => {
     // Use a docker entry as a stand-in — what matters is the dispatch kind.
     const metadata: Metadata = {
-      vmMap: makeVmMap("user-1", BRANCH, "desktop", DOCKER_ENTRY),
+      vmMap: makeVmMap("user-1", BRANCH, "user-desktop", DOCKER_ENTRY),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -258,13 +262,13 @@ describe("VM_DELETE", () => {
       ctx,
     );
 
-    expect(lastRequestedKind.value).toBe("desktop");
+    expect(lastRequestedKind.value).toBe("user-desktop");
   });
 
   it("skips runner.delete and DB update when no vmMap entry for (user, branch, kind)", async () => {
     // Entry exists for a different user — this user has no entry.
     const metadata: Metadata = {
-      vmMap: makeVmMap("other-user", BRANCH, "docker", DOCKER_ENTRY),
+      vmMap: makeVmMap("other-user", BRANCH, "local-docker", DOCKER_ENTRY),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});
@@ -274,7 +278,7 @@ describe("VM_DELETE", () => {
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "docker",
+        sandboxProviderKind: "local-docker",
       },
       ctx,
     );
@@ -291,7 +295,7 @@ describe("VM_DELETE", () => {
       {
         virtualMcpId: "vmcp_missing",
         branch: BRANCH,
-        sandboxProviderKind: "docker",
+        sandboxProviderKind: "local-docker",
       },
       ctx,
     );
@@ -313,7 +317,7 @@ describe("VM_DELETE", () => {
         {
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
-          sandboxProviderKind: "docker",
+          sandboxProviderKind: "local-docker",
         },
         ctx,
       ),

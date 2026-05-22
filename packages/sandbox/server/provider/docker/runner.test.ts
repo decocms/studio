@@ -268,7 +268,7 @@ describe("DockerSandboxProvider.ensure() — fresh provision", () => {
     // stateStore.put called with handle + state.
     expect(store.putCalls).toHaveLength(1);
     const persisted = store.putCalls[0]!;
-    expect(persisted.kind).toBe("docker");
+    expect(persisted.kind).toBe("local-docker");
     expect(persisted.entry.handle).toBe(expectedHandle);
     expect(persisted.entry.state.token).toBeDefined();
     expect(persisted.entry.state.daemonUrl).toMatch(/^http:\/\/127\.0\.0\.1:/);
@@ -432,7 +432,7 @@ describe("DockerSandboxProvider.ensure() — resume from persisted state", () =>
 
     // Pre-populate the store with a valid record.
     const persistedHandle = computeHandle(ID);
-    await store.put(ID, "docker", {
+    await store.put(ID, "local-docker", {
       handle: persistedHandle,
       state: {
         token: "persisted-token-abc",

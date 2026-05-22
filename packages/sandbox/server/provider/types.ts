@@ -102,7 +102,7 @@ export interface ProxyRequestInit {
  * Persisted on `vmMap` and `sandbox_runner_state.sandbox_provider_kind`.
  * When widening, keep `VmMapEntry.sandboxProviderKind` in sync.
  */
-export type SandboxProviderKind = "docker" | "agent-sandbox" | "desktop";
+export type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
 
 export interface SandboxProvider {
   readonly kind: SandboxProviderKind;

@@ -44,7 +44,7 @@ const baseStreamRequestSchema = z.object({
   branch: z.string().nullish(),
   toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
   sandboxProviderKind: z
-    .enum(["docker", "agent-sandbox", "desktop"])
+    .enum(["local-docker", "cluster", "user-desktop"])
     .nullish()
     .describe(
       "Pinned on first message. Subsequent messages ignore this field (the thread row carries the pinned value).",

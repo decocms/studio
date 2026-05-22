@@ -238,10 +238,22 @@ export const VmMapEntrySchema = z.object({
       "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for desktop; null/absent for runners that route through cluster ingress (docker, agent-sandbox).",
     ),
   sandboxProviderKind: z
-    // Legacy values ("freestyle", "host") are tolerated on read for
-    // pre-removal vmMap entries; writers use one of the active kinds.
-    // The tolerant readers (parseVmMapEntry, parseBranchMap) normalize.
-    .enum(["docker", "agent-sandbox", "desktop", "freestyle", "host"])
+    // Legacy values are tolerated on read for pre-rename vmMap entries;
+    // writers use one of the canonical kinds ("local-docker", "cluster",
+    // "user-desktop"). The tolerant readers (parseVmMapEntry, parseBranchMap)
+    // normalize old kind names ("docker", "agent-sandbox", "desktop") to the
+    // canonical ones. "freestyle"/"host" are pre-removal kinds still
+    // tolerated on read for backward compatibility with very old rows.
+    .enum([
+      "local-docker",
+      "cluster",
+      "user-desktop",
+      "docker",
+      "agent-sandbox",
+      "desktop",
+      "freestyle",
+      "host",
+    ])
     .optional(),
   createdAt: z
     .number()
@@ -296,11 +308,19 @@ export function parseVmMapEntry(raw: unknown): VmMapEntry {
       normalized = { ...rest, sandboxProviderKind: runnerKind };
     }
   }
-  return VmMapEntrySchema.parse(normalized);
+  const parsed = VmMapEntrySchema.parse(normalized);
+  // Normalize legacy kind names ("docker", "agent-sandbox", "desktop",
+  // "freestyle", "host") to the canonical kinds so callers always see one of
+  // ("local-docker", "cluster", "user-desktop").
+  if (parsed.sandboxProviderKind !== undefined) {
+    const canonical = normalizeProviderKind(parsed.sandboxProviderKind);
+    if (canonical) parsed.sandboxProviderKind = canonical;
+  }
+  return parsed;
 }
 
 /** The active sandbox provider kinds (excludes legacy "freestyle", "host"). */
-type SandboxProviderKind = "docker" | "agent-sandbox" | "desktop";
+type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
 
 /**
  * Tolerant reader at the branch-map level.
@@ -322,27 +342,61 @@ export function parseBranchMap(
   // Legacy 2-level: the value at this level is itself a VmMapEntry (has vmId).
   if (typeof obj.vmId === "string") {
     const entry = parseVmMapEntry(obj);
-    // Coalesce legacy "freestyle"/"host" values to "docker" since those
-    // runners no longer exist; rows from before the removal still parse.
-    const raw = entry.sandboxProviderKind;
-    const kind: SandboxProviderKind =
-      raw === "docker" || raw === "agent-sandbox" || raw === "desktop"
-        ? raw
-        : "docker";
-    return { [kind]: entry };
+    // Coalesce legacy values: pre-removal "freestyle"/"host" → "local-docker",
+    // and pre-rename "docker"/"agent-sandbox"/"desktop" → canonical kinds
+    // (parseVmMapEntry already normalized the kind on `entry`).
+    const kind =
+      normalizeProviderKind(entry.sandboxProviderKind) ?? "local-docker";
+    return { [kind]: { ...entry, sandboxProviderKind: kind } };
   }
 
-  // New 3-level: kind → entry.
+  // New 3-level: kind → entry. Tolerate old kind names as map keys by
+  // normalizing them to canonical kinds. parseVmMapEntry already normalizes
+  // each entry's `sandboxProviderKind`, but doesn't add it if absent — leave
+  // the field as-is when the original didn't have one.
   const out: Partial<Record<SandboxProviderKind, VmMapEntry>> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (!v || typeof v !== "object") continue;
     try {
-      out[k as SandboxProviderKind] = parseVmMapEntry(v);
+      const entry = parseVmMapEntry(v);
+      const kind =
+        normalizeProviderKind(k) ??
+        normalizeProviderKind(entry.sandboxProviderKind);
+      if (!kind) continue;
+      out[kind] = entry;
     } catch {
       // Skip malformed entries rather than throw — readers are tolerant by design.
     }
   }
   return out;
+}
+
+/**
+ * Normalize a raw sandbox provider kind value (from JSON / map keys) into the
+ * canonical kind set. Returns `null` for unknown / undefined inputs so
+ * callers can fall back or skip.
+ */
+function normalizeProviderKind(
+  raw: string | undefined,
+): SandboxProviderKind | null {
+  switch (raw) {
+    case "local-docker":
+    case "cluster":
+    case "user-desktop":
+      return raw;
+    case "docker":
+      return "local-docker";
+    case "agent-sandbox":
+      return "cluster";
+    case "desktop":
+      return "user-desktop";
+    // Pre-removal kinds — coalesce to local-docker so rows still parse.
+    case "freestyle":
+    case "host":
+      return "local-docker";
+    default:
+      return null;
+  }
 }
 
 /**

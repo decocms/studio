@@ -140,11 +140,11 @@ async function instantiate(
   const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   switch (kind) {
-    case "docker":
+    case "local-docker":
       return new DockerSandboxProvider({ stateStore, previewUrlPattern });
-    case "agent-sandbox": {
+    case "cluster": {
       // Dynamic import — @kubernetes/client-node is heavy and only needed
-      // when STUDIO_SANDBOX_RUNNER=agent-sandbox. Docker deploys never
+      // when STUDIO_SANDBOX_RUNNER=cluster. Local-docker deploys never
       // load it.
       const { AgentSandboxProvider } = await import(
         "@decocms/sandbox/provider/agent-sandbox"
@@ -162,17 +162,17 @@ async function instantiate(
         meter,
       });
     }
-    case "desktop": {
-      // desktop is never the cluster-wide default — there is no
+    case "user-desktop": {
+      // user-desktop is never the cluster-wide default — there is no
       // ambient `LinkEntry` to bind to here. It is constructed per-run by
       // `resolveSandboxProvider` (sandbox/resolve-provider.ts) from
       // either the per-run ctx hint or the recorded vmMap kind, both of
       // which carry the user's link. Hitting this branch means VM_DELETE
-      // was called for a `desktop` row without a live link context,
-      // which today should not happen (the desktop provider doesn't
+      // was called for a `user-desktop` row without a live link context,
+      // which today should not happen (the user-desktop provider doesn't
       // write to `sandbox_runner_state`).
       throw new Error(
-        "desktop runner cannot be instantiated without a per-run LinkEntry — call resolveSandboxProvider, which binds the link before constructing the provider.",
+        "user-desktop runner cannot be instantiated without a per-run LinkEntry — call resolveSandboxProvider, which binds the link before constructing the provider.",
       );
     }
     default: {

@@ -75,10 +75,10 @@ export const VM_START = defineTool({
         "Optional git branch to check out. When omitted the handler generates `deco/<adjective>-<noun>` and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
     sandboxProviderKind: z
-      .enum(["docker", "agent-sandbox", "desktop"])
+      .enum(["local-docker", "cluster", "user-desktop"])
       .optional()
       .describe(
-        "Explicit runtime choice. When omitted, defaults to `desktop` if the acting user's link daemon is online, else the cluster env kind.",
+        "Explicit runtime choice. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the cluster env kind.",
       ),
   }),
   outputSchema: z.object({
@@ -86,7 +86,7 @@ export const VM_START = defineTool({
     vmId: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    sandboxProviderKind: z.enum(["docker", "agent-sandbox", "desktop"]),
+    sandboxProviderKind: z.enum(["local-docker", "cluster", "user-desktop"]),
   }),
 
   handler: async (input, ctx) => {

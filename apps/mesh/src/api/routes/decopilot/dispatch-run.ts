@@ -1047,7 +1047,7 @@ export async function resolveRemoteCliSandboxUrl(
     {
       virtualMcpId: input.agent.id,
       branch: input.branch ?? "ephemeral",
-      sandboxProviderKind: "desktop",
+      sandboxProviderKind: "user-desktop",
     },
     ctx,
   );

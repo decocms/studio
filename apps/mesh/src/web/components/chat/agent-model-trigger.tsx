@@ -57,9 +57,9 @@ function agentKindFromHarness(
   agent: HarnessId | null,
   sandboxKind: SandboxProviderKind | null,
 ): AgentKind | null {
-  if (agent === "claude-code" && sandboxKind === "desktop")
+  if (agent === "claude-code" && sandboxKind === "user-desktop")
     return "claude-code";
-  if (agent === "codex" && sandboxKind === "desktop") return "codex";
+  if (agent === "codex" && sandboxKind === "user-desktop") return "codex";
   if (agent === "decopilot") return "decopilot";
   return null;
 }
@@ -106,7 +106,7 @@ export function AgentModelTrigger({
       startVm.mutate({
         virtualMcpId,
         branch: currentBranch,
-        sandboxProviderKind: "desktop" as const,
+        sandboxProviderKind: "user-desktop" as const,
       });
     }
     track("agent_model_selected", { agent: kind, tier: nextTier });

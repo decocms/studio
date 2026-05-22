@@ -69,10 +69,23 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     providerKind,
   );
   const expectingHandle = existingVmEntry?.vmId === claimName;
-  // Coalesce legacy kinds ("host", "freestyle") to the current env kind.
+  // Coalesce legacy kinds ("host", "freestyle") and pre-rename kinds
+  // ("docker", "agent-sandbox", "desktop") to canonical values. Pre-rename
+  // kinds are normalized by parseBranchMap/parseVmMapEntry on read, but the
+  // schema's enum still includes them in the type, so we narrow here.
   const rawKind = existingVmEntry?.sandboxProviderKind;
   const existingProviderKind: SandboxProviderKind | null =
-    rawKind === "host" || rawKind === "freestyle" ? null : (rawKind ?? null);
+    rawKind === "local-docker" ||
+    rawKind === "cluster" ||
+    rawKind === "user-desktop"
+      ? rawKind
+      : rawKind === "docker"
+        ? "local-docker"
+        : rawKind === "agent-sandbox"
+          ? "cluster"
+          : rawKind === "desktop"
+            ? "user-desktop"
+            : null;
 
   c.header("X-Accel-Buffering", "no");
   c.header("Content-Encoding", "identity");

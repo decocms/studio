@@ -10,18 +10,18 @@ describe("resolveSandboxProviderKindFromEnv", () => {
     process.env = { ...ORIG };
   });
 
-  it("defaults to 'desktop' when nothing is configured", () => {
-    expect(resolveSandboxProviderKindFromEnv()).toBe("desktop");
+  it("defaults to 'user-desktop' when nothing is configured", () => {
+    expect(resolveSandboxProviderKindFromEnv()).toBe("user-desktop");
   });
 
-  it("honors explicit STUDIO_SANDBOX_RUNNER=docker", () => {
-    process.env.STUDIO_SANDBOX_RUNNER = "docker";
-    expect(resolveSandboxProviderKindFromEnv()).toBe("docker");
+  it("honors explicit STUDIO_SANDBOX_RUNNER=local-docker", () => {
+    process.env.STUDIO_SANDBOX_RUNNER = "local-docker";
+    expect(resolveSandboxProviderKindFromEnv()).toBe("local-docker");
   });
 
-  it("honors explicit STUDIO_SANDBOX_RUNNER=agent-sandbox", () => {
-    process.env.STUDIO_SANDBOX_RUNNER = "agent-sandbox";
-    expect(resolveSandboxProviderKindFromEnv()).toBe("agent-sandbox");
+  it("honors explicit STUDIO_SANDBOX_RUNNER=cluster", () => {
+    process.env.STUDIO_SANDBOX_RUNNER = "cluster";
+    expect(resolveSandboxProviderKindFromEnv()).toBe("cluster");
   });
 
   it("throws on unknown STUDIO_SANDBOX_RUNNER value", () => {
