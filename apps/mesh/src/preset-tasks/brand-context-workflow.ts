@@ -24,7 +24,7 @@ import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { PresetTaskState, PresetTaskStore } from "@/storage/preset-tasks";
 
 export const BRAND_CONTEXT_PRESET_ID = "brand-context";
-export const BRAND_EXTRACTED_TOPIC = "brand-extracted";
+const BRAND_EXTRACTED_TOPIC = "brand-extracted";
 
 /** 30 min. Long enough for an unhurried first-time setup conversation. */
 const BRAND_CONTEXT_RECV_TIMEOUT_SEC = 30 * 60;

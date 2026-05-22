@@ -15,7 +15,7 @@
 
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useOptionalChatStream } from "@/web/components/chat/context.tsx";
 import type { ToolUIPart } from "ai";
 
@@ -55,25 +55,35 @@ function StreamingCodeView({ html, title }: { html: string; title: string }) {
   const appliedRef = useRef<string>("");
   const rafRef = useRef<number | null>(null);
 
-  pendingRef.current = html;
-
-  if (
-    preRef.current &&
-    appliedRef.current !== html &&
-    rafRef.current === null &&
-    typeof requestAnimationFrame !== "undefined"
-  ) {
+  // Coalesce burst HTML updates into one DOM write per frame. Running this
+  // imperatively (instead of via React reconciliation) keeps the giant
+  // text node out of the diff path; rAF deduping caps cost at 1 write/frame
+  // regardless of how many parent re-renders fired.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative rAF-coalesced DOM write, see comment
+  useEffect(() => {
+    pendingRef.current = html;
+    const pre = preRef.current;
+    if (!pre) return;
+    if (appliedRef.current === html) return;
+    if (rafRef.current !== null) return;
+    if (typeof requestAnimationFrame === "undefined") {
+      pre.textContent = html;
+      appliedRef.current = html;
+      const container = containerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+      return;
+    }
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
       const next = pendingRef.current;
-      const pre = preRef.current;
-      const container = containerRef.current;
-      if (!pre || appliedRef.current === next) return;
-      pre.textContent = next;
+      const currentPre = preRef.current;
+      if (!currentPre || appliedRef.current === next) return;
+      currentPre.textContent = next;
       appliedRef.current = next;
+      const container = containerRef.current;
       if (container) container.scrollTop = container.scrollHeight;
     });
-  }
+  });
 
   const attachPre = (el: HTMLPreElement | null) => {
     preRef.current = el;

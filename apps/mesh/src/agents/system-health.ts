@@ -120,28 +120,6 @@ async function ensureSystemHealthConnection(
   return created.id;
 }
 
-/**
- * Resolve `(agentId, ctx)` to the agent's installed system-health
- * connection id. Returns null if the agent isn't a sysh agent or its
- * underlying connection is missing.
- *
- * Used by the `create_health_automation` built-in to (a) gate injection
- * on a dispatchRun and (b) pass the right `connection_id` to
- * `AUTOMATION_TRIGGER_ADD` for event-based triggers.
- */
-export async function getSystemHealthAgentConnectionId(
-  agentId: string,
-  ctx: MeshContext,
-): Promise<string | null> {
-  const organizationId = ctx.organization?.id;
-  if (!organizationId) return null;
-  const vmcp = await ctx.storage.virtualMcps.findById(agentId, organizationId);
-  if (!vmcp) return null;
-  const type = (vmcp.metadata as Record<string, unknown> | null)?.type;
-  if (type !== SYSTEM_HEALTH_AGENT_TYPE) return null;
-  return vmcp.connections[0]?.connection_id ?? null;
-}
-
 export async function ensureSystemHealthAgent(
   organizationId: string,
   userId: string,

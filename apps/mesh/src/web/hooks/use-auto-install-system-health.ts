@@ -46,15 +46,18 @@ export function useAutoInstallSystemHealth(
 
   const startedRef = useRef(false);
   const onReadyRef = useRef(opts.onReady);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onReadyRef.current = opts.onReady;
 
   if (
     opts.enabled &&
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     !startedRef.current &&
     session?.user?.id &&
     org &&
     status === "idle"
   ) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     startedRef.current = true;
     runInstallFlow();
   }

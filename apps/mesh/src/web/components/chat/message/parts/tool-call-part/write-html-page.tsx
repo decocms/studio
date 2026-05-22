@@ -2,7 +2,7 @@
 
 import { Globe02, LinkExternal01 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { formatWebPageTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { formatDuration } from "@/web/lib/format-time.ts";
@@ -37,34 +37,21 @@ function formatBytes(bytes: number | undefined): string | undefined {
 
 /**
  * Auto-open the side panel the first time a page slug starts streaming,
- * so the user sees the iframe paint in lockstep with the model.
- *
- * Guarded by a ref: we open exactly once per slug. If the user closes
- * the panel manually mid-stream we stay closed — re-opening is a click
- * on the chat row's "Open preview" button.
- *
- * Navigation has to happen off the render path (TanStack Router's
- * navigate is a state setter), so we schedule it via rAF. Matches the
- * pattern already used in this file's previous PreviewSlot streaming
- * writes.
+ * so the user sees the iframe paint in lockstep with the model. Guarded
+ * by a ref so we open exactly once per slug — if the user closes the
+ * panel manually mid-stream, we stay closed.
  */
 function useAutoOpenWebPagePanel(slug: string, shouldOpen: boolean) {
   const { openTab } = usePanelActions();
   const openedSlugRef = useRef<string | null>(null);
-  const rafRef = useRef<number | null>(null);
 
-  if (
-    shouldOpen &&
-    openedSlugRef.current !== slug &&
-    rafRef.current === null &&
-    typeof requestAnimationFrame !== "undefined"
-  ) {
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot side effect keyed on first streaming-start per slug
+  useEffect(() => {
+    if (!shouldOpen) return;
+    if (openedSlugRef.current === slug) return;
     openedSlugRef.current = slug;
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      openTab(formatWebPageTabId(slug));
-    });
-  }
+    openTab(formatWebPageTabId(slug));
+  }, [slug, shouldOpen, openTab]);
 }
 
 export function WriteHtmlPagePart({ part, latency }: WriteHtmlPagePartProps) {
