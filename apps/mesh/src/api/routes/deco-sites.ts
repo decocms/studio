@@ -360,9 +360,8 @@ export const createDecoSitesUserRoutes = () => {
    */
   app.get("/profile", async (c) => {
     const ctx = c.get("meshContext");
-    // FIXME(dev-only): local-auth email doesn't match a deco.cx profile — revert before shipping
-    const email = "pedrofrxncx@deco.cx";
-    if (!ctx.auth.user?.id) return c.json({ error: "Unauthorized" }, 401);
+    const email = ctx.auth.user?.email;
+    if (!email) return c.json({ error: "Unauthorized" }, 401);
 
     const config = getSupabaseConfig();
     if (!config) return c.json({ isDecoUser: false });

@@ -73,10 +73,10 @@ export function useHomeBoard(orgSlug: string): UseHomeBoardResult {
     queryFn: () => fetchBoard(orgSlug),
   });
 
-  function snapshotAndPatch(
+  async function snapshotAndPatch(
     updater: (board: HomeBoard) => HomeBoard,
-  ): MutationContext {
-    queryClient.cancelQueries({ queryKey });
+  ): Promise<MutationContext> {
+    await queryClient.cancelQueries({ queryKey });
     const previous = queryClient.getQueryData<HomeBoard>(queryKey);
     queryClient.setQueryData<HomeBoard>(queryKey, (curr) =>
       updater(curr ?? EMPTY_BOARD),
@@ -85,8 +85,13 @@ export function useHomeBoard(orgSlug: string): UseHomeBoardResult {
   }
 
   function rollback(context: MutationContext | undefined) {
-    if (context?.previous) {
+    if (!context) return;
+    if (context.previous) {
       queryClient.setQueryData(queryKey, context.previous);
+    } else {
+      // No prior cache — onMutate populated it from EMPTY_BOARD. Drop the
+      // optimistic value so the next read refetches instead of inheriting it.
+      queryClient.removeQueries({ queryKey, exact: true });
     }
   }
 

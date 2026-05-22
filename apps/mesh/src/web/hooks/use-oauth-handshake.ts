@@ -64,6 +64,7 @@ export async function runOAuthHandshake(
   }
 
   if (tokenInfo) {
+    let persistError: string | undefined;
     try {
       const response = await fetch(
         `/api/${org.slug}/connections/${connectionId}/oauth-token`,
@@ -83,23 +84,24 @@ export async function runOAuthHandshake(
         },
       );
       if (!response.ok) {
-        if (opts.onPersistFallback) {
-          await opts.onPersistFallback(connectionId, token);
-        } else {
-          const body = (await response.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          return { ok: false, error: body.error ?? "Failed to persist token" };
-        }
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        persistError = body.error ?? "Failed to persist token";
       }
     } catch (err) {
+      persistError = err instanceof Error ? err.message : String(err);
+    }
+
+    if (persistError) {
       if (opts.onPersistFallback) {
-        await opts.onPersistFallback(connectionId, token);
+        try {
+          await opts.onPersistFallback(connectionId, token);
+        } catch {
+          return { ok: false, error: persistError };
+        }
       } else {
-        return {
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
+        return { ok: false, error: persistError };
       }
     }
   }

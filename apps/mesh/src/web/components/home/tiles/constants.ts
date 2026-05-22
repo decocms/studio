@@ -25,4 +25,4 @@ export const SIZE_LABELS: Record<TileSizeKey, string> = {
   W: "Full width",
 };
 
-export const ALL_SIZES: TileSizeKey[] = ["S", "M", "L", "XL", "W"];
+export const ALL_SIZES = Object.keys(SIZE_PRESETS) as TileSizeKey[];

@@ -110,10 +110,11 @@ export function pickAutoPinSlot(
     tiles.some(
       (t) => x < t.x + t.w && x + w > t.x && y < t.y + t.h && y + size.h > t.y,
     );
-  let y = 0;
-  while (y < 1024) {
+  // y === maxBottom can't overlap (would require y < t.y + t.h for some tile,
+  // but t.y + t.h <= maxBottom), so the loop is guaranteed to return inside.
+  const maxBottom = tiles.reduce((m, t) => Math.max(m, t.y + t.h), 0);
+  for (let y = 0; y <= maxBottom; y++) {
     if (!occupied(0, y)) return { x: 0, y };
-    y += 1;
   }
-  return { x: 0, y };
+  return { x: 0, y: maxBottom };
 }
