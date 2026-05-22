@@ -235,7 +235,7 @@ export const VmMapEntrySchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for desktop; null/absent for runners that route through cluster ingress (docker, agent-sandbox).",
+      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for providers that route through cluster ingress (local-docker, cluster).",
     ),
   sandboxProviderKind: z
     // Legacy values are tolerated on read for pre-rename vmMap entries;
