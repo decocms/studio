@@ -124,7 +124,7 @@ export async function startDevServer(
   // Pre-compute the link's data dir so the cluster's `bootstrapDevLinkSession`
   // can write `session.json` to the exact path the link will read. The dir
   // lives in tmpdir — NOT under settings.dataDir, which is inside the
-  // mesh repo. Sandbox clones go into `<DATA_DIR>/link/sandboxes/<handle>/repo`;
+  // mesh repo. Sandbox clones go into `<DATA_DIR>/sandboxes/<handle>/repo`;
   // when that parent is itself a git repo (e.g. `~/code/mesh/...`)
   // git's parent-walk hits the outer .git, refuses to clone, and the
   // daemon crashes mid-bootstrap. Keying by workspace slug isolates
@@ -242,7 +242,7 @@ export async function startDevServer(
               MESH_CLUSTER_URL: serverUrl,
               MESH_ALLOW_LOCALHOST_LINKS: "1",
               // DATA_DIR lives OUTSIDE the mesh repo. The daemon clones
-              // user repos into `<DATA_DIR>/link/sandboxes/<handle>/repo`;
+              // user repos into `<DATA_DIR>/sandboxes/<handle>/repo`;
               // if that path is nested under another git repo (this one)
               // git's parent-walk hits the outer .git, refuses to clone,
               // and the daemon crashes mid-bootstrap. Use a tmpdir-rooted
