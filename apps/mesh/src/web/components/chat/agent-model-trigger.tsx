@@ -192,7 +192,7 @@ export function AgentModelTriggerPure({
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="p-0">
+      <PopoverContent align="end" className="p-0 w-auto">
         <AgentModelPopover
           sections={sections}
           activeAgent={activeAgent}
