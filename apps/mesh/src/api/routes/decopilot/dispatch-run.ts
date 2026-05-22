@@ -835,7 +835,7 @@ async function prepareRun(
           // `resolveRemoteCliSandboxUrl` below for why the helper
           // exists.
           const sandboxUrl = await resolveRemoteCliSandboxUrl(
-            { agent: input.agent, branch: input.branch },
+            { agent: input.agent, branch: mem.thread.branch ?? input.branch },
             ctx,
           );
           harnessChunks = remoteDispatch(
