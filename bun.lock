@@ -53,7 +53,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.340.0",
+      "version": "2.343.5",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -66,7 +66,7 @@
         "@aws-sdk/s3-request-presigner": "^3.1013.0",
         "@clickhouse/client": "^1.8.1",
         "@dbos-inc/dbos-sdk": "^4.17.6",
-        "@deco-cx/warp-node": "^0.3.20",
+        "@deco-cx/warp-node": "^0.3.23",
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/sortable": "^10.0.0",
         "@dnd-kit/utilities": "^3.2.2",
@@ -655,7 +655,7 @@
 
     "@dbos-inc/dbos-sdk": ["@dbos-inc/dbos-sdk@4.17.6", "", { "dependencies": { "commander": "12.0.0", "pg": "8.11.3", "serialize-error": "8.1.0", "superjson": "^1.13.3", "ws": "^8.18.1", "yaml": "^2.8.3" }, "bin": { "dbos": "dist/src/cli/cli.js", "dbos-sdk": "dist/src/cli/cli.js" } }, "sha512-1wt9eESm1AHKnmCWG9pOrzsmroJYLiujVKldi/hlyDXeCAyYmdKRcERtEzUZgPN2zOOSNJcsdf9ItWUacSnROQ=="],
 
-    "@deco-cx/warp-node": ["@deco-cx/warp-node@0.3.20", "", { "dependencies": { "undici": "^6.21.0", "ws": "^8.18.0" } }, "sha512-rdRWrT5eMhu1zhAzliRkoQCUr2j6Dg9npUKoP4uP+rV9wIbYKSmXJbM2z/fOiy5FVvzQlpvY16ACNRIRz+UWqw=="],
+    "@deco-cx/warp-node": ["@deco-cx/warp-node@0.3.23", "", { "dependencies": { "undici": "^6.21.0", "ws": "^8.18.0" } }, "sha512-GMh6Msj62wAvc+YbmIc8FoaIZy/cGUlEwR+FbgDl/08TomJRd3jCV8Tbrb38dIAdHlkmEc5UviLAnx5rfet3OQ=="],
 
     "@deco/ui": ["@deco/ui@workspace:packages/ui"],
 
