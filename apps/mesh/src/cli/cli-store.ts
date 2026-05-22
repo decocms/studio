@@ -90,7 +90,7 @@ export function setDevMode(opts: { localSandboxProvider?: boolean } = {}) {
       { name: "Vite", status: "pending", port: 0 },
       // Auto-spawned by `bun run dev --local-sandbox-provider` after the
       // cluster is up — see apps/mesh/src/cli/commands/dev.ts. The
-      // remote-user sandbox provider routes through this. Marked ready
+      // desktop sandbox provider routes through this. Marked ready
       // once the link binary's HTTP server begins accepting connections.
       ...(opts.localSandboxProvider
         ? [{ name: "Sandbox", status: "pending" as const, port: 0 }]

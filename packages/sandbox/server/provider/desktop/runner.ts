@@ -1,5 +1,5 @@
 /**
- * remote-user sandbox provider — cluster-side stub that forwards every
+ * desktop sandbox provider — cluster-side stub that forwards every
  * `SandboxProvider` call to a per-user `link` binary running on the
  * developer's desktop. The link exposes:
  *
@@ -13,7 +13,7 @@
  * against `DAEMON_LINK_SECRET` (set up by Task 1). HMAC requires symmetric
  * key material; v2 will encrypt at rest with a cluster KMS key.
  *
- * The cluster builds a fresh `RemoteUserSandboxProvider` per request, so the
+ * The cluster builds a fresh `DesktopSandboxProvider` per request, so the
  * in-memory `records` map is almost always empty. To remain functional across
  * cluster pod boundaries we mirror docker's pattern: take a `stateStore` in
  * the constructor, persist `{handle, sandboxUrl}` on ensure, hydrate on cache
@@ -22,7 +22,7 @@
  *
  * `localWorkdir` returns null — the workdir lives on the desktop and is never
  * referenced by cluster code. `watchClaimLifecycle` emits a single synthetic
- * `ready` phase, matching host/docker semantics — by the time `ensure`
+ * `ready` phase, matching docker semantics — by the time `ensure`
  * resolves the link has already brought the daemon up.
  */
 
@@ -40,7 +40,7 @@ import type {
   SandboxProvider,
 } from "../types";
 
-const RUNNER_KIND = "remote-user" as const;
+const RUNNER_KIND = "desktop" as const;
 
 /**
  * Subset of `LinkEntry` the provider actually needs. The dispatch path passes
@@ -48,7 +48,7 @@ const RUNNER_KIND = "remote-user" as const;
  * structurally compatible so tests can fake it without inventing a
  * `createdAt` timestamp.
  */
-export interface RemoteUserLinkRef {
+export interface DesktopLinkRef {
   tunnelUrl: string;
   /**
    * HMAC signing key — the raw bearer secret stored in `LinkEntry`. Both
@@ -57,8 +57,8 @@ export interface RemoteUserLinkRef {
   linkSecret: string;
 }
 
-export interface RemoteUserProviderOptions {
-  link: RemoteUserLinkRef;
+export interface DesktopProviderOptions {
+  link: DesktopLinkRef;
   /** @internal test seam */
   fetchImpl?: typeof fetch;
   /**
@@ -77,20 +77,20 @@ interface RemoteRecord {
   sandboxUrl: string;
 }
 
-export class RemoteUserSandboxProvider implements SandboxProvider {
+export class DesktopSandboxProvider implements SandboxProvider {
   readonly kind = RUNNER_KIND;
 
-  private readonly link: RemoteUserLinkRef;
+  private readonly link: DesktopLinkRef;
   private readonly fetcher: typeof fetch;
   private readonly stateStore: RunnerStateStoreOps | null;
   private readonly records = new Map<string, RemoteRecord>();
 
-  constructor(opts: RemoteUserProviderOptions) {
+  constructor(opts: DesktopProviderOptions) {
     if (!opts.link?.tunnelUrl) {
-      throw new Error("RemoteUserSandboxProvider requires link.tunnelUrl");
+      throw new Error("DesktopSandboxProvider requires link.tunnelUrl");
     }
     if (!opts.link?.linkSecret) {
-      throw new Error("RemoteUserSandboxProvider requires link.linkSecret");
+      throw new Error("DesktopSandboxProvider requires link.linkSecret");
     }
     this.link = opts.link;
     this.fetcher = opts.fetchImpl ?? fetch;
@@ -127,13 +127,13 @@ export class RemoteUserSandboxProvider implements SandboxProvider {
     if (!res.ok) {
       const detail = await safeReadText(res);
       throw new Error(
-        `remote-user ensure failed: ${res.status}${detail ? ` ${detail}` : ""}`,
+        `desktop ensure failed: ${res.status}${detail ? ` ${detail}` : ""}`,
       );
     }
     const body = (await res.json()) as { sandboxUrl?: unknown };
     if (typeof body.sandboxUrl !== "string") {
       throw new Error(
-        "remote-user ensure: link did not return a sandboxUrl string",
+        "desktop ensure: link did not return a sandboxUrl string",
       );
     }
     const rec: RemoteRecord = { handle, sandboxUrl: body.sandboxUrl };
@@ -151,7 +151,7 @@ export class RemoteUserSandboxProvider implements SandboxProvider {
     const rec = await this.resolveRecord(handle);
     if (!rec) {
       throw new Error(
-        `remote-user provider: unknown handle "${handle}" — was ensure() called?`,
+        `desktop provider: unknown handle "${handle}" — was ensure() called?`,
       );
     }
     const bodyString = JSON.stringify(input);
@@ -170,7 +170,7 @@ export class RemoteUserSandboxProvider implements SandboxProvider {
     if (!res.ok) {
       const detail = await safeReadText(res);
       throw new Error(
-        `remote-user exec failed: ${res.status}${detail ? ` ${detail}` : ""}`,
+        `desktop exec failed: ${res.status}${detail ? ` ${detail}` : ""}`,
       );
     }
     return (await res.json()) as ExecOutput;
@@ -256,7 +256,7 @@ export class RemoteUserSandboxProvider implements SandboxProvider {
     if (!res.ok && res.status !== 404) {
       const detail = await safeReadText(res);
       throw new Error(
-        `remote-user delete failed: ${res.status}${detail ? ` ${detail}` : ""}`,
+        `desktop delete failed: ${res.status}${detail ? ` ${detail}` : ""}`,
       );
     }
     // Hint to dead-code: rec read only for symmetry / future logging.
@@ -271,7 +271,7 @@ export class RemoteUserSandboxProvider implements SandboxProvider {
   /**
    * Workdir lives on the desktop; cluster code never references it. Returning
    * null lets dispatch-run fall through to its default (`process.cwd()`),
-   * which is fine because cluster-side dispatch for `remote-user` is the
+   * which is fine because cluster-side dispatch for `desktop` is the
    * decopilot Code Sandbox tool path — the harness itself runs on the
    * desktop, where `localWorkdir` IS meaningful (different provider).
    */
@@ -351,12 +351,12 @@ export class RemoteUserSandboxProvider implements SandboxProvider {
  * Backwards-compatible factory matching the shape Phase 5 was originally
  * sketched against in the plan. Construct via `new` is the canonical form;
  * this exists so callers don't have to update if they're already importing
- * `createRemoteUserProvider`.
+ * `createDesktopProvider`.
  */
-export function createRemoteUserProvider(
-  opts: RemoteUserProviderOptions,
-): RemoteUserSandboxProvider {
-  return new RemoteUserSandboxProvider(opts);
+export function createDesktopProvider(
+  opts: DesktopProviderOptions,
+): DesktopSandboxProvider {
+  return new DesktopSandboxProvider(opts);
 }
 
 // ---- Module-private helpers --------------------------------------------------

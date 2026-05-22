@@ -403,19 +403,19 @@ export interface MeshContext extends HarnessContext {
    * Sandbox dispatch preference for the in-flight run, populated by
    * `prepareRun` from the resolved `DispatchTarget`:
    *   - `"default"` — cluster sandbox (today's behavior).
-   *   - `"remote-user"` — decopilot still runs in the cluster, but its
+   *   - `"desktop"` — decopilot still runs in the cluster, but its
    *     Code Sandbox tool calls are forwarded to the user's link daemon.
    * Unset for non-decopilot harnesses (`remote-cli` runs never enter the
    * sandbox tool path on the cluster side).
    */
-  sandboxPreference?: "default" | "remote-user";
+  sandboxPreference?: "default" | "desktop";
 
   /**
    * Link entry for the user this run is dispatched on behalf of, if any.
    * Set by `prepareRun` when the resolved `DispatchTarget` references a
-   * link (either `local/remote-user` or `remote-cli`). The remote-user
-   * sandbox provider reads this to know which daemon URL + secret to talk
-   * to without re-querying the registry. Unset for `local/default` runs.
+   * link (either `local/desktop` or `remote-cli`). The desktop sandbox
+   * provider reads this to know which daemon URL + secret to talk to
+   * without re-querying the registry. Unset for `local/default` runs.
    */
   linkForCurrentRun?: LinkEntry;
 

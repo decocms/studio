@@ -6,7 +6,7 @@ import {
   verifyRequest,
 } from "../../../../../apps/mesh/src/links/protocol/hmac";
 import type { RunnerStateStoreOps } from "../state-store";
-import { RemoteUserSandboxProvider } from "./runner";
+import { DesktopSandboxProvider } from "./runner";
 
 const TUNNEL = "https://link-x.deco.host";
 const SECRET = "this-is-the-stored-hash-acting-as-the-signing-key";
@@ -134,12 +134,12 @@ function makeFakeStateStore(): RunnerStateStoreOps & {
   };
 }
 
-describe("RemoteUserSandboxProvider.ensure", () => {
+describe("DesktopSandboxProvider.ensure", () => {
   it("POSTs /api/sandboxes with HMAC headers and returns a Sandbox", async () => {
     const { fetch, calls } = makeFakeFetch(() =>
       jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/handle-abc` }),
     );
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -177,7 +177,7 @@ describe("RemoteUserSandboxProvider.ensure", () => {
     const { fetch, calls } = makeFakeFetch(() =>
       jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/handle-abc` }),
     );
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -195,17 +195,17 @@ describe("RemoteUserSandboxProvider.ensure", () => {
     const { fetch } = makeFakeFetch(
       () => new Response("nope", { status: 500 }),
     );
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
     expect(provider.ensure({ userId: "u", projectRef: "p" })).rejects.toThrow(
-      /remote-user ensure failed: 500/,
+      /desktop ensure failed: 500/,
     );
   });
 });
 
-describe("RemoteUserSandboxProvider.exec", () => {
+describe("DesktopSandboxProvider.exec", () => {
   it("proxies to <sandboxUrl>/_decopilot_vm/exec with HMAC headers", async () => {
     const { fetch, calls } = makeFakeFetch((call) => {
       if (call.url.endsWith("/api/sandboxes")) {
@@ -218,7 +218,7 @@ describe("RemoteUserSandboxProvider.exec", () => {
         timedOut: false,
       });
     });
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -236,7 +236,7 @@ describe("RemoteUserSandboxProvider.exec", () => {
 
   it("throws on unknown handle", async () => {
     const { fetch } = makeFakeFetch(() => jsonResponse({}));
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -246,14 +246,14 @@ describe("RemoteUserSandboxProvider.exec", () => {
   });
 });
 
-describe("RemoteUserSandboxProvider.delete", () => {
+describe("DesktopSandboxProvider.delete", () => {
   it("calls DELETE /api/sandboxes/<handle>", async () => {
     const { fetch, calls } = makeFakeFetch((call) => {
       if (call.method === "POST")
         return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/h-1` });
       return new Response(null, { status: 204 });
     });
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -271,7 +271,7 @@ describe("RemoteUserSandboxProvider.delete", () => {
     const { fetch: deadFetch } = makeFakeFetch(
       () => new Response(null, { status: 404 }),
     );
-    const probeOnly = new RemoteUserSandboxProvider({
+    const probeOnly = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: deadFetch,
     });
@@ -284,7 +284,7 @@ describe("RemoteUserSandboxProvider.delete", () => {
         return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/h-1` });
       return new Response("not found", { status: 404 });
     });
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -294,7 +294,7 @@ describe("RemoteUserSandboxProvider.delete", () => {
   });
 });
 
-describe("RemoteUserSandboxProvider.alive", () => {
+describe("DesktopSandboxProvider.alive", () => {
   it("returns true after ensure() populated the in-process records cache", async () => {
     // ensure() populates `records`, so alive() reuses it without hitting
     // the state store. Probe URL is `<sandboxUrl>/health`, unsigned.
@@ -303,7 +303,7 @@ describe("RemoteUserSandboxProvider.alive", () => {
         return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/alive-1` });
       return new Response("", { status: 200 });
     });
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -316,7 +316,7 @@ describe("RemoteUserSandboxProvider.alive", () => {
 
   it("returns false when there is no cached record and no state store", async () => {
     const { fetch } = makeFakeFetch(() => new Response(null, { status: 404 }));
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -324,7 +324,7 @@ describe("RemoteUserSandboxProvider.alive", () => {
   });
 });
 
-describe("RemoteUserSandboxProvider.proxyDaemonRequest", () => {
+describe("DesktopSandboxProvider.proxyDaemonRequest", () => {
   it("forwards to <sandboxUrl><path> with HMAC", async () => {
     const { fetch, calls } = makeFakeFetch((call) => {
       if (call.url.endsWith("/api/sandboxes"))
@@ -334,7 +334,7 @@ describe("RemoteUserSandboxProvider.proxyDaemonRequest", () => {
         headers: { "content-type": "application/json" },
       });
     });
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -362,7 +362,7 @@ describe("RemoteUserSandboxProvider.proxyDaemonRequest", () => {
     const { fetch, calls } = makeFakeFetch(
       () => new Response("", { status: 200 }),
     );
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -380,10 +380,10 @@ describe("RemoteUserSandboxProvider.proxyDaemonRequest", () => {
   });
 });
 
-describe("RemoteUserSandboxProvider misc surface", () => {
+describe("DesktopSandboxProvider misc surface", () => {
   it("localWorkdir + getPreviewUrl return null when no record is known", async () => {
     const { fetch } = makeFakeFetch(() => jsonResponse({}));
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -393,7 +393,7 @@ describe("RemoteUserSandboxProvider misc surface", () => {
 
   it("watchClaimLifecycle yields a single ready phase", async () => {
     const { fetch } = makeFakeFetch(() => jsonResponse({}));
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
     });
@@ -407,14 +407,14 @@ describe("RemoteUserSandboxProvider misc surface", () => {
   it("rejects construction without tunnelUrl or linkSecret", () => {
     expect(
       () =>
-        new RemoteUserSandboxProvider({
+        new DesktopSandboxProvider({
           // @ts-expect-error - intentional
           link: { tunnelUrl: "", linkSecret: "x" },
         }),
     ).toThrow();
     expect(
       () =>
-        new RemoteUserSandboxProvider({
+        new DesktopSandboxProvider({
           // @ts-expect-error - intentional
           link: { tunnelUrl: TUNNEL, linkSecret: "" },
         }),
@@ -422,27 +422,27 @@ describe("RemoteUserSandboxProvider misc surface", () => {
   });
 });
 
-describe("RemoteUserSandboxProvider + state store", () => {
+describe("DesktopSandboxProvider + state store", () => {
   it("persists {handle, sandboxUrl} on ensure", async () => {
     const { fetch } = makeFakeFetch(() =>
       jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/persisted` }),
     );
     const stateStore = makeFakeStateStore();
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
       stateStore,
     });
 
     const sandbox = await provider.ensure({ userId: "u", projectRef: "p" });
-    const row = await stateStore.getByHandle("remote-user", sandbox.handle);
+    const row = await stateStore.getByHandle("desktop", sandbox.handle);
     expect(row).not.toBeNull();
     expect(row?.state.sandboxUrl).toBe(`${TUNNEL}/_sandbox/persisted`);
   });
 
   it("alive() probes sandboxUrl from state store on cache miss", async () => {
     const stateStore = makeFakeStateStore();
-    await stateStore.put({ userId: "u", projectRef: "p" }, "remote-user", {
+    await stateStore.put({ userId: "u", projectRef: "p" }, "desktop", {
       handle: "fresh-handle",
       state: {
         handle: "fresh-handle",
@@ -452,7 +452,7 @@ describe("RemoteUserSandboxProvider + state store", () => {
     const { fetch, calls } = makeFakeFetch(
       () => new Response("", { status: 200 }),
     );
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
       stateStore,
@@ -464,7 +464,7 @@ describe("RemoteUserSandboxProvider + state store", () => {
 
   it("proxyDaemonRequest forwards to sandboxUrl from state store on cache miss", async () => {
     const stateStore = makeFakeStateStore();
-    await stateStore.put({ userId: "u", projectRef: "p" }, "remote-user", {
+    await stateStore.put({ userId: "u", projectRef: "p" }, "desktop", {
       handle: "proxy-handle",
       state: {
         handle: "proxy-handle",
@@ -474,7 +474,7 @@ describe("RemoteUserSandboxProvider + state store", () => {
     const { fetch, calls } = makeFakeFetch(
       () => new Response("{}", { status: 200 }),
     );
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
       stateStore,
@@ -495,7 +495,7 @@ describe("RemoteUserSandboxProvider + state store", () => {
   it("alive() returns false when state store has no row", async () => {
     const stateStore = makeFakeStateStore();
     const { fetch } = makeFakeFetch(() => new Response("", { status: 200 }));
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
       stateStore,
@@ -510,7 +510,7 @@ describe("RemoteUserSandboxProvider + state store", () => {
         return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/del` });
       return new Response(null, { status: 204 });
     });
-    const provider = new RemoteUserSandboxProvider({
+    const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
       stateStore,

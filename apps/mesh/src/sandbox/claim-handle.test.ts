@@ -24,13 +24,13 @@ describe("computeClaimHandle", () => {
     expect(hash.length).toBe(16);
   });
 
-  it("uses hashLen=16 when runner is remote-user", () => {
+  it("uses hashLen=16 when runner is desktop", () => {
     // Same brute-force argument as agent-sandbox: the runner's preview URL
     // is a public hostname (`<handle>.deco.host`), so the hash must be long
     // enough to resist guessing at an unrate-limited gateway. This also
     // keeps the cluster's claim-handle lookup in sync with what the
-    // remote-user runner stores (see remote-user/runner.ts ensure()).
-    process.env.STUDIO_SANDBOX_RUNNER = "remote-user";
+    // desktop runner stores (see desktop/runner.ts ensure()).
+    process.env.STUDIO_SANDBOX_RUNNER = "desktop";
     const h = computeClaimHandle({ userId: "u", projectRef: "p" }, "main");
     const hash = h.split("-").pop()!;
     expect(hash.length).toBe(16);

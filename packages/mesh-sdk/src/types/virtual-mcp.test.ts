@@ -124,23 +124,23 @@ describe("parseBranchMap tolerant reader", () => {
   test("parses 3-level (kind-keyed) map", () => {
     const result = parseBranchMap({
       docker: { vmId: "v1", previewUrl: null, sandboxProviderKind: "docker" },
-      "remote-user": {
+      desktop: {
         vmId: "v2",
         previewUrl: null,
-        sandboxProviderKind: "remote-user",
+        sandboxProviderKind: "desktop",
       },
     });
     expect(result.docker?.vmId).toBe("v1");
-    expect(result["remote-user"]?.vmId).toBe("v2");
+    expect(result.desktop?.vmId).toBe("v2");
   });
 
   test("wraps 2-level legacy entry under its sandboxProviderKind", () => {
     const result = parseBranchMap({
       vmId: "v-legacy",
       previewUrl: null,
-      sandboxProviderKind: "remote-user",
+      sandboxProviderKind: "desktop",
     });
-    expect(result["remote-user"]?.vmId).toBe("v-legacy");
+    expect(result.desktop?.vmId).toBe("v-legacy");
     expect(result.docker).toBeUndefined();
   });
 
@@ -180,9 +180,9 @@ describe("parseVmMapEntry tolerant reader", () => {
     const result = parseVmMapEntry({
       vmId: "v1",
       previewUrl: null,
-      runnerKind: "remote-user",
+      runnerKind: "desktop",
     });
-    expect(result.sandboxProviderKind).toBe("remote-user");
+    expect(result.sandboxProviderKind).toBe("desktop");
     expect(
       (result as unknown as { runnerKind?: unknown }).runnerKind,
     ).toBeUndefined();
@@ -193,8 +193,8 @@ describe("parseVmMapEntry tolerant reader", () => {
       vmId: "v1",
       previewUrl: null,
       runnerKind: "docker",
-      sandboxProviderKind: "remote-user",
+      sandboxProviderKind: "desktop",
     });
-    expect(result.sandboxProviderKind).toBe("remote-user");
+    expect(result.sandboxProviderKind).toBe("desktop");
   });
 });

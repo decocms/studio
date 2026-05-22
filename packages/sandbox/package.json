@@ -14,7 +14,7 @@
     "./provider": "./server/provider/index.ts",
     "./provider/agent-sandbox": "./server/provider/agent-sandbox/index.ts",
     "./daemon-spawn": "./server/daemon-spawn.ts",
-    "./provider/remote-user": "./server/provider/remote-user/index.ts",
+    "./provider/desktop": "./server/provider/desktop/index.ts",
     "./daemon-client": "./server/daemon-client.ts",
     "./daemon/routes/dispatch": "./daemon/routes/dispatch.ts"
   },

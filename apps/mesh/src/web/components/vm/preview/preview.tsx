@@ -137,7 +137,7 @@ export function PreviewContent() {
 
   // vmMap[userId][branch][sandboxProviderKind] -> { vmId, previewUrl, ... }
   // Use parseBranchMap to handle both legacy 2-level and current 3-level shapes.
-  // For the preview surface we pick the first non-remote-user entry (cloud VMs
+  // For the preview surface we pick the first non-desktop entry (cloud VMs
   // have an accessible previewUrl), falling back to the first entry of any kind.
   // There is typically only one entry per branch in normal usage.
   const userId = session?.user?.id;
@@ -146,7 +146,7 @@ export function PreviewContent() {
     userId && branch ? parseBranchMap(metadata?.vmMap?.[userId]?.[branch]) : {};
   const branchMapEntries = Object.values(branchMap);
   const vmEntry =
-    branchMapEntries.find((e) => e.sandboxProviderKind !== "remote-user") ??
+    branchMapEntries.find((e) => e.sandboxProviderKind !== "desktop") ??
     branchMapEntries[0];
   const previewUrl = vmEntry?.previewUrl ?? null;
 

@@ -29,7 +29,7 @@ export const VM_DELETE = defineTool({
       .min(1)
       .describe("Branch whose vm should be deleted (vmMap[userId][branch])"),
     sandboxProviderKind: z
-      .enum(["docker", "agent-sandbox", "remote-user"])
+      .enum(["docker", "agent-sandbox", "desktop"])
       .describe(
         "Kind of sandbox provider the VM was started with. Used to locate the correct 3-level vmMap entry.",
       ),
@@ -43,7 +43,7 @@ export const VM_DELETE = defineTool({
     // the dev-mode replacement so the stop path doesn't crash.
     const rawKind = input.sandboxProviderKind as string;
     const kind: SandboxProviderKind =
-      rawKind === "host" ? "remote-user" : (rawKind as SandboxProviderKind);
+      rawKind === "host" ? "desktop" : (rawKind as SandboxProviderKind);
 
     let vmEntry: Awaited<ReturnType<typeof requireVmEntry>>;
     try {

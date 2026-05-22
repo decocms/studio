@@ -101,7 +101,7 @@ Server Options:
 Dev Options:
   --vite-port <port>            Vite dev server port (default: 4000)
   --base-url <url>              Base URL for the server
-  --local-sandbox-provider      Auto-spawn the local link daemon (remote-user sandbox provider)
+  --local-sandbox-provider      Auto-spawn the local link daemon (desktop sandbox provider)
 
 Auth Options:
   --target <url>        Decocms target (default: https://studio.decocms.com)

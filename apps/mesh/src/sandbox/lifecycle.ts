@@ -162,17 +162,17 @@ async function instantiate(
         meter,
       });
     }
-    case "remote-user": {
-      // remote-user is never the cluster-wide default — there is no
+    case "desktop": {
+      // desktop is never the cluster-wide default — there is no
       // ambient `LinkEntry` to bind to here. It is constructed per-run by
       // `resolveSandboxProvider` (sandbox/resolve-provider.ts) from
       // either the per-run ctx hint or the recorded vmMap kind, both of
       // which carry the user's link. Hitting this branch means VM_DELETE
-      // was called for a `remote-user` row without a live link context,
-      // which today should not happen (the remote-user provider doesn't
+      // was called for a `desktop` row without a live link context,
+      // which today should not happen (the desktop provider doesn't
       // write to `sandbox_runner_state`).
       throw new Error(
-        "remote-user runner cannot be instantiated without a per-run LinkEntry — call resolveSandboxProvider, which binds the link before constructing the provider.",
+        "desktop runner cannot be instantiated without a per-run LinkEntry — call resolveSandboxProvider, which binds the link before constructing the provider.",
       );
     }
     default: {
@@ -183,22 +183,22 @@ async function instantiate(
 }
 
 /**
- * Construct a `RemoteUserSandboxProvider` bound to the given link entry.
+ * Construct a `DesktopSandboxProvider` bound to the given link entry.
  * Exported so the unified resolver in `resolve-provider.ts` can build one
  * without going through `getSharedSandboxProvider` (which requires
  * pre-populating `ctx.sandboxPreference` / `ctx.linkForCurrentRun` as a
  * side-effect — the resolver decides the kind from vmMap, not from those
  * ctx fields, so the side-effect would be misleading).
  */
-export async function buildRemoteUserProvider(
+export async function buildDesktopProvider(
   ctx: MeshContext,
   link: NonNullable<MeshContext["linkForCurrentRun"]>,
 ): Promise<SandboxProvider> {
-  const { RemoteUserSandboxProvider } = await import(
-    "@decocms/sandbox/provider/remote-user"
+  const { DesktopSandboxProvider } = await import(
+    "@decocms/sandbox/provider/desktop"
   );
   const stateStore = new KyselySandboxProviderStateStore(ctx.db);
-  return new RemoteUserSandboxProvider({
+  return new DesktopSandboxProvider({
     link: { tunnelUrl: link.tunnelUrl, linkSecret: link.linkSecret },
     stateStore,
   });

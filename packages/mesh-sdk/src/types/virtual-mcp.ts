@@ -235,13 +235,13 @@ export const VmMapEntrySchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for remote-user; null/absent for runners that route through cluster ingress (docker, agent-sandbox).",
+      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for desktop; null/absent for runners that route through cluster ingress (docker, agent-sandbox).",
     ),
   sandboxProviderKind: z
     // Legacy values ("freestyle", "host") are tolerated on read for
     // pre-removal vmMap entries; writers use one of the active kinds.
     // The tolerant readers (parseVmMapEntry, parseBranchMap) normalize.
-    .enum(["docker", "agent-sandbox", "remote-user", "freestyle", "host"])
+    .enum(["docker", "agent-sandbox", "desktop", "freestyle", "host"])
     .optional(),
   createdAt: z
     .number()
@@ -300,7 +300,7 @@ export function parseVmMapEntry(raw: unknown): VmMapEntry {
 }
 
 /** The active sandbox provider kinds (excludes legacy "freestyle", "host"). */
-type SandboxProviderKind = "docker" | "agent-sandbox" | "remote-user";
+type SandboxProviderKind = "docker" | "agent-sandbox" | "desktop";
 
 /**
  * Tolerant reader at the branch-map level.
@@ -326,7 +326,7 @@ export function parseBranchMap(
     // runners no longer exist; rows from before the removal still parse.
     const raw = entry.sandboxProviderKind;
     const kind: SandboxProviderKind =
-      raw === "docker" || raw === "agent-sandbox" || raw === "remote-user"
+      raw === "docker" || raw === "agent-sandbox" || raw === "desktop"
         ? raw
         : "docker";
     return { [kind]: entry };

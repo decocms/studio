@@ -36,22 +36,22 @@ const stubAgentSandbox: SandboxProvider = {
   ...stubDocker,
   kind: "agent-sandbox",
 };
-const stubRemoteUser: SandboxProvider = { ...stubDocker, kind: "remote-user" };
+const stubDesktop: SandboxProvider = { ...stubDocker, kind: "desktop" };
 
 // Mock lifecycle: dispatch on requested kind so we can assert which one was
 // picked.
 const byKindSpy = mock(
-  async (_ctx: unknown, kind: "docker" | "agent-sandbox" | "remote-user") => {
+  async (_ctx: unknown, kind: "docker" | "agent-sandbox" | "desktop") => {
     if (kind === "docker") return stubDocker;
     if (kind === "agent-sandbox") return stubAgentSandbox;
-    throw new Error("unreachable — resolver builds remote-user directly");
+    throw new Error("unreachable — resolver builds desktop directly");
   },
 );
-const buildRemoteSpy = mock(async () => stubRemoteUser);
+const buildDesktopSpy = mock(async () => stubDesktop);
 
 mock.module("./lifecycle", () => ({
   getSandboxProviderByKind: byKindSpy,
-  buildRemoteUserProvider: buildRemoteSpy,
+  buildDesktopProvider: buildDesktopSpy,
 }));
 
 // Now import the resolver — its lifecycle import has been mocked.
@@ -68,7 +68,7 @@ function makeLink(): LinkEntry {
 function stubCtx(
   link: LinkEntry | null,
   hints?: {
-    sandboxPreference?: "default" | "remote-user";
+    sandboxPreference?: "default" | "desktop";
     linkForCurrentRun?: LinkEntry;
   },
 ): MeshContext {
@@ -85,7 +85,7 @@ function stubCtx(
 
 describe("resolveSandboxProvider", () => {
   test("recorded vmMap kind wins over the link-or-env default", async () => {
-    // User has a link online, so the default policy would pick `remote-user`.
+    // User has a link online, so the default policy would pick `desktop`.
     // But vmMap records `agent-sandbox` for (user, branch) — we must honor
     // that recorded kind so the SSE/proxy paths reach the right provider.
     const metadata = {
@@ -114,19 +114,19 @@ describe("resolveSandboxProvider", () => {
     );
     expect(kind).toBe("agent-sandbox");
     expect(provider).toBe(stubAgentSandbox);
-    expect(buildRemoteSpy).not.toHaveBeenCalled();
+    expect(buildDesktopSpy).not.toHaveBeenCalled();
   });
 
-  test("link online + no vmMap entry → remote-user, bound to link", async () => {
+  test("link online + no vmMap entry → desktop, bound to link", async () => {
     const link = makeLink();
     const { provider, kind } = await resolveSandboxProvider(stubCtx(link), {
       userId: "u-1",
       branch: "deco/new",
       virtualMcpMetadata: null,
     });
-    expect(kind).toBe("remote-user");
-    expect(provider).toBe(stubRemoteUser);
-    expect(buildRemoteSpy).toHaveBeenCalled();
+    expect(kind).toBe("desktop");
+    expect(provider).toBe(stubDesktop);
+    expect(buildDesktopSpy).toHaveBeenCalled();
   });
 
   test("explicit override beats both vmMap and default policy", async () => {
@@ -134,11 +134,11 @@ describe("resolveSandboxProvider", () => {
       vmMap: {
         "u-1": {
           "deco/foo": {
-            "remote-user": {
+            desktop: {
               vmId: "vm_xyz",
               previewUrl: "https://p",
               sandboxUrl: "https://p",
-              sandboxProviderKind: "remote-user",
+              sandboxProviderKind: "desktop",
               createdAt: 1,
               startedWith: { packageManager: null, port: null, path: null },
             },
@@ -164,7 +164,7 @@ describe("resolveSandboxProvider", () => {
     expect(kind).toBe("docker");
   });
 
-  test("ctx hint (sandboxPreference=remote-user + link) short-circuits without vmMap read", async () => {
+  test("ctx hint (sandboxPreference=desktop + link) short-circuits without vmMap read", async () => {
     // dispatch-run sets these ctx fields from the resolved DispatchTarget.
     // Resolver must honor them and skip the vmMap lookup so the decopilot
     // hot path doesn't pay a DB hit per turn. Metadata is intentionally
@@ -188,7 +188,7 @@ describe("resolveSandboxProvider", () => {
     };
     const link = makeLink();
     const ctx = stubCtx(null, {
-      sandboxPreference: "remote-user",
+      sandboxPreference: "desktop",
       linkForCurrentRun: link,
     });
     const { kind, provider } = await resolveSandboxProvider(ctx, {
@@ -196,8 +196,8 @@ describe("resolveSandboxProvider", () => {
       branch: "deco/foo",
       virtualMcpMetadata: metadata,
     });
-    expect(kind).toBe("remote-user");
-    expect(provider).toBe(stubRemoteUser);
+    expect(kind).toBe("desktop");
+    expect(provider).toBe(stubDesktop);
   });
 
   test("ctx hint (sandboxPreference=default) routes to env kind", async () => {
@@ -211,18 +211,18 @@ describe("resolveSandboxProvider", () => {
     expect(kind).toBe("docker");
   });
 
-  test("remote-user resolution throws when link daemon is offline", async () => {
-    // vmMap records `remote-user` but link is gone — caller (events/proxy
+  test("desktop resolution throws when link daemon is offline", async () => {
+    // vmMap records `desktop` but link is gone — caller (events/proxy
     // middleware) catches this and surfaces a failed phase / 503.
     const metadata = {
       vmMap: {
         "u-1": {
           "deco/foo": {
-            "remote-user": {
+            desktop: {
               vmId: "vm_xyz",
               previewUrl: "https://p",
               sandboxUrl: "https://p",
-              sandboxProviderKind: "remote-user",
+              sandboxProviderKind: "desktop",
               createdAt: 1,
               startedWith: { packageManager: null, port: null, path: null },
             },

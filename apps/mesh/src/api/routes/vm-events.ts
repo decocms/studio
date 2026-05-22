@@ -115,8 +115,8 @@ export const createVmEventsRoutes = () => {
 
     // Source of truth: vmMap. The resolver returns the provider bound for
     // the recorded kind (or the link-or-env default when no entry exists
-    // yet), so a sandbox provisioned via `remote-user` remains addressable
-    // via `remote-user` even on a cluster whose env kind is `agent-sandbox`.
+    // yet), so a sandbox provisioned via `desktop` remains addressable
+    // via `desktop` even on a cluster whose env kind is `agent-sandbox`.
     // The kind is needed for the stale-handle probe below — when a `gone`
     // event must be emitted we route the state-store cleanup through the
     // matching kind so we don't leave rows in the wrong table.
