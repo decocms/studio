@@ -46,11 +46,11 @@ export function AgentModelPopover({
   if (lockedAgent !== null) {
     const lockedSection = sections.find((s) => s.kind === lockedAgent);
     if (!lockedSection) {
-      return <div className="flex flex-col gap-1 w-72" />;
+      return <div className="flex flex-col gap-1 w-64" />;
     }
     const selectedTier = lockedSection.kind === activeAgent ? activeTier : null;
     return (
-      <div className="flex flex-col gap-1 w-72 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
+      <div className="flex flex-col gap-1 w-64 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
         <AgentSection
           section={lockedSection}
           selectedTier={selectedTier}
@@ -63,7 +63,7 @@ export function AgentModelPopover({
   }
 
   if (sections.length === 0) {
-    return <div className="flex flex-col gap-1 w-72" />;
+    return <div className="flex flex-col gap-1 w-64" />;
   }
 
   // Single-section: no tab bar, just the body.
@@ -71,7 +71,7 @@ export function AgentModelPopover({
     const only = sections[0]!;
     const selectedTier = only.kind === activeAgent ? activeTier : null;
     return (
-      <div className="flex flex-col gap-1 w-72 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
+      <div className="flex flex-col gap-1 w-64 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
         <AgentSection
           section={only}
           selectedTier={selectedTier}
@@ -92,7 +92,7 @@ export function AgentModelPopover({
   const selectedTier = activeSection.kind === activeAgent ? activeTier : null;
 
   return (
-    <div className="flex flex-col gap-1 w-72 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
+    <div className="flex flex-col gap-1 w-64 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
       <div className="flex items-center gap-1 border-b border-border px-1 pt-1">
         {sections.map((section) => {
           const isActive = section.kind === activeSection.kind;
