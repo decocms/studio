@@ -42,7 +42,7 @@ interface Props {
 }
 
 /** Maps the popover's AgentKind back to the persisted AgentOption. */
-function optionForAgent(kind: AgentKind) {
+export function optionForAgent(kind: AgentKind) {
   switch (kind) {
     case "decopilot":
       return "decopilot" as const;
@@ -53,7 +53,7 @@ function optionForAgent(kind: AgentKind) {
   }
 }
 
-function agentKindFromHarness(
+export function agentKindFromHarness(
   agent: HarnessId | null,
   sandboxKind: SandboxProviderKind | null,
 ): AgentKind | null {
@@ -82,7 +82,7 @@ export function AgentModelTrigger({
 }: Props) {
   const keys = useAiProviderKeys();
   const link = useCurrentLink();
-  const { setPendingAgentOption, isAgentClonable } = useChatPrefs();
+  const { setPendingAgentOption } = useChatPrefs();
   const { org } = useProjectContext();
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -117,7 +117,6 @@ export function AgentModelTrigger({
       sections={sections}
       activeAgent={activeAgent}
       activeTier={tier}
-      lockedAgent={isAgentClonable ? null : "decopilot"}
       onSelect={handleSelect}
     />
   );
@@ -127,7 +126,6 @@ interface PureProps {
   sections: AgentSection[];
   activeAgent: AgentKind | null;
   activeTier: ChatTier;
-  lockedAgent: AgentKind | null;
   onSelect: (kind: AgentKind, tier: ChatTier) => void;
 }
 
@@ -140,7 +138,6 @@ export function AgentModelTriggerPure({
   sections,
   activeAgent,
   activeTier,
-  lockedAgent,
   onSelect,
 }: PureProps) {
   const [open, setOpen] = useState(false);
@@ -197,7 +194,6 @@ export function AgentModelTriggerPure({
           sections={sections}
           activeAgent={activeAgent}
           activeTier={activeTier}
-          lockedAgent={lockedAgent}
           onSelect={(kind, t) => {
             onSelect(kind, t);
             setOpen(false);

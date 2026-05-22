@@ -18,7 +18,6 @@ describe("AgentModelTriggerPure", () => {
         sections={ALL}
         activeAgent="decopilot"
         activeTier="smart"
-        lockedAgent={null}
         onSelect={() => {}}
       />,
     );
@@ -33,7 +32,6 @@ describe("AgentModelTriggerPure", () => {
         sections={ALL}
         activeAgent="claude-code"
         activeTier="thinking"
-        lockedAgent={null}
         onSelect={() => {}}
       />,
     );
@@ -48,7 +46,6 @@ describe("AgentModelTriggerPure", () => {
         sections={ALL}
         activeAgent="decopilot"
         activeTier="smart"
-        lockedAgent={null}
         onSelect={() => {}}
       />,
     );
@@ -63,7 +60,6 @@ describe("AgentModelTriggerPure", () => {
         sections={ALL}
         activeAgent="claude-code"
         activeTier="thinking"
-        lockedAgent={null}
         onSelect={() => {}}
       />,
     );
@@ -76,7 +72,6 @@ describe("AgentModelTriggerPure", () => {
         sections={ALL}
         activeAgent="decopilot"
         activeTier="smart"
-        lockedAgent={null}
         onSelect={() => {}}
       />,
     );
