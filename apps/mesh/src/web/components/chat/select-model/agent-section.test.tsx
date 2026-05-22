@@ -93,18 +93,6 @@ describe("AgentSection", () => {
     expect(onSelect).toHaveBeenCalledWith("fast");
   });
 
-  test("selected row marks itself with the On indicator", () => {
-    const { getByText } = render(
-      <AgentSection
-        section={claude}
-        selectedTier="thinking"
-        disabled={false}
-        onSelect={() => {}}
-      />,
-    );
-    expect(getByText("On")).toBeInTheDocument();
-  });
-
   test("each row renders icon, label, and description inline", () => {
     const { getByText } = render(
       <AgentSection

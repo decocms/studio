@@ -80,11 +80,6 @@ export function AgentSection({
             <span className="text-xs text-muted-foreground leading-tight truncate flex-1 text-right">
               {entry.description}
             </span>
-            {isSelected && (
-              <span className="text-xs text-muted-foreground font-medium shrink-0">
-                On
-              </span>
-            )}
           </button>
         );
       })}
