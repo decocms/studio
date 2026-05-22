@@ -7,7 +7,7 @@
  * reverse proxy). On stop (SIGINT/SIGTERM or `handle.stop()`) it
  * gracefully deregisters, kills any sandboxes, and closes the tunnel.
  *
- * The OAuth session is read from `<dataDir>/.deco/session.json` (the
+ * The OAuth session is read from `<dataDir>/session.json` (the
  * format `deco auth login` writes).
  */
 

@@ -10,7 +10,7 @@
  * In production (the link binary, or `bunx decocms@latest`), the source
  * TS path resolves to a nonexistent `<bunx-cache>/.../daemon/entry.ts` —
  * we materialize the embedded bundle (loaded lazily from
- * `daemon-asset.ts`) into `<homeDir>/.deco/cache/sandbox-daemon-<hash>.js`
+ * `daemon-asset.ts`) into `<homeDir>/cache/sandbox-daemon-<hash>.js`
  * and spawn that.
  *
  * `node-pty` is a runtime dep of the daemon. Its install location lives
@@ -67,7 +67,7 @@ export async function materializeDaemonBundle(
     .update(DAEMON_BUNDLE)
     .digest("hex")
     .slice(0, 16);
-  const cacheDir = join(homeDir, ".deco", "cache");
+  const cacheDir = join(homeDir, "cache");
   const cachePath = join(cacheDir, `sandbox-daemon-${hash}.js`);
   if (existsSync(cachePath)) return cachePath;
   await mkdir(cacheDir, { recursive: true });
