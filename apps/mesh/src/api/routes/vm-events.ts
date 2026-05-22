@@ -52,7 +52,7 @@ import {
   type MeshContext,
 } from "../../core/mesh-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
-import { readVmMap, resolveVm } from "../../tools/vm/vm-map";
+import { readSandboxMap, resolveVm } from "../../tools/vm/vm-map";
 import type { Env } from "../hono-env";
 
 /**
@@ -113,7 +113,7 @@ export const createVmEventsRoutes = () => {
     const virtualMcpMetadata =
       (virtualMcp.metadata as Record<string, unknown> | null) ?? null;
 
-    // Source of truth: vmMap. The resolver returns the provider bound for
+    // Source of truth: sandboxMap. The resolver returns the provider bound for
     // the recorded kind (or the link-or-env default when no entry exists
     // yet), so a sandbox provisioned via `desktop` remains addressable
     // via `desktop` even on a cluster whose env kind is `agent-sandbox`.
@@ -136,17 +136,22 @@ export const createVmEventsRoutes = () => {
       runner = null;
     }
 
-    // Snapshot vmMap from the same metadata read used for the org-ownership
+    // Snapshot sandboxMap from the same metadata read used for the org-ownership
     // check. Used below to gate the stale-handle probe: we only run it when
-    // this user already had a vmMap entry pointing at *this exact* claim.
+    // this user already had a sandboxMap entry pointing at *this exact* claim.
     // The handle-match guard avoids racing VM_START's claim-creation window
     // (~250ms–1.2s for agent-sandbox before `createSandboxClaim` lands;
     // similar window for host/docker between `runner.ensure` returning and
-    // `setVmMapEntry` writing the row). Without it, an SSE that opens during
+    // `setSandboxMapEntry` writing the row). Without it, an SSE that opens during
     // that window would observe alive=false and emit a spurious `gone`.
     const existingVmEntry =
       providerKind &&
-      resolveVm(readVmMap(virtualMcpMetadata), userId, branch, providerKind);
+      resolveVm(
+        readSandboxMap(virtualMcpMetadata),
+        userId,
+        branch,
+        providerKind,
+      );
     const expectingHandle =
       !!existingVmEntry && existingVmEntry.sandboxHandle === claimName;
 
@@ -184,7 +189,7 @@ export const createVmEventsRoutes = () => {
         // Same probe for every runner. `runner.alive` is honest across
         // host/docker/agent-sandbox: each implementation queries its
         // respective source-of-truth (state-store + pid for host, docker
-        // inspect, K8s API). When the prior vmMap entry's runner kind
+        // inspect, K8s API). When the prior sandboxMap entry's runner kind
         // differs from the env's current runner, we route the stale-state
         // cleanup through the *prior* kind so we don't leave behind rows
         // in the wrong table.
@@ -262,12 +267,12 @@ async function isStaleHandle(
  * so we don't leave behind rows in the wrong table when the env's runner
  * has flipped between starts and stops.
  *
- * We deliberately do NOT touch the vmMap entry. Two reasons:
- *   1. `runner.ensure` resumes from the state-store, not vmMap — vmMap is
+ * We deliberately do NOT touch the sandboxMap entry. Two reasons:
+ *   1. `runner.ensure` resumes from the state-store, not sandboxMap — sandboxMap is
  *      informational metadata read by tools/UI, never the source of truth
  *      for provisioning.
  *   2. Removing it here would race with a concurrent VM_START's
- *      `setVmMapEntry` on the same metadata JSON column (read-modify-write
+ *      `setSandboxMapEntry` on the same metadata JSON column (read-modify-write
  *      is not atomic; see vm-map.ts). The next VM_START overwrites the
  *      entry with a fresh one anyway — the `vmId` is deterministic
  *      (computeHandle), so the entry's identity is stable across

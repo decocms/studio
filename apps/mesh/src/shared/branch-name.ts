@@ -2,7 +2,7 @@
  * Branch-name generator used as a fallback when VM_START is invoked without
  * an explicit branch. The word lists were lifted out of daemon.ts so the
  * orchestrator — not the sandbox — decides the branch name and can persist
- * it to vmMap before the daemon ever sees it.
+ * it to sandboxMap before the daemon ever sees it.
  *
  * Format: `deco/<adjective>-<noun>`
  */

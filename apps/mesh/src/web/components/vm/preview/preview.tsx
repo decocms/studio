@@ -139,7 +139,7 @@ export function PreviewContent() {
   // Current iframe path (for sections editor)
   const [currentPath, setCurrentPath] = useState("/");
 
-  // vmMap[userId][branch][sandboxProviderKind] -> { vmId, previewUrl, ... }
+  // sandboxMap[userId][branch][sandboxProviderKind] -> { sandboxHandle, previewUrl, ... }
   // Use parseBranchMap to handle both legacy 2-level and current 3-level shapes.
   // For the preview surface we pick the first non-desktop entry (cloud VMs
   // have an accessible previewUrl), falling back to the first entry of any kind.
@@ -147,7 +147,9 @@ export function PreviewContent() {
   const userId = session?.user?.id;
   const metadata = inset?.entity?.metadata;
   const branchMap =
-    userId && branch ? parseBranchMap(metadata?.vmMap?.[userId]?.[branch]) : {};
+    userId && branch
+      ? parseBranchMap(metadata?.sandboxMap?.[userId]?.[branch])
+      : {};
   const branchMapEntries = Object.values(branchMap);
   const vmEntry =
     branchMapEntries.find((e) => e.sandboxProviderKind !== "user-desktop") ??
@@ -304,7 +306,7 @@ export function PreviewContent() {
     if (branch) args.branch = branch;
     startVm.mutate(args, {
       onSuccess: (data) => {
-        // Server-generated branch: persist so later renders resolve via vmMap.
+        // Server-generated branch: persist so later renders resolve via sandboxMap.
         if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
       },
       onError: (err) => {
@@ -349,7 +351,7 @@ export function PreviewContent() {
     triggerStartRef.current("auto-start");
   }, [shouldAutoStart, taskId, userStopped]);
 
-  // Self-heal stale vmMap entries (SSE 404 → notFound). Dedup by dead handle.
+  // Self-heal stale sandboxMap entries (SSE 404 → notFound). Dedup by dead handle.
   const deadVmId = vmEvents.notFound ? (vmEntry?.sandboxHandle ?? null) : null;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — one-shot reprovision trigger gated on the notFound→deadVmId derivation
   useEffect(() => {
@@ -357,7 +359,7 @@ export function PreviewContent() {
     if (lastStartError || startVm.isPending) return;
     if (reprovisionedForVmIdRef.current === deadVmId) return;
     // Don't self-heal a VM the user explicitly stopped: the SSE "gone" event
-    // can arrive before the vmMap query refetch clears the stale entry.
+    // can arrive before the sandboxMap query refetch clears the stale entry.
     if (branch && vmUserStop.isStopped(virtualMcpId, branch)) return;
     reprovisionedForVmIdRef.current = deadVmId;
     triggerStartRef.current("self-heal");
@@ -406,9 +408,9 @@ export function PreviewContent() {
 
   const openDrawer = () => handleDrawerOpenChange(true);
 
-  // Stop / restart. VM_DELETE is best-effort; the vmMap query refetch is
+  // Stop / restart. VM_DELETE is best-effort; the sandboxMap query refetch is
   // what actually flips the UI to idle. VM_DELETE requires the kind because
-  // vmMap is keyed by (user, branch, kind); we delete whichever sibling the
+  // sandboxMap is keyed by (user, branch, kind); we delete whichever sibling the
   // preview surface is currently displaying.
   const handleStop = async () => {
     if (!virtualMcpId) return;

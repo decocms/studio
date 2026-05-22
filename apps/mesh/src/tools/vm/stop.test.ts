@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import type { VmMap, SandboxRecord } from "@decocms/mesh-sdk";
+import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
 import type { MeshContext } from "../../core/mesh-context";
 import type {
   SandboxProvider,
@@ -56,25 +56,25 @@ const DOCKER_ENTRY: SandboxRecord = {
 };
 
 /**
- * 3-level helper: builds vmMap[userId][branch][kind] = entry.
- * Type-cast through `unknown` is needed because VmMap's value type is a union
+ * 3-level helper: builds sandboxMap[userId][branch][kind] = entry.
+ * Type-cast through `unknown` is needed because SandboxMap's value type is a union
  * that doesn't yet include the record-of-entries shape before the full SDK
  * update lands; the runtime shape is correct.
  */
-function makeVmMap(
+function makeSandboxMap(
   userId: string,
   branch: string,
   kind: SandboxProviderKind,
   entry: SandboxRecord,
-): VmMap {
+): SandboxMap {
   return {
     [userId]: {
-      [branch]: { [kind]: entry } as VmMap[string][string],
+      [branch]: { [kind]: entry } as SandboxMap[string][string],
     },
   };
 }
 
-type Metadata = { vmMap?: VmMap };
+type Metadata = { sandboxMap?: SandboxMap };
 
 function makeVirtualMcp(orgId: string, metadata: Metadata, id = "vmcp_1") {
   return {
@@ -164,9 +164,14 @@ describe("VM_DELETE", () => {
     lastRequestedKind.value = null;
   });
 
-  it("calls runner.delete with the entry's handle and removes vmMap entry", async () => {
+  it("calls runner.delete with the entry's handle and removes sandboxMap entry", async () => {
     const metadata: Metadata = {
-      vmMap: makeVmMap("user-1", BRANCH, "local-docker", DOCKER_ENTRY),
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "local-docker",
+        DOCKER_ENTRY,
+      ),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});
@@ -188,14 +193,20 @@ describe("VM_DELETE", () => {
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
+    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
     // After removal, the user bucket should be gone entirely.
-    expect(updated.vmMap["user-1"]).toBeUndefined();
+    expect(updated.sandboxMap["user-1"]).toBeUndefined();
   });
 
   it("dispatches to the docker runner when input.sandboxProviderKind is 'local-docker'", async () => {
     const metadata: Metadata = {
-      vmMap: makeVmMap("user-1", BRANCH, "local-docker", DOCKER_ENTRY),
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "local-docker",
+        DOCKER_ENTRY,
+      ),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -221,7 +232,12 @@ describe("VM_DELETE", () => {
     process.env.STUDIO_SANDBOX_RUNNER = "cluster";
     try {
       const metadata: Metadata = {
-        vmMap: makeVmMap("user-1", BRANCH, "local-docker", DOCKER_ENTRY),
+        sandboxMap: makeSandboxMap(
+          "user-1",
+          BRANCH,
+          "local-docker",
+          DOCKER_ENTRY,
+        ),
       };
       const virtualMcp = makeVirtualMcp("org_1", metadata);
       const ctx = makeCtx({ virtualMcp });
@@ -249,7 +265,12 @@ describe("VM_DELETE", () => {
     // "local-docker" (see normalizeLegacySandboxProviderKind), keeping the
     // legacy → canonical mapping in one place.
     const metadata: Metadata = {
-      vmMap: makeVmMap("user-1", BRANCH, "local-docker", DOCKER_ENTRY),
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "local-docker",
+        DOCKER_ENTRY,
+      ),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -268,10 +289,15 @@ describe("VM_DELETE", () => {
     expect(lastRequestedKind.value).toBe("local-docker");
   });
 
-  it("skips runner.delete and DB update when no vmMap entry for (user, branch, kind)", async () => {
+  it("skips runner.delete and DB update when no sandboxMap entry for (user, branch, kind)", async () => {
     // Entry exists for a different user — this user has no entry.
     const metadata: Metadata = {
-      vmMap: makeVmMap("other-user", BRANCH, "local-docker", DOCKER_ENTRY),
+      sandboxMap: makeSandboxMap(
+        "other-user",
+        BRANCH,
+        "local-docker",
+        DOCKER_ENTRY,
+      ),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});

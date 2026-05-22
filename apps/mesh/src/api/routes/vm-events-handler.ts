@@ -19,7 +19,7 @@ import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { MeshContext } from "../../core/mesh-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
-import { readVmMap, resolveVm } from "../../tools/vm/vm-map";
+import { readSandboxMap, resolveVm } from "../../tools/vm/vm-map";
 import type { Env } from "../hono-env";
 
 /**
@@ -64,7 +64,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
   const providerKind = resolveSandboxProviderKindFromEnv();
 
   const existingVmEntry = resolveVm(
-    readVmMap(virtualMcpMetadata),
+    readSandboxMap(virtualMcpMetadata),
     userId,
     branch,
     providerKind,

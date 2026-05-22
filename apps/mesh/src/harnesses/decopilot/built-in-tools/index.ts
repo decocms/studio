@@ -145,7 +145,7 @@ async function buildAllTools(
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureVmForBranch` either reuses
-  // the existing vmMap entry (fast path) or provisions a new sandbox via
+  // the existing sandboxMap entry (fast path) or provisions a new sandbox via
   // the env-selected runner. The promise is memoized on the closure so
   // parallel first calls (e.g. the model emitting bash + read in one step)
   // share a single provisioning round-trip.
@@ -154,7 +154,7 @@ async function buildAllTools(
   if (vmContext) {
     // `dispatch-run` already populated `ctx.sandboxPreference` /
     // `ctx.linkForCurrentRun` from the resolved `DispatchTarget`, so the
-    // resolver short-circuits on those ctx hints without reading vmMap —
+    // resolver short-circuits on those ctx hints without reading sandboxMap —
     // no DB hit on the decopilot hot path. The same `kind` flows into
     // `ensureVm` below so `runner` and the provisioned handle are
     // guaranteed to come from the same provider.

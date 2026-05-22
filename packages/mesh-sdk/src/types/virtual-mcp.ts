@@ -425,18 +425,18 @@ const normalizeProviderKind = normalizeLegacySandboxProviderKind;
 
 /**
  * Maps a user to their sandbox records per (branch, sandboxProviderKind).
- * Lookup: vmMap[userId][branch][sandboxProviderKind] -> SandboxRecord
+ * Lookup: sandboxMap[userId][branch][sandboxProviderKind] -> SandboxRecord
  *
  * Multiple threads on the same (userId, branch, kind) share one sandbox.
  * Cloud and local sandboxes can coexist on the same branch as siblings.
  *
  * The schema is strict v2. Reads of legacy v1 data MUST be normalized via
- * `normalizeVmMap` (this file) BEFORE Zod validation — strict input/output
+ * `normalizeSandboxMap` (this file) BEFORE Zod validation — strict input/output
  * types here are load-bearing for `useForm<…>(zodResolver(…))` callers,
  * whose generic depends on `z.input` being identical to `z.output`. A
  * `z.preprocess` here widens `z.input` to `unknown` and breaks the form.
  */
-export const VmMapSchema = z.record(
+export const SandboxMapSchema = z.record(
   z.string().describe("userId"),
   z.record(
     z.string().describe("branch"),
@@ -444,38 +444,39 @@ export const VmMapSchema = z.record(
   ),
 );
 
-export type VmMap = z.infer<typeof VmMapSchema>;
+export type SandboxMap = z.infer<typeof SandboxMapSchema>;
 
 /**
- * Normalize a raw `metadata.vmMap` value into v2 shape on read. Use this in
- * storage adapters BEFORE returning data that will be Zod-validated against
- * `VirtualMCPEntitySchema` (or any schema embedding `VmMapSchema`).
+ * Normalize a raw `metadata.sandboxMap` (or legacy `metadata.vmMap`) value
+ * into v2 shape on read. Use this in storage adapters BEFORE returning data
+ * that will be Zod-validated against `VirtualMCPEntitySchema` (or any schema
+ * embedding `SandboxMapSchema`).
  *
  * Tolerates two legacy on-disk shapes from rows written before migration
  * 082 actually rewrote them:
- *   1. v1 2-level layout:  vmMap[user][branch] = SandboxRecord
+ *   1. v1 2-level layout:  sandboxMap[user][branch] = SandboxRecord
  *   2. `runnerKind` field on entries instead of `sandboxProviderKind`
  *
  * Returns `{}` for missing / malformed input rather than throwing — readers
  * should never crash on bad on-disk data; the strict schema catches any
  * residual issues at validation time.
  */
-export function normalizeVmMap(raw: unknown): VmMap {
+export function normalizeSandboxMap(raw: unknown): SandboxMap {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: VmMap = {};
+  const out: SandboxMap = {};
   for (const [userId, userVal] of Object.entries(
     raw as Record<string, unknown>,
   )) {
     if (!userVal || typeof userVal !== "object" || Array.isArray(userVal)) {
       continue;
     }
-    const userOut: VmMap[string] = {};
+    const userOut: SandboxMap[string] = {};
     for (const [branch, branchVal] of Object.entries(
       userVal as Record<string, unknown>,
     )) {
       const normalized = parseBranchMap(branchVal);
       if (Object.keys(normalized).length > 0) {
-        userOut[branch] = normalized as VmMap[string][string];
+        userOut[branch] = normalized as SandboxMap[string][string];
       }
     }
     if (Object.keys(userOut).length > 0) {
@@ -531,8 +532,8 @@ export const VirtualMCPEntitySchema = z.object({
         .describe(
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
-      vmMap: VmMapSchema.optional().describe(
-        "Per-user, per-branch sandbox mapping: vmMap[userId][branch] -> { sandboxHandle, previewUrl }",
+      sandboxMap: SandboxMapSchema.optional().describe(
+        "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
     })
     .loose()
@@ -588,8 +589,8 @@ export const VirtualMCPCreateDataSchema = z.object({
         .describe(
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
-      vmMap: VmMapSchema.optional().describe(
-        "Per-user, per-branch sandbox mapping: vmMap[userId][branch] -> { sandboxHandle, previewUrl }",
+      sandboxMap: SandboxMapSchema.optional().describe(
+        "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
     })
     .loose()
@@ -641,8 +642,8 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .describe(
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
-      vmMap: VmMapSchema.optional().describe(
-        "Per-user, per-branch sandbox mapping: vmMap[userId][branch] -> { sandboxHandle, previewUrl }",
+      sandboxMap: SandboxMapSchema.optional().describe(
+        "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
     })
     .loose()

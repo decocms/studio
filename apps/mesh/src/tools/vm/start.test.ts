@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import type { VmMap, SandboxRecord } from "@decocms/mesh-sdk";
+import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
 import type { MeshContext } from "../../core/mesh-context";
 import type { LinkRegistry } from "../../links/link-registry";
 import type { LinkEntry } from "@/links/protocol";
@@ -169,7 +169,7 @@ const EXPECTED_REF = composeSandboxRef({
 type Metadata = {
   githubRepo: { owner: string; name: string; connectionId: string };
   runtime: { selected: string; port: string; path?: string | null };
-  vmMap?: VmMap;
+  sandboxMap?: SandboxMap;
 };
 
 const BASE_METADATA: Metadata = {
@@ -330,7 +330,7 @@ describe("VM_START", () => {
     });
   });
 
-  it("persists vmMap entry with handle + previewUrl + sandboxProviderKind", async () => {
+  it("persists sandboxMap entry with handle + previewUrl + sandboxProviderKind", async () => {
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
       workdir: "/app",
@@ -353,10 +353,11 @@ describe("VM_START", () => {
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
-    // 3-level key: vmMap[userId][branch][kind]
+    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
+    // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
-      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
     )?.["local-docker"];
     expect(stored).toMatchObject({
       sandboxHandle: "vm_xyz",
@@ -388,10 +389,11 @@ describe("VM_START", () => {
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
-    // 3-level key: vmMap[userId][branch][kind]
+    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
+    // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
-      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
     )?.["local-docker"] as SandboxRecord | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: "pnpm",
@@ -417,16 +419,21 @@ describe("VM_START", () => {
 
     await VM_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
 
-    // Find the vmMap update (detectRepoRuntime may write a runtime update too).
-    const vmMapCall = (updateSpy.mock.calls as unknown[][]).find((call) => {
-      const meta = (call[2] as { metadata?: { vmMap?: VmMap } }).metadata;
-      return meta?.vmMap?.[USER_ID]?.[BRANCH] !== undefined;
-    });
-    expect(vmMapCall).toBeDefined();
-    const updated = (vmMapCall![2] as { metadata: { vmMap: VmMap } }).metadata;
-    // 3-level key: vmMap[userId][branch][kind]
+    // Find the sandboxMap update (detectRepoRuntime may write a runtime update too).
+    const sandboxMapCall = (updateSpy.mock.calls as unknown[][]).find(
+      (call) => {
+        const meta = (call[2] as { metadata?: { sandboxMap?: SandboxMap } })
+          .metadata;
+        return meta?.sandboxMap?.[USER_ID]?.[BRANCH] !== undefined;
+      },
+    );
+    expect(sandboxMapCall).toBeDefined();
+    const updated = (
+      sandboxMapCall![2] as { metadata: { sandboxMap: SandboxMap } }
+    ).metadata;
+    // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
-      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
     )?.["local-docker"] as SandboxRecord | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: null,
@@ -444,7 +451,7 @@ describe("VM_START", () => {
     const metadata: Metadata = {
       ...BASE_METADATA,
       // 3-level: kind (docker) → entry
-      vmMap: { [USER_ID]: { [BRANCH]: { "local-docker": CACHED_ENTRY } } },
+      sandboxMap: { [USER_ID]: { [BRANCH]: { "local-docker": CACHED_ENTRY } } },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -570,7 +577,7 @@ describe("VM_START", () => {
     const metadata: Metadata = {
       ...BASE_METADATA,
       // 3-level: docker entry lives under its own key
-      vmMap: {
+      sandboxMap: {
         [USER_ID]: {
           [BRANCH]: { "local-docker": dockerEntry },
         },
@@ -614,7 +621,7 @@ describe("VM_START", () => {
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
-      vmMap: {
+      sandboxMap: {
         [USER_ID]: {
           [BRANCH]: { "local-docker": sameRunnerEntry },
         },
@@ -660,10 +667,11 @@ describe("VM_START", () => {
 
     expect(result.sandboxProviderKind).toBe("user-desktop");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
-    // 3-level key: vmMap[userId][branch][kind]
+    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
+    // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
-      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
     )?.["user-desktop"] as SandboxRecord | undefined;
     expect(stored?.sandboxProviderKind).toBe("user-desktop");
   });
@@ -686,10 +694,11 @@ describe("VM_START", () => {
 
     expect(result.sandboxProviderKind).toBe("local-docker");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
-    // 3-level key: vmMap[userId][branch][kind]
+    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
+    // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
-      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
     )?.["local-docker"] as SandboxRecord | undefined;
     expect(stored?.sandboxProviderKind).toBe("local-docker");
   });
@@ -716,10 +725,11 @@ describe("VM_START", () => {
 
     expect(result.sandboxProviderKind).toBe("local-docker");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { vmMap: VmMap } }).metadata;
-    // 3-level key: vmMap[userId][branch][kind]
+    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
+    // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
-      updated.vmMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
     )?.["local-docker"] as SandboxRecord | undefined;
     expect(stored?.sandboxProviderKind).toBe("local-docker");
   });

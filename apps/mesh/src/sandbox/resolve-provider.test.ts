@@ -84,12 +84,12 @@ function stubCtx(
 }
 
 describe("resolveSandboxProvider", () => {
-  test("recorded vmMap kind wins over the link-or-env default", async () => {
+  test("recorded sandboxMap kind wins over the link-or-env default", async () => {
     // User has a link online, so the default policy would pick `user-desktop`.
-    // But vmMap records `cluster` for (user, branch) — we must honor
+    // But sandboxMap records `cluster` for (user, branch) — we must honor
     // that recorded kind so the SSE/proxy paths reach the right provider.
     const metadata = {
-      vmMap: {
+      sandboxMap: {
         "u-1": {
           "deco/foo": {
             cluster: {
@@ -117,7 +117,7 @@ describe("resolveSandboxProvider", () => {
     expect(buildDesktopSpy).not.toHaveBeenCalled();
   });
 
-  test("link online + no vmMap entry → user-desktop, bound to link", async () => {
+  test("link online + no sandboxMap entry → user-desktop, bound to link", async () => {
     const link = makeLink();
     const { provider, kind } = await resolveSandboxProvider(stubCtx(link), {
       userId: "u-1",
@@ -129,9 +129,9 @@ describe("resolveSandboxProvider", () => {
     expect(buildDesktopSpy).toHaveBeenCalled();
   });
 
-  test("explicit override beats both vmMap and default policy", async () => {
+  test("explicit override beats both sandboxMap and default policy", async () => {
     const metadata = {
-      vmMap: {
+      sandboxMap: {
         "u-1": {
           "deco/foo": {
             "user-desktop": {
@@ -155,7 +155,7 @@ describe("resolveSandboxProvider", () => {
     expect(kind).toBe("local-docker");
   });
 
-  test("no link + no vmMap entry → env kind (local-docker here)", async () => {
+  test("no link + no sandboxMap entry → env kind (local-docker here)", async () => {
     const { kind } = await resolveSandboxProvider(stubCtx(null), {
       userId: "u-1",
       branch: "deco/fresh",
@@ -164,14 +164,14 @@ describe("resolveSandboxProvider", () => {
     expect(kind).toBe("local-docker");
   });
 
-  test("ctx hint (sandboxPreference=desktop + link) short-circuits without vmMap read", async () => {
+  test("ctx hint (sandboxPreference=desktop + link) short-circuits without sandboxMap read", async () => {
     // dispatch-run sets these ctx fields from the resolved DispatchTarget.
-    // Resolver must honor them and skip the vmMap lookup so the decopilot
+    // Resolver must honor them and skip the sandboxMap lookup so the decopilot
     // hot path doesn't pay a DB hit per turn. Metadata is intentionally
     // present and would point at a *different* recorded kind — proving
     // the hint wins.
     const metadata = {
-      vmMap: {
+      sandboxMap: {
         "u-1": {
           "deco/foo": {
             cluster: {
@@ -252,10 +252,10 @@ describe("resolveSandboxProvider", () => {
   });
 
   test("user-desktop resolution throws when link daemon is offline", async () => {
-    // vmMap records `user-desktop` but link is gone — caller (events/proxy
+    // sandboxMap records `user-desktop` but link is gone — caller (events/proxy
     // middleware) catches this and surfaces a failed phase / 503.
     const metadata = {
-      vmMap: {
+      sandboxMap: {
         "u-1": {
           "deco/foo": {
             "user-desktop": {

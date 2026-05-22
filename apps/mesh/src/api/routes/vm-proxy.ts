@@ -88,7 +88,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   const virtualMcpMetadata =
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
-  // Source of truth: vmMap. If an entry exists for (user, branch) we use
+  // Source of truth: sandboxMap. If an entry exists for (user, branch) we use
   // that recorded kind — a sandbox provisioned via `desktop` must
   // remain addressable via `desktop` even on a cluster whose env kind
   // is `agent-sandbox` / `docker`. Pre-provision callers fall through to

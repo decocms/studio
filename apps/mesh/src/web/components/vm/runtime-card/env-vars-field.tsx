@@ -124,7 +124,7 @@ interface RunningSandboxNoticeProps<T extends FieldValues> {
 /**
  * Banner shown above the env list when:
  *   (a) the caller already has a sandbox provisioned for this agent
- *       (vmMap has an entry under their userId), and
+ *       (sandboxMap has an entry under their userId), and
  *   (b) the env array changed since the last push to the daemon.
  *
  * The push to the daemon happens server-side on /setup/start (which
@@ -147,7 +147,7 @@ function RunningSandboxNotice<T extends FieldValues>({
   const userId = session.data?.user?.id;
 
   const fieldPath = "metadata.runtime.env" as FieldPath<T>;
-  const vmMapPath = "metadata.vmMap" as FieldPath<T>;
+  const sandboxMapPath = "metadata.sandboxMap" as FieldPath<T>;
 
   const [baseline, setBaseline] = useState(() =>
     JSON.stringify(normalizeEnvForCompare(form.getValues(fieldPath))),
@@ -156,10 +156,10 @@ function RunningSandboxNotice<T extends FieldValues>({
   const currentStr = JSON.stringify(normalizeEnvForCompare(current));
   const envChanged = currentStr !== baseline;
 
-  const vmMap = form.getValues(vmMapPath) as
+  const sandboxMap = form.getValues(sandboxMapPath) as
     | Record<string, Record<string, unknown>>
     | undefined;
-  const userBranches = userId ? Object.keys(vmMap?.[userId] ?? {}) : [];
+  const userBranches = userId ? Object.keys(sandboxMap?.[userId] ?? {}) : [];
   const hasActiveSandbox = userBranches.length > 0;
 
   const [isRestarting, setRestarting] = useState(false);

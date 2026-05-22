@@ -15,7 +15,7 @@ import { generatePrefixedId } from "@/shared/utils/generate-id";
 import {
   getWellKnownDecopilotVirtualMCP,
   isDecopilot,
-  normalizeVmMap,
+  normalizeSandboxMap,
 } from "@decocms/mesh-sdk";
 import type {
   VirtualMCPCreateData,
@@ -495,17 +495,25 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
 
     const rawMetadata = this.parseJson<{
       instructions?: string;
+      sandboxMap?: unknown;
       vmMap?: unknown;
     }>(row.metadata);
 
-    // Normalize vmMap into v2 shape on read. Rows written before migration
-    // 082 actually ran still carry the v1 2-level layout (or `runnerKind`
-    // entries). The output schema VirtualMCPEntitySchema is strict v2 and
-    // would reject those without this normalization. Strip `vmMap` from
-    // the rest spread so its `unknown` type doesn't leak into the result.
-    const { vmMap: rawVmMap, ...metadataRest } = rawMetadata ?? {};
-    const normalizedVmMap =
-      rawVmMap !== undefined ? normalizeVmMap(rawVmMap) : undefined;
+    // Normalize sandboxMap into v2 shape on read. Rows written before
+    // migration 091 actually ran still carry the v1 2-level layout (or the
+    // pre-rename `vmMap` outer key, or `runnerKind` entries). The output
+    // schema VirtualMCPEntitySchema is strict v2 and would reject those
+    // without this normalization. Prefer the new key, fall back to the
+    // legacy `vmMap` key, then strip both from the rest spread so their
+    // `unknown` types don't leak into the result.
+    const {
+      sandboxMap: rawSandboxMap,
+      vmMap: rawVmMap,
+      ...metadataRest
+    } = rawMetadata ?? {};
+    const rawMap = rawSandboxMap ?? rawVmMap;
+    const normalizedSandboxMap =
+      rawMap !== undefined ? normalizeSandboxMap(rawMap) : undefined;
 
     return {
       id: row.id,
@@ -522,7 +530,9 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       metadata: {
         ...metadataRest,
         instructions: rawMetadata?.instructions ?? null,
-        ...(normalizedVmMap !== undefined ? { vmMap: normalizedVmMap } : {}),
+        ...(normalizedSandboxMap !== undefined
+          ? { sandboxMap: normalizedSandboxMap }
+          : {}),
       },
       connections: aggregationRows.map((agg) => ({
         connection_id: agg.child_connection_id,

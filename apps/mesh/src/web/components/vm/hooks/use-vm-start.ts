@@ -49,7 +49,7 @@ const startKey = (args: VmStartArgs) =>
 
 // Tracks (virtualMcpId, branch) pairs explicitly stopped by the user.
 // Prevents self-heal from restarting a VM the user just stopped: the SSE
-// "gone" event can race the vmMap query refetch and arrive while vmEntry
+// "gone" event can race the sandboxMap query refetch and arrive while vmEntry
 // is still stale in the cache, making deadVmId non-null and triggering
 // an unwanted self-heal. Cleared on any VM_START so normal auto-start
 // resumes after an explicit user restart.

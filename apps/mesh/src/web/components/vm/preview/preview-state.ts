@@ -68,7 +68,7 @@ export function computePreviewState(input: PreviewStateInput): PreviewState {
   if (input.suspended || input.appPaused) {
     return { kind: "suspended" };
   }
-  // User explicitly stopped the VM. Skip the `notFound` / `claimPhase` checks below that would otherwise force `starting-now` while the SSE still emits `gone` and the vmMap invalidation drains.
+  // User explicitly stopped the VM. Skip the `notFound` / `claimPhase` checks below that would otherwise force `starting-now` while the SSE still emits `gone` and the sandboxMap invalidation drains.
   if (input.userStopped) {
     return { kind: "never-started" };
   }

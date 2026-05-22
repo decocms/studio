@@ -21,7 +21,7 @@ import {
 } from "../../core/mesh-context";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import type { PackageManager } from "../../shared/runtime-defaults";
-import { readVmMap, resolveVm } from "./vm-map";
+import { readSandboxMap, resolveVm } from "./vm-map";
 
 export type RuntimeConfigMeta = {
   runtime?: {
@@ -71,7 +71,7 @@ export function readValidatedRuntimeEnv(
 /**
  * Extracts common auth + lookup boilerplate shared by all VM tools.
  * Validates auth, checks access, fetches and validates the Virtual MCP,
- * and returns the metadata and vmMap entry for the current user on the
+ * and returns the metadata and sandboxMap entry for the current user on the
  * specified branch + kind. `entry` is null when no vm is registered for that triple.
  */
 export async function requireVmEntry(
@@ -92,9 +92,9 @@ export async function requireVmEntry(
     throw new Error("Virtual MCP not found");
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  const vmMap = readVmMap(metadata);
+  const sandboxMap = readSandboxMap(metadata);
   const entry: SandboxRecord | null = resolveVm(
-    vmMap,
+    sandboxMap,
     userId,
     input.branch,
     input.sandboxProviderKind,

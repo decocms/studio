@@ -1,7 +1,7 @@
 /**
- * VM_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual MCP's `vmMap`.
+ * VM_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual MCP's `sandboxMap`.
  * Runner-agnostic — dispatches through the active `SandboxProvider`; this
- * handler only does `vmMap` bookkeeping. Branch defaults to
+ * handler only does `sandboxMap` bookkeeping. Branch defaults to
  * `deco/<adjective>-<noun>` when omitted.
  *
  * Different sandbox provider kinds coexist as siblings under the same
@@ -32,7 +32,7 @@ import {
   type RuntimeConfigMeta,
 } from "./helpers";
 import { resolveAndPushEnv } from "./resolve-env";
-import { readVmMap, resolveVm } from "./vm-map";
+import { readSandboxMap, resolveVm } from "./vm-map";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
@@ -44,7 +44,7 @@ import {
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
-import { setVmMapEntry } from "./vm-map";
+import { setSandboxMapEntry } from "./vm-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
 type GithubRepo = {
@@ -112,10 +112,10 @@ export const VM_START = defineTool({
     if (!earlyUserId) throw new Error("User ID required");
 
     // Resolve the runner once. `resolveSandboxProvider` returns the
-    // existing kind when vmMap already has an entry for (user, branch),
+    // existing kind when sandboxMap already has an entry for (user, branch),
     // honors `input.sandboxProviderKind` as a caller override, and
     // otherwise applies the link-or-env default policy. We bind the
-    // provider here so the kind we record in vmMap matches the runner
+    // provider here so the kind we record in sandboxMap matches the runner
     // that actually `ensure`d the sandbox.
     const { provider: runner, kind: providerKind } =
       await resolveSandboxProvider(ctx, {
@@ -165,9 +165,9 @@ export const VM_START = defineTool({
 /**
  * Lazy provisioner for the always-on VM tools path. Mirrors VM_START's
  * flow but: (a) tolerates a missing GitHub repo (boots blank under Docker),
- * and (b) takes a fast path when the existing vmMap entry already matches
- * the requested kind — avoiding a full `runner.ensure` round-trip on
- * every fresh stream when the VM is already registered.
+ * and (b) takes a fast path when the existing sandboxMap entry already
+ * matches the requested kind — avoiding a full `runner.ensure` round-trip
+ * on every fresh stream when the VM is already registered.
  *
  * Unlike VM_START, `sandboxProviderKind` is required — callers (e.g. POST
  * /messages) must resolve the kind before calling this function.
@@ -195,7 +195,7 @@ export async function ensureVm(
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
   const existing: SandboxRecord | null = resolveVm(
-    readVmMap(metadata),
+    readSandboxMap(metadata),
     userId,
     input.branch,
     input.sandboxProviderKind,
@@ -203,7 +203,7 @@ export async function ensureVm(
 
   const providerKind = input.sandboxProviderKind;
 
-  // Fast path: vmMap already has an entry under the requested kind.
+  // Fast path: sandboxMap already has an entry under the requested kind.
   // No reap needed: with kind in the key, there's no stale-kind entry to
   // tear down. Different kinds coexist as siblings.
   if (existing) {
@@ -401,7 +401,7 @@ async function provisionSandbox(
     },
   };
 
-  await setVmMapEntry(
+  await setSandboxMapEntry(
     ctx.storage.virtualMcps,
     virtualMcpId,
     userId,

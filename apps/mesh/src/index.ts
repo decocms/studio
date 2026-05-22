@@ -162,7 +162,7 @@ if (ingressEligible) {
     }, ingressPort);
 
     // Construct the runner up-front. The first preview-iframe request
-    // typically arrives on a page reload with a warm vmMap, before either
+    // typically arrives on a page reload with a warm sandboxMap, before either
     // VM_START or `/api/vm-events` has touched the runner — without this
     // eager init the ingress would 503 with "Sandbox Runner Not Initialized".
     await getOrInitSharedRunner();

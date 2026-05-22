@@ -10,7 +10,7 @@ import { normalizeLegacySandboxProviderKind } from "@decocms/mesh-sdk";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
 import { getSandboxProviderByKind } from "../../sandbox/lifecycle";
-import { removeVmMapEntry } from "./vm-map";
+import { removeSandboxMapEntry } from "./vm-map";
 
 export const VM_DELETE = defineTool({
   name: "VM_DELETE",
@@ -28,11 +28,13 @@ export const VM_DELETE = defineTool({
     branch: z
       .string()
       .min(1)
-      .describe("Branch whose vm should be deleted (vmMap[userId][branch])"),
+      .describe(
+        "Branch whose vm should be deleted (sandboxMap[userId][branch])",
+      ),
     sandboxProviderKind: z
       .enum(["local-docker", "cluster", "user-desktop"])
       .describe(
-        "Kind of sandbox provider the VM was started with. Used to locate the correct 3-level vmMap entry.",
+        "Kind of sandbox provider the VM was started with. Used to locate the correct 3-level sandboxMap entry.",
       ),
   }),
   outputSchema: z.object({
@@ -67,7 +69,7 @@ export const VM_DELETE = defineTool({
     }
 
     // Clear first so the UI returns to idle regardless of teardown outcome.
-    await removeVmMapEntry(
+    await removeSandboxMapEntry(
       ctx.storage.virtualMcps,
       input.virtualMcpId,
       userId,

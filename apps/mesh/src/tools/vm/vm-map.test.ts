@@ -1,11 +1,11 @@
 /**
- * Unit tests for vmMap helpers (pure functions).
+ * Unit tests for sandboxMap helpers (pure functions).
  */
 
 import { describe, expect, test } from "bun:test";
 import type { SandboxRecord } from "@decocms/mesh-sdk";
 
-import { readVmMap, resolveVm } from "./vm-map";
+import { readSandboxMap, resolveVm } from "./vm-map";
 
 const ENTRY_A: SandboxRecord = {
   sandboxHandle: "vm-1",
@@ -16,27 +16,71 @@ const ENTRY_B: SandboxRecord = {
   previewUrl: "https://vm-2.deco.studio",
 };
 
-describe("readVmMap", () => {
+describe("readSandboxMap", () => {
   test("returns empty object when metadata is null", () => {
-    expect(readVmMap(null)).toEqual({});
+    expect(readSandboxMap(null)).toEqual({});
   });
 
   test("returns empty object when metadata is undefined", () => {
-    expect(readVmMap(undefined)).toEqual({});
+    expect(readSandboxMap(undefined)).toEqual({});
   });
 
-  test("returns empty object when vmMap key is missing", () => {
-    expect(readVmMap({ githubRepo: null })).toEqual({});
+  test("returns empty object when sandboxMap key is missing", () => {
+    expect(readSandboxMap({ githubRepo: null })).toEqual({});
   });
 
-  test("returns the vmMap when present", () => {
+  test("returns the sandboxMap when present", () => {
     // 3-level: userId → branch → kind → entry
-    const vmMap = { "user-1": { main: { "local-docker": ENTRY_A } } };
-    expect(readVmMap({ vmMap })).toEqual(vmMap);
+    const sandboxMap = { "user-1": { main: { "local-docker": ENTRY_A } } };
+    expect(readSandboxMap({ sandboxMap })).toEqual(sandboxMap);
   });
 
-  test("returns empty when vmMap is not an object", () => {
-    expect(readVmMap({ vmMap: "not an object" })).toEqual({});
+  test("returns empty when sandboxMap is not an object", () => {
+    expect(readSandboxMap({ sandboxMap: "not an object" })).toEqual({});
+  });
+});
+
+describe("readSandboxMap legacy fallback", () => {
+  test("reads new `sandboxMap` key", () => {
+    const inner: SandboxRecord = {
+      sandboxHandle: "h1",
+      previewUrl: null,
+      createdAt: 1,
+      sandboxProviderKind: "cluster",
+    };
+    const meta = { sandboxMap: { user1: { main: { cluster: inner } } } };
+    expect(readSandboxMap(meta)).toEqual(meta.sandboxMap);
+  });
+
+  test("falls back to legacy `vmMap` key", () => {
+    const inner: SandboxRecord = {
+      sandboxHandle: "h1",
+      previewUrl: null,
+      createdAt: 1,
+      sandboxProviderKind: "cluster",
+    };
+    const meta = { vmMap: { user1: { main: { cluster: inner } } } };
+    expect(readSandboxMap(meta)).toEqual(meta.vmMap);
+  });
+
+  test("prefers new key when both present", () => {
+    const newEntry: SandboxRecord = {
+      sandboxHandle: "new",
+      previewUrl: null,
+      createdAt: 1,
+      sandboxProviderKind: "cluster",
+    };
+    const oldEntry: SandboxRecord = {
+      sandboxHandle: "old",
+      previewUrl: null,
+      createdAt: 1,
+      sandboxProviderKind: "cluster",
+    };
+    const meta = {
+      sandboxMap: { u: { b: { cluster: newEntry } } },
+      vmMap: { u: { b: { cluster: oldEntry } } },
+    };
+    expect(readSandboxMap(meta)).toEqual(meta.sandboxMap);
   });
 });
 
@@ -46,44 +90,113 @@ describe("resolveVm", () => {
   });
 
   test("returns null when branch is absent for that user", () => {
-    const vmMap = { "user-1": { main: { "local-docker": ENTRY_A } } };
-    expect(resolveVm(vmMap, "user-1", "feat/x", "local-docker")).toBeNull();
+    const sandboxMap = { "user-1": { main: { "local-docker": ENTRY_A } } };
+    expect(
+      resolveVm(sandboxMap, "user-1", "feat/x", "local-docker"),
+    ).toBeNull();
   });
 
   test("returns the entry when userId, branch, and kind are all present", () => {
-    const vmMap = {
+    const sandboxMap = {
       "user-1": {
         main: { "local-docker": ENTRY_A },
         "feat/x": { "local-docker": ENTRY_B },
       },
     };
-    expect(resolveVm(vmMap, "user-1", "feat/x", "local-docker")).toEqual(
+    expect(resolveVm(sandboxMap, "user-1", "feat/x", "local-docker")).toEqual(
       ENTRY_B,
     );
   });
 
   test("isolates users from each other", () => {
-    const vmMap = {
+    const sandboxMap = {
       "user-1": { main: { "local-docker": ENTRY_A } },
       "user-2": { main: { "local-docker": ENTRY_B } },
     };
-    expect(resolveVm(vmMap, "user-1", "main", "local-docker")).toEqual(ENTRY_A);
-    expect(resolveVm(vmMap, "user-2", "main", "local-docker")).toEqual(ENTRY_B);
+    expect(resolveVm(sandboxMap, "user-1", "main", "local-docker")).toEqual(
+      ENTRY_A,
+    );
+    expect(resolveVm(sandboxMap, "user-2", "main", "local-docker")).toEqual(
+      ENTRY_B,
+    );
   });
 
   test("returns null when the kind is absent but another kind exists", () => {
-    const vmMap = {
+    const sandboxMap = {
       "user-1": { main: { "local-docker": ENTRY_A } },
     };
     // looking up "cluster" when only "local-docker" exists → null
-    expect(resolveVm(vmMap, "user-1", "main", "cluster")).toBeNull();
+    expect(resolveVm(sandboxMap, "user-1", "main", "cluster")).toBeNull();
   });
 
   test("returns the entry for the requested kind when multiple kinds coexist", () => {
-    const vmMap = {
+    const sandboxMap = {
       "user-1": { main: { "local-docker": ENTRY_A, cluster: ENTRY_B } },
     };
-    expect(resolveVm(vmMap, "user-1", "main", "local-docker")).toEqual(ENTRY_A);
-    expect(resolveVm(vmMap, "user-1", "main", "cluster")).toEqual(ENTRY_B);
+    expect(resolveVm(sandboxMap, "user-1", "main", "local-docker")).toEqual(
+      ENTRY_A,
+    );
+    expect(resolveVm(sandboxMap, "user-1", "main", "cluster")).toEqual(ENTRY_B);
+  });
+});
+
+describe("setSandboxMapEntry", () => {
+  // Setup: a fake storage adapter that captures the metadata blob written by
+  // setSandboxMapEntry so we can assert the legacy key is dropped and the new
+  // key carries the merged shape.
+  test("writes new key and drops legacy vmMap key", async () => {
+    const { setSandboxMapEntry } = await import("./vm-map");
+    const legacyEntry: SandboxRecord = {
+      sandboxHandle: "old",
+      previewUrl: null,
+      createdAt: 1,
+      sandboxProviderKind: "cluster",
+    };
+    const initialMetadata: Record<string, unknown> = {
+      vmMap: { u: { b: { cluster: legacyEntry } } },
+      otherField: "preserved",
+    };
+
+    let capturedUpdate: { metadata?: Record<string, unknown> } | null = null;
+    const storage = {
+      findById: async () => ({ metadata: initialMetadata }),
+      update: async (
+        _id: string,
+        _actingUserId: string,
+        data: { metadata?: Record<string, unknown> },
+      ) => {
+        capturedUpdate = data;
+      },
+    };
+
+    const newEntry: SandboxRecord = {
+      sandboxHandle: "new",
+      previewUrl: null,
+      createdAt: 2,
+      sandboxProviderKind: "cluster",
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await setSandboxMapEntry(
+      storage as unknown as import("../../storage/ports").VirtualMCPStoragePort,
+      "vmcp_1",
+      "u",
+      "u",
+      "b",
+      "cluster",
+      newEntry,
+    );
+
+    expect(capturedUpdate).not.toBeNull();
+    const out = capturedUpdate!.metadata as Record<string, unknown>;
+    expect("vmMap" in out).toBe(false);
+    expect("sandboxMap" in out).toBe(true);
+    expect(out.otherField).toBe("preserved");
+    // The new entry replaces the legacy entry under (u, b, cluster).
+    const sm = out.sandboxMap as Record<
+      string,
+      Record<string, Record<string, SandboxRecord>>
+    >;
+    expect(sm.u?.b?.cluster).toEqual(newEntry);
   });
 });

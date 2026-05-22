@@ -200,7 +200,7 @@ function buildApp(opts: {
           id: AGENT_ID,
           organization_id: "org_1",
           metadata: {
-            vmMap: {
+            sandboxMap: {
               user_1: {
                 [BRANCH]: {
                   sandboxHandle: "vm_test",

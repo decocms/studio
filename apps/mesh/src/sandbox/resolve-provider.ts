@@ -9,11 +9,11 @@
  *
  *   2. **Per-run dispatch hint** (`ctx.sandboxPreference` /
  *      `ctx.linkForCurrentRun`). Set by `dispatch-run` from the resolved
- *      `DispatchTarget`. Honoring it without a vmMap read is the whole
+ *      `DispatchTarget`. Honoring it without a sandboxMap read is the whole
  *      point: decopilot runs decided which sandbox kind to use upstream,
  *      and any DB lookup here would just confirm what they already know.
  *
- *   3. **Recorded vmMap kind.** The post-provision source of truth: a
+ *   3. **Recorded sandboxMap kind.** The post-provision source of truth: a
  *      sandbox provisioned via `user-desktop` stays addressable through
  *      `user-desktop` even on a cluster whose env kind is something else
  *      (`cluster`, `local-docker`, …). This is what the events/proxy
@@ -35,19 +35,19 @@ import {
 } from "@decocms/sandbox/provider";
 
 import type { MeshContext } from "../core/mesh-context";
-import { readVmMap } from "../tools/vm/vm-map";
+import { readSandboxMap } from "../tools/vm/vm-map";
 import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
 import { resolveDefaultSandboxProviderKind } from "./resolve-default-provider-kind";
 
 export interface ResolveSandboxProviderArgs {
-  /** User whose vmMap cell to read and (for `desktop`) whose link to bind. */
+  /** User whose sandboxMap cell to read and (for `desktop`) whose link to bind. */
   userId: string;
   branch: string;
   /** Raw `virtualmcp.metadata` JSON column. May be null. */
   virtualMcpMetadata: Record<string, unknown> | null;
   /**
    * Caller-provided override (e.g. `VM_START`'s `input.sandboxProviderKind`).
-   * When set, takes precedence over both the vmMap entry and the default
+   * When set, takes precedence over both the sandboxMap entry and the default
    * policy. The resolver still binds the user's link for `user-desktop`.
    */
   explicitKind?: SandboxProviderKind;
@@ -55,7 +55,7 @@ export interface ResolveSandboxProviderArgs {
 
 export interface ResolvedSandboxProvider {
   provider: SandboxProvider;
-  /** The kind the provider was bound for. Callers persisting vmMap rows
+  /** The kind the provider was bound for. Callers persisting sandboxMap rows
    *  use this so the recorded kind matches what was actually constructed. */
   kind: SandboxProviderKind;
 }
@@ -73,7 +73,7 @@ export async function resolveSandboxProvider(
   }
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
-  //    without touching vmMap. `desktop` carries its link inline;
+  //    without touching sandboxMap. `desktop` carries its link inline;
   //    `default` means "use the cluster runner the env points to".
   if (ctx.sandboxPreference === "desktop" && ctx.linkForCurrentRun) {
     const provider = await buildDesktopProvider(ctx, ctx.linkForCurrentRun);
@@ -91,7 +91,7 @@ export async function resolveSandboxProvider(
     return { provider, kind };
   }
 
-  // 3. Recorded vmMap kind. Tiebreak against the default policy so that when
+  // 3. Recorded sandboxMap kind. Tiebreak against the default policy so that when
   //    multiple sibling kinds were persisted (e.g. the user ran VM_START
   //    twice with different `sandboxProviderKind` values), the events/proxy
   //    path consistently picks the one matching current intent
@@ -118,9 +118,9 @@ export async function resolveSandboxProvider(
 }
 
 /**
- * All kinds recorded under `vmMap[userId][branch]`. Multiple kinds can coexist
+ * All kinds recorded under `sandboxMap[userId][branch]`. Multiple kinds can coexist
  * as siblings — `VM_START` accepts an explicit `sandboxProviderKind`, and
- * `setVmMapEntry` preserves siblings. Callers that need exactly one kind
+ * `setSandboxMapEntry` preserves siblings. Callers that need exactly one kind
  * (`readRecordedKind`) tiebreak against the default policy.
  */
 function readRecordedKinds(
@@ -128,7 +128,7 @@ function readRecordedKinds(
   userId: string,
   branch: string,
 ): SandboxProviderKind[] {
-  const cell = readVmMap(metadata)[userId]?.[branch];
+  const cell = readSandboxMap(metadata)[userId]?.[branch];
   if (!cell) return [];
   const parsed = parseBranchMap(cell);
   return Object.keys(parsed) as SandboxProviderKind[];

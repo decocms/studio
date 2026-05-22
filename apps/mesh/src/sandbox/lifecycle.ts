@@ -166,7 +166,7 @@ async function instantiate(
       // user-desktop is never the cluster-wide default — there is no
       // ambient `LinkEntry` to bind to here. It is constructed per-run by
       // `resolveSandboxProvider` (sandbox/resolve-provider.ts) from
-      // either the per-run ctx hint or the recorded vmMap kind, both of
+      // either the per-run ctx hint or the recorded sandboxMap kind, both of
       // which carry the user's link. Hitting this branch means VM_DELETE
       // was called for a `user-desktop` row without a live link context,
       // which today should not happen (the user-desktop provider doesn't
@@ -187,7 +187,7 @@ async function instantiate(
  * Exported so the unified resolver in `resolve-provider.ts` can build one
  * without going through `getSharedSandboxProvider` (which requires
  * pre-populating `ctx.sandboxPreference` / `ctx.linkForCurrentRun` as a
- * side-effect — the resolver decides the kind from vmMap, not from those
+ * side-effect — the resolver decides the kind from sandboxMap, not from those
  * ctx fields, so the side-effect would be misleading).
  */
 export async function buildDesktopProvider(
