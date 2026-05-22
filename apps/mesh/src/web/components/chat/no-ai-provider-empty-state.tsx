@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Monitor01, Zap } from "@untitledui/icons";
+import { Zap } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ConnectProviderDialog } from "@/web/views/settings/ai-providers/connect-provider-dialog";
 import {
@@ -7,25 +7,16 @@ import {
   type ProviderSelection,
 } from "@/web/views/settings/ai-providers/provider-grid";
 import {
-  SettingsCard,
-  SettingsCardItem,
-} from "@/web/components/settings/settings-section";
-import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useAiProviders } from "@/web/hooks/collections/use-ai-providers";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
-import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 import { useQuery } from "@tanstack/react-query";
 import type { BrandContext } from "@/storage/types";
-import {
-  ConnectDesktopDialog,
-  visibleCapabilities,
-} from "./connect-desktop-dialog";
 
 interface NoAiProviderEmptyStateProps {
   title?: string;
@@ -92,8 +83,6 @@ export function NoAiProviderEmptyState({
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
-  const [desktopOpen, setDesktopOpen] = useState(false);
-  const link = useCurrentLink();
 
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
@@ -161,35 +150,6 @@ export function NoAiProviderEmptyState({
         />
       </div>
 
-      <div className="w-full">
-        <SettingsCard>
-          {link.online ? (
-            <SettingsCardItem
-              onClick={() => setDesktopOpen(true)}
-              icon={
-                <div className="size-8 rounded-md bg-success/10 flex items-center justify-center text-success">
-                  <Check size={16} />
-                </div>
-              }
-              title="Desktop connected"
-              description={(() => {
-                const labels = visibleCapabilities(link.capabilities);
-                return labels.length > 0
-                  ? `Available: ${labels.join(", ")}`
-                  : "No CLI agents detected on this desktop";
-              })()}
-            />
-          ) : (
-            <SettingsCardItem
-              onClick={() => setDesktopOpen(true)}
-              icon={<Monitor01 size={16} />}
-              title="Connect your desktop"
-              description="Use Claude Code, Codex, or your local files via the link CLI."
-            />
-          )}
-        </SettingsCard>
-      </div>
-
       <ConnectProviderDialog
         open={pendingProvider !== null || gridOpen}
         onOpenChange={(o) => {
@@ -200,8 +160,6 @@ export function NoAiProviderEmptyState({
         }}
         initialProvider={pendingProvider ?? undefined}
       />
-
-      <ConnectDesktopDialog open={desktopOpen} onOpenChange={setDesktopOpen} />
     </div>
   );
 }
