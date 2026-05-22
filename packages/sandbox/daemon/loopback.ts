@@ -22,18 +22,39 @@ export type LoopbackHost = "::1" | "127.0.0.1";
 function canConnect(host: LoopbackHost, port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const sock = connect({ host, port });
+    let connected = false;
     let done = false;
     const finish = (ok: boolean) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
       try {
-        sock.destroy();
+        if (connected) {
+          // Two things have to happen for a clean FIN close:
+          //   1. We send FIN on our write side (`sock.end()`).
+          //   2. We READ whatever upstream sends back. Otherwise unread
+          //      bytes pile up in our OS receive buffer, and when the
+          //      socket finally closes, the kernel sends RST instead of
+          //      FIN (BSD/Linux behavior — discarding unread data is
+          //      signaled with RST).
+          // Vite's HTTP server replies to our empty connection with a 400.
+          // Without the drain below, that 400 stays unread, the close RSTs
+          // Vite, and Vite (on Node 24) exits the process on the unhandled
+          // socket `error` event.
+          sock.on("data", () => {});
+          sock.on("error", () => {});
+          sock.end();
+        } else {
+          sock.destroy();
+        }
       } catch {}
       resolve(ok);
     };
     const timer = setTimeout(() => finish(false), PROBE_TIMEOUT_MS);
-    sock.once("connect", () => finish(true));
+    sock.once("connect", () => {
+      connected = true;
+      finish(true);
+    });
     sock.once("error", () => finish(false));
   });
 }

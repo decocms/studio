@@ -2,6 +2,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   AlertTriangle,
+  Code02,
   Monitor04,
   PauseCircle,
   Play,
@@ -35,6 +36,17 @@ export type VmStateCardProps =
       /** Drawer-open hides the inline peek (mutually exclusive surfaces). */
       drawerOpen: boolean;
     }
+  | {
+      kind: "dev-script-failed";
+      progress: PhaseProgress;
+      logSource: string;
+      errorLine: string;
+      onRetry: () => void;
+      onOpenTerminal: () => void;
+      onBrowseFiles: () => void;
+      /** Drawer-open hides the inline peek (mutually exclusive surfaces). */
+      drawerOpen: boolean;
+    }
   | { kind: "suspended"; onResume: () => void }
   | { kind: "crashed"; onOpenTerminal: () => void };
 
@@ -56,12 +68,11 @@ export function VmStateCard(props: VmStateCardProps) {
         <Glyph kind={props.kind} />
         <Headline kind={props.kind} />
         <Subline {...props} />
-        {props.kind === "errored" && (
+        {(props.kind === "errored" || props.kind === "dev-script-failed") && (
           <PhaseStripView progress={props.progress} />
         )}
-        {props.kind === "errored" && !props.drawerOpen && (
-          <LogPeek source={props.logSource} />
-        )}
+        {(props.kind === "errored" || props.kind === "dev-script-failed") &&
+          !props.drawerOpen && <LogPeek source={props.logSource} />}
         <Footer {...props} />
       </div>
     </div>
@@ -78,6 +89,8 @@ function Glyph({ kind }: { kind: NonBootingKind }) {
     case "never-started":
       return <Monitor04 className={cn(cls, "text-muted-foreground/60")} />;
     case "errored":
+      return <AlertTriangle className={cn(cls, "text-destructive")} />;
+    case "dev-script-failed":
       return <AlertTriangle className={cn(cls, "text-destructive")} />;
     case "suspended":
       return <PauseCircle className={cn(cls, "text-blue-500")} />;
@@ -99,6 +112,15 @@ function Subline(props: Exclude<VmStateCardProps, { kind: "starting-now" }>) {
         </p>
       );
     case "errored":
+      return (
+        <p
+          role="alert"
+          className="max-w-sm break-words text-sm text-destructive/80"
+        >
+          {props.errorLine}
+        </p>
+      );
+    case "dev-script-failed":
       return (
         <p
           role="alert"
@@ -195,6 +217,20 @@ function Footer(props: Exclude<VmStateCardProps, { kind: "starting-now" }>) {
         <Button size="sm" onClick={props.onRetry} className="mt-2">
           <RefreshCw01 className="size-4" /> Retry
         </Button>
+      );
+    case "dev-script-failed":
+      return (
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+          <Button size="sm" onClick={props.onRetry}>
+            <RefreshCw01 className="size-4" /> Retry
+          </Button>
+          <Button size="sm" variant="outline" onClick={props.onBrowseFiles}>
+            <Code02 className="size-4" /> Browse files
+          </Button>
+          <Button size="sm" variant="outline" onClick={props.onOpenTerminal}>
+            <Terminal className="size-4" /> View logs
+          </Button>
+        </div>
       );
     case "suspended":
       return (
