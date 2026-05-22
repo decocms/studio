@@ -83,7 +83,7 @@ export function ConnectDesktopDialog({
         ) : (
           <div className="flex flex-col gap-1 text-sm">
             <p className="text-foreground">
-              {link.machineId ?? "Your desktop"} is linked.
+              {link.hostname ?? link.machineId ?? "Your desktop"} is linked.
             </p>
             {visibleCapabilities(link.capabilities).length > 0 && (
               <p className="text-muted-foreground">

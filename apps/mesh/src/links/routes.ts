@@ -143,6 +143,7 @@ export function registerLinksRoutes<E extends Env = Env>(
 
     const entry: LinkEntry = {
       machineId: payload.machineId,
+      ...(payload.hostname ? { hostname: payload.hostname } : {}),
       tunnelUrl,
       linkSecret: linkSecretRaw,
       cliVersion: payload.cliVersion,

@@ -1,15 +1,11 @@
 import { useState } from "react";
-import { Check, Monitor01, Zap } from "@untitledui/icons";
+import { Monitor01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ConnectProviderDialog } from "@/web/views/settings/ai-providers/connect-provider-dialog";
 import {
   ProviderGrid,
   type ProviderSelection,
 } from "@/web/views/settings/ai-providers/provider-grid";
-import {
-  SettingsCard,
-  SettingsCardItem,
-} from "@/web/components/settings/settings-section";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -22,10 +18,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 import { useQuery } from "@tanstack/react-query";
 import type { BrandContext } from "@/storage/types";
-import {
-  ConnectDesktopDialog,
-  visibleCapabilities,
-} from "./connect-desktop-dialog";
+import { ConnectDesktopDialog } from "./connect-desktop-dialog";
 
 interface NoAiProviderEmptyStateProps {
   title?: string;
@@ -89,11 +82,11 @@ export function NoAiProviderEmptyState({
   const { org } = useProjectContext();
   const { localMode } = useAuthConfig();
   const brand = useDefaultBrand();
+  const link = useCurrentLink();
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
-  const [desktopOpen, setDesktopOpen] = useState(false);
-  const link = useCurrentLink();
+  const [desktopDialogOpen, setDesktopDialogOpen] = useState(false);
 
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
@@ -113,7 +106,7 @@ export function NoAiProviderEmptyState({
       ? "Connect a provider, or run `bunx decocms link` on your desktop for Claude Code, Codex, and local files."
       : "Connect a provider — or run `bunx decocms link` on your desktop to use Claude Code, Codex, or your local files.");
 
-  // Badge styles: use brand color if available, otherwise lime gradient
+  // Badge styles: use brand color if available, otherwise a neutral muted background
   const hasBrandStyle = !!(brandIcon || primaryColor);
   const badgeStyle = primaryColor
     ? {
@@ -123,28 +116,42 @@ export function NoAiProviderEmptyState({
     : undefined;
   const badgeClass = hasBrandStyle
     ? "flex items-center justify-center size-14 rounded-2xl border"
-    : "flex items-center justify-center size-14 rounded-2xl bg-gradient-to-br from-lime-100 to-yellow-50 dark:from-lime-900/30 dark:to-yellow-900/20 border border-lime-300/40 dark:border-lime-700/30";
+    : "flex items-center justify-center size-14 rounded-2xl bg-muted border border-border";
 
   return (
     <div className="flex flex-col items-center gap-8 w-full max-w-3xl px-4">
       <div className="flex flex-col items-center gap-4 text-center">
-        <div className={badgeClass} style={badgeStyle}>
-          {brandIcon ? (
+        {brandIcon ? (
+          <div className={badgeClass} style={badgeStyle}>
             <img
               src={brandIcon}
               alt=""
               className="size-7 rounded object-contain"
             />
-          ) : (
-            <Zap
-              size={24}
-              style={primaryColor ? { color: primaryColor } : undefined}
-              className={cn(
-                !primaryColor && "text-lime-600 dark:text-lime-400",
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setDesktopDialogOpen(true)}
+            aria-label={link.online ? "Desktop linked" : "Connect your desktop"}
+            className={cn(
+              badgeClass,
+              "cursor-pointer transition-colors hover:bg-accent",
+            )}
+            style={badgeStyle}
+          >
+            <span className="relative inline-flex items-center justify-center">
+              <Monitor01
+                size={24}
+                style={primaryColor ? { color: primaryColor } : undefined}
+                className={cn(!primaryColor && "text-muted-foreground")}
+              />
+              {link.online && (
+                <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-success ring-2 ring-background animate-pulse" />
               )}
-            />
-          )}
-        </div>
+            </span>
+          </button>
+        )}
         <div className="space-y-2">
           <p className="text-xl font-semibold text-foreground tracking-tight">
             {heading}
@@ -161,35 +168,6 @@ export function NoAiProviderEmptyState({
         />
       </div>
 
-      <div className="w-full">
-        <SettingsCard>
-          {link.online ? (
-            <SettingsCardItem
-              onClick={() => setDesktopOpen(true)}
-              icon={
-                <div className="size-8 rounded-md bg-success/10 flex items-center justify-center text-success">
-                  <Check size={16} />
-                </div>
-              }
-              title="Desktop connected"
-              description={(() => {
-                const labels = visibleCapabilities(link.capabilities);
-                return labels.length > 0
-                  ? `Available: ${labels.join(", ")}`
-                  : "No CLI agents detected on this desktop";
-              })()}
-            />
-          ) : (
-            <SettingsCardItem
-              onClick={() => setDesktopOpen(true)}
-              icon={<Monitor01 size={16} />}
-              title="Connect your desktop"
-              description="Use Claude Code, Codex, or your local files via the link CLI."
-            />
-          )}
-        </SettingsCard>
-      </div>
-
       <ConnectProviderDialog
         open={pendingProvider !== null || gridOpen}
         onOpenChange={(o) => {
@@ -201,7 +179,10 @@ export function NoAiProviderEmptyState({
         initialProvider={pendingProvider ?? undefined}
       />
 
-      <ConnectDesktopDialog open={desktopOpen} onOpenChange={setDesktopOpen} />
+      <ConnectDesktopDialog
+        open={desktopDialogOpen}
+        onOpenChange={setDesktopDialogOpen}
+      />
     </div>
   );
 }
