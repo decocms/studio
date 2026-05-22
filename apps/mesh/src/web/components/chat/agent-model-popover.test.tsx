@@ -32,11 +32,12 @@ describe("AgentModelPopover", () => {
         onSelect={() => {}}
       />,
     );
-    const tabs = getAllByRole("tab");
-    expect(tabs).toHaveLength(3);
-    expect(tabs[0]?.textContent).toContain("Decopilot");
-    expect(tabs[1]?.textContent).toContain("Claude Code");
-    expect(tabs[2]?.textContent).toContain("Codex");
+    const tabs = getAllByRole("button");
+    expect(tabs).toHaveLength(3 + 3); // 3 tabs + 3 tier rows in active section
+    const tabLabels = tabs.slice(0, 3).map((t) => t.textContent ?? "");
+    expect(tabLabels[0]).toContain("Decopilot");
+    expect(tabLabels[1]).toContain("Claude Code");
+    expect(tabLabels[2]).toContain("Codex");
   });
 
   test("default active tab follows activeAgent", () => {
@@ -49,9 +50,11 @@ describe("AgentModelPopover", () => {
         onSelect={() => {}}
       />,
     );
-    const tabs = getAllByRole("tab");
-    const claudeTab = tabs.find((t) => t.textContent?.includes("Claude Code"));
-    expect(claudeTab?.getAttribute("aria-selected")).toBe("true");
+    const buttons = getAllByRole("button");
+    const claudeTab = buttons.find((t) =>
+      t.textContent?.includes("Claude Code"),
+    );
+    expect(claudeTab?.getAttribute("aria-pressed")).toBe("true");
     // Claude Code body is rendered
     expect(getByText("Haiku 4.5")).toBeInTheDocument();
   });
@@ -66,9 +69,11 @@ describe("AgentModelPopover", () => {
         onSelect={() => {}}
       />,
     );
-    const tabs = getAllByRole("tab");
-    expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
-    expect(tabs[0]?.textContent).toContain("Decopilot");
+    const buttons = getAllByRole("button");
+    const decopilotTab = buttons.find((t) =>
+      t.textContent?.includes("Decopilot"),
+    );
+    expect(decopilotTab?.getAttribute("aria-pressed")).toBe("true");
   });
 
   test("clicking a tab switches the body content", () => {
@@ -85,8 +90,10 @@ describe("AgentModelPopover", () => {
     expect(queryByText("Haiku 4.5")).toBeNull();
     expect(getByText("Fast")).toBeInTheDocument();
 
-    const tabs = getAllByRole("tab");
-    const claudeTab = tabs.find((t) => t.textContent?.includes("Claude Code"))!;
+    const buttons = getAllByRole("button");
+    const claudeTab = buttons.find((t) =>
+      t.textContent?.includes("Claude Code"),
+    )!;
     act(() => {
       claudeTab.click();
     });
@@ -133,16 +140,16 @@ describe("AgentModelPopover", () => {
         onSelect={onSelect}
       />,
     );
-    const tabs = getAllByRole("tab");
+    const buttons = getAllByRole("button");
     act(() => {
-      tabs.find((t) => t.textContent?.includes("Codex"))!.click();
+      buttons.find((t) => t.textContent?.includes("Codex"))!.click();
     });
     getByText("Quicker responses").click();
     expect(onSelect).toHaveBeenCalledWith("codex", "fast");
   });
 
   test("when sections.length === 1, no tab bar is rendered", () => {
-    const { queryByRole, queryAllByRole } = render(
+    const { getAllByRole } = render(
       <AgentModelPopover
         sections={DECOPILOT_ONLY}
         activeAgent="decopilot"
@@ -151,8 +158,12 @@ describe("AgentModelPopover", () => {
         onSelect={() => {}}
       />,
     );
-    expect(queryByRole("tablist")).toBeNull();
-    expect(queryAllByRole("tab")).toHaveLength(0);
+    // Only tier rows should be rendered, no tab buttons (one section -> no tabs).
+    const buttons = getAllByRole("button");
+    // 3 tier rows only
+    expect(buttons).toHaveLength(3);
+    // None of the buttons should be aria-pressed (those would be tabs).
+    expect(buttons.every((b) => !b.hasAttribute("aria-pressed"))).toBe(true);
   });
 
   test("single section still selects tiers via onSelect", () => {
@@ -176,7 +187,7 @@ describe("AgentModelPopover", () => {
   });
 
   test("when lockedAgent is set, only that section renders and no tab bar shows", () => {
-    const { queryByRole, queryByText, getByText, getAllByTestId } = render(
+    const { queryByText, getByText, getAllByTestId } = render(
       <AgentModelPopover
         sections={ALL}
         activeAgent="claude-code"
@@ -185,7 +196,6 @@ describe("AgentModelPopover", () => {
         onSelect={() => {}}
       />,
     );
-    expect(queryByRole("tablist")).toBeNull();
     expect(getAllByTestId("agent-section")).toHaveLength(1);
     // Claude tier labels visible
     expect(getByText("Haiku 4.5")).toBeInTheDocument();
@@ -213,7 +223,7 @@ describe("AgentModelPopover", () => {
     expect(onSelect).toHaveBeenCalledWith("claude-code", "fast");
   });
 
-  test("laptop sections render a green dot in their tab label", () => {
+  test("laptop sections render a local indicator in their tab label", () => {
     const { getAllByRole } = render(
       <AgentModelPopover
         sections={ALL}
@@ -223,18 +233,23 @@ describe("AgentModelPopover", () => {
         onSelect={() => {}}
       />,
     );
-    const tabs = getAllByRole("tab");
-    const decopilotTab = tabs.find((t) =>
+    const buttons = getAllByRole("button");
+    const decopilotTab = buttons.find((t) =>
       t.textContent?.includes("Decopilot"),
     )!;
-    const claudeTab = tabs.find((t) => t.textContent?.includes("Claude Code"))!;
-    const codexTab = tabs.find((t) => t.textContent?.includes("Codex"))!;
+    const claudeTab = buttons.find((t) =>
+      t.textContent?.includes("Claude Code"),
+    )!;
+    const codexTab = buttons.find((t) => t.textContent?.includes("Codex"))!;
 
-    // Decopilot (cloud) has no green dot
-    expect(decopilotTab.querySelector("span.bg-success")).toBeNull();
-    // Claude Code (local) has a green dot
-    expect(claudeTab.querySelector("span.bg-success")).not.toBeNull();
-    // Codex (local) has a green dot
-    expect(codexTab.querySelector("span.bg-success")).not.toBeNull();
+    const within = (el: HTMLElement) =>
+      el.querySelector("[data-testid=local-indicator]");
+
+    // Decopilot (cloud) has no indicator
+    expect(within(decopilotTab)).toBeNull();
+    // Claude Code (local) has an indicator
+    expect(within(claudeTab)).not.toBeNull();
+    // Codex (local) has an indicator
+    expect(within(codexTab)).not.toBeNull();
   });
 });

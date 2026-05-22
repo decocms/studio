@@ -35,14 +35,16 @@ export function AgentModelPopover({
   onSelect,
 }: Props) {
   const defaultAgent = resolveDefaultAgent(sections, activeAgent);
+  // Initial tab seeds from activeAgent on first mount only; subsequent user
+  // tab-switches are sticky for the lifetime of this popover. Each popover
+  // open creates a fresh mount, so close/reopen re-seeds from activeAgent.
   const [selectedTab, setSelectedTab] = useState<AgentKind | null>(
     defaultAgent,
   );
 
   // When lockedAgent is set, force-render only that section (no tabs).
   if (lockedAgent !== null) {
-    const lockedSection =
-      sections.find((s) => s.kind === lockedAgent) ?? sections[0];
+    const lockedSection = sections.find((s) => s.kind === lockedAgent);
     if (!lockedSection) {
       return <div className="flex flex-col gap-1 w-72" />;
     }
@@ -91,18 +93,14 @@ export function AgentModelPopover({
 
   return (
     <div className="flex flex-col gap-1 w-72 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
-      <div
-        role="tablist"
-        className="flex items-center gap-1 border-b border-border px-1 pt-1"
-      >
+      <div className="flex items-center gap-1 border-b border-border px-1 pt-1">
         {sections.map((section) => {
           const isActive = section.kind === activeSection.kind;
           return (
             <button
               key={section.kind}
               type="button"
-              role="tab"
-              aria-selected={isActive}
+              aria-pressed={isActive}
               onClick={() => setSelectedTab(section.kind)}
               className={cn(
                 "flex items-center gap-1.5 rounded-t-md px-2 py-1.5 text-xs font-medium",
@@ -112,9 +110,13 @@ export function AgentModelPopover({
               )}
             >
               {section.isLocal && (
-                <span className="size-1.5 rounded-full bg-success" />
+                <span
+                  data-testid="local-indicator"
+                  className="size-1.5 rounded-full bg-success"
+                />
               )}
               <span>{section.title}</span>
+              {section.isLocal && <span className="sr-only">on desktop</span>}
             </button>
           );
         })}
