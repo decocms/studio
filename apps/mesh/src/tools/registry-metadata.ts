@@ -120,6 +120,7 @@ const ALL_TOOL_NAMES = [
   "AUTOMATION_DELETE",
   "AUTOMATION_TRIGGER_ADD",
   "AUTOMATION_TRIGGER_REMOVE",
+  "AUTOMATION_TRIGGER_ROTATE_TOKEN",
   "AUTOMATION_RUN",
   // Virtual MCP plugin config and pinned views tools
   "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
@@ -596,6 +597,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Automations",
   },
   {
+    name: "AUTOMATION_TRIGGER_ROTATE_TOKEN",
+    description: "Rotate the secret token for a webhook automation trigger",
+    category: "Automations",
+  },
+  {
     name: "AUTOMATION_RUN",
     description: "Manually trigger an automation run",
     category: "Automations",
@@ -1042,6 +1048,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AUTOMATION_DELETE",
       "AUTOMATION_TRIGGER_ADD",
       "AUTOMATION_TRIGGER_REMOVE",
+      "AUTOMATION_TRIGGER_ROTATE_TOKEN",
       "AUTOMATION_RUN",
     ],
     dangerous: true,

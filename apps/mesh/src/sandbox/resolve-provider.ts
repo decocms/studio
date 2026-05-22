@@ -80,8 +80,14 @@ export async function resolveSandboxProvider(
     return { provider, kind: "desktop" };
   }
   if (ctx.sandboxPreference === "default") {
+    // Route through `bindProviderForKind` so that env kind === "desktop"
+    // (the default in local dev) still binds the user's link instead of
+    // calling `instantiate("desktop")` directly, which throws. Without
+    // this, background fires (cron/webhook/event automations) blow up
+    // here because `dispatch-run` defaults their target to local/default
+    // and never sets `sandboxPreference="desktop"` with a link.
     const kind = resolveSandboxProviderKindFromEnv();
-    const provider = await getSandboxProviderByKind(ctx, kind);
+    const provider = await bindProviderForKind(ctx, userId, kind);
     return { provider, kind };
   }
 

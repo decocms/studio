@@ -211,6 +211,46 @@ describe("resolveSandboxProvider", () => {
     expect(kind).toBe("docker");
   });
 
+  test("sandboxPreference=default + env=desktop + link online → binds desktop with link", async () => {
+    // Regression: background fires (cron/webhook/event automations) get
+    // `sandboxPreference: "default"` from dispatch-run, but in local dev
+    // env defaults to `desktop`. Before the fix this hit
+    // `instantiate("desktop")` directly and threw the confusing
+    // "desktop runner cannot be instantiated without a per-run LinkEntry".
+    const prev = process.env.STUDIO_SANDBOX_RUNNER;
+    process.env.STUDIO_SANDBOX_RUNNER = "desktop";
+    try {
+      const link = makeLink();
+      const ctx = stubCtx(link, { sandboxPreference: "default" });
+      const { kind, provider } = await resolveSandboxProvider(ctx, {
+        userId: "u-1",
+        branch: "deco/foo",
+        virtualMcpMetadata: null,
+      });
+      expect(kind).toBe("desktop");
+      expect(provider).toBe(stubDesktop);
+    } finally {
+      process.env.STUDIO_SANDBOX_RUNNER = prev;
+    }
+  });
+
+  test("sandboxPreference=default + env=desktop + no link → clear error", async () => {
+    const prev = process.env.STUDIO_SANDBOX_RUNNER;
+    process.env.STUDIO_SANDBOX_RUNNER = "desktop";
+    try {
+      const ctx = stubCtx(null, { sandboxPreference: "default" });
+      await expect(
+        resolveSandboxProvider(ctx, {
+          userId: "u-1",
+          branch: "deco/foo",
+          virtualMcpMetadata: null,
+        }),
+      ).rejects.toThrow(/No link daemon registered/);
+    } finally {
+      process.env.STUDIO_SANDBOX_RUNNER = prev;
+    }
+  });
+
   test("desktop resolution throws when link daemon is offline", async () => {
     // vmMap records `desktop` but link is gone — caller (events/proxy
     // middleware) catches this and surfaces a failed phase / 503.

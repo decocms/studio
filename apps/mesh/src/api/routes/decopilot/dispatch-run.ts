@@ -942,6 +942,7 @@ async function prepareRun(
           return sanitizeStreamError(error);
         }
         console.error("[decopilot] stream error:", error);
+        const sanitized = sanitizeStreamError(error);
         posthog.capture({
           distinctId: input.userId,
           event: "chat_message_failed",
@@ -960,6 +961,20 @@ async function prepareRun(
           },
         });
 
+        // Persist the error as a synthetic assistant message so the thread
+        // doesn't render a confusing "No response was generated" — the UI
+        // pairs user/assistant by created_at and drops orphan assistants.
+        // Particularly important for background runs (cron/webhook/event
+        // automations) where the user has no console to read the error from.
+        saveMessagesToThread({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          parts: [{ type: "text", text: `Error: ${sanitized}` }],
+          metadata: { errorCategory: classifyStreamError(error) },
+        } as ChatMessage).catch((e) => {
+          console.error("[decopilot:stream] error-message save failed", e);
+        });
+
         runRegistry
           .execute({
             type: "FINISH",
@@ -970,7 +985,7 @@ async function prepareRun(
             console.error("[decopilot:stream] onError reactor failed", e);
           });
 
-        return sanitizeStreamError(error);
+        return sanitized;
       },
     });
 

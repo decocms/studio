@@ -1128,6 +1128,9 @@ export interface AutomationTriggerTable {
     Date | string | null,
     Date | string | null
   >;
+  // For webhook triggers: Better Auth apikey.id used to authenticate POSTs.
+  // Null for cron/event triggers.
+  api_key_id: string | null;
   created_at: ColumnType<Date, Date | string, never>;
 }
 
@@ -1137,13 +1140,14 @@ export interface AutomationTriggerTable {
 export interface AutomationTrigger {
   id: string;
   automation_id: string;
-  type: "cron" | "event";
+  type: "cron" | "event" | "webhook";
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
   params: string | null;
   last_run_at: string | null;
   next_run_at: string | null;
+  api_key_id: string | null;
   created_at: string;
 }
 

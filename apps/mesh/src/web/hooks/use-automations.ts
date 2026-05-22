@@ -125,13 +125,14 @@ export interface AutomationListItem {
 
 export interface AutomationTrigger {
   id: string;
-  type: "cron" | "event";
+  type: "cron" | "event" | "webhook";
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
   params: Record<string, string> | null;
   last_run_at: string | null;
   next_run_at: string | null;
+  api_key_id: string | null;
   created_at: string;
 }
 
@@ -340,11 +341,42 @@ export function useAutomationActions() {
       return (result.structuredContent ?? result) as {
         id: string;
         automation_id: string;
+        // Only set for webhook triggers. Plaintext token is shown only once.
+        webhook?: { url: string; token: string } | null;
       };
     },
     onSuccess: (data) => {
       invalidateAll();
       invalidateOne(data.automation_id);
+    },
+  });
+
+  const triggerRotateToken = useMutation({
+    mutationFn: async (input: {
+      trigger_id: string;
+      automation_id: string;
+    }) => {
+      const result = (await client.callTool({
+        name: "AUTOMATION_TRIGGER_ROTATE_TOKEN",
+        arguments: { trigger_id: input.trigger_id },
+      })) as {
+        structuredContent?: unknown;
+        isError?: boolean;
+        content?: Array<{ text?: string }>;
+      };
+      if (result.isError) {
+        const message = result.content?.[0]?.text ?? "Failed to rotate token";
+        throw new Error(message);
+      }
+      return (result.structuredContent ?? result) as {
+        trigger_id: string;
+        url: string;
+        token: string;
+      };
+    },
+    onSuccess: (_data, variables) => {
+      invalidateAll();
+      invalidateOne(variables.automation_id);
     },
   });
 
@@ -400,5 +432,13 @@ export function useAutomationActions() {
     },
   });
 
-  return { create, update, remove, triggerAdd, triggerRemove, run };
+  return {
+    create,
+    update,
+    remove,
+    triggerAdd,
+    triggerRemove,
+    triggerRotateToken,
+    run,
+  };
 }

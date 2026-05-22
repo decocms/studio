@@ -15,7 +15,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { Clock, Plus, Zap } from "@untitledui/icons";
+import { Clock, Plus, Globe01, Zap } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -25,12 +25,16 @@ export function AddStarterPopover({
   onOpenChange,
   onCustomSelect,
   onEventSelect,
+  onWebhookCreated,
 }: {
   automationId: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onCustomSelect?: () => void;
   onEventSelect?: () => void;
+  // Called after a webhook trigger is created — receives the one-time
+  // URL + token so the parent can show the reveal dialog.
+  onWebhookCreated?: (secret: { url: string; token: string }) => void;
 }) {
   const { triggerAdd: addTrigger } = useAutomationActions();
   const [internalOpen, setInternalOpen] = useState(false);
@@ -53,6 +57,25 @@ export function AddStarterPopover({
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to add starter";
+      toast.error(message);
+    }
+  };
+
+  const submitWebhook = async () => {
+    try {
+      const result = await addTrigger.mutateAsync({
+        automation_id: automationId,
+        type: "webhook",
+      });
+      handleOpenChange(false);
+      if (result.webhook) {
+        onWebhookCreated?.(result.webhook);
+      } else {
+        toast.success("Webhook starter added");
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to add webhook starter";
       toast.error(message);
     }
   };
@@ -106,6 +129,19 @@ export function AddStarterPopover({
         >
           <Zap size={14} className="text-muted-foreground shrink-0" />
           Event
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          className="gap-2.5"
+          onSelect={() => {
+            // Don't close the popover synchronously — we want the toast/
+            // dialog flow to be driven by submitWebhook.
+            submitWebhook();
+          }}
+          disabled={addTrigger.isPending}
+        >
+          <Globe01 size={14} className="text-muted-foreground shrink-0" />
+          Webhook
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

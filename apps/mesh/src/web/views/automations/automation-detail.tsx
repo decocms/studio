@@ -116,6 +116,7 @@ function editSessionReducer(
 import { isValidCron } from "@/web/lib/cron-utils.ts";
 import { AddStarterPopover } from "@/web/components/automations/add-starter-popover.tsx";
 import { TriggerCard } from "@/web/components/automations/trigger-card.tsx";
+import { WebhookSecretDialog } from "@/web/components/automations/webhook-secret-dialog.tsx";
 import {
   Select,
   SelectContent,
@@ -358,6 +359,10 @@ export function SettingsTab({
   const [showCustomCron, setShowCustomCron] = useState(false);
   const [cronInput, setCronInput] = useState("");
   const [showEventForm, setShowEventForm] = useState(false);
+  const [webhookSecret, setWebhookSecret] = useState<{
+    url: string;
+    token: string;
+  } | null>(null);
   const [isImproving, setIsImproving] = useState(false);
   // The editor's first setTiptapDoc call is the mount-time normalization,
   // not a user edit — we skip it so it doesn't mark dirty / autosave.
@@ -714,6 +719,13 @@ export function SettingsTab({
                 setShowEventForm(true);
                 setShowCustomCron(false);
               }}
+              onWebhookCreated={(secret) => {
+                track("automation_trigger_added", {
+                  automation_id: automationId,
+                  trigger_type: "webhook",
+                });
+                setWebhookSecret(secret);
+              }}
             />
           </div>
 
@@ -833,6 +845,15 @@ export function SettingsTab({
               />
             </Suspense>
           )}
+
+          <WebhookSecretDialog
+            open={webhookSecret !== null}
+            onOpenChange={(open) => {
+              if (!open) setWebhookSecret(null);
+            }}
+            url={webhookSecret?.url ?? null}
+            token={webhookSecret?.token ?? null}
+          />
         </div>
 
         {/* Section: Instructions (agent kind) or Tool call (tool_call kind).
@@ -899,7 +920,7 @@ export function SettingsTab({
                   className="max-h-[45vh]"
                 />
 
-                <div className="flex items-center justify-end gap-1.5 p-2.5">
+                <div className="@container/chat-bottom flex items-center justify-end gap-1.5 p-2.5">
                   <SimpleModeTierDropdown
                     tier={form.watch("tier")}
                     onSelect={(tier) =>
