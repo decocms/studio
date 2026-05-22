@@ -920,7 +920,7 @@ export function SettingsTab({
                   className="max-h-[45vh]"
                 />
 
-                <div className="flex items-center justify-end gap-1.5 p-2.5">
+                <div className="@container/chat-bottom flex items-center justify-end gap-1.5 p-2.5">
                   <SimpleModeTierDropdown
                     tier={form.watch("tier")}
                     onSelect={(tier) =>
