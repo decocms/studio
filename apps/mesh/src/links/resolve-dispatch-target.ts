@@ -8,12 +8,13 @@
  *   - `user-desktop` + claude-code/codex → whole stream dispatched to the desktop
  *
  * Link health is checked only for `user-desktop`. Offline/missing-capability
- * paths return an `error` target which `POST /messages` surfaces as 409.
+ * paths surface a `{ ok: false, error }` result which `POST /messages`
+ * translates to a 409 response.
  *
  * Takes the kind directly (not a `SandboxRecord`) so the POST handler can
- * decide where to dispatch without eagerly provisioning a sandbox — VM
+ * decide where to dispatch without eagerly provisioning a sandbox — sandbox
  * provisioning is deferred to the built-in tools layer, which already
- * resolves the handle lazily on first VM-tool invocation.
+ * resolves the handle lazily on first sandbox-tool invocation.
  */
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { Capability, LinkEntry } from "./protocol";
@@ -21,13 +22,19 @@ import type { LinkRegistry } from "./link-registry";
 import type { HarnessId } from "../harnesses";
 
 export type DispatchTarget =
+  | { runsIn: "cluster"; sandbox: SandboxProviderKind; link?: LinkEntry }
+  | { runsIn: "user-desktop"; sandbox: "user-desktop"; link: LinkEntry };
+
+export type DispatchError =
+  | { kind: "user_desktop_link_offline" }
   | {
-      kind: "error";
-      reason: "link_offline" | "capability_missing";
-      activeCapabilities?: string[];
-    }
-  | { kind: "local"; sandbox: "default" | "desktop"; link?: LinkEntry }
-  | { kind: "remote-cli"; link: LinkEntry };
+      kind: "user_desktop_link_capability_missing";
+      activeCapabilities: Capability[];
+    };
+
+export type ResolveDispatchTargetResult =
+  | { ok: true; target: DispatchTarget }
+  | { ok: false; error: DispatchError };
 
 interface Input {
   harnessId: HarnessId;
@@ -49,27 +56,37 @@ function capabilityFor(harnessId: HarnessId): Capability | null {
 export async function resolveDispatchTarget(
   input: Input,
   deps: Deps,
-): Promise<DispatchTarget> {
+): Promise<ResolveDispatchTargetResult> {
   const kind = input.sandboxProviderKind;
 
   if (kind !== "user-desktop") {
-    return { kind: "local", sandbox: "default" };
+    return { ok: true, target: { runsIn: "cluster", sandbox: kind } };
   }
 
   const link = await deps.linkRegistry.get(input.userId);
-  if (!link) return { kind: "error", reason: "link_offline" };
+  if (!link) {
+    return { ok: false, error: { kind: "user_desktop_link_offline" } };
+  }
 
   const requiredCap = capabilityFor(input.harnessId);
   if (requiredCap && !link.capabilities.includes(requiredCap)) {
     return {
-      kind: "error",
-      reason: "capability_missing",
-      activeCapabilities: link.capabilities,
+      ok: false,
+      error: {
+        kind: "user_desktop_link_capability_missing",
+        activeCapabilities: link.capabilities,
+      },
     };
   }
 
   if (input.harnessId === "decopilot") {
-    return { kind: "local", sandbox: "desktop", link };
+    return {
+      ok: true,
+      target: { runsIn: "cluster", sandbox: "user-desktop", link },
+    };
   }
-  return { kind: "remote-cli", link };
+  return {
+    ok: true,
+    target: { runsIn: "user-desktop", sandbox: "user-desktop", link },
+  };
 }

@@ -274,7 +274,7 @@ describe("POST /messages — VM-based dispatch", () => {
     temperature: 0.5,
   };
 
-  test("VM with user-desktop kind + no online link → 409 link_offline", async () => {
+  test("VM with user-desktop kind + no online link → 409 user_desktop_link_offline", async () => {
     const { app } = buildApp({ vmKind: "user-desktop", linkOnline: false });
     const res = await app.request(
       `/api/org_1/decopilot/threads/${THREAD_ID}/messages`,
@@ -287,10 +287,10 @@ describe("POST /messages — VM-based dispatch", () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string; code: string };
     expect(body.error).toBe("link_unavailable");
-    expect(body.code).toBe("link_offline");
+    expect(body.code).toBe("user_desktop_link_offline");
   });
 
-  test("VM with user-desktop kind + link missing capability → 409 capability_missing", async () => {
+  test("VM with user-desktop kind + link missing capability → 409 user_desktop_link_capability_missing", async () => {
     const { app, seedLink } = buildApp({
       vmKind: "user-desktop",
       linkOnline: true,
@@ -313,7 +313,7 @@ describe("POST /messages — VM-based dispatch", () => {
       code: string;
       activeCapabilities: string[];
     };
-    expect(body.code).toBe("capability_missing");
+    expect(body.code).toBe("user_desktop_link_capability_missing");
     expect(body.activeCapabilities).toEqual(["decopilot-sandbox"]);
   });
 
@@ -411,7 +411,7 @@ describe("POST /messages — first-message pinning", () => {
     // Thread is pinned to (user-desktop, claude-code). The request body sends
     // harnessId: "decopilot" which would require the decopilot-sandbox
     // capability. If the route mistakenly uses the body's harnessId, the link
-    // check fails with 409 capability_missing. Using the pinned harness
+    // check fails with 409 user_desktop_link_capability_missing. Using the pinned harness
     // (claude-code) instead → the link's claude-code capability matches → 202.
     const { app, seedLink, threadUpdateSpy } = buildApp({
       vmKind: "user-desktop",
@@ -435,7 +435,7 @@ describe("POST /messages — first-message pinning", () => {
       },
     );
     // 202 proves the pinned harness (claude-code) was used, not "decopilot"
-    // which would have produced a 409 capability_missing.
+    // which would have produced a 409 user_desktop_link_capability_missing.
     expect(res.status).toBe(202);
     // Pins were already set — no update should be written.
     expect(threadUpdateSpy).not.toHaveBeenCalled();

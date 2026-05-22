@@ -485,7 +485,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // link daemon for the user even when the run never touches the
       // sandbox (e.g. CI multi-pod tests that drive only the mock AI
       // provider).
-      const target = await resolveDispatchTarget(
+      const result = await resolveDispatchTarget(
         {
           harnessId: pinnedHarness,
           sandboxProviderKind: pinnedKind,
@@ -493,16 +493,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
         { linkRegistry },
       );
-      if (target.kind === "error") {
+      if (!result.ok) {
         return c.json(
           {
             error: "link_unavailable",
-            code: target.reason,
-            activeCapabilities: target.activeCapabilities,
+            code: result.error.kind,
+            activeCapabilities:
+              result.error.kind === "user_desktop_link_capability_missing"
+                ? result.error.activeCapabilities
+                : undefined,
           },
           409,
         );
       }
+      const target = result.target;
 
       const { abortSignal: _ignored, ...rest } = input;
       const serializableRequest = {

@@ -5,7 +5,9 @@
  * offline" or "your link is missing capability X" message without the
  * request being silently queued.
  */
-export type LinkOfflineReason = "link_offline" | "capability_missing";
+export type LinkOfflineReason =
+  | "user_desktop_link_offline"
+  | "user_desktop_link_capability_missing";
 
 export class LinkOfflineError extends Error {
   readonly code: LinkOfflineReason;
