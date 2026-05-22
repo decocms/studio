@@ -57,19 +57,15 @@ const mockRemoteUserRunner: SandboxProvider = {
 };
 
 mock.module("../../sandbox/lifecycle", () => ({
-  getSharedSandboxProvider: (ctx: MeshContext) => {
-    if (
-      ctx.sandboxPreference === "remote-user" &&
-      ctx.linkForCurrentRun !== undefined
-    ) {
-      return mockRemoteUserRunner;
-    }
-    return mockDockerRunner;
-  },
   getSandboxProviderByKind: (
     _ctx: unknown,
     kind: "docker" | "agent-sandbox",
   ) => (kind === "docker" ? mockDockerRunner : mockDockerRunner),
+  // The unified resolver in `resolve-provider.ts` calls
+  // `buildRemoteUserProvider` directly (no ctx side-effects), so a mock
+  // is needed for VM_START's remote-user path to construct the expected
+  // runner under test.
+  buildRemoteUserProvider: async () => mockRemoteUserRunner,
   getSharedSandboxProviderIfInit: () => mockDockerRunner,
   getOrInitSharedRunner: async () => mockDockerRunner,
   asDockerRunner: () => null,

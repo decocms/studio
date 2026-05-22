@@ -37,7 +37,6 @@ function makeMockRunner(kind: SandboxProviderKind): SandboxProvider {
 }
 
 mock.module("../../sandbox/lifecycle", () => ({
-  getSharedSandboxProvider: () => makeMockRunner("docker"),
   getSandboxProviderByKind: (_ctx: unknown, kind: SandboxProviderKind) => {
     lastRequestedKind.value = kind;
     return makeMockRunner(kind);
