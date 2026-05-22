@@ -59,7 +59,7 @@ export function AgentSection({
             disabled={disabled}
             onClick={() => onSelect(tier)}
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-md px-2 py-2.5 text-left text-sm hover:bg-accent",
+              "flex w-full items-center gap-2.5 rounded-md px-2 py-3.5 text-left text-sm hover:bg-accent",
               isSelected && "bg-accent",
             )}
           >
