@@ -15,7 +15,7 @@ const decopilot = SECTIONS.find((s) => s.kind === "decopilot")!;
 const claude = SECTIONS.find((s) => s.kind === "claude-code")!;
 
 describe("AgentSection", () => {
-  test("cloud section header has no success styling", () => {
+  test("cloud section header has no success styling (header path)", () => {
     const { container } = render(
       <AgentSection
         section={decopilot}
@@ -30,7 +30,7 @@ describe("AgentSection", () => {
     expect(header?.className).not.toMatch(/text-success/);
   });
 
-  test("local CLI section header uses text-success and · on desktop suffix", () => {
+  test("local CLI section header uses text-success and · on desktop suffix (header path)", () => {
     const { container, getByText } = render(
       <AgentSection
         section={claude}
@@ -44,6 +44,21 @@ describe("AgentSection", () => {
     );
     expect(header?.className).toMatch(/text-success/);
     expect(getByText(/Claude Code · on desktop/)).toBeInTheDocument();
+  });
+
+  test("hideHeader suppresses the header element entirely", () => {
+    const { container } = render(
+      <AgentSection
+        section={claude}
+        selectedTier="smart"
+        disabled={false}
+        hideHeader
+        onSelect={() => {}}
+      />,
+    );
+    expect(
+      container.querySelector("[data-testid=agent-section-header]"),
+    ).toBeNull();
   });
 
   test("disabled section sets aria-disabled and stops onSelect from firing", () => {
@@ -73,7 +88,7 @@ describe("AgentSection", () => {
         onSelect={onSelect}
       />,
     );
-    getByText("Haiku").click();
+    getByText("Haiku 4.5").click();
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith("fast");
   });
@@ -88,5 +103,27 @@ describe("AgentSection", () => {
       />,
     );
     expect(getByText("On")).toBeInTheDocument();
+  });
+
+  test("each row renders icon, label, and description inline", () => {
+    const { container, getByText } = render(
+      <AgentSection
+        section={claude}
+        selectedTier="smart"
+        disabled={false}
+        hideHeader
+        onSelect={() => {}}
+      />,
+    );
+    // Label and description both visible
+    expect(getByText("Haiku 4.5")).toBeInTheDocument();
+    expect(getByText("Quicker responses")).toBeInTheDocument();
+    expect(getByText("Sonnet 4.6")).toBeInTheDocument();
+    expect(getByText("Balanced quality")).toBeInTheDocument();
+    expect(getByText("Opus 4.7")).toBeInTheDocument();
+    expect(getByText("Deeper reasoning")).toBeInTheDocument();
+    // Icon (img with claude logo) is rendered in each row
+    const imgs = container.querySelectorAll("button img");
+    expect(imgs.length).toBe(3);
   });
 });

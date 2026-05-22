@@ -20,7 +20,8 @@ export function AgentSection({
   hideHeader,
   onSelect,
 }: Props) {
-  const localBand = section.isLocal && !disabled ? "bg-success/5" : "";
+  const localBand =
+    !hideHeader && section.isLocal && !disabled ? "bg-success/5" : "";
 
   return (
     <div
@@ -63,26 +64,24 @@ export function AgentSection({
             )}
           >
             {entry.iconNode ? (
-              <span className="size-4 inline-flex items-center justify-center text-muted-foreground">
+              <span className="size-4 inline-flex items-center justify-center text-muted-foreground shrink-0">
                 {entry.iconNode}
               </span>
             ) : entry.iconUrl ? (
               <img
                 src={entry.iconUrl}
                 alt=""
-                className="size-4 rounded-sm dark:bg-white dark:rounded-sm dark:p-px"
+                className="size-4 shrink-0 rounded-sm dark:bg-white dark:rounded-sm dark:p-px"
               />
             ) : null}
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm leading-tight">
-                {entry.label}
-              </span>
-              <span className="text-xs text-muted-foreground leading-tight">
-                {entry.description}
-              </span>
-            </div>
+            <span className="text-sm leading-tight truncate shrink-0">
+              {entry.label}
+            </span>
+            <span className="text-xs text-muted-foreground leading-tight truncate flex-1">
+              {entry.description}
+            </span>
             {isSelected && (
-              <span className="text-xs text-muted-foreground font-medium">
+              <span className="text-xs text-muted-foreground font-medium shrink-0">
                 On
               </span>
             )}

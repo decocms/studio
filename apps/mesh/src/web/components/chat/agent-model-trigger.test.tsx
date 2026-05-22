@@ -57,7 +57,7 @@ describe("AgentModelTriggerPure", () => {
     expect(button?.className).toMatch(/@\[496px\]\/chat-bottom:gap-1\.5/);
   });
 
-  test("label reflects the active CLI tier model label (Opus)", () => {
+  test("label reflects the active CLI tier model label (Opus 4.7)", () => {
     const { getByText } = render(
       <AgentModelTriggerPure
         sections={ALL}
@@ -67,7 +67,7 @@ describe("AgentModelTriggerPure", () => {
         onSelect={() => {}}
       />,
     );
-    expect(getByText("Opus")).toBeInTheDocument();
+    expect(getByText("Opus 4.7")).toBeInTheDocument();
   });
 
   test("label reflects the active Decopilot tier label (Smart)", () => {
