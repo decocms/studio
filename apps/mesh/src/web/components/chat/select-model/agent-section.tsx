@@ -58,8 +58,9 @@ export function AgentSection({
             disabled={disabled}
             onClick={() => onSelect(tier)}
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent",
-              isSelected && "bg-accent",
+              "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm",
+              section.isLocal ? "hover:bg-success/10" : "hover:bg-accent",
+              isSelected && (section.isLocal ? "bg-success/15" : "bg-accent"),
             )}
           >
             {entry.iconNode ? (
