@@ -33,9 +33,17 @@ function candidateHomes(): string[] {
   const explicit = process.env.DATA_DIR ?? process.env.DECOCMS_HOME;
   const candidates: string[] = [];
   if (explicit) candidates.push(explicit);
-  // `deco dev` puts data in <cwd>/.deco/. Playwright runs from apps/mesh,
-  // but tests may also be invoked from the repo root — check both.
-  candidates.push(join(process.cwd(), ".deco"));
+  // `deco dev` puts data in <cwd>/.deco/, but CWD depends on how the
+  // server was started (repo root vs. `apps/mesh`). Walk up the tree
+  // from process.cwd() — Playwright runs from `apps/mesh` but the dev
+  // server may have been started from the repo root.
+  let dir = process.cwd();
+  for (let i = 0; i < 4; i++) {
+    candidates.push(join(dir, ".deco"));
+    const parent = join(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
+  }
   // `deco services up` puts data in ~/deco/.
   candidates.push(join(homedir(), "deco"));
   return candidates;

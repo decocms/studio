@@ -120,22 +120,12 @@ test.describe("Onboarding: multi-org auto-join picker", () => {
       userId,
     ]);
 
-    // Tear down the auto-created org so /onboarding redirects fire.
-    // Cascade isn't reliable across every FK target, so delete in order:
-    // members → org. organization_domains is unrelated (auto-org doesn't
-    // claim any domain) and stays untouched.
-    const memberOrgs = await db.query<{ organizationId: string }>(
-      `SELECT "organizationId" FROM "member" WHERE "userId" = $1`,
-      [userId],
-    );
-    for (const { organizationId } of memberOrgs.rows) {
-      await db.query(`DELETE FROM "member" WHERE "organizationId" = $1`, [
-        organizationId,
-      ]);
-      await db.query(`DELETE FROM "organization" WHERE id = $1`, [
-        organizationId,
-      ]);
-    }
+    // Strip the user's memberships so /home → /onboarding. We don't
+    // delete the auto-created org itself — `authClient.organization.list()`
+    // only returns orgs the caller is a member of, and the org has
+    // RESTRICT-FK children (seeded connections, etc.) that would block
+    // a naive DELETE. The orphaned org is acceptable scratch state.
+    await db.query(`DELETE FROM "member" WHERE "userId" = $1`, [userId]);
 
     return { userId, email };
   }
