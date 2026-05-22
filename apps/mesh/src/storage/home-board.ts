@@ -106,15 +106,17 @@ export function pickAutoPinSlot(
   gridCols: number,
 ): { x: number; y: number } {
   const w = Math.min(size.w, gridCols);
-  const occupied = (x: number, y: number) =>
-    tiles.some(
-      (t) => x < t.x + t.w && x + w > t.x && y < t.y + t.h && y + size.h > t.y,
+  const blockerAt = (y: number) =>
+    tiles.find(
+      (t) => 0 < t.x + t.w && w > t.x && y < t.y + t.h && y + size.h > t.y,
     );
-  // y === maxBottom can't overlap (would require y < t.y + t.h for some tile,
-  // but t.y + t.h <= maxBottom), so the loop is guaranteed to return inside.
-  const maxBottom = tiles.reduce((m, t) => Math.max(m, t.y + t.h), 0);
-  for (let y = 0; y <= maxBottom; y++) {
-    if (!occupied(0, y)) return { x: 0, y };
+  // Each iteration either returns or jumps past one blocker's bottom; since
+  // y only increases, no tile blocks twice — terminates in ≤ tiles.length + 1.
+  let y = 0;
+  for (let i = 0; i <= tiles.length; i++) {
+    const blocker = blockerAt(y);
+    if (!blocker) return { x: 0, y };
+    y = blocker.y + blocker.h;
   }
-  return { x: 0, y: maxBottom };
+  return { x: 0, y };
 }
