@@ -4,7 +4,7 @@
  * DOM/auth/SSE scaffolding.
  *
  * Priority order (highest first):
- *   errored → suspended → starting-now → no-html → iframe → never-started
+ *   errored → dev-script-failed → suspended → starting-now → no-html → iframe → never-started
  *
  * `status === "online" || "offline"` is the "ever-responded" latch:
  * once the daemon has seen the upstream answer, the iframe stays mounted
@@ -19,6 +19,16 @@
 export type UpstreamStatus = "booting" | "online" | "offline";
 export type ClaimPhaseLike = { kind: string };
 
+/**
+ * Terminal daemon setup-pipeline failures. Distinct from `lastStartError`
+ * (the VM_START mutation rejection) — these come from the daemon AFTER it
+ * came online, e.g. `bun run dev` exiting with a non-zero code.
+ */
+export type LifecycleFailure =
+  | "clone-failed"
+  | "install-failed"
+  | "start-failed";
+
 export interface PreviewStateInput {
   previewUrl: string | null;
   status: UpstreamStatus;
@@ -27,6 +37,8 @@ export interface PreviewStateInput {
   appPaused: boolean;
   vmStartPending: boolean;
   lastStartError: string | null;
+  lifecycleFailure: LifecycleFailure | null;
+  lifecycleFailureError: string | null;
   claimPhase: ClaimPhaseLike | null;
   notFound: boolean;
   userStopped: boolean;
@@ -36,6 +48,7 @@ export type PreviewState =
   | { kind: "never-started" }
   | { kind: "starting-now" }
   | { kind: "errored"; error: string }
+  | { kind: "dev-script-failed"; failure: LifecycleFailure; error: string }
   | { kind: "suspended" }
   | { kind: "crashed"; previewUrl: string }
   | { kind: "no-html"; previewUrl: string }
@@ -44,6 +57,13 @@ export type PreviewState =
 export function computePreviewState(input: PreviewStateInput): PreviewState {
   if (input.lastStartError) {
     return { kind: "errored", error: input.lastStartError };
+  }
+  if (input.lifecycleFailure) {
+    return {
+      kind: "dev-script-failed",
+      failure: input.lifecycleFailure,
+      error: input.lifecycleFailureError ?? `Sandbox ${input.lifecycleFailure}`,
+    };
   }
   if (input.suspended || input.appPaused) {
     return { kind: "suspended" };

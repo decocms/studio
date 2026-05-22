@@ -86,15 +86,22 @@ async function head(
   port: number,
   timeoutMs: number,
 ): Promise<HeadResult | null> {
+  // Explicit AbortController + clearTimeout instead of AbortSignal.timeout().
+  // The latter keeps the timer alive past a successful fetch, and a late abort
+  // can poison a connection in Bun's keep-alive pool.
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
     const res = await fetchLoopback(port, "/", {
       method: "HEAD",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: ac.signal,
     });
     const ct = (res.headers.get("content-type") ?? "").toLowerCase();
     return { status: res.status, isHtml: ct.includes("text/html") };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -34,6 +34,8 @@ export function headlineFor(kind: StateCardKind): string {
       return "Starting your sandbox";
     case "errored":
       return "Sandbox failed to start";
+    case "dev-script-failed":
+      return "Dev script exited";
     case "suspended":
       return "Sandbox is paused";
     case "crashed":
