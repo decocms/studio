@@ -27,7 +27,7 @@ import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
-import { ensureVm } from "@/tools/vm/start";
+import { ensureSandbox } from "@/tools/vm/start";
 import { LinkOfflineError } from "../../../links/link-offline-error";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
@@ -814,7 +814,7 @@ async function prepareRun(
         //
         // Branch on the resolved target:
         //   - `remote-cli` — the whole stream is delegated to the user's
-        //     link daemon. `resolveRemoteCliSandboxUrl` calls `ensureVm`
+        //     link daemon. `resolveRemoteCliSandboxUrl` calls `ensureSandbox`
         //     (handle == `computeHandle(sandboxId, branch)`) so the
         //     sandbox is the same one VM_START provisions — repo cloned,
         //     env pushed, dev server primed. The cluster talks to the
@@ -828,7 +828,7 @@ async function prepareRun(
         //     the harness still runs here.
         let harnessChunks;
         if (target.kind === "remote-cli") {
-          // Unify with VM_START: resolve the sandbox via `ensureVm` so
+          // Unify with VM_START: resolve the sandbox via `ensureSandbox` so
           // claude-code/codex runs share the workdir VM_START already
           // provisioned (cloned repo + env + lockfile probe). Falls
           // through to a blank sandbox for ephemeral threads. See
@@ -1024,7 +1024,7 @@ async function prepareRun(
 
 /**
  * Resolve the sandbox URL the cluster should dispatch a `remote-cli`
- * harness stream to. Calls `ensureVm` (lazy/idempotent — fast path
+ * harness stream to. Calls `ensureSandbox` (lazy/idempotent — fast path
  * returns the existing entry, slow path provisions through the
  * desktop sandbox provider) so the resulting sandbox is the same one
  * VM_START / the always-on VM tools use. Returns the daemon's
@@ -1043,7 +1043,7 @@ export async function resolveRemoteCliSandboxUrl(
   input: { agent: { id: string }; branch?: string | null },
   ctx: MeshContext,
 ): Promise<string> {
-  const entry = await ensureVm(
+  const entry = await ensureSandbox(
     {
       virtualMcpId: input.agent.id,
       branch: input.branch ?? "ephemeral",

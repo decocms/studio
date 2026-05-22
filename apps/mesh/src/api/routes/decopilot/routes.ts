@@ -481,7 +481,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // provisioning happens lazily inside the built-in tools layer
       // (`apps/mesh/src/harnesses/decopilot/built-in-tools/index.ts`'s
       // `ensureHandle`) on the first VM-tool invocation. Eagerly calling
-      // `ensureVm` at POST time used to fail in environments without a
+      // `ensureSandbox` at POST time used to fail in environments without a
       // link daemon for the user even when the run never touches the
       // sandbox (e.g. CI multi-pod tests that drive only the mock AI
       // provider).

@@ -143,7 +143,7 @@ describe("remoteDispatch", () => {
     }) as typeof fetch;
 
     const input = makeInput({ runId: "run-abc" });
-    // Per-daemon tunnel URL — dispatch-run resolves this via `ensureVm`
+    // Per-daemon tunnel URL — dispatch-run resolves this via `ensureSandbox`
     // (through the desktop sandbox provider's `POST /api/sandboxes`), and
     // the cluster talks to the daemon directly with no link hop.
     const sandboxUrl = `https://${input.runId}.deco.host`;

@@ -4,7 +4,7 @@
  * Precedence (highest first):
  *
  *   1. **Caller override (`explicitKind`).** `VM_START` forwards
- *      `input.sandboxProviderKind` here; `ensureVm` callers pass the kind
+ *      `input.sandboxProviderKind` here; `ensureSandbox` callers pass the kind
  *      they already resolved. Binds the user's link for `user-desktop`.
  *
  *   2. **Per-run dispatch hint** (`ctx.sandboxPreference` /

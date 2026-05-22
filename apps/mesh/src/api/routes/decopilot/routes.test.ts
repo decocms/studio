@@ -100,7 +100,7 @@ describe("computeIdempotencyKey", () => {
 // ============================================================================
 //
 // Bun's mock.module is module-global within a shard. Register stubs for
-// `resolveTier`, `model-permissions`, `dispatch-queue`, `ensureVmForBranch`
+// `resolveTier`, `model-permissions`, `dispatch-queue`, `ensureSandbox`
 // and Hono helpers BEFORE importing routes so the route module captures the
 // mocked implementations. Other tests in this file don't import the route
 // factory, so the mocks don't bleed into them.

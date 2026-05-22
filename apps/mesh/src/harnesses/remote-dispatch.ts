@@ -21,7 +21,7 @@
  * migration).
  *
  * Handle vs runId: remote-cli dispatch and VM_START now share the same
- * sandbox — `dispatch-run` resolves the URL via `ensureVm`, so the
+ * sandbox — `dispatch-run` resolves the URL via `ensureSandbox`, so the
  * handle is `computeHandle(sandboxId, branch)` in both paths. Per-run
  * state stays keyed by `runId` inside the daemon (the cancel route
  * `/_decopilot_vm/runs/<runId>` matches on runId directly), so multiple

@@ -172,7 +172,7 @@ export const VM_START = defineTool({
  * Unlike VM_START, `sandboxProviderKind` is required — callers (e.g. POST
  * /messages) must resolve the kind before calling this function.
  */
-export async function ensureVm(
+export async function ensureSandbox(
   input: {
     virtualMcpId: string;
     branch: string;
@@ -210,7 +210,7 @@ export async function ensureVm(
     return existing;
   }
 
-  // ensureVm is called from the always-on VM tools path which doesn't
+  // ensureSandbox is called from the always-on VM tools path which doesn't
   // pre-resolve the runner. `resolveSandboxProvider` here honors the
   // explicit kind from the caller (POST /messages already decided) and
   // binds the user's link for `desktop`.

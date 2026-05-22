@@ -1,5 +1,5 @@
 /**
- * Default sandbox provider kind for `(VM_START, ensureVmForBranch)` when the
+ * Default sandbox provider kind for `(VM_START, ensureSandbox)` when the
  * caller hasn't explicitly chosen one.
  *
  * Policy:

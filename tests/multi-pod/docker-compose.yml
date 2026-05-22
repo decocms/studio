@@ -94,7 +94,7 @@ services:
       # to "user-desktop" — there's no link daemon in this cluster, and
       # resolveDispatchTarget would 409 with link_offline. "local-docker" makes
       # resolveDispatchTarget short-circuit to the local cluster default;
-      # no sandbox is actually provisioned because ensureVm is lazy
+      # no sandbox is actually provisioned because ensureSandbox is lazy
       # (built-in-tools/index.ts) and the mock-ai test never emits tool calls.
       STUDIO_SANDBOX_RUNNER: local-docker
     ports:
