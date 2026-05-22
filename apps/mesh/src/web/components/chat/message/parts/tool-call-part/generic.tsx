@@ -191,7 +191,7 @@ export function GenericToolCallPart({
 
   const { setChatOpen } = usePanelActions();
   const { taskId } = useChatTask();
-  const { addOrReplace } = useTaskExpandedTools(taskId);
+  const { addOrReplaceEager } = useTaskExpandedTools(taskId);
   const navigate = useNavigate();
 
   const connectionId =
@@ -231,7 +231,7 @@ export function GenericToolCallPart({
       "input" in part && part.input && typeof part.input === "object"
         ? (part.input as Record<string, unknown>)
         : {};
-    addOrReplace({
+    addOrReplaceEager({
       toolName: rawToolName,
       appId: connectionId,
       args,

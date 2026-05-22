@@ -7,7 +7,7 @@ import {
   useProjectContext,
   useMCPClient,
   useMCPToolsList,
-  useMCPToolCallQuery,
+  useMCPToolCall,
 } from "@decocms/mesh-sdk";
 import type {
   McpUiDisplayMode,
@@ -57,7 +57,7 @@ function AppRenderer({
     return "fullscreen";
   };
   const toolInput = args ?? EMPTY_TOOL_INPUT;
-  const { data: toolResult } = useMCPToolCallQuery({
+  const { data: toolResult } = useMCPToolCall({
     client,
     toolName: tool.name,
     toolArguments: toolInput,
