@@ -555,7 +555,7 @@ export interface TagStoragePort {
 // ============================================================================
 
 export interface OrganizationDomainStoragePort {
-  getByDomain(domain: string): Promise<OrganizationDomain | null>;
+  getAllByDomain(domain: string): Promise<OrganizationDomain[]>;
   getByOrganizationId(
     organizationId: string,
   ): Promise<OrganizationDomain | null>;
