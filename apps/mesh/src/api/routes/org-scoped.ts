@@ -81,10 +81,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
   app.route("/vm", createVmRoutes()); // /api/:org/vm/:vmId/:branch/*
-  app.route(
-    "/",
-    createHomeBoardRoutes({ store: deps.homeBoardStore }),
-  );
+  app.route("/", createHomeBoardRoutes({ store: deps.homeBoardStore }));
   app.route("/", createHomeBoardRoutes({ store: deps.homeBoardStore }));
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)

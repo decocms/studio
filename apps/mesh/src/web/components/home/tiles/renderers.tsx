@@ -72,7 +72,10 @@ export function PresetTile({ instance, isEditMode }: TileRenderProps) {
   const presetId = readPresetId(instance.config);
   const taskId = readTaskId(instance.config);
   const virtualMcpId = readVirtualMcpId(instance.config);
-  const preset = { state: { status: "completed" as PresetTaskStatus }, display: { title: "Preset" } };
+  const preset = {
+    state: { status: "completed" as PresetTaskStatus },
+    display: { title: "Preset" },
+  };
   const status = preset?.state?.status;
   const isCompleted = status === "completed";
   const title = preset?.display.title ?? "Preset";
