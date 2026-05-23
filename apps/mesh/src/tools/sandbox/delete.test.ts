@@ -259,36 +259,6 @@ describe("SANDBOX_DELETE", () => {
     }
   });
 
-  it("coalesces legacy 'host' kind input to 'local-docker'", async () => {
-    // Use a docker entry as a stand-in — what matters is the dispatch kind.
-    // The shared SDK normalizer maps the pre-removal "host" kind to
-    // "local-docker" (see normalizeLegacySandboxProviderKind), keeping the
-    // legacy → canonical mapping in one place.
-    const metadata: Metadata = {
-      sandboxMap: makeSandboxMap(
-        "user-1",
-        BRANCH,
-        "local-docker",
-        DOCKER_ENTRY,
-      ),
-    };
-    const virtualMcp = makeVirtualMcp("org_1", metadata);
-    const ctx = makeCtx({ virtualMcp });
-
-    // Cast through unknown to simulate a legacy caller sending "host" before
-    // the enum was updated.
-    await SANDBOX_DELETE.handler(
-      {
-        virtualMcpId: "vmcp_1",
-        branch: BRANCH,
-        sandboxProviderKind: "host" as unknown as SandboxProviderKind,
-      },
-      ctx,
-    );
-
-    expect(lastRequestedKind.value).toBe("local-docker");
-  });
-
   it("skips runner.delete and DB update when no sandboxMap entry for (user, branch, kind)", async () => {
     // Entry exists for a different user — this user has no entry.
     const metadata: Metadata = {

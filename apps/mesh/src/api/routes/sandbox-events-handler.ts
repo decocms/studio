@@ -14,7 +14,6 @@ import {
   type SandboxProviderKind,
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
-import { normalizeLegacySandboxProviderKind } from "@decocms/mesh-sdk";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { MeshContext } from "../../core/mesh-context";
@@ -70,12 +69,10 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     providerKind,
   );
   const expectingHandle = existingVmEntry?.sandboxHandle === claimName;
-  // Coalesce legacy kinds ("host", "freestyle") and pre-rename kinds
-  // ("docker", "agent-sandbox", "desktop") to canonical values. Pre-rename
-  // kinds are normalized by parseBranchMap/parseVmMapEntry on read, but the
-  // schema's enum still includes them in the type, so we narrow here.
+  // Post-migration 091 the field is already canonical. Just narrow against
+  // null/undefined for the cleanup call site below.
   const existingProviderKind: SandboxProviderKind | null =
-    normalizeLegacySandboxProviderKind(existingVmEntry?.sandboxProviderKind);
+    existingVmEntry?.sandboxProviderKind ?? null;
 
   c.header("X-Accel-Buffering", "no");
   c.header("Content-Encoding", "identity");

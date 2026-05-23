@@ -9,10 +9,7 @@
  */
 
 import { z } from "zod";
-import {
-  normalizeLegacySandboxProviderKind,
-  type SandboxRecord,
-} from "@decocms/mesh-sdk";
+import type { SandboxRecord } from "@decocms/mesh-sdk";
 import {
   composeSandboxRef,
   type SandboxProvider,
@@ -77,19 +74,11 @@ export const SANDBOX_START = defineTool({
       .describe(
         "Optional git branch to check out. When omitted the handler generates `deco/<adjective>-<noun>` and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
-    // Accept legacy kind names ("docker", "agent-sandbox", "desktop") from
-    // clients in flight during rollout and normalize to canonical values at
-    // the boundary. RPC input only — the output schema stays strict.
-    // `.preprocess` keeps the field optional in the inferred input type
-    // (a `.transform()` on `.optional()` makes it required-but-undefined).
+    // Canonical-only. Migration 091 swept persisted legacy values; clients
+    // ship canonical strings after the SDK narrowed its union in Task 15.
     sandboxProviderKind: z
-      .preprocess(
-        (v) =>
-          typeof v === "string"
-            ? (normalizeLegacySandboxProviderKind(v) ?? v)
-            : v,
-        z.enum(["local-docker", "cluster", "user-desktop"]).optional(),
-      )
+      .enum(["local-docker", "cluster", "user-desktop"])
+      .optional()
       .describe(
         "Explicit runtime choice. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the cluster env kind.",
       ),

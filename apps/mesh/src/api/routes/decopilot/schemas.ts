@@ -5,7 +5,6 @@
  */
 
 import { SimpleModeTierSchema } from "@/tools/organization/schema";
-import { normalizeLegacySandboxProviderKind } from "@decocms/mesh-sdk";
 import { z } from "zod";
 import { DEFAULT_WINDOW_SIZE } from "./constants";
 
@@ -44,19 +43,11 @@ const baseStreamRequestSchema = z.object({
    */
   branch: z.string().nullish(),
   toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
-  // Accept legacy kind names ("docker", "agent-sandbox", "desktop") from
-  // Studio tabs / clients in flight during rollout and normalize to canonical
-  // values at the boundary. This is a write/RPC path (no useForm(zodResolver)
-  // consumer). `.preprocess` keeps the field nullish in the inferred input
-  // type (a `.transform()` on `.nullish()` makes it required-but-undefined).
+  // Canonical-only. Migration 091 swept persisted legacy values; clients
+  // ship canonical strings after the SDK narrowed its union in Task 15.
   sandboxProviderKind: z
-    .preprocess(
-      (v) =>
-        typeof v === "string"
-          ? (normalizeLegacySandboxProviderKind(v) ?? v)
-          : v,
-      z.enum(["local-docker", "cluster", "user-desktop"]).nullish(),
-    )
+    .enum(["local-docker", "cluster", "user-desktop"])
+    .nullish()
     .describe(
       "Pinned on first message. Subsequent messages ignore this field (the thread row carries the pinned value).",
     ),

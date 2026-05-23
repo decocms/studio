@@ -5,8 +5,6 @@
  */
 
 import { z } from "zod";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import { normalizeLegacySandboxProviderKind } from "@decocms/mesh-sdk";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
 import { getSandboxProviderByKind } from "../../sandbox/lifecycle";
@@ -42,20 +40,12 @@ export const SANDBOX_DELETE = defineTool({
   }),
 
   handler: async (input, ctx) => {
-    // Legacy "host"/"freestyle" values and pre-rename kinds can sneak in
-    // from older callers; coalesce to canonical values so the stop path
-    // doesn't crash. The schema enum already constrains the input, but the
-    // normalizer is the single source of truth for legacy → canonical.
-    const kind: SandboxProviderKind =
-      normalizeLegacySandboxProviderKind(input.sandboxProviderKind) ??
-      input.sandboxProviderKind;
+    // Schema enum already constrained input to the canonical 3 kinds.
+    const kind = input.sandboxProviderKind;
 
     let vmEntry: Awaited<ReturnType<typeof requireVmEntry>>;
     try {
-      vmEntry = await requireVmEntry(
-        { ...input, sandboxProviderKind: kind },
-        ctx,
-      );
+      vmEntry = await requireVmEntry(input, ctx);
     } catch (err) {
       if (err instanceof Error && err.message === "Virtual MCP not found") {
         return { success: true };

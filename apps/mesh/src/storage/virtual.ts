@@ -496,24 +496,16 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     const rawMetadata = this.parseJson<{
       instructions?: string;
       sandboxMap?: unknown;
-      vmMap?: unknown;
     }>(row.metadata);
 
-    // Normalize sandboxMap into v2 shape on read. Rows written before
-    // migration 091 actually ran still carry the v1 2-level layout (or the
-    // pre-rename `vmMap` outer key, or `runnerKind` entries). The output
-    // schema VirtualMCPEntitySchema is strict v2 and would reject those
-    // without this normalization. Prefer the new key, fall back to the
-    // legacy `vmMap` key, then strip both from the rest spread so their
-    // `unknown` types don't leak into the result.
-    const {
-      sandboxMap: rawSandboxMap,
-      vmMap: rawVmMap,
-      ...metadataRest
-    } = rawMetadata ?? {};
-    const rawMap = rawSandboxMap ?? rawVmMap;
+    // Migration 091 rewrote every row to the canonical `sandboxMap` key with
+    // the strict 3-level shape; we still run it through `normalizeSandboxMap`
+    // to defend against per-row corruption without crashing the read path.
+    const { sandboxMap: rawSandboxMap, ...metadataRest } = rawMetadata ?? {};
     const normalizedSandboxMap =
-      rawMap !== undefined ? normalizeSandboxMap(rawMap) : undefined;
+      rawSandboxMap !== undefined
+        ? normalizeSandboxMap(rawSandboxMap)
+        : undefined;
 
     return {
       id: row.id,

@@ -240,24 +240,11 @@ export const SandboxRecordSchema = z.object({
       "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for providers that route through cluster ingress (local-docker, cluster).",
     ),
   sandboxProviderKind: z
-    // Legacy values are tolerated on read for pre-rename vmMap entries;
-    // writers use one of the canonical kinds ("local-docker", "cluster",
-    // "user-desktop"). The tolerant readers (parseVmMapEntry, parseBranchMap)
-    // normalize old kind names ("docker", "agent-sandbox", "desktop") to the
-    // canonical ones. "freestyle"/"host" are pre-removal kinds still
-    // tolerated on read for backward compatibility with very old rows.
-    // TODO(task-15): narrow back to canonical 3 values once migration 091 has
-    // run everywhere and rows containing legacy kinds are gone.
-    .enum([
-      "local-docker",
-      "cluster",
-      "user-desktop",
-      "docker",
-      "agent-sandbox",
-      "desktop",
-      "freestyle",
-      "host",
-    ])
+    // Canonical set. Migration 091 rewrote every persisted legacy value
+    // ("docker", "agent-sandbox", "desktop", "remote-user", "host",
+    // "freestyle") to one of these three; readers no longer accept the
+    // legacy strings — Zod will reject them at parse time.
+    .enum(["local-docker", "cluster", "user-desktop"])
     .optional(),
   createdAt: z
     .number()
@@ -292,60 +279,25 @@ export const SandboxRecordSchema = z.object({
 export type SandboxRecord = z.infer<typeof SandboxRecordSchema>;
 
 /**
- * Tolerant reader: pre-rename rows persisted the field as `runnerKind`, and
- * pre-rename rows from before this task persisted the handle field as `vmId`
- * instead of `sandboxHandle`. Until a full re-write (migration 091, Task 14)
- * touches every entry, this function normalizes the legacy keys into their
- * canonical counterparts. Writers always emit only the new keys.
- *
- * Use this function wherever raw JSON from the database is parsed into a
- * `SandboxRecord` — never cast unknown JSON directly as `SandboxRecord`.
- *
- * TODO(task-15 / 2026-06-20): drop this tolerant reader once migration 091
- * has run everywhere and a write has touched every sandboxMap entry. See
- * docs/superpowers/specs/2026-05-22-sandbox-naming-uniformization-design.md.
+ * Strict parser for a single sandbox record. Migration 091 rewrote every
+ * persisted legacy value (`runnerKind`, `vmId`, legacy kind names), so
+ * readers no longer accept those shapes — Zod throws on any leftover.
  */
 export function parseVmMapEntry(raw: unknown): SandboxRecord {
-  let normalized = raw;
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    const obj = raw as Record<string, unknown>;
-    if (obj.runnerKind !== undefined && obj.sandboxProviderKind === undefined) {
-      const { runnerKind, ...rest } = obj;
-      normalized = { ...rest, sandboxProviderKind: runnerKind };
-    }
-    // Pre-rename rows used `vmId` for the handle field; normalize to
-    // `sandboxHandle` so the strict schema accepts them. Prefer the new key
-    // when both are present (canonical writers emit only `sandboxHandle`).
-    const cur = normalized as Record<string, unknown>;
-    if (cur.vmId !== undefined && cur.sandboxHandle === undefined) {
-      const { vmId, ...rest } = cur;
-      normalized = { ...rest, sandboxHandle: vmId };
-    }
-  }
-  const parsed = SandboxRecordSchema.parse(normalized);
-  // Normalize legacy kind names ("docker", "agent-sandbox", "desktop",
-  // "freestyle", "host") to the canonical kinds so callers always see one of
-  // ("local-docker", "cluster", "user-desktop").
-  if (parsed.sandboxProviderKind !== undefined) {
-    const canonical = normalizeProviderKind(parsed.sandboxProviderKind);
-    if (canonical) parsed.sandboxProviderKind = canonical;
-  }
-  return parsed;
+  return SandboxRecordSchema.parse(raw);
 }
 
-/** The active sandbox provider kinds (excludes legacy "freestyle", "host"). */
+/** The active sandbox provider kinds. */
 export type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
 
 /**
- * Tolerant reader at the branch-map level.
+ * Parse a `sandboxMap[user][branch]` cell into the kind-keyed v2 shape.
  *
- * In v2, a branch's value is itself a map of `sandboxProviderKind → SandboxRecord`
- * (so cloud + local can coexist on the same branch). Legacy v1 rows stored a
- * single `SandboxRecord` directly at the branch level. This function accepts
- * either shape and returns a normalized v2 partial record.
- *
- * TODO(2026-06-20): drop the 2-level wrap path once migration 081 has run
- * everywhere and writers have touched every entry.
+ * Migration 087 rewrote every cell to the 3-level layout
+ * (`sandboxProviderKind → SandboxRecord`) and migration 091 rewrote every
+ * legacy kind value; this reader is now strict — entries that fail to parse
+ * (e.g. a stray cell missing required fields) are skipped, but no legacy
+ * key/value normalization happens.
  */
 export function parseBranchMap(
   raw: unknown,
@@ -353,75 +305,21 @@ export function parseBranchMap(
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const obj = raw as Record<string, unknown>;
 
-  // Legacy 2-level: the value at this level is itself a SandboxRecord (has a
-  // handle field — accept both the canonical `sandboxHandle` and the
-  // pre-rename `vmId` key while migration 091 is still in flight).
-  if (typeof obj.sandboxHandle === "string" || typeof obj.vmId === "string") {
-    const entry = parseVmMapEntry(obj);
-    // Coalesce legacy values: pre-removal "freestyle"/"host" → "local-docker",
-    // and pre-rename "docker"/"agent-sandbox"/"desktop" → canonical kinds
-    // (parseVmMapEntry already normalized the kind on `entry`).
-    const kind =
-      normalizeProviderKind(entry.sandboxProviderKind) ?? "local-docker";
-    return { [kind]: { ...entry, sandboxProviderKind: kind } };
-  }
-
-  // New 3-level: kind → entry. Tolerate old kind names as map keys by
-  // normalizing them to canonical kinds. parseVmMapEntry already normalizes
-  // each entry's `sandboxProviderKind`, but doesn't add it if absent — leave
-  // the field as-is when the original didn't have one.
   const out: Partial<Record<SandboxProviderKind, SandboxRecord>> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (!v || typeof v !== "object") continue;
+    if (k !== "local-docker" && k !== "cluster" && k !== "user-desktop") {
+      continue;
+    }
     try {
-      const entry = parseVmMapEntry(v);
-      const kind =
-        normalizeProviderKind(k) ??
-        normalizeProviderKind(entry.sandboxProviderKind);
-      if (!kind) continue;
-      out[kind] = entry;
+      out[k] = SandboxRecordSchema.parse(v);
     } catch {
-      // Skip malformed entries rather than throw — readers are tolerant by design.
+      // Skip malformed entries rather than throw — readers stay forgiving
+      // about unexpected shapes within a known-key cell.
     }
   }
   return out;
 }
-
-/**
- * Normalize a raw sandbox provider kind value (from JSON / map keys / RPC
- * input) into the canonical kind set. Returns `null` for unknown / undefined
- * / null inputs so callers can fall back or skip.
- *
- * Exported for reuse by input-schema transforms and mesh-side coalescers
- * (vm-events-handler, vm/stop) — keeps the legacy → canonical mapping in one
- * place. Pure: no Zod dependency.
- */
-export function normalizeLegacySandboxProviderKind(
-  raw: string | null | undefined,
-): SandboxProviderKind | null {
-  switch (raw) {
-    case "local-docker":
-    case "cluster":
-    case "user-desktop":
-      return raw;
-    case "docker":
-      return "local-docker";
-    case "agent-sandbox":
-      return "cluster";
-    case "desktop":
-      return "user-desktop";
-    // Pre-removal kinds — coalesce to local-docker so rows still parse.
-    case "freestyle":
-    case "host":
-      return "local-docker";
-    default:
-      return null;
-  }
-}
-
-// Internal alias kept for the existing call sites in this file. Prefer the
-// exported `normalizeLegacySandboxProviderKind` from new code.
-const normalizeProviderKind = normalizeLegacySandboxProviderKind;
 
 /**
  * Maps a user to their sandbox records per (branch, sandboxProviderKind).
@@ -430,11 +328,10 @@ const normalizeProviderKind = normalizeLegacySandboxProviderKind;
  * Multiple threads on the same (userId, branch, kind) share one sandbox.
  * Cloud and local sandboxes can coexist on the same branch as siblings.
  *
- * The schema is strict v2. Reads of legacy v1 data MUST be normalized via
- * `normalizeSandboxMap` (this file) BEFORE Zod validation — strict input/output
- * types here are load-bearing for `useForm<…>(zodResolver(…))` callers,
- * whose generic depends on `z.input` being identical to `z.output`. A
- * `z.preprocess` here widens `z.input` to `unknown` and breaks the form.
+ * The schema is strict v2. Strict input/output types here are load-bearing
+ * for `useForm<…>(zodResolver(…))` callers, whose generic depends on
+ * `z.input` being identical to `z.output`. A `z.preprocess` here widens
+ * `z.input` to `unknown` and breaks the form.
  */
 export const SandboxMapSchema = z.record(
   z.string().describe("userId"),
@@ -447,18 +344,14 @@ export const SandboxMapSchema = z.record(
 export type SandboxMap = z.infer<typeof SandboxMapSchema>;
 
 /**
- * Normalize a raw `metadata.sandboxMap` (or legacy `metadata.vmMap`) value
- * into v2 shape on read. Use this in storage adapters BEFORE returning data
- * that will be Zod-validated against `VirtualMCPEntitySchema` (or any schema
- * embedding `SandboxMapSchema`).
+ * Normalize a raw `metadata.sandboxMap` value into v2 shape on read. Use this
+ * in storage adapters BEFORE returning data that will be Zod-validated against
+ * `VirtualMCPEntitySchema` (or any schema embedding `SandboxMapSchema`).
  *
- * Tolerates two legacy on-disk shapes from rows written before migration
- * 082 actually rewrote them:
- *   1. v1 2-level layout:  sandboxMap[user][branch] = SandboxRecord
- *   2. `runnerKind` field on entries instead of `sandboxProviderKind`
- *
- * Returns `{}` for missing / malformed input rather than throwing — readers
- * should never crash on bad on-disk data; the strict schema catches any
+ * After migration 091, the stored shape is the strict 3-level
+ * `userId → branch → sandboxProviderKind → SandboxRecord`. Returns `{}` for
+ * missing / malformed input rather than throwing — readers stay forgiving
+ * about unexpected per-row corruption; the strict schema catches any
  * residual issues at validation time.
  */
 export function normalizeSandboxMap(raw: unknown): SandboxMap {

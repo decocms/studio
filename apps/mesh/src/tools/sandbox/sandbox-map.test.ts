@@ -40,8 +40,8 @@ describe("readSandboxMap", () => {
   });
 });
 
-describe("readSandboxMap legacy fallback", () => {
-  test("reads new `sandboxMap` key", () => {
+describe("readSandboxMap canonical reads", () => {
+  test("reads the `sandboxMap` key", () => {
     const inner: SandboxRecord = {
       sandboxHandle: "h1",
       previewUrl: null,
@@ -52,7 +52,7 @@ describe("readSandboxMap legacy fallback", () => {
     expect(readSandboxMap(meta)).toEqual(meta.sandboxMap);
   });
 
-  test("falls back to legacy `vmMap` key", () => {
+  test("ignores the legacy `vmMap` key (migration 091 sweeps it away)", () => {
     const inner: SandboxRecord = {
       sandboxHandle: "h1",
       previewUrl: null,
@@ -60,27 +60,7 @@ describe("readSandboxMap legacy fallback", () => {
       sandboxProviderKind: "cluster",
     };
     const meta = { vmMap: { user1: { main: { cluster: inner } } } };
-    expect(readSandboxMap(meta)).toEqual(meta.vmMap);
-  });
-
-  test("prefers new key when both present", () => {
-    const newEntry: SandboxRecord = {
-      sandboxHandle: "new",
-      previewUrl: null,
-      createdAt: 1,
-      sandboxProviderKind: "cluster",
-    };
-    const oldEntry: SandboxRecord = {
-      sandboxHandle: "old",
-      previewUrl: null,
-      createdAt: 1,
-      sandboxProviderKind: "cluster",
-    };
-    const meta = {
-      sandboxMap: { u: { b: { cluster: newEntry } } },
-      vmMap: { u: { b: { cluster: oldEntry } } },
-    };
-    expect(readSandboxMap(meta)).toEqual(meta.sandboxMap);
+    expect(readSandboxMap(meta)).toEqual({});
   });
 });
 
@@ -142,18 +122,11 @@ describe("resolveVm", () => {
 
 describe("setSandboxMapEntry", () => {
   // Setup: a fake storage adapter that captures the metadata blob written by
-  // setSandboxMapEntry so we can assert the legacy key is dropped and the new
-  // key carries the merged shape.
-  test("writes new key and drops legacy vmMap key", async () => {
+  // setSandboxMapEntry so we can assert the new key carries the merged shape.
+  test("writes the entry under sandboxMap[user][branch][kind]", async () => {
     const { setSandboxMapEntry } = await import("./sandbox-map");
-    const legacyEntry: SandboxRecord = {
-      sandboxHandle: "old",
-      previewUrl: null,
-      createdAt: 1,
-      sandboxProviderKind: "cluster",
-    };
     const initialMetadata: Record<string, unknown> = {
-      vmMap: { u: { b: { cluster: legacyEntry } } },
+      sandboxMap: {},
       otherField: "preserved",
     };
 
@@ -189,10 +162,8 @@ describe("setSandboxMapEntry", () => {
 
     expect(capturedUpdate).not.toBeNull();
     const out = capturedUpdate!.metadata as Record<string, unknown>;
-    expect("vmMap" in out).toBe(false);
     expect("sandboxMap" in out).toBe(true);
     expect(out.otherField).toBe("preserved");
-    // The new entry replaces the legacy entry under (u, b, cluster).
     const sm = out.sandboxMap as Record<
       string,
       Record<string, Record<string, SandboxRecord>>
