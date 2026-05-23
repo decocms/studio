@@ -3,13 +3,28 @@
  * resolution.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { MeshContext } from "@/core/mesh-context";
 import type { Capability } from "@/links/protocol";
 import { createInMemoryLinkRegistry } from "../../../links/link-registry";
 import { computeIdempotencyKey } from "./routes";
 import type { ChatMessage } from "./types";
+
+// Capture the REAL implementations of every module we mock below so we
+// can put them back in `afterAll`. Static imports are hoisted to the
+// top of the module and evaluated before the `mock.module()` calls
+// further down, so these references point at the originals. Without
+// these the mocks installed by this file persist for the entire shard
+// and break sibling tests (e.g. model-permissions.test.ts, which
+// imports `./model-permissions` and ends up reading our stub instead
+// of the real functions).
+const _realModelPermissions = await import("./model-permissions");
+const _realResolveTier = await import("@/core/resolve-tier");
+const _realDispatchQueue = await import("@/dispatch-queue");
+const _realResolveDefaultSandboxProviderKind = await import(
+  "@/sandbox/resolve-default-provider-kind"
+);
 
 describe("computeIdempotencyKey", () => {
   test("returns undefined for no message", () => {
@@ -440,4 +455,20 @@ describe("POST /messages — first-message pinning", () => {
     // Pins were already set — no update should be written.
     expect(threadUpdateSpy).not.toHaveBeenCalled();
   });
+});
+
+// Restore the originals at the end of the shard. Bun's `mock.module()`
+// replaces the module registry process-wide, so without re-pointing
+// these modules back to their real implementations any sibling test
+// file that runs after us in the same `bun test ...` invocation
+// continues to see our stubs. See the captured `_real*` namespaces at
+// the top of this file.
+afterAll(() => {
+  mock.module("./model-permissions", () => _realModelPermissions);
+  mock.module("@/core/resolve-tier", () => _realResolveTier);
+  mock.module("@/dispatch-queue", () => _realDispatchQueue);
+  mock.module(
+    "@/sandbox/resolve-default-provider-kind",
+    () => _realResolveDefaultSandboxProviderKind,
+  );
 });
