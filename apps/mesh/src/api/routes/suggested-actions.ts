@@ -15,6 +15,10 @@
 
 import { Hono } from "hono";
 import type { MeshContext } from "@/core/mesh-context";
+import {
+  findStudioPackAgentByMcpId,
+  resolveStudioPackTaskDescription,
+} from "@/tools/virtual/studio-pack";
 
 type Variables = {
   meshContext: MeshContext;
@@ -78,45 +82,83 @@ export function createSuggestedActionsRoutes() {
     );
     const agentById = new Map(agentEntries);
 
-    const suggestions = rows.map(({ thread, lastMessage }) => {
-      const agent = thread.virtual_mcp_id
-        ? agentById.get(thread.virtual_mcp_id)
-        : null;
-      const taskDescription =
-        agent && typeof agent.metadata === "object" && agent.metadata
-          ? ((agent.metadata as { taskDescription?: unknown })
-              .taskDescription ?? null)
+    const suggestions = await Promise.all(
+      rows.map(async ({ thread, lastMessage }) => {
+        const agent = thread.virtual_mcp_id
+          ? agentById.get(thread.virtual_mcp_id)
           : null;
-      const description =
-        typeof taskDescription === "string" && taskDescription.length > 0
-          ? taskDescription
-          : agent
-            ? `Reply to ${agent.title}`
-            : "";
 
-      return {
-        thread: {
-          id: thread.id,
-          title: thread.title,
-          virtual_mcp_id: thread.virtual_mcp_id || null,
-          created_by: thread.created_by,
-          created_at: thread.created_at,
-          updated_at: thread.updated_at,
-          trigger_id: thread.trigger_id,
-        },
-        agent: agent
-          ? { id: agent.id, name: agent.title, icon: agent.icon }
-          : null,
-        description,
-        excerpt: extractExcerpt(lastMessage.parts),
-        last_message_at: lastMessage.created_at,
-      };
-    });
+        const studioPackAgent = agent
+          ? findStudioPackAgentByMcpId(agent.id)
+          : null;
+
+        const fromState = describeFromThreadState(lastMessage.parts);
+        let description = "";
+        if (fromState) {
+          description = fromState;
+        } else if (studioPackAgent && agent) {
+          description =
+            (await resolveStudioPackTaskDescription(studioPackAgent, {
+              orgId,
+              ctx: mesh,
+            })) ?? `Reply to ${agent.title}`;
+        } else {
+          const taskDescription =
+            agent && typeof agent.metadata === "object" && agent.metadata
+              ? ((agent.metadata as { taskDescription?: unknown })
+                  .taskDescription ?? null)
+              : null;
+          description =
+            typeof taskDescription === "string" && taskDescription.length > 0
+              ? taskDescription
+              : agent
+                ? `Reply to ${agent.title}`
+                : "";
+        }
+
+        return {
+          thread: {
+            id: thread.id,
+            title: thread.title,
+            virtual_mcp_id: thread.virtual_mcp_id || null,
+            created_by: thread.created_by,
+            created_at: thread.created_at,
+            updated_at: thread.updated_at,
+            trigger_id: thread.trigger_id,
+          },
+          agent: agent
+            ? { id: agent.id, name: agent.title, icon: agent.icon }
+            : null,
+          description,
+          excerpt: extractExcerpt(lastMessage.parts),
+          last_message_at: lastMessage.created_at,
+        };
+      }),
+    );
 
     return c.json({ suggestions });
   });
 
   return app;
+}
+
+function describeFromThreadState(parts: unknown): string | null {
+  if (!Array.isArray(parts)) return null;
+  for (const p of parts) {
+    if (!p || typeof p !== "object") continue;
+    const part = p as { type?: string; state?: string };
+    if (part.state === "approval-requested") return "Approve pending action";
+    if (part.type === "tool-user_ask" && part.state !== "output-available") {
+      return "Reply with input";
+    }
+    if (
+      part.type === "tool-propose_plan" &&
+      part.state !== "output-available"
+    ) {
+      return "Review proposed plan";
+    }
+  }
+  return null;
 }
 
 function extractExcerpt(parts: unknown): string {

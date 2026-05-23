@@ -30,6 +30,36 @@ type ResolvedRuntime = {
 
 type ResolveRuntime = (rt: RuntimeResolveContext) => Promise<ResolvedRuntime>;
 
+type TaskDescriptionContext = {
+  orgId: string;
+  ctx: MeshContext;
+};
+
+type ResolveTaskDescription = (c: TaskDescriptionContext) => Promise<string>;
+
+async function firstMatch(
+  rules: Array<[() => Promise<boolean>, string]>,
+): Promise<string | null> {
+  for (const [predicate, label] of rules) {
+    if (await predicate()) return label;
+  }
+  return null;
+}
+
+async function hasAnyObject(
+  ctx: MeshContext,
+  prefix: string,
+): Promise<boolean> {
+  const storage = ctx.objectStorage;
+  if (!storage) return false;
+  try {
+    const result = await storage.list({ prefix, maxKeys: 1 });
+    return result.objects.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 const AGENT_MANAGER_INSTRUCTIONS_BOOTSTRAP = `<role>
 You are the Agent Manager. This organization has not created any agents yet — your job is to help the user create their first one.
 </role>
@@ -384,6 +414,11 @@ export const STUDIO_PACK_AGENTS = [
         ],
       };
     }) satisfies ResolveRuntime,
+    resolveTaskDescription: (async ({ orgId, ctx }) => {
+      const all = await ctx.storage.virtualMcps.list(orgId);
+      const hasCustomAgents = all.some((vm) => !isStudioPackAgent(vm.id));
+      return hasCustomAgents ? "Review your agents" : "Create your first agent";
+    }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.AGENT_MANAGER,
   },
   {
@@ -415,6 +450,8 @@ export const STUDIO_PACK_AGENTS = [
         text: "Hey — I'm your Automation Manager. I run agents on cron schedules or events. Tell me what you'd like to automate.",
       },
     ]) satisfies BuildWelcomeMessage,
+    resolveTaskDescription: (async () =>
+      "Automate a task") satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.AUTOMATION_MANAGER,
   },
   {
@@ -440,6 +477,8 @@ export const STUDIO_PACK_AGENTS = [
         text: "Hi! I'm your Connection Manager. I add, configure, and test MCP connections. What do you want to plug in?",
       },
     ]) satisfies BuildWelcomeMessage,
+    resolveTaskDescription: (async () =>
+      "Connect a new MCP") satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.CONNECTION_MANAGER,
   },
   {
@@ -462,6 +501,8 @@ export const STUDIO_PACK_AGENTS = [
         text: "Hey — I browse the Deco Store and Community Registry for installable MCPs. What problem are you trying to solve?",
       },
     ]) satisfies BuildWelcomeMessage,
+    resolveTaskDescription: (async () =>
+      "Browse the Deco Store") satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.STORE_MANAGER,
   },
   {
@@ -515,6 +556,17 @@ export const STUDIO_PACK_AGENTS = [
         ],
       };
     }) satisfies ResolveRuntime,
+    resolveTaskDescription: (async ({ orgId, ctx }) =>
+      (await firstMatch([
+        [
+          async () => (await ctx.storage.brandContext.list(orgId)).length === 0,
+          "Set up your brand",
+        ],
+        [
+          async () => !(await hasAnyObject(ctx, "pages/")),
+          "Create a landing page",
+        ],
+      ])) ?? "Refine your landing page") satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.BRAND_MANAGER,
   },
 ] as const;
@@ -540,6 +592,16 @@ export async function resolveStudioPackRuntime(
     instructions: agent.instructions,
     selectedTools: agent.selectedTools,
   };
+}
+
+export async function resolveStudioPackTaskDescription(
+  agent: StudioPackAgent,
+  c: TaskDescriptionContext,
+): Promise<string | null> {
+  if ("resolveTaskDescription" in agent) {
+    return agent.resolveTaskDescription(c);
+  }
+  return null;
 }
 
 export async function installStudioPack(
