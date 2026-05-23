@@ -13,6 +13,8 @@ export interface ToolMetadata {
   annotations?: NonNullable<ToolDefinition["annotations"]>;
   /** Latency in seconds (converted from ms for UI) */
   latencySeconds?: number;
+  /** UTF-8 byte length of the JSON-serialized tool result. */
+  outputBytes?: number;
   _meta?: ToolDefinition["_meta"];
 }
 
@@ -76,6 +78,7 @@ export function useFilterParts(message: ChatMessage | null) {
             data: {
               annotations?: unknown;
               latencyMs?: number;
+              outputBytes?: number;
               _meta?: unknown;
             };
           }
@@ -91,6 +94,13 @@ export function useFilterParts(message: ChatMessage | null) {
           Number.isFinite(data.latencyMs)
         ) {
           meta.latencySeconds = data.latencyMs / 1000;
+        }
+        if (
+          typeof data.outputBytes === "number" &&
+          Number.isFinite(data.outputBytes) &&
+          data.outputBytes >= 0
+        ) {
+          meta.outputBytes = data.outputBytes;
         }
         if (data._meta && typeof data._meta === "object") {
           meta._meta = data._meta as ToolDefinition["_meta"];
@@ -158,6 +168,15 @@ export function useFilterParts(message: ChatMessage | null) {
         continue;
       }
 
+      // Skip invisible data-* parts (they're consumed above into the
+      // dataParts maps and the MessagePart switch returns null for them).
+      // Including them in renderOrder would let them claim
+      // `isLastVisiblePart` and steal the message-bottom usage stats from
+      // the real last visible part.
+      if (p.type.startsWith("data-")) {
+        continue;
+      }
+
       stepParts.push({ index: i });
     }
 
@@ -168,6 +187,10 @@ export function useFilterParts(message: ChatMessage | null) {
   return {
     reasoningGroups,
     renderOrder,
-    dataParts: { toolMetadata, toolSubtaskMetadata, webSearchStreaming },
+    dataParts: {
+      toolMetadata,
+      toolSubtaskMetadata,
+      webSearchStreaming,
+    },
   };
 }
