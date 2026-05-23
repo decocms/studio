@@ -3,10 +3,10 @@
  *
  * Keyed on `(virtualMcpId, branch)` — mesh derives the userId from the
  * authenticated session and composes the same claim handle a racing
- * VM_START would. The stream emits in two phases on one connection:
+ * SANDBOX_START would. The stream emits in two phases on one connection:
  *
  *   1. `event: phase` — `ClaimPhase` JSON for the pre-Ready lifecycle.
- *      Surfaces what's happening between VM_START posting a SandboxClaim
+ *      Surfaces what's happening between SANDBOX_START posting a SandboxClaim
  *      and the daemon coming online (capacity wait, image pull, etc).
  *   2. Daemon events (`event: log|lifecycle|status|tasks|scripts|branch|reload`) —
  *      passthrough from the in-pod daemon's `/_sandbox/events`. Types
@@ -14,7 +14,7 @@
  *
  *   3. `event: gone` — synthetic. Mesh's upstream daemon fetch returned 404
  *      (sandbox handle missing → operator-evicted on idle TTL). Mapped to
- *      `notFound` which preview.tsx's self-heal flow turns into a VM_START.
+ *      `notFound` which preview.tsx's self-heal flow turns into a SANDBOX_START.
  *
  * `ClaimPhase` is imported as a type-only reference from the canonical
  * server-side definition; `import type` is erased at build time, so the
@@ -56,7 +56,7 @@ export interface SandboxEventsValue {
    * Latest `ClaimPhase` from the lifecycle portion of the stream. Null until
    * the first phase arrives. Stays at `ready`/`failed` after a terminal
    * phase — callers that want to gate UI on "boot in progress" should pair
-   * this with their own signal (e.g. VM_START in flight, previewUrl
+   * this with their own signal (e.g. SANDBOX_START in flight, previewUrl
    * present).
    */
   phase: ClaimPhase | null;
@@ -67,7 +67,7 @@ export interface SandboxEventsValue {
   /** Git metadata (branch, dirty, divergence). `unknown` until the first compute. */
   branch: BranchMeta;
   suspended: boolean;
-  /** True after a `gone` event — handle gone, reprovision via VM_START. */
+  /** True after a `gone` event — handle gone, reprovision via SANDBOX_START. */
   notFound: boolean;
   scripts: string[];
   activeProcesses: string[];
@@ -230,7 +230,7 @@ export function SandboxEventsProvider({
     };
 
     const handleGone = () => {
-      // The sandbox is gone (idle-evicted, VM_DELETE'd, or its pod terminated
+      // The sandbox is gone (idle-evicted, SANDBOX_DELETE'd, or its pod terminated
       // and mesh has stopped finding the handle). Everything we've cached is
       // about to be stale, so reset.
       setNotFound(true);

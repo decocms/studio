@@ -168,7 +168,7 @@ const PREVIEW_STRIP_RESPONSE_HEADERS = [
 
 // Deterministic local-port range for port-forward listeners. Same
 // (handle, containerPort) pair → same host port across mesh restarts, so
-// `previewUrl` cached in the thread's vmMap stays valid when the mesh
+// `previewUrl` cached in the thread's sandboxMap stays valid when the mesh
 // process recycles. Birthday-collision probability stays <1% up to ~140
 // concurrent forwarders. EADDRINUSE walks the range forward until bind.
 const PORT_RANGE_START = 40000;
@@ -234,7 +234,7 @@ interface K8sRecord {
    * (15-min idle TTL deletes the claim — without these we'd come back as
    * an empty pod with no repo cloned). Null on adopt paths where we can't
    * recover the original opts; resurrection falls back to throwing/404 in
-   * that case so the caller's normal VM_START flow can repopulate them.
+   * that case so the caller's normal SANDBOX_START flow can repopulate them.
    */
   ensureOpts: EnsureOptions | null;
 }
@@ -253,7 +253,7 @@ interface PersistedK8sState {
    * after the operator deletes the claim on idle TTL. Optional for
    * back-compat: rows written before this field existed lack it; resurrection
    * returns null in that case and the caller surfaces 404 (UI's existing
-   * VM_START reprovision flow then runs with full opts).
+   * SANDBOX_START reprovision flow then runs with full opts).
    */
   ensureOpts?: EnsureOptions;
   [k: string]: unknown;
@@ -464,7 +464,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   /**
    * Stream of phase transitions for a SandboxClaim's pre-Ready lifecycle.
    * Used by mesh's lifecycle SSE route to surface what's happening between
-   * `VM_START` posting a claim and the daemon SSE coming online.
+   * `SANDBOX_START` posting a claim and the daemon SSE coming online.
    *
    * Generator closes on terminal phase (`ready`/`failed`) or on
    * `signal.abort()`. Safe to call before the claim exists — the generator
@@ -1375,7 +1375,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // without state-store, or state-store wipe). The original opts aren't
       // recoverable from the claim alone, so resurrection on this record
       // can't autonomously re-provision; falls back to the caller's
-      // VM_START path.
+      // SANDBOX_START path.
       ensureOpts: null,
     };
   }
@@ -1436,7 +1436,7 @@ export class AgentSandboxProvider implements SandboxProvider {
    *  - row predates `ensureOpts` persistence (back-compat: rows from before
    *    this change). Resurrecting with empty opts would create an empty pod
    *    with no repo cloned, which is worse than 404. UI's existing
-   *    notFound→VM_START flow re-supplies opts in that case.
+   *    notFound→SANDBOX_START flow re-supplies opts in that case.
    */
   private async resurrectByHandle(handle: string): Promise<K8sRecord | null> {
     if (!this.stateStore) return null;
@@ -1560,7 +1560,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     podName: string,
     containerPort: number,
     // `handle` is passed separately so the deterministic port survives pod
-    // recreation (operator-driven): vmMap's cached previewUrl stays valid.
+    // recreation (operator-driven): sandboxMap's cached previewUrl stays valid.
     handle: string = podName,
   ): Promise<PortForwarder> {
     const startPort = deterministicLocalPort(handle, containerPort);

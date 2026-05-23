@@ -251,7 +251,7 @@ export function PreviewContent() {
     sandboxUserStop.isStopped(virtualMcpId, branch);
 
   // Terminal lifecycle failures from the daemon (clone/install/dev script
-  // exited non-zero). Distinct from `lastStartError`, which is a VM_START
+  // exited non-zero). Distinct from `lastStartError`, which is a SANDBOX_START
   // mutation rejection — these come from the daemon AFTER it came online.
   // The daemon also flips status.state to "error", but lifecycle.phase
   // carries which step failed, which the card uses to pick a log source.
@@ -315,7 +315,7 @@ export function PreviewContent() {
         if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
       },
       onError: (err) => {
-        console.error(`[preview] ${reason} VM_START failed`, err);
+        console.error(`[preview] ${reason} SANDBOX_START failed`, err);
       },
     });
   };
@@ -413,8 +413,8 @@ export function PreviewContent() {
 
   const openDrawer = () => handleDrawerOpenChange(true);
 
-  // Stop / restart. VM_DELETE is best-effort; the sandboxMap query refetch is
-  // what actually flips the UI to idle. VM_DELETE requires the kind because
+  // Stop / restart. SANDBOX_DELETE is best-effort; the sandboxMap query refetch is
+  // what actually flips the UI to idle. SANDBOX_DELETE requires the kind because
   // sandboxMap is keyed by (user, branch, kind); we delete whichever sibling the
   // preview surface is currently displaying.
   const handleStop = async () => {

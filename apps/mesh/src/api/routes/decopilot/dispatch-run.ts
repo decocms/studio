@@ -811,7 +811,7 @@ async function prepareRun(
         //   - `runsIn === "user-desktop"` — the whole stream is delegated
         //     to the user's link daemon. `resolveRemoteCliSandboxUrl`
         //     calls `ensureSandbox` (handle == `computeHandle(sandboxId,
-        //     branch)`) so the sandbox is the same one VM_START
+        //     branch)`) so the sandbox is the same one SANDBOX_START
         //     provisions — repo cloned, env pushed, dev server primed.
         //     The cluster talks to the daemon directly at the returned
         //     per-handle tunnel URL (`https://<handle>.deco.host` in
@@ -823,8 +823,8 @@ async function prepareRun(
         //     to the user's link daemon; the harness still runs here.
         let harnessChunks;
         if (target.runsIn === "user-desktop") {
-          // Unify with VM_START: resolve the sandbox via `ensureSandbox` so
-          // claude-code/codex runs share the workdir VM_START already
+          // Unify with SANDBOX_START: resolve the sandbox via `ensureSandbox` so
+          // claude-code/codex runs share the workdir SANDBOX_START already
           // provisioned (cloned repo + env + lockfile probe). Falls
           // through to a blank sandbox for ephemeral threads. See
           // `resolveRemoteCliSandboxUrl` below for why the helper
@@ -1022,7 +1022,7 @@ async function prepareRun(
  * harness stream to. Calls `ensureSandbox` (lazy/idempotent — fast path
  * returns the existing entry, slow path provisions through the
  * desktop sandbox provider) so the resulting sandbox is the same one
- * VM_START / the always-on VM tools use. Returns the daemon's
+ * SANDBOX_START / the always-on sandbox tools use. Returns the daemon's
  * `previewUrl`, which is the per-handle tunnel URL the cluster
  * already talks to directly.
  *

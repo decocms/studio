@@ -131,7 +131,7 @@ const envVarKey = z.string().min(1).regex(ENV_VAR_KEY_RE, {
 /**
  * One env var declaration on a virtual MCP. Literal values live inline in
  * metadata; secret values store a stable secretId that mesh resolves against
- * the credential vault on every VM_START. The env var KEY is independent of
+ * the credential vault on every SANDBOX_START. The env var KEY is independent of
  * the secret's NAME — a single secret can back multiple env keys across
  * different agents.
  */
@@ -152,7 +152,7 @@ export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
 
 /**
  * User-pinned runtime configuration stored under `metadata.runtime`. Empty
- * fields fall back to autodetect on the next VM_START.
+ * fields fall back to autodetect on the next SANDBOX_START.
  */
 const RuntimeMetadataSchema = z.object({
   selected: z
@@ -160,7 +160,7 @@ const RuntimeMetadataSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "User-selected package manager (npm | pnpm | yarn | bun | deno). Null/absent means autodetect on next VM_START.",
+      "User-selected package manager (npm | pnpm | yarn | bun | deno). Null/absent means autodetect on next SANDBOX_START.",
     ),
   port: z
     .string()
@@ -181,7 +181,7 @@ const RuntimeMetadataSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Env vars injected on every VM_START. Literal entries inline their value; secret entries store a secretId that mesh resolves via the credential vault before posting /_sandbox/config.",
+      "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that mesh resolves via the credential vault before posting /_sandbox/config.",
     ),
 });
 
@@ -212,7 +212,7 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
 /**
  * A single sandbox record in the per-(user, branch, kind) sandbox map — the
- * runner-issued handle plus the preview URL the UI renders.
+ * provider-issued handle plus the preview URL the UI renders.
  *
  * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
  *  - local-docker: daemon is reached via the mesh proxy at `/api/sandbox/<sandboxHandle>/_daemon/*`
@@ -225,12 +225,12 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
  * an iframe URL.
  */
 export const SandboxRecordSchema = z.object({
-  sandboxHandle: z.string().describe("Runner-specific handle"),
+  sandboxHandle: z.string().describe("Provider-specific handle"),
   previewUrl: z
     .string()
     .nullable()
     .describe(
-      "URL where the VM's iframe-proxied UI is served, or null when the sandbox has no dev server (blank / tool sandboxes).",
+      "URL where the sandbox's iframe-proxied UI is served, or null when the sandbox has no dev server (blank / tool sandboxes).",
     ),
   sandboxApiUrl: z
     .string()
@@ -250,7 +250,7 @@ export const SandboxRecordSchema = z.object({
     .number()
     .optional()
     .describe(
-      "Epoch ms the entry was first written by VM_START. Used by the booting overlay to show a stable elapsed timer that survives browser reloads. Optional for backward compatibility with entries written before this field existed.",
+      "Epoch ms the entry was first written by SANDBOX_START. Used by the booting overlay to show a stable elapsed timer that survives browser reloads. Optional for backward compatibility with entries written before this field existed.",
     ),
   startedWith: z
     .object({
@@ -258,21 +258,21 @@ export const SandboxRecordSchema = z.object({
         .string()
         .nullable()
         .optional()
-        .describe("metadata.runtime.selected at the time of VM_START"),
+        .describe("metadata.runtime.selected at the time of SANDBOX_START"),
       port: z
         .string()
         .nullable()
         .optional()
-        .describe("metadata.runtime.port at the time of VM_START"),
+        .describe("metadata.runtime.port at the time of SANDBOX_START"),
       path: z
         .string()
         .nullable()
         .optional()
-        .describe("metadata.runtime.path at the time of VM_START"),
+        .describe("metadata.runtime.path at the time of SANDBOX_START"),
     })
     .optional()
     .describe(
-      "Snapshot of metadata.runtime fields (selected/port/path) used at VM_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
+      "Snapshot of metadata.runtime fields (selected/port/path) used at SANDBOX_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
     ),
 });
 

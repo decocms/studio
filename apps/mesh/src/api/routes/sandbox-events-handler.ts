@@ -23,9 +23,9 @@ import type { Env } from "../hono-env";
 
 /**
  * Cap on how long we keep the SSE open if a claim never materializes (e.g.
- * caller raced VM_START but VM_START failed before `createSandboxClaim`).
+ * caller raced SANDBOX_START but SANDBOX_START failed before `createSandboxClaim`).
  * 90s is enough to absorb karpenter cold-start (~60-90s) plus a few seconds
- * of operator latency; longer waits indicate VM_START never posted the claim
+ * of operator latency; longer waits indicate SANDBOX_START never posted the claim
  * and the user benefits from a faster failure surface so the retry button
  * appears promptly.
  */
@@ -207,7 +207,7 @@ async function emitLifecycle(args: {
             kind: "failed",
             reason: "claim-never-created",
             message:
-              "Sandbox claim was never created. The VM_START call may have failed earlier — check the start error.",
+              "Sandbox claim was never created. The SANDBOX_START call may have failed earlier — check the start error.",
           } satisfies ClaimPhase),
         })
         .catch(() => {});

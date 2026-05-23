@@ -21,7 +21,7 @@ export type ClaimPhaseLike = { kind: string };
 
 /**
  * Terminal daemon setup-pipeline failures. Distinct from `lastStartError`
- * (the VM_START mutation rejection) — these come from the daemon AFTER it
+ * (the SANDBOX_START mutation rejection) — these come from the daemon AFTER it
  * came online, e.g. `bun run dev` exiting with a non-zero code.
  */
 export type LifecycleFailure =

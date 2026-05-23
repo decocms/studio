@@ -1,7 +1,7 @@
 /**
- * VM_DELETE. Dispatches on the caller-supplied `sandboxProviderKind` (not
+ * SANDBOX_DELETE. Dispatches on the caller-supplied `sandboxProviderKind` (not
  * env), so a pod that flipped STUDIO_SANDBOX_PROVIDER between start and stop
- * still tears down the right kind of VM.
+ * still tears down the right kind of sandbox.
  */
 
 import { z } from "zod";

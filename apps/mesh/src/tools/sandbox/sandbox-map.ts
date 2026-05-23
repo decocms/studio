@@ -6,9 +6,9 @@
  * Stored in the virtualmcp's metadata JSON column. Threads sharing the same
  * (user, branch, kind) triple share one sandbox.
  *
- * NOTE: read-modify-write is NOT atomic across pods — two concurrent VM_START
- * calls for the same (vm, user, branch, kind) can race. Accepted for v1. A
- * proper fix requires a Postgres advisory lock or a dedicated vm_sessions table.
+ * NOTE: read-modify-write is NOT atomic across pods — two concurrent SANDBOX_START
+ * calls for the same (sandbox, user, branch, kind) can race. Accepted for v1. A
+ * proper fix requires a Postgres advisory lock or a dedicated sandbox_sessions table.
  */
 
 import { parseBranchMap } from "@decocms/mesh-sdk";

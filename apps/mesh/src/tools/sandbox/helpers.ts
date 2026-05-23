@@ -1,5 +1,5 @@
 /**
- * Shared VM helper functions used across VM tools (VM_START, VM_DELETE).
+ * Shared sandbox helper functions used across sandbox tools (SANDBOX_START, SANDBOX_DELETE).
  *
  * Centralizes:
  * - Auth + lookup boilerplate (requireVmEntry)

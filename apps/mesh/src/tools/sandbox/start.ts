@@ -1,11 +1,11 @@
 /**
- * VM_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual MCP's `sandboxMap`.
- * Runner-agnostic — dispatches through the active `SandboxProvider`; this
+ * SANDBOX_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual MCP's `sandboxMap`.
+ * Provider-agnostic — dispatches through the active `SandboxProvider`; this
  * handler only does `sandboxMap` bookkeeping. Branch defaults to
  * `deco/<adjective>-<noun>` when omitted.
  *
  * Different sandbox provider kinds coexist as siblings under the same
- * (user, branch) key — no stale-VM teardown is needed on kind change.
+ * (user, branch) key — no stale-sandbox teardown is needed on kind change.
  */
 
 import { z } from "zod";
@@ -152,13 +152,13 @@ export const SANDBOX_START = defineTool({
 });
 
 /**
- * Lazy provisioner for the always-on VM tools path. Mirrors VM_START's
+ * Lazy provisioner for the always-on sandbox tools path. Mirrors SANDBOX_START's
  * flow but: (a) tolerates a missing GitHub repo (boots blank under Docker),
  * and (b) takes a fast path when the existing sandboxMap entry already
- * matches the requested kind — avoiding a full `runner.ensure` round-trip
- * on every fresh stream when the VM is already registered.
+ * matches the requested kind — avoiding a full `provider.ensure` round-trip
+ * on every fresh stream when the sandbox is already registered.
  *
- * Unlike VM_START, `sandboxProviderKind` is required — callers (e.g. POST
+ * Unlike SANDBOX_START, `sandboxProviderKind` is required — callers (e.g. POST
  * /messages) must resolve the kind before calling this function.
  */
 export async function ensureSandbox(
@@ -285,7 +285,7 @@ async function provisionSandbox(
       : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
 
     // Lockfile probe only when metadata has no PM. Used to be client-side in
-    // the repo picker, but that introduced a race — VM_START fired from the
+    // the repo picker, but that introduced a race — SANDBOX_START fired from the
     // auto-start paths before `runtime` landed in metadata, and the daemon
     // got baked clone-only (no install, no dev server, UI stuck on setup).
     // Running it here piggybacks on the same request so the baked workload
@@ -406,7 +406,7 @@ async function provisionSandbox(
 }
 
 /**
- * Writes back the detected runtime so subsequent VM_STARTs for this virtual
+ * Writes back the detected runtime so subsequent SANDBOX_STARTs for this virtual
  * MCP skip the GitHub probe and the client surfaces the resolved PM. Shape
  * matches what the picker previously wrote (`{ selected, port }`), so
  * readers (resolveRuntimeConfig, any client inspectors) keep working.

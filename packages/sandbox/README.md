@@ -4,12 +4,12 @@ Isolated per-user sandboxes for MCP tool execution.
 
 One sandbox per `(userId, projectRef)`: a container (or VM) holding a checked-out
 repo plus an in-pod daemon that proxies exec, file ops, and the dev server.
-Callers go through a single `SandboxProvider` interface; the runner decides how
+Callers go through a single `SandboxProvider` interface; the provider decides how
 the sandbox is provisioned and reached.
 
-## Runners
+## Providers
 
-Three runner backends live behind the common `SandboxProvider` interface
+Three provider backends live behind the common `SandboxProvider` interface
 (`server/provider/types.ts`):
 
 - **Docker** (`./provider`) — containerized sandboxes. Spawns containers via the
@@ -23,11 +23,11 @@ Three runner backends live behind the common `SandboxProvider` interface
 
 ### Selection
 
-The host app calls `resolveSandboxProviderKindFromEnv()` to pick the runner. Single rule:
+The host app calls `resolveSandboxProviderKindFromEnv()` to pick the provider. Single rule:
 
 1. `STUDIO_SANDBOX_PROVIDER` is honored if set (one of `local-docker`,
    `cluster`, `user-desktop`).
-2. Otherwise the runner defaults to `user-desktop` (the desktop-side
+2. Otherwise the provider defaults to `user-desktop` (the desktop-side
    `deco link` daemon — auto-spawned by `bun run dev --local-sandbox-provider`
    in local dev, and the supported topology for single-machine self-hosts
    running the link side-by-side).
@@ -35,7 +35,7 @@ The host app calls `resolveSandboxProviderKindFromEnv()` to pick the runner. Sin
 Preconditions:
 
 - `cluster` is opt-in only — never auto-selected.
-- The retired `host` runner kind is rejected. Local dev now exercises
+- The retired `host` provider kind is rejected. Local dev now exercises
   `user-desktop` against the auto-spawned link binary, matching the
   production code path.
 
@@ -66,14 +66,14 @@ for this, you can remove them — they're no longer needed.
 
 ## Environment
 
-- `STUDIO_SANDBOX_PROVIDER` — pin the runner: `local-docker`,
+- `STUDIO_SANDBOX_PROVIDER` — pin the provider: `local-docker`,
   `cluster`, or `user-desktop`. Defaults to `user-desktop`. Setting
   it explicitly is required for production deploys; auto-detection of
   Docker has been removed.
-- `STUDIO_SANDBOX_IMAGE` — override the Docker runner image
+- `STUDIO_SANDBOX_IMAGE` — override the Docker provider image
   (default `studio-sandbox:local`, built from `image/Dockerfile`).
 - `SANDBOX_INGRESS_PORT` (default `7070`) — local ingress bind port for the
-  Docker runner. Set to `0` to skip binding entirely (use this if a real
+  Docker provider. Set to `0` to skip binding entirely (use this if a real
   reverse proxy fronts `*.localhost` traffic instead).
 - `SANDBOX_ROOT_URL` — production template for the pod URL. Either a bare
   base (`https://sandboxes.example.com` → handle becomes leading subdomain)

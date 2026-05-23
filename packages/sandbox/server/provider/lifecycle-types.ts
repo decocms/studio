@@ -9,7 +9,7 @@
  *
  * Most phases originate from agent-sandbox's K8s watcher (image pulls, node
  * provisioning, etc.). Host/docker yield a single `ready` phase because they
- * have no equivalent pre-Ready window worth surfacing — VM_START returns
+ * have no equivalent pre-Ready window worth surfacing — SANDBOX_START returns
  * once the daemon's HTTP server is up, which is fast.
  */
 

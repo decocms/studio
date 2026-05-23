@@ -3,7 +3,7 @@
  *
  * Precedence (highest first):
  *
- *   1. **Caller override (`explicitKind`).** `VM_START` forwards
+ *   1. **Caller override (`explicitKind`).** `SANDBOX_START` forwards
  *      `input.sandboxProviderKind` here; `ensureSandbox` callers pass the kind
  *      they already resolved. Binds the user's link for `user-desktop`.
  *
@@ -46,7 +46,7 @@ export interface ResolveSandboxProviderArgs {
   /** Raw `virtualmcp.metadata` JSON column. May be null. */
   virtualMcpMetadata: Record<string, unknown> | null;
   /**
-   * Caller-provided override (e.g. `VM_START`'s `input.sandboxProviderKind`).
+   * Caller-provided override (e.g. `SANDBOX_START`'s `input.sandboxProviderKind`).
    * When set, takes precedence over both the sandboxMap entry and the default
    * policy. The resolver still binds the user's link for `user-desktop`.
    */
@@ -92,7 +92,7 @@ export async function resolveSandboxProvider(
   }
 
   // 3. Recorded sandboxMap kind. Tiebreak against the default policy so that when
-  //    multiple sibling kinds were persisted (e.g. the user ran VM_START
+  //    multiple sibling kinds were persisted (e.g. the user ran SANDBOX_START
   //    twice with different `sandboxProviderKind` values), the events/proxy
   //    path consistently picks the one matching current intent
   //    (link online → `desktop`, else env kind) instead of whatever
@@ -119,7 +119,7 @@ export async function resolveSandboxProvider(
 
 /**
  * All kinds recorded under `sandboxMap[userId][branch]`. Multiple kinds can coexist
- * as siblings — `VM_START` accepts an explicit `sandboxProviderKind`, and
+ * as siblings — `SANDBOX_START` accepts an explicit `sandboxProviderKind`, and
  * `setSandboxMapEntry` preserves siblings. Callers that need exactly one kind
  * (`readRecordedKind`) tiebreak against the default policy.
  */
@@ -139,7 +139,7 @@ function readRecordedKinds(
  * matches the current default policy (link online → `user-desktop`, else env
  * kind); otherwise falls back to the first recorded kind. This keeps the
  * events/proxy path deterministic across pods and matches what a fresh
- * VM_START with no explicit kind would have used.
+ * SANDBOX_START with no explicit kind would have used.
  */
 async function pickRecordedKind(
   ctx: MeshContext,

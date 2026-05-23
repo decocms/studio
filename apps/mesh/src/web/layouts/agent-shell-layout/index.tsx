@@ -224,11 +224,11 @@ function VmEventsBridge({
     orgSlug: org.slug,
   });
   const { mutate: triggerAutoStart } = useSandboxStart(autoStartClient);
-  // Attempt at most one auto-start per (branch, mount). A user VM_DELETE
+  // Attempt at most one auto-start per (branch, mount). A user SANDBOX_DELETE
   // removes the sandboxMap entry — without a permanent guard the effect would
-  // re-fire and resurrect the VM the user just stopped.
+  // re-fire and resurrect the sandbox the user just stopped.
   const autoStartAttemptedRef = useRef<Set<string>>(new Set());
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — fires VM_START when sandboxMap is missing an entry for (user, branch); ref guard dedupes within this mount, module-level map dedupes across components
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — fires SANDBOX_START when sandboxMap is missing an entry for (user, branch); ref guard dedupes within this mount, module-level map dedupes across components
   useEffect(() => {
     if (!hasActiveGithubRepo) return;
     if (!userId) return;

@@ -20,7 +20,7 @@
  * `/_sandbox/<handle>/*` (that route was deleted with the per-daemon-tunnel
  * migration).
  *
- * Handle vs runId: remote-cli dispatch and VM_START now share the same
+ * Handle vs runId: remote-cli dispatch and SANDBOX_START now share the same
  * sandbox — `dispatch-run` resolves the URL via `ensureSandbox`, so the
  * handle is `computeHandle(sandboxId, branch)` in both paths. Per-run
  * state stays keyed by `runId` inside the daemon (the cancel route

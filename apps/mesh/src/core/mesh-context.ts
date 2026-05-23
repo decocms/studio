@@ -422,7 +422,7 @@ export interface MeshContext extends HarnessContext {
   /**
    * Cluster-wide LinkRegistry, injected by the context factory. Tools that
    * touch the sandbox provider outside the decopilot dispatch path (e.g.
-   * `VM_START`, the always-on VM auto-provisioner) read this to resolve the
+   * `SANDBOX_START`, the always-on sandbox auto-provisioner) read this to resolve the
    * acting user's link on demand — there is no `prepareRun` to pre-populate
    * `linkForCurrentRun` for them. Undefined in test contexts that don't
    * supply a registry.

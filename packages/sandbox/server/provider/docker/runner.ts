@@ -186,7 +186,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     return proxyDaemonRequest(rec.daemonUrl, rec.token, path, init);
   }
 
-  // No pre-Ready window worth surfacing: VM_START's `runner.ensure` blocks on
+  // No pre-Ready window worth surfacing: SANDBOX_START's `provider.ensure` blocks on
   // `waitForDaemonReady`, which returns once the container's daemon `/health`
   // is reachable — typically <1s after `docker run` returns. Yield a single
   // `ready` so the unified vm-events route can proceed straight to the

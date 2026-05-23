@@ -5,8 +5,8 @@
  * on (virtualMcpId, branch, callerUserId):
  *
  *   1. Pre-Ready lifecycle phases (`event: phase`) — surfaces the gap between
- *      VM_START posting a SandboxClaim and the daemon coming online.
- *      Agent-sandbox runner emits real K8s phases; other runners emit a
+ *      SANDBOX_START posting a SandboxClaim and the daemon coming online.
+ *      Agent-sandbox provider emits real K8s phases; other providers emit a
  *      single synthetic `ready`.
  *   2. Daemon events (`event: log|lifecycle|status|tasks|scripts|branch|reload`)
  *      — proxied from the in-pod daemon's `/_sandbox/events` SSE once
@@ -15,7 +15,7 @@
  *      protocol they always have.
  *   3. `event: gone` — synthetic. Mesh's upstream daemon fetch returned 404
  *      (sandbox handle missing → operator evicted on idle TTL, etc). Client
- *      maps to `notFound` and triggers self-heal via VM_START.
+ *      maps to `notFound` and triggers self-heal via SANDBOX_START.
  *   4. `event: keepalive` — heartbeat. 15s matches the existing daemon SSE.
  *
  * Auth model:
@@ -57,9 +57,9 @@ import type { Env } from "../hono-env";
 
 /**
  * Cap on how long we keep the SSE open if a claim never materializes (e.g.
- * caller raced VM_START but VM_START failed before `createSandboxClaim`).
+ * caller raced SANDBOX_START but SANDBOX_START failed before `createSandboxClaim`).
  * 90s is enough to absorb karpenter cold-start (~60–90s) plus a few seconds
- * of operator latency; longer waits indicate VM_START never posted the claim
+ * of operator latency; longer waits indicate SANDBOX_START never posted the claim
  * and the user benefits from a faster failure surface so the retry button
  * appears promptly.
  */
@@ -139,9 +139,9 @@ export const createVmEventsRoutes = () => {
     // Snapshot sandboxMap from the same metadata read used for the org-ownership
     // check. Used below to gate the stale-handle probe: we only run it when
     // this user already had a sandboxMap entry pointing at *this exact* claim.
-    // The handle-match guard avoids racing VM_START's claim-creation window
+    // The handle-match guard avoids racing SANDBOX_START's claim-creation window
     // (~250ms–1.2s for agent-sandbox before `createSandboxClaim` lands;
-    // similar window for host/docker between `runner.ensure` returning and
+    // similar window for host/docker between `provider.ensure` returning and
     // `setSandboxMapEntry` writing the row). Without it, an SSE that opens during
     // that window would observe alive=false and emit a spurious `gone`.
     const existingVmEntry =
@@ -252,29 +252,29 @@ async function isStaleHandle(
 
 /**
  * Drop the stale in-memory record (closes its port-forward) AND the
- * state-store row, so the next VM_START's `runner.ensure` skips the
+ * state-store row, so the next SANDBOX_START's `provider.ensure` skips the
  * rehydrate path (which would chase a dead port-forward and timeout) and
  * falls through to fresh provision. The state-store delete alone wasn't
- * enough — when `runner.alive` returns false because the operator's
+ * enough — when `provider.alive` returns false because the operator's
  * housekeeper reaped the claim out from under us, mesh's `records` map
  * still held the K8sRecord pointing at the now-deleted pod, and the
  * deterministic preview port stayed bound to that dead pod's WS forwarder
- * until process restart. Calling `runner.delete` invalidates both.
+ * until process restart. Calling `provider.delete` invalidates both.
  *
- * `runner.delete` is idempotent: it 404-tolerantly tries to delete the
+ * `provider.delete` is idempotent: it 404-tolerantly tries to delete the
  * SandboxClaim, closes any forwarder, drops in-memory + state-store rows.
  * The provider-kind dispatch matches the *prior* kind (existingRunnerKind)
- * so we don't leave behind rows in the wrong table when the env's runner
+ * so we don't leave behind rows in the wrong table when the env's provider
  * has flipped between starts and stops.
  *
  * We deliberately do NOT touch the sandboxMap entry. Two reasons:
- *   1. `runner.ensure` resumes from the state-store, not sandboxMap — sandboxMap is
+ *   1. `provider.ensure` resumes from the state-store, not sandboxMap — sandboxMap is
  *      informational metadata read by tools/UI, never the source of truth
  *      for provisioning.
- *   2. Removing it here would race with a concurrent VM_START's
+ *   2. Removing it here would race with a concurrent SANDBOX_START's
  *      `setSandboxMapEntry` on the same metadata JSON column (read-modify-write
- *      is not atomic; see vm-map.ts). The next VM_START overwrites the
- *      entry with a fresh one anyway — the `vmId` is deterministic
+ *      is not atomic; see sandbox-map.ts). The next SANDBOX_START overwrites the
+ *      entry with a fresh one anyway — the `sandboxHandle` is deterministic
  *      (computeHandle), so the entry's identity is stable across
  *      reprovisions.
  *
@@ -351,10 +351,10 @@ async function emitLifecycle(args: {
     };
 
     // Watchdog: if the source has only ever surfaced `claiming` after
-    // NO_CLAIM_MAX_MS, the SandboxClaim was never posted (VM_START likely
+    // NO_CLAIM_MAX_MS, the SandboxClaim was never posted (SANDBOX_START likely
     // failed earlier). Surface `claim-never-created` so the UI shows the
     // retry affordance instead of stalling. Only meaningful for
-    // agent-sandbox; other runners go straight to `ready` so the watchdog
+    // agent-sandbox; other providers go straight to `ready` so the watchdog
     // never fires.
     const watchdogTimer = setTimeout(() => {
       if (claimSeen || settled) return;
@@ -365,7 +365,7 @@ async function emitLifecycle(args: {
             kind: "failed",
             reason: "claim-never-created",
             message:
-              "Sandbox claim was never created. The VM_START call may have failed earlier — check the start error.",
+              "Sandbox claim was never created. The SANDBOX_START call may have failed earlier — check the start error.",
           } satisfies ClaimPhase),
         })
         .catch(() => {});
@@ -469,7 +469,7 @@ async function proxyDaemonEvents(args: {
         continue;
       }
       // Budget elapsed and handle still missing — genuine eviction. Emit
-      // `gone` so the client's self-heal (VM_START) takes over.
+      // `gone` so the client's self-heal (SANDBOX_START) takes over.
       await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
       return;
     }

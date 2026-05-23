@@ -99,8 +99,8 @@ export interface ProxyRequestInit {
 }
 
 /**
- * Persisted on `vmMap` and `sandbox_runner_state.sandbox_provider_kind`.
- * When widening, keep `VmMapEntry.sandboxProviderKind` in sync.
+ * Persisted on `sandboxMap` and `sandbox_runner_state.sandbox_provider_kind`.
+ * When widening, keep `SandboxRecord.sandboxProviderKind` in sync.
  */
 export type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
 
@@ -116,8 +116,8 @@ export interface SandboxProvider {
   getPreviewUrl(handle: string): Promise<string | null>;
 
   /**
-   * Passthrough to the daemon control plane. Path is daemon-internal; runners
-   * translate (Docker prepends `/_daemon`). Bearer tokens stay inside the runner.
+   * Passthrough to the daemon control plane. Path is daemon-internal; providers
+   * translate (Docker prepends `/_daemon`). Bearer tokens stay inside the provider.
    */
   proxyDaemonRequest(
     handle: string,
@@ -128,12 +128,12 @@ export interface SandboxProvider {
   /**
    * Stream of phase transitions for the pre-Ready lifecycle. Used by mesh's
    * unified `/api/vm-events` SSE so the UI can show meaningful progress
-   * between VM_START and the daemon SSE coming online.
+   * between SANDBOX_START and the daemon SSE coming online.
    *
    * agent-sandbox is the interesting case: K8s scheduling, image pulls, and
    * node provisioning can each take many seconds, and surfacing them
-   * granularly turns a black hole into a progress bar. The other runners
-   * have no equivalent black hole — once VM_START's `runner.ensure` returns,
+   * granularly turns a black hole into a progress bar. The other providers
+   * have no equivalent black hole — once SANDBOX_START's `provider.ensure` returns,
    * the daemon's HTTP server is already up — so they yield a single `ready`
    * phase and end the stream immediately.
    *

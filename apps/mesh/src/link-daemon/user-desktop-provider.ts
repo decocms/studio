@@ -114,7 +114,7 @@ export function createDesktopSandboxProvider(
   // In-flight ensureSandbox promises, keyed by handle. The cluster
   // creates a fresh `DesktopSandboxProvider` for every request
   // (its `records` map is per-instance), so several concurrent
-  // VM_START / preview / proxyDaemonRequest paths can race here
+  // SANDBOX_START / preview / proxyDaemonRequest paths can race here
   // before any of them gets a chance to populate `sandboxes`. Without
   // dedup, each would spawn its own daemon + clone + install. Memoizing
   // the promise collapses concurrent callers onto the first one's work.

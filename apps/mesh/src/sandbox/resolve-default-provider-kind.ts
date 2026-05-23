@@ -1,12 +1,12 @@
 /**
- * Default sandbox provider kind for `(VM_START, ensureSandbox)` when the
+ * Default sandbox provider kind for `(SANDBOX_START, ensureSandbox)` when the
  * caller hasn't explicitly chosen one.
  *
  * Policy:
  *   - link online for this user → "user-desktop"
- *   - otherwise → whatever the env's cluster runner is (local-docker/cluster)
+ *   - otherwise → whatever the env's cluster provider is (local-docker/cluster)
  *
- * The link probe is the same one `resolveDispatchTarget` uses, so manual VM
+ * The link probe is the same one `resolveDispatchTarget` uses, so manual sandbox
  * start (from the branch picker) and auto-start (from VmEventsBridge) agree.
  */
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";

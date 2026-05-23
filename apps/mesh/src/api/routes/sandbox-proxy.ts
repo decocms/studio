@@ -267,7 +267,7 @@ export const createVmRoutes = () => {
     }
     // On "start", refresh the daemon's env from the virtual MCP's current
     // `metadata.runtime.env`. The dev script inherits env at spawn time, so
-    // edits made after the last VM_START don't reach a running process
+    // edits made after the last SANDBOX_START don't reach a running process
     // unless we push the freshly-resolved env to /config before the
     // orchestrator restarts it.
     if (step === "start") {
