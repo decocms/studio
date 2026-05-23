@@ -9,9 +9,9 @@
  */
 
 import { Kysely, sql } from "kysely";
-import type { ServerPluginMigration } from "@decocms/bindings/server-plugin";
+import type { EngineMigration } from "./index";
 
-export const migration: ServerPluginMigration = {
+export const migration: EngineMigration = {
   name: "001-workflows",
 
   async up(db: Kysely<unknown>): Promise<void> {

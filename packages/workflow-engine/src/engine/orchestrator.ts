@@ -8,6 +8,7 @@ import type {
   ParsedStepResult,
   ContextStepResult,
 } from "../storage/workflow-execution";
+import type { PublishEventFn, CreateMCPProxyFn } from "../ports";
 import {
   extractRefs,
   parseAtRef,
@@ -27,17 +28,10 @@ function getStepType(step: Step): StepType {
 
 type OnError = "fail" | "continue";
 
-export type PublishEventFn = (
-  type: string,
-  subject: string,
-  data?: Record<string, unknown>,
-  options?: { deliverAt?: string },
-) => Promise<void>;
-
 export interface OrchestratorContext {
   storage: WorkflowExecutionStorage;
   publish: PublishEventFn;
-  createMCPProxy: ToolStepContext["createMCPProxy"];
+  createMCPProxy: CreateMCPProxyFn;
 }
 
 function log(eid: string, msg: string) {

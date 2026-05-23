@@ -7,7 +7,7 @@ import type {
   ExecutionStatus,
 } from "./types";
 import type { Step } from "@decocms/bindings/workflow";
-import { parseJson } from "../types";
+import { parseJson } from "./json";
 
 export interface ParsedWorkflow {
   id: string;

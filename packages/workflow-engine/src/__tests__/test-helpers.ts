@@ -1,12 +1,12 @@
 import { Kysely } from "kysely";
 import { PGlite } from "@electric-sql/pglite";
 import { KyselyPGlite } from "kysely-pglite";
-import type { WorkflowDatabase } from "../../server/storage/types";
-import { WorkflowExecutionStorage } from "../../server/storage/workflow-execution";
-import { migrations } from "../../server/migrations";
-import { migration as migration001 } from "../../server/migrations/001-workflows";
-import { handleWorkflowEvents } from "../../server/events/handler";
-import type { OrchestratorContext } from "../../server/engine/orchestrator";
+import type { WorkflowDatabase } from "../storage/types";
+import { WorkflowExecutionStorage } from "../storage/workflow-execution";
+import { migrations } from "../storage/migrations";
+import { migration as migration001 } from "../storage/migrations/001-workflows";
+import { handleWorkflowEvents } from "../engine/router";
+import type { OrchestratorContext } from "../engine/orchestrator";
 import type { Step } from "@decocms/bindings/workflow";
 
 export async function createTestDb(): Promise<{

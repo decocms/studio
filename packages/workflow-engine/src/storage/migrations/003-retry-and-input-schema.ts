@@ -1,7 +1,7 @@
 import type { Kysely } from "kysely";
-import type { ServerPluginMigration } from "@decocms/bindings/server-plugin";
+import type { EngineMigration } from "./index";
 
-export const migration: ServerPluginMigration = {
+export const migration: EngineMigration = {
   name: "003-retry-and-input-schema",
   async up(db: Kysely<unknown>): Promise<void> {
     await db.schema

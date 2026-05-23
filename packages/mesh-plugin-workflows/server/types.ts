@@ -1,14 +1,21 @@
 /**
- * Workflows Plugin - Server Types
+ * Workflows Plugin - Mesh-side type contracts.
  *
- * Type definitions for the MeshContext shape used by workflow tools.
- * Tools receive MeshContext as `unknown` -- these types provide safe casting.
+ * MeshContext shape, runtime context validation, and the plugin's storage
+ * singleton accessor used by tools. Engine internals live in
+ * `@decocms/workflow-engine`; this file only carries the mesh-specific
+ * adapters that need to stay co-located with the tools.
  */
 
-import type { WorkflowPluginStorage } from "./storage";
+import type { WorkflowEngineStorage, MCPProxy } from "@decocms/workflow-engine";
+
+export type WorkflowPluginStorage = WorkflowEngineStorage;
+
+export { parseJson } from "@decocms/workflow-engine";
+export type { MCPProxy } from "@decocms/workflow-engine";
 
 /**
- * Minimal event bus interface exposed to workflow tools
+ * Minimal event bus interface exposed to workflow tools.
  */
 export interface WorkflowEventBus {
   publish(
@@ -24,25 +31,8 @@ export interface WorkflowEventBus {
 }
 
 /**
- * MCP proxy interface (subset of Client from @modelcontextprotocol/sdk)
- */
-export interface MCPProxy {
-  callTool: (
-    params: { name: string; arguments?: Record<string, unknown> },
-    resultSchema?: unknown,
-    options?: { timeout?: number },
-  ) => Promise<{
-    content?: unknown;
-    structuredContent?: unknown;
-    isError?: boolean;
-  }>;
-  close: () => Promise<void>;
-}
-
-/**
- * MeshContext shape available to workflow tools.
- *
- * This is a subset of the full MeshContext -- only the parts workflows need.
+ * MeshContext shape available to workflow tools. A subset of the full
+ * MeshContext — only the parts workflows need.
  */
 export interface WorkflowMeshContext {
   organization: { id: string; slug?: string; name?: string };
@@ -58,8 +48,8 @@ export interface WorkflowMeshContext {
 }
 
 /**
- * Cast unknown ctx to WorkflowMeshContext.
- * Throws if organization context is missing.
+ * Cast unknown ctx to WorkflowMeshContext. Throws if organization context
+ * is missing.
  */
 export function requireWorkflowContext(ctx: unknown): WorkflowMeshContext {
   const meshCtx = ctx as WorkflowMeshContext;
@@ -70,25 +60,7 @@ export function requireWorkflowContext(ctx: unknown): WorkflowMeshContext {
 }
 
 // ============================================================================
-// Shared utilities
-// ============================================================================
-
-/**
- * Safely parse a JSON value that may be a string (from DB) or already parsed.
- */
-export function parseJson(value: unknown): unknown {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "object") return value;
-  if (typeof value !== "string") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
-
-// ============================================================================
-// Plugin storage singleton (set during plugin initialization)
+// Plugin storage singleton (populated during plugin createStorage())
 // ============================================================================
 
 let pluginStorage: WorkflowPluginStorage | null = null;

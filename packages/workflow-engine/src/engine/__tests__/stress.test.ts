@@ -18,7 +18,7 @@ import type { Kysely } from "kysely";
 import type { WorkflowDatabase } from "../../storage/types";
 import { WorkflowExecutionStorage } from "../../storage/workflow-execution";
 import { WorkflowCollectionStorage } from "../../storage/workflow-collection";
-import { handleWorkflowEvents } from "../../events/handler";
+import { handleWorkflowEvents } from "../router";
 import {
   createTestDb,
   createMockOrchestratorContext,

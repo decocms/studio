@@ -1,130 +1,31 @@
-import {
-  handleExecutionCreated,
-  handleStepCompleted,
-  handleStepExecute,
-  type OrchestratorContext,
-} from "../engine/orchestrator";
-
-export const WORKFLOW_EVENTS = [
-  "workflow.execution.created",
-  "workflow.execution.resumed",
-  "workflow.step.execute",
-  "workflow.step.completed",
-] as const;
-
-interface WorkflowEvent {
-  type: string;
-  data?: unknown;
-  subject?: string;
-  id: string;
-}
-
 /**
- * Route a single workflow event to the appropriate orchestrator handler.
- * Returns a promise that resolves when the handler completes.
+ * Mesh-side event delivery for the workflow engine.
  *
- * For step.execute failures, persists the error to DB and publishes
- * a step.completed notification so the workflow doesn't get stuck.
+ * The mesh delivers each event batch with a per-org publish/createMCPProxy
+ * already bound (via ServerPluginEventContext). So instead of using the
+ * engine's createWorkflowEngine factory (which assumes stable ports),
+ * this adapter builds an OrchestratorContext per batch and calls the
+ * engine's routeEvent directly.
+ *
+ * Fire-and-forget: handlers run in the background so the event bus worker
+ * can release its processing lock immediately. routeEvent's promise never
+ * rejects — errors get converted into step-error + step.completed pairs.
  */
-function routeEvent(
-  event: WorkflowEvent,
-  ctx: OrchestratorContext,
-): Promise<void> | undefined {
-  if (!event.subject) return undefined;
 
-  const executionId = event.subject;
-  const data = event.data as Record<string, unknown> | undefined;
+import {
+  routeEvent,
+  WORKFLOW_EVENT_TYPES,
+  type OrchestratorContext,
+  type WorkflowEvent,
+} from "@decocms/workflow-engine";
 
-  switch (event.type) {
-    case "workflow.execution.created":
-    case "workflow.execution.resumed":
-      return handleExecutionCreated(ctx, executionId).catch((error: Error) => {
-        console.error(
-          `[WF:event] ${event.type} failed for ${executionId}:`,
-          error,
-        );
-      });
+export const WORKFLOW_EVENTS = WORKFLOW_EVENT_TYPES;
 
-    case "workflow.step.execute":
-      if (!data?.stepName) return undefined;
-      return handleStepExecute(
-        ctx,
-        executionId,
-        data.stepName as string,
-        data.iterationIndex as number | undefined,
-      ).catch(async (error: Error) => {
-        console.error(
-          `[WF:event] step.execute failed for ${executionId}/${data.stepName}:`,
-          error,
-        );
-        const stepId =
-          data.iterationIndex !== undefined
-            ? `${data.stepName}[${data.iterationIndex}]`
-            : (data.stepName as string);
-        try {
-          await ctx.storage.updateStepResult(executionId, stepId, {
-            error: error.message,
-            completed_at_epoch_ms: Date.now(),
-          });
-          await ctx.publish("workflow.step.completed", executionId, {
-            stepName: data.stepName as string,
-            iterationIndex: data.iterationIndex as number | undefined,
-          });
-        } catch (publishError) {
-          console.error(
-            `[WF:event] Failed to publish step.completed error event:`,
-            publishError,
-          );
-        }
-      });
-
-    case "workflow.step.completed":
-      if (!data?.stepName) return undefined;
-      return handleStepCompleted(
-        ctx,
-        executionId,
-        data.stepName as string,
-        data.iterationIndex as number | undefined,
-      ).catch((error: Error) => {
-        console.error(
-          `[WF:event] step.completed failed for ${executionId}/${data.stepName}:`,
-          error,
-        );
-      });
-
-    default:
-      return undefined;
-  }
-}
-
-/**
- * Fire-and-forget handler for production use.
- * Launches all handlers as background tasks without awaiting them,
- * so the event bus worker can release its processing lock immediately.
- */
-function fireWorkflowEventHandlers(
+export function handleWorkflowEventsFireAndForget(
   events: WorkflowEvent[],
   ctx: OrchestratorContext,
 ): void {
   for (const event of events) {
-    routeEvent(event, ctx);
+    void routeEvent(event, ctx);
   }
 }
-
-/**
- * Awaitable handler for testing.
- * Returns a promise that resolves after all handlers have settled.
- */
-export async function handleWorkflowEvents(
-  events: WorkflowEvent[],
-  ctx: OrchestratorContext,
-): Promise<void> {
-  const promises: Promise<void>[] = [];
-  for (const event of events) {
-    const p = routeEvent(event, ctx);
-    if (p) promises.push(p);
-  }
-  await Promise.allSettled(promises);
-}
-
-export { fireWorkflowEventHandlers as handleWorkflowEventsFireAndForget };

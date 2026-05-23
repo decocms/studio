@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import type { Kysely } from "kysely";
 import type { WorkflowDatabase } from "../../storage/types";
 import { WorkflowExecutionStorage } from "../../storage/workflow-execution";
-import { handleWorkflowEvents } from "../../events/handler";
+import { handleWorkflowEvents } from "../router";
 import {
   createTestDb,
   createMockOrchestratorContext,

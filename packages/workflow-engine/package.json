@@ -1,0 +1,27 @@
+{
+  "name": "@decocms/workflow-engine",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pure DAG workflow execution engine — storage, orchestration, ref resolution, sandbox.",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./migrations": "./src/storage/migrations/index.ts"
+  },
+  "dependencies": {
+    "@decocms/bindings": "workspace:*",
+    "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
+    "kysely": "^0.28.12",
+    "quickjs-emscripten-core": "^0.31.0",
+    "sucrase": "^3.35.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@electric-sql/pglite": "^0.3.15",
+    "kysely-pglite": "^0.6.1",
+    "typescript": "^5.8.3"
+  }
+}

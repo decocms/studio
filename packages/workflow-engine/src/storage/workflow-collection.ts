@@ -1,5 +1,5 @@
 /**
- * Workflows Plugin - Workflow Collection Storage
+ * Workflow Collection Storage
  *
  * CRUD operations for workflow templates (workflow_collection table).
  */
@@ -10,7 +10,7 @@ import type {
   WorkflowCollectionRow,
   NewWorkflowCollection,
 } from "./types";
-import { parseJson } from "../types";
+import { parseJson } from "./json";
 
 export interface ParsedWorkflowCollection
   extends Omit<WorkflowCollectionRow, "steps" | "input_schema"> {
