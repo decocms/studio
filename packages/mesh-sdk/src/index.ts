@@ -123,7 +123,7 @@ export {
   type RuntimeMetadata,
   type RuntimeEnvEntry,
   ENV_VAR_KEY_RE,
-  parseVmMapEntry,
+  parseSandboxRecord,
   parseBranchMap,
   normalizeSandboxMap,
   type SandboxProviderKind,

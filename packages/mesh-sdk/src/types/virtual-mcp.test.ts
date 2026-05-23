@@ -4,7 +4,7 @@ import {
   VirtualMcpUILayoutSchema,
   VirtualMCPUpdateDataSchema,
   SandboxRecordSchema,
-  parseVmMapEntry,
+  parseSandboxRecord,
   parseBranchMap,
 } from "./virtual-mcp";
 
@@ -158,9 +158,9 @@ describe("parseBranchMap", () => {
   });
 });
 
-describe("parseVmMapEntry", () => {
+describe("parseSandboxRecord", () => {
   test("accepts canonical sandboxProviderKind", () => {
-    const result = parseVmMapEntry({
+    const result = parseSandboxRecord({
       sandboxHandle: "v1",
       previewUrl: null,
       sandboxProviderKind: "local-docker",
@@ -170,7 +170,7 @@ describe("parseVmMapEntry", () => {
 
   test("rejects legacy kind values", () => {
     expect(() =>
-      parseVmMapEntry({
+      parseSandboxRecord({
         sandboxHandle: "v1",
         previewUrl: null,
         sandboxProviderKind: "docker",
@@ -180,7 +180,7 @@ describe("parseVmMapEntry", () => {
 
   test("rejects rows missing `sandboxHandle` (legacy `vmId` no longer accepted)", () => {
     expect(() =>
-      parseVmMapEntry({
+      parseSandboxRecord({
         vmId: "v-pre-rename",
         previewUrl: null,
         sandboxProviderKind: "local-docker",

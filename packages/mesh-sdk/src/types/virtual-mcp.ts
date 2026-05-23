@@ -283,7 +283,7 @@ export type SandboxRecord = z.infer<typeof SandboxRecordSchema>;
  * persisted legacy value (`runnerKind`, `vmId`, legacy kind names), so
  * readers no longer accept those shapes — Zod throws on any leftover.
  */
-export function parseVmMapEntry(raw: unknown): SandboxRecord {
+export function parseSandboxRecord(raw: unknown): SandboxRecord {
   return SandboxRecordSchema.parse(raw);
 }
 
