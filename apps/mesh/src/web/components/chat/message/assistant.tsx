@@ -25,6 +25,7 @@ import {
   BrandContextListPart,
 } from "./parts/tool-call-part/index.ts";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
+import { ThreadHtmlPreviews } from "./thread-html-previews.tsx";
 import { ThreadOutputs } from "./thread-outputs.tsx";
 import {
   type DataParts,
@@ -717,7 +718,10 @@ export function MessageAssistant({
             <GeneratingFooter startedAt={startedAt} />
           )}
           {isLast && !isLoading && taskId && (
-            <ThreadOutputs threadId={taskId} />
+            <>
+              <ThreadHtmlPreviews />
+              <ThreadOutputs threadId={taskId} />
+            </>
           )}
         </div>
       ) : isLoading ? (

@@ -320,38 +320,18 @@ export function createVmTools(params: VmToolsParams) {
     description: EDIT_DESCRIPTION,
     inputSchema: zodSchema(EditInputSchema),
     execute: async (input) => {
-      const daemonResult = await call("/_decopilot_vm/edit", input);
-      // `edit` carries old_string/new_string, not the full file. Read it
-      // back from the daemon after the replacement lands so the buffer
-      // sees the post-edit state. The bytes value returned to the chat
-      // row reflects this latest read, but only the final state per slug
-      // gets PUT at flush time.
-      //
-      // The edit itself already succeeded on disk by the time we get here.
-      // If this follow-up read trips (network blip, daemon hiccup, file
-      // disappeared between calls), surface the edit success rather than
-      // flipping it to an error — the preview is best-effort.
-      let readResult:
-        | { kind: "text"; content: string }
-        | { kind: "image"; mediaType: string };
-      try {
-        readResult = (await call("/_decopilot_vm/read", {
-          path: input.path,
-        })) as
-          | { kind: "text"; content: string }
-          | { kind: "image"; mediaType: string };
-      } catch (err) {
-        console.warn(
-          "[vm-tools] edit preview refresh read failed — returning daemon edit result without preview",
-          err,
-        );
-        return daemonResult;
-      }
-      if (readResult.kind !== "text") return daemonResult;
-      const preview = htmlPageBuffer.enqueue(input.path, readResult.content);
+      const daemonResult = (await call("/_decopilot_vm/edit", input)) as {
+        ok: boolean;
+        replacements: number;
+        content?: string;
+      };
+      const postEditContent = daemonResult.content;
+      const { content: _omit, ...resultForClient } = daemonResult;
+      if (typeof postEditContent !== "string") return resultForClient;
+      const preview = htmlPageBuffer.enqueue(input.path, postEditContent);
       return preview
-        ? { ...(daemonResult as object), htmlPreview: preview }
-        : daemonResult;
+        ? { ...resultForClient, htmlPreview: preview }
+        : resultForClient;
     },
   });
 
