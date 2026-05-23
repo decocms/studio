@@ -126,6 +126,16 @@ const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
 const CLEAN_RECONNECT_DELAY_MS = 50;
 
+// Browser uses rAF for chunk-coalescing; tests run under Bun where rAF is absent.
+const scheduleFrame: (cb: () => void) => number =
+  typeof requestAnimationFrame === "function"
+    ? requestAnimationFrame
+    : (cb) => setTimeout(cb, 0) as unknown as number;
+const cancelFrame: (id: number) => void =
+  typeof cancelAnimationFrame === "function"
+    ? cancelAnimationFrame
+    : (id) => clearTimeout(id);
+
 /**
  * Apply a SubmitAction to a messages list. Returns the next list, or null
  * if the action's target (toolCallId / approvalId) wasn't found. Callers
@@ -826,14 +836,14 @@ export class ThreadConnection {
       last = msg;
       pending = msg;
       if (rafHandle === null) {
-        rafHandle = requestAnimationFrame(commit);
+        rafHandle = scheduleFrame(commit);
       }
       if (this.status.get().kind !== "streaming") {
         this.status.set({ kind: "streaming" });
       }
     }
     if (rafHandle !== null) {
-      cancelAnimationFrame(rafHandle);
+      cancelFrame(rafHandle);
       rafHandle = null;
     }
     if (pending) commit();
