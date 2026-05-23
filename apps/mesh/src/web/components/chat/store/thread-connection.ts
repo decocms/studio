@@ -805,20 +805,38 @@ export class ThreadConnection {
       },
     });
 
+    // Coalesce store updates to at most one per animation frame. A long
+    // tool-args burst (e.g. claude-sonnet emitting hundreds of
+    // `tool-input-delta` chunks in a few seconds) used to call
+    // `messages.update` per chunk and trigger one React re-render each —
+    // the resulting forced-reflow storm froze the chat. `readUIMessageStream`
+    // yields cumulative messages, so dropping intermediate frames is safe:
+    // each commit always carries the latest state.
     let last: UIMessage | null = null;
+    let pending: UIMessage | null = null;
+    let rafHandle: number | null = null;
+    const commit = () => {
+      rafHandle = null;
+      if (!pending) return;
+      const msg = pending;
+      pending = null;
+      this.messages.update((curr) => dropRedundantStubs(upsertById(curr, msg)));
+    };
     for await (const msg of iter) {
       last = msg;
-      // Replace-by-id in place — the AI SDK reader emits the cumulative
-      // message each chunk; we mirror that into `messages`. `dropRedundantStubs`
-      // hides the persisted `msg_async_stub_*` row once the live message
-      // carries the same `tool-web_search` part (which happens on the
-      // first tool-input chunk), so we never render the stub alongside
-      // the real assistant turn on a reattach.
-      this.messages.update((curr) => dropRedundantStubs(upsertById(curr, msg)));
+      pending = msg;
+      if (rafHandle === null) {
+        rafHandle = requestAnimationFrame(commit);
+      }
       if (this.status.get().kind !== "streaming") {
         this.status.set({ kind: "streaming" });
       }
     }
+    if (rafHandle !== null) {
+      cancelAnimationFrame(rafHandle);
+      rafHandle = null;
+    }
+    if (pending) commit();
 
     const finishReason = this.pendingFinishReason;
     const discard = this.discardOnClose;

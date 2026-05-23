@@ -243,10 +243,6 @@ export {
   isBrandContextSetup,
   getBrandContextSetupId,
   getWellKnownBrandContextSetupVirtualMCP,
-  // Web-Developer utilities
-  isWebDeveloper,
-  getWebDeveloperId,
-  getWellKnownWebDeveloperVirtualMCP,
   // Studio Pack utilities
   StudioPackAgentId,
   isStudioPackAgent,

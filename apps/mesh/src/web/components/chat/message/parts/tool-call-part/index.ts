@@ -4,7 +4,6 @@ export { WebSearchPart } from "./web-search.tsx";
 export { UserAskPart } from "./user-ask.tsx";
 export { SubtaskPart, SubtaskPartFallback } from "./subtask.tsx";
 export { ProposePlanPart } from "./propose-plan.tsx";
-export { WriteHtmlPagePart, toHtmlPagePart } from "./write-html-page.tsx";
 export {
   BrandContextPart,
   BrandContextGetPart,

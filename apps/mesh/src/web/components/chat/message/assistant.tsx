@@ -20,8 +20,6 @@ import {
   SubtaskPart,
   SubtaskPartFallback,
   UserAskPart,
-  WriteHtmlPagePart,
-  toHtmlPagePart,
   BrandContextPart,
   BrandContextGetPart,
   BrandContextListPart,
@@ -487,18 +485,6 @@ function MessagePart({
       return null;
     default: {
       const fallback = part as ToolUIPart;
-      // Agent-profile built-ins (web-developer, brand-context, etc.) aren't
-      // in the BuiltInToolSet union but still need bespoke renderers. Match
-      // by string before falling through to the generic shell.
-      const htmlPagePart = toHtmlPagePart(fallback);
-      if (htmlPagePart) {
-        return (
-          <WriteHtmlPagePart
-            part={htmlPagePart}
-            latency={getMeta(fallback.toolCallId)?.latencySeconds}
-          />
-        );
-      }
       if (
         fallback.type === "tool-brand_context_setup" ||
         fallback.type === "tool-BRAND_CONTEXT_EXTRACT"

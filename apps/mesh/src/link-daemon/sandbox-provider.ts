@@ -102,6 +102,11 @@ export interface DesktopSandboxProviderDeps {
   /** Override port allocation (tests provide a deterministic value). */
   pickPort?: () => Promise<number> | number;
   maxSandboxes?: number;
+  /**
+   * Used for the cache-hit liveness probe. Default `fetch`; tests inject
+   * a mock so the probe doesn't hit a non-existent local port.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 export function createDesktopSandboxProvider(
@@ -110,6 +115,43 @@ export function createDesktopSandboxProvider(
   const cap = deps.maxSandboxes ?? 20;
   const sandboxes = new Map<string, SandboxState>();
   const pickPort = deps.pickPort ?? allocateEphemeralPort;
+  const fetcher = deps.fetchImpl ?? fetch;
+
+  /**
+   * Short-timeout GET to `<sandboxUrl>/health`. The cache-hit fast path
+   * trusts this entry only if the underlying spawned daemon is still
+   * reachable — the `spawned.exited` watchdog catches clean process
+   * deaths, but unclean ones (OOM kill, host sleep/wake quirks, tunnel
+   * disconnect) leave the cache lying about a corpse. Without this
+   * probe the cluster's `POST /api/sandboxes` retries replay the dead
+   * URL and the auto-restart loop never converges.
+   */
+  const probeAlive = async (sandboxUrl: string): Promise<boolean> => {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 1500);
+    try {
+      const res = await fetcher(`${sandboxUrl}/health`, { signal: ac.signal });
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const evictDead = (state: SandboxState): void => {
+    try {
+      state.process.kill("SIGTERM");
+    } catch {
+      // already gone
+    }
+    try {
+      state.tunnel?.close();
+    } catch {
+      // no-op
+    }
+    sandboxes.delete(state.handle);
+  };
 
   // In-flight ensureSandbox promises, keyed by handle. The cluster
   // creates a fresh `DesktopSandboxProvider` for every request
@@ -215,8 +257,13 @@ export function createDesktopSandboxProvider(
     async ensureSandbox(input) {
       const existing = sandboxes.get(input.handle);
       if (existing) {
-        existing.lastUsedAt = Date.now();
-        return { sandboxUrl: existing.sandboxUrl, port: existing.port };
+        if (await probeAlive(existing.sandboxUrl)) {
+          existing.lastUsedAt = Date.now();
+          return { sandboxUrl: existing.sandboxUrl, port: existing.port };
+        }
+        // Cached entry is dead — tear it down before respawning so the new
+        // entry's spawn isn't fighting the corpse for the same workdir.
+        evictDead(existing);
       }
       const pending = inflight.get(input.handle);
       if (pending) return pending;

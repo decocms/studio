@@ -11,7 +11,6 @@ import {
   Folder,
   Globe02,
   Monitor01,
-  Palette,
   SearchMd,
   Server01,
   TerminalSquare,
@@ -58,16 +57,4 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplay> = {
   take_screenshot: { icon: Monitor01, label: "Take Screenshot" },
   scrape_url: { icon: Globe02, label: "Scrape URL" },
   inspect_page: { icon: Code01, label: "Inspect Page" },
-
-  // Web-developer (HTML authoring) tools
-  write_html_page: { icon: Globe02, label: "Write Page" },
-  read_html_page: { icon: File06, label: "Read Page" },
-  list_html_pages: { icon: Folder, label: "List Pages" },
-  delete_html_page: { icon: Edit01, label: "Delete Page" },
-
-  // Brand-context tools
-  brand_context_setup: { icon: Palette, label: "Set up brand" },
-  update_brand_context: { icon: Palette, label: "Update brand" },
-  reextract_brand_context: { icon: Palette, label: "Re-extract brand" },
-  confirm_brand: { icon: Palette, label: "Confirm brand" },
 };

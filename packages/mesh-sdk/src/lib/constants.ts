@@ -304,27 +304,6 @@ export function getWellKnownBrandContextSetupVirtualMCP(
   });
 }
 
-// ---- Web-Developer ----
-// Authors static HTML pages and writes them to org object storage. Tools
-// (write_html_page, read_html_page, list_html_pages, delete_html_page)
-// are injected by `dispatchRun`.
-const webDeveloperPrefix = createWellKnownAgentPrefix("web-developer_");
-export const isWebDeveloper = webDeveloperPrefix.is;
-export const getWebDeveloperId = webDeveloperPrefix.get;
-
-export function getWellKnownWebDeveloperVirtualMCP(
-  organizationId: string,
-): VirtualMCPEntity {
-  return defineWellKnownAgentVMCP({
-    id: getWebDeveloperId(organizationId),
-    organizationId,
-    title: "Web developer",
-    description:
-      "Builds static HTML pages and previews them inline via object storage.",
-    icon: "icon://Globe02?color=sky",
-  });
-}
-
 // ---- Site Diagnostics ----
 const siteDiagnosticsPrefix = createWellKnownAgentPrefix("site-diagnostics_");
 export const isSiteDiagnostics = siteDiagnosticsPrefix.is;

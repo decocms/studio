@@ -72,15 +72,6 @@ export interface WebPageTabParsed {
   slug: string;
 }
 
-/**
- * Composite tab id for the web-developer's live HTML preview. Carries the
- * slug so the panel can pick the matching `write_html_page` tool call when
- * the agent is iterating on multiple pages within a chat.
- */
-export function formatWebPageTabId(slug: string): string {
-  return `web-page:${slug}`;
-}
-
 export function parseWebPageTabId(
   tabId: string | undefined,
 ): WebPageTabParsed | null {

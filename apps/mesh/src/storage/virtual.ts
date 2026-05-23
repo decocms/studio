@@ -15,10 +15,8 @@ import { generatePrefixedId } from "@/shared/utils/generate-id";
 import {
   getWellKnownBrandContextSetupVirtualMCP,
   getWellKnownDecopilotVirtualMCP,
-  getWellKnownWebDeveloperVirtualMCP,
   isBrandContextSetup,
   isDecopilot,
-  isWebDeveloper,
   normalizeVmMap,
 } from "@decocms/mesh-sdk";
 import type {
@@ -157,18 +155,6 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       const resolvedOrgId = organizationId ?? bcsOrgId;
       return {
         ...getWellKnownBrandContextSetupVirtualMCP(resolvedOrgId),
-        pinned: false,
-        connections: [],
-      };
-    }
-
-    // Well-known web-developer agent. Dynamic system prompt + html-page
-    // tools are wired in by dispatchRun based on this id; no DB row.
-    const webDevOrgId = isWebDeveloper(id);
-    if (webDevOrgId) {
-      const resolvedOrgId = organizationId ?? webDevOrgId;
-      return {
-        ...getWellKnownWebDeveloperVirtualMCP(resolvedOrgId),
         pinned: false,
         connections: [],
       };
