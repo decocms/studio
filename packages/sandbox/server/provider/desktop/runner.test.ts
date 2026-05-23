@@ -598,6 +598,44 @@ describe("DesktopSandboxProvider + state store", () => {
     expect(postCount).toBe(2);
   });
 
+  it("forgetHandle() clears records + state-store row without calling the link", async () => {
+    // The auto-restart path needs this: when the captured runner's
+    // proxy fails, the harness must flush THIS runner's cache so the
+    // retry doesn't replay the dead URL from records. Hitting the link
+    // would be wasted (we already know the daemon is gone).
+    const stateStore = makeFakeStateStore();
+    const { fetch, calls } = makeFakeFetch((call) => {
+      if (call.url.endsWith("/health"))
+        return new Response("", { status: 200 });
+      if (call.url.endsWith("/api/sandboxes"))
+        return jsonResponse({ sandboxUrl: `${TUNNEL}/_sandbox/forget` });
+      // Surface any unexpected call (e.g. DELETE) so the test fails loud.
+      return new Response("UNEXPECTED", { status: 599 });
+    });
+    const provider = new DesktopSandboxProvider({
+      link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
+      fetchImpl: fetch,
+      stateStore,
+    });
+
+    const sandbox = await provider.ensure({ userId: "u", projectRef: "p" });
+    expect(stateStore.rows.size).toBe(1);
+    const callsBefore = calls.length;
+
+    await provider.forgetHandle(sandbox.handle);
+
+    expect(stateStore.rows.size).toBe(0);
+    // No new fetches beyond what ensure already issued.
+    expect(calls.length).toBe(callsBefore);
+    // Cache is empty — proxy now returns 404 since record can't be found.
+    const res = await provider.proxyDaemonRequest(sandbox.handle, "/x", {
+      method: "GET",
+      headers: new Headers(),
+      body: null,
+    });
+    expect(res.status).toBe(404);
+  });
+
   it("delete() clears the state store row", async () => {
     const stateStore = makeFakeStateStore();
     const { fetch } = makeFakeFetch((call) => {

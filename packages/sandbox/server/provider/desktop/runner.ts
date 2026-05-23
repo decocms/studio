@@ -271,6 +271,22 @@ export class DesktopSandboxProvider implements SandboxProvider {
     }
   }
 
+  /**
+   * Drop our knowledge of `handle` without contacting the link. The cluster
+   * builds a fresh provider per request, so this provider instance's cache
+   * is invisible to the next request — but within a single chat run, the
+   * harness captures one provider for proxy calls and a *different* one
+   * (built inside `ensureVm`) does the respawn. Without this method the
+   * captured instance keeps serving the corpse URL out of its in-process
+   * `records` map on the retry, defeating auto-restart.
+   */
+  async forgetHandle(handle: string): Promise<void> {
+    this.records.delete(handle);
+    if (this.stateStore) {
+      await this.stateStore.deleteByHandle(RUNNER_KIND, handle).catch(() => {});
+    }
+  }
+
   async delete(handle: string): Promise<void> {
     const rec = this.records.get(handle);
     this.records.delete(handle);

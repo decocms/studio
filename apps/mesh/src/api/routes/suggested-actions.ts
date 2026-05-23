@@ -67,6 +67,12 @@ export function createSuggestedActionsRoutes() {
     const agentEntries = await Promise.all(
       agentIds.map(async (id) => {
         const agent = await mesh.storage.virtualMcps.findById(id, orgId);
+        // findById does not filter DB rows by organization_id (only the
+        // well-known synthetic agents respect the param). Drop any agent
+        // whose org doesn't match so cross-org metadata can't leak.
+        if (agent && agent.organization_id !== orgId) {
+          return [id, null] as const;
+        }
         return [id, agent] as const;
       }),
     );

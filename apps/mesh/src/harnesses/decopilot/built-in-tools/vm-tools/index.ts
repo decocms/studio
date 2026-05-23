@@ -326,11 +326,27 @@ export function createVmTools(params: VmToolsParams) {
       // sees the post-edit state. The bytes value returned to the chat
       // row reflects this latest read, but only the final state per slug
       // gets PUT at flush time.
-      const readResult = (await call("/_decopilot_vm/read", {
-        path: input.path,
-      })) as
+      //
+      // The edit itself already succeeded on disk by the time we get here.
+      // If this follow-up read trips (network blip, daemon hiccup, file
+      // disappeared between calls), surface the edit success rather than
+      // flipping it to an error — the preview is best-effort.
+      let readResult:
         | { kind: "text"; content: string }
         | { kind: "image"; mediaType: string };
+      try {
+        readResult = (await call("/_decopilot_vm/read", {
+          path: input.path,
+        })) as
+          | { kind: "text"; content: string }
+          | { kind: "image"; mediaType: string };
+      } catch (err) {
+        console.warn(
+          "[vm-tools] edit preview refresh read failed — returning daemon edit result without preview",
+          err,
+        );
+        return daemonResult;
+      }
       if (readResult.kind !== "text") return daemonResult;
       const preview = htmlPageBuffer.enqueue(input.path, readResult.content);
       return preview

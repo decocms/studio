@@ -63,10 +63,15 @@ export class Memory {
     );
     // Reverse so chronological (oldest first)
     const chronological = [...messages].reverse();
-    const first = chronological[0];
-    if (!first || first.role === "user") {
+    // Stored system messages (welcome / tool injections) sit at the head of
+    // some threads. Anthropic's requirement is that the first *non-system*
+    // message is a user message — so the guard must look past leading
+    // system rows before deciding whether to prepend the synthetic prefix.
+    const firstNonSystem = chronological.find((m) => m.role !== "system");
+    if (!firstNonSystem || firstNonSystem.role === "user") {
       return chronological;
     }
+    const first = firstNonSystem;
     // Providers like Anthropic require the first non-system message to be
     // from "user". When the window leads with an assistant message — either
     // because the thread genuinely opens with one (welcome threads) or because

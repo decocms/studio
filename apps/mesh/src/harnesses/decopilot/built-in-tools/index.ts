@@ -200,6 +200,9 @@ async function buildAllTools(
     // behavior; the user may have paused the sandbox intentionally.
     const canAutoRestart = vmContext.branch === "ephemeral";
     const invalidateHandle = async () => {
+      // Capture before clearing — we need the dead handle to flush the
+      // captured runner's cache below.
+      const lastHandlePromise = cached;
       cached = null;
       if (!canAutoRestart) return;
       // Reap the vmMap entry so the next `ensureVm` provisions fresh
@@ -215,6 +218,19 @@ async function buildAllTools(
         );
       } catch (err) {
         console.warn("[built-in-tools] failed to reap vmMap entry", err);
+      }
+      // Flush the captured runner's in-process cache + state-store row.
+      // `ensureVm` constructs its own provider instance for the respawn, so
+      // without this the captured `runner` (used for proxy calls) would keep
+      // serving the dead URL out of its records map on the retry — even
+      // though the state store + new provider have already moved on.
+      if (lastHandlePromise && typeof runner.forgetHandle === "function") {
+        try {
+          const lastHandle = await lastHandlePromise;
+          await runner.forgetHandle(lastHandle);
+        } catch (err) {
+          console.warn("[built-in-tools] forgetHandle failed", err);
+        }
       }
     };
     Object.assign(

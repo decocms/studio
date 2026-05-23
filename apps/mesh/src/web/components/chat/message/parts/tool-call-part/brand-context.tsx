@@ -430,7 +430,7 @@ export function BrandContextListPart({
 }: BrandContextListPartProps) {
   const state = getEffectiveState(part.state);
   const result = unwrapResult<BrandContextListResult>(part.output);
-  const items = result?.items ?? [];
+  const items = Array.isArray(result?.items) ? result.items : [];
   const isLoading = state === "loading";
   const failed = state === "error";
 
