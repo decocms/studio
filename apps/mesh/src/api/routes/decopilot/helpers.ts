@@ -248,6 +248,7 @@ export async function toolsFromMCP(
         execute: async (input, callOptions) => {
           const startTime = performance.now();
           let isError = false;
+          let outputBytes: number | undefined;
           try {
             // Resolve any mesh-storage: URIs in tool arguments to fresh
             // presigned URLs before forwarding to the MCP client.
@@ -269,6 +270,14 @@ export async function toolsFromMCP(
               },
             );
             isError = Boolean((result as { isError?: boolean })?.isError);
+            // Measure the size of what the model will see as the tool
+            // result. JSON.stringify can throw on circular refs; swallow
+            // and leave outputBytes undefined in that case.
+            try {
+              outputBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
+            } catch {
+              outputBytes = undefined;
+            }
             return result as unknown as CallToolResult;
           } catch (err) {
             isError = true;
@@ -283,6 +292,7 @@ export async function toolsFromMCP(
                   _meta,
                   annotations,
                   latencyMs,
+                  outputBytes,
                 },
               });
             }
