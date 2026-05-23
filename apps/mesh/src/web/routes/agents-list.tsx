@@ -2,7 +2,6 @@ import { useState } from "react";
 import { CreateAgentDropdownContent } from "@/web/components/create-agent-dropdown";
 import {
   WELL_KNOWN_AGENT_TEMPLATES,
-  isStudioPackAgent,
   useProjectContext,
   useVirtualMCPActions,
   useVirtualMCPs,
@@ -20,7 +19,6 @@ import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 import { SiteDiagnosticsRecruitModal } from "@/web/components/home/site-diagnostics-recruit-modal.tsx";
-import { StudioPackRecruitModal } from "@/web/components/home/studio-pack-recruit-modal.tsx";
 import { LeanCanvasRecruitModal } from "@/web/components/home/lean-canvas-recruit-modal.tsx";
 import {
   AlertDialog,
@@ -62,7 +60,6 @@ export default function AgentsListPage() {
   const [importDecoOpen, setImportDecoOpen] = useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
   const [diagnosticsModalOpen, setDiagnosticsModalOpen] = useState(false);
-  const [studioPackModalOpen, setStudioPackModalOpen] = useState(false);
   const [leanCanvasModalOpen, setLeanCanvasModalOpen] = useState(false);
 
   const lowerSearch = search.toLowerCase();
@@ -75,15 +72,8 @@ export default function AgentsListPage() {
         s.description?.toLowerCase().includes(lowerSearch)),
   );
 
-  // Check if studio pack is already installed
-  const studioPackInstalled = agents.some((a) => isStudioPackAgent(a.id));
-
-  // Filter templates by search only (always render all templates)
-  // Hide studio-pack template if already installed
   const filteredTemplates = WELL_KNOWN_AGENT_TEMPLATES.filter(
-    (t) =>
-      (!search || t.title.toLowerCase().includes(lowerSearch)) &&
-      !(t.id === "studio-pack" && studioPackInstalled),
+    (t) => !search || t.title.toLowerCase().includes(lowerSearch),
   );
 
   // Find existing recruited Site Diagnostics agent
@@ -115,8 +105,6 @@ export default function AgentsListPage() {
       } else {
         setLeanCanvasModalOpen(true);
       }
-    } else if (templateId === "studio-pack") {
-      setStudioPackModalOpen(true);
     }
   };
 
@@ -347,11 +335,6 @@ export default function AgentsListPage() {
         onOpenChange={setLeanCanvasModalOpen}
         existingAgent={existingLeanCanvas}
       />
-      <StudioPackRecruitModal
-        open={studioPackModalOpen}
-        onOpenChange={setStudioPackModalOpen}
-      />
-
       <AlertDialog
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}

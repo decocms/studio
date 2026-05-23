@@ -5,7 +5,6 @@ import { useChatStream } from "@/web/components/chat/context";
 import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
-import { useEnsureStudioPack } from "@/web/components/home/use-ensure-studio-pack";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { User } from "@/web/components/user/user";
@@ -1118,7 +1117,6 @@ function VirtualMcpDetailViewWithData({
   const [isImproving, setIsImproving] = useState(false);
   const { createNewTask, setChatOpen } = usePanelActions();
   const { sendMessage } = useChatStream();
-  const ensureStudioPack = useEnsureStudioPack();
 
   const handleImprovePrompt = async () => {
     if (isImproving) return;
@@ -1132,8 +1130,6 @@ function VirtualMcpDetailViewWithData({
         agent_id: virtualMcp.id,
         instructions_length: currentInstructions.length,
       });
-
-      await ensureStudioPack(["studio-agent-manager"]);
 
       setChatOpen(true);
 

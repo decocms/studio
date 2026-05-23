@@ -338,6 +338,7 @@ export const StudioPackAgentId = {
   AUTOMATION_MANAGER: (orgId: string) => `studio-automation-manager_${orgId}`,
   CONNECTION_MANAGER: (orgId: string) => `studio-connection-manager_${orgId}`,
   STORE_MANAGER: (orgId: string) => `studio-store-manager_${orgId}`,
+  BRAND_MANAGER: (orgId: string) => `studio-brand-manager_${orgId}`,
 } as const;
 
 /**
@@ -349,7 +350,8 @@ export function isStudioPackAgent(id: string | null | undefined): boolean {
     id.startsWith("studio-agent-manager_") ||
     id.startsWith("studio-automation-manager_") ||
     id.startsWith("studio-connection-manager_") ||
-    id.startsWith("studio-store-manager_")
+    id.startsWith("studio-store-manager_") ||
+    id.startsWith("studio-brand-manager_")
   );
 }
 
@@ -359,8 +361,6 @@ export function isStudioPackAgent(id: string | null | undefined): boolean {
  * Display metadata (id, title, icon) is stored here for immediate rendering.
  * Full metadata (description, URL, connection details) should be fetched
  * from the deco registry at CTA time using the `appId`.
- *
- * Templates with `type: "pack"` install multiple agents at once.
  */
 export const WELL_KNOWN_AGENT_TEMPLATES = [
   {
@@ -388,12 +388,6 @@ export const WELL_KNOWN_AGENT_TEMPLATES = [
     title: "Lean Canvas",
     icon: "icon://FileCheck02?color=green",
     type: "registry-agent" as const,
-  },
-  {
-    id: "studio-pack",
-    title: "Studio Pack",
-    icon: "icon://Package?color=blue",
-    type: "pack" as const,
   },
   {
     id: "ai-image",

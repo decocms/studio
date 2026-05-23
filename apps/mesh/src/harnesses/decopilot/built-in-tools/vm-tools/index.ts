@@ -102,6 +102,22 @@ function toFileDownloadUrl(
 
 export type { VmToolsParams } from "./types";
 
+/**
+ * Sentinel error class for "the daemon proxy itself threw" — meaning the
+ * sandbox is unreachable (dead, restarting, or never provisioned). Callers
+ * upstream of `daemonRequest` use this to distinguish a recoverable
+ * sandbox-death from a request-level failure (4xx/5xx from a live daemon).
+ */
+class DaemonUnreachableError extends Error {
+  readonly code = "DAEMON_UNREACHABLE" as const;
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : "Daemon proxy failed");
+    if (cause instanceof Error) {
+      this.cause = cause;
+    }
+  }
+}
+
 async function daemonRequest(
   runner: SandboxProvider,
   handle: string,
@@ -126,10 +142,8 @@ async function daemonRequest(
       init.body = JSON.stringify(body);
     }
     res = await runner.proxyDaemonRequest(handle, path, init);
-  } catch {
-    throw new Error(
-      "The sandbox is not running. Ask the user to start it by clicking the server button (left side of the header bar).",
-    );
+  } catch (cause) {
+    throw new DaemonUnreachableError(cause);
   }
   const rawText = await res.text();
   let json: unknown;
@@ -173,6 +187,9 @@ export function createVmTools(params: VmToolsParams) {
   const {
     runner,
     ensureHandle,
+    invalidateHandle,
+    canAutoRestart,
+    htmlPageBuffer,
     toolOutputMap,
     needsApproval,
     pendingImages,
@@ -180,13 +197,72 @@ export function createVmTools(params: VmToolsParams) {
     threadId,
   } = params;
   const approvalFor = (mutating: boolean) => (mutating ? needsApproval : false);
+
+  /**
+   * Format the user-visible "sandbox unreachable" message. Ephemeral agents
+   * have no server button — auto-restart is the only recovery path, so if
+   * we got here both attempts already failed. GitHub-linked agents do have
+   * a UI button, so the original "ask user to start it" message applies.
+   */
+  const formatUnreachableMessage = (cause: unknown): string => {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    return canAutoRestart
+      ? `Sandbox is unreachable and auto-restart did not recover it: ${detail}`
+      : "The sandbox is not running. Ask the user to start it by clicking the server button (left side of the header bar).";
+  };
+
   const call = async (
     daemonPath: string,
     input: Record<string, unknown>,
     method: "POST" | "PUT" = "POST",
-  ) => {
-    const handle = await ensureHandle();
-    return daemonRequest(runner, handle, daemonPath, input, method);
+  ): Promise<unknown> => {
+    const tryOnce = async (handle: string) =>
+      daemonRequest(runner, handle, daemonPath, input, method);
+    const firstHandle = await ensureHandle();
+    try {
+      return await tryOnce(firstHandle);
+    } catch (firstErr) {
+      // Only retry on daemon-unreachable (sandbox dead). HTTP-level errors
+      // from a live daemon (4xx/5xx) are surfaced as-is — a retry would
+      // just repeat the same failure.
+      if (!(firstErr instanceof DaemonUnreachableError) || !canAutoRestart) {
+        if (firstErr instanceof DaemonUnreachableError) {
+          throw new Error(formatUnreachableMessage(firstErr.cause ?? firstErr));
+        }
+        throw firstErr;
+      }
+      console.warn(
+        `[vm-tools] daemon ${daemonPath} unreachable — reaping sandbox and retrying once`,
+        firstErr.cause ?? firstErr,
+      );
+      try {
+        await invalidateHandle();
+      } catch (reapErr) {
+        console.warn("[vm-tools] invalidateHandle failed", reapErr);
+      }
+      let secondHandle: string;
+      try {
+        secondHandle = await ensureHandle();
+      } catch (provisionErr) {
+        throw new Error(
+          `Failed to restart sandbox: ${
+            provisionErr instanceof Error
+              ? provisionErr.message
+              : String(provisionErr)
+          }`,
+        );
+      }
+      try {
+        return await tryOnce(secondHandle);
+      } catch (secondErr) {
+        if (secondErr instanceof DaemonUnreachableError) {
+          throw new Error(
+            formatUnreachableMessage(secondErr.cause ?? secondErr),
+          );
+        }
+        throw secondErr;
+      }
+    }
   };
 
   const read = tool({
@@ -227,14 +303,40 @@ export function createVmTools(params: VmToolsParams) {
     needsApproval: approvalFor(TOOL_APPROVAL.write),
     description: WRITE_DESCRIPTION,
     inputSchema: zodSchema(WriteInputSchema),
-    execute: async (input) => call("/_decopilot_vm/write", input),
+    execute: async (input) => {
+      const daemonResult = await call("/_decopilot_vm/write", input);
+      // Enqueue the mirror; the actual S3 PUT happens once per step from
+      // `htmlPageBuffer.flush()`, so a burst of writes/edits to the same
+      // slug collapses to a single round-trip.
+      const preview = htmlPageBuffer.enqueue(input.path, input.content);
+      return preview
+        ? { ...(daemonResult as object), htmlPreview: preview }
+        : daemonResult;
+    },
   });
 
   const edit = tool({
     needsApproval: approvalFor(TOOL_APPROVAL.edit),
     description: EDIT_DESCRIPTION,
     inputSchema: zodSchema(EditInputSchema),
-    execute: async (input) => call("/_decopilot_vm/edit", input),
+    execute: async (input) => {
+      const daemonResult = await call("/_decopilot_vm/edit", input);
+      // `edit` carries old_string/new_string, not the full file. Read it
+      // back from the daemon after the replacement lands so the buffer
+      // sees the post-edit state. The bytes value returned to the chat
+      // row reflects this latest read, but only the final state per slug
+      // gets PUT at flush time.
+      const readResult = (await call("/_decopilot_vm/read", {
+        path: input.path,
+      })) as
+        | { kind: "text"; content: string }
+        | { kind: "image"; mediaType: string };
+      if (readResult.kind !== "text") return daemonResult;
+      const preview = htmlPageBuffer.enqueue(input.path, readResult.content);
+      return preview
+        ? { ...(daemonResult as object), htmlPreview: preview }
+        : daemonResult;
+    },
   });
 
   const grep = tool({

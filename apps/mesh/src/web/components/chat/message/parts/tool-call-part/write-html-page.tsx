@@ -28,6 +28,81 @@ interface WriteHtmlPagePartProps {
   latency?: number;
 }
 
+const HTML_PAGE_PATTERN = /^pages\/([a-z0-9][a-z0-9._-]*)\.html$/i;
+
+interface GenericWriteInput {
+  path?: string;
+  content?: string;
+}
+
+interface GenericWriteOutput {
+  htmlPreview?: {
+    slug: string;
+    key: string;
+    url: string;
+    bytes: number;
+  };
+  htmlPreviewError?: string;
+}
+
+interface ShimmedWriteResult {
+  success: boolean;
+  error?: string;
+  slug?: string;
+  key?: string;
+  url?: string;
+  bytes?: number;
+}
+
+/**
+ * Normalize parts that affect previewable HTML pages into a shape the
+ * WriteHtmlPagePart renderer (and WebPageTab lookup) can consume uniformly.
+ * Three input shapes are recognised:
+ *
+ *  1. The dedicated `tool-write_html_page` part — returned as-is.
+ *  2. A generic `tool-write` part whose `input.path` matches
+ *     `pages/<slug>.html` — slug derived from the path; success carries
+ *     the wrapped `htmlPreview` shape via the mirror layer.
+ *  3. A generic `tool-edit` part to the same prefix — same treatment.
+ *
+ * Returns null when the part is unrelated, when an op to a matching path
+ * errored (generic write/edit error row takes over), or when a successful
+ * op produced no S3 mirror (claiming "Page updated" without preview
+ * details would be misleading).
+ */
+export function toHtmlPagePart(part: ToolUIPart): ToolUIPart | null {
+  if (part.type === "tool-write_html_page") return part;
+  if (part.type !== "tool-write" && part.type !== "tool-edit") return null;
+
+  const input = (part.input ?? {}) as GenericWriteInput;
+  const rawPath = input.path;
+  if (typeof rawPath !== "string") return null;
+  const normalized = rawPath.replace(/^\.?\//, "");
+  const match = HTML_PAGE_PATTERN.exec(normalized);
+  if (!match) return null;
+  const slug = match[1]!;
+
+  const output = part.output as GenericWriteOutput | undefined;
+  const state = part.state;
+
+  if (state === "output-error") return null;
+
+  let shimmedOutput: ShimmedWriteResult | undefined;
+  if (output?.htmlPreview) {
+    shimmedOutput = { success: true, ...output.htmlPreview };
+  } else if (output?.htmlPreviewError) {
+    shimmedOutput = { success: false, slug, error: output.htmlPreviewError };
+  } else if (state === "output-available") {
+    return null;
+  }
+
+  return {
+    ...part,
+    input: { slug },
+    output: shimmedOutput,
+  } as ToolUIPart;
+}
+
 function formatBytes(bytes: number | undefined): string | undefined {
   if (bytes == null) return undefined;
   if (bytes < 1024) return `${bytes} B`;
@@ -71,16 +146,11 @@ export function WriteHtmlPagePart({ part, latency }: WriteHtmlPagePartProps) {
     ) : null;
 
   if (state === "loading") {
-    const partialHtml = input?.html ?? "";
-    const hasPartial = partialHtml.trim().length > 0;
-    const sizeLabel = hasPartial
-      ? formatBytes(new TextEncoder().encode(partialHtml).length)
-      : undefined;
     return (
       <ToolCallShell
         icon={<Globe02 size={14} />}
         title="Writing page"
-        summary={sizeLabel ? `${slug}.html · ${sizeLabel}` : `${slug}.html`}
+        summary={`${slug}.html`}
         state="loading"
       />
     );

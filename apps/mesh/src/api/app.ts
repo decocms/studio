@@ -110,6 +110,7 @@ import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import type { Thread } from "../storage/types";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
+import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
 import {
@@ -2014,49 +2015,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
     await reconcileAutomationSchedules(automationsStorage);
   };
-
-  // Fire-and-forget backfill of the Studio Pack for every org.
-  // `installStudioPack` is idempotent (skip-if-exists), so this is a near
-  // no-op in steady state; first-boot after the Store Manager ships, it
-  // installs the missing manager for every existing org without a migration.
-  {
-    const { installStudioPack } = await import("@/tools/virtual/studio-pack");
-    const { ensureStudioPackForAllOrgs } = await import(
-      "@/tools/virtual/ensure-studio-pack"
-    );
-    const { VirtualMCPStorage } = await import("@/storage/virtual");
-    const virtualMcpStorage = new VirtualMCPStorage(database.db);
-    ensureStudioPackForAllOrgs({
-      listOrgs: async () => {
-        const rows = await database.db
-          .selectFrom("organization")
-          .select(["id"])
-          .execute();
-        // Pick a deterministic createdBy per org: first owner from member
-        // table. Fall back to "system" if none — installStudioPack only
-        // uses createdBy as audit metadata, not for auth.
-        return Promise.all(
-          rows.map(async (org) => {
-            const owner = await database.db
-              .selectFrom("member")
-              .select(["userId"])
-              .where("organizationId", "=", org.id)
-              .where("role", "=", "owner")
-              .limit(1)
-              .executeTakeFirst();
-            return {
-              id: org.id,
-              createdBy: owner?.userId ?? "system",
-            };
-          }),
-        );
-      },
-      installer: installStudioPack,
-      virtualMcpStorage,
-    }).catch((error) => {
-      console.error("[studio-pack] backfill driver failed:", error);
-    });
-  }
 
   return Object.assign(app, { markShuttingDown, shutdown, initDbos });
 }

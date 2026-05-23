@@ -76,31 +76,3 @@ export class HomeBoardStore {
     return true;
   }
 }
-
-/**
- * Computes the (x, y) for an auto-pinned tile of size (w, h). Picks the
- * topmost row at column 0 where the tile fits without overlapping an
- * existing one — matches the FE `findFirstFreeSlot` semantics so the
- * board looks the same after a server pin as it would after a client
- * add.
- */
-export function pickAutoPinSlot(
-  tiles: HomeBoardTile[],
-  size: { w: number; h: number },
-  gridCols: number,
-): { x: number; y: number } {
-  const w = Math.min(size.w, gridCols);
-  const blockerAt = (y: number) =>
-    tiles.find(
-      (t) => 0 < t.x + t.w && w > t.x && y < t.y + t.h && y + size.h > t.y,
-    );
-  // Each iteration either returns or jumps past one blocker's bottom; since
-  // y only increases, no tile blocks twice — terminates in ≤ tiles.length + 1.
-  let y = 0;
-  for (let i = 0; i <= tiles.length; i++) {
-    const blocker = blockerAt(y);
-    if (!blocker) return { x: 0, y };
-    y = blocker.y + blocker.h;
-  }
-  return { x: 0, y };
-}

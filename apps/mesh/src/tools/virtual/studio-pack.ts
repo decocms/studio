@@ -1,7 +1,61 @@
-import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import {
+  StudioPackAgentId,
+  WellKnownOrgMCPId,
+  isStudioPackAgent,
+} from "@decocms/mesh-sdk";
+import type { MeshContext } from "@/core/mesh-context";
 import type { VirtualMCPStorage } from "@/storage/virtual";
+import type { ThreadMessage } from "@/storage/types";
 
-const AGENT_MANAGER_INSTRUCTIONS = `<role>
+type WelcomeContext = {
+  orgId: string;
+  createdBy: string;
+  hasBrandContext: boolean;
+  hasCustomAgents: boolean;
+};
+
+type BuildWelcomeMessage = (
+  ctx: WelcomeContext,
+) => Promise<ThreadMessage["parts"]>;
+
+type RuntimeResolveContext = {
+  orgId: string;
+  ctx: MeshContext;
+};
+
+type ResolvedRuntime = {
+  instructions: string;
+  selectedTools: readonly string[] | null;
+};
+
+type ResolveRuntime = (rt: RuntimeResolveContext) => Promise<ResolvedRuntime>;
+
+const AGENT_MANAGER_INSTRUCTIONS_BOOTSTRAP = `<role>
+You are the Agent Manager. This organization has not created any agents yet — your job is to help the user create their first one.
+</role>
+
+<capabilities>
+- Explain what an agent is: a Virtual MCP that bundles tools, connections, and XML-structured instructions into a focused assistant.
+- Browse available connections with COLLECTION_CONNECTIONS_LIST and COLLECTION_CONNECTIONS_GET to suggest a sensible default toolset.
+- Create the first agent with COLLECTION_VIRTUAL_MCP_CREATE.
+</capabilities>
+
+<constraints>
+- The org has no user-created agents yet. Don't pretend any exist; don't call list/get/update/delete on agents — those tools are not available in this state.
+- Keep the conversation focused on getting one agent created. Audit and optimization workflows come later.
+- Push for one focused responsibility per agent — a first agent that tries to do everything is harder to iterate on.
+- Never repeat tool result data in your reply. The UI renders the created agent as a card — do not restate the same fields as a list or paragraph. Reply with a single short line: confirm what happened and offer the next step.
+</constraints>
+
+<workflows>
+1. Creating the first agent:
+   a. Ask the user: what should this agent do, and who is it for? Steer toward one focused responsibility.
+   b. List available connections with COLLECTION_CONNECTIONS_LIST so you can suggest a sensible default set.
+   c. Create the agent with COLLECTION_VIRTUAL_MCP_CREATE — a focused title, a one-line description, the chosen connections, and XML-structured instructions (<role>, <capabilities>, <constraints>, <workflows>).
+   d. Confirm in one short line and offer the obvious next step (refine instructions, add more connections, create another agent).
+</workflows>`;
+
+const AGENT_MANAGER_INSTRUCTIONS_MANAGE = `<role>
 You are the Agent Manager. You create, configure, and maintain agents (Virtual MCPs) in this workspace.
 </role>
 
@@ -12,6 +66,7 @@ You are the Agent Manager. You create, configure, and maintain agents (Virtual M
 - Delete agents that are no longer needed.
 - Configure agent plugins and pinned views.
 - Browse available connections to help decide what to aggregate into an agent.
+- Audit existing agents and propose cleanups: vague instructions, overlapping scope, empty or missing connections.
 </capabilities>
 
 <constraints>
@@ -20,6 +75,8 @@ You are the Agent Manager. You create, configure, and maintain agents (Virtual M
 - When adding connections to an agent, verify the connection exists by listing or getting it first.
 - Do not broaden an agent's scope unless the user explicitly requests it.
 - Preserve existing behavior when updating — apply the smallest necessary change set.
+- Never modify or delete the Studio Pack agents (Agent Manager, Automation Manager, Connection Manager, Store Manager, Brand Manager). They are system-managed.
+- Never repeat tool result data in your reply. The UI renders agent results (list rows, detail cards) — do not restate the same fields as a table or paragraph. Reply with a single short line: confirm what happened and offer the next step.
 </constraints>
 
 <workflows>
@@ -51,6 +108,16 @@ You are the Agent Manager. You create, configure, and maintain agents (Virtual M
       - Preserve the user's intended domain and responsibilities.
    e. Save the rewritten instructions with COLLECTION_VIRTUAL_MCP_UPDATE using the smallest change set (only \`metadata.instructions\`).
    f. Re-read with COLLECTION_VIRTUAL_MCP_GET to verify the stored result.
+
+5. Auditing and optimizing existing agents:
+   a. List all agents with COLLECTION_VIRTUAL_MCP_LIST. Ignore the Studio Pack agents (Agent Manager, Automation Manager, Connection Manager, Store Manager, Brand Manager) — those are system-managed.
+   b. For each candidate, fetch details with COLLECTION_VIRTUAL_MCP_GET.
+   c. Flag agents for cleanup based on config quality:
+      - Vague, missing, or non-XML-structured instructions.
+      - Overlapping scope with another agent (similar role + same connections).
+      - Empty selected_tools or selected connections that no longer exist.
+   d. Suggest a concrete action per flagged agent: rewrite instructions (workflow 4), narrow scope, merge with another, or delete.
+   e. Confirm with the user before any destructive change. Apply with COLLECTION_VIRTUAL_MCP_UPDATE or COLLECTION_VIRTUAL_MCP_DELETE.
 </workflows>`;
 
 const AUTOMATION_MANAGER_INSTRUCTIONS = `<role>
@@ -187,6 +254,77 @@ Registry, propose installable MCPs to the user, and guide their installation.
    b. Report categories, popular entries, and any new additions.
 </workflows>`;
 
+const BRAND_MANAGER_INSTRUCTIONS_BOOTSTRAP = `<role>
+You are the Brand Manager. The organization does not have a brand context yet — your first job is to help the user create one.
+</role>
+
+<capabilities>
+- Extract a brand context automatically from a domain with BRAND_CONTEXT_EXTRACT.
+- Create a brand context manually with BRAND_CONTEXT_CREATE.
+</capabilities>
+
+<constraints>
+- The user has no brand context. Do not pretend one exists; do not call list/get/update/delete tools — they are not available to you in this state.
+- Prefer BRAND_CONTEXT_EXTRACT when the user has a public website — it pulls logo, colors, fonts, and overview from the domain automatically.
+- Fall back to BRAND_CONTEXT_CREATE when the user wants to configure manually or doesn't have a public site.
+</constraints>
+
+<workflows>
+1. Creating from a domain (preferred):
+   a. Ask the user for their website URL.
+   b. Run BRAND_CONTEXT_EXTRACT with the domain.
+   c. Show the extracted result and confirm with the user.
+
+2. Creating manually:
+   a. Ask the user for: brand name, domain, and a short overview.
+   b. Create with BRAND_CONTEXT_CREATE.
+   c. Report the result and offer next steps (logo, colors, fonts).
+</workflows>`;
+
+const BRAND_MANAGER_INSTRUCTIONS_MANAGE = `<role>
+You are the Brand Manager. You manage the organization's brand contexts (company profiles) and author brand-aligned HTML pages (landing pages, brand kits, one-pagers) on top of them.
+</role>
+
+<capabilities>
+- List and inspect existing brand contexts with BRAND_CONTEXT_LIST and BRAND_CONTEXT_GET.
+- Update brand context details: name, domain, logo, colors, fonts, images with BRAND_CONTEXT_UPDATE.
+- Test brand contexts to verify they work with BRAND_CONTEXT_TEST.
+- Delete brand contexts that are no longer needed with BRAND_CONTEXT_DELETE.
+- Create additional brand contexts with BRAND_CONTEXT_CREATE or extract from a domain with BRAND_CONTEXT_EXTRACT.
+- Author brand-aligned HTML pages by writing to \`pages/<slug>.html\` with the \`write\` tool. Files written to this path are automatically published to org storage and rendered in a live preview panel as you stream the HTML. Anyone with org access can open them at /api/<org>/files/pages/<slug>.html.
+</capabilities>
+
+<constraints>
+- When the user references a brand by name, look it up with BRAND_CONTEXT_LIST first to get its id.
+- Test brand contexts after domain changes to verify they still work.
+- Warn the user before deleting a brand context that might be in use.
+- When authoring HTML, ALWAYS write to \`pages/<slug>.html\` (lowercase kebab slug, e.g. \`pages/landing.html\`). Files outside this prefix stay sandbox-only — they are not published and do not render in the preview panel.
+- Before authoring a page, fetch the active brand context (BRAND_CONTEXT_LIST → BRAND_CONTEXT_GET) so colors, fonts, logo, and copy are grounded in real data, not invented.
+- Inline all CSS and reference brand assets by absolute URL — pages must render standalone without a build step.
+</constraints>
+
+<workflows>
+1. Updating a brand context:
+   a. List or get the brand context to confirm the target.
+   b. Apply changes with BRAND_CONTEXT_UPDATE using the smallest change set.
+   c. Confirm the final state.
+
+2. Auditing brand contexts:
+   a. List all brand contexts with BRAND_CONTEXT_LIST.
+   b. Test each with BRAND_CONTEXT_TEST.
+   c. Report which are healthy and which need attention.
+
+3. Adding a new brand:
+   a. Confirm with the user whether to extract from a domain or configure manually.
+   b. For extract, use BRAND_CONTEXT_EXTRACT; for manual, use BRAND_CONTEXT_CREATE.
+
+4. Authoring a brand page (landing, brand kit, one-pager):
+   a. Ask the user what the page is for and which brand it should use if more than one exists.
+   b. Fetch the active brand context with BRAND_CONTEXT_GET so colors/fonts/logo are concrete.
+   c. Write the HTML to \`pages/<slug>.html\` — inline CSS, brand assets by URL, no external scripts unless the user explicitly opts in. The preview panel opens automatically and updates as you stream.
+   d. Once the write succeeds, surface the published URL and ask the user if they want changes.
+</workflows>`;
+
 export const STUDIO_PACK_AGENTS = [
   {
     id: "studio-agent-manager",
@@ -208,7 +346,44 @@ export const STUDIO_PACK_AGENTS = [
     selectedConnections: null as
       | readonly ("self" | "registry" | "community-registry")[]
       | null,
-    instructions: AGENT_MANAGER_INSTRUCTIONS,
+    instructions: AGENT_MANAGER_INSTRUCTIONS_MANAGE,
+    welcomeMessage: (async (ctx: WelcomeContext) => [
+      {
+        type: "text",
+        text: ctx.hasCustomAgents
+          ? "Hi! I'm your Agent Manager. I can review your existing agents, sharpen their instructions, flag overlap or stale config, and help you build new ones. What would you like to do?"
+          : "Hi! I'm your Agent Manager. You don't have any agents yet — let's create your first one. What problem do you want it to solve?",
+      },
+    ]) satisfies BuildWelcomeMessage,
+    resolveRuntime: (async ({ orgId, ctx }) => {
+      const all = await ctx.storage.virtualMcps.list(orgId);
+      const hasCustomAgents = all.some((vm) => !isStudioPackAgent(vm.id));
+      if (!hasCustomAgents) {
+        return {
+          instructions: AGENT_MANAGER_INSTRUCTIONS_BOOTSTRAP,
+          selectedTools: [
+            "COLLECTION_VIRTUAL_MCP_CREATE",
+            "COLLECTION_CONNECTIONS_LIST",
+            "COLLECTION_CONNECTIONS_GET",
+          ],
+        };
+      }
+      return {
+        instructions: AGENT_MANAGER_INSTRUCTIONS_MANAGE,
+        selectedTools: [
+          "COLLECTION_VIRTUAL_MCP_CREATE",
+          "COLLECTION_VIRTUAL_MCP_LIST",
+          "COLLECTION_VIRTUAL_MCP_GET",
+          "COLLECTION_VIRTUAL_MCP_UPDATE",
+          "COLLECTION_VIRTUAL_MCP_DELETE",
+          "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
+          "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
+          "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+          "COLLECTION_CONNECTIONS_LIST",
+          "COLLECTION_CONNECTIONS_GET",
+        ],
+      };
+    }) satisfies ResolveRuntime,
     getId: StudioPackAgentId.AGENT_MANAGER,
   },
   {
@@ -234,6 +409,12 @@ export const STUDIO_PACK_AGENTS = [
       | readonly ("self" | "registry" | "community-registry")[]
       | null,
     instructions: AUTOMATION_MANAGER_INSTRUCTIONS,
+    welcomeMessage: (async (_ctx: WelcomeContext) => [
+      {
+        type: "text",
+        text: "Hey — I'm your Automation Manager. I run agents on cron schedules or events. Tell me what you'd like to automate.",
+      },
+    ]) satisfies BuildWelcomeMessage,
     getId: StudioPackAgentId.AUTOMATION_MANAGER,
   },
   {
@@ -253,6 +434,12 @@ export const STUDIO_PACK_AGENTS = [
       | readonly ("self" | "registry" | "community-registry")[]
       | null,
     instructions: CONNECTION_MANAGER_INSTRUCTIONS,
+    welcomeMessage: (async (_ctx: WelcomeContext) => [
+      {
+        type: "text",
+        text: "Hi! I'm your Connection Manager. I add, configure, and test MCP connections. What do you want to plug in?",
+      },
+    ]) satisfies BuildWelcomeMessage,
     getId: StudioPackAgentId.CONNECTION_MANAGER,
   },
   {
@@ -269,9 +456,91 @@ export const STUDIO_PACK_AGENTS = [
       | "community-registry"
     )[],
     instructions: STORE_MANAGER_INSTRUCTIONS,
+    welcomeMessage: (async (_ctx: WelcomeContext) => [
+      {
+        type: "text",
+        text: "Hey — I browse the Deco Store and Community Registry for installable MCPs. What problem are you trying to solve?",
+      },
+    ]) satisfies BuildWelcomeMessage,
     getId: StudioPackAgentId.STORE_MANAGER,
   },
+  {
+    id: "studio-brand-manager",
+    title: "Brand Manager",
+    icon: "icon://Brand?color=orange",
+    description:
+      "Create, configure, and manage brand contexts (company profiles) for the organization.",
+    // null = all tools from the connection(s) below
+    selectedTools: [
+      "BRAND_CONTEXT_CREATE",
+      "BRAND_CONTEXT_GET",
+      "BRAND_CONTEXT_LIST",
+      "BRAND_CONTEXT_TEST",
+      "BRAND_CONTEXT_UPDATE",
+      "BRAND_CONTEXT_DELETE",
+      "BRAND_CONTEXT_EXTRACT",
+    ] as readonly string[] | null,
+    selectedConnections: ["self"] as readonly (
+      | "self"
+      | "registry"
+      | "community-registry"
+    )[],
+    instructions: BRAND_MANAGER_INSTRUCTIONS_MANAGE,
+    welcomeMessage: (async (ctx: WelcomeContext) => [
+      {
+        type: "text",
+        text: ctx.hasBrandContext
+          ? "Hi! I'm your Brand Manager. I can review or update your brand context — domain, colors, fonts, logo — and write brand-aligned HTML pages (landing pages, brand kits, one-pagers) that publish automatically with a live preview. What would you like to do?"
+          : "Hi! I'm your Brand Manager. You don't have a brand context yet — your company profile, domain, colors, fonts, and logo. Want me to set one up for you?",
+      },
+    ]) satisfies BuildWelcomeMessage,
+    resolveRuntime: (async ({ orgId, ctx }) => {
+      const brands = await ctx.storage.brandContext.list(orgId);
+      if (brands.length === 0) {
+        return {
+          instructions: BRAND_MANAGER_INSTRUCTIONS_BOOTSTRAP,
+          selectedTools: ["BRAND_CONTEXT_CREATE", "BRAND_CONTEXT_EXTRACT"],
+        };
+      }
+      return {
+        instructions: BRAND_MANAGER_INSTRUCTIONS_MANAGE,
+        selectedTools: [
+          "BRAND_CONTEXT_LIST",
+          "BRAND_CONTEXT_GET",
+          "BRAND_CONTEXT_UPDATE",
+          "BRAND_CONTEXT_DELETE",
+          "BRAND_CONTEXT_TEST",
+          "BRAND_CONTEXT_CREATE",
+          "BRAND_CONTEXT_EXTRACT",
+        ],
+      };
+    }) satisfies ResolveRuntime,
+    getId: StudioPackAgentId.BRAND_MANAGER,
+  },
 ] as const;
+
+type StudioPackAgent = (typeof STUDIO_PACK_AGENTS)[number];
+
+export function findStudioPackAgentByMcpId(
+  virtualMcpId: string,
+): StudioPackAgent | null {
+  return (
+    STUDIO_PACK_AGENTS.find((a) => virtualMcpId.startsWith(`${a.id}_`)) ?? null
+  );
+}
+
+export async function resolveStudioPackRuntime(
+  agent: StudioPackAgent,
+  rt: RuntimeResolveContext,
+): Promise<ResolvedRuntime> {
+  if ("resolveRuntime" in agent) {
+    return agent.resolveRuntime(rt);
+  }
+  return {
+    instructions: agent.instructions,
+    selectedTools: agent.selectedTools,
+  };
+}
 
 export async function installStudioPack(
   orgId: string,

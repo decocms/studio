@@ -54,17 +54,39 @@ export class Memory {
 
   async loadHistory(windowSize?: number): Promise<ThreadMessage[]> {
     const limit = windowSize ?? this.defaultWindowSize;
-    const { messages } = await this.storage.listMessages(this.thread.id, {
-      limit,
-      sort: "desc",
-    });
+    const { messages, total } = await this.storage.listMessages(
+      this.thread.id,
+      {
+        limit,
+        sort: "desc",
+      },
+    );
     // Reverse so chronological (oldest first)
     const chronological = [...messages].reverse();
-    // Ensure the window starts with a "user" message; trim from the start if needed.
-    // When no user message exists in the window, keep the windowed messages to preserve
-    // assistant/tool context for follow-up turns.
-    const startIndex = chronological.findIndex((m) => m.role === "user");
-    return startIndex >= 0 ? chronological.slice(startIndex) : chronological;
+    const first = chronological[0];
+    if (!first || first.role === "user") {
+      return chronological;
+    }
+    // Providers like Anthropic require the first non-system message to be
+    // from "user". When the window leads with an assistant message — either
+    // because the thread genuinely opens with one (welcome threads) or because
+    // older user turns fell outside the window — prepend a synthetic user
+    // note so the API accepts the conversation and the model has context for
+    // why the assistant spoke first.
+    const isWindowed = total > messages.length;
+    const text = isWindowed
+      ? "[Context: earlier turns in this conversation were truncated. The messages below continue the thread — pick up from there.]"
+      : "[Context: this thread opens with your message — you spoke first to greet the user, and the user has not spoken before it. Their reply follows.]";
+    const synthetic: ThreadMessage = {
+      id: `${this.thread.id}-msg-prefix`,
+      thread_id: this.thread.id,
+      role: "user",
+      parts: [{ type: "text", text }],
+      metadata: undefined,
+      created_at: first.created_at,
+      updated_at: first.updated_at,
+    };
+    return [synthetic, ...chronological];
   }
 
   async save(messages: ThreadMessage[]): Promise<void> {

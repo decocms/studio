@@ -31,7 +31,6 @@ import {
   Lock01,
   LockUnlocked01,
 } from "@untitledui/icons";
-import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
@@ -164,10 +163,6 @@ function PickerContent({
     : autoRespondToIssues;
 
   const githubConnections = useConnections({ slug: "mcp-github" });
-
-  const autoInstall = useAutoInstallGitHub({
-    enabled: githubConnections.length === 0,
-  });
 
   const effectiveConnection =
     githubConnections.length === 1
@@ -427,39 +422,6 @@ function PickerContent({
       );
     },
   });
-
-  if (
-    autoInstall.status === "installing" ||
-    autoInstall.status === "authenticating"
-  ) {
-    return (
-      <AutoInstallGitHubUI
-        status={autoInstall.status}
-        error={null}
-        retry={autoInstall.retry}
-      />
-    );
-  }
-
-  if (autoInstall.status === "error") {
-    return (
-      <AutoInstallGitHubUI
-        status="error"
-        error={autoInstall.error}
-        retry={autoInstall.retry}
-      />
-    );
-  }
-
-  if (githubConnections.length === 0 && autoInstall.status === "idle") {
-    return (
-      <AutoInstallGitHubUI
-        status="installing"
-        error={null}
-        retry={autoInstall.retry}
-      />
-    );
-  }
 
   if (githubConnections.length > 1 && !effectiveConnection) {
     return (
@@ -825,85 +787,6 @@ function RepoList({
           </span>
         </button>
       ))}
-    </div>
-  );
-}
-
-function AutoInstallGitHubUI({
-  status,
-  error,
-  retry,
-}: {
-  status: string;
-  error: string | null;
-  retry: () => void;
-}) {
-  if (status === "error") {
-    return (
-      <div className="flex flex-col items-center gap-4 px-6 py-10">
-        <div className="size-10 rounded-full bg-destructive/10 flex items-center justify-center">
-          <GitHubIcon className="size-5 text-destructive" />
-        </div>
-        <div className="flex flex-col items-center gap-1 text-center">
-          <p className="text-sm font-medium">Connection failed</p>
-          <p className="text-xs text-muted-foreground max-w-[260px] leading-relaxed">
-            {error ?? "Something went wrong while connecting to GitHub."}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={retry}
-          className="text-xs font-medium text-foreground border border-border rounded-md px-3 py-1.5 hover:bg-accent transition-colors"
-        >
-          Try again
-        </button>
-      </div>
-    );
-  }
-
-  const isAuthenticating = status === "authenticating";
-
-  return (
-    <div className="flex flex-col items-center gap-4 px-6 py-10">
-      <div className="relative size-10">
-        <div className="size-10 rounded-full bg-muted flex items-center justify-center">
-          <GitHubIcon className="size-5 text-foreground" />
-        </div>
-        <div className="absolute -bottom-0.5 -right-0.5 size-4 rounded-full bg-background flex items-center justify-center">
-          <Loading01 size={12} className="animate-spin text-muted-foreground" />
-        </div>
-      </div>
-      <div className="flex flex-col items-center gap-1 text-center">
-        <p className="text-sm font-medium">
-          {isAuthenticating
-            ? "Authenticating with GitHub"
-            : "Setting up GitHub"}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {isAuthenticating
-            ? "Complete the OAuth flow in your browser"
-            : "Installing the GitHub connection..."}
-        </p>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            !isAuthenticating
-              ? "bg-foreground animate-pulse"
-              : "bg-muted-foreground/30",
-          )}
-        />
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            isAuthenticating
-              ? "bg-foreground animate-pulse"
-              : "bg-muted-foreground/30",
-          )}
-        />
-        <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-      </div>
     </div>
   );
 }

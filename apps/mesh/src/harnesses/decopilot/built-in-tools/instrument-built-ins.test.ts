@@ -20,6 +20,7 @@ const mockParams: BuiltinToolParams = {
   toolOutputMap: new Map(),
   pendingImages: [],
   passthroughClient: {} as never,
+  htmlPageBuffer: {} as never,
   taskId: "task_test",
 };
 

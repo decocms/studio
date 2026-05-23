@@ -186,6 +186,7 @@ interface CombinedTool {
   outputSchema: unknown;
   annotations?: ToolAnnotations;
   _meta?: Record<string, unknown>;
+  modelSummary?: (result: unknown) => string;
   handler: (input: unknown, ctx: MeshContext) => Promise<unknown>;
   execute: (input: unknown, ctx: MeshContext) => Promise<unknown>;
 }
@@ -265,8 +266,11 @@ export const managementMCP = async (ctx: MeshContext) => {
         ctx.access.setToolName(tool.name);
         try {
           const result = await tool.execute(args, ctx);
+          const modelText = tool.modelSummary
+            ? tool.modelSummary(result)
+            : JSON.stringify(result);
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result) }],
+            content: [{ type: "text" as const, text: modelText }],
             structuredContent: result as { [x: string]: unknown },
           };
         } catch (error) {

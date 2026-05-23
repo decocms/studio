@@ -1,112 +1,37 @@
 /**
- * WebPageTab — live preview of the web-developer agent's
- * `write_html_page` tool call, rendered in the side panel.
+ * WebPageTab — side-panel preview of a generated HTML page.
  *
- * Streams off the same `useChatStream()` messages the chat reads, so the
- * iframe paints in lockstep with the model writing HTML. The chat row
- * itself only shows a compact "Page updated" header; the iframe lives
- * here.
+ * The HTML itself is NOT streamed through the chat. The model writes to
+ * the sandbox; the wrapped `write`/`edit` tools enqueue the new content
+ * into a per-turn buffer (`html-page-buffer`) and return `htmlPreview`
+ * synchronously so the chat row paints "Page updated" immediately. The
+ * actual S3 PUT happens once per step from `htmlPageBuffer.flush()`,
+ * which is hooked into `onStepFinish` via `pendingOps` (awaited at
+ * `onFinish` before the stream closes).
  *
- * Lookup: latest `tool-write_html_page` part across all messages whose
- * `input.slug ?? "index"` matches the tab's slug. Iterates messages
- * newest-first so iteration ("update the page") always picks the most
- * recent write.
+ * Iframe gating: this component does NOT load the URL straight from the
+ * tool's `htmlPreview` — that would race the deferred PUT. Instead, it
+ * waits for a `data-html-page-published` part emitted from the flush
+ * after the PUT lands, then iframes the URL from that data event. While
+ * waiting, the panel shows a shimmer.
+ *
+ * Cache-bust: `?v=<bytes>` from the publish event forces the iframe to
+ * refetch when the same slug is re-published with a different size, so
+ * the browser doesn't serve a cached stale body.
  */
 
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useOptionalChatStream } from "@/web/components/chat/context.tsx";
-import type { ToolUIPart } from "ai";
-
-interface WriteHtmlPageInput {
-  slug?: string;
-  html?: string;
-}
-
-interface WriteHtmlPageResult {
-  success?: boolean;
-  error?: string;
-  slug?: string;
-  url?: string;
-  bytes?: number;
-}
 
 const FADE_MS = 300;
 
-/**
- * Plain-text streaming view of the HTML buffer.
- *
- * The model emits HTML in bursts — sometimes many large chunks within
- * a single frame. Two things make that affordable here:
- *
- *   1. The text content is updated imperatively on `<pre>.textContent`
- *      inside a single `requestAnimationFrame`. React never reconciles
- *      the text node, so bursts coalesce to one DOM write per frame
- *      regardless of how many parent re-renders fired.
- *   2. `white-space: pre` + horizontal scrolling, NOT `pre-wrap`.
- *      Word-wrap on a 50KB buffer that grows every chunk forces the
- *      browser to re-wrap the entire string on each paint.
- */
-function StreamingCodeView({ html, title }: { html: string; title: string }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const preRef = useRef<HTMLPreElement | null>(null);
-  const pendingRef = useRef<string>(html);
-  const appliedRef = useRef<string>("");
-  const rafRef = useRef<number | null>(null);
-
-  // Coalesce burst HTML updates into one DOM write per frame. Running this
-  // imperatively (instead of via React reconciliation) keeps the giant
-  // text node out of the diff path; rAF deduping caps cost at 1 write/frame
-  // regardless of how many parent re-renders fired.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative rAF-coalesced DOM write, see comment
-  useEffect(() => {
-    pendingRef.current = html;
-    const pre = preRef.current;
-    if (!pre) return;
-    if (appliedRef.current === html) return;
-    if (rafRef.current !== null) return;
-    if (typeof requestAnimationFrame === "undefined") {
-      pre.textContent = html;
-      appliedRef.current = html;
-      const container = containerRef.current;
-      if (container) container.scrollTop = container.scrollHeight;
-      return;
-    }
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      const next = pendingRef.current;
-      const currentPre = preRef.current;
-      if (!currentPre || appliedRef.current === next) return;
-      currentPre.textContent = next;
-      appliedRef.current = next;
-      const container = containerRef.current;
-      if (container) container.scrollTop = container.scrollHeight;
-    });
-  });
-
-  const attachPre = (el: HTMLPreElement | null) => {
-    preRef.current = el;
-    if (el && appliedRef.current !== pendingRef.current) {
-      el.textContent = pendingRef.current;
-      appliedRef.current = pendingRef.current;
-      const container = containerRef.current;
-      if (container) container.scrollTop = container.scrollHeight;
-    }
-  };
-
-  return (
-    <div
-      ref={containerRef}
-      className="h-full w-full overflow-auto bg-background"
-      aria-label={title}
-    >
-      <pre
-        ref={attachPre}
-        className="m-0 whitespace-pre p-4 font-mono text-xs leading-relaxed text-muted-foreground"
-      />
-    </div>
-  );
+interface HtmlPagePublished {
+  slug: string;
+  key: string;
+  url: string;
+  bytes: number;
 }
 
 function PageShimmer() {
@@ -125,72 +50,33 @@ function PageShimmer() {
   );
 }
 
-/**
- * Three z-stacked layers fill the panel: iframe (bottom, mounts when
- * streaming ends with content), code view (middle, while streaming or
- * waiting for iframe load), and shimmer (top, while we have neither).
- * Each fades out and unmounts on its own `transitionend` so the
- * crossfades are never interrupted mid-fade.
- */
-function PreviewSlot({
-  html,
-  isStreaming,
-  title,
-}: {
-  html: string;
-  isStreaming: boolean;
-  title: string;
-}) {
+function PreviewSlot({ url, title }: { url: string; title: string }) {
   const [iframeReady, setIframeReady] = useState(false);
-  const [codeMounted, setCodeMounted] = useState(true);
   const [shimmerMounted, setShimmerMounted] = useState(true);
-
-  const hasContent = html.length > 0;
-  const showIframe = !isStreaming && hasContent;
-  const codeVisible = hasContent && (isStreaming || !iframeReady);
-  const shimmerVisible = isStreaming && !hasContent;
 
   return (
     <div className="relative h-full w-full bg-background">
-      {showIframe && (
-        <iframe
-          srcDoc={html}
-          onLoad={() => setIframeReady(true)}
-          sandbox="allow-scripts"
-          className={cn(
-            "absolute inset-0 block w-full h-full bg-white",
-            "transition-opacity ease-out",
-            iframeReady ? "opacity-100" : "opacity-0",
-          )}
-          style={{ transitionDuration: `${FADE_MS}ms` }}
-          title={title}
-        />
-      )}
-      {codeMounted && hasContent && (
-        <div
-          className={cn(
-            "absolute inset-0 transition-opacity ease-out",
-            codeVisible ? "opacity-100" : "opacity-0 pointer-events-none",
-          )}
-          style={{ transitionDuration: `${FADE_MS}ms` }}
-          onTransitionEnd={(e) => {
-            if (e.propertyName === "opacity" && !codeVisible && !isStreaming) {
-              setCodeMounted(false);
-            }
-          }}
-        >
-          <StreamingCodeView html={html} title={title} />
-        </div>
-      )}
+      <iframe
+        src={url}
+        onLoad={() => setIframeReady(true)}
+        sandbox="allow-scripts"
+        className={cn(
+          "absolute inset-0 block w-full h-full bg-white",
+          "transition-opacity ease-out",
+          iframeReady ? "opacity-100" : "opacity-0",
+        )}
+        style={{ transitionDuration: `${FADE_MS}ms` }}
+        title={title}
+      />
       {shimmerMounted && (
         <div
           className={cn(
             "absolute inset-0 transition-opacity ease-out",
-            shimmerVisible ? "opacity-100" : "opacity-0 pointer-events-none",
+            iframeReady ? "opacity-0 pointer-events-none" : "opacity-100",
           )}
           style={{ transitionDuration: `${FADE_MS}ms` }}
           onTransitionEnd={(e) => {
-            if (e.propertyName === "opacity" && !shimmerVisible) {
+            if (e.propertyName === "opacity" && iframeReady) {
               setShimmerMounted(false);
             }
           }}
@@ -202,28 +88,30 @@ function PreviewSlot({
   );
 }
 
-interface LatestPart {
-  part: ToolUIPart;
-  input: WriteHtmlPageInput;
-  result: WriteHtmlPageResult | undefined;
+interface UnknownPart {
+  type?: string;
+  data?: unknown;
 }
 
-function findLatestPart(
+/**
+ * Scan messages newest-first for the latest `data-html-page-published`
+ * part whose `data.slug` matches. Bursts of write/edit calls collapse to
+ * one published event per step; iteration ("update the page") naturally
+ * surfaces the most recent published event.
+ */
+function findLatestPublished(
   messages: ReadonlyArray<{ parts?: ReadonlyArray<unknown> }>,
   slug: string,
-): LatestPart | null {
+): HtmlPagePublished | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const parts = messages[i]?.parts;
     if (!parts) continue;
     for (let j = parts.length - 1; j >= 0; j--) {
-      const part = parts[j] as ToolUIPart;
-      if (!part || part.type !== "tool-write_html_page") continue;
-      const input = (part.input ?? {}) as WriteHtmlPageInput;
-      const result = part.output as WriteHtmlPageResult | undefined;
-      const partSlug = input.slug ?? result?.slug ?? "index";
-      if (partSlug === slug) {
-        return { part, input, result };
-      }
+      const raw = parts[j] as UnknownPart | null;
+      if (!raw || raw.type !== "data-html-page-published") continue;
+      const data = raw.data as HtmlPagePublished | undefined;
+      if (!data) continue;
+      if (data.slug === slug) return data;
     }
   }
   return null;
@@ -232,7 +120,7 @@ function findLatestPart(
 export function WebPageTab({ slug }: { slug: string }) {
   const stream = useOptionalChatStream();
   const messages = stream?.messages ?? [];
-  const latest = findLatestPart(messages, slug);
+  const latest = findLatestPublished(messages, slug);
 
   if (!latest) {
     return (
@@ -242,20 +130,6 @@ export function WebPageTab({ slug }: { slug: string }) {
     );
   }
 
-  const { part, input, result } = latest;
-  const html = input.html ?? "";
-  const isStreaming =
-    part.state === "input-streaming" || part.state === "input-available";
-
-  if (part.state === "output-error" || (result && !result.success)) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-background p-6 text-center text-sm text-muted-foreground">
-        {result?.error ?? "Failed to write page."}
-      </div>
-    );
-  }
-
-  return (
-    <PreviewSlot html={html} isStreaming={isStreaming} title={`${slug}.html`} />
-  );
+  const cacheBustedUrl = `${latest.url}${latest.url.includes("?") ? "&" : "?"}v=${latest.bytes}`;
+  return <PreviewSlot url={cacheBustedUrl} title={`${slug}.html`} />;
 }

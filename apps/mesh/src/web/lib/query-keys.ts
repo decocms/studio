@@ -69,8 +69,10 @@ export const KEYS = {
   // Models list (scoped by organization)
   modelsList: (orgId: string) => ["models-list", orgId] as const,
 
-  // Preset task panel (visible cards + per-card state, scoped by org)
-  presetTasks: (orgSlug: string) => ["preset-tasks", orgSlug] as const,
+  // Suggested actions on the Tasks panel — last N threads where the
+  // assistant spoke last, optionally scoped to the current user.
+  suggestedActions: (orgSlug: string, mine: boolean) =>
+    ["suggested-actions", orgSlug, mine] as const,
 
   // Home board tiles (per-user layout, scoped by org)
   homeBoard: (orgSlug: string) => ["home-board", orgSlug] as const,

@@ -177,7 +177,7 @@ async function tryResolveTier(ctx: MeshContext, tier: SimpleModeTier) {
  * can compose a ModelsConfig the same way HTTP chat does, instead of
  * duplicating the tier-resolution + tryResolve fallback logic.
  */
-export async function resolvePerRequestModels(
+async function resolvePerRequestModels(
   ctx: MeshContext,
   tier: SimpleModeTier | undefined,
   harnessId: HarnessId | null | undefined,

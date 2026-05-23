@@ -21,7 +21,10 @@ import {
   SubtaskPartFallback,
   UserAskPart,
   WriteHtmlPagePart,
+  toHtmlPagePart,
   BrandContextPart,
+  BrandContextGetPart,
+  BrandContextListPart,
 } from "./parts/tool-call-part/index.ts";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
 import { ThreadOutputs } from "./thread-outputs.tsx";
@@ -487,17 +490,37 @@ function MessagePart({
       // Agent-profile built-ins (web-developer, brand-context, etc.) aren't
       // in the BuiltInToolSet union but still need bespoke renderers. Match
       // by string before falling through to the generic shell.
-      if (fallback.type === "tool-write_html_page") {
+      const htmlPagePart = toHtmlPagePart(fallback);
+      if (htmlPagePart) {
         return (
           <WriteHtmlPagePart
+            part={htmlPagePart}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (
+        fallback.type === "tool-brand_context_setup" ||
+        fallback.type === "tool-BRAND_CONTEXT_EXTRACT"
+      ) {
+        return (
+          <BrandContextPart
             part={fallback}
             latency={getMeta(fallback.toolCallId)?.latencySeconds}
           />
         );
       }
-      if (fallback.type === "tool-brand_context_setup") {
+      if (fallback.type === "tool-BRAND_CONTEXT_GET") {
         return (
-          <BrandContextPart
+          <BrandContextGetPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (fallback.type === "tool-BRAND_CONTEXT_LIST") {
+        return (
+          <BrandContextListPart
             part={fallback}
             latency={getMeta(fallback.toolCallId)?.latencySeconds}
           />

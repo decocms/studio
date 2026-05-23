@@ -20,6 +20,7 @@ import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
+import { createSuggestedActionsRoutes } from "./suggested-actions";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
@@ -82,7 +83,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
   app.route("/vm", createVmRoutes()); // /api/:org/vm/:vmId/:branch/*
   app.route("/", createHomeBoardRoutes({ store: deps.homeBoardStore }));
-  app.route("/", createHomeBoardRoutes({ store: deps.homeBoardStore }));
+  app.route("/", createSuggestedActionsRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(

@@ -55,7 +55,6 @@ import {
 } from "@deco/ui/components/context-menu.tsx";
 import {
   isDecopilot,
-  isStudioPackAgent,
   WELL_KNOWN_AGENT_TEMPLATES,
   useProjectContext,
   useVirtualMCPs,
@@ -79,7 +78,6 @@ import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.t
 import { GitHubRepoPicker } from "@/web/components/github-repo-picker.tsx";
 import { SelfHealingRepoFlow } from "@/web/components/self-healing-repo/self-healing-repo-flow.tsx";
 import { SiteDiagnosticsRecruitModal } from "@/web/components/home/site-diagnostics-recruit-modal.tsx";
-import { StudioPackRecruitModal } from "@/web/components/home/studio-pack-recruit-modal.tsx";
 import { LeanCanvasRecruitModal } from "@/web/components/home/lean-canvas-recruit-modal.tsx";
 import { AiImageRecruitModal } from "@/web/components/home/ai-image-recruit-modal.tsx";
 import { AiResearchRecruitModal } from "@/web/components/home/ai-research-recruit-modal.tsx";
@@ -359,7 +357,6 @@ function PinAgentPopoverContent({
   onOpenSelfHealing,
   onOpenDiagnosticsModal,
   onOpenLeanCanvasModal,
-  onOpenStudioPackModal,
   onOpenAiImageModal,
   onOpenAiResearchModal,
 }: {
@@ -369,7 +366,6 @@ function PinAgentPopoverContent({
   onOpenSelfHealing: () => void;
   onOpenDiagnosticsModal: () => void;
   onOpenLeanCanvasModal: () => void;
-  onOpenStudioPackModal: () => void;
   onOpenAiImageModal: () => void;
   onOpenAiResearchModal: () => void;
 }) {
@@ -393,11 +389,9 @@ function PinAgentPopoverContent({
     .filter((s) => !isDecopilot(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 
-  const studioPackInstalled = allAgents.some((a) => isStudioPackAgent(a.id));
   const filteredTemplates = WELL_KNOWN_AGENT_TEMPLATES.filter(
     (t) =>
       (!search || t.title.toLowerCase().includes(lowerSearch)) &&
-      !(t.id === "studio-pack" && studioPackInstalled) &&
       !(
         t.id === "self-healing-storefront" && !preferences.experimental_vibecode
       ),
@@ -489,8 +483,6 @@ function PinAgentPopoverContent({
       } else {
         onOpenAiResearchModal();
       }
-    } else if (templateId === "studio-pack") {
-      onOpenStudioPackModal();
     } else {
       navigateToNewTask(templateId);
     }
@@ -675,7 +667,6 @@ function PinAgentPopover() {
   const [selfHealingOpen, setSelfHealingOpen] = useState(false);
   const [diagnosticsModalOpen, setDiagnosticsModalOpen] = useState(false);
   const [leanCanvasModalOpen, setLeanCanvasModalOpen] = useState(false);
-  const [studioPackModalOpen, setStudioPackModalOpen] = useState(false);
   const [aiImageModalOpen, setAiImageModalOpen] = useState(false);
   const [aiResearchModalOpen, setAiResearchModalOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -707,7 +698,6 @@ function PinAgentPopover() {
         }}
         onOpenDiagnosticsModal={() => setDiagnosticsModalOpen(true)}
         onOpenLeanCanvasModal={() => setLeanCanvasModalOpen(true)}
-        onOpenStudioPackModal={() => setStudioPackModalOpen(true)}
         onOpenAiImageModal={() => setAiImageModalOpen(true)}
         onOpenAiResearchModal={() => setAiResearchModalOpen(true)}
       />
@@ -785,10 +775,6 @@ function PinAgentPopover() {
       <LeanCanvasRecruitModal
         open={leanCanvasModalOpen}
         onOpenChange={setLeanCanvasModalOpen}
-      />
-      <StudioPackRecruitModal
-        open={studioPackModalOpen}
-        onOpenChange={setStudioPackModalOpen}
       />
       <AiImageRecruitModal
         open={aiImageModalOpen}

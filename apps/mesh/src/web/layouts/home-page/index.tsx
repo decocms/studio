@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Chat } from "@/web/components/chat";
 import { NoAiProviderEmptyState } from "@/web/components/chat/no-ai-provider-empty-state";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -36,6 +37,7 @@ export function HomePage() {
   const [isEditMode, setEditMode] = useState(false);
   const isMobile = useIsMobile();
   const allKeys = useAiProviderKeys();
+  const link = useCurrentLink();
   const {
     hasDecoKey,
     isZeroBalance,
@@ -44,7 +46,7 @@ export function HomePage() {
     hasOnlyDecoProvider,
   } = useDecoCredits();
 
-  if (allKeys.length === 0) {
+  if (allKeys.length === 0 && !link.online) {
     return (
       <div className="flex-1 overflow-y-auto">
         <div className="min-h-full flex items-center justify-center px-4 py-10">

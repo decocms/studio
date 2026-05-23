@@ -99,49 +99,6 @@ async function resolveProfileId(
   return profiles[0]?.user_id ?? null;
 }
 
-/**
- * Cheap "is this user a deco.cx user with at least one site?" probe.
- * Used by visibility predicates that want to gate UI on deco.cx
- * membership without round-tripping the full sites list. Returns false
- * on any failure (missing config, Supabase down, throw) — a flaky probe
- * should hide the card, not 500 the home page.
- */
-export async function hasUserDecoCxSites(email: string): Promise<boolean> {
-  try {
-    const config = getSupabaseConfig();
-    if (!config) return false;
-    const profileId = await resolveProfileId(
-      config.supabaseUrl,
-      config.serviceKey,
-      email,
-    );
-    if (!profileId) return false;
-
-    const members = await supabaseGet<{ team_id: number }>(
-      config.supabaseUrl,
-      config.serviceKey,
-      `members?user_id=eq.${encodeURIComponent(profileId)}&deleted_at=is.null&select=team_id`,
-    );
-    const teamIds = members
-      .map((m) => m.team_id)
-      .filter((id): id is number => Number.isInteger(id));
-    if (teamIds.length === 0) return false;
-
-    const sites = await supabaseGet<{ name: string }>(
-      config.supabaseUrl,
-      config.serviceKey,
-      `sites?team=in.(${teamIds.join(",")})&select=name&limit=1`,
-    );
-    return sites.length > 0;
-  } catch (err) {
-    console.warn(
-      `[deco-sites] hasUserDecoCxSites probe failed:`,
-      err instanceof Error ? err.message : err,
-    );
-    return false;
-  }
-}
-
 async function getOrCreateDecoApiKey(
   supabaseUrl: string,
   serviceKey: string,

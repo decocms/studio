@@ -39,7 +39,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePanelActions } from "@/web/layouts/shell-layout";
-import { useEnsureStudioPack } from "@/web/components/home/use-ensure-studio-pack";
 import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improve-prompt-doc";
 import {
   ArrowLeft,
@@ -348,7 +347,6 @@ export function SettingsTab({
   const { setSimpleModeTier } = useChatPrefs();
   const { setChatOpen } = usePanelActions();
   const { sendMessage } = useChatStream();
-  const ensureStudioPack = useEnsureStudioPack();
   const [preferences, setPreferences] = usePreferences();
   const initialTiptapDoc =
     (automation.messages?.[0] as { metadata?: Metadata } | undefined)?.metadata
@@ -402,8 +400,6 @@ export function SettingsTab({
         agent_id: agentId,
         instructions_length: instructionsText.length,
       });
-
-      await ensureStudioPack(["studio-automation-manager"]);
 
       setChatOpen(true);
 

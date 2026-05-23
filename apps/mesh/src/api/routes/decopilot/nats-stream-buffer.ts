@@ -139,6 +139,19 @@ export class NatsStreamBuffer implements StreamBuffer {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          // [STREAM-DEBUG] timing probe for tool-input chunks
+          if (
+            value &&
+            typeof value === "object" &&
+            "type" in value &&
+            typeof (value as { type: unknown }).type === "string" &&
+            (value as { type: string }).type.startsWith("tool-input")
+          ) {
+            const v = value as { type: string; delta?: string };
+            console.log(
+              `[STREAM-DEBUG pump] ${Date.now()} ${v.type}${typeof v.delta === "string" ? ` delta.len=${v.delta.length}` : ""}`,
+            );
+          }
           tracker.publish(
             js,
             subj,
@@ -235,6 +248,17 @@ export class NatsStreamBuffer implements StreamBuffer {
               continue;
             }
             if (data.p) {
+              // [STREAM-DEBUG] timing probe for tool-input chunks
+              const p = data.p as { type?: unknown; delta?: unknown };
+              if (
+                p &&
+                typeof p.type === "string" &&
+                p.type.startsWith("tool-input")
+              ) {
+                console.log(
+                  `[STREAM-DEBUG tail] ${Date.now()} ${p.type}${typeof p.delta === "string" ? ` delta.len=${(p.delta as string).length}` : ""}`,
+                );
+              }
               controller.enqueue(data.p);
               return;
             }

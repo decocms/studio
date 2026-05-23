@@ -1,14 +1,6 @@
-import { Fragment, useEffect, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import {
-  Edit05,
-  FilterLines,
-  User02,
-  Users03,
-  XClose,
-} from "@untitledui/icons";
+import { Edit05, FilterLines, User02, Users03 } from "@untitledui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,18 +9,17 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
-import { toast } from "sonner";
 import type { Task } from "@/web/components/chat/task/types";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { TaskRow } from "./task-row";
 import { track } from "@/web/lib/posthog-client";
-import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
-import { KEYS } from "@/web/lib/query-keys";
-import { usePresetTasks, type VisiblePresetTask } from "./use-preset-tasks";
+import {
+  type SuggestedAction,
+  useSuggestedActions,
+} from "./use-suggested-actions";
 
 type FilterOption = "all" | "manual" | "automation";
 type MemberFilter = "all" | "mine";
-type SectionMode = "list" | "new";
 
 const FILTER_LABELS: Record<FilterOption, string> = {
   all: "All tasks",
@@ -77,39 +68,14 @@ export function TasksSection({
     isFetchingMore,
     scrollContainerRef,
   );
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { org } = useProjectContext();
-  const {
-    isLoading: isLoadingPresetTasks,
-    tasks: visiblePresetTasks,
-    dismiss: dismissPresetTask,
-    startPreset,
-  } = usePresetTasks(org.slug);
-  const visibleCards = visiblePresetTasks.filter(
-    (t) => t.state?.status !== "dismissed",
-  );
   const [filter, setFilter] = useState<FilterOption>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
-  // Default per-route: home (no active task) opens the preset cards;
-  // inside a chat we open the task list. Manual toggle wins, but only
-  // for the current activeTaskId — navigating clears the override so
-  // each route gets its default again. Avoids a useEffect for the sync.
-  const [override, setOverride] = useState<{
-    mode: SectionMode;
-    forTask: string | null;
-  } | null>(null);
-  const defaultMode: SectionMode = activeTaskId ? "list" : "new";
-  const mode: SectionMode =
-    override && override.forTask === activeTaskId ? override.mode : defaultMode;
-  const setMode = (
-    next: SectionMode | ((prev: SectionMode) => SectionMode),
-  ) => {
-    const resolved = typeof next === "function" ? next(mode) : next;
-    setOverride({ mode: resolved, forTask: activeTaskId });
-  };
-  const [importOpen, setImportOpen] = useState(false);
-  const [startingPresetId, setStartingPresetId] = useState<string | null>(null);
+  const showSuggestions = !activeTaskId;
+  const { isLoading: isLoadingSuggestions, suggestions } = useSuggestedActions(
+    org.slug,
+    { mine: memberFilter === "mine" },
+  );
 
   // Scroll the active row into view exactly when `activeTaskId` changes —
   // not when the list grows from infinite scroll. Owning this effect here
@@ -144,37 +110,20 @@ export function TasksSection({
         ? memberFiltered.filter((t) => !t.trigger_id)
         : memberFiltered;
 
-  async function handleCardClick(card: VisiblePresetTask) {
-    track("tasks_panel_preset_clicked", { preset_id: card.id });
-    if (card.action.kind === "new-chat") {
-      onNew?.();
-      return;
-    }
-    if (card.action.kind === "import-deco") {
-      setImportOpen(true);
-      return;
-    }
-    // kind === "preset": BE creates the task + seeds the first message +
-    // starts the agent stream, and auto-pins a tile on the user's home
-    // board. FE just navigates; the chat page attaches to the running
-    // stream via SSE on mount, and the home-board cache is invalidated
-    // so the new tile shows up next time the user lands there.
-    if (startingPresetId) return;
-    setStartingPresetId(card.id);
-    try {
-      const { taskId, virtualMcpId } = await startPreset(card.id);
-      queryClient.invalidateQueries({ queryKey: KEYS.homeBoard(org.slug) });
-      navigate({
-        to: "/$org/$taskId",
-        params: { org: org.slug, taskId },
-        search: { virtualmcpid: virtualMcpId },
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to start";
-      toast.error(`Couldn't start "${card.display.title}": ${message}`);
-    } finally {
-      setStartingPresetId(null);
-    }
+  function handleSuggestionClick(s: SuggestedAction) {
+    track("tasks_panel_suggestion_clicked", {
+      thread_id: s.thread.id,
+      virtual_mcp_id: s.thread.virtual_mcp_id,
+    });
+    onSelect({
+      id: s.thread.id,
+      title: s.thread.title ?? "",
+      created_at: s.thread.created_at,
+      updated_at: s.thread.updated_at,
+      virtual_mcp_id: s.thread.virtual_mcp_id ?? undefined,
+      trigger_id: s.thread.trigger_id,
+      created_by: s.thread.created_by,
+    });
   }
 
   return (
@@ -251,19 +200,15 @@ export function TasksSection({
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          {showNewButton && (
+          {showNewButton && onNew && (
             <button
               type="button"
               onClick={() => {
                 track("tasks_panel_new_clicked");
-                setMode((m) => (m === "new" ? "list" : "new"));
+                onNew();
               }}
               aria-label={`New ${title.toLowerCase()}`}
-              aria-pressed={mode === "new"}
-              className={cn(
-                "flex size-8 items-center justify-center rounded-md hover:bg-muted hover:text-foreground",
-                mode === "new" && "bg-muted text-foreground",
-              )}
+              className="flex size-8 items-center justify-center rounded-md hover:bg-muted hover:text-foreground"
             >
               <Edit05 size={16} />
             </button>
@@ -274,106 +219,40 @@ export function TasksSection({
         ref={scrollContainerRef}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5"
       >
-        {mode === "new" ? (
-          <div className="flex flex-col gap-2 pt-1 px-1">
-            {isLoadingPresetTasks
-              ? Array.from({ length: 5 }, (_, i) => (
+        {showSuggestions ? (
+          <div className="flex flex-col gap-2 pt-1 px-1 mb-2">
+            {isLoadingSuggestions
+              ? Array.from({ length: 3 }, (_, i) => (
                   <div
-                    key={`preset-skeleton-${i}`}
-                    className="flex w-full items-center gap-3.5 rounded-xl border border-border bg-background px-2.5 py-2"
+                    key={`suggestion-skeleton-${i}`}
+                    className="flex w-full flex-col gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5"
                   >
-                    <div className="h-11 w-16 shrink-0 animate-pulse rounded-md bg-muted" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
-                    </div>
+                    <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+                    <div className="h-2.5 w-full animate-pulse rounded bg-muted/70" />
                   </div>
                 ))
-              : visibleCards.map((card, i) => {
-                  const isStarting = startingPresetId === card.id;
-                  // Visual divider on every flip between enumerated cards
-                  // (the numbered brand → landing → monitoring flow) and
-                  // unenumerated ones (new-chat above, import-deco /
-                  // install-github below). BE order drives where the
-                  // dividers land.
-                  const prev = visibleCards[i - 1];
-                  const showDivider =
-                    prev &&
-                    (prev.display.step === null) !==
-                      (card.display.step === null);
-                  return (
-                    <Fragment key={card.id}>
-                      {showDivider && (
-                        <div className="my-1 h-px bg-border/60" aria-hidden />
-                      )}
-                      {/* Outer is a div, not a button, so the dismiss
-                          `<button>` can sit inside (no nested-button HTML).
-                          Card click + keyboard activation are wired
-                          manually. */}
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        aria-busy={isStarting}
-                        aria-disabled={isStarting}
-                        onClick={() => {
-                          if (isStarting) return;
-                          handleCardClick(card);
-                        }}
-                        onKeyDown={(e) => {
-                          if (isStarting) return;
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleCardClick(card);
-                          }
-                        }}
-                        className={cn(
-                          "group/row flex w-full cursor-pointer items-center gap-3.5 rounded-xl border border-border bg-background px-2.5 py-2 text-left outline-none transition-colors hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring",
-                          isStarting && "opacity-60 cursor-progress",
-                        )}
-                      >
-                        <div className="relative shrink-0">
-                          <img
-                            src={card.display.thumb}
-                            alt=""
-                            aria-hidden
-                            className="h-11 w-16 rounded-md object-cover"
-                          />
-                          {card.display.step !== null && (
-                            <span
-                              className="absolute -bottom-1 -right-1 flex size-[18px] items-center justify-center rounded-md border border-border bg-background text-[11px] font-semibold leading-none text-foreground"
-                              aria-hidden
-                            >
-                              {card.display.step}
-                            </span>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                          {card.display.title}
-                        </div>
-                        {card.dismissible && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              track("tasks_panel_preset_dismissed", {
-                                preset_id: card.id,
-                              });
-                              dismissPresetTask(card.id);
-                            }}
-                            aria-label={`Dismiss ${card.display.title}`}
-                            className={cn(
-                              "flex size-6 shrink-0 items-center justify-center rounded-md",
-                              "text-muted-foreground/70 opacity-0 transition-opacity duration-150",
-                              "group-hover/row:opacity-100",
-                              "hover:bg-muted hover:text-foreground",
-                            )}
-                          >
-                            <XClose size={14} />
-                          </button>
-                        )}
+              : suggestions.map((s) => (
+                  <button
+                    key={s.thread.id}
+                    type="button"
+                    onClick={() => handleSuggestionClick(s)}
+                    className={cn(
+                      "group/row flex w-full flex-col items-start gap-1 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors",
+                      "hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring",
+                    )}
+                  >
+                    {s.agent && (
+                      <div className="w-full truncate text-xs text-muted-foreground">
+                        {s.agent.name}
                       </div>
-                    </Fragment>
-                  );
-                })}
+                    )}
+                    {s.description && (
+                      <div className="line-clamp-2 w-full text-sm font-medium text-foreground">
+                        {s.description}
+                      </div>
+                    )}
+                  </button>
+                ))}
           </div>
         ) : visibleTasks.length === 0 && emptyLabel ? (
           <div className="px-2 py-1.5 text-xs text-muted-foreground/70">
@@ -424,7 +303,6 @@ export function TasksSection({
           </>
         )}
       </div>
-      <ImportFromDecoDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }
