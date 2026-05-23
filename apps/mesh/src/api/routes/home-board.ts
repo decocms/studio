@@ -1,19 +1,3 @@
-/**
- * Home Board API Routes
- *
- * Org-scoped, per-user. Mounted under `/api/:org` so `resolveOrgFromPath`
- * populates `meshContext.organization`; the authenticated user is read
- * from `meshContext.auth.user`.
- *
- *   GET    /home-board                     → { tiles }
- *   PATCH  /home-board/tiles/:tileId       → { tile } (move/resize, partial)
- *   DELETE /home-board/tiles/:tileId       → { ok: true }
- *
- * Auto-pin happens server-side in `POST /preset-tasks/:id/start`; this
- * router does not expose a POST for tile creation. If we ever need a
- * client-add path it lands here.
- */
-
 import { Hono } from "hono";
 import { z } from "zod";
 import type { MeshContext } from "@/core/mesh-context";

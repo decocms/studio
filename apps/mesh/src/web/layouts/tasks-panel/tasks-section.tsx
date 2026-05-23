@@ -23,10 +23,6 @@ import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { TaskRow } from "./task-row";
 import { track } from "@/web/lib/posthog-client";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
-import { InstallFlowDialog } from "@/web/components/install-flow-dialog.tsx";
-import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
-import { useAutoInstallSystemHealth } from "@/web/hooks/use-auto-install-system-health";
-import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePresetTasks, type VisiblePresetTask } from "./use-preset-tasks";
 
@@ -82,7 +78,6 @@ export function TasksSection({
     scrollContainerRef,
   );
   const navigate = useNavigate();
-  const navigateToAgent = useNavigateToAgent();
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
   const {
@@ -114,25 +109,7 @@ export function TasksSection({
     setOverride({ mode: resolved, forTask: activeTaskId });
   };
   const [importOpen, setImportOpen] = useState(false);
-  const [installGithubOpen, setInstallGithubOpen] = useState(false);
-  const [installSystemHealthOpen, setInstallSystemHealthOpen] = useState(false);
   const [startingPresetId, setStartingPresetId] = useState<string | null>(null);
-  const githubInstall = useAutoInstallGitHub({ enabled: installGithubOpen });
-  const systemHealthInstall = useAutoInstallSystemHealth({
-    enabled: installSystemHealthOpen,
-    onReady: (_connectionId, virtualMcpId) => {
-      // First-time install path: land the user on the sysh agent's
-      // own page (fresh chat + APPLICATION_ERRORS pinned as the main
-      // view, both wired in `ensureSystemHealthAgent`). The seeded
-      // preset thread is now redundant — the pinned view already
-      // surfaces what the seed message used to ask for. Subsequent
-      // clicks of the (already-installed) error-monitoring card still
-      // go through `startPreset` below and get a seeded thread.
-      setInstallSystemHealthOpen(false);
-      queryClient.invalidateQueries({ queryKey: KEYS.homeBoard(org.slug) });
-      navigateToAgent(virtualMcpId);
-    },
-  });
 
   // Scroll the active row into view exactly when `activeTaskId` changes —
   // not when the list grows from infinite scroll. Owning this effect here
@@ -175,14 +152,6 @@ export function TasksSection({
     }
     if (card.action.kind === "import-deco") {
       setImportOpen(true);
-      return;
-    }
-    if (card.action.kind === "install-github") {
-      setInstallGithubOpen(true);
-      return;
-    }
-    if (card.action.kind === "install-system-health") {
-      setInstallSystemHealthOpen(true);
       return;
     }
     // kind === "preset": BE creates the task + seeds the first message +
@@ -456,30 +425,6 @@ export function TasksSection({
         )}
       </div>
       <ImportFromDecoDialog open={importOpen} onOpenChange={setImportOpen} />
-      <InstallFlowDialog
-        open={installGithubOpen}
-        onOpenChange={setInstallGithubOpen}
-        title="Install GitHub"
-        errorPrefix="Couldn't install GitHub"
-        statusLabel={{
-          installing: "Installing GitHub…",
-          authenticating: "Authorizing with GitHub…",
-          ready: "GitHub installed.",
-        }}
-        flow={githubInstall}
-      />
-      <InstallFlowDialog
-        open={installSystemHealthOpen}
-        onOpenChange={setInstallSystemHealthOpen}
-        title="Set up system health"
-        errorPrefix="Couldn't set up system health"
-        statusLabel={{
-          installing: "Installing system health…",
-          authenticating: "Authorizing system health…",
-          ready: "System health connected.",
-        }}
-        flow={systemHealthInstall}
-      />
     </div>
   );
 }

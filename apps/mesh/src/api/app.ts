@@ -136,13 +136,9 @@ import {
 } from "./routes/decopilot/run-config";
 import { getPodId } from "../core/pod-identity";
 import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
-import { PresetTaskRegistry } from "../preset-tasks";
-import { setBrandContextWorkflowDeps } from "../preset-tasks/brand-context-workflow";
-import { PRESET_TASK_DEFINITIONS } from "../preset-tasks/definitions";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { HomeBoardStore } from "../storage/home-board";
-import { PresetTaskStore } from "../storage/preset-tasks";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 
@@ -1780,23 +1776,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   legacyKVRoutes.route("/", createKVRoutes({ kvStorage }));
   app.route("/api", legacyKVRoutes);
 
-  // Preset Tasks — typed wrapper over kvStorage + registry of definitions
-  // (visibility predicates, ids). Routes mounted under `/api/:org/preset-tasks`
-  // by createOrgScopedApi.
-  const presetTaskStore = new PresetTaskStore(kvStorage);
-  const presetTaskRegistry = new PresetTaskRegistry();
-  for (const def of PRESET_TASK_DEFINITIONS) {
-    presetTaskRegistry.register(def);
-  }
-
   // Home board — per-user tile layout, BE-owned. Auto-pinned by the
   // preset-task `/start` route; FE reads/mutates via /api/:org/home-board.
   const homeBoardStore = new HomeBoardStore(kvStorage);
-
-  // Wire deps for the brand-context DBOS workflow. Safe to call before
-  // DBOS.launch() — just stashes a module-level pointer. The workflow body
-  // is registered at import time so recovery replay works after a crash.
-  setBrandContextWorkflowDeps({ presetTaskStore });
 
   // Public Events endpoint — legacy mount with deprecation log. New mount
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
@@ -1888,8 +1870,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   const orgScopedApi = createOrgScopedApi({
     kvStorage,
     homeBoardStore,
-    presetTaskStore,
-    presetTaskRegistry,
     runRegistry,
     streamBuffer,
     cancelBroadcast,

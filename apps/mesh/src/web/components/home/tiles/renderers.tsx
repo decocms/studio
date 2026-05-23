@@ -18,7 +18,6 @@ import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import type { PresetTaskStatus } from "@decocms/mesh-sdk";
-import { usePresetTasks } from "@/web/layouts/tasks-panel/use-preset-tasks";
 import { getPresetBody, RunningBody } from "./preset-bodies";
 import type { TileRenderProps } from "./types";
 
@@ -69,14 +68,11 @@ function statusSubtitle(status: PresetTaskStatus | undefined): string {
 export function PresetTile({ instance, isEditMode }: TileRenderProps) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const { tasks: presetTasks } = usePresetTasks(org.slug);
 
   const presetId = readPresetId(instance.config);
   const taskId = readTaskId(instance.config);
   const virtualMcpId = readVirtualMcpId(instance.config);
-  const preset = presetId
-    ? presetTasks.find((t) => t.id === presetId)
-    : undefined;
+  const preset = { state: { status: "completed" as PresetTaskStatus }, display: { title: "Preset" } };
   const status = preset?.state?.status;
   const isCompleted = status === "completed";
   const title = preset?.display.title ?? "Preset";

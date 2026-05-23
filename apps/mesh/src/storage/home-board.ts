@@ -1,19 +1,3 @@
-/**
- * Home Board Store
- *
- * Typed wrapper over `KVStorage` for the per-user home tile layout. The
- * KV key embeds the user id so two members of the same org can have
- * different boards while staying inside the org-scoped KV partition.
- *
- * The board is the BE source of truth for tile placement. Auto-pin
- * fires from `POST /preset-tasks/:id/start` (a tile per started preset);
- * the FE reads via `GET /home-board` and mutates via PATCH/DELETE on
- * individual tiles. There is no FE-side persistence anymore.
- *
- * Concurrent writes to the same user's board are last-write-wins —
- * acceptable for the manual move/resize/remove flow.
- */
-
 import { kvGet, kvSet, type KVStorage } from "./kv";
 
 const kvKey = (userId: string) => `home-board:${userId}`;

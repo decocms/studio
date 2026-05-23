@@ -4,10 +4,8 @@ import type { AutomationEventDispatcher } from "@/automations/automation-event-d
 import type { CancelBroadcast } from "@/api/routes/decopilot/cancel-broadcast";
 import type { RunRegistry } from "@/api/routes/decopilot/run-registry";
 import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
-import type { PresetTaskRegistry } from "@/preset-tasks";
 import type { HomeBoardStore } from "@/storage/home-board";
 import type { KVStorage } from "@/storage/kv";
-import type { PresetTaskStore } from "@/storage/preset-tasks";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
 import type { Env } from "../hono-env";
@@ -20,7 +18,6 @@ import { createHomeBoardRoutes } from "./home-board";
 import { createKVRoutes } from "./kv";
 import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
-import { createPresetTaskRoutes } from "./preset-tasks";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
 import { createThreadOutputsRoutes } from "./thread-outputs";
@@ -31,8 +28,6 @@ import { createVmRoutes } from "./vm-proxy";
 interface OrgScopedDeps {
   kvStorage: KVStorage;
   homeBoardStore: HomeBoardStore;
-  presetTaskStore: PresetTaskStore;
-  presetTaskRegistry: PresetTaskRegistry;
   /**
    * Decopilot dispatch primitives — required by the preset-task `/start`
    * route, which kicks an agent run server-side and returns the taskId
@@ -88,14 +83,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/vm", createVmRoutes()); // /api/:org/vm/:vmId/:branch/*
   app.route(
     "/",
-    createPresetTaskRoutes({
-      store: deps.presetTaskStore,
-      registry: deps.presetTaskRegistry,
-      homeBoardStore: deps.homeBoardStore,
-      runRegistry: deps.runRegistry,
-      streamBuffer: deps.streamBuffer,
-      cancelBroadcast: deps.cancelBroadcast,
-    }),
+    createHomeBoardRoutes({ store: deps.homeBoardStore }),
   );
   app.route("/", createHomeBoardRoutes({ store: deps.homeBoardStore }));
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
