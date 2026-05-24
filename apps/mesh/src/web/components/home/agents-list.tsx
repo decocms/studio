@@ -33,6 +33,7 @@ import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.t
 import { SiteDiagnosticsRecruitModal } from "@/web/components/home/site-diagnostics-recruit-modal.tsx";
 import { AiImageRecruitModal } from "@/web/components/home/ai-image-recruit-modal.tsx";
 import { AiResearchRecruitModal } from "@/web/components/home/ai-research-recruit-modal.tsx";
+import { QaAgentRecruitModal } from "@/web/components/home/qa-agent-recruit-modal.tsx";
 import { LeanCanvasRecruitModal } from "@/web/components/home/lean-canvas-recruit-modal.tsx";
 import { StudioPackRecruitModal } from "@/web/components/home/studio-pack-recruit-modal.tsx";
 import { SelfHealingRepoFlow } from "@/web/components/self-healing-repo/self-healing-repo-flow.tsx";
@@ -199,6 +200,7 @@ type RecruitModalKey =
   | "diagnostics"
   | "ai-image"
   | "ai-research"
+  | "qa-agent"
   | "lean-canvas"
   | "studio-pack"
   | "self-healing";
@@ -212,6 +214,7 @@ type HomeTile =
         | "site-diagnostics"
         | "ai-image"
         | "ai-research"
+        | "qa-agent"
         | "lean-canvas"
         | "studio-pack"
         | "self-healing-storefront";
@@ -249,6 +252,7 @@ function AgentsListContent() {
   const [diagnosticsModalOpen, setDiagnosticsModalOpen] = useState(false);
   const [aiImageModalOpen, setAiImageModalOpen] = useState(false);
   const [aiResearchModalOpen, setAiResearchModalOpen] = useState(false);
+  const [qaAgentModalOpen, setQaAgentModalOpen] = useState(false);
   const [leanCanvasModalOpen, setLeanCanvasModalOpen] = useState(false);
   const [studioPackModalOpen, setStudioPackModalOpen] = useState(false);
   const [selfHealingOpen, setSelfHealingOpen] = useState(false);
@@ -266,6 +270,9 @@ function AgentsListContent() {
   )!;
   const aiResearchAgent = WELL_KNOWN_AGENT_TEMPLATES.find(
     (t) => t.id === "ai-research",
+  )!;
+  const qaAgentTemplate = WELL_KNOWN_AGENT_TEMPLATES.find(
+    (t) => t.id === "qa-agent",
   )!;
   const leanCanvasAgent = WELL_KNOWN_AGENT_TEMPLATES.find(
     (t) => t.id === "lean-canvas",
@@ -291,6 +298,11 @@ function AgentsListContent() {
     virtualMcps,
     aiResearchAgent.id,
     aiResearchAgent.title,
+  );
+  const existingQaAgent = findExistingForTemplate(
+    virtualMcps,
+    qaAgentTemplate.id,
+    qaAgentTemplate.title,
   );
   const existingLeanCanvas = findExistingForTemplate(
     virtualMcps,
@@ -401,6 +413,23 @@ function AgentsListContent() {
         onClick: "ai-research",
       };
     }
+    if (id === qaAgentTemplate.id) {
+      if (existingQaAgent) {
+        return {
+          key: existingQaAgent.id,
+          kind: "existing",
+          templateId: "qa-agent",
+          agent: existingQaAgent,
+        };
+      }
+      return {
+        key: id,
+        kind: "template-recruit",
+        templateId: "qa-agent",
+        agent: qaAgentTemplate,
+        onClick: "qa-agent",
+      };
+    }
     const custom = virtualMcps.find(
       (a): a is typeof a & { id: string } =>
         a.id !== null && a.id === id && !isDecopilot(a.id),
@@ -434,6 +463,7 @@ function AgentsListContent() {
       siteDiagnosticsAgent.id,
       aiImageAgent.id,
       aiResearchAgent.id,
+      qaAgentTemplate.id,
     ];
     const templateTiles = templateIds
       .map(resolveTile)
@@ -449,7 +479,8 @@ function AgentsListContent() {
         (a) =>
           a.id !== existingDiagnostics?.id &&
           a.id !== existingAiImage?.id &&
-          a.id !== existingAiResearch?.id,
+          a.id !== existingAiResearch?.id &&
+          a.id !== existingQaAgent?.id,
       )
       .sort((a, b) => {
         const aIdx = recentIds.indexOf(a.id);
@@ -485,6 +516,7 @@ function AgentsListContent() {
         diagnostics: () => setDiagnosticsModalOpen(true),
         "ai-image": () => setAiImageModalOpen(true),
         "ai-research": () => setAiResearchModalOpen(true),
+        "qa-agent": () => setQaAgentModalOpen(true),
         "lean-canvas": () => setLeanCanvasModalOpen(true),
         "studio-pack": () => setStudioPackModalOpen(true),
         "self-healing": () => setSelfHealingOpen(true),
@@ -547,6 +579,12 @@ function AgentsListContent() {
         open={aiResearchModalOpen}
         onOpenChange={setAiResearchModalOpen}
         existingAgent={existingAiResearch}
+      />
+
+      <QaAgentRecruitModal
+        open={qaAgentModalOpen}
+        onOpenChange={setQaAgentModalOpen}
+        existingAgent={existingQaAgent}
       />
 
       <LeanCanvasRecruitModal
