@@ -3,7 +3,7 @@
  * resolution.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { MeshContext } from "@/core/mesh-context";
 import type { Capability } from "@/links/protocol";
@@ -105,6 +105,12 @@ describe("computeIdempotencyKey", () => {
 // mocked implementations. Other tests in this file don't import the route
 // factory, so the mocks don't bleed into them.
 
+// Capture the real implementations BEFORE mocking so we can restore them in
+// afterAll. Bun's mock.module is module-global within a shard, and
+// model-permissions.test.ts (same shard) imports the real module — without
+// restoration the stub here causes that file's tests to fail.
+const realModelPermissions = await import("./model-permissions");
+
 mock.module("@/core/resolve-tier", () => ({
   resolveTier: async () => ({
     credentialId: "cred_local",
@@ -123,6 +129,10 @@ mock.module("./model-permissions", () => ({
 mock.module("@/dispatch-queue", () => ({
   enqueueThreadRun: async () => ({ workflowID: "wf_test" }),
 }));
+
+afterAll(() => {
+  mock.module("./model-permissions", () => realModelPermissions);
+});
 
 // `./helpers` is mocked minimally — only `ensureOrganization` is exercised
 // on the 409 path, and the real one already works against our stub context.
