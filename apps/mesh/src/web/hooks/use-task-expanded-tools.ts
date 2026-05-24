@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ThreadExpandedTool, ThreadMetadata } from "../../storage/types";
 import type { Task } from "../components/chat/task/types";
+import { useThreadManager } from "../components/chat/store/hooks";
 import { KEYS } from "../lib/query-keys";
 
 export type { ThreadExpandedTool };
@@ -27,6 +28,7 @@ type ThreadGetOutput = { item: ThreadGetItem };
 export function useTaskExpandedTools(taskId: string) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
+  const manager = useThreadManager();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -111,9 +113,11 @@ export function useTaskExpandedTools(taskId: string) {
   });
 
   /**
-   * Synchronously patches the query cache and then fires the server mutation.
-   * Use this when code that runs immediately after (e.g. a navigate() call)
-   * needs the expanded_tools data to already be in the cache.
+   * Synchronously patches both the React Query cache AND the thread manager
+   * store, then fires the server mutation. This is necessary because
+   * `useTaskMetadata` prioritizes the thread manager store over the query
+   * cache — patching only the query cache leaves the panel with stale
+   * metadata (missing args) when the navigate() triggers a re-render.
    */
   const addOrReplaceEager = (tool: Omit<ThreadExpandedTool, "expandedAt">) => {
     const key = KEYS.ensureTask(org.id, taskId);
@@ -122,17 +126,21 @@ export function useTaskExpandedTools(taskId: string) {
       previous?.metadata?.expanded_tools ?? [];
     const nextTools = currentTools.filter((t) => t.toolName !== tool.toolName);
     nextTools.push({ ...tool, expandedAt: new Date().toISOString() });
+    const nextMetadata: ThreadMetadata = {
+      ...(previous?.metadata ?? {}),
+      expanded_tools: nextTools,
+    };
     queryClient.setQueryData<Task | null>(key, (prev) =>
       prev
         ? {
             ...prev,
-            metadata: {
-              ...(prev.metadata ?? {}),
-              expanded_tools: nextTools,
-            },
+            metadata: nextMetadata,
           }
         : prev,
     );
+    // Also patch the thread manager store so `useTaskMetadata` (which
+    // prioritizes localHit from the store) sees the updated expanded_tools.
+    manager.patchThread({ id: taskId, metadata: nextMetadata });
     mutation.mutate(tool);
   };
 
