@@ -356,7 +356,7 @@ export const WELL_KNOWN_AGENT_TEMPLATES = [
   {
     id: "qa-agent",
     title: "QA Agent",
-    icon: "icon://CheckCircle?color=green",
+    icon: "icon://ActivityHeart?color=green",
     type: "builtin-agent" as const,
   },
 ] as const;

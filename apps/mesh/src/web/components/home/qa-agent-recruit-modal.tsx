@@ -148,7 +148,7 @@ export function QaAgentRecruitModal({
         connectionId = matchingConnection.id;
       } else {
         const connection = await connectionActions.create.mutateAsync({
-          title: template.title,
+          title: "QA mcp",
           description: "Autonomous QA agent driven by Playwright.",
           icon: template.icon,
           connection_type: "HTTP",
