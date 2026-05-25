@@ -97,11 +97,16 @@ export function createSuggestedActionsRoutes() {
         if (fromState) {
           description = fromState;
         } else if (studioPackAgent && agent) {
-          description =
-            (await resolveStudioPackTaskDescription(studioPackAgent, {
-              orgId,
-              ctx: mesh,
-            })) ?? `Reply to ${agent.title}`;
+          const fallback = `Reply to ${agent.title}`;
+          try {
+            description =
+              (await resolveStudioPackTaskDescription(studioPackAgent, {
+                orgId,
+                ctx: mesh,
+              })) ?? fallback;
+          } catch {
+            description = fallback;
+          }
         } else {
           const taskDescription =
             agent && typeof agent.metadata === "object" && agent.metadata
