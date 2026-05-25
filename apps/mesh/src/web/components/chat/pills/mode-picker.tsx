@@ -75,7 +75,7 @@ function pillLabel(mode: AgentMode): { icon: React.ReactNode; text: string } {
 
 const baseClasses =
   "gap-1.5 text-muted-foreground hover:text-foreground text-xs";
-const localActiveClasses = "text-success bg-success/10 hover:text-success";
+const localActiveClasses = "text-success hover:text-success";
 
 /**
  * Pure variant — no external dependencies (no context, no queries, no MCP
@@ -102,7 +102,7 @@ export function ModePickerPure({
     return (
       <span
         className={cn(
-          "inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-muted text-xs",
+          "inline-flex items-center gap-1.5 px-2 py-1 text-xs",
           isLocal ? "text-success" : "text-muted-foreground",
         )}
         title="Fixed for this thread"

@@ -20,7 +20,7 @@ export function BranchPill({ locked, value, ...props }: Props) {
   if (locked) {
     return (
       <span
-        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-muted text-xs font-mono"
+        className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-mono text-muted-foreground"
         title="Fixed for this thread"
       >
         <GitBranch01 size={12} />

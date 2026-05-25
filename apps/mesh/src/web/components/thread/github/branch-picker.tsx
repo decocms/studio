@@ -15,7 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import { GitBranch01 } from "@untitledui/icons";
+import { ChevronDown, GitBranch01 } from "@untitledui/icons";
 import { generateBranchName } from "@/shared/branch-name";
 import { useBranches } from "./use-branches";
 
@@ -118,12 +118,13 @@ export function BranchPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="h-7 gap-1.5 px-2 font-mono text-xs"
+          className="gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
         >
           <GitBranch01 className="h-3.5 w-3.5" />
           <span className="max-w-[200px] truncate">{label}</span>
+          <ChevronDown size={12} className="opacity-60" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
