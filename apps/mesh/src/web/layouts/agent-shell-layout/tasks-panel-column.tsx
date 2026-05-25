@@ -7,7 +7,6 @@
  * managed by the surrounding ResizablePanel in TasksWorkspaceLayout.
  */
 
-import { Suspense } from "react";
 import { TasksPanel } from "@/web/layouts/tasks-panel";
 
 export function TasksPanelColumnInner() {
@@ -19,13 +18,5 @@ export function TasksPanelColumnInner() {
         </div>
       </div>
     </div>
-  );
-}
-
-export function TasksPanelColumn() {
-  return (
-    <Suspense fallback={null}>
-      <TasksPanelColumnInner />
-    </Suspense>
   );
 }
