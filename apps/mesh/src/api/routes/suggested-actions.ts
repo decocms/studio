@@ -134,6 +134,7 @@ export function createSuggestedActionsRoutes() {
           agent: agent
             ? { id: agent.id, name: agent.title, icon: agent.icon }
             : null,
+          icon: agent?.icon ?? null,
           description,
           excerpt: extractExcerpt(lastMessage.parts),
           last_message_at: lastMessage.created_at,

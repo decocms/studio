@@ -24,6 +24,7 @@ export interface SuggestedAction {
     name: string;
     icon: string | null;
   } | null;
+  icon: string | null;
   description: string;
   excerpt: string;
   last_message_at: string;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { Edit05, FilterLines, User02, Users03 } from "@untitledui/icons";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -237,20 +238,27 @@ export function TasksSection({
                     type="button"
                     onClick={() => handleSuggestionClick(s)}
                     className={cn(
-                      "group/row flex w-full flex-col items-start gap-1 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors",
+                      "group/row flex w-full items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors",
                       "hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring",
                     )}
                   >
-                    {s.agent && (
-                      <div className="w-full truncate text-xs text-muted-foreground">
-                        {s.agent.name}
-                      </div>
-                    )}
-                    {s.description && (
-                      <div className="line-clamp-2 w-full text-sm font-medium text-foreground">
-                        {s.description}
-                      </div>
-                    )}
+                    <AgentAvatar
+                      icon={s.icon}
+                      name={s.agent?.name ?? s.thread.title ?? "?"}
+                      size="xs"
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      {s.agent && (
+                        <div className="w-full truncate text-xs text-muted-foreground">
+                          {s.agent.name}
+                        </div>
+                      )}
+                      {s.description && (
+                        <div className="line-clamp-2 w-full text-sm font-medium text-foreground">
+                          {s.description}
+                        </div>
+                      )}
+                    </div>
                   </button>
                 ))}
           </div>
