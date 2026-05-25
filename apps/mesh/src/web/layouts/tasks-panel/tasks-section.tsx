@@ -4,11 +4,13 @@ import {
   Edit05,
   FilterLines,
   List,
+  SearchSm,
   Stars02,
   User02,
   Users03,
 } from "@untitledui/icons";
 import { AgentAvatar } from "@/web/components/agent-icon";
+import { GlobalSearchDialog } from "./global-search-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,6 +88,12 @@ export function TasksSection({
     org.slug,
     { mine: memberFilter === "mine" },
   );
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Don't mount the dialog until the user opens it for the first time.
+  // GlobalSearchDialog calls `useMCPClient` (Suspense-based) on mount; even
+  // though the self-MCP client is currently warm via ThreadManagerProvider,
+  // gating on first-open removes the dependency on that invariant.
+  const [searchEverOpened, setSearchEverOpened] = useState(false);
 
   // Scroll the active row into view exactly when `activeTaskId` changes —
   // not when the list grows from infinite scroll. Owning this effect here
@@ -169,6 +177,18 @@ export function TasksSection({
               )}
             </button>
           )}
+          <button
+            type="button"
+            aria-label="Search threads"
+            onClick={() => {
+              track("tasks_panel_search_opened");
+              setSearchEverOpened(true);
+              setSearchOpen(true);
+            }}
+            className="flex size-8 items-center justify-center rounded-md hover:bg-muted hover:text-foreground"
+          >
+            <SearchSm size={16} />
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -348,6 +368,9 @@ export function TasksSection({
           </>
         )}
       </div>
+      {searchEverOpened && (
+        <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      )}
     </div>
   );
 }

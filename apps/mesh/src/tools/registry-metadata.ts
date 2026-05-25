@@ -30,12 +30,14 @@ export type ToolCategory =
   | "Tags"
   | "AI Providers"
   | "Secrets"
+  | "File Configs"
   | "Automations"
   | "Object Storage"
   | "Registry"
   | "GitHub"
   | "VM"
-  | "Links";
+  | "Links"
+  | "Search";
 
 /**
  * All tool names - keep in sync with ALL_TOOLS in index.ts
@@ -145,6 +147,12 @@ const ALL_TOOL_NAMES = [
   "SECRET_CREATE",
   "SECRET_LIST",
 
+  // File config tools (org-scoped S3 bucket configurations)
+  "FILE_CONFIG_CREATE",
+  "FILE_CONFIG_LIST",
+  "FILE_CONFIG_UPDATE",
+  "FILE_CONFIG_DELETE",
+
   // Object Storage tools
   "LIST_OBJECTS",
   "GET_OBJECT_METADATA",
@@ -196,6 +204,9 @@ const ALL_TOOL_NAMES = [
 
   // Link tools
   "LINK_CURRENT_GET",
+
+  // Search tools
+  "GLOBAL_SEARCH",
 ] as const;
 
 /**
@@ -694,6 +705,29 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List secrets visible to the caller (no values returned)",
     category: "Secrets",
   },
+  // File config tools
+  {
+    name: "FILE_CONFIG_CREATE",
+    description: "Create an S3-compatible bucket configuration for the org",
+    category: "File Configs",
+  },
+  {
+    name: "FILE_CONFIG_LIST",
+    description:
+      "List S3 bucket configurations for the org (no creds returned)",
+    category: "File Configs",
+  },
+  {
+    name: "FILE_CONFIG_UPDATE",
+    description:
+      "Update an S3 bucket configuration, optionally rotating credentials",
+    category: "File Configs",
+  },
+  {
+    name: "FILE_CONFIG_DELETE",
+    description: "Delete an S3 bucket configuration",
+    category: "File Configs",
+  },
 
   // Object Storage tools
   {
@@ -914,6 +948,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
       "Return the calling user's current desktop link status (online/offline, capabilities)",
     category: "Links",
   },
+  // Search tools
+  {
+    name: "GLOBAL_SEARCH",
+    description:
+      "Search across organization resources (currently threads). Returns a typed union of matches.",
+    category: "Search",
+  },
 ];
 
 // ============================================================================
@@ -964,9 +1005,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "GET_OBJECT_METADATA",
       "GET_PRESIGNED_URL",
       "PUT_PRESIGNED_URL",
-      // VM previews
+      // Sandbox previews
       "SANDBOX_START",
       "SANDBOX_DELETE",
+      // Cross-resource discovery / command palette
+      "GLOBAL_SEARCH",
     ],
   },
   // Organization
@@ -1068,6 +1111,19 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Create and list secrets stored in the credential vault",
     section: "Organization",
     tools: ["SECRET_CREATE", "SECRET_LIST"],
+  },
+  // File Configs
+  {
+    id: "file-configs:manage",
+    label: "Manage file configs",
+    description: "Create, list, update and delete S3 bucket configurations",
+    section: "Organization",
+    tools: [
+      "FILE_CONFIG_CREATE",
+      "FILE_CONFIG_LIST",
+      "FILE_CONFIG_UPDATE",
+      "FILE_CONFIG_DELETE",
+    ],
   },
   // AI Providers
   {
@@ -1283,6 +1339,7 @@ export function getToolsByCategory() {
     GitHub: [],
     VM: [],
     Links: [],
+    Search: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

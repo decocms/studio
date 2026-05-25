@@ -159,6 +159,10 @@ export const KEYS = {
   ensureTask: (orgId: string, id: string) =>
     ["ensure-task", orgId, id] as const,
 
+  // Global search (server-side, scoped by org)
+  globalSearch: (orgId: string, query: string) =>
+    ["global-search", orgId, query] as const,
+
   // Thread queries (scoped by locator)
   threadsInfinite: (locator: string, paramsKey: string) =>
     ["threads", "list-infinite", locator, paramsKey] as const,
@@ -288,6 +292,9 @@ export const KEYS = {
 
   // Secrets (scoped by org; user-scope filtering happens server-side)
   secrets: (orgId: string) => ["secrets", orgId] as const,
+
+  // Org-scoped S3 bucket file configurations
+  fileConfigs: (orgId: string) => ["file-configs", orgId] as const,
 
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>

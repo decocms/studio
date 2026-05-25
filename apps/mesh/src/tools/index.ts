@@ -31,12 +31,14 @@ import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
 import * as SecretsTools from "./secrets";
+import * as FileConfigTools from "./file-configs";
 import { getPrompts, getResources } from "./guides";
 import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
 import * as LinkTools from "./links";
+import * as SearchTools from "./search";
 import { ToolName } from "./registry-metadata";
 // Core tools - always available
 const CORE_TOOLS = [
@@ -153,6 +155,12 @@ const CORE_TOOLS = [
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,
 
+  // File config tools (org-scoped S3 bucket configurations)
+  FileConfigTools.FILE_CONFIG_CREATE,
+  FileConfigTools.FILE_CONFIG_LIST,
+  FileConfigTools.FILE_CONFIG_UPDATE,
+  FileConfigTools.FILE_CONFIG_DELETE,
+
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,
   ObjectStorageTools.GET_OBJECT_METADATA,
@@ -173,6 +181,9 @@ const CORE_TOOLS = [
 
   // Link tools
   LinkTools.LINK_CURRENT_GET,
+
+  // Search tools
+  SearchTools.GLOBAL_SEARCH,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime
