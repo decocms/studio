@@ -180,14 +180,76 @@ export async function startDevServer(
   // Gated on --local-sandbox-provider. When set, once the cluster is up
   // on :PORT, spawn the link daemon so the dev session exercises the
   // remote-cli + desktop code paths end-to-end. The link reads its
-  // session from <dataDir>/dev-link/session.json (auto-minted by the
-  // cluster on first boot — see apps/mesh/src/auth/dev-link-session.ts).
-  const linkPort = 5174;
+  // session from <linkDataDir>/session.json (auto-minted by the cluster
+  // on first boot — see apps/mesh/src/auth/dev-link-session.ts).
+  //
+  // The link is tracked like postgres/nats: dynamic port, state file at
+  // <home>/services/link/state.json, owned-process verification on
+  // shutdown. `services down` (or our shutdown handler below) tears it
+  // down. The DATA_DIR lives OUTSIDE the mesh repo: the daemon clones
+  // user repos into `<DATA_DIR>/sandboxes/<handle>/repo`, and if that
+  // path is nested under another git repo (this one) git's parent-walk
+  // hits the outer .git, refuses to clone, and the daemon crashes
+  // mid-bootstrap. The tmpdir-rooted path keyed by workspace slug also
+  // keeps concurrent worktrees from fighting over the same sandboxes dir.
   const linkChild: Promise<Subprocess | null> = !options.localSandboxProvider
     ? Promise.resolve(null)
     : (async (): Promise<Subprocess | null> => {
+        const { ensureLink } = await import("../../services/ensure-services");
         try {
-          await waitForPort(Number(settings.port), { intervalMs: 500 });
+          const { info, proc } = await ensureLink({
+            home: settings.dataDir,
+            clusterUrl: serverUrl,
+            linkDataDir,
+            repoRoot,
+            stdio: [
+              "inherit",
+              useInherit ? "inherit" : "pipe",
+              useInherit ? "inherit" : "pipe",
+            ],
+            beforeSpawn: async () => {
+              await waitForPort(Number(settings.port), { intervalMs: 500 });
+              // The cluster's port opens the instant `Bun.serve` listens,
+              // but `bootstrapDevLinkSession` (admin user seed + API key
+              // mint) runs async after that and is what writes
+              // `session.json`. On first boot it can take many seconds
+              // (embedded pg init + migrations + seed), and the link
+              // daemon throws "No session found" immediately on a missing
+              // file. Wait for the file before spawning so we don't lose
+              // the race and leave the Sandbox spinner pinned forever.
+              const sessionPath = join(linkDataDir, "session.json");
+              const sessionWaitDeadline = Date.now() + 60_000;
+              while (!existsSync(sessionPath)) {
+                if (Date.now() > sessionWaitDeadline) {
+                  throw new Error(
+                    `dev-link session not written to ${sessionPath} within 60s`,
+                  );
+                }
+                await new Promise((r) => setTimeout(r, 500));
+              }
+            },
+          });
+          if (proc && !useInherit) {
+            pipeToLogStore(proc.stdout as ReadableStream<Uint8Array>);
+            pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
+          }
+          // Mark Sandbox ready once the link binary's HTTP server accepts
+          // connections on its port. Fire-and-forget; if the link never
+          // comes up (e.g. no admin user yet for session bootstrap), the
+          // status stays "pending" and the user sees a spinner — useful
+          // signal that something's wrong rather than silent failure.
+          void waitForPort(info.port, { intervalMs: 500 })
+            .then(() => {
+              updateService({
+                name: "Sandbox",
+                status: "ready",
+                port: info.port,
+              });
+            })
+            .catch(() => {
+              /* link never came up — leave status pending as a signal */
+            });
+          return proc;
         } catch (err) {
           addLogEntry({
             method: "",
@@ -195,98 +257,30 @@ export async function startDevServer(
             status: 0,
             duration: 0,
             timestamp: new Date(),
-            rawLine: `[link] gave up waiting for cluster on :${settings.port}: ${
+            rawLine: `[link] failed to start: ${
               err instanceof Error ? err.message : String(err)
             }`,
           });
           return null;
         }
-        // The cluster's port opens the instant `Bun.serve` listens, but
-        // `bootstrapDevLinkSession` (admin user seed + API key mint) runs
-        // async after that and is what writes `session.json`. On first boot
-        // it can take many seconds (embedded pg init + migrations + seed),
-        // and the link daemon throws "No session found" immediately on a
-        // missing file. Wait for the file before spawning so we don't lose
-        // the race and leave the Sandbox spinner pinned forever.
-        const sessionPath = join(linkDataDir, "session.json");
-        const sessionWaitDeadline = Date.now() + 60_000;
-        while (!existsSync(sessionPath)) {
-          if (Date.now() > sessionWaitDeadline) {
-            addLogEntry({
-              method: "",
-              path: "",
-              status: 0,
-              duration: 0,
-              timestamp: new Date(),
-              rawLine: `[link] gave up waiting for dev-link session at ${sessionPath} after 60s — skipping link spawn. Sandbox will stay pending.`,
-            });
-            return null;
-          }
-          await new Promise((r) => setTimeout(r, 500));
-        }
-        const proc = Bun.spawn(
-          [
-            "bun",
-            "run",
-            "--cwd=apps/mesh",
-            "src/cli.ts",
-            "link",
-            "--no-tunnel",
-            "--port",
-            String(linkPort),
-          ],
-          {
-            cwd: repoRoot,
-            env: {
-              ...process.env,
-              MESH_CLUSTER_URL: serverUrl,
-              MESH_ALLOW_LOCALHOST_LINKS: "1",
-              // DATA_DIR lives OUTSIDE the mesh repo. The daemon clones
-              // user repos into `<DATA_DIR>/sandboxes/<handle>/repo`;
-              // if that path is nested under another git repo (this one)
-              // git's parent-walk hits the outer .git, refuses to clone,
-              // and the daemon crashes mid-bootstrap. Use a tmpdir-rooted
-              // path keyed by the workspace slug so concurrent worktrees
-              // don't fight over the same sandboxes dir.
-              DATA_DIR: linkDataDir,
-              DECOCMS_HOME: linkDataDir,
-            },
-            stdio: [
-              "inherit",
-              useInherit ? "inherit" : "pipe",
-              useInherit ? "inherit" : "pipe",
-            ],
-          },
-        );
-        if (!useInherit) {
-          pipeToLogStore(proc.stdout as ReadableStream<Uint8Array>);
-          pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
-        }
-        // Mark Sandbox ready once the link binary's HTTP server accepts
-        // connections on its port. Fire-and-forget; if the link never
-        // comes up (e.g. no admin user yet for session bootstrap), the
-        // status stays "pending" and the user sees a spinner — useful
-        // signal that something's wrong rather than silent failure.
-        void waitForPort(linkPort, { intervalMs: 500 })
-          .then(() => {
-            updateService({ name: "Sandbox", status: "ready", port: linkPort });
-          })
-          .catch(() => {
-            /* link never came up — leave status pending as a signal */
-          });
-        return proc;
       })();
 
   const shutdown = async (signal: NodeJS.Signals) => {
-    // Kill the link child first — it talks to the cluster on shutdown
+    // Wait for any in-flight link spawn to settle so we don't orphan a
+    // process that gets spawned right after we've torn down everything
+    // else. On a normal shutdown the spawn has long since resolved.
+    await linkChild.catch(() => null);
+    // Stop the link first — it talks to the cluster on shutdown
     // (DELETE /api/links/me), so giving it a window before we tear down
-    // the API server reduces orphaned registry entries.
-    const link = await linkChild.catch(() => null);
-    if (link) {
+    // the API server reduces orphaned registry entries. stopLink reads
+    // the state file written by ensureLink, signals the daemon, waits
+    // for exit, then removes the state file.
+    if (options.localSandboxProvider) {
+      const { stopLink } = await import("../../services/ensure-services");
       try {
-        link.kill(signal);
+        await stopLink(settings.dataDir);
       } catch {
-        /* already gone */
+        /* best-effort */
       }
     }
     child.kill(signal);
@@ -295,13 +289,6 @@ export async function startDevServer(
     // out connecting to a dead system DB. The server has its own 55s force-
     // exit timer, so this won't hang indefinitely.
     await child.exited;
-    if (link) {
-      try {
-        await link.exited;
-      } catch {
-        /* ignore */
-      }
-    }
     if (managedServiceNames.length > 0) {
       const { stopServices } = await import("../../services/ensure-services");
       await stopServices(settings.dataDir);
