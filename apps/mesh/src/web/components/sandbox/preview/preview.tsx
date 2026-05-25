@@ -10,8 +10,6 @@ import {
 } from "@decocms/mesh-sdk";
 
 import {
-  ArrowLeft,
-  ArrowRight,
   ChevronDown,
   Code02,
   CursorClick01,
@@ -646,36 +644,6 @@ export function PreviewContent() {
                   viewMode === "code" && "hidden",
                 )}
               >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        previewIframeRef.current?.contentWindow?.history.back()
-                      }
-                    >
-                      <ArrowLeft size={14} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Back</TooltipContent>
-                </Tooltip>
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        previewIframeRef.current?.contentWindow?.history.forward()
-                      }
-                    >
-                      <ArrowRight size={14} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Forward</TooltipContent>
-                </Tooltip>
-
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" onClick={handleRefresh}>
