@@ -1715,7 +1715,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.route("/api/deco-sites", legacyDecoSitesOrg);
 
   // Unified VM events SSE — single auth-gated stream that emits pre-Ready
-  // lifecycle phases, then proxies the daemon's `/_decopilot_vm/events` once
+  // lifecycle phases, then proxies the daemon's `/_sandbox/events` once
   // the sandbox is up. Replaces the prior split between `/api/vm-lifecycle`
   // and the browser's direct daemon EventSource.
   // Legacy mount at /api/vm-events with deprecation log; the new

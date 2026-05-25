@@ -43,8 +43,10 @@ const baseStreamRequestSchema = z.object({
    */
   branch: z.string().nullish(),
   toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
+  // Canonical-only. Migration 091 swept persisted legacy values; clients
+  // ship canonical strings after the SDK narrowed its union in Task 15.
   sandboxProviderKind: z
-    .enum(["docker", "agent-sandbox", "desktop"])
+    .enum(["local-docker", "cluster", "user-desktop"])
     .nullish()
     .describe(
       "Pinned on first message. Subsequent messages ignore this field (the thread row carries the pinned value).",

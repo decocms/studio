@@ -1,7 +1,7 @@
 /**
  * Per-claim lifecycle watcher for agent-sandbox SandboxClaims.
  *
- * Bridges the visibility gap between `VM_START` posting a SandboxClaim and
+ * Bridges the visibility gap between `SANDBOX_START` posting a SandboxClaim and
  * the daemon SSE coming online. Synthesizes a coarse phase signal from
  * three K8s primitives:
  *
@@ -140,7 +140,7 @@ type SignalKind = "pod" | "sandbox" | "event" | "tick";
  * either is observed.
  *
  * Initial phase: emitted synchronously after the first watch handshake. If
- * the claim doesn't exist yet (caller raced VM_START), the first phase is
+ * the claim doesn't exist yet (caller raced SANDBOX_START), the first phase is
  * `claiming` and stays there until the operator creates the Sandbox/Pod.
  */
 export async function* watchClaimLifecycle(

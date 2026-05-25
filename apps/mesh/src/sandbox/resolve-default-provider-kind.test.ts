@@ -17,19 +17,19 @@ function stubRegistry(link: LinkEntry | null): LinkRegistry {
 }
 
 describe("resolveDefaultSandboxProviderKind", () => {
-  test("returns desktop when the user's link is online", async () => {
+  test("returns user-desktop when the user's link is online", async () => {
     const kind = await resolveDefaultSandboxProviderKind("u-1", {
       linkRegistry: stubRegistry(linkOnline()),
-      resolveEnvKind: () => "docker",
+      resolveEnvKind: () => "local-docker",
     });
-    expect(kind).toBe("desktop");
+    expect(kind).toBe("user-desktop");
   });
 
   test("falls back to env kind when no link is registered", async () => {
     const kind = await resolveDefaultSandboxProviderKind("u-1", {
       linkRegistry: stubRegistry(null),
-      resolveEnvKind: () => "docker",
+      resolveEnvKind: () => "local-docker",
     });
-    expect(kind).toBe("docker");
+    expect(kind).toBe("local-docker");
   });
 });

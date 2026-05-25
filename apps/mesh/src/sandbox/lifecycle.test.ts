@@ -31,7 +31,7 @@ describe("asDockerRunner", () => {
     // Duck-typed non-Docker runner — satisfies the SandboxProvider shape but
     // isn't a DockerSandboxProvider instance, so instanceof narrows to null.
     const fake = {
-      kind: "agent-sandbox" as const,
+      kind: "cluster" as const,
       ensure: async () => ({ handle: "h", workdir: "/app", previewUrl: null }),
       exec: async () => ({
         stdout: "",
@@ -62,8 +62,8 @@ describe("getSandboxProviderByKind caching", () => {
   afterEach(() => {});
 
   it("returns the same DockerSandboxProvider instance across calls", async () => {
-    const a = await getSandboxProviderByKind(stubCtx, "docker");
-    const b = await getSandboxProviderByKind(stubCtx, "docker");
+    const a = await getSandboxProviderByKind(stubCtx, "local-docker");
+    const b = await getSandboxProviderByKind(stubCtx, "local-docker");
     expect(a).toBe(b);
     expect(a).toBeInstanceOf(DockerSandboxProvider);
   });
@@ -119,7 +119,7 @@ function makeFakeWatchable(): FakeWatchableHandle {
   }
 
   const runner: SandboxProvider = {
-    kind: "agent-sandbox",
+    kind: "cluster",
     ensure: async () => ({ handle: "h", workdir: "/app", previewUrl: null }),
     exec: async () => ({
       stdout: "",

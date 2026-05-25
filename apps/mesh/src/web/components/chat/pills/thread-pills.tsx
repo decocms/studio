@@ -1,4 +1,4 @@
-import type { VmMap } from "@decocms/mesh-sdk";
+import type { SandboxMap } from "@decocms/mesh-sdk";
 import type { HarnessId } from "@/harnesses";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import { BranchPill } from "./branch-pill";
@@ -12,7 +12,7 @@ interface Props {
   connectionId: string;
   owner: string;
   repo: string;
-  vmMap: VmMap | undefined;
+  sandboxMap: SandboxMap | undefined;
   currentBranch: string | null;
   onBranchChange: (branch: string) => void;
   /** Kept in the signature for parity with the previous version even
@@ -30,7 +30,7 @@ export function ThreadPills({
   connectionId,
   owner,
   repo,
-  vmMap,
+  sandboxMap,
   currentBranch,
   onBranchChange,
 }: Props) {
@@ -47,7 +47,7 @@ export function ThreadPills({
         connectionId={connectionId}
         owner={owner}
         repo={repo}
-        vmMap={vmMap}
+        sandboxMap={sandboxMap}
         value={currentBranch}
         onChange={onBranchChange}
         locked={isActive}

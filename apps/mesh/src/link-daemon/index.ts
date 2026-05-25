@@ -26,7 +26,7 @@ import { registerWithCluster, startHeartbeatLoop } from "./registration";
 import {
   createDesktopSandboxProvider,
   type SpawnResult,
-} from "./sandbox-provider";
+} from "./user-desktop-provider";
 import { readSession } from "./session";
 import { computeLinkSubDomain, openTunnel } from "./tunnel";
 

@@ -15,7 +15,7 @@ function req(name: string, body?: object): Request {
   if (body !== undefined) {
     init.body = JSON.stringify(body);
   }
-  return new Request(`http://x/_decopilot_vm/exec/${name}`, init);
+  return new Request(`http://x/_sandbox/exec/${name}`, init);
 }
 
 describe("exec handler", () => {

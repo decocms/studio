@@ -25,15 +25,22 @@ interface ExecBody {
 }
 
 /**
- * POST /_decopilot_vm/exec/<name> — run package-script `<name>` via the
+ * POST /_sandbox/exec/<name> — run package-script `<name>` via the
  * configured package manager, as a Task. Multiple invocations of the same
  * script run concurrently (each gets its own task UUID); the daemon does
  * not coordinate or deduplicate them.
+ *
+ * Dual-serve compat (T11): also accepts the legacy `/_decopilot_vm/exec/<name>`
+ * prefix. Parsing keys off the `/exec/` segment regardless of which prefix
+ * the cluster used, so adding the legacy match in entry.ts is enough — no
+ * branching needed here.
  */
 export function makeExecHandler(deps: ExecDeps) {
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
-    const rawName = url.pathname.slice("/_decopilot_vm/exec/".length);
+    const execIdx = url.pathname.indexOf("/exec/");
+    const rawName =
+      execIdx >= 0 ? url.pathname.slice(execIdx + "/exec/".length) : "";
     if (!rawName) return jsonResponse({ error: "missing script name" }, 400);
     let name: string;
     try {

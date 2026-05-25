@@ -189,8 +189,8 @@ const ALL_TOOL_NAMES = [
   "REGISTRY_MONITOR_SCHEDULE_CANCEL",
 
   // VM tools (app-only)
-  "VM_START",
-  "VM_DELETE",
+  "SANDBOX_START",
+  "SANDBOX_DELETE",
 
   // GitHub tools (app-only)
   "GITHUB_LIST_USER_ORGS",
@@ -897,12 +897,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Registry",
   },
   {
-    name: "VM_START",
+    name: "SANDBOX_START",
     description: "Start a sandbox VM with dev server preview",
     category: "VM",
   },
   {
-    name: "VM_DELETE",
+    name: "SANDBOX_DELETE",
     description: "Stop and delete a sandbox VM",
     category: "VM",
   },
@@ -975,9 +975,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "GET_OBJECT_METADATA",
       "GET_PRESIGNED_URL",
       "PUT_PRESIGNED_URL",
-      // VM previews
-      "VM_START",
-      "VM_DELETE",
+      // Sandbox previews
+      "SANDBOX_START",
+      "SANDBOX_DELETE",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
     ],

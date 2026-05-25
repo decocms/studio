@@ -1,5 +1,5 @@
 import { type UIEvent, useRef, useState } from "react";
-import type { VmMap } from "@decocms/mesh-sdk";
+import type { SandboxMap } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Command,
@@ -27,13 +27,13 @@ interface Props {
   connectionId: string | null;
   owner: string;
   repo: string;
-  vmMap: VmMap | undefined;
+  sandboxMap: SandboxMap | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
 }
 
 /**
- * Grouped branch picker: "Your branches" (from vmMap) + "Other branches in
+ * Grouped branch picker: "Your branches" (from sandboxMap) + "Other branches in
  * repo" (from github-mcp-server.list_branches).
  */
 export function BranchPicker({
@@ -47,7 +47,7 @@ export function BranchPicker({
   connectionId,
   owner,
   repo,
-  vmMap,
+  sandboxMap,
   value,
   onChange,
 }: Props) {
@@ -70,7 +70,7 @@ export function BranchPicker({
     orgSlug,
     userId,
     connectionId,
-    vmMap,
+    sandboxMap,
     owner,
     repo,
     enabled: open,

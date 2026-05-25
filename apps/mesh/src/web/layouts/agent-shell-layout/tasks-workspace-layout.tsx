@@ -54,7 +54,12 @@ export function TasksWorkspaceLayout({ children }: PropsWithChildren) {
         <TasksPanelColumnInner />
       </ResizablePanel>
       <ResizableHandle className="bg-sidebar" />
-      <ResizablePanel order={2} minSize={30} className="min-w-0 flex flex-col">
+      <ResizablePanel
+        order={2}
+        defaultSize={100 - storedTasksWidth}
+        minSize={30}
+        className="min-w-0 flex flex-row"
+      >
         {children}
       </ResizablePanel>
     </ResizablePanelGroup>

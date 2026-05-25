@@ -3,24 +3,24 @@
  *
  * Precedence (highest first):
  *
- *   1. **Caller override (`explicitKind`).** `VM_START` forwards
- *      `input.sandboxProviderKind` here; `ensureVm` callers pass the kind
- *      they already resolved. Binds the user's link for `desktop`.
+ *   1. **Caller override (`explicitKind`).** `SANDBOX_START` forwards
+ *      `input.sandboxProviderKind` here; `ensureSandbox` callers pass the kind
+ *      they already resolved. Binds the user's link for `user-desktop`.
  *
  *   2. **Per-run dispatch hint** (`ctx.sandboxPreference` /
  *      `ctx.linkForCurrentRun`). Set by `dispatch-run` from the resolved
- *      `DispatchTarget`. Honoring it without a vmMap read is the whole
+ *      `DispatchTarget`. Honoring it without a sandboxMap read is the whole
  *      point: decopilot runs decided which sandbox kind to use upstream,
  *      and any DB lookup here would just confirm what they already know.
  *
- *   3. **Recorded vmMap kind.** The post-provision source of truth: a
- *      sandbox provisioned via `desktop` stays addressable through
- *      `desktop` even on a cluster whose env kind is something else
- *      (`agent-sandbox`, `docker`, …). This is what the events/proxy
+ *   3. **Recorded sandboxMap kind.** The post-provision source of truth: a
+ *      sandbox provisioned via `user-desktop` stays addressable through
+ *      `user-desktop` even on a cluster whose env kind is something else
+ *      (`cluster`, `local-docker`, …). This is what the events/proxy
  *      route uses — no ctx hint, just the recorded entry.
  *
  *   4. **Default policy** (`resolveDefaultSandboxProviderKind`). Pre-
- *      provision fall-through: live link → `desktop`, else env kind.
+ *      provision fall-through: live link → `user-desktop`, else env kind.
  *
  * Returns a fully-bound `SandboxProvider` plus the resolved kind. Callers
  * never need to set `ctx.sandboxPreference` / `ctx.linkForCurrentRun`
@@ -35,27 +35,27 @@ import {
 } from "@decocms/sandbox/provider";
 
 import type { MeshContext } from "../core/mesh-context";
-import { readVmMap } from "../tools/vm/vm-map";
+import { readSandboxMap } from "../tools/sandbox/sandbox-map";
 import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
 import { resolveDefaultSandboxProviderKind } from "./resolve-default-provider-kind";
 
 export interface ResolveSandboxProviderArgs {
-  /** User whose vmMap cell to read and (for `desktop`) whose link to bind. */
+  /** User whose sandboxMap cell to read and (for `desktop`) whose link to bind. */
   userId: string;
   branch: string;
   /** Raw `virtualmcp.metadata` JSON column. May be null. */
   virtualMcpMetadata: Record<string, unknown> | null;
   /**
-   * Caller-provided override (e.g. `VM_START`'s `input.sandboxProviderKind`).
-   * When set, takes precedence over both the vmMap entry and the default
-   * policy. The resolver still binds the user's link for `desktop`.
+   * Caller-provided override (e.g. `SANDBOX_START`'s `input.sandboxProviderKind`).
+   * When set, takes precedence over both the sandboxMap entry and the default
+   * policy. The resolver still binds the user's link for `user-desktop`.
    */
   explicitKind?: SandboxProviderKind;
 }
 
 export interface ResolvedSandboxProvider {
   provider: SandboxProvider;
-  /** The kind the provider was bound for. Callers persisting vmMap rows
+  /** The kind the provider was bound for. Callers persisting sandboxMap rows
    *  use this so the recorded kind matches what was actually constructed. */
   kind: SandboxProviderKind;
 }
@@ -73,26 +73,26 @@ export async function resolveSandboxProvider(
   }
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
-  //    without touching vmMap. `desktop` carries its link inline;
-  //    `default` means "use the cluster runner the env points to".
-  if (ctx.sandboxPreference === "desktop" && ctx.linkForCurrentRun) {
+  //    without touching sandboxMap. `user-desktop` carries its link inline;
+  //    `cluster-default` means "use the cluster runner the env points to".
+  if (ctx.sandboxPreference === "user-desktop" && ctx.linkForCurrentRun) {
     const provider = await buildDesktopProvider(ctx, ctx.linkForCurrentRun);
-    return { provider, kind: "desktop" };
+    return { provider, kind: "user-desktop" };
   }
-  if (ctx.sandboxPreference === "default") {
-    // Route through `bindProviderForKind` so that env kind === "desktop"
+  if (ctx.sandboxPreference === "cluster-default") {
+    // Route through `bindProviderForKind` so that env kind === "user-desktop"
     // (the default in local dev) still binds the user's link instead of
-    // calling `instantiate("desktop")` directly, which throws. Without
+    // calling `instantiate("user-desktop")` directly, which throws. Without
     // this, background fires (cron/webhook/event automations) blow up
     // here because `dispatch-run` defaults their target to local/default
-    // and never sets `sandboxPreference="desktop"` with a link.
+    // and never sets `sandboxPreference="user-desktop"` with a link.
     const kind = resolveSandboxProviderKindFromEnv();
     const provider = await bindProviderForKind(ctx, userId, kind);
     return { provider, kind };
   }
 
-  // 3. Recorded vmMap kind. Tiebreak against the default policy so that when
-  //    multiple sibling kinds were persisted (e.g. the user ran VM_START
+  // 3. Recorded sandboxMap kind. Tiebreak against the default policy so that when
+  //    multiple sibling kinds were persisted (e.g. the user ran SANDBOX_START
   //    twice with different `sandboxProviderKind` values), the events/proxy
   //    path consistently picks the one matching current intent
   //    (link online → `desktop`, else env kind) instead of whatever
@@ -118,9 +118,9 @@ export async function resolveSandboxProvider(
 }
 
 /**
- * All kinds recorded under `vmMap[userId][branch]`. Multiple kinds can coexist
- * as siblings — `VM_START` accepts an explicit `sandboxProviderKind`, and
- * `setVmMapEntry` preserves siblings. Callers that need exactly one kind
+ * All kinds recorded under `sandboxMap[userId][branch]`. Multiple kinds can coexist
+ * as siblings — `SANDBOX_START` accepts an explicit `sandboxProviderKind`, and
+ * `setSandboxMapEntry` preserves siblings. Callers that need exactly one kind
  * (`readRecordedKind`) tiebreak against the default policy.
  */
 function readRecordedKinds(
@@ -128,7 +128,7 @@ function readRecordedKinds(
   userId: string,
   branch: string,
 ): SandboxProviderKind[] {
-  const cell = readVmMap(metadata)[userId]?.[branch];
+  const cell = readSandboxMap(metadata)[userId]?.[branch];
   if (!cell) return [];
   const parsed = parseBranchMap(cell);
   return Object.keys(parsed) as SandboxProviderKind[];
@@ -136,10 +136,10 @@ function readRecordedKinds(
 
 /**
  * Picks one recorded kind when multiple siblings exist. Prefers the kind that
- * matches the current default policy (link online → `desktop`, else env
+ * matches the current default policy (link online → `user-desktop`, else env
  * kind); otherwise falls back to the first recorded kind. This keeps the
  * events/proxy path deterministic across pods and matches what a fresh
- * VM_START with no explicit kind would have used.
+ * SANDBOX_START with no explicit kind would have used.
  */
 async function pickRecordedKind(
   ctx: MeshContext,
@@ -168,11 +168,11 @@ async function bindProviderForKind(
   userId: string,
   kind: SandboxProviderKind,
 ): Promise<SandboxProvider> {
-  if (kind !== "desktop") return getSandboxProviderByKind(ctx, kind);
+  if (kind !== "user-desktop") return getSandboxProviderByKind(ctx, kind);
 
   if (!ctx.linkRegistry) {
     throw new Error(
-      "desktop sandbox provider requires ctx.linkRegistry to be wired (set on MeshContextConfig).",
+      "user-desktop sandbox provider requires ctx.linkRegistry to be wired (set on MeshContextConfig).",
     );
   }
   const link = await ctx.linkRegistry.get(userId);

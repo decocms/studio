@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
-import type { ClaimPhase } from "@/web/components/vm/hooks/vm-events-context";
+import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-context";
 import { selectHeaderButton } from "./panel-state";
 import type { CheckRun, PrSummary } from "./use-pr-data";
 import type { PrReviewSignals } from "./use-pr-reviews";

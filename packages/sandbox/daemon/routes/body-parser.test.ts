@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { parseJsonBody } from "./body-parser";
 
 function makeReq(raw: string): Request {
-  return new Request("http://x/_decopilot_vm/bash", {
+  return new Request("http://x/_sandbox/bash", {
     method: "POST",
     body: raw,
     headers: { "Content-Type": "application/json" },

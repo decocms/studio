@@ -118,7 +118,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
     expect(result.item.branch).toBeNull();
   });
 
-  it("picks the most-recently-touched vmMap branch when no input branch + github vMCP", async () => {
+  it("picks the most-recently-touched sandboxMap branch when no input branch + github vMCP", async () => {
     const vmcp = await env.ctx.storage.virtualMcps.create(
       env.orgId,
       env.userId,
@@ -135,18 +135,18 @@ describe("COLLECTION_THREADS_CREATE", () => {
             installationId: 1,
             connectionId: "conn_x",
           },
-          vmMap: {
+          sandboxMap: {
             [env.userId]: {
               "deco/old-branch": {
-                freestyle: {
-                  vmId: "vm_old",
+                cluster: {
+                  sandboxHandle: "vm_old",
                   previewUrl: null,
                   createdAt: 1000,
                 },
               },
               "deco/new-branch": {
-                freestyle: {
-                  vmId: "vm_new",
+                cluster: {
+                  sandboxHandle: "vm_new",
                   previewUrl: null,
                   createdAt: 2000,
                 },

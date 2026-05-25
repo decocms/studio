@@ -142,7 +142,7 @@ export interface ChatTaskContextValue {
   currentBranch: string | null;
   /**
    * Immutable once set: switching branches mid-conversation would reroute the
-   * thread's vmMap entry, so users must create a new thread for another branch.
+   * thread's sandboxMap entry, so users must create a new thread for another branch.
    */
   isBranchLocked: boolean;
   /** Persist pinned branch onto the thread (cache + server). */
@@ -522,7 +522,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     pendingAgentOption === null
       ? null
       : !hasClonableSource &&
-          AGENT_OPTION_PINS[pendingAgentOption].sandbox === "desktop"
+          AGENT_OPTION_PINS[pendingAgentOption].sandbox === "user-desktop"
         ? "decopilot"
         : pendingAgentOption;
 
@@ -660,7 +660,7 @@ export function ChatContextProvider({
   // Create task + hand off the message via URL ?autosend= so the new
   // task's ActiveTaskProvider fires it on mount. Propagates currentBranch
   // only when the new task is on the same vMCP (different vMCPs have their
-  // own vmMap, so carrying a branch across them would land on a cold
+  // own sandboxMap, so carrying a branch across them would land on a cold
   // sandbox).
   const createTaskWithMessage = (params: {
     message: SendMessageParams;

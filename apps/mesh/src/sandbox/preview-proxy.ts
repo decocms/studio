@@ -12,7 +12,8 @@
  * Routing browsers straight at the dev port breaks SSE + iframe embedding.
  *
  * Auth model: preview URLs are open-by-handle, the same way Vercel preview
- * URLs are. The handle is the secret. /_decopilot_vm/* is rejected here
+ * URLs are. The handle is the secret. /_sandbox/* (and the legacy
+ * /_decopilot_vm/* prefix the daemon dual-serves) are rejected here
  * (defense-in-depth — the daemon's bearer-token check rejects it too) so
  * the admin surface stays uncallable from preview hosts.
  */
@@ -196,7 +197,10 @@ export async function tryUpgradePreviewWs(
   }
 
   const reqUrl = new URL(request.url);
-  if (reqUrl.pathname.startsWith("/_decopilot_vm")) {
+  if (
+    reqUrl.pathname.startsWith("/_sandbox") ||
+    reqUrl.pathname.startsWith("/_decopilot_vm")
+  ) {
     return errorResponse(404, "not found");
   }
 

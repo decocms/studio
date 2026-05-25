@@ -217,9 +217,9 @@ function PickerContent({
     }
   };
 
-  // Runtime detection moved server-side into VM_START (see
+  // Runtime detection moved server-side into SANDBOX_START (see
   // github-runtime-detect.ts). Here we only pull AGENTS.md / CLAUDE.md so the
-  // agent has instructions ready even before the first VM boots.
+  // agent has instructions ready even before the first sandbox boots.
   const detectRepoFiles = (virtualMcpId: string, repo: Repo) => {
     Promise.all([
       getFileContent(repo, "AGENTS.md"),
@@ -351,7 +351,7 @@ function PickerContent({
                 connectionId,
               },
               instructions: null,
-              // runtime is resolved server-side inside VM_START's lockfile
+              // runtime is resolved server-side inside SANDBOX_START's lockfile
               // probe (github-runtime-detect.ts). Writing a client-side
               // sentinel here only re-created the race the probe fixed.
               ui: {

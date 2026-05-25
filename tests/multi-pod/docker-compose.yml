@@ -91,12 +91,12 @@ services:
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
       DATA_DIR: /app/data
       # Pin the sandbox runner so POST /decopilot/messages doesn't default
-      # to "desktop" — there's no link daemon in this cluster, and
-      # resolveDispatchTarget would 409 with link_offline. "docker" makes
+      # to "user-desktop" — there's no link daemon in this cluster, and
+      # resolveDispatchTarget would 409 with link_offline. "local-docker" makes
       # resolveDispatchTarget short-circuit to the local cluster default;
-      # no sandbox is actually provisioned because ensureVm is lazy
+      # no sandbox is actually provisioned because ensureSandbox is lazy
       # (built-in-tools/index.ts) and the mock-ai test never emits tool calls.
-      STUDIO_SANDBOX_RUNNER: docker
+      STUDIO_SANDBOX_PROVIDER: local-docker
     ports:
       - "127.0.0.1:13001:3000"
     # POD_NAME makes `run_owner_pod` match the compose service name

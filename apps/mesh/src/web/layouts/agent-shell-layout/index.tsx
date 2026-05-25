@@ -62,9 +62,9 @@ import {
   useVirtualMCP,
   parseBranchMap,
 } from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity, VmMap } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPEntity, SandboxMap } from "@decocms/mesh-sdk/types";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useVmStart } from "@/web/components/vm/hooks/use-vm-start";
+import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -78,7 +78,7 @@ import { ToggleButtons } from "./toggle-buttons";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
-import { VmEventsProvider } from "@/web/components/vm/hooks/vm-events-context.tsx";
+import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 
 // ---------------------------------------------------------------------------
@@ -199,12 +199,12 @@ function MobileToolbar({
 function VmEventsBridge({
   virtualMcpId,
   hasActiveGithubRepo,
-  vmMap,
+  sandboxMap,
   children,
 }: {
   virtualMcpId: string;
   hasActiveGithubRepo: boolean;
-  vmMap: VmMap | undefined;
+  sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
@@ -213,7 +213,7 @@ function VmEventsBridge({
   const userId = session?.user?.id;
 
   // Auto-start the VM when the active task points at a branch without any
-  // registered vmMap entry (regardless of kind). Routed through useVmStart so
+  // registered sandboxMap entry (regardless of kind). Routed through useSandboxStart so
   // concurrent mounts (preview, env, this bridge) for the same
   // (virtualMcpId, branch) collapse onto one in-flight upstream call.
   // The server's resolveDefaultSandboxProviderKind decides the kind when
@@ -223,12 +223,12 @@ function VmEventsBridge({
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const { mutate: triggerAutoStart } = useVmStart(autoStartClient);
-  // Attempt at most one auto-start per (branch, mount). A user VM_DELETE
-  // removes the vmMap entry — without a permanent guard the effect would
-  // re-fire and resurrect the VM the user just stopped.
+  const { mutate: triggerAutoStart } = useSandboxStart(autoStartClient);
+  // Attempt at most one auto-start per (branch, mount). A user SANDBOX_DELETE
+  // removes the sandboxMap entry — without a permanent guard the effect would
+  // re-fire and resurrect the sandbox the user just stopped.
   const autoStartAttemptedRef = useRef<Set<string>>(new Set());
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — fires VM_START when vmMap is missing an entry for (user, branch); ref guard dedupes within this mount, module-level map dedupes across components
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — fires SANDBOX_START when sandboxMap is missing an entry for (user, branch); ref guard dedupes within this mount, module-level map dedupes across components
   useEffect(() => {
     if (!hasActiveGithubRepo) return;
     if (!userId) return;
@@ -236,7 +236,7 @@ function VmEventsBridge({
     // Use parseBranchMap to handle both legacy 2-level and current 3-level shapes.
     // If any entry exists for this (user, branch) — regardless of kind — a VM is
     // already running; don't auto-start.
-    const branchMap = parseBranchMap(vmMap?.[userId]?.[currentBranch]);
+    const branchMap = parseBranchMap(sandboxMap?.[userId]?.[currentBranch]);
     if (Object.keys(branchMap).length > 0) {
       // VM is already running — record the branch so a user stop won't
       // re-trigger auto-start within this mount.
@@ -257,18 +257,18 @@ function VmEventsBridge({
     hasActiveGithubRepo,
     userId,
     currentBranch,
-    vmMap,
+    sandboxMap,
     virtualMcpId,
     triggerAutoStart,
   ]);
 
   return (
-    <VmEventsProvider
+    <SandboxEventsProvider
       virtualMcpId={virtualMcpId}
       branch={currentBranch ?? null}
     >
       {children}
-    </VmEventsProvider>
+    </SandboxEventsProvider>
   );
 }
 
@@ -441,7 +441,7 @@ function AgentInsetProvider() {
             <VmEventsBridge
               virtualMcpId={virtualMcpId}
               hasActiveGithubRepo={hasActiveGithubRepo}
-              vmMap={entity?.metadata?.vmMap}
+              sandboxMap={entity?.metadata?.sandboxMap}
             >
               <NewTaskBridge
                 onNewTaskRef={onNewTask}
@@ -528,7 +528,7 @@ function AgentInsetProvider() {
           <VmEventsBridge
             virtualMcpId={virtualMcpId}
             hasActiveGithubRepo={hasActiveGithubRepo}
-            vmMap={entity?.metadata?.vmMap}
+            sandboxMap={entity?.metadata?.sandboxMap}
           >
             <NewTaskBridge
               onNewTaskRef={onNewTask}

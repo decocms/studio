@@ -1,84 +1,86 @@
 /**
  * Unit test for the helper that the remote-cli dispatch branch uses to
  * resolve which sandbox URL to talk to. The helper unifies with
- * `ensureVm` so claude-code/codex runs share the VM_START sandbox
+ * `ensureSandbox` so claude-code/codex runs share the SANDBOX_START sandbox
  * instead of provisioning a per-run empty workdir.
  */
 import { describe, expect, it, mock } from "bun:test";
 
-// `ensureVm` lives in tools/vm/start; we mock the module so the test
-// doesn't need to wire up storage, link registry, or the sandbox
-// provider. The route file imports `ensureVm` from this path.
+// `ensureSandbox` lives in tools/sandbox/start; we mock the module so the
+// test doesn't need to wire up storage, link registry, or the sandbox
+// provider. The route file imports `ensureSandbox` from this path.
 //
-// `nextEnsureVmReturn` lets individual tests override the previewUrl
+// `nextEnsureSandboxReturn` lets individual tests override the previewUrl
 // (e.g. force `null` to exercise the helper's defensive throw).
-mock.module("@/tools/vm/start", () => ({
-  ensureVm: async (input: {
+mock.module("@/tools/sandbox/start", () => ({
+  ensureSandbox: async (input: {
     virtualMcpId: string;
     branch: string;
-    sandboxProviderKind: "desktop";
+    sandboxProviderKind: "user-desktop";
   }) => {
-    ensureVmCalls.push(input);
+    ensureSandboxCalls.push(input);
     return {
-      vmId: "sleek-flint-0000000000000000",
-      previewUrl: nextEnsureVmReturn.previewUrl,
-      sandboxUrl: nextEnsureVmReturn.previewUrl,
-      sandboxProviderKind: "desktop" as const,
+      sandboxHandle: "sleek-flint-0000000000000000",
+      previewUrl: nextEnsureSandboxReturn.previewUrl,
+      sandboxApiUrl: nextEnsureSandboxReturn.previewUrl,
+      sandboxProviderKind: "user-desktop" as const,
       createdAt: 0,
       startedWith: { packageManager: null, port: null, path: null },
     };
   },
 }));
 
-const ensureVmCalls: Array<{
+const ensureSandboxCalls: Array<{
   virtualMcpId: string;
   branch: string;
   sandboxProviderKind: string;
 }> = [];
 
-const nextEnsureVmReturn: { previewUrl: string | null } = {
+const nextEnsureSandboxReturn: { previewUrl: string | null } = {
   previewUrl: "https://sleek-flint-0000000000000000.deco.host",
 };
 
 const { resolveRemoteCliSandboxUrl } = await import("./dispatch-run");
 
 describe("resolveRemoteCliSandboxUrl", () => {
-  it("calls ensureVm with the agent id, branch, and desktop kind", async () => {
-    ensureVmCalls.length = 0;
-    const sandboxUrl = await resolveRemoteCliSandboxUrl(
+  it("calls ensureSandbox with the agent id, branch, and user-desktop kind", async () => {
+    ensureSandboxCalls.length = 0;
+    const sandboxApiUrl = await resolveRemoteCliSandboxUrl(
       { agent: { id: "vm-1" }, branch: "deco/sleek-flint" },
-      // The helper passes ctx straight to ensureVm; the mock ignores it.
+      // The helper passes ctx straight to ensureSandbox; the mock ignores it.
       {} as never,
     );
-    expect(ensureVmCalls).toEqual([
+    expect(ensureSandboxCalls).toEqual([
       {
         virtualMcpId: "vm-1",
         branch: "deco/sleek-flint",
-        sandboxProviderKind: "desktop",
+        sandboxProviderKind: "user-desktop",
       },
     ]);
-    expect(sandboxUrl).toBe("https://sleek-flint-0000000000000000.deco.host");
+    expect(sandboxApiUrl).toBe(
+      "https://sleek-flint-0000000000000000.deco.host",
+    );
   });
 
   it("falls back to 'ephemeral' when branch is missing", async () => {
-    ensureVmCalls.length = 0;
+    ensureSandboxCalls.length = 0;
     await resolveRemoteCliSandboxUrl(
       { agent: { id: "vm-2" }, branch: null },
       {} as never,
     );
-    expect(ensureVmCalls[0]?.branch).toBe("ephemeral");
+    expect(ensureSandboxCalls[0]?.branch).toBe("ephemeral");
   });
 
   it("falls back to 'ephemeral' when branch is undefined", async () => {
-    ensureVmCalls.length = 0;
+    ensureSandboxCalls.length = 0;
     await resolveRemoteCliSandboxUrl({ agent: { id: "vm-3" } }, {} as never);
-    expect(ensureVmCalls[0]?.branch).toBe("ephemeral");
+    expect(ensureSandboxCalls[0]?.branch).toBe("ephemeral");
   });
 
-  it("throws when ensureVm returns a null previewUrl", async () => {
-    ensureVmCalls.length = 0;
-    const originalPreviewUrl = nextEnsureVmReturn.previewUrl;
-    nextEnsureVmReturn.previewUrl = null;
+  it("throws when ensureSandbox returns a null previewUrl", async () => {
+    ensureSandboxCalls.length = 0;
+    const originalPreviewUrl = nextEnsureSandboxReturn.previewUrl;
+    nextEnsureSandboxReturn.previewUrl = null;
     try {
       await expect(
         resolveRemoteCliSandboxUrl(
@@ -87,7 +89,7 @@ describe("resolveRemoteCliSandboxUrl", () => {
         ),
       ).rejects.toThrow(/vm-4/);
     } finally {
-      nextEnsureVmReturn.previewUrl = originalPreviewUrl;
+      nextEnsureSandboxReturn.previewUrl = originalPreviewUrl;
     }
   });
 });

@@ -29,10 +29,15 @@ const { DBOS } = await import("@dbos-inc/dbos-sdk");
 // DBOS uses its own pg client (separate from mesh's pool), so the `sslmode`
 // must travel in the URL. RDS's pg_hba.conf rejects unencrypted connections
 // with `no pg_hba.conf entry for host ... no encryption` when this is missing.
+// Use `verify-full` explicitly: pg-connection-string v2 silently upgrades
+// `require` to `verify-full`, but v3 / pg v9 will drop that upgrade and treat
+// `require` as encrypt-without-verification (libpq semantics).
 function withSslmode(url: string, ssl: boolean): string {
   if (!ssl) return url;
   const u = new URL(url);
-  if (!u.searchParams.has("sslmode")) u.searchParams.set("sslmode", "require");
+  if (!u.searchParams.has("sslmode")) {
+    u.searchParams.set("sslmode", "verify-full");
+  }
   return u.toString();
 }
 DBOS.setConfig({
@@ -111,22 +116,22 @@ const previewProxyDeps = {
   baseDomain: previewBaseDomain ?? "",
   getRunner: async () => {
     const runner = await getOrInitRunnerForPreview();
-    if (!runner || runner.kind !== "agent-sandbox") return null;
-    // The agent-sandbox runner is the only one that exposes proxyPreviewRequest /
+    if (!runner || runner.kind !== "cluster") return null;
+    // The cluster (agent-sandbox) runner is the only one that exposes proxyPreviewRequest /
     // resolvePreviewUpstreamUrl; cast is safe after the kind check.
     return runner as unknown as import("@decocms/sandbox/provider/agent-sandbox").AgentSandboxProvider;
   },
 };
 
 // Boot/dev wiring for the Docker runner. The boot sweep + local ingress
-// are Docker-only — other runners (agent-sandbox, desktop)
+// are local-docker-only — other runners (cluster, user-desktop)
 // either don't run on this machine or expose previews via their own
 // publicly-reachable URLs.
 const { resolveSandboxProviderKindFromEnv } = await import(
   "@decocms/sandbox/provider"
 );
 const sandboxProviderKind = resolveSandboxProviderKindFromEnv();
-const ingressEligible = sandboxProviderKind === "docker";
+const ingressEligible = sandboxProviderKind === "local-docker";
 
 if (ingressEligible) {
   const { startLocalSandboxIngress } = await import(
@@ -153,7 +158,7 @@ if (ingressEligible) {
     ingressServers = startLocalSandboxIngress(() => {
       const r = getSharedSandboxProviderIfInit();
       if (!r) return null;
-      if (r.kind !== "docker") return null;
+      if (r.kind !== "local-docker") return null;
       // DockerSandboxProvider exposes resolveDaemonPort; the structural
       // cast is safe after the kind check.
       return r as unknown as {
@@ -161,9 +166,9 @@ if (ingressEligible) {
       };
     }, ingressPort);
 
-    // Construct the runner up-front. The first preview-iframe request
-    // typically arrives on a page reload with a warm vmMap, before either
-    // VM_START or `/api/vm-events` has touched the runner — without this
+    // Construct the provider up-front. The first preview-iframe request
+    // typically arrives on a page reload with a warm sandboxMap, before either
+    // SANDBOX_START or `/api/vm-events` has touched the provider — without this
     // eager init the ingress would 503 with "Sandbox Runner Not Initialized".
     await getOrInitSharedRunner();
   }

@@ -19,7 +19,7 @@
  */
 
 import { verifyRequest } from "@/links/protocol";
-import type { DesktopSandboxProvider, RepoRef } from "./sandbox-provider";
+import type { DesktopSandboxProvider, RepoRef } from "./user-desktop-provider";
 
 export interface ControlPlaneDeps {
   provider: DesktopSandboxProvider;
@@ -80,8 +80,8 @@ export function makeControlPlaneHandler(
           headers: { "content-type": "application/json" },
         });
       }
-      const { sandboxUrl } = await deps.provider.ensureSandbox(parsed);
-      return new Response(JSON.stringify({ sandboxUrl }), {
+      const { sandboxApiUrl } = await deps.provider.ensureSandbox(parsed);
+      return new Response(JSON.stringify({ sandboxApiUrl }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });

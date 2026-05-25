@@ -51,7 +51,7 @@ function parseRequestHead(
 /**
  * All browser traffic hits the daemon port — the daemon's catch-all proxy
  * strips CSP/X-Frame-Options + injects the HMR bootstrap for HTML responses,
- * and its `/_decopilot_vm/*` + `/health` routes are served in-process. Dev
+ * and its `/_sandbox/*` + `/health` routes are served in-process. Dev
  * server traffic is forwarded onward from the daemon, never exposed directly.
  */
 async function resolveTarget(
