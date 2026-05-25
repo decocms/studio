@@ -36,6 +36,31 @@ in-input model pill to a tier-only control. Keep all backend wiring
 - Mid-thread switching of location or branch — both lock after the
   thread has messages, matching today's `BranchPill` behavior.
 
+## Github-connected vs template-cloned agents
+
+Two flavors of clonable virtual MCP exist:
+
+| Flavor | `metadata.githubRepo` | `connections` includes that connectionId | Branch UI today |
+|---|---|---|---|
+| Template / "Start Website" | `{ url, owner, name }`, **no** `connectionId` | n/a | Shown (incorrectly) |
+| GitHub-imported | `{ url, owner, name, connectionId }` | Yes | Shown |
+
+For template-cloned agents the daemon clones the public repo anonymously
+at whatever HEAD is — there is no user-facing branch concept, no
+push/pull, no authenticated history. Surfacing a branch picker and a
+git tab for them is misleading.
+
+This refactor introduces a **stricter predicate** that gates only the
+UI surfaces where "a real GitHub identity exists" actually matters:
+
+- BranchPill inside ChatModeRow
+- Git tab in the main panel tabs
+- (Existing) GitHub-aware header actions
+
+The looser `agentHasClonableSource` predicate is kept untouched for the
+no-provider-fallback path (template agents *can* still dispatch to a
+local CLI by anonymous clone).
+
 ## Locked design decisions
 
 | Area | Decision |
@@ -50,8 +75,30 @@ in-input model pill to a tier-only control. Keep all backend wiring
 | Centered card | Keep icon + title + description + ice breakers; drop branch chip |
 | Row placement | Sibling inside `<Chat.Footer>`, above `<Chat.Input>` |
 | State model | Approach 1 — keep unified `pendingAgentOption`; add selector hooks |
+| Branch + git tab gating | Stricter — require an attached GitHub connection (not just a clonable url) |
+| Template agents | Render ModePicker only inside ChatModeRow; no BranchPill; no git tab |
 
 ## Layout
+
+GitHub-connected agent:
+
+```
++----------------------------------------------------------+
+|                  [Integration icon]                      |
+|                       acme/app                           |
+|              Imported from GitHub                        |
+|                                                          |
+|                  <IceBreakers />                         |
++----------------------------------------------------------+
+| ⎇ main ⌄      ☁ Cloud ⌄         <-- ChatModeRow          |
++----------------------------------------------------------+
+| Ask anything, / for prompts, @ for ...                   |
+|                                                          |
+| [≋ Tools]                Smart ⌄    [🎙][↑]              |
++----------------------------------------------------------+
+```
+
+Template-cloned agent (no attached GitHub connection):
 
 ```
 +----------------------------------------------------------+
@@ -61,8 +108,8 @@ in-input model pill to a tier-only control. Keep all backend wiring
 |                                                          |
 |                  <IceBreakers />                         |
 +----------------------------------------------------------+
-| ⎇ main ⌄      ☁ Cloud ⌄         <-- new ChatModeRow      |
-+----------------------------------------------------------+
+| ☁ Cloud ⌄                       <-- ChatModeRow,         |
++----------------------------------------------------------+    BranchPill hidden
 | Ask anything, / for prompts, @ for ...                   |
 |                                                          |
 | [≋ Tools]                Smart ⌄    [🎙][↑]              |
@@ -143,8 +190,10 @@ NEW
     - Fires startVm.mutate(...) on local mode select when a branch is set
 
   apps/mesh/src/web/components/chat/pills/chat-mode-row.tsx
-    Thin layout: BranchPill + ModePicker.
-    - Gated on agentHasClonableSource(metadata)
+    Thin layout: BranchPill (conditional) + ModePicker.
+    - Whole row gated on agentHasClonableSource(metadata)
+    - BranchPill rendered only when agentHasConnectedGithub(virtualMcp)
+      (template-cloned agents render ModePicker only)
     - locked = useOptionalChatStream().messages.length > 0
 
   apps/mesh/src/web/components/chat/use-chat-mode.ts
@@ -173,6 +222,23 @@ MODIFIED
       `setPendingAgentOption` writer.
     - No behavioral changes at submit time (`conn.submit` payload
       shape and field set unchanged).
+
+  apps/mesh/src/web/lib/agent-capabilities.ts
+    - Add `agentHasConnectedGithub(virtualMcp)` predicate:
+        const repo = getActiveGithubRepo(virtualMcp);
+        return !!repo?.connectionId;
+      (One-liner on top of the existing helper. `getActiveGithubRepo`
+      already returns null when a stale connectionId references a
+      detached connection, so this predicate inherits that check.)
+    - `agentHasClonableSource` is UNCHANGED (still used by the
+      no-provider-fallback path).
+
+  apps/mesh/src/web/layouts/main-panel-tabs/use-main-panel-tabs.ts
+    - Switch the `hasActiveGithubRepo` derivation from
+      `getActiveGithubRepo(...)` to `agentHasConnectedGithub(...)`.
+    - Effect: Preview + git tabs disappear for template-cloned
+      agents (Settings + Automations only — matches today's
+      non-clonable layout for those agents).
 
 DELETED
   apps/mesh/src/web/components/chat/pills/thread-pills.tsx
@@ -265,10 +331,12 @@ After the thread has any messages (`useOptionalChatStream().messages.length > 0`
 | File | Coverage |
 |---|---|
 | `pills/mode-picker.test.tsx` | 3 rows in fixed order; greys missing CLIs; setChatMode + close on click; startVm fires for local + currentBranch only; locked → plain span + tooltip |
-| `pills/chat-mode-row.test.tsx` | Returns null when not clonable; forwards `locked=isActive`; layout = BranchPill + ModePicker |
+| `pills/chat-mode-row.test.tsx` | Returns null when not clonable; renders BranchPill only when github connection attached; template-cloned agent shows ModePicker only; forwards `locked=isActive` |
 | `use-chat-mode.test.ts` | Round-trip mode write/read; useTierSubtitle returns expected label per mode/tier; null when nothing resolvable |
 | `tier-trigger.test.tsx` | Closed pill shows tier only; popover subtitles re-resolve when mode changes; setChatTier + close on click |
 | `side-panel-chat.test.tsx` | SidebarEmptyState no longer renders ThreadPills; Chat.Footer renders ChatModeRow on clonable VM and omits on non-clonable |
+| `agent-capabilities.test.ts` | Add cases for `agentHasConnectedGithub`: false for template-cloned (no connectionId); false when connectionId present but not in `connections`; true when present and attached |
+| `use-main-panel-tabs.test.ts` (if it exists; otherwise covered by snapshot test of the layout) | Preview + git tabs hidden for template-cloned agents; shown for connected agents |
 
 Removed tests: any covering `ThreadPills`, `AgentModelPopover`,
 `getAgentSections` (delete with the source).
@@ -283,6 +351,19 @@ Not tested (intentionally): server-side resolve-tier / dispatch path
   identified as having only the call-sites covered above. The
   implementation step MUST grep each before deletion to catch any
   call-site missed by exploration.
+- **Git tab gating regression:** template-cloned agents currently
+  show Preview + git tabs because `getActiveGithubRepo` returns
+  truthy for them. After this change those agents lose those tabs.
+  This is the intended behavior per the design, but should be called
+  out in the PR description as a UX-visible change for users with
+  Start-Website agents already created.
+- **Other call-sites of `getActiveGithubRepo`:** `views/virtual-mcp/header-info.tsx`
+  and `components/thread/github/header-actions.tsx` also consume
+  this helper. The implementation step MUST audit each call-site
+  and decide whether to keep the loose check (e.g. for read-only
+  display of "cloned from <repo>") or switch to the strict
+  `agentHasConnectedGithub` (anything that implies push/pull or
+  branch interaction).
 - **`useAiProviderModels` cost:** rendering the TierTrigger popover
   fires one `listModels` query per provider key when no admin slot
   exists. React Query caching makes subsequent opens free, but the
