@@ -925,15 +925,16 @@ export function PreviewContent() {
             </div>
           )}
 
-          {previewState.kind === "starting-now" && (
-            <div className="absolute inset-0 z-30">
-              <VmStateCard
-                kind="starting-now"
-                progress={progress}
-                claimPhase={claimPhase}
-              />
-            </div>
-          )}
+          {previewState.kind === "starting-now" &&
+            !(viewMode === "code" && daemonReady) && (
+              <div className="absolute inset-0 z-30">
+                <VmStateCard
+                  kind="starting-now"
+                  progress={progress}
+                  claimPhase={claimPhase}
+                />
+              </div>
+            )}
 
           {previewState.kind === "errored" && (
             <div className="absolute inset-0 z-40">
