@@ -139,7 +139,6 @@ import { getPodId } from "../core/pod-identity";
 import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
-import { HomeBoardStore } from "../storage/home-board";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 
@@ -1777,10 +1776,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   legacyKVRoutes.route("/", createKVRoutes({ kvStorage }));
   app.route("/api", legacyKVRoutes);
 
-  // Home board — per-user tile layout, BE-owned. Auto-pinned by the
-  // preset-task `/start` route; FE reads/mutates via /api/:org/home-board.
-  const homeBoardStore = new HomeBoardStore(kvStorage);
-
   // Public Events endpoint — legacy mount with deprecation log. New mount
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
   app.use("/org/:organizationId/events/:type", logDeprecatedRoute);
@@ -1870,7 +1865,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // PR removes them after the deprecation window.
   const orgScopedApi = createOrgScopedApi({
     kvStorage,
-    homeBoardStore,
     runRegistry,
     streamBuffer,
     cancelBroadcast,

@@ -74,9 +74,6 @@ export const KEYS = {
   suggestedActions: (orgSlug: string, mine: boolean) =>
     ["suggested-actions", orgSlug, mine] as const,
 
-  // Home board tiles (per-user layout, scoped by org)
-  homeBoard: (orgSlug: string) => ["home-board", orgSlug] as const,
-
   // Allowed models for current user (scoped by organization)
   allowedModels: (locator: ProjectLocator) =>
     [locator, "allowed-models"] as const,

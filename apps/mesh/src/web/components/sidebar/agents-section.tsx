@@ -503,8 +503,6 @@ function PinAgentPopoverContent({
       } else {
         onOpenQaAgentModal();
       }
-    } else if (templateId === "studio-pack") {
-      onOpenStudioPackModal();
     } else {
       navigateToNewTask(templateId);
     }

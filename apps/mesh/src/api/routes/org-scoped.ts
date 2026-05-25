@@ -4,7 +4,6 @@ import type { AutomationEventDispatcher } from "@/automations/automation-event-d
 import type { CancelBroadcast } from "@/api/routes/decopilot/cancel-broadcast";
 import type { RunRegistry } from "@/api/routes/decopilot/run-registry";
 import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
-import type { HomeBoardStore } from "@/storage/home-board";
 import type { KVStorage } from "@/storage/kv";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
@@ -14,7 +13,6 @@ import { createAutomationWebhookRoutes } from "./automation-webhooks";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createDownstreamTokenRoutes } from "./downstream-token";
-import { createHomeBoardRoutes } from "./home-board";
 import { createKVRoutes } from "./kv";
 import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
@@ -28,7 +26,6 @@ import { createSandboxRoutes } from "./sandbox-proxy";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
-  homeBoardStore: HomeBoardStore;
   /**
    * Decopilot dispatch primitives — required by the preset-task `/start`
    * route, which kicks an agent run server-side and returns the taskId
@@ -82,7 +79,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
-  app.route("/", createHomeBoardRoutes({ store: deps.homeBoardStore }));
   app.route("/", createSuggestedActionsRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
