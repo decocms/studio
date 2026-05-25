@@ -91,7 +91,8 @@ import * as migration089renameremoteusertodesktop from "./089-rename-remote-user
 import * as migration090automationwebhooktriggers from "./090-automation-webhook-triggers.ts";
 import * as migration091organizationdomainsallowmulti from "./091-organization-domains-allow-multi.ts";
 import * as migration092sandboxnaminguniformization from "./092-sandbox-naming-uniformization.ts";
-import * as migration093orgfileconfigs from "./093-org-file-configs.ts";
+import * as migration093backfillglobalsearchbasicusage from "./093-backfill-global-search-basic-usage.ts";
+import * as migration094orgfileconfigs from "./094-org-file-configs.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -201,7 +202,9 @@ const migrations: Record<string, Migration> = {
   "091-organization-domains-allow-multi":
     migration091organizationdomainsallowmulti,
   "092-sandbox-naming-uniformization": migration092sandboxnaminguniformization,
-  "093-org-file-configs": migration093orgfileconfigs,
+  "093-backfill-global-search-basic-usage":
+    migration093backfillglobalsearchbasicusage,
+  "094-org-file-configs": migration094orgfileconfigs,
 };
 
 export default migrations;
