@@ -37,6 +37,7 @@ import * as RegistryTools from "./registry/index";
 import * as VmTools from "./vm";
 import * as GitHubTools from "./github";
 import * as LinkTools from "./links";
+import * as SearchTools from "./search";
 import { ToolName } from "./registry-metadata";
 // Core tools - always available
 const CORE_TOOLS = [
@@ -173,6 +174,9 @@ const CORE_TOOLS = [
 
   // Link tools
   LinkTools.LINK_CURRENT_GET,
+
+  // Search tools
+  SearchTools.GLOBAL_SEARCH,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

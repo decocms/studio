@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Edit05, FilterLines, User02, Users03 } from "@untitledui/icons";
+import {
+  Edit05,
+  FilterLines,
+  SearchSm,
+  User02,
+  Users03,
+} from "@untitledui/icons";
+import { GlobalSearchDialog } from "./global-search-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +72,7 @@ export function TasksSection({
   );
   const [filter, setFilter] = useState<FilterOption>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Scroll the active row into view exactly when `activeTaskId` changes —
   // not when the list grows from infinite scroll. Owning this effect here
@@ -104,6 +112,17 @@ export function TasksSection({
       <div className="shrink-0 pl-2 pr-1.5 h-7 flex items-center justify-between text-xs font-medium text-muted-foreground mb-1">
         <span>{title}</span>
         <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            aria-label="Search threads"
+            onClick={() => {
+              track("tasks_panel_search_opened");
+              setSearchOpen(true);
+            }}
+            className="flex size-8 items-center justify-center rounded-md hover:bg-muted hover:text-foreground"
+          >
+            <SearchSm size={16} />
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -241,6 +260,7 @@ export function TasksSection({
           </>
         )}
       </div>
+      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

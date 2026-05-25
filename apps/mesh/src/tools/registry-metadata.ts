@@ -35,7 +35,8 @@ export type ToolCategory =
   | "Registry"
   | "GitHub"
   | "VM"
-  | "Links";
+  | "Links"
+  | "Search";
 
 /**
  * All tool names - keep in sync with ALL_TOOLS in index.ts
@@ -196,6 +197,9 @@ const ALL_TOOL_NAMES = [
 
   // Link tools
   "LINK_CURRENT_GET",
+
+  // Search tools
+  "GLOBAL_SEARCH",
 ] as const;
 
 /**
@@ -913,6 +917,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description:
       "Return the calling user's current desktop link status (online/offline, capabilities)",
     category: "Links",
+  },
+  // Search tools
+  {
+    name: "GLOBAL_SEARCH",
+    description:
+      "Search across organization resources (currently threads). Returns a typed union of matches.",
+    category: "Search",
   },
 ];
 
