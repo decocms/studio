@@ -64,7 +64,7 @@ export function createDockerProvider(
   });
 }
 
-const RUNNER_KINDS: ReadonlySet<SandboxProviderKind> = new Set([
+const SANDBOX_PROVIDER_KINDS: ReadonlySet<SandboxProviderKind> = new Set([
   "local-docker",
   "cluster",
   "user-desktop",
@@ -86,7 +86,7 @@ export function resolveSandboxProviderKindFromEnv(): SandboxProviderKind {
   const kind = (
     raw && raw.length > 0 ? raw : "user-desktop"
   ) as SandboxProviderKind;
-  if (!RUNNER_KINDS.has(kind)) {
+  if (!SANDBOX_PROVIDER_KINDS.has(kind)) {
     throw new Error(
       `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "local-docker", "cluster", or "user-desktop".`,
     );
