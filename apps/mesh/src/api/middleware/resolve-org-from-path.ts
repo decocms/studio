@@ -79,15 +79,14 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // operation throws "thread operations require an authenticated organization".
   ctx.storage.threads.setOrganizationId(org.id);
   ctx.storage.asyncResearchJobs.setOrganizationId(org.id);
-  // objectStorage is also constructed eagerly (null when no org). Rebuild it
-  // here using the same logic as context-factory so OBJECT_STORAGE binding
-  // resolves on the new path family.
-  if (!ctx.objectStorage) {
-    const s3Service = getObjectStorageS3Service();
-    ctx.objectStorage = s3Service
-      ? createBoundObjectStorage(s3Service, org.id)
-      : new DevObjectStorage(org.id, ctx.baseUrl);
-  }
+  // objectStorage was constructed eagerly from the session's active org (or
+  // null when unauthenticated). Always rebind to the path-resolved org so
+  // cross-org navigation — e.g. session active=A, URL targets B — reads from
+  // B's tenant scope, not A's.
+  const s3Service = getObjectStorageS3Service();
+  ctx.objectStorage = s3Service
+    ? createBoundObjectStorage(s3Service, org.id)
+    : new DevObjectStorage(org.id, ctx.baseUrl);
 
   return await next();
 };

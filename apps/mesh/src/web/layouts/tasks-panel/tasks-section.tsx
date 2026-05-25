@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { Edit05, FilterLines, User02, Users03 } from "@untitledui/icons";
+import {
+  Edit05,
+  FilterLines,
+  List,
+  Stars02,
+  User02,
+  Users03,
+} from "@untitledui/icons";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import {
   DropdownMenu,
@@ -21,6 +28,7 @@ import {
 
 type FilterOption = "all" | "manual" | "automation";
 type MemberFilter = "all" | "mine";
+type ViewMode = "suggestions" | "all";
 
 const FILTER_LABELS: Record<FilterOption, string> = {
   all: "All tasks",
@@ -72,7 +80,8 @@ export function TasksSection({
   const { org } = useProjectContext();
   const [filter, setFilter] = useState<FilterOption>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
-  const showSuggestions = !activeTaskId;
+  const [viewMode, setViewMode] = useState<ViewMode>("suggestions");
+  const showSuggestions = !activeTaskId && viewMode === "suggestions";
   const { isLoading: isLoadingSuggestions, suggestions } = useSuggestedActions(
     org.slug,
     { mine: memberFilter === "mine" },
@@ -132,6 +141,34 @@ export function TasksSection({
       <div className="shrink-0 pl-2 pr-1.5 h-7 flex items-center justify-between text-xs font-medium text-muted-foreground mb-1">
         <span>{title}</span>
         <div className="flex items-center gap-0.5">
+          {!activeTaskId && (
+            <button
+              type="button"
+              aria-label={
+                viewMode === "suggestions"
+                  ? "Show all threads"
+                  : "Show suggestions"
+              }
+              title={
+                viewMode === "suggestions"
+                  ? "Show all threads"
+                  : "Show suggestions"
+              }
+              onClick={() => {
+                const next: ViewMode =
+                  viewMode === "suggestions" ? "all" : "suggestions";
+                track("tasks_panel_view_mode_changed", { to_value: next });
+                setViewMode(next);
+              }}
+              className="flex size-8 items-center justify-center rounded-md hover:bg-muted hover:text-foreground"
+            >
+              {viewMode === "suggestions" ? (
+                <List size={16} />
+              ) : (
+                <Stars02 size={16} />
+              )}
+            </button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button

@@ -35,12 +35,23 @@ type TaskDescriptionContext = {
   ctx: MeshContext;
 };
 
-type ResolveTaskDescription = (c: TaskDescriptionContext) => Promise<string>;
+type ResolveTaskDescription = (
+  c: TaskDescriptionContext,
+) => Promise<string | null>;
 
 const STALE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
 
 function isStale(dateLike: string | Date): boolean {
   return Date.now() - new Date(dateLike).getTime() > STALE_THRESHOLD_MS;
+}
+
+function isWellKnownSeededConnection(orgId: string, id: string): boolean {
+  return (
+    id === WellKnownOrgMCPId.SELF(orgId) ||
+    id === WellKnownOrgMCPId.REGISTRY(orgId) ||
+    id === WellKnownOrgMCPId.COMMUNITY_REGISTRY(orgId) ||
+    id === WellKnownOrgMCPId.DEV_ASSETS(orgId)
+  );
 }
 
 async function hasAnyObject(
@@ -170,25 +181,32 @@ You are the Automation Manager. You create, configure, and manage automations �
 </constraints>
 
 <workflows>
-1. Creating an automation:
+1. Suggesting automations from existing agents (first-contact default):
+   a. List agents with COLLECTION_VIRTUAL_MCP_LIST. Filter out the Studio Pack agents (Agent Manager, Automation Manager, Connection Manager, Store Manager, Brand Manager) — they're not meant to be automated.
+   b. If no custom agents exist, tell the user they need to create one first via the Agent Manager. Do not propose automations against the Studio Pack agents.
+   c. For each candidate agent, read its title, description, and instructions (use COLLECTION_VIRTUAL_MCP_GET if needed) to infer what recurring work it does.
+   d. Propose 2-3 concrete automation ideas: name the agent, the schedule or trigger ("every weekday at 9am", "when a new GitHub issue lands"), and what the run should accomplish in one sentence.
+   e. Wait for the user to pick one (or describe their own), then continue with workflow 2.
+
+2. Creating an automation:
    a. Clarify the automation's purpose, schedule, and expected behavior.
    b. List agents with COLLECTION_VIRTUAL_MCP_LIST and confirm the target — pass its id as virtual_mcp_id to AUTOMATION_CREATE.
    c. Create the automation with AUTOMATION_CREATE, including clear instructions and model config.
    d. Add triggers with AUTOMATION_TRIGGER_ADD (cron or event-based).
    e. Verify with AUTOMATION_GET.
 
-2. Updating an automation:
+3. Updating an automation:
    a. Get current config with AUTOMATION_GET.
    b. Apply changes with AUTOMATION_UPDATE.
    c. If triggers need updating, use AUTOMATION_TRIGGER_REMOVE and AUTOMATION_TRIGGER_ADD.
    d. Confirm the final state with AUTOMATION_GET.
 
-3. Testing an automation:
+4. Testing an automation:
    a. Get the automation config with AUTOMATION_GET to review its setup.
    b. Run it manually with AUTOMATION_RUN.
    c. Report the result to the user.
 
-4. Improving an automation's instructions:
+5. Improving an automation's instructions:
    a. Read docs://automations.md for the messages/instructions pattern, then docs://agents.md for the XML-style structure.
    b. Get the current automation with AUTOMATION_GET on the supplied automation id.
    c. If the intended purpose, trigger context, or expected output is unclear, use user_ask before rewriting.
@@ -354,6 +372,72 @@ You are the Brand Manager. You manage the organization's brand contexts (company
 
 export const STUDIO_PACK_AGENTS = [
   {
+    id: "studio-brand-manager",
+    title: "Brand Manager",
+    icon: "icon://Brand?color=orange",
+    description:
+      "Create, configure, and manage brand contexts (company profiles) for the organization.",
+    selectedTools: [
+      "BRAND_CONTEXT_CREATE",
+      "BRAND_CONTEXT_GET",
+      "BRAND_CONTEXT_LIST",
+      "BRAND_CONTEXT_TEST",
+      "BRAND_CONTEXT_UPDATE",
+      "BRAND_CONTEXT_DELETE",
+      "BRAND_CONTEXT_EXTRACT",
+    ] as readonly string[] | null,
+    selectedConnections: ["self"] as readonly (
+      | "self"
+      | "registry"
+      | "community-registry"
+    )[],
+    instructions: BRAND_MANAGER_INSTRUCTIONS_MANAGE,
+    welcomeMessage: (async (ctx: WelcomeContext) => [
+      {
+        type: "text",
+        text: ctx.hasBrandContext
+          ? "Hi! I'm your Brand Manager. I can review or update your brand context — domain, colors, fonts, logo — and write brand-aligned HTML pages (landing pages, brand kits, one-pagers) that publish automatically with a live preview. What would you like to do?"
+          : "Hi! I'm your Brand Manager. You don't have a brand context yet — your company profile, domain, colors, fonts, and logo. Want me to set one up for you?",
+      },
+    ]) satisfies BuildWelcomeMessage,
+    resolveRuntime: (async ({ orgId, ctx }) => {
+      const brands = await ctx.storage.brandContext.list(orgId);
+      if (brands.length === 0) {
+        return {
+          instructions: BRAND_MANAGER_INSTRUCTIONS_BOOTSTRAP,
+          selectedTools: ["BRAND_CONTEXT_CREATE", "BRAND_CONTEXT_EXTRACT"],
+        };
+      }
+      return {
+        instructions: BRAND_MANAGER_INSTRUCTIONS_MANAGE,
+        selectedTools: [
+          "BRAND_CONTEXT_LIST",
+          "BRAND_CONTEXT_GET",
+          "BRAND_CONTEXT_UPDATE",
+          "BRAND_CONTEXT_DELETE",
+          "BRAND_CONTEXT_TEST",
+          "BRAND_CONTEXT_CREATE",
+          "BRAND_CONTEXT_EXTRACT",
+        ],
+      };
+    }) satisfies ResolveRuntime,
+    resolveTaskDescription: (async ({ orgId, ctx }) => {
+      const brands = await ctx.storage.brandContext.list(orgId);
+      const primary = brands[0];
+      if (!primary) return "Set up your brand";
+
+      const incomplete = !primary.logo || !primary.colors || !primary.fonts;
+      if (incomplete) return "Complete your brand profile";
+
+      const hasPages = await hasAnyObject(ctx, "pages/");
+      if (!hasPages) return "Create a landing page";
+
+      if (isStale(primary.updatedAt)) return "Refresh your brand";
+      return null;
+    }) satisfies ResolveTaskDescription,
+    getId: StudioPackAgentId.BRAND_MANAGER,
+  },
+  {
     id: "studio-agent-manager",
     title: "Agent Manager",
     icon: "icon://Bot?color=violet",
@@ -415,12 +499,23 @@ export const STUDIO_PACK_AGENTS = [
       const all = await ctx.storage.virtualMcps.list(orgId);
       const custom = all.filter((vm) => !isStudioPackAgent(vm.id));
       if (custom.length === 0) return "Create your first agent";
-      if (custom.length === 1) return "Create another agent";
-      const newest = custom.reduce((a, b) =>
-        new Date(b.updated_at) > new Date(a.updated_at) ? b : a,
+
+      const unwired = custom.some(
+        (vm) =>
+          vm.connections.length === 0 ||
+          vm.connections.every(
+            (c) =>
+              Array.isArray(c.selected_tools) && c.selected_tools.length === 0,
+          ),
       );
-      if (isStale(newest.updated_at)) return "Audit your agents";
-      return "Review your agents";
+      if (unwired) return "Wire up your agent";
+
+      const missingInstructions = custom.some(
+        (vm) => !vm.metadata?.instructions?.trim(),
+      );
+      if (missingInstructions) return "Sharpen your agent's instructions";
+
+      return null;
     }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.AGENT_MANAGER,
   },
@@ -447,10 +542,12 @@ export const STUDIO_PACK_AGENTS = [
       | readonly ("self" | "registry" | "community-registry")[]
       | null,
     instructions: AUTOMATION_MANAGER_INSTRUCTIONS,
-    welcomeMessage: (async (_ctx: WelcomeContext) => [
+    welcomeMessage: (async (ctx: WelcomeContext) => [
       {
         type: "text",
-        text: "Hey — I'm your Automation Manager. I run agents on cron schedules or events. Tell me what you'd like to automate.",
+        text: ctx.hasCustomAgents
+          ? "Hi! I'm your Automation Manager. Automations put your agents on autopilot — pick an agent, give it a schedule (cron) or a trigger (event/webhook), and it runs in the background. Want me to suggest a few automations based on the agents you've already got?"
+          : "Hi! I'm your Automation Manager. Automations run your agents on autopilot — on a schedule (cron) or when an event fires (webhook, inbound message). You'll need to create an agent first — once the Agent Manager has helped you set one up, come back and I'll put it on a trigger.",
       },
     ]) satisfies BuildWelcomeMessage,
     resolveTaskDescription: (async ({ orgId, ctx }) => {
@@ -459,8 +556,7 @@ export const STUDIO_PACK_AGENTS = [
       if (automations.every((a) => !a.active)) {
         return "Reactivate an automation";
       }
-      if (automations.length === 1) return "Add another automation";
-      return "Review your automations";
+      return null;
     }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.AUTOMATION_MANAGER,
   },
@@ -489,12 +585,14 @@ export const STUDIO_PACK_AGENTS = [
     ]) satisfies BuildWelcomeMessage,
     resolveTaskDescription: (async ({ orgId, ctx }) => {
       const { items } = await ctx.storage.connections.list(orgId);
-      if (items.length === 0) return "Connect a new MCP";
-      if (items.some((c) => c.status === "error")) {
+      const userConnections = items.filter(
+        (c) => !isWellKnownSeededConnection(orgId, c.id),
+      );
+      if (userConnections.length === 0) return "Connect a new MCP";
+      if (userConnections.some((c) => c.status === "error")) {
         return "Fix a broken connection";
       }
-      if (items.length === 1) return "Connect another MCP";
-      return "Audit your connections";
+      return null;
     }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.CONNECTION_MANAGER,
   },
@@ -520,77 +618,13 @@ export const STUDIO_PACK_AGENTS = [
     ]) satisfies BuildWelcomeMessage,
     resolveTaskDescription: (async ({ orgId, ctx }) => {
       const { items } = await ctx.storage.connections.list(orgId);
-      if (items.length === 0) return "Browse the Deco Store";
-      return "Discover new integrations";
+      const userConnections = items.filter(
+        (c) => !isWellKnownSeededConnection(orgId, c.id),
+      );
+      if (userConnections.length === 0) return "Browse the Deco Store";
+      return null;
     }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.STORE_MANAGER,
-  },
-  {
-    id: "studio-brand-manager",
-    title: "Brand Manager",
-    icon: "icon://Brand?color=orange",
-    description:
-      "Create, configure, and manage brand contexts (company profiles) for the organization.",
-    // null = all tools from the connection(s) below
-    selectedTools: [
-      "BRAND_CONTEXT_CREATE",
-      "BRAND_CONTEXT_GET",
-      "BRAND_CONTEXT_LIST",
-      "BRAND_CONTEXT_TEST",
-      "BRAND_CONTEXT_UPDATE",
-      "BRAND_CONTEXT_DELETE",
-      "BRAND_CONTEXT_EXTRACT",
-    ] as readonly string[] | null,
-    selectedConnections: ["self"] as readonly (
-      | "self"
-      | "registry"
-      | "community-registry"
-    )[],
-    instructions: BRAND_MANAGER_INSTRUCTIONS_MANAGE,
-    welcomeMessage: (async (ctx: WelcomeContext) => [
-      {
-        type: "text",
-        text: ctx.hasBrandContext
-          ? "Hi! I'm your Brand Manager. I can review or update your brand context — domain, colors, fonts, logo — and write brand-aligned HTML pages (landing pages, brand kits, one-pagers) that publish automatically with a live preview. What would you like to do?"
-          : "Hi! I'm your Brand Manager. You don't have a brand context yet — your company profile, domain, colors, fonts, and logo. Want me to set one up for you?",
-      },
-    ]) satisfies BuildWelcomeMessage,
-    resolveRuntime: (async ({ orgId, ctx }) => {
-      const brands = await ctx.storage.brandContext.list(orgId);
-      if (brands.length === 0) {
-        return {
-          instructions: BRAND_MANAGER_INSTRUCTIONS_BOOTSTRAP,
-          selectedTools: ["BRAND_CONTEXT_CREATE", "BRAND_CONTEXT_EXTRACT"],
-        };
-      }
-      return {
-        instructions: BRAND_MANAGER_INSTRUCTIONS_MANAGE,
-        selectedTools: [
-          "BRAND_CONTEXT_LIST",
-          "BRAND_CONTEXT_GET",
-          "BRAND_CONTEXT_UPDATE",
-          "BRAND_CONTEXT_DELETE",
-          "BRAND_CONTEXT_TEST",
-          "BRAND_CONTEXT_CREATE",
-          "BRAND_CONTEXT_EXTRACT",
-        ],
-      };
-    }) satisfies ResolveRuntime,
-    resolveTaskDescription: (async ({ orgId, ctx }) => {
-      const brands = await ctx.storage.brandContext.list(orgId);
-      const primary = brands[0];
-      if (!primary) return "Set up your brand";
-
-      const incomplete = !primary.logo || !primary.colors || !primary.fonts;
-      if (incomplete) return "Complete your brand profile";
-
-      const hasPages = await hasAnyObject(ctx, "pages/");
-      if (!hasPages) return "Create a landing page";
-
-      if (isStale(primary.updatedAt)) return "Refresh your brand";
-      return "Add another page";
-    }) satisfies ResolveTaskDescription,
-    getId: StudioPackAgentId.BRAND_MANAGER,
   },
 ] as const;
 
@@ -602,6 +636,10 @@ export function findStudioPackAgentByMcpId(
   return (
     STUDIO_PACK_AGENTS.find((a) => virtualMcpId.startsWith(`${a.id}_`)) ?? null
   );
+}
+
+export function studioPackOrder(agent: StudioPackAgent): number {
+  return STUDIO_PACK_AGENTS.findIndex((a) => a.id === agent.id);
 }
 
 export async function resolveStudioPackRuntime(

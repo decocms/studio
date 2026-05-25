@@ -19,6 +19,7 @@ import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import {
   findStudioPackAgentByMcpId,
   resolveStudioPackTaskDescription,
+  studioPackOrder,
 } from "@/tools/virtual/studio-pack";
 
 type Variables = {
@@ -63,7 +64,6 @@ export function createSuggestedActionsRoutes() {
       if (seenAgents.has(key)) continue;
       seenAgents.add(key);
       rows.push(r);
-      if (rows.length >= limit) break;
     }
 
     const agentIds = Array.from(
@@ -83,7 +83,7 @@ export function createSuggestedActionsRoutes() {
     );
     const agentById = new Map(agentEntries);
 
-    const suggestions = await Promise.all(
+    const built = await Promise.all(
       rows.map(async ({ thread, lastMessage }) => {
         const agent = thread.virtual_mcp_id
           ? agentById.get(thread.virtual_mcp_id)
@@ -94,61 +94,82 @@ export function createSuggestedActionsRoutes() {
           : null;
 
         const fromState = describeFromThreadState(lastMessage.parts);
-        const trimmedTitle = thread.title?.trim() ?? "";
-        const hasRealTitle =
-          trimmedTitle.length > 0 &&
-          trimmedTitle !== DEFAULT_THREAD_TITLE &&
-          trimmedTitle !== agent?.title;
-        let description = "";
-        if (fromState) {
-          description = fromState;
-        } else if (studioPackAgent && agent) {
-          const fallback = `Reply to ${agent.title}`;
+        let description = fromState ?? "";
+
+        if (!description && studioPackAgent && agent) {
           try {
             description =
               (await resolveStudioPackTaskDescription(studioPackAgent, {
                 orgId,
                 ctx: mesh,
-              })) ?? fallback;
+              })) ?? "";
           } catch {
-            description = fallback;
+            description = "";
           }
-        } else if (hasRealTitle) {
-          description = trimmedTitle;
-        } else {
-          const taskDescription =
-            agent && typeof agent.metadata === "object" && agent.metadata
-              ? ((agent.metadata as { taskDescription?: unknown })
-                  .taskDescription ?? null)
-              : null;
-          description =
-            typeof taskDescription === "string" && taskDescription.length > 0
-              ? taskDescription
-              : agent
-                ? `Reply to ${agent.title}`
-                : "";
+          if (!description) return null;
         }
 
+        if (!description) {
+          const trimmedTitle = thread.title?.trim() ?? "";
+          const hasRealTitle =
+            trimmedTitle.length > 0 &&
+            trimmedTitle !== DEFAULT_THREAD_TITLE &&
+            trimmedTitle !== agent?.title;
+          if (hasRealTitle) {
+            description = trimmedTitle;
+          } else {
+            const taskDescription =
+              agent && typeof agent.metadata === "object" && agent.metadata
+                ? ((agent.metadata as { taskDescription?: unknown })
+                    .taskDescription ?? null)
+                : null;
+            description =
+              typeof taskDescription === "string" && taskDescription.length > 0
+                ? taskDescription
+                : agent
+                  ? `Reply to ${agent.title}`
+                  : "";
+          }
+        }
+
+        const order = studioPackAgent
+          ? studioPackOrder(studioPackAgent)
+          : Number.POSITIVE_INFINITY;
+
         return {
-          thread: {
-            id: thread.id,
-            title: thread.title,
-            virtual_mcp_id: thread.virtual_mcp_id || null,
-            created_by: thread.created_by,
-            created_at: thread.created_at,
-            updated_at: thread.updated_at,
-            trigger_id: thread.trigger_id,
+          _order: order,
+          suggestion: {
+            thread: {
+              id: thread.id,
+              title: thread.title,
+              virtual_mcp_id: thread.virtual_mcp_id || null,
+              created_by: thread.created_by,
+              created_at: thread.created_at,
+              updated_at: thread.updated_at,
+              trigger_id: thread.trigger_id,
+            },
+            agent: agent
+              ? { id: agent.id, name: agent.title, icon: agent.icon }
+              : null,
+            icon: agent?.icon ?? null,
+            description,
+            excerpt: extractExcerpt(lastMessage.parts),
+            last_message_at: lastMessage.created_at,
           },
-          agent: agent
-            ? { id: agent.id, name: agent.title, icon: agent.icon }
-            : null,
-          icon: agent?.icon ?? null,
-          description,
-          excerpt: extractExcerpt(lastMessage.parts),
-          last_message_at: lastMessage.created_at,
         };
       }),
     );
+
+    const suggestions = built
+      .filter((s): s is NonNullable<typeof s> => s !== null)
+      .sort((a, b) => {
+        const aTime = a.suggestion.last_message_at;
+        const bTime = b.suggestion.last_message_at;
+        if (aTime !== bTime) return aTime < bTime ? 1 : -1;
+        return a._order - b._order;
+      })
+      .slice(0, limit)
+      .map((s) => s.suggestion);
 
     return c.json({ suggestions });
   });
