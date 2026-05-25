@@ -154,6 +154,10 @@ export const KEYS = {
   ensureTask: (orgId: string, id: string) =>
     ["ensure-task", orgId, id] as const,
 
+  // Global search (server-side, scoped by org)
+  globalSearch: (orgId: string, query: string) =>
+    ["global-search", orgId, query] as const,
+
   // Thread queries (scoped by locator)
   threadsInfinite: (locator: string, paramsKey: string) =>
     ["threads", "list-infinite", locator, paramsKey] as const,
