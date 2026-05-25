@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +20,7 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
+import { usePanelActions } from "@/web/layouts/shell-layout";
 import { McpAvatar } from "./mcp-avatar";
 
 type ThreadResult = {
@@ -49,8 +49,8 @@ export function GlobalSearchDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
-  const navigate = useNavigate();
   const { org } = useProjectContext();
+  const { setTaskId } = usePanelActions();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -82,11 +82,11 @@ export function GlobalSearchDialog({
 
   const handleThreadSelect = (t: ThreadResult) => {
     handleOpenChange(false);
-    navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId: t.id },
-      search: t.virtual_mcp_id ? { virtualmcpid: t.virtual_mcp_id } : {},
-    });
+    // Use setTaskId so navigation preserves the current panel layout
+    // (`chat`, `tasks`, `main`) — same helper the tasks-panel row click
+    // path uses. A direct `navigate({ search: {...} })` would replace the
+    // search params and reset the layout.
+    setTaskId(t.id, t.virtual_mcp_id ?? undefined);
   };
 
   return (
