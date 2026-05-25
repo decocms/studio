@@ -13,6 +13,7 @@ type FileConfigRow = {
   region: string;
   endpoint: string | null;
   force_path_style: boolean;
+  prefix: string | null;
   created_by: string;
   created_at: Date | string;
   updated_by: string;
@@ -28,6 +29,7 @@ const PUBLIC_COLUMNS = [
   "region",
   "endpoint",
   "force_path_style",
+  "prefix",
   "created_by",
   "created_at",
   "updated_by",
@@ -66,6 +68,7 @@ export class OrgFileConfigStorage {
       region: row.region,
       endpoint: row.endpoint,
       forcePathStyle: row.force_path_style,
+      prefix: row.prefix,
       createdBy: row.created_by,
       createdAt: toIsoString(row.created_at),
       updatedBy: row.updated_by,
@@ -81,6 +84,7 @@ export class OrgFileConfigStorage {
     region: string;
     endpoint?: string | null;
     forcePathStyle?: boolean;
+    prefix?: string | null;
     credentials: FileConfigCredentials;
     createdBy: string;
   }): Promise<FileConfigInfo> {
@@ -101,6 +105,7 @@ export class OrgFileConfigStorage {
         region: params.region,
         endpoint: params.endpoint ?? null,
         force_path_style: params.forcePathStyle ?? false,
+        prefix: params.prefix ?? null,
         encrypted_credentials: encryptedCredentials,
         created_by: params.createdBy,
         created_at: now,
@@ -122,6 +127,7 @@ export class OrgFileConfigStorage {
     region?: string;
     endpoint?: string | null;
     forcePathStyle?: boolean;
+    prefix?: string | null;
     credentials?: FileConfigCredentials;
     updatedBy: string;
   }): Promise<FileConfigInfo> {
@@ -141,6 +147,7 @@ export class OrgFileConfigStorage {
       region: string;
       endpoint: string | null;
       force_path_style: boolean;
+      prefix: string | null;
       encrypted_credentials: string;
       updated_by: string;
       updated_at: Date;
@@ -157,6 +164,7 @@ export class OrgFileConfigStorage {
     if (params.endpoint !== undefined) patch.endpoint = params.endpoint;
     if (params.forcePathStyle !== undefined)
       patch.force_path_style = params.forcePathStyle;
+    if (params.prefix !== undefined) patch.prefix = params.prefix;
     if (params.credentials !== undefined) {
       patch.encrypted_credentials = await this.vault.encrypt(
         JSON.stringify(params.credentials),

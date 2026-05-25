@@ -320,6 +320,7 @@ export interface OrgFileConfigTable {
   region: string;
   endpoint: string | null;
   force_path_style: ColumnType<boolean, boolean | undefined, boolean>;
+  prefix: string | null;
   encrypted_credentials: string;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
@@ -337,6 +338,7 @@ export interface FileConfigInfo {
   region: string;
   endpoint: string | null;
   forcePathStyle: boolean;
+  prefix: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;

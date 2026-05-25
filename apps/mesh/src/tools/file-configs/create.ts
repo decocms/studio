@@ -1,7 +1,11 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
-import { fileConfigInfoSchema, fileConfigNameSchema } from "./schema";
+import {
+  fileConfigInfoSchema,
+  fileConfigNameSchema,
+  normalizePrefix,
+} from "./schema";
 
 export const FILE_CONFIG_CREATE = defineTool({
   name: "FILE_CONFIG_CREATE",
@@ -14,6 +18,7 @@ export const FILE_CONFIG_CREATE = defineTool({
     region: z.string().min(1).max(64),
     endpoint: z.string().url().optional(),
     forcePathStyle: z.boolean().optional(),
+    prefix: z.string().max(512).optional(),
     accessKeyId: z.string().min(1),
     secretAccessKey: z.string().min(1),
   }),
@@ -31,6 +36,7 @@ export const FILE_CONFIG_CREATE = defineTool({
       region: input.region,
       endpoint: input.endpoint ?? null,
       forcePathStyle: input.forcePathStyle ?? false,
+      prefix: normalizePrefix(input.prefix),
       credentials: {
         accessKeyId: input.accessKeyId,
         secretAccessKey: input.secretAccessKey,

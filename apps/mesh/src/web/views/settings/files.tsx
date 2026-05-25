@@ -77,6 +77,11 @@ function FileConfigRow({
               {config.forcePathStyle ? " (path-style)" : ""}
             </p>
           ) : null}
+          {config.prefix ? (
+            <p className="text-xs text-muted-foreground/80 mt-0.5 truncate font-mono">
+              prefix: {config.prefix}
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -133,6 +138,7 @@ function CreateFileConfigDialog({
   const [region, setRegion] = useState("");
   const [endpoint, setEndpoint] = useState("");
   const [forcePathStyle, setForcePathStyle] = useState(false);
+  const [prefix, setPrefix] = useState("");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const createConfig = useCreateFileConfig();
@@ -144,6 +150,7 @@ function CreateFileConfigDialog({
     setRegion("");
     setEndpoint("");
     setForcePathStyle(false);
+    setPrefix("");
     setAccessKeyId("");
     setSecretAccessKey("");
   }
@@ -166,6 +173,7 @@ function CreateFileConfigDialog({
         region: region.trim(),
         endpoint: endpoint.trim() || undefined,
         forcePathStyle,
+        prefix: prefix.trim() || undefined,
         accessKeyId,
         secretAccessKey,
       });
@@ -272,6 +280,22 @@ function CreateFileConfigDialog({
               checked={forcePathStyle}
               onCheckedChange={setForcePathStyle}
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="file-config-prefix">Key prefix (optional)</Label>
+            <Input
+              id="file-config-prefix"
+              value={prefix}
+              onChange={(e) => setPrefix(e.target.value)}
+              placeholder="tenants/acme/"
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              All object keys are written under this prefix. Useful for
+              multi-tenant buckets or credentials scoped to a sub-path. A
+              trailing slash is added automatically.
+            </p>
           </div>
 
           <div className="space-y-1.5">

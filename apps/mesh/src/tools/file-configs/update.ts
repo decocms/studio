@@ -1,7 +1,11 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
-import { fileConfigInfoSchema, fileConfigNameSchema } from "./schema";
+import {
+  fileConfigInfoSchema,
+  fileConfigNameSchema,
+  normalizePrefix,
+} from "./schema";
 
 export const FILE_CONFIG_UPDATE = defineTool({
   name: "FILE_CONFIG_UPDATE",
@@ -16,6 +20,7 @@ export const FILE_CONFIG_UPDATE = defineTool({
       region: z.string().min(1).max(64).optional(),
       endpoint: z.string().url().nullable().optional(),
       forcePathStyle: z.boolean().optional(),
+      prefix: z.string().max(512).nullable().optional(),
       accessKeyId: z.string().min(1).optional(),
       secretAccessKey: z.string().min(1).optional(),
     })
@@ -50,6 +55,8 @@ export const FILE_CONFIG_UPDATE = defineTool({
       region: input.region,
       endpoint: input.endpoint,
       forcePathStyle: input.forcePathStyle,
+      prefix:
+        input.prefix === undefined ? undefined : normalizePrefix(input.prefix),
       credentials,
       updatedBy: ctx.auth.user!.id,
     });

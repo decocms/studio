@@ -15,6 +15,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("force_path_style", "boolean", (col) =>
       col.notNull().defaultTo(false),
     )
+    .addColumn("prefix", "text")
     .addColumn("encrypted_credentials", "text", (col) => col.notNull())
     .addColumn("created_by", "text", (col) => col.notNull())
     .addColumn("created_at", "timestamptz", (col) =>

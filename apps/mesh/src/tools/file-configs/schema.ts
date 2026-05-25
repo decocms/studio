@@ -14,6 +14,7 @@ export const fileConfigInfoSchema = z.object({
   region: z.string(),
   endpoint: z.string().nullable(),
   forcePathStyle: z.boolean(),
+  prefix: z.string().nullable(),
   createdBy: z.string(),
   createdAt: z.string(),
   updatedBy: z.string(),
@@ -30,3 +31,17 @@ export const fileConfigNameSchema = z
     message:
       "Name may only contain letters, digits, underscore, dot, and hyphen.",
   });
+
+/**
+ * Normalize a key prefix so consumers can safely concatenate `prefix + key`:
+ * trim whitespace, drop any leading slash, and ensure a single trailing slash
+ * when non-empty. Returns null when the input is empty/undefined.
+ */
+export function normalizePrefix(
+  input: string | null | undefined,
+): string | null {
+  if (input == null) return null;
+  const trimmed = input.trim().replace(/^\/+/, "");
+  if (trimmed === "") return null;
+  return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
+}

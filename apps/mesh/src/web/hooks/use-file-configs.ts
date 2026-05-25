@@ -19,6 +19,7 @@ export interface FileConfigInfo {
   region: string;
   endpoint: string | null;
   forcePathStyle: boolean;
+  prefix: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -55,6 +56,7 @@ export interface CreateFileConfigInput {
   region: string;
   endpoint?: string;
   forcePathStyle?: boolean;
+  prefix?: string;
   accessKeyId: string;
   secretAccessKey: string;
 }
@@ -90,6 +92,7 @@ export interface UpdateFileConfigInput {
   region?: string;
   endpoint?: string | null;
   forcePathStyle?: boolean;
+  prefix?: string | null;
   accessKeyId?: string;
   secretAccessKey?: string;
 }
