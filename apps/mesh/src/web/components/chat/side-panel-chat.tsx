@@ -118,47 +118,41 @@ function ChatPanelContent() {
             : "opacity-100",
         )}
       >
-        {!isChatEmpty ? (
-          <>
-            <Chat.Main>
-              <Chat.Messages />
-            </Chat.Main>
+        {(() => {
+          const footer = (
             <Chat.Footer>
-              <ChatModeRow
-                orgId={org.id}
-                orgSlug={org.slug}
-                userId={userId}
-                virtualMcp={fullVm}
-                sandboxMap={fullVm?.metadata?.sandboxMap}
-                currentBranch={currentBranch}
-                onBranchChange={setCurrentTaskBranch}
-              />
               <Chat.Input
                 onOpenContextPanel={() => setActivePanel("context")}
+                topAdornment={
+                  <ChatModeRow
+                    orgId={org.id}
+                    orgSlug={org.slug}
+                    userId={userId}
+                    virtualMcp={fullVm}
+                    sandboxMap={fullVm?.metadata?.sandboxMap}
+                    currentBranch={currentBranch}
+                    onBranchChange={setCurrentTaskBranch}
+                  />
+                }
               />
             </Chat.Footer>
-          </>
-        ) : (
-          <>
-            <Chat.Main>
-              <SidebarEmptyState />
-            </Chat.Main>
-            <Chat.Footer>
-              <ChatModeRow
-                orgId={org.id}
-                orgSlug={org.slug}
-                userId={userId}
-                virtualMcp={fullVm}
-                sandboxMap={fullVm?.metadata?.sandboxMap}
-                currentBranch={currentBranch}
-                onBranchChange={setCurrentTaskBranch}
-              />
-              <Chat.Input
-                onOpenContextPanel={() => setActivePanel("context")}
-              />
-            </Chat.Footer>
-          </>
-        )}
+          );
+          return !isChatEmpty ? (
+            <>
+              <Chat.Main>
+                <Chat.Messages />
+              </Chat.Main>
+              {footer}
+            </>
+          ) : (
+            <>
+              <Chat.Main>
+                <SidebarEmptyState />
+              </Chat.Main>
+              {footer}
+            </>
+          );
+        })()}
       </div>
 
       {/* Context view */}

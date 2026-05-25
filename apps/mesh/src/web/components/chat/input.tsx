@@ -224,9 +224,16 @@ function useHomeSubmit() {
 export function ChatInput({
   onOpenContextPanel,
   showConnectionsBanner = false,
+  topAdornment,
 }: {
   onOpenContextPanel?: () => void;
   showConnectionsBanner?: boolean;
+  /** Rendered inside the relative container above the form, below the
+   *  highlights stack. Used to slot the ChatModeRow (branch + mode
+   *  pills) directly above the input so the highlights always stack on
+   *  top — putting it as a sibling outside Chat.Input lets the
+   *  absolute-positioned highlights overlap it. */
+  topAdornment?: React.ReactNode;
 }) {
   const stream = useOptionalChatStream();
   const taskCtx = useOptionalChatTask();
@@ -421,6 +428,8 @@ export function ChatInput({
               an active task — it depends on useChatStream + useChatTask, both
               absent on the home composer. */}
           {stream && taskCtx && <ChatHighlight />}
+
+          {topAdornment}
 
           <TiptapProvider
             key={taskId}
