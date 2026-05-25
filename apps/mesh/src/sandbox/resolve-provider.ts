@@ -73,19 +73,19 @@ export async function resolveSandboxProvider(
   }
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
-  //    without touching sandboxMap. `desktop` carries its link inline;
-  //    `default` means "use the cluster runner the env points to".
-  if (ctx.sandboxPreference === "desktop" && ctx.linkForCurrentRun) {
+  //    without touching sandboxMap. `user-desktop` carries its link inline;
+  //    `cluster-default` means "use the cluster runner the env points to".
+  if (ctx.sandboxPreference === "user-desktop" && ctx.linkForCurrentRun) {
     const provider = await buildDesktopProvider(ctx, ctx.linkForCurrentRun);
     return { provider, kind: "user-desktop" };
   }
-  if (ctx.sandboxPreference === "default") {
+  if (ctx.sandboxPreference === "cluster-default") {
     // Route through `bindProviderForKind` so that env kind === "user-desktop"
     // (the default in local dev) still binds the user's link instead of
     // calling `instantiate("user-desktop")` directly, which throws. Without
     // this, background fires (cron/webhook/event automations) blow up
     // here because `dispatch-run` defaults their target to local/default
-    // and never sets `sandboxPreference="desktop"` with a link.
+    // and never sets `sandboxPreference="user-desktop"` with a link.
     const kind = resolveSandboxProviderKindFromEnv();
     const provider = await bindProviderForKind(ctx, userId, kind);
     return { provider, kind };

@@ -457,7 +457,7 @@ async function prepareRun(
       // sandbox is "user-desktop", tunnel sandbox tool calls to the user's
       // link daemon.
       ctx.sandboxPreference =
-        target.sandbox === "user-desktop" ? "desktop" : "default";
+        target.sandbox === "user-desktop" ? "user-desktop" : "cluster-default";
       ctx.linkForCurrentRun = target.link;
     } else {
       // runsIn === "user-desktop": no in-cluster sandbox runs, but we

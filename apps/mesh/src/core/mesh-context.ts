@@ -402,13 +402,15 @@ export interface MeshContext extends HarnessContext {
   /**
    * Sandbox dispatch preference for the in-flight run, populated by
    * `prepareRun` from the resolved `DispatchTarget`:
-   *   - `"default"` — cluster sandbox (today's behavior).
-   *   - `"desktop"` — decopilot still runs in the cluster (kind `user-desktop`), but its
+   *   - `"cluster-default"` — use whichever sandbox kind `STUDIO_SANDBOX_PROVIDER`
+   *     resolves to on this cluster (could be `local-docker`, `cluster`, or
+   *     `user-desktop` depending on the env).
+   *   - `"user-desktop"` — decopilot still runs in the cluster, but its
    *     Code Sandbox tool calls are forwarded to the user's link daemon.
    * Unset for non-decopilot harnesses (`remote-cli` runs never enter the
    * sandbox tool path on the cluster side).
    */
-  sandboxPreference?: "default" | "desktop";
+  sandboxPreference?: "cluster-default" | "user-desktop";
 
   /**
    * Link entry for the user this run is dispatched on behalf of, if any.

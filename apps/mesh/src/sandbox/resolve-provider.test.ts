@@ -68,7 +68,7 @@ function makeLink(): LinkEntry {
 function stubCtx(
   link: LinkEntry | null,
   hints?: {
-    sandboxPreference?: "default" | "desktop";
+    sandboxPreference?: "cluster-default" | "user-desktop";
     linkForCurrentRun?: LinkEntry;
   },
 ): MeshContext {
@@ -164,7 +164,7 @@ describe("resolveSandboxProvider", () => {
     expect(kind).toBe("local-docker");
   });
 
-  test("ctx hint (sandboxPreference=desktop + link) short-circuits without sandboxMap read", async () => {
+  test("ctx hint (sandboxPreference=user-desktop + link) short-circuits without sandboxMap read", async () => {
     // dispatch-run sets these ctx fields from the resolved DispatchTarget.
     // Resolver must honor them and skip the sandboxMap lookup so the decopilot
     // hot path doesn't pay a DB hit per turn. Metadata is intentionally
@@ -188,7 +188,7 @@ describe("resolveSandboxProvider", () => {
     };
     const link = makeLink();
     const ctx = stubCtx(null, {
-      sandboxPreference: "desktop",
+      sandboxPreference: "user-desktop",
       linkForCurrentRun: link,
     });
     const { kind, provider } = await resolveSandboxProvider(ctx, {
@@ -200,8 +200,8 @@ describe("resolveSandboxProvider", () => {
     expect(provider).toBe(stubDesktop);
   });
 
-  test("ctx hint (sandboxPreference=default) routes to env kind", async () => {
-    const ctx = stubCtx(makeLink(), { sandboxPreference: "default" });
+  test("ctx hint (sandboxPreference=cluster-default) routes to env kind", async () => {
+    const ctx = stubCtx(makeLink(), { sandboxPreference: "cluster-default" });
     const { kind } = await resolveSandboxProvider(ctx, {
       userId: "u-1",
       branch: "deco/foo",
@@ -211,17 +211,17 @@ describe("resolveSandboxProvider", () => {
     expect(kind).toBe("local-docker");
   });
 
-  test("sandboxPreference=default + env=user-desktop + link online → binds user-desktop with link", async () => {
+  test("sandboxPreference=cluster-default + env=user-desktop + link online → binds user-desktop with link", async () => {
     // Regression: background fires (cron/webhook/event automations) get
-    // `sandboxPreference: "default"` from dispatch-run, but in local dev
-    // env defaults to `user-desktop`. Before the fix this hit
+    // `sandboxPreference: "cluster-default"` from dispatch-run, but in local
+    // dev env defaults to `user-desktop`. Before the fix this hit
     // `instantiate("user-desktop")` directly and threw the confusing
     // "user-desktop runner cannot be instantiated without a per-run LinkEntry".
     const prev = process.env.STUDIO_SANDBOX_PROVIDER;
     process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
     try {
       const link = makeLink();
-      const ctx = stubCtx(link, { sandboxPreference: "default" });
+      const ctx = stubCtx(link, { sandboxPreference: "cluster-default" });
       const { kind, provider } = await resolveSandboxProvider(ctx, {
         userId: "u-1",
         branch: "deco/foo",
@@ -234,11 +234,11 @@ describe("resolveSandboxProvider", () => {
     }
   });
 
-  test("sandboxPreference=default + env=user-desktop + no link → clear error", async () => {
+  test("sandboxPreference=cluster-default + env=user-desktop + no link → clear error", async () => {
     const prev = process.env.STUDIO_SANDBOX_PROVIDER;
     process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
     try {
-      const ctx = stubCtx(null, { sandboxPreference: "default" });
+      const ctx = stubCtx(null, { sandboxPreference: "cluster-default" });
       await expect(
         resolveSandboxProvider(ctx, {
           userId: "u-1",
