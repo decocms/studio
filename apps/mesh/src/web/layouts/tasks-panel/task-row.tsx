@@ -10,6 +10,7 @@ import { McpAvatar, ToolCallRunAvatar } from "./mcp-avatar";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { isSyntheticBranch } from "@/shared/is-synthetic-branch";
 import { useClockTick } from "@/web/lib/use-clock-tick";
 import type { Task } from "@/web/components/chat/task/types";
 
@@ -84,7 +85,7 @@ export function TaskRow({
         </div>
         {task.updated_at && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-            {task.branch ? (
+            {task.branch && !isSyntheticBranch(task.branch) ? (
               <>
                 <span className="truncate font-mono">{task.branch}</span>
                 <span className="shrink-0">·</span>
