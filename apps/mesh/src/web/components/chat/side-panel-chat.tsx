@@ -1,5 +1,4 @@
 import { IntegrationIcon } from "@/web/components/integration-icon";
-import { authClient } from "@/web/lib/auth-client";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -11,10 +10,9 @@ import { Suspense, useState } from "react";
 import { ErrorBoundary } from "../error-boundary";
 
 import { Chat } from "./index";
-import { useChatStream, useChatPrefs, useChatTask } from "./context";
+import { useChatStream, useChatPrefs } from "./context";
 import { ChatContextPanel } from "./context-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
-import { ChatModeRow } from "./pills/chat-mode-row";
 
 import {
   agentHasClonableSource,
@@ -67,13 +65,10 @@ function ChatPanelContent() {
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
   const { selectedVirtualMcp } = useChatPrefs();
-  const { currentBranch, setCurrentTaskBranch } = useChatTask();
-  const { data: session } = authClient.useSession();
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
   const fullVm = useVirtualMCP(displayAgent.id);
   const link = useCurrentLink();
-  const userId = session?.user?.id ?? "";
 
   // Clonable agents (Start Website + GitHub-imported) can route through
   // a desktop CLI harness when one is online, so the no-provider gate
@@ -118,41 +113,12 @@ function ChatPanelContent() {
             : "opacity-100",
         )}
       >
-        {(() => {
-          const footer = (
-            <Chat.Footer>
-              <Chat.Input
-                onOpenContextPanel={() => setActivePanel("context")}
-                topAdornment={
-                  <ChatModeRow
-                    orgId={org.id}
-                    orgSlug={org.slug}
-                    userId={userId}
-                    virtualMcp={fullVm}
-                    sandboxMap={fullVm?.metadata?.sandboxMap}
-                    currentBranch={currentBranch}
-                    onBranchChange={setCurrentTaskBranch}
-                  />
-                }
-              />
-            </Chat.Footer>
-          );
-          return !isChatEmpty ? (
-            <>
-              <Chat.Main>
-                <Chat.Messages />
-              </Chat.Main>
-              {footer}
-            </>
-          ) : (
-            <>
-              <Chat.Main>
-                <SidebarEmptyState />
-              </Chat.Main>
-              {footer}
-            </>
-          );
-        })()}
+        <Chat.Main>
+          {!isChatEmpty ? <Chat.Messages /> : <SidebarEmptyState />}
+        </Chat.Main>
+        <Chat.Footer>
+          <Chat.Input onOpenContextPanel={() => setActivePanel("context")} />
+        </Chat.Footer>
       </div>
 
       {/* Context view */}

@@ -6,6 +6,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
+  useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -32,6 +33,7 @@ import { useThreadActions } from "./store/hooks";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
+import { ChatModeRow } from "./pills/chat-mode-row";
 import { TierTrigger } from "./tier-trigger";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
@@ -224,16 +226,9 @@ function useHomeSubmit() {
 export function ChatInput({
   onOpenContextPanel,
   showConnectionsBanner = false,
-  topAdornment,
 }: {
   onOpenContextPanel?: () => void;
   showConnectionsBanner?: boolean;
-  /** Rendered inside the relative container above the form, below the
-   *  highlights stack. Used to slot the ChatModeRow (branch + mode
-   *  pills) directly above the input so the highlights always stack on
-   *  top — putting it as a sibling outside Chat.Input lets the
-   *  absolute-positioned highlights overlap it. */
-  topAdornment?: React.ReactNode;
 }) {
   const stream = useOptionalChatStream();
   const taskCtx = useOptionalChatTask();
@@ -258,6 +253,7 @@ export function ChatInput({
 
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const fullVm = useVirtualMCP(selectedVirtualMcp?.id ?? decopilotId);
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -429,8 +425,6 @@ export function ChatInput({
               absent on the home composer. */}
           {stream && taskCtx && <ChatHighlight />}
 
-          {topAdornment}
-
           <TiptapProvider
             key={taskId}
             tiptapDoc={tiptapDoc}
@@ -597,8 +591,19 @@ export function ChatInput({
                       )}
                     </div>
 
-                    {/* Right Actions (mic, model, send) */}
+                    {/* Right Actions (branch/mode, model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
+                      <ChatModeRow
+                        orgId={org.id}
+                        orgSlug={org.slug}
+                        userId={userId ?? ""}
+                        virtualMcp={fullVm}
+                        sandboxMap={fullVm?.metadata?.sandboxMap}
+                        currentBranch={taskCtx?.currentBranch ?? null}
+                        onBranchChange={
+                          taskCtx?.setCurrentTaskBranch ?? (() => {})
+                        }
+                      />
                       <TierTrigger />
 
                       {/* Microphone button — only shown when not streaming and speech is supported */}
