@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Popover,
@@ -6,13 +6,21 @@ import {
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ChevronDown, Check } from "@untitledui/icons";
+import {
+  Atom01,
+  ChevronDown,
+  Check,
+  Lightning01,
+  Stars01,
+} from "@untitledui/icons";
 import type { ChatTier } from "@/tools/organization/schema";
+import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 import {
   resolveTierSubtitle,
   useAgentMode,
   useChatTier,
   useSetChatTier,
+  type AgentMode,
 } from "./use-agent-mode";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
@@ -30,17 +38,25 @@ const TIER_SHORT: Record<ChatTier, string> = {
 interface PureProps {
   tier: ChatTier;
   subtitleFor: (tier: ChatTier) => string | null;
+  /** Optional per-tier glyph rendered on the closed pill and on each
+   *  popover row. Omit for a label-only treatment. */
+  iconFor?: (tier: ChatTier) => ReactNode;
   onSelect: (tier: ChatTier) => void;
 }
 
 /**
  * Pure variant — no external dependencies (no context, no queries).
  * Owns only local UI state (the popover open flag) so tests can mount
- * it without mocking the chat context. Closed pill shows the tier
- * label only; popover shows three rows with the subtitle resolved via
- * the injected `subtitleFor`.
+ * it without mocking the chat context. Closed pill shows the icon
+ * (when provided) + tier label; popover shows three rows with the
+ * subtitle resolved via the injected `subtitleFor`.
  */
-export function TierTriggerPure({ tier, subtitleFor, onSelect }: PureProps) {
+export function TierTriggerPure({
+  tier,
+  subtitleFor,
+  iconFor,
+  onSelect,
+}: PureProps) {
   const [open, setOpen] = useState(false);
   const handleSelect = (t: ChatTier) => {
     onSelect(t);
@@ -55,8 +71,9 @@ export function TierTriggerPure({ tier, subtitleFor, onSelect }: PureProps) {
           variant="ghost"
           size="sm"
           aria-label={TIER_LABELS[tier]}
-          className="gap-0 @[496px]/chat-bottom:gap-1.5 text-muted-foreground hover:text-foreground"
+          className="gap-1.5 text-muted-foreground hover:text-foreground"
         >
+          {iconFor?.(tier)}
           <span className="inline-block @[496px]/chat-bottom:hidden">
             {TIER_SHORT[tier]}
           </span>
@@ -70,6 +87,7 @@ export function TierTriggerPure({ tier, subtitleFor, onSelect }: PureProps) {
         <div role="menu" className="flex flex-col">
           {TIER_ORDER.map((t) => {
             const subtitle = subtitleFor(t);
+            const icon = iconFor?.(t);
             const active = t === tier;
             return (
               <button
@@ -83,6 +101,11 @@ export function TierTriggerPure({ tier, subtitleFor, onSelect }: PureProps) {
                   "hover:bg-muted",
                 )}
               >
+                {icon && (
+                  <span className="shrink-0 text-muted-foreground mt-0.5">
+                    {icon}
+                  </span>
+                )}
                 <div className="flex-1">
                   <div className="text-sm">{TIER_LABELS[t]}</div>
                   {subtitle && (
@@ -104,8 +127,34 @@ export function TierTriggerPure({ tier, subtitleFor, onSelect }: PureProps) {
 }
 
 /**
+ * Per-tier intent glyphs for the cloud-Decopilot popover. Same icons
+ * the merged `AgentModelPopover` used pre-refactor, so users see the
+ * same affordance for Fast/Smart/Thinking they're already used to.
+ */
+function decopilotIcon(tier: ChatTier): ReactNode {
+  if (tier === "fast") return <Lightning01 size={16} />;
+  if (tier === "thinking") return <Atom01 size={16} />;
+  return <Stars01 size={16} />;
+}
+
+/**
+ * Picks the glyph for a given (mode, tier) pair:
+ *   - cloud-decopilot: per-tier intent icon (Lightning / Stars / Atom)
+ *   - local-claude-code: the Claude brand glyph for every tier
+ *   - local-codex: the Codex brand glyph for every tier
+ * Exposed so the automations tier dropdown can reuse the cloud-Decopilot
+ * icons without depending on the chat AgentMode concept.
+ */
+export function tierIconFor(mode: AgentMode, tier: ChatTier): ReactNode {
+  if (mode === "local-claude-code") return <ClaudeCodeIcon size={16} />;
+  if (mode === "local-codex") return <CodexIcon size={16} />;
+  return decopilotIcon(tier);
+}
+
+/**
  * Smart wrapper used by `Chat.Input`. Reads current tier + mode, builds
- * the per-tier subtitle resolver, and writes through `useSetChatTier`.
+ * the per-tier subtitle + icon resolvers, and writes through
+ * `useSetChatTier`.
  */
 export function TierTrigger() {
   const tier = useChatTier();
@@ -114,8 +163,14 @@ export function TierTrigger() {
 
   const subtitleFor = (t: ChatTier): string | null =>
     resolveTierSubtitle(mode, t);
+  const iconFor = (t: ChatTier): ReactNode => tierIconFor(mode, t);
 
   return (
-    <TierTriggerPure tier={tier} subtitleFor={subtitleFor} onSelect={setTier} />
+    <TierTriggerPure
+      tier={tier}
+      subtitleFor={subtitleFor}
+      iconFor={iconFor}
+      onSelect={setTier}
+    />
   );
 }
