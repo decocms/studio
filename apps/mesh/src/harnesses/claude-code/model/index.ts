@@ -24,6 +24,11 @@ export function createClaudeCodeModel(
     resume?: string;
     /** Working directory for Claude Code's subprocess. Defaults to mesh's cwd. */
     cwd?: string;
+    /** Extra tool names to disallow on top of the headless baseline. Used by
+     *  task-specific agents (e.g. page-editor) that must not touch the
+     *  filesystem or shell — agents under-follow textual prohibitions, so
+     *  we hard-disable the tools at the SDK level. */
+    extraDisallowedTools?: string[];
   },
 ): LanguageModelV3 {
   // Tools that require a TTY, manage local state, or are not useful in headless mode
@@ -45,6 +50,8 @@ export function createClaudeCodeModel(
   const restrictWrites =
     options?.isPlanMode || options?.toolApprovalLevel === "readonly";
 
+  const extra = options?.extraDisallowedTools ?? [];
+
   if (restrictWrites) {
     settings.permissionMode = "bypassPermissions";
     settings.disallowedTools = [
@@ -53,10 +60,11 @@ export function createClaudeCodeModel(
       "Edit",
       "Bash",
       "NotebookEdit",
+      ...extra,
     ];
   } else {
     settings.permissionMode = "bypassPermissions";
-    settings.disallowedTools = [...HEADLESS_DISALLOWED_TOOLS];
+    settings.disallowedTools = [...HEADLESS_DISALLOWED_TOOLS, ...extra];
   }
 
   if (options?.resume) {

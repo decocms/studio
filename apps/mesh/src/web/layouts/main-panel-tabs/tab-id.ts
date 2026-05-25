@@ -86,6 +86,7 @@ export const FIXED_SYSTEM_TABS = [
   "automations",
   "preview",
   "git",
+  "page-preview",
 ] as const;
 
 const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);

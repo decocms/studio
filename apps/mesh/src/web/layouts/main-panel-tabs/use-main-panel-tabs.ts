@@ -211,8 +211,15 @@ export function useMainPanelTabs(ctx: {
   // Unified "settings" tab bundles instructions, connections, and layout
   // into a single detail view. On GitHub-linked vMCPs the contextual
   // work tabs (Preview, git) come first so they're closest to the panel;
-  // Settings + Automations stay anchored at the right.
+  // Settings + Automations stay anchored at the right. The Page Editor's
+  // own preview tab follows the same "closest to the panel" rule when its
+  // agent opts in via defaultMainView.type === "page-preview".
+  const wantsPagePreview =
+    entityLayout?.defaultMainView?.type === "page-preview";
   const systemTabs: Array<{ id: string; title: string }> = [];
+  if (wantsPagePreview) {
+    systemTabs.push({ id: "page-preview", title: "Page Preview" });
+  }
   if (hasClonableSource) {
     systemTabs.push({ id: "preview", title: "Preview" });
   }

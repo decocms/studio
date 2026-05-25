@@ -33,6 +33,7 @@ export type ToolCategory =
   | "File Configs"
   | "Automations"
   | "Object Storage"
+  | "Page Preview"
   | "Registry"
   | "GitHub"
   | "VM"
@@ -161,6 +162,23 @@ const ALL_TOOL_NAMES = [
   "PUT_PRESIGNED_URL",
   "DELETE_OBJECT",
   "DELETE_OBJECTS",
+
+  // Page Preview tools
+  "PAGE_PREVIEW_STATUS",
+  "PAGE_PREVIEW_SET",
+  "PAGE_PREVIEW_REFRESH",
+  "PAGE_PREVIEW_PAGE_CREATE",
+  "PAGE_BOOTSTRAP",
+  "PAGE_PREVIEW_PROGRESS",
+  "DESIGN_SYSTEM_CREATE",
+  "DESIGN_SYSTEM_LIST",
+  "DESIGN_SYSTEM_SET",
+  "DESIGN_SYSTEM_TEMPLATES_LIST",
+  "PAGE_RENDER_BLOCK",
+  "PAGE_UPDATE_BLOCK",
+  "PAGE_REMOVE_BLOCK",
+  "PAGE_REVIEW_SUGGEST",
+  "PAGE_GET_BLOCKS",
 
   // Registry tools
   "COLLECTION_REGISTRY_APP_LIST",
@@ -768,6 +786,47 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Object Storage",
     dangerous: true,
   },
+  // Page Preview tools
+  {
+    name: "PAGE_PREVIEW_STATUS",
+    description: "Get local Page Editor preview status",
+    category: "Page Preview",
+  },
+  {
+    name: "PAGE_PREVIEW_SET",
+    description: "Set the active local Page Editor preview",
+    category: "Page Preview",
+  },
+  {
+    name: "PAGE_PREVIEW_REFRESH",
+    description: "Refresh the local Page Editor preview",
+    category: "Page Preview",
+  },
+  {
+    name: "PAGE_PREVIEW_PAGE_CREATE",
+    description: "Scaffold a new page from a layout template",
+    category: "Page Preview",
+  },
+  {
+    name: "DESIGN_SYSTEM_CREATE",
+    description: "Scaffold a design system from brand tokens",
+    category: "Page Preview",
+  },
+  {
+    name: "DESIGN_SYSTEM_LIST",
+    description: "List design systems",
+    category: "Page Preview",
+  },
+  {
+    name: "DESIGN_SYSTEM_SET",
+    description: "Set active design system in preview",
+    category: "Page Preview",
+  },
+  {
+    name: "PAGE_PREVIEW_PROGRESS",
+    description: "Set a status label for the preview pane overlay",
+    category: "Page Preview",
+  },
   // Registry tools
   {
     name: "COLLECTION_REGISTRY_APP_LIST",
@@ -1016,6 +1075,15 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "SANDBOX_DELETE",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
+      // Page Editor preview control
+      "PAGE_PREVIEW_STATUS",
+      "PAGE_PREVIEW_SET",
+      "PAGE_PREVIEW_REFRESH",
+      "PAGE_PREVIEW_PAGE_CREATE",
+      "PAGE_PREVIEW_PROGRESS",
+      "DESIGN_SYSTEM_CREATE",
+      "DESIGN_SYSTEM_LIST",
+      "DESIGN_SYSTEM_SET",
     ],
   },
   // Organization

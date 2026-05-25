@@ -909,6 +909,12 @@ function LayoutTabContent({
   if (hasClonableSource) {
     defaultMainOptions.push({ value: "preview", label: "Preview" });
   }
+  // Surface "Page preview" only when this agent already uses it — keeps the
+  // dropdown clean for non-Page-Editor agents that wouldn't know what it
+  // points to.
+  if (currentDefaultMain?.type === "page-preview") {
+    defaultMainOptions.push({ value: "page-preview", label: "Page preview" });
+  }
   for (const pv of pinnedViews) {
     defaultMainOptions.push({
       value: `ext-apps:${pv.connectionId}:${pv.toolName}`,

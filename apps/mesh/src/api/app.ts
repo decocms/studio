@@ -1091,10 +1091,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.use("*", async (c, next) => {
     await next();
     // Org-scoped /files/* serves user content (HTML pages written by the
-    // web-developer agent, uploaded images, etc.) that we deliberately
-    // iframe back into the app. Same-origin only — auth middleware still
-    // gates access — and consumers are expected to sandbox the iframe.
+    // web-developer agent, uploaded images, page-preview blocks, etc.)
+    // that we deliberately iframe back into the app. Same-origin only —
+    // auth middleware still gates access — and consumers are expected
+    // to sandbox the iframe. Page-preview's /host endpoint is also
+    // framable (it serves the host shell that loads /files/* into the
+    // preview iframe).
     if (c.req.path.includes("/files/")) return;
+    if (
+      /^\/api\/[^/]+\/page-preview\/host(\/|$)/.test(c.req.path)
+    ) {
+      c.header("X-Frame-Options", "SAMEORIGIN");
+      c.header("Content-Security-Policy", "frame-ancestors 'self'");
+      return;
+    }
     c.header("X-Frame-Options", "DENY");
     c.header("Content-Security-Policy", "frame-ancestors 'none'");
   });

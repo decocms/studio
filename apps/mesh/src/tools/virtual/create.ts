@@ -13,6 +13,16 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/mesh-context";
+import { getBaseUrl } from "../../core/server-constants";
+import {
+  getWellKnownDevAssetsConnection,
+  getWellKnownSelfConnection,
+  WellKnownOrgMCPId,
+} from "@decocms/mesh-sdk";
+import {
+  isDevAssetsConnection,
+  usesLocalObjectStorage,
+} from "../connection/dev-assets";
 import { VirtualMCPCreateDataSchema, VirtualMCPEntitySchema } from "./schema";
 /**
  * Random icon+color for new agents (server-side, no React deps).
@@ -107,6 +117,44 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     const userId = getUserId(ctx);
     if (!userId) {
       throw new Error("User ID required to create virtual MCP");
+    }
+
+    // Materialize well-known pseudo-connections (dev-assets, SELF) that
+    // the caller may reference in `connections[]`. These are normally
+    // auto-injected at list time, so they have no DB row — the FK in
+    // `connection_aggregations.child_connection_id` would reject them
+    // otherwise. Mirrors the on-demand creation pattern in
+    // `plugin-config-update.ts`.
+    const selfId = WellKnownOrgMCPId.SELF(organization.id);
+    const referenced = new Set(
+      (input.data.connections ?? []).map((c) => c.connection_id),
+    );
+    if (referenced.size > 0) {
+      const baseUrl = getBaseUrl();
+      const ensure = async (id: string) => {
+        const existing = await ctx.storage.connections.findById(id);
+        if (existing) return;
+
+        let seed: ReturnType<typeof getWellKnownDevAssetsConnection> | null =
+          null;
+        if (
+          isDevAssetsConnection(id, organization.id) &&
+          usesLocalObjectStorage()
+        ) {
+          seed = getWellKnownDevAssetsConnection(baseUrl, organization.id);
+        } else if (id === selfId) {
+          seed = getWellKnownSelfConnection(baseUrl, organization.id);
+        }
+        if (!seed) return;
+
+        await ctx.storage.connections.create({
+          ...seed,
+          id: seed.id!,
+          organization_id: organization.id,
+          created_by: userId,
+        });
+      };
+      await Promise.all([...referenced].map(ensure));
     }
 
     // Create the virtual MCP (input.data is already in the correct format)

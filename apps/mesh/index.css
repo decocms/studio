@@ -183,4 +183,27 @@
       transform: translateY(0);
     }
   }
+
+  @keyframes mise-breathe {
+    0%,
+    100% {
+      transform: scale(1) translate3d(0, 0, 0);
+      opacity: 0.8;
+    }
+    50% {
+      transform: scale(1.04) translate3d(0, -10px, 0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes mise-panel-in {
+    0% {
+      opacity: 0;
+      transform: translateY(18px) scale(0.985);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
 }
