@@ -207,6 +207,11 @@ export async function startDevServer(
               useInherit ? "inherit" : "pipe",
               useInherit ? "inherit" : "pipe",
             ],
+            onSpawn: (proc) => {
+              if (useInherit) return;
+              pipeToLogStore(proc.stdout as ReadableStream<Uint8Array>);
+              pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
+            },
             beforeSpawn: async () => {
               await waitForPort(Number(settings.port), { intervalMs: 500 });
               // The cluster's port opens the instant `Bun.serve` listens,
@@ -229,10 +234,6 @@ export async function startDevServer(
               }
             },
           });
-          if (proc && !useInherit) {
-            pipeToLogStore(proc.stdout as ReadableStream<Uint8Array>);
-            pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
-          }
           // Mark Sandbox ready once the link binary's HTTP server accepts
           // connections on its port. Fire-and-forget; if the link never
           // comes up (e.g. no admin user yet for session bootstrap), the

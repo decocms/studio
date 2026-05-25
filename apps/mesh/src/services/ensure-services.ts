@@ -707,6 +707,14 @@ export interface EnsureLinkInputs {
    * like the cluster port and the dev-link session file.
    */
   beforeSpawn?: () => Promise<void>;
+  /**
+   * Called synchronously after `Bun.spawn` returns and before `ensureLink`
+   * begins waiting for the port. Use this to drain `proc.stdout`/`proc.stderr`
+   * — if the link is spawned with "pipe" stdio and nothing reads from the
+   * pipes, the OS buffer fills (~16-64KB) and the daemon blocks on write
+   * before it can bind its port.
+   */
+  onSpawn?: (proc: ReturnType<typeof Bun.spawn>) => void;
   /** Stdio config forwarded to `Bun.spawn`. Defaults to "inherit". */
   stdio?: Parameters<typeof Bun.spawn>[1] extends infer O
     ? O extends { stdio?: infer S }
@@ -776,6 +784,10 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
     port,
     startedAt: new Date().toISOString(),
   });
+
+  // Drain stdio BEFORE waiting on the port — otherwise piped stdout/stderr
+  // fill the OS pipe buffer and block the daemon's writes before it binds.
+  inputs.onSpawn?.(proc);
 
   try {
     await waitForPort(port);
