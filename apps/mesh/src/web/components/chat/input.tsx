@@ -32,7 +32,7 @@ import { useThreadActions } from "./store/hooks";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
-import { AgentModelTrigger } from "./agent-model-trigger";
+import { TierTrigger } from "./tier-trigger";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
   UnsupportedFileDialog,
@@ -245,10 +245,6 @@ export function ChatInput({
     deepResearchModel,
     chatMode,
     setChatMode,
-    simpleModeTier,
-    setSimpleModeTier,
-    pendingHarnessId,
-    pendingSandboxProviderKind,
   } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
@@ -594,14 +590,7 @@ export function ChatInput({
 
                     {/* Right Actions (mic, model, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <AgentModelTrigger
-                        agent={pendingHarnessId}
-                        sandboxKind={pendingSandboxProviderKind}
-                        tier={simpleModeTier}
-                        currentBranch={taskCtx?.currentBranch ?? null}
-                        virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
-                        onSelect={setSimpleModeTier}
-                      />
+                      <TierTrigger />
 
                       {/* Microphone button — only shown when not streaming and speech is supported */}
                       {voice.isSupported &&
