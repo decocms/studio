@@ -978,6 +978,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // VM previews
       "VM_START",
       "VM_DELETE",
+      // Cross-resource discovery / command palette
+      "GLOBAL_SEARCH",
     ],
   },
   // Organization
@@ -1294,6 +1296,7 @@ export function getToolsByCategory() {
     GitHub: [],
     VM: [],
     Links: [],
+    Search: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

@@ -90,6 +90,7 @@ import * as migration088purgecliactivatekeys from "./088-purge-cli-activate-keys
 import * as migration089renameremoteusertodesktop from "./089-rename-remote-user-to-desktop.ts";
 import * as migration090automationwebhooktriggers from "./090-automation-webhook-triggers.ts";
 import * as migration091organizationdomainsallowmulti from "./091-organization-domains-allow-multi.ts";
+import * as migration092backfillglobalsearchbasicusage from "./092-backfill-global-search-basic-usage.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -198,6 +199,8 @@ const migrations: Record<string, Migration> = {
   "090-automation-webhook-triggers": migration090automationwebhooktriggers,
   "091-organization-domains-allow-multi":
     migration091organizationdomainsallowmulti,
+  "092-backfill-global-search-basic-usage":
+    migration092backfillglobalsearchbasicusage,
 };
 
 export default migrations;
