@@ -14,6 +14,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
+import { track } from "@/web/lib/posthog-client";
 import {
   type AgentMode,
   useAgentMode,
@@ -74,12 +75,13 @@ function pillLabel(mode: AgentMode): { icon: React.ReactNode; text: string } {
 
 const baseClasses =
   "gap-1.5 text-muted-foreground hover:text-foreground text-xs";
-const localActiveClasses =
-  "text-success bg-success/10 hover:text-success hover:bg-success/20";
+const localActiveClasses = "text-success bg-success/10 hover:text-success";
 
 /**
- * Stateless variant — no hooks. Used by tests and by the smart wrapper.
- * Renders the closed pill + the popover with three sectioned rows.
+ * Pure variant — no external dependencies (no context, no queries, no MCP
+ * client). Owns only local UI state (the popover open flag) so tests can
+ * mount it without mocking the chat context. Renders the closed pill +
+ * the popover with three sectioned rows.
  */
 export function ModePickerPure({
   mode,
@@ -90,6 +92,11 @@ export function ModePickerPure({
   const [open, setOpen] = useState(false);
   const { icon, text } = pillLabel(mode);
   const isLocal = mode !== "cloud-decopilot";
+
+  const handleSelect = (m: AgentMode) => {
+    onSelect(m);
+    setOpen(false);
+  };
 
   if (locked) {
     return (
@@ -128,29 +135,20 @@ export function ModePickerPure({
             row={ROW_DECOPILOT}
             active={mode === ROW_DECOPILOT.mode}
             available={ROW_DECOPILOT.isAvailable(availability)}
-            onSelect={(m) => {
-              onSelect(m);
-              setOpen(false);
-            }}
+            onSelect={handleSelect}
           />
           <Section title="Local" />
           <Row
             row={ROW_CLAUDE_CODE}
             active={mode === ROW_CLAUDE_CODE.mode}
             available={ROW_CLAUDE_CODE.isAvailable(availability)}
-            onSelect={(m) => {
-              onSelect(m);
-              setOpen(false);
-            }}
+            onSelect={handleSelect}
           />
           <Row
             row={ROW_CODEX}
             active={mode === ROW_CODEX.mode}
             available={ROW_CODEX.isAvailable(availability)}
-            onSelect={(m) => {
-              onSelect(m);
-              setOpen(false);
-            }}
+            onSelect={handleSelect}
           />
         </div>
       </PopoverContent>
@@ -233,6 +231,7 @@ export function ModePicker({
 
   const handleSelect = (next: AgentMode) => {
     setAgentMode(next);
+    track("agent_mode_selected", { mode: next });
     if (next !== "cloud-decopilot" && currentBranch) {
       startVm.mutate({
         virtualMcpId,
