@@ -4,7 +4,7 @@
  * Consolidates the previously separate `vm-file`, `vm-exec`, `vm-setup`,
  * `vm-events`, and `vm-preview-fetch` route files into one router under:
  *
- *   /api/:org/vm/:vmId/:branch/*
+ *   /api/:org/sandbox/:virtualMcpId/:branch/*
  *
  * The URL shape mirrors the daemon's own `/_sandbox/*` surface, making
  * the proxy transparent and uniform. Auth + claim resolution is performed
@@ -68,10 +68,10 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     return c.json({ error: "Organization scope required" }, 403);
   }
 
-  const virtualMcpId = c.req.param("vmId");
+  const virtualMcpId = c.req.param("virtualMcpId");
   const branch = c.req.param("branch");
   if (!virtualMcpId || !branch) {
-    return c.json({ error: "vmId and branch are required" }, 400);
+    return c.json({ error: "virtualMcpId and branch are required" }, 400);
   }
 
   const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
@@ -211,44 +211,44 @@ function isSetupStep(value: string): value is SetupStep {
 
 // ---- Route factory ----------------------------------------------------------
 
-export const createVmRoutes = () => {
+export const createSandboxRoutes = () => {
   const app = new Hono<VmEnv>();
 
   // Apply middleware to all sub-routes
-  app.use("/:vmId/:branch/*", resolveVmClaim);
+  app.use("/:virtualMcpId/:branch/*", resolveVmClaim);
 
   // -- File write/read (base64-encoded body) --------------------------------
-  app.post("/:vmId/:branch/write", (c) =>
+  app.post("/:virtualMcpId/:branch/write", (c) =>
     proxyDaemon(c, "/_sandbox/write", { forwardJsonBody: true }),
   );
-  app.post("/:vmId/:branch/read", (c) =>
+  app.post("/:virtualMcpId/:branch/read", (c) =>
     proxyDaemon(c, "/_sandbox/read", { forwardJsonBody: true }),
   );
-  app.post("/:vmId/:branch/glob", (c) =>
+  app.post("/:virtualMcpId/:branch/glob", (c) =>
     proxyDaemon(c, "/_sandbox/glob", { forwardJsonBody: true }),
   );
 
   // -- Script exec/kill -----------------------------------------------------
-  app.post("/:vmId/:branch/exec/:script", (c) => {
+  app.post("/:virtualMcpId/:branch/exec/:script", (c) => {
     const script = c.req.param("script");
     if (!script) return c.json({ error: "missing script name" }, 400);
     return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}`);
   });
 
-  app.post("/:vmId/:branch/exec/:script/kill", (c) => {
+  app.post("/:virtualMcpId/:branch/exec/:script/kill", (c) => {
     const script = c.req.param("script");
     if (!script) return c.json({ error: "missing script name" }, 400);
     return proxyDaemon(c, `/_sandbox/exec/${encodeURIComponent(script)}/kill`);
   });
 
   // -- Tenant config --------------------------------------------------------
-  app.get("/:vmId/:branch/config", (c) =>
+  app.get("/:virtualMcpId/:branch/config", (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "GET",
       map404to410: true,
     }),
   );
-  app.put("/:vmId/:branch/config", (c) =>
+  app.put("/:virtualMcpId/:branch/config", (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "PUT",
       forwardJsonBody: true,
@@ -257,7 +257,7 @@ export const createVmRoutes = () => {
   );
 
   // -- Setup retry ----------------------------------------------------------
-  app.post("/:vmId/:branch/setup/:step", async (c) => {
+  app.post("/:virtualMcpId/:branch/setup/:step", async (c) => {
     const step = c.req.param("step");
     if (!step || !isSetupStep(step)) {
       return c.json(
@@ -300,7 +300,7 @@ export const createVmRoutes = () => {
   });
 
   // -- SSE events -----------------------------------------------------------
-  app.get("/:vmId/:branch/events", (c) => {
+  app.get("/:virtualMcpId/:branch/events", (c) => {
     const claim = c.get("vmClaim");
 
     // No runner → stream a single failed phase so the UI shows an error
@@ -330,7 +330,7 @@ export const createVmRoutes = () => {
   });
 
   // -- Preview fetch (CORS proxy) -------------------------------------------
-  app.get("/:vmId/:branch/preview-fetch", async (c) => {
+  app.get("/:virtualMcpId/:branch/preview-fetch", async (c) => {
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
 

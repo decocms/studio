@@ -1,5 +1,5 @@
 /**
- * Single SSE connection to mesh's `/api/:org/vm/:vmId/:branch/events`, fanned out via context.
+ * Single SSE connection to mesh's `/api/:org/sandbox/:virtualMcpId/:branch/events`, fanned out via context.
  *
  * Keyed on `(virtualMcpId, branch)` — mesh derives the userId from the
  * authenticated session and composes the same claim handle a racing
@@ -185,7 +185,7 @@ export function SandboxEventsProvider({
 
     if (!virtualMcpId || !branch) return;
 
-    const sseUrl = `/api/${encodeURIComponent(org.slug)}/vm/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/events`;
+    const sseUrl = `/api/${encodeURIComponent(org.slug)}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/events`;
 
     let disposed = false;
     let reconnectAttempt = 0;

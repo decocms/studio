@@ -42,7 +42,7 @@ function buildApiUrl(
   branch: string,
   endpoint: string,
 ) {
-  return `/api/${orgSlug}/vm/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/${endpoint}`;
+  return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/${endpoint}`;
 }
 
 /** The daemon expects relative paths (no leading slash). */
