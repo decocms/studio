@@ -37,13 +37,10 @@ type TaskDescriptionContext = {
 
 type ResolveTaskDescription = (c: TaskDescriptionContext) => Promise<string>;
 
-async function firstMatch(
-  rules: Array<[() => Promise<boolean>, string]>,
-): Promise<string | null> {
-  for (const [predicate, label] of rules) {
-    if (await predicate()) return label;
-  }
-  return null;
+const STALE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
+
+function isStale(dateLike: string | Date): boolean {
+  return Date.now() - new Date(dateLike).getTime() > STALE_THRESHOLD_MS;
 }
 
 async function hasAnyObject(
@@ -416,8 +413,14 @@ export const STUDIO_PACK_AGENTS = [
     }) satisfies ResolveRuntime,
     resolveTaskDescription: (async ({ orgId, ctx }) => {
       const all = await ctx.storage.virtualMcps.list(orgId);
-      const hasCustomAgents = all.some((vm) => !isStudioPackAgent(vm.id));
-      return hasCustomAgents ? "Review your agents" : "Create your first agent";
+      const custom = all.filter((vm) => !isStudioPackAgent(vm.id));
+      if (custom.length === 0) return "Create your first agent";
+      if (custom.length === 1) return "Create another agent";
+      const newest = custom.reduce((a, b) =>
+        new Date(b.updated_at) > new Date(a.updated_at) ? b : a,
+      );
+      if (isStale(newest.updated_at)) return "Audit your agents";
+      return "Review your agents";
     }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.AGENT_MANAGER,
   },
@@ -450,8 +453,15 @@ export const STUDIO_PACK_AGENTS = [
         text: "Hey — I'm your Automation Manager. I run agents on cron schedules or events. Tell me what you'd like to automate.",
       },
     ]) satisfies BuildWelcomeMessage,
-    resolveTaskDescription: (async () =>
-      "Automate a task") satisfies ResolveTaskDescription,
+    resolveTaskDescription: (async ({ orgId, ctx }) => {
+      const automations = await ctx.storage.automations.list(orgId);
+      if (automations.length === 0) return "Automate a task";
+      if (automations.every((a) => !a.active)) {
+        return "Reactivate an automation";
+      }
+      if (automations.length === 1) return "Add another automation";
+      return "Review your automations";
+    }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.AUTOMATION_MANAGER,
   },
   {
@@ -477,8 +487,15 @@ export const STUDIO_PACK_AGENTS = [
         text: "Hi! I'm your Connection Manager. I add, configure, and test MCP connections. What do you want to plug in?",
       },
     ]) satisfies BuildWelcomeMessage,
-    resolveTaskDescription: (async () =>
-      "Connect a new MCP") satisfies ResolveTaskDescription,
+    resolveTaskDescription: (async ({ orgId, ctx }) => {
+      const { items } = await ctx.storage.connections.list(orgId);
+      if (items.length === 0) return "Connect a new MCP";
+      if (items.some((c) => c.status === "error")) {
+        return "Fix a broken connection";
+      }
+      if (items.length === 1) return "Connect another MCP";
+      return "Audit your connections";
+    }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.CONNECTION_MANAGER,
   },
   {
@@ -501,8 +518,11 @@ export const STUDIO_PACK_AGENTS = [
         text: "Hey — I browse the Deco Store and Community Registry for installable MCPs. What problem are you trying to solve?",
       },
     ]) satisfies BuildWelcomeMessage,
-    resolveTaskDescription: (async () =>
-      "Browse the Deco Store") satisfies ResolveTaskDescription,
+    resolveTaskDescription: (async ({ orgId, ctx }) => {
+      const { items } = await ctx.storage.connections.list(orgId);
+      if (items.length === 0) return "Browse the Deco Store";
+      return "Discover new integrations";
+    }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.STORE_MANAGER,
   },
   {
@@ -556,17 +576,20 @@ export const STUDIO_PACK_AGENTS = [
         ],
       };
     }) satisfies ResolveRuntime,
-    resolveTaskDescription: (async ({ orgId, ctx }) =>
-      (await firstMatch([
-        [
-          async () => (await ctx.storage.brandContext.list(orgId)).length === 0,
-          "Set up your brand",
-        ],
-        [
-          async () => !(await hasAnyObject(ctx, "pages/")),
-          "Create a landing page",
-        ],
-      ])) ?? "Refine your landing page") satisfies ResolveTaskDescription,
+    resolveTaskDescription: (async ({ orgId, ctx }) => {
+      const brands = await ctx.storage.brandContext.list(orgId);
+      const primary = brands[0];
+      if (!primary) return "Set up your brand";
+
+      const incomplete = !primary.logo || !primary.colors || !primary.fonts;
+      if (incomplete) return "Complete your brand profile";
+
+      const hasPages = await hasAnyObject(ctx, "pages/");
+      if (!hasPages) return "Create a landing page";
+
+      if (isStale(primary.updatedAt)) return "Refresh your brand";
+      return "Add another page";
+    }) satisfies ResolveTaskDescription,
     getId: StudioPackAgentId.BRAND_MANAGER,
   },
 ] as const;

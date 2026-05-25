@@ -15,6 +15,7 @@
 
 import { Hono } from "hono";
 import type { MeshContext } from "@/core/mesh-context";
+import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import {
   findStudioPackAgentByMcpId,
   resolveStudioPackTaskDescription,
@@ -93,6 +94,11 @@ export function createSuggestedActionsRoutes() {
           : null;
 
         const fromState = describeFromThreadState(lastMessage.parts);
+        const trimmedTitle = thread.title?.trim() ?? "";
+        const hasRealTitle =
+          trimmedTitle.length > 0 &&
+          trimmedTitle !== DEFAULT_THREAD_TITLE &&
+          trimmedTitle !== agent?.title;
         let description = "";
         if (fromState) {
           description = fromState;
@@ -107,6 +113,8 @@ export function createSuggestedActionsRoutes() {
           } catch {
             description = fallback;
           }
+        } else if (hasRealTitle) {
+          description = trimmedTitle;
         } else {
           const taskDescription =
             agent && typeof agent.metadata === "object" && agent.metadata
