@@ -84,42 +84,6 @@ export function useCreateFileConfig() {
   });
 }
 
-export interface UpdateFileConfigInput {
-  id: string;
-  name?: string;
-  description?: string | null;
-  bucket?: string;
-  region?: string;
-  endpoint?: string | null;
-  forcePathStyle?: boolean;
-  prefix?: string | null;
-  accessKeyId?: string;
-  secretAccessKey?: string;
-}
-
-export function useUpdateFileConfig() {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (input: UpdateFileConfigInput) => {
-      const result = await client.callTool({
-        name: "FILE_CONFIG_UPDATE",
-        arguments: { ...input },
-      });
-      return unwrapToolResult<FileConfigInfo>(result);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: KEYS.fileConfigs(org.id) });
-    },
-  });
-}
-
 export function useDeleteFileConfig() {
   const { org } = useProjectContext();
   const client = useMCPClient({

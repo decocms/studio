@@ -45,7 +45,7 @@ function toIsoString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : String(value);
 }
 
-export class OrgFileConfigNotFoundError extends Error {
+class OrgFileConfigNotFoundError extends Error {
   constructor(identifier: string) {
     super(`File config ${identifier} not found`);
     this.name = "OrgFileConfigNotFoundError";
