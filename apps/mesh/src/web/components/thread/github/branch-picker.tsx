@@ -40,9 +40,9 @@ export function BranchPicker({
   orgId,
   orgSlug,
   userId,
-  // virtualMcpId is consumed by callers via Props (e.g. ThreadPills);
+  // virtualMcpId is consumed by callers via Props (e.g. BranchPill);
   // BranchPicker itself doesn't use it directly. Kept on the Props
-  // contract so v2's pill container can pass it down uniformly.
+  // contract so the pill container can pass it down uniformly.
   virtualMcpId: _virtualMcpId,
   connectionId,
   owner,

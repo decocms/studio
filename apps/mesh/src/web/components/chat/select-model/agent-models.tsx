@@ -11,7 +11,7 @@ import { CODEX_MODELS } from "@/ai-providers/adapters/codex-models";
  * the model based on tier + provider key). `iconNode` is the React icon
  * for Decopilot tiers; CLI rows use `iconUrl` instead.
  */
-export interface AgentTierEntry {
+interface AgentTierEntry {
   modelId: string | null;
   label: string;
   description: string;
@@ -19,7 +19,7 @@ export interface AgentTierEntry {
   iconUrl?: string;
 }
 
-export type AgentTierMap = Record<ChatTier, AgentTierEntry>;
+type AgentTierMap = Record<ChatTier, AgentTierEntry>;
 
 const CLAUDE_CODE_LOGO =
   "https://decoims.com/decocms/93e4059c-e598-412b-87eb-54d72a946ec8/claude-stroke-rounded.svg";
