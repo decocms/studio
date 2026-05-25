@@ -8,7 +8,8 @@
 import { createHash } from "node:crypto";
 import type { MeshContext } from "@/core/mesh-context";
 import { TierUnavailableError, resolveTier } from "@/core/resolve-tier";
-import type { SimpleModeTier } from "@/tools/organization/schema";
+import { resolveAgentTier } from "@/ai-providers/agent-tiers";
+import type { ChatTier, SimpleModeTier } from "@/tools/organization/schema";
 import { posthog } from "@/posthog";
 import {
   consumeStream,
@@ -36,8 +37,17 @@ import {
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
+import { resolveHarnessId } from "./dispatch-run";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
+import type { LinkRegistry } from "../../../links/link-registry";
+import { resolveDispatchTarget } from "../../../links/resolve-dispatch-target";
+import {
+  resolveSandboxProviderKindFromEnv,
+  type SandboxProviderKind,
+} from "@decocms/sandbox/provider";
+import { resolveDefaultSandboxProviderKind } from "@/sandbox/resolve-default-provider-kind";
+import type { HarnessId } from "@/harnesses";
 
 // ============================================================================
 // Idempotency
@@ -88,6 +98,29 @@ async function validateRequest(
   };
 }
 
+/**
+ * Look up the providerId for the credential the request would use, so
+ * POST /messages can pick the right harness (and therefore the right
+ * link capability) before enqueuing onto the thread gate. Returns
+ * undefined when the credential row isn't found — the caller falls back
+ * to "decopilot" (matches the existing prepareRun behavior).
+ */
+async function resolveProviderId(
+  ctx: MeshContext,
+  credentialId: string,
+  organizationId: string,
+): Promise<string | undefined> {
+  try {
+    const row = await ctx.storage.aiProviderKeys.findById(
+      credentialId,
+      organizationId,
+    );
+    return row?.providerId;
+  } catch {
+    return undefined;
+  }
+}
+
 // ============================================================================
 // Per-Request Model Resolution
 // ============================================================================
@@ -134,16 +167,51 @@ async function tryResolveTier(ctx: MeshContext, tier: SimpleModeTier) {
 }
 
 /**
- * Resolves a tier (defaulting to "smart") to a full ModelsConfig via the
- * shared resolveTier(), which falls back to curated provider defaults when
- * the org's tier slot is unset. Also resolves the "image" and "web_research"
- * tiers — when present they enable the generate_image and web_search
- * built-in tools (registration is conditional in built-in-tools/index.ts).
+ * Resolves a tier (defaulting to "smart") to a full ModelsConfig.
+ *
+ * Two paths:
+ *
+ * - **Decopilot:** goes through `resolveTier()`, which consults the org's
+ *   AI provider keys + simple-mode slot configuration. Also resolves
+ *   `image` and `web_research` tiers — when present they enable the
+ *   `generate_image` and `web_search` built-in tools.
+ *
+ * - **Desktop-CLI harnesses (`claude-code`, `codex`):** the model lives
+ *   on the user's desktop, not in any AI provider key. We synthesize the
+ *   ModelsConfig from the agent's hardcoded tier map (`agent-tiers.ts`).
+ *   The `credentialId` is a sentinel — the harness reads `models.thinking.id`
+ *   to know which CLI sub-command to invoke and ignores the credential.
+ *   `image` / `web_research` are not supported in this path; the
+ *   corresponding built-in tools stay unregistered.
  */
 async function resolvePerRequestModels(
   ctx: MeshContext,
   tier: SimpleModeTier | undefined,
+  harnessId: HarnessId | null | undefined,
 ): Promise<ModelsConfig> {
+  if (harnessId === "claude-code" || harnessId === "codex") {
+    const chatTier: ChatTier =
+      tier === "fast" || tier === "smart" || tier === "thinking"
+        ? tier
+        : "smart";
+    const entry = resolveAgentTier(harnessId, chatTier);
+    if (!entry) {
+      // Should be unreachable — resolveAgentTier returns non-null for
+      // both supported CLI harnesses and every ChatTier value.
+      throw new Error(
+        `No model mapping for harness "${harnessId}" tier "${chatTier}"`,
+      );
+    }
+    return {
+      credentialId: `desktop:${harnessId}`,
+      thinking: {
+        id: entry.modelId,
+        title: entry.label,
+        provider: harnessId,
+      },
+    };
+  }
+
   const [chat, image, webResearch] = await Promise.all([
     resolveTier(ctx, tier ?? "smart"),
     tryResolveTier(ctx, "image"),
@@ -177,7 +245,12 @@ async function resolvePerRequestModels(
 async function validate(
   c: Context<{ Variables: { meshContext: MeshContext } }>,
   threadIdParam: string | undefined,
-): Promise<DispatchRunInput> {
+): Promise<
+  DispatchRunInput & {
+    sandboxProviderKind?: SandboxProviderKind | null;
+    harnessId?: HarnessId | null;
+  }
+> {
   const ctx = c.get("meshContext");
 
   const {
@@ -192,6 +265,8 @@ async function validate(
     branch,
     toolApprovalLevel,
     mode,
+    sandboxProviderKind,
+    harnessId,
   } = await validateRequest(c);
 
   const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
@@ -207,7 +282,7 @@ async function validate(
     throw new HTTPException(401, { message: "User ID is required" });
   }
 
-  const models = await resolvePerRequestModels(ctx, tier);
+  const models = await resolvePerRequestModels(ctx, tier, harnessId);
 
   const allowedModels = await fetchModelPermissions(
     ctx.db,
@@ -239,6 +314,8 @@ async function validate(
     taskId: taskIdInput,
     windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
     branch: branch ?? null,
+    sandboxProviderKind: sandboxProviderKind ?? null,
+    harnessId: harnessId ?? null,
   };
 }
 
@@ -250,10 +327,17 @@ export interface DecopilotDeps {
   cancelBroadcast: CancelBroadcast;
   streamBuffer: StreamBuffer;
   runRegistry: RunRegistry;
+  /**
+   * Used to resolve the user's link daemon. POST /messages calls
+   * `resolveDispatchTarget` against this registry before enqueuing onto
+   * the thread gate so the cluster can reject early with 409 instead of
+   * silently queueing a run that would have nowhere to go.
+   */
+  linkRegistry: LinkRegistry;
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
-  const { cancelBroadcast, streamBuffer, runRegistry } = deps;
+  const { cancelBroadcast, streamBuffer, runRegistry, linkRegistry } = deps;
   const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
 
   // ============================================================================
@@ -309,6 +393,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
+      const ctx = c.get("meshContext");
       const input = await validate(c, c.req.param("threadId"));
       const taskId = input.taskId;
       if (!taskId) {
@@ -317,7 +402,118 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(400, { message: "threadId is required" });
       }
 
-      const { abortSignal: _ignored, ...serializableRequest } = input;
+      // Resolve the dispatch target up-front so we can reject a
+      // request with 409 *before* enqueuing it onto the thread gate.
+      // Holding the link-online decision at POST time also keeps DBOS
+      // replay from rerouting the run if the daemon disconnects between
+      // enqueue and dispatch (the workflow body reads target directly off
+      // the serialized request).
+      //
+      // The thread row's (sandbox_provider_kind, harness_id) are the
+      // single source of truth for routing. Tolerate storage failure when
+      // loading the thread row — a missing/erroring row just means we fall
+      // back to the request body / default helpers (the canonical thread row
+      // is created by COLLECTION_THREADS_CREATE before the first POST, but
+      // legacy callers and tests may skip it).
+      let existingThread: Awaited<
+        ReturnType<typeof ctx.storage.threads.get>
+      > | null = null;
+      try {
+        existingThread = (await ctx.storage.threads?.get?.(taskId)) ?? null;
+      } catch {
+        existingThread = null;
+      }
+
+      // Fall back to the "ephemeral" synthetic branch when neither the
+      // thread row nor the request body pins one. Synthetic branches
+      // (see packages/sandbox/daemon/constants.ts:isSyntheticBranch) are
+      // accepted by the daemon as sandboxMap routing keys but never checked
+      // out — exactly the right semantics for Decopilot threads on
+      // agents with no clonable repo, where the branch is purely an
+      // isolation key.
+      const branch = existingThread?.branch ?? input.branch ?? "ephemeral";
+      const branchWasDefaulted = !existingThread?.branch && !input.branch;
+
+      // Determine the pinned (kind, harness). If the thread row has them,
+      // use those. Otherwise this is the first message — derive defaults and
+      // persist to the thread row.
+      let pinnedKind = (existingThread?.sandbox_provider_kind ??
+        null) as SandboxProviderKind | null;
+
+      const providerId = await resolveProviderId(
+        ctx,
+        input.models.credentialId,
+        input.organizationId,
+      );
+      const credentialHarness = resolveHarnessId(providerId);
+
+      let pinnedHarness = (existingThread?.harness_id ??
+        null) as HarnessId | null;
+
+      if (!pinnedKind || !pinnedHarness || branchWasDefaulted) {
+        pinnedKind =
+          pinnedKind ??
+          input.sandboxProviderKind ??
+          (await resolveDefaultSandboxProviderKind(input.userId, {
+            linkRegistry,
+            resolveEnvKind: resolveSandboxProviderKindFromEnv,
+          }));
+        pinnedHarness = pinnedHarness ?? input.harnessId ?? credentialHarness;
+
+        if (existingThread) {
+          try {
+            await ctx.storage.threads?.update?.(taskId, {
+              sandbox_provider_kind: pinnedKind,
+              harness_id: pinnedHarness,
+              ...(branchWasDefaulted ? { branch } : {}),
+            });
+          } catch (err) {
+            console.warn(
+              "[decopilot:messages] failed to persist thread pins",
+              err,
+            );
+          }
+        }
+      }
+
+      // `resolveDispatchTarget` only needs the resolved `sandboxProviderKind`
+      // — we pass it directly instead of provisioning a VM here. VM
+      // provisioning happens lazily inside the built-in tools layer
+      // (`apps/mesh/src/harnesses/decopilot/built-in-tools/index.ts`'s
+      // `ensureHandle`) on the first VM-tool invocation. Eagerly calling
+      // `ensureSandbox` at POST time used to fail in environments without a
+      // link daemon for the user even when the run never touches the
+      // sandbox (e.g. CI multi-pod tests that drive only the mock AI
+      // provider).
+      const result = await resolveDispatchTarget(
+        {
+          harnessId: pinnedHarness,
+          sandboxProviderKind: pinnedKind,
+          userId: input.userId,
+        },
+        { linkRegistry },
+      );
+      if (!result.ok) {
+        return c.json(
+          {
+            error: "link_unavailable",
+            code: result.error.kind,
+            activeCapabilities:
+              result.error.kind === "user_desktop_link_capability_missing"
+                ? result.error.activeCapabilities
+                : undefined,
+          },
+          409,
+        );
+      }
+      const target = result.target;
+
+      const { abortSignal: _ignored, ...rest } = input;
+      const serializableRequest = {
+        ...rest,
+        target,
+        harnessId: pinnedHarness,
+      };
       const lastMsg = input.messages[input.messages.length - 1];
       const idempotencyKey = computeIdempotencyKey(lastMsg);
       const workflowID = idempotencyKey

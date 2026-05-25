@@ -3,8 +3,6 @@ export type DialogState =
   | { kind: "grid" }
   | { kind: "form"; providerId: string; presetId: string | null }
   | { kind: "oauth-pending"; providerId: string; stateToken: string }
-  | { kind: "cli-pending"; providerId: string }
-  | { kind: "cli-error"; providerId: string; error: string }
   | { kind: "provision-pending"; providerId: string }
   | { kind: "provision-error"; providerId: string; error: string };
 
@@ -14,11 +12,8 @@ export type DialogAction =
   | { type: "back" }
   | { type: "select-form"; providerId: string; presetId: string | null }
   | { type: "select-oauth"; providerId: string; stateToken: string }
-  | { type: "select-cli"; providerId: string }
   | { type: "select-provision"; providerId: string }
   | { type: "oauth-failed" }
-  | { type: "cli-error"; error: string }
-  | { type: "retry-cli" }
   | { type: "provision-error"; error: string }
   | { type: "retry-provision" };
 
@@ -34,8 +29,6 @@ export function reducer(state: DialogState, action: DialogAction): DialogState {
       switch (state.kind) {
         case "form":
         case "oauth-pending":
-        case "cli-pending":
-        case "cli-error":
         case "provision-pending":
         case "provision-error":
           return { kind: "grid" };
@@ -56,21 +49,8 @@ export function reducer(state: DialogState, action: DialogAction): DialogState {
         providerId: action.providerId,
         stateToken: action.stateToken,
       };
-    case "select-cli":
-      if (state.kind !== "grid") return state;
-      return { kind: "cli-pending", providerId: action.providerId };
     case "oauth-failed":
       return state.kind === "oauth-pending" ? { kind: "grid" } : state;
-    case "cli-error":
-      if (state.kind !== "cli-pending") return state;
-      return {
-        kind: "cli-error",
-        providerId: state.providerId,
-        error: action.error,
-      };
-    case "retry-cli":
-      if (state.kind !== "cli-error") return state;
-      return { kind: "cli-pending", providerId: state.providerId };
     case "select-provision":
       if (state.kind !== "grid") return state;
       return { kind: "provision-pending", providerId: action.providerId };

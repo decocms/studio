@@ -53,10 +53,17 @@ function slugify(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+interface DomainLookupOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  logo: string | null;
+  autoJoinEnabled: boolean;
+}
+
 interface DomainLookupResult {
   found: boolean;
-  autoJoinEnabled?: boolean;
-  organization?: { name: string; slug: string } | null;
+  organizations: DomainLookupOrganization[];
 }
 
 interface DomainSetupResult {
@@ -170,10 +177,12 @@ function OnboardingContent({
     });
 
   const joinOrgMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (organizationSlug: string) => {
       const res = await fetch("/api/auth/custom/domain-join", {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationSlug }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -198,8 +207,11 @@ function OnboardingContent({
     );
   }
 
-  const hasMatchingOrg = domainLookup?.found && domainLookup?.organization;
-  const canAutoJoin = hasMatchingOrg && domainLookup?.autoJoinEnabled;
+  const matchingOrgs = domainLookup?.organizations ?? [];
+  const autoJoinOrgs = matchingOrgs.filter((o) => o.autoJoinEnabled);
+  const hasMatchingOrg = matchingOrgs.length > 0;
+  const canAutoJoin = autoJoinOrgs.length > 0;
+  const pendingSlug = joinOrgMutation.variables ?? null;
 
   if (creatingNewOrg) {
     return (
@@ -214,43 +226,67 @@ function OnboardingContent({
     );
   }
 
-  // Domain already has an auto-join org → show join card + option to create own org
+  // At least one org has auto-join enabled → show join card(s) + option to
+  // create your own. If multiple orgs match, render all of them as a
+  // picker; the user explicitly chooses which to join.
   if (canAutoJoin) {
-    const org = domainLookup.organization!;
     return (
       <AuthSplitLayout>
         <div className="grid gap-10">
           <OnboardingHeader
-            title="You have access to an organization"
-            description="Your email domain matches an existing organization."
+            title={
+              autoJoinOrgs.length === 1
+                ? "You have access to an organization"
+                : "You have access to multiple organizations"
+            }
+            description={
+              autoJoinOrgs.length === 1
+                ? "Your email domain matches an existing organization."
+                : "Your email domain matches more than one. Pick one to join."
+            }
           />
-          <div className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4">
-            <Avatar
-              url={`https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`}
-              fallback={org.name.charAt(0).toUpperCase()}
-              shape="square"
-              size="base"
-              className="h-10 w-10 shrink-0"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{org.name}</p>
-              <p className="text-xs text-muted-foreground truncate">
-                @{emailDomain}
-              </p>
-            </div>
-            <Button
-              size="default"
-              onClick={() => joinOrgMutation.mutate()}
-              disabled={joinOrgMutation.isPending}
-            >
-              {joinOrgMutation.isPending ? (
-                <span className="flex items-center gap-2">
-                  <Loading01 size={14} className="animate-spin" /> Joining...
-                </span>
-              ) : (
-                "Join"
-              )}
-            </Button>
+          <div className="grid gap-2">
+            {autoJoinOrgs.map((org) => {
+              const isJoining =
+                joinOrgMutation.isPending && pendingSlug === org.slug;
+              return (
+                <div
+                  key={org.id}
+                  className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4"
+                >
+                  <Avatar
+                    url={
+                      org.logo ??
+                      `https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`
+                    }
+                    fallback={org.name.charAt(0).toUpperCase()}
+                    shape="square"
+                    size="base"
+                    className="h-10 w-10 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{org.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      @{emailDomain}
+                    </p>
+                  </div>
+                  <Button
+                    size="default"
+                    onClick={() => joinOrgMutation.mutate(org.slug)}
+                    disabled={joinOrgMutation.isPending}
+                  >
+                    {isJoining ? (
+                      <span className="flex items-center gap-2">
+                        <Loading01 size={14} className="animate-spin" />{" "}
+                        Joining...
+                      </span>
+                    ) : (
+                      "Join"
+                    )}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
           {joinOrgMutation.error && (
             <p className="text-xs text-destructive">
@@ -271,33 +307,52 @@ function OnboardingContent({
     );
   }
 
-  // Domain claimed but no auto-join → show info + option to create own org
+  // Domain has matching org(s) but none with auto-join → show info + option
+  // to create your own org. (Showing one card per match would just look
+  // like a useless list — collapse into a single summary line.)
   if (hasMatchingOrg) {
-    const org = domainLookup.organization!;
     return (
       <AuthSplitLayout>
         <div className="grid gap-10">
           <OnboardingHeader
-            title={`${org.name} is already set up`}
-            description="This organization doesn't have auto-join enabled."
+            title={
+              matchingOrgs.length === 1
+                ? `${matchingOrgs[0]!.name} is already set up`
+                : `${matchingOrgs.length} organizations use @${emailDomain}`
+            }
+            description={
+              matchingOrgs.length === 1
+                ? "This organization doesn't have auto-join enabled."
+                : "None of them have auto-join enabled — ask an admin for an invitation, or create your own."
+            }
           />
-          <div className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4">
-            <Avatar
-              url={`https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`}
-              fallback={org.name.charAt(0).toUpperCase()}
-              shape="square"
-              size="base"
-              className="h-10 w-10 shrink-0"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{org.name}</p>
-              <p className="text-xs text-muted-foreground truncate">
-                @{emailDomain}
-              </p>
-            </div>
-            <span className="text-xs text-muted-foreground shrink-0">
-              Ask admin for invitation
-            </span>
+          <div className="grid gap-2">
+            {matchingOrgs.map((org) => (
+              <div
+                key={org.id}
+                className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4"
+              >
+                <Avatar
+                  url={
+                    org.logo ??
+                    `https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`
+                  }
+                  fallback={org.name.charAt(0).toUpperCase()}
+                  shape="square"
+                  size="base"
+                  className="h-10 w-10 shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{org.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    @{emailDomain}
+                  </p>
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0">
+                  Ask admin for invitation
+                </span>
+              </div>
+            ))}
           </div>
           <Button
             size="xl"

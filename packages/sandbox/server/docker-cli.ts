@@ -65,7 +65,7 @@ export interface StartContainerOptions {
   timeoutMs?: number;
   /** Short label used in error messages. */
   label: string;
-  /** Override for test-mode `exec` injection from DockerSandboxRunner. */
+  /** Override for test-mode `exec` injection from DockerSandboxProvider. */
   exec?: DockerExecFn;
 }
 

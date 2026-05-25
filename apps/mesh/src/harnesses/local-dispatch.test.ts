@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
+import { registerHarnessFactory, resetRegistryForTests } from "./registry";
+import type {
+  HarnessContext,
+  HarnessFactory,
+  HarnessStreamInput,
+} from "./types";
 import type { MeshContext } from "../core/mesh-context";
 import { localDispatch } from "./local-dispatch";
-import { registerHarnessFactory, resetRegistryForTests } from "./registry";
-import type { HarnessFactory, HarnessStreamInput } from "./types";
 
 const makeInput = (): HarnessStreamInput => ({
   threadId: "t1",
@@ -13,7 +17,7 @@ const makeInput = (): HarnessStreamInput => ({
     credentialId: "cred-1",
     thinking: { id: "m-thinking", name: "Thinking", contextWindow: 0 },
   } as unknown as HarnessStreamInput["models"],
-  mcp: { url: "http://localhost/mcp", headers: {} },
+  mcp: { url: "http://localhost/mcp", headers: {}, expiresAt: 0 },
   mode: "default",
   temperature: 0,
   toolApprovalLevel: "auto",
@@ -43,7 +47,7 @@ describe("localDispatch", () => {
       { type: "start" } as UIMessageChunk,
       { type: "finish" } as UIMessageChunk,
     ];
-    let capturedCtx: MeshContext | undefined;
+    let capturedCtx: HarnessContext | undefined;
     const factory: HarnessFactory = {
       id: "decopilot",
       create(ctx) {

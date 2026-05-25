@@ -16,7 +16,7 @@ export function classify(
 ): Transition {
   // 1. Identity invariants (write-once repo path; credentials are excluded).
   // The cloneUrl embeds an OAuth token (e.g. x-access-token:TOKEN@github.com/…)
-  // that is refreshed on each VM_START. Comparing raw URLs would flag a refreshed
+  // that is refreshed on each SANDBOX_START. Comparing raw URLs would flag a refreshed
   // token as an identity conflict even though the repo hasn't changed. Strip
   // username/password before comparing so only the actual repo path is guarded.
   const beforeUrl = before?.git?.repository?.cloneUrl;

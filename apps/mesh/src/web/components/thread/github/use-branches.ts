@@ -1,4 +1,4 @@
-import { KEYS, type VmMap, useMCPClient } from "@decocms/mesh-sdk";
+import { KEYS, type SandboxMap, useMCPClient } from "@decocms/mesh-sdk";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 export interface Branch {
@@ -27,12 +27,12 @@ interface UseBranchesArgs {
   orgSlug: string;
   userId: string;
   connectionId: string | null | undefined;
-  vmMap: VmMap | undefined;
+  sandboxMap: SandboxMap | undefined;
   owner: string;
   repo: string;
   /**
    * When false the github fetch is skipped (e.g. dialog closed).
-   * Your-branches still resolve from the in-memory vmMap.
+   * Your-branches still resolve from the in-memory sandboxMap.
    */
   enabled?: boolean;
 }
@@ -113,7 +113,7 @@ function extractBranches(r: unknown): RawBranchesResponse {
 /**
  * Lists branches for the picker.
  *
- * - "yours" are derived from vmMap[userId] — no network call.
+ * - "yours" are derived from sandboxMap[userId] — no network call.
  * - "others" are from the github-mcp-server's list_branches tool, minus
  *   the yours set. If the fetch fails the picker still shows yours.
  * - defaultBase is the repo's default branch when exposed by the response;
@@ -124,7 +124,7 @@ export function useBranches({
   orgSlug,
   userId,
   connectionId,
-  vmMap,
+  sandboxMap,
   owner,
   repo,
   enabled = true,
@@ -178,7 +178,7 @@ export function useBranches({
     },
   });
 
-  const yourBranchNames = new Set(Object.keys(vmMap?.[userId] ?? {}));
+  const yourBranchNames = new Set(Object.keys(sandboxMap?.[userId] ?? {}));
   const yours: Branch[] = [...yourBranchNames]
     .sort()
     .map((name) => ({ name, source: "yours" as const }));

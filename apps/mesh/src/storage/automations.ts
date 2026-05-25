@@ -55,12 +55,13 @@ export interface UpdateAutomationInput {
 
 export interface CreateTriggerInput {
   automation_id: string;
-  type: "cron" | "event";
+  type: "cron" | "event" | "webhook";
   cron_expression?: string | null;
   connection_id?: string | null;
   event_type?: string | null;
   params?: string | null;
   next_run_at?: string | null;
+  api_key_id?: string | null;
 }
 
 // ============================================================================
@@ -96,6 +97,7 @@ export interface AutomationsStorage {
   ): Promise<{ success: boolean }>;
   listTriggers(automationId: string): Promise<AutomationTrigger[]>;
   findTriggerById(triggerId: string): Promise<AutomationTrigger | null>;
+  setTriggerApiKeyId(triggerId: string, apiKeyId: string | null): Promise<void>;
   findActiveEventTriggers(
     connectionId: string,
     eventType: string,
@@ -183,18 +185,20 @@ function triggerFromDbRow(row: {
   params: string | null;
   last_run_at: Date | string | null;
   next_run_at?: Date | string | null;
+  api_key_id?: string | null;
   created_at: Date | string;
 }): AutomationTrigger {
   return {
     id: row.id,
     automation_id: row.automation_id,
-    type: row.type as "cron" | "event",
+    type: row.type as "cron" | "event" | "webhook",
     cron_expression: row.cron_expression,
     connection_id: row.connection_id,
     event_type: row.event_type,
     params: row.params,
     last_run_at: row.last_run_at ? toIsoString(row.last_run_at) : null,
     next_run_at: row.next_run_at ? toIsoString(row.next_run_at) : null,
+    api_key_id: row.api_key_id ?? null,
     created_at: toIsoString(row.created_at),
   };
 }
@@ -444,6 +448,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       params: input.params ?? null,
       last_run_at: null,
       next_run_at: input.next_run_at ?? null,
+      api_key_id: input.api_key_id ?? null,
       created_at: now,
     };
 
@@ -490,6 +495,17 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     return row ? triggerFromDbRow(row) : null;
   }
 
+  async setTriggerApiKeyId(
+    triggerId: string,
+    apiKeyId: string | null,
+  ): Promise<void> {
+    await this.db
+      .updateTable("automation_triggers")
+      .set({ api_key_id: apiKeyId })
+      .where("id", "=", triggerId)
+      .execute();
+  }
+
   async findActiveEventTriggers(
     connectionId: string,
     eventType: string,
@@ -507,6 +523,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "t.event_type",
         "t.params",
         "t.last_run_at",
+        "t.api_key_id",
         "t.created_at",
         ...TRIGGER_JOIN_AUTOMATION_COLUMNS,
       ])
@@ -538,6 +555,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "t.event_type",
         "t.params",
         "t.last_run_at",
+        "t.api_key_id",
         "t.created_at",
         ...TRIGGER_JOIN_AUTOMATION_COLUMNS,
       ])

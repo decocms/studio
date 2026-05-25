@@ -17,7 +17,7 @@ export function useLiveMeta(params: UseLiveMetaParams | null) {
     queryFn: async () => {
       const search = new URLSearchParams({ path: "/live/_meta" });
       const res = await fetch(
-        `/api/${params!.orgSlug}/vm/${encodeURIComponent(params!.virtualMcpId)}/${encodeURIComponent(params!.branch)}/preview-fetch?${search.toString()}`,
+        `/api/${params!.orgSlug}/sandbox/${encodeURIComponent(params!.virtualMcpId)}/${encodeURIComponent(params!.branch)}/preview-fetch?${search.toString()}`,
       );
       if (!res.ok) throw new Error(`Failed to fetch live meta: ${res.status}`);
       return (await res.json()) as LiveMeta;

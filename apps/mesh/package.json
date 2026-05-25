@@ -1,6 +1,6 @@
 {
   "name": "decocms",
-  "version": "2.339.2",
+  "version": "2.346.7",
   "description": "Deco CMS — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "repository": {
@@ -33,9 +33,11 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "better-auth:migrate": "bunx --bun @better-auth/cli migrate -y --config src/auth/index.ts",
+    "smoke:link": "bun run scripts/smoke-link.ts",
     "prepublishOnly": "bun run build:client && bun run build:server"
   },
   "optionalDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.141",
     "@duckdb/node-api": "^1.5.0-r.1"
   },
   "dependencies": {
@@ -47,7 +49,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1013.0",
     "@clickhouse/client": "^1.8.1",
     "@dbos-inc/dbos-sdk": "^4.17.6",
-    "@deco-cx/warp-node": "^0.3.20",
+    "@deco-cx/warp-node": "^0.3.23",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -73,7 +75,6 @@
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.10",
     "@ai-sdk/react": "^3.0.184",
-    "@anthropic-ai/claude-agent-sdk": "^0.2.141",
     "@better-auth/sso": "1.4.1",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@deco/ui": "workspace:*",
@@ -85,6 +86,7 @@
     "@decocms/vite-plugin": "workspace:*",
     "@electric-sql/pglite": "^0.3.15",
     "@floating-ui/react": "^0.27.16",
+    "@happy-dom/global-registrator": "^20.9.0",
     "@hookform/resolvers": "^5.2.2",
     "@jitl/quickjs-wasmfile-release-sync": "0.31.0",
     "@modelcontextprotocol/sdk": "1.29.0",
@@ -116,6 +118,8 @@
     "@tailwindcss/vite": "^4.1.17",
     "@tanstack/react-query": "5.100.10",
     "@tanstack/react-router": "1.169.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@tiptap/core": "3.20.2",
     "@tiptap/extension-mention": "3.20.2",
     "@tiptap/extension-placeholder": "3.20.2",

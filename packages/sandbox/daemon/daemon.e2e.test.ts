@@ -731,6 +731,32 @@ describe("daemon e2e (auth on mutating routes)", () => {
     expect(res.status).toBe(200);
   });
 
+  // Dual-serve compatibility (T11): the daemon serves both the canonical
+  // `/_sandbox/*` prefix and the legacy `/_decopilot_vm/*` prefix for one
+  // release window. The cluster speaks only `/_sandbox/*`; old clusters
+  // still rolling out keep hitting the legacy prefix until they update.
+  it("GET /_sandbox/idle works without auth (new prefix)", async () => {
+    const res = await fetch(`http://localhost:${daemonPort}/_sandbox/idle`);
+    expect(res.status).toBe(200);
+  });
+
+  it("GET /_decopilot_vm/idle works without auth (legacy prefix dual-serve)", async () => {
+    const res = await fetch(
+      `http://localhost:${daemonPort}/_decopilot_vm/idle`,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("POST /_sandbox/bash with correct bearer is not 401 (new prefix dual-serve)", async () => {
+    const res = await fetch(`http://localhost:${daemonPort}/_sandbox/bash`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ command: "true" }),
+    });
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(404);
+  });
+
   it("GET /_decopilot_vm/scripts works without auth", async () => {
     const res = await fetch(
       `http://localhost:${daemonPort}/_decopilot_vm/scripts`,

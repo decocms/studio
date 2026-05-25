@@ -81,7 +81,17 @@ import * as migration079striplegacyfreestylevmmapentries from "./079-strip-legac
 import * as migration080asyncresearchjobs from "./080-async-research-jobs.ts";
 import * as migration081asyncresearchjobsresultcontent from "./081-async-research-jobs-result-content.ts";
 import * as migration082secrets from "./082-secrets.ts";
-import * as migration083orgfileconfigs from "./083-org-file-configs.ts";
+import * as migration083threadrunlocally from "./083-thread-run-locally.ts";
+import * as migration084drophostsandboxrows from "./084-drop-host-sandbox-rows.ts";
+import * as migration085renamerunnerkindd from "./085-rename-runner-kind.ts";
+import * as migration086threadpinsandvmmaprekey from "./086-thread-pins-and-vm-map-rekey.ts";
+import * as migration087fixvmmaprekey from "./087-fix-vm-map-rekey.ts";
+import * as migration088purgecliactivatekeys from "./088-purge-cli-activate-keys.ts";
+import * as migration089renameremoteusertodesktop from "./089-rename-remote-user-to-desktop.ts";
+import * as migration090automationwebhooktriggers from "./090-automation-webhook-triggers.ts";
+import * as migration091organizationdomainsallowmulti from "./091-organization-domains-allow-multi.ts";
+import * as migration092sandboxnaminguniformization from "./092-sandbox-naming-uniformization.ts";
+import * as migration093orgfileconfigs from "./093-org-file-configs.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -180,7 +190,18 @@ const migrations: Record<string, Migration> = {
   "081-async-research-jobs-result-content":
     migration081asyncresearchjobsresultcontent,
   "082-secrets": migration082secrets,
-  "083-org-file-configs": migration083orgfileconfigs,
+  "083-thread-run-locally": migration083threadrunlocally,
+  "084-drop-host-sandbox-rows": migration084drophostsandboxrows,
+  "085-rename-runner-kind": migration085renamerunnerkindd,
+  "086-thread-pins-and-vm-map-rekey": migration086threadpinsandvmmaprekey,
+  "087-fix-vm-map-rekey": migration087fixvmmaprekey,
+  "088-purge-cli-activate-keys": migration088purgecliactivatekeys,
+  "089-rename-remote-user-to-desktop": migration089renameremoteusertodesktop,
+  "090-automation-webhook-triggers": migration090automationwebhooktriggers,
+  "091-organization-domains-allow-multi":
+    migration091organizationdomainsallowmulti,
+  "092-sandbox-naming-uniformization": migration092sandboxnaminguniformization,
+  "093-org-file-configs": migration093orgfileconfigs,
 };
 
 export default migrations;

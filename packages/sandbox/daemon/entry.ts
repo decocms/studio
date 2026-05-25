@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { bumpActivity } from "./activity";
-import { requireToken } from "./auth";
+import { requireHmacOrToken } from "./auth";
 import { TenantConfigStore } from "./config-store";
 import { REPLAY_BYTES } from "./constants";
 import { Broadcaster } from "./events/broadcast";
@@ -23,6 +23,19 @@ import {
   makeConfigReadHandler,
   makeConfigUpdateHandler,
 } from "./routes/config";
+import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
+// Import CLI factories from their subpaths (rather than the barrel
+// `apps/mesh/src/harnesses/index.ts`) to avoid pulling in the cluster-only
+// `decopilotHarnessFactory` and its dependency tree (which references
+// `@/...` path aliases that only exist under apps/mesh).
+import { claudeCodeHarnessFactory } from "../../../apps/mesh/src/harnesses/claude-code";
+import { codexHarnessFactory } from "../../../apps/mesh/src/harnesses/codex";
+import type {
+  HarnessContext,
+  HarnessFactory,
+  HarnessStreamInput,
+} from "../../../apps/mesh/src/harnesses/types";
+import { metrics, trace } from "@opentelemetry/api";
 import { makeEventsHandler } from "./routes/events-stream";
 import { makeExecHandler } from "./routes/exec";
 import {
@@ -72,6 +85,15 @@ const bootConfig = {
   appRoot: APP_ROOT,
   repoDir: join(APP_ROOT, "repo"),
   proxyPort: parseInt(resolvedDaemonPort, 10),
+  // HMAC secret used to authenticate the cluster's harness-dispatch
+  // calls (POST /_sandbox/dispatch + DELETE /_sandbox/runs/:id).
+  // Equals the link's `linkSecret` from the cluster's `LinkRegistry`.
+  // Spawned by the `deco link` daemon for the desktop case; absent on legacy
+  // cluster-side runner daemons that don't accept remote harness
+  // dispatch — in that case the dispatch routes refuse all requests
+  // (HMAC verification with an empty secret never matches a valid
+  // signature).
+  linkSecret: process.env.DAEMON_LINK_SECRET ?? "",
 };
 // Ensure repoDir exists so bash commands with the default cwd don't fail with
 // ENOENT when no repo has been cloned yet (tool-only sandboxes, no-repo agents).
@@ -332,6 +354,67 @@ const eventsH = makeEventsHandler({
 
 const idleH = makeIdleHandler();
 const proxyH = makeProxyHandler({ broadcaster, getDevPort });
+
+// ─── Remote harness dispatch ───────────────────────────────────────────
+// Authenticated by HMAC against `bootConfig.linkSecret` (see comment on
+// the field above). The cluster's `remoteDispatch` posts a signed
+// HarnessStreamInput here; the daemon spawns the named factory's CLI
+// in-process and streams `UIMessageChunk` back as SSE.
+//
+// Only the CLI factories live in the daemon — decopilot pulls in
+// cluster-only modules (RunRegistry, run-stream internals) and is never
+// invoked over the wire.
+const dispatchHarnessRegistry: Map<string, HarnessFactory> = new Map([
+  ["claude-code", claudeCodeHarnessFactory],
+  ["codex", codexHarnessFactory],
+]);
+const dispatchTracer = trace.getTracer("link-daemon");
+const dispatchMeter = metrics.getMeter("link-daemon");
+// Per-process replay-protection cache. 100k nonces ≈ a few MB; the
+// cluster's signing layer rotates nonces per request so the set fills
+// slowly under legitimate traffic. Shared across dispatch/cancel AND
+// the dual-auth (HMAC-or-bearer) guard on the rest of /_sandbox/*
+// — collision is computationally infeasible since the nonce is part of
+// the signed string.
+//
+// Note: `verifyRequest` consults `seenNonce` BEFORE the HMAC comparison
+// (see apps/mesh/src/links/protocol/hmac), so an unauthenticated attacker
+// reaching the daemon can flood the cache with chosen nonces. The
+// bounded Set + FIFO eviction means the attacker pays the same per-
+// request cost as legitimate clients — irritating, not exploitable —
+// but the surface is wider than just "compromised-secret traffic."
+const vmNonces = new Set<string>();
+const seenVmNonce = (nonce: string): boolean => {
+  if (vmNonces.has(nonce)) return true;
+  if (vmNonces.size >= 100_000) {
+    // Drop the iterator's first entry (insertion order — oldest).
+    const first = vmNonces.values().next().value;
+    if (first) vmNonces.delete(first);
+  }
+  vmNonces.add(nonce);
+  return false;
+};
+const lookupDispatchHarness = (id: string, input: unknown) => {
+  const factory = dispatchHarnessRegistry.get(id);
+  if (!factory) throw new Error(`unknown harness: ${id}`);
+  // Build a minimal HarnessContext. CLI harnesses don't read storage,
+  // db, vault, or aiProviders — they only need tracer/meter for OTel
+  // and metadata for span attributes. The cluster's richer MeshContext
+  // is structurally compatible with this shape (see
+  // `apps/mesh/src/core/harness-context.ts`).
+  const harnessInput = input as HarnessStreamInput;
+  const ctx: HarnessContext = {
+    tracer: dispatchTracer,
+    meter: dispatchMeter,
+    metadata: {
+      threadId: harnessInput.threadId,
+      orgId: harnessInput.organizationId,
+      userId: harnessInput.user?.id,
+    },
+  };
+  const harness = factory.create(ctx);
+  return { stream: () => harness.stream(harnessInput) };
+};
 const wsProxy = makeWsUpgrader(getDevPort, { onClientMessage: bumpActivity });
 
 const configReadH = makeConfigReadHandler({
@@ -381,17 +464,49 @@ void lastProbe;
 
 let firstWorkLogged = false;
 
-async function configH(req: Request): Promise<Response> {
+// Canonical and legacy daemon route prefixes. The cluster speaks only
+// `/_sandbox/*` (see T11 in 2026-05-22-sandbox-naming-uniformization.md);
+// `/_decopilot_vm/*` is dual-served for one release window so old clusters
+// rolling out keep working until they pick up the rename. Remove the
+// legacy prefix in a follow-up release once all clusters and the
+// housekeeper sweep script have updated.
+const SANDBOX_PREFIX = "/_sandbox";
+const LEGACY_SANDBOX_PREFIX = "/_decopilot_vm";
+const SANDBOX_IDLE_PATH = `${SANDBOX_PREFIX}/idle`;
+const LEGACY_SANDBOX_IDLE_PATH = `${LEGACY_SANDBOX_PREFIX}/idle`;
+
+/**
+ * If `pathname` is under one of the known sandbox prefixes, return the
+ * prefix actually used plus the suffix. Otherwise `null`. Used by the
+ * top-level fetch dispatcher and propagated into HMAC verification so
+ * the daemon validates against the same prefix the cluster signed.
+ */
+function matchSandboxPrefix(
+  pathname: string,
+): { prefix: string; suffix: string } | null {
+  for (const prefix of [SANDBOX_PREFIX, LEGACY_SANDBOX_PREFIX]) {
+    if (pathname === prefix || pathname === `${prefix}/`) {
+      return { prefix, suffix: "/" };
+    }
+    if (pathname.startsWith(`${prefix}/`)) {
+      return { prefix, suffix: pathname.slice(prefix.length) };
+    }
+  }
+  return null;
+}
+
+async function configH(req: Request, prefix: string): Promise<Response> {
   const { method } = req;
   if (method === "GET") return configReadH();
   if (method === "PUT" || method === "POST") return configUpdateH(req);
-  return jsonResponse({ error: "Not found: /_decopilot_vm/config" }, 404);
+  return jsonResponse({ error: `Not found: ${prefix}/config` }, 404);
 }
 
 function tasksRouteH(
   req: Request,
   method: string,
   vmPath: string,
+  prefix: string,
 ): Response | Promise<Response> {
   if (method === "GET" && vmPath === "/tasks") return tasksListH(req);
   if (method === "POST" && vmPath === "/tasks/kill-all") return tasksKillAllH();
@@ -403,7 +518,7 @@ function tasksRouteH(
     return tasksDeleteH(req);
   if (method === "GET" && /^\/tasks\/[^/]+$/.test(vmPath))
     return tasksGetH(req);
-  return jsonResponse({ error: `Not found: /_decopilot_vm${vmPath}` }, 404);
+  return jsonResponse({ error: `Not found: ${prefix}${vmPath}` }, 404);
 }
 
 function execRouteH(
@@ -448,28 +563,65 @@ const CORS_HEADERS = {
     "Content-Type, Accept, Cache-Control, Authorization",
 };
 
-function vmRouteH(
+async function vmRouteH(
   req: Request,
   method: string,
   vmPath: string,
-): Response | Promise<Response> {
+  prefix: string,
+): Promise<Response> {
   if (method === "GET" && vmPath === "/idle") return idleH();
   if (method === "GET" && vmPath === "/events") return eventsH();
   if (method === "GET" && vmPath === "/scripts") return scriptsHandler();
   if (method === "OPTIONS")
     return new Response(null, { status: 204, headers: CORS_HEADERS });
 
-  const denied = requireToken(req, bootConfig.daemonToken);
+  // Harness dispatch + cancel are HMAC-only and read their own body /
+  // signed path (the cluster signs against the pre-strip path forwarded
+  // via X-Forwarded-Path). Keep them inline so we don't double-read the
+  // body or short-circuit their own signature checks.
+  if (method === "POST" && vmPath === "/dispatch") {
+    return handleDispatchRequest(req, {
+      bearerSecret: bootConfig.linkSecret,
+      lookupHarness: lookupDispatchHarness,
+      seenNonce: seenVmNonce,
+    });
+  }
+  if (method === "DELETE" && vmPath.startsWith("/runs/")) {
+    return handleCancelRequest(req, {
+      bearerSecret: bootConfig.linkSecret,
+      seenNonce: seenVmNonce,
+    });
+  }
+
+  // Buffer body once so HMAC can sign over it; re-inject as a fresh
+  // Request for downstream handlers that re-read.
+  const hasBody = method !== "GET" && method !== "HEAD" && method !== "DELETE";
+  const body = hasBody ? await req.text() : "";
+  // HMAC must verify against the prefix the client actually signed.
+  // During the dual-serve window callers may sign against either prefix;
+  // the daemon validates against whichever prefix arrived on the wire.
+  const path = `${prefix}${vmPath}`;
+
+  const denied = requireHmacOrToken(req, path, body, {
+    linkSecret: bootConfig.linkSecret,
+    daemonToken: bootConfig.daemonToken,
+    seenNonce: seenVmNonce,
+  });
   if (denied) return denied;
 
-  if (vmPath === "/config") return configH(req);
-  if (vmPath.startsWith("/tasks")) return tasksRouteH(req, method, vmPath);
-  if (method === "POST" && vmPath in setupH) return setupH[vmPath]();
-  if (method === "POST" && vmPath in fsH) return fsH[vmPath](req);
-  if (method === "POST" && vmPath.startsWith("/exec/"))
-    return execRouteH(req, vmPath);
+  const rebuilt = hasBody
+    ? new Request(req.url, { method, headers: req.headers, body })
+    : req;
 
-  return jsonResponse({ error: `Not found: /_decopilot_vm${vmPath}` }, 404);
+  if (vmPath === "/config") return configH(rebuilt, prefix);
+  if (vmPath.startsWith("/tasks"))
+    return tasksRouteH(rebuilt, method, vmPath, prefix);
+  if (method === "POST" && vmPath in setupH) return setupH[vmPath]();
+  if (method === "POST" && vmPath in fsH) return fsH[vmPath](rebuilt);
+  if (method === "POST" && vmPath.startsWith("/exec/"))
+    return execRouteH(rebuilt, vmPath);
+
+  return jsonResponse({ error: `Not found: ${prefix}${vmPath}` }, 404);
 }
 
 Bun.serve<WsProxyData, never>({
@@ -480,7 +632,11 @@ Bun.serve<WsProxyData, never>({
     const { pathname: p } = new URL(req.url);
     const { method } = req;
 
-    if (p !== "/health" && p !== "/_decopilot_vm/idle") {
+    if (
+      p !== "/health" &&
+      p !== SANDBOX_IDLE_PATH &&
+      p !== LEGACY_SANDBOX_IDLE_PATH
+    ) {
       bumpActivity();
       if (!firstWorkLogged) {
         firstWorkLogged = true;
@@ -490,9 +646,11 @@ Bun.serve<WsProxyData, never>({
       }
     }
 
+    const sandboxMatch = matchSandboxPrefix(p);
+
     if (
       req.headers.get("upgrade")?.toLowerCase() === "websocket" &&
-      !p.startsWith("/_decopilot_vm/")
+      !sandboxMatch
     ) {
       const ok = server.upgrade(req, { data: wsProxy.upgradeData(req) });
       return ok
@@ -501,8 +659,8 @@ Bun.serve<WsProxyData, never>({
     }
 
     if (method === "GET" && p === "/health") return healthH();
-    if (p.startsWith("/_decopilot_vm/"))
-      return vmRouteH(req, method, p.slice("/_decopilot_vm".length));
+    if (sandboxMatch)
+      return vmRouteH(req, method, sandboxMatch.suffix, sandboxMatch.prefix);
     return proxyH(req);
   },
   websocket: {

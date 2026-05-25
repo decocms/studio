@@ -4,24 +4,18 @@ Isolated per-user sandboxes for MCP tool execution.
 
 One sandbox per `(userId, projectRef)`: a container (or VM) holding a checked-out
 repo plus an in-pod daemon that proxies exec, file ops, and the dev server.
-Callers go through a single `SandboxRunner` interface; the runner decides how
+Callers go through a single `SandboxProvider` interface; the provider decides how
 the sandbox is provisioned and reached.
 
-## Runners
+## Providers
 
-Three runner backends live behind the common `SandboxRunner` interface
-(`server/runner/types.ts`):
+Three provider backends live behind the common `SandboxProvider` interface
+(`server/provider/types.ts`):
 
-- **`host`** — local dev / single-tenant self-host. Spawns the same Bun-based
-  daemon as the Docker runner but as a host child process, with a per-branch
-  full git clone in `${DATA_DIR}/sandboxes/<handle>/`. The local
-  `*.localhost:7070` ingress routes browser traffic to the per-branch daemon's
-  host TCP port. No container; no hardening (the daemon runs in the user's
-  trust boundary).
-- **Docker** (`./runner`) — containerized sandboxes. Spawns containers via the
+- **Docker** (`./provider`) — containerized sandboxes. Spawns containers via the
   local Docker CLI and routes browser traffic through an in-process ingress
   bound on `SANDBOX_INGRESS_PORT`.
-- **agent-sandbox** (`./runner/agent-sandbox`) — one `SandboxClaim` per sandbox
+- **agent-sandbox** (`./provider/agent-sandbox`) — one `SandboxClaim` per sandbox
   against the [kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)
   operator. Studio talks to pods via apiserver port-forward in dev; in prod,
   `previewUrlPattern` switches the preview URL to real ingress and skips the
@@ -29,13 +23,21 @@ Three runner backends live behind the common `SandboxRunner` interface
 
 ### Selection
 
-The host app calls `resolveRunnerKindFromEnv()` to pick the runner. Single rule:
+The host app calls `resolveSandboxProviderKindFromEnv()` to pick the provider. Single rule:
 
-1. `STUDIO_SANDBOX_RUNNER` is honored if set (one of `host`, `docker`,
-   `agent-sandbox`).
-2. Otherwise the runner defaults to `host`.
+1. `STUDIO_SANDBOX_PROVIDER` is honored if set (one of `local-docker`,
+   `cluster`, `user-desktop`).
+2. Otherwise the provider defaults to `user-desktop` (the desktop-side
+   `deco link` daemon — auto-spawned by `bun run dev --local-sandbox-provider`
+   in local dev, and the supported topology for single-machine self-hosts
+   running the link side-by-side).
 
-`agent-sandbox` is opt-in only — never auto-selected.
+Preconditions:
+
+- `cluster` is opt-in only — never auto-selected.
+- The retired `host` provider kind is rejected. Local dev now exercises
+  `user-desktop` against the auto-spawned link binary, matching the
+  production code path.
 
 ## URL shape
 
@@ -64,14 +66,15 @@ for this, you can remove them — they're no longer needed.
 
 ## Environment
 
-- `STUDIO_SANDBOX_RUNNER` — pin the runner: `host` (default), `docker`,
-  or `agent-sandbox`. Setting it explicitly is required for any non-host
-  runner. Auto-detection of Docker has been removed.
-- `STUDIO_SANDBOX_IMAGE` — override the Docker runner image
+- `STUDIO_SANDBOX_PROVIDER` — pin the provider: `local-docker`,
+  `cluster`, or `user-desktop`. Defaults to `user-desktop`. Setting
+  it explicitly is required for production deploys; auto-detection of
+  Docker has been removed.
+- `STUDIO_SANDBOX_IMAGE` — override the Docker provider image
   (default `studio-sandbox:local`, built from `image/Dockerfile`).
 - `SANDBOX_INGRESS_PORT` (default `7070`) — local ingress bind port for the
-  host/docker runners. Set to `0` to skip binding entirely (use this if a
-  real reverse proxy fronts `*.localhost` traffic instead).
+  Docker provider. Set to `0` to skip binding entirely (use this if a real
+  reverse proxy fronts `*.localhost` traffic instead).
 - `SANDBOX_ROOT_URL` — production template for the pod URL. Either a bare
   base (`https://sandboxes.example.com` → handle becomes leading subdomain)
   or a `{handle}` template (`https://{handle}.sandboxes.example.com`).

@@ -21,6 +21,10 @@ export interface Task {
   trigger_id?: string | null;
   /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
   branch?: string | null;
+  /** Sandbox provider kind pinned on first message (e.g. "local-docker", "cluster", "user-desktop"). */
+  sandbox_provider_kind?: string | null;
+  /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot"). */
+  harness_id?: string | null;
   /** Per-thread metadata — layout tabs, expanded tools, etc. Loaded by COLLECTION_THREADS_GET. */
   metadata?: ThreadMetadata;
 }

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { OrgAccessGate } from "@/web/components/org-access-gate";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
@@ -121,7 +122,7 @@ export function usePanelActions() {
     );
 
   // Create a new task carrying the current task's branch (if any) so the
-  // new thread lands on the same warm sandbox. Server picks from vmMap when
+  // new thread lands on the same warm sandbox. Server picks from sandboxMap when
   // no branch is provided. Awaiting the create avoids the route loader's
   // create-on-404 fallback firing without a branch hint.
   //
@@ -234,7 +235,15 @@ function ShellLayoutContent() {
   const { data: ssoStatus } = useOrgSsoStatus(orgId, orgSlug);
 
   if (!activeOrg) {
-    return <SplashScreen />;
+    // Not a member: figure out which screen to show (no-access / pending
+    // invite / auto-domain-join / not-found). Wrapped in Suspense so the
+    // brief access-status fetch shows the splash instead of throwing back to
+    // the parent suspense boundary.
+    return (
+      <Suspense fallback={<SplashScreen />}>
+        <OrgAccessGate orgSlug={org!} />
+      </Suspense>
+    );
   }
 
   const isArchivedOrg =

@@ -343,14 +343,15 @@ export class ThreadManagerStore {
   }
 
   /**
-   * Resolve a thread by id. Checks the loaded `threads` slot first; falls
-   * back to a `COLLECTION_THREADS_GET` MCP call when the row isn't in the
-   * loaded set (e.g., direct link to an older thread past page 0 or to an
-   * archived thread). Returns null if the thread doesn't exist server-side
-   * or the MCP call fails.
+   * Resolve a thread by id without mutating the `threads` slot. Checks the
+   * loaded set first to skip a round-trip; otherwise issues
+   * `COLLECTION_THREADS_GET`. Returns null if the thread doesn't exist
+   * server-side or the MCP call fails.
    *
-   * Resolved rows are merged into the local list so subsequent lookups hit
-   * the fast path.
+   * The `threads` slot represents threads loaded for the panel (filtered
+   * server-side by `hidden: false`); merging arbitrary by-id GET results
+   * into it would resurrect archived rows in the panel cache, so this
+   * method intentionally returns the row without inserting.
    */
   async fetchThread(id: string): Promise<Task | null> {
     if (!id) return null;
@@ -365,17 +366,7 @@ export class ThreadManagerStore {
       if ((result as { isError?: boolean }).isError) return null;
       const payload = ((result as { structuredContent?: unknown })
         .structuredContent ?? result) as { item?: Task | null };
-      const row = payload.item ?? null;
-      if (row) {
-        // Merge into the local list so future lookups are local. The row may
-        // already be present if a concurrent event arrived between the
-        // find() above and this fetch; dedupe by id.
-        this.threads.update((list) => {
-          if (list.some((t) => t.id === row.id)) return list;
-          return [row, ...list];
-        });
-      }
-      return row;
+      return payload.item ?? null;
     } catch {
       return null;
     }

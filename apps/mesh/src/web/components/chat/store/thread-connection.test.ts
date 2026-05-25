@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   __resetRegistry,
+  dropRedundantStubs,
   getOrOpenStream,
   mergeAndSort,
   type RequestOptions,
@@ -706,6 +707,69 @@ describe("mergeAndSort", () => {
       "u-1",
       "msg_A",
     ]);
+  });
+});
+
+// ─── async-research stub dedup ───────────────────────────────────────────────
+
+describe("dropRedundantStubs", () => {
+  // biome-ignore lint/suspicious/noExplicitAny: test helper
+  const assistantMsg = (id: string, parts: any[] = []) =>
+    ({
+      id,
+      role: "assistant",
+      parts,
+      created_at: "2026-01-01T00:00:00Z",
+      // biome-ignore lint/suspicious/noExplicitAny: test helper
+    }) as any;
+  // biome-ignore lint/suspicious/noExplicitAny: test helper
+  const userMsg = { id: "u1", role: "user", parts: [] } as any;
+  const TC = "tc_abc";
+
+  const stub = assistantMsg("msg_async_stub_" + TC, [
+    { type: "tool-web_search", toolCallId: TC, state: "input-available" },
+  ]);
+  const live = assistantMsg("msg_live", [
+    { type: "tool-web_search", toolCallId: TC, state: "output-available" },
+    { type: "text", text: "answer" },
+  ]);
+
+  test("drops stub when a live assistant message covers the toolCallId", () => {
+    const out = dropRedundantStubs([userMsg, stub, live]);
+    expect(out.map((m) => m.id)).toEqual(["u1", "msg_live"]);
+  });
+
+  test("keeps stub when no live message covers its toolCallId", () => {
+    const out = dropRedundantStubs([userMsg, stub]);
+    expect(out.map((m) => m.id)).toEqual(["u1", "msg_async_stub_" + TC]);
+  });
+
+  test("keeps stub when the live message covers a DIFFERENT toolCallId", () => {
+    const otherLive = assistantMsg("msg_live2", [
+      {
+        type: "tool-web_search",
+        toolCallId: "tc_other",
+        state: "input-available",
+      },
+    ]);
+    const out = dropRedundantStubs([userMsg, stub, otherLive]);
+    expect(out.map((m) => m.id).sort()).toEqual(
+      ["msg_async_stub_" + TC, "msg_live2", "u1"].sort(),
+    );
+  });
+
+  test("noop when there are no stubs (cheap fast path)", () => {
+    const out = dropRedundantStubs([userMsg, live]);
+    expect(out).toBe(out); // (sanity that it returns a list)
+    expect(out.map((m) => m.id)).toEqual(["u1", "msg_live"]);
+  });
+
+  test("mergeAndSort applies the dedup automatically", () => {
+    // Production scenario: refetch returns the persisted stub; the
+    // in-memory live message has the same tool-web_search part from
+    // the prior connection's fold. After mergeAndSort the stub is gone.
+    const out = mergeAndSort([live], [stub]);
+    expect(out.map((m) => m.id)).toEqual(["msg_live"]);
   });
 });
 

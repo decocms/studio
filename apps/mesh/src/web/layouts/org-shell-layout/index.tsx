@@ -22,8 +22,9 @@ import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
 import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
 import { TasksPanelStateProvider } from "@/web/hooks/use-tasks-panel-state";
+import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
-import { TasksPanelColumn } from "@/web/layouts/agent-shell-layout/tasks-panel-column";
+import { TasksWorkspaceLayout } from "@/web/layouts/agent-shell-layout/tasks-workspace-layout";
 import { TasksPanel } from "@/web/layouts/tasks-panel";
 
 function RouteFallback() {
@@ -112,6 +113,7 @@ export default function OrgShellLayout() {
                         <Toolbar.LeftColumn>
                           <Toolbar.Nav />
                           <Toolbar.TogglesSlot />
+                          <LinkedDesktopIndicator />
                         </Toolbar.LeftColumn>
                         <Toolbar.CenterSlot />
                         <Toolbar.RightColumn>
@@ -120,10 +122,11 @@ export default function OrgShellLayout() {
                         </Toolbar.RightColumn>
                       </Toolbar.Header>
                       <div className="flex-1 min-h-0 flex flex-row">
-                        <TasksPanelColumn />
-                        <Suspense fallback={<RouteFallback />}>
-                          <Outlet />
-                        </Suspense>
+                        <TasksWorkspaceLayout>
+                          <Suspense fallback={<RouteFallback />}>
+                            <Outlet />
+                          </Suspense>
+                        </TasksWorkspaceLayout>
                       </div>
                     </Toolbar>
                   )}

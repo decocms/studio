@@ -83,6 +83,7 @@ import { StudioPackRecruitModal } from "@/web/components/home/studio-pack-recrui
 import { LeanCanvasRecruitModal } from "@/web/components/home/lean-canvas-recruit-modal.tsx";
 import { AiImageRecruitModal } from "@/web/components/home/ai-image-recruit-modal.tsx";
 import { AiResearchRecruitModal } from "@/web/components/home/ai-research-recruit-modal.tsx";
+import { QaAgentRecruitModal } from "@/web/components/home/qa-agent-recruit-modal.tsx";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thread";
@@ -93,7 +94,7 @@ import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thre
  * virtualmcpid, the active task's branch is carried into the new thread
  * so the new task lands on the same warm sandbox. When the clicked vMCP
  * differs, no branch is passed and the server picks the most-recently-
- * touched vmMap entry for that vMCP.
+ * touched sandboxMap entry for that vMCP.
  *
  * The sidebar pinned-agent click uses `useNavigateToAgentThread` instead,
  * which resumes the user's last thread when one exists.
@@ -362,6 +363,7 @@ function PinAgentPopoverContent({
   onOpenStudioPackModal,
   onOpenAiImageModal,
   onOpenAiResearchModal,
+  onOpenQaAgentModal,
 }: {
   onClose: () => void;
   onOpenImportDeco: () => void;
@@ -372,6 +374,7 @@ function PinAgentPopoverContent({
   onOpenStudioPackModal: () => void;
   onOpenAiImageModal: () => void;
   onOpenAiResearchModal: () => void;
+  onOpenQaAgentModal: () => void;
 }) {
   const [search, setSearch] = useState("");
   const allAgents = useVirtualMCPs();
@@ -449,6 +452,17 @@ function PinAgentPopoverContent({
       )
     : undefined;
 
+  const qaAgentTemplate = WELL_KNOWN_AGENT_TEMPLATES.find(
+    (t) => t.id === "qa-agent",
+  );
+  const existingQaAgent = qaAgentTemplate
+    ? allAgents.find(
+        (a) =>
+          (a as { metadata?: { type?: string } }).metadata?.type ===
+          qaAgentTemplate.id,
+      )
+    : undefined;
+
   const handleSelect = (agent: VirtualMCPEntity) => {
     if (!isPinned(agent.id)) {
       pin(agent.id);
@@ -488,6 +502,12 @@ function PinAgentPopoverContent({
         navigateToAgent(existingAiResearch.id);
       } else {
         onOpenAiResearchModal();
+      }
+    } else if (templateId === "qa-agent") {
+      if (existingQaAgent) {
+        navigateToAgent(existingQaAgent.id);
+      } else {
+        onOpenQaAgentModal();
       }
     } else if (templateId === "studio-pack") {
       onOpenStudioPackModal();
@@ -678,6 +698,7 @@ function PinAgentPopover() {
   const [studioPackModalOpen, setStudioPackModalOpen] = useState(false);
   const [aiImageModalOpen, setAiImageModalOpen] = useState(false);
   const [aiResearchModalOpen, setAiResearchModalOpen] = useState(false);
+  const [qaAgentModalOpen, setQaAgentModalOpen] = useState(false);
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
 
@@ -710,6 +731,7 @@ function PinAgentPopover() {
         onOpenStudioPackModal={() => setStudioPackModalOpen(true)}
         onOpenAiImageModal={() => setAiImageModalOpen(true)}
         onOpenAiResearchModal={() => setAiResearchModalOpen(true)}
+        onOpenQaAgentModal={() => setQaAgentModalOpen(true)}
       />
     </Suspense>
   );
@@ -797,6 +819,10 @@ function PinAgentPopover() {
       <AiResearchRecruitModal
         open={aiResearchModalOpen}
         onOpenChange={setAiResearchModalOpen}
+      />
+      <QaAgentRecruitModal
+        open={qaAgentModalOpen}
+        onOpenChange={setQaAgentModalOpen}
       />
     </>
   );

@@ -1,6 +1,6 @@
 import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
-import type { ClaimPhase } from "@/web/components/vm/hooks/vm-events-context";
-import { CLAIM_PHASE_COPY } from "@/web/components/vm/claim-phase-copy";
+import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-context";
+import { CLAIM_PHASE_COPY } from "@/web/components/sandbox/claim-phase-copy";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
 

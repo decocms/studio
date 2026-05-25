@@ -131,7 +131,7 @@ const envVarKey = z.string().min(1).regex(ENV_VAR_KEY_RE, {
 /**
  * One env var declaration on a virtual MCP. Literal values live inline in
  * metadata; secret values store a stable secretId that mesh resolves against
- * the credential vault on every VM_START. The env var KEY is independent of
+ * the credential vault on every SANDBOX_START. The env var KEY is independent of
  * the secret's NAME — a single secret can back multiple env keys across
  * different agents.
  */
@@ -152,7 +152,7 @@ export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
 
 /**
  * User-pinned runtime configuration stored under `metadata.runtime`. Empty
- * fields fall back to autodetect on the next VM_START.
+ * fields fall back to autodetect on the next SANDBOX_START.
  */
 const RuntimeMetadataSchema = z.object({
   selected: z
@@ -160,7 +160,7 @@ const RuntimeMetadataSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "User-selected package manager (npm | pnpm | yarn | bun | deno). Null/absent means autodetect on next VM_START.",
+      "User-selected package manager (npm | pnpm | yarn | bun | deno). Null/absent means autodetect on next SANDBOX_START.",
     ),
   port: z
     .string()
@@ -181,7 +181,7 @@ const RuntimeMetadataSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Env vars injected on every VM_START. Literal entries inline their value; secret entries store a secretId that mesh resolves via the credential vault before posting /_decopilot_vm/config.",
+      "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that mesh resolves via the credential vault before posting /_sandbox/config.",
     ),
 });
 
@@ -211,31 +211,46 @@ const GithubRepoSchema = z.object({
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
 /**
- * A single vm entry in vmMap — the vmId plus the preview URL the UI renders.
+ * A single sandbox record in the per-(user, branch, kind) sandbox map — the
+ * provider-issued handle plus the preview URL the UI renders.
  *
- * `runnerKind` lets the UI construct daemon URLs correctly:
- *  - docker: daemon is reached via the mesh proxy at `/api/sandbox/<vmId>/_daemon/*`
- *  - agent-sandbox: daemon is reached via the mesh proxy (same transport as docker);
+ * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
+ *  - local-docker: daemon is reached via the mesh proxy at `/api/sandbox/<sandboxHandle>/_daemon/*`
+ *  - cluster: daemon is reached via the mesh proxy (same transport as local-docker);
  *    preview URL is the per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
+ *  - user-desktop: daemon is reached directly via the user's link binary.
  *
  * `previewUrl` is nullable: blank / tool sandboxes (no `workload`, no dev
  * server) have nothing to render. UI code MUST check before constructing
  * an iframe URL.
  */
-export const VmMapEntrySchema = z.object({
-  vmId: z.string().describe("Runner-specific handle"),
+export const SandboxRecordSchema = z.object({
+  sandboxHandle: z.string().describe("Provider-specific handle"),
   previewUrl: z
     .string()
     .nullable()
     .describe(
-      "URL where the VM's iframe-proxied UI is served, or null when the sandbox has no dev server (blank / tool sandboxes).",
+      "URL where the sandbox's iframe-proxied UI is served, or null when the sandbox has no dev server (blank / tool sandboxes).",
     ),
-  runnerKind: z.enum(["host", "docker", "agent-sandbox"]).optional(),
+  sandboxApiUrl: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for providers that route through cluster ingress (local-docker, cluster).",
+    ),
+  sandboxProviderKind: z
+    // Canonical set. Migration 091 rewrote every persisted legacy value
+    // ("docker", "agent-sandbox", "desktop", "remote-user", "host",
+    // "freestyle") to one of these three; readers no longer accept the
+    // legacy strings — Zod will reject them at parse time.
+    .enum(["local-docker", "cluster", "user-desktop"])
+    .optional(),
   createdAt: z
     .number()
     .optional()
     .describe(
-      "Epoch ms the entry was first written by VM_START. Used by the booting overlay to show a stable elapsed timer that survives browser reloads. Optional for backward compatibility with entries written before this field existed.",
+      "Epoch ms the entry was first written by SANDBOX_START. Used by the booting overlay to show a stable elapsed timer that survives browser reloads. Optional for backward compatibility with entries written before this field existed.",
     ),
   startedWith: z
     .object({
@@ -243,37 +258,126 @@ export const VmMapEntrySchema = z.object({
         .string()
         .nullable()
         .optional()
-        .describe("metadata.runtime.selected at the time of VM_START"),
+        .describe("metadata.runtime.selected at the time of SANDBOX_START"),
       port: z
         .string()
         .nullable()
         .optional()
-        .describe("metadata.runtime.port at the time of VM_START"),
+        .describe("metadata.runtime.port at the time of SANDBOX_START"),
       path: z
         .string()
         .nullable()
         .optional()
-        .describe("metadata.runtime.path at the time of VM_START"),
+        .describe("metadata.runtime.path at the time of SANDBOX_START"),
     })
     .optional()
     .describe(
-      "Snapshot of metadata.runtime fields (selected/port/path) used at VM_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
+      "Snapshot of metadata.runtime fields (selected/port/path) used at SANDBOX_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
     ),
 });
 
-export type VmMapEntry = z.infer<typeof VmMapEntrySchema>;
+export type SandboxRecord = z.infer<typeof SandboxRecordSchema>;
 
 /**
- * Maps a user to their vm entries per branch.
- * Lookup: vmMap[userId][branch] -> { vmId, previewUrl }
- * Multiple threads with the same (userId, branch) share one vm.
+ * Strict parser for a single sandbox record. Migration 091 rewrote every
+ * persisted legacy value (`runnerKind`, `vmId`, legacy kind names), so
+ * readers no longer accept those shapes — Zod throws on any leftover.
  */
-export const VmMapSchema = z.record(
+export function parseSandboxRecord(raw: unknown): SandboxRecord {
+  return SandboxRecordSchema.parse(raw);
+}
+
+/** The active sandbox provider kinds. */
+export type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
+
+/**
+ * Parse a `sandboxMap[user][branch]` cell into the kind-keyed v2 shape.
+ *
+ * Migration 087 rewrote every cell to the 3-level layout
+ * (`sandboxProviderKind → SandboxRecord`) and migration 091 rewrote every
+ * legacy kind value; this reader is now strict — entries that fail to parse
+ * (e.g. a stray cell missing required fields) are skipped, but no legacy
+ * key/value normalization happens.
+ */
+export function parseBranchMap(
+  raw: unknown,
+): Partial<Record<SandboxProviderKind, SandboxRecord>> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const obj = raw as Record<string, unknown>;
+
+  const out: Partial<Record<SandboxProviderKind, SandboxRecord>> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!v || typeof v !== "object") continue;
+    if (k !== "local-docker" && k !== "cluster" && k !== "user-desktop") {
+      continue;
+    }
+    try {
+      out[k] = SandboxRecordSchema.parse(v);
+    } catch {
+      // Skip malformed entries rather than throw — readers stay forgiving
+      // about unexpected shapes within a known-key cell.
+    }
+  }
+  return out;
+}
+
+/**
+ * Maps a user to their sandbox records per (branch, sandboxProviderKind).
+ * Lookup: sandboxMap[userId][branch][sandboxProviderKind] -> SandboxRecord
+ *
+ * Multiple threads on the same (userId, branch, kind) share one sandbox.
+ * Cloud and local sandboxes can coexist on the same branch as siblings.
+ *
+ * The schema is strict v2. Strict input/output types here are load-bearing
+ * for `useForm<…>(zodResolver(…))` callers, whose generic depends on
+ * `z.input` being identical to `z.output`. A `z.preprocess` here widens
+ * `z.input` to `unknown` and breaks the form.
+ */
+export const SandboxMapSchema = z.record(
   z.string().describe("userId"),
-  z.record(z.string().describe("branch"), VmMapEntrySchema),
+  z.record(
+    z.string().describe("branch"),
+    z.record(z.string().describe("sandboxProviderKind"), SandboxRecordSchema),
+  ),
 );
 
-export type VmMap = z.infer<typeof VmMapSchema>;
+export type SandboxMap = z.infer<typeof SandboxMapSchema>;
+
+/**
+ * Normalize a raw `metadata.sandboxMap` value into v2 shape on read. Use this
+ * in storage adapters BEFORE returning data that will be Zod-validated against
+ * `VirtualMCPEntitySchema` (or any schema embedding `SandboxMapSchema`).
+ *
+ * After migration 091, the stored shape is the strict 3-level
+ * `userId → branch → sandboxProviderKind → SandboxRecord`. Returns `{}` for
+ * missing / malformed input rather than throwing — readers stay forgiving
+ * about unexpected per-row corruption; the strict schema catches any
+ * residual issues at validation time.
+ */
+export function normalizeSandboxMap(raw: unknown): SandboxMap {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: SandboxMap = {};
+  for (const [userId, userVal] of Object.entries(
+    raw as Record<string, unknown>,
+  )) {
+    if (!userVal || typeof userVal !== "object" || Array.isArray(userVal)) {
+      continue;
+    }
+    const userOut: SandboxMap[string] = {};
+    for (const [branch, branchVal] of Object.entries(
+      userVal as Record<string, unknown>,
+    )) {
+      const normalized = parseBranchMap(branchVal);
+      if (Object.keys(normalized).length > 0) {
+        userOut[branch] = normalized as SandboxMap[string][string];
+      }
+    }
+    if (Object.keys(userOut).length > 0) {
+      out[userId] = userOut;
+    }
+  }
+  return out;
+}
 
 /**
  * Virtual MCP entity schema - single source of truth
@@ -321,8 +425,8 @@ export const VirtualMCPEntitySchema = z.object({
         .describe(
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
-      vmMap: VmMapSchema.optional().describe(
-        "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
+      sandboxMap: SandboxMapSchema.optional().describe(
+        "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
     })
     .loose()
@@ -378,8 +482,8 @@ export const VirtualMCPCreateDataSchema = z.object({
         .describe(
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
-      vmMap: VmMapSchema.optional().describe(
-        "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
+      sandboxMap: SandboxMapSchema.optional().describe(
+        "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
     })
     .loose()
@@ -431,8 +535,8 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .describe(
           "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
         ),
-      vmMap: VmMapSchema.optional().describe(
-        "Per-user, per-branch vm mapping: vmMap[userId][branch] -> { vmId, previewUrl }",
+      sandboxMap: SandboxMapSchema.optional().describe(
+        "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
     })
     .loose()

@@ -18,6 +18,7 @@ const child = Bun.spawn(
     "run",
     join(repoRoot, "apps/mesh/src/cli.ts"),
     "dev",
+    "--local-sandbox-provider",
     ...process.argv.slice(2),
   ],
   {

@@ -443,8 +443,11 @@ describe("ThreadManagerStore.fetchThread", () => {
     const row = await store.fetchThread("t-archived");
     expect(row?.id).toBe("t-archived");
     expect(row?.title).toBe("Old thread");
-    // Row should be merged into the local list.
-    expect(store.threads.get().some((t) => t.id === "t-archived")).toBe(true);
+    // fetchThread is a pure read: the row is returned to the caller but
+    // NOT inserted into the panel-visible threads slot. Otherwise an
+    // archived row (or an in-flight just-hidden row, before its UPDATE
+    // commits server-side) could resurrect itself in the panel cache.
+    expect(store.threads.get().some((t) => t.id === "t-archived")).toBe(false);
     store.dispose();
   });
 

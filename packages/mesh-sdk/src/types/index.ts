@@ -28,13 +28,17 @@ export {
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
   type GithubRepo,
-  VmMapSchema,
-  type VmMap,
-  VmMapEntrySchema,
-  type VmMapEntry,
+  SandboxMapSchema,
+  type SandboxMap,
+  SandboxRecordSchema,
+  type SandboxRecord,
   type RuntimeMetadata,
   type RuntimeEnvEntry,
   ENV_VAR_KEY_RE,
+  parseSandboxRecord,
+  parseBranchMap,
+  normalizeSandboxMap,
+  type SandboxProviderKind,
 } from "./virtual-mcp";
 
 export {

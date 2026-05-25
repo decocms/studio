@@ -1,12 +1,12 @@
 /**
  * Pure helpers for the unified daemon's HTTP API. Daemon endpoints live
- * under `/_decopilot_vm/*` (except `/health` at root, which is unauth).
+ * under `/_sandbox/*` (except `/health` at root, which is unauth).
  */
 
 import type { ConfigPatch } from "../daemon/config-store/types";
 import type { TenantConfig } from "../daemon/types";
 import { sleep } from "../shared";
-import type { ExecInput, ExecOutput } from "./runner/types";
+import type { ExecInput, ExecOutput } from "./provider/types";
 
 export type { ConfigPatch };
 
@@ -88,7 +88,7 @@ export interface ConfigAuthPatch {
 }
 
 /**
- * POST /_decopilot_vm/config — set initial tenant config (or patch via
+ * POST /_sandbox/config — set initial tenant config (or patch via
  * the same payload semantics; deep-merge happens daemon-side).
  *
  * `/config` is the trust boundary endpoint; the daemon's NetworkPolicy is
@@ -116,7 +116,7 @@ async function configRequest(
 ): Promise<ConfigResponse> {
   const wire: Record<string, unknown> = { ...payload };
   if (auth && auth.rotateToken !== undefined) wire.auth = auth;
-  const res = await fetch(`${daemonUrl}/_decopilot_vm/config`, {
+  const res = await fetch(`${daemonUrl}/_sandbox/config`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -128,7 +128,7 @@ async function configRequest(
   const body = await res.text();
   if (!res.ok) {
     throw new Error(
-      `sandbox daemon /_decopilot_vm/config returned ${res.status}: ${body}`,
+      `sandbox daemon /_sandbox/config returned ${res.status}: ${body}`,
     );
   }
   return JSON.parse(body) as ConfigResponse;
@@ -140,7 +140,7 @@ export async function daemonBash(
   input: ExecInput,
 ): Promise<ExecOutput> {
   const timeoutMs = input.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
-  const response = await fetch(`${daemonUrl}/_decopilot_vm/bash`, {
+  const response = await fetch(`${daemonUrl}/_sandbox/bash`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -157,7 +157,7 @@ export async function daemonBash(
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
-      `sandbox daemon /_decopilot_vm/bash returned ${response.status}${body ? `: ${body}` : ""}`,
+      `sandbox daemon /_sandbox/bash returned ${response.status}${body ? `: ${body}` : ""}`,
     );
   }
   const json = (await response.json()) as {

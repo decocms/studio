@@ -1,7 +1,7 @@
 import type { UIMessageChunk } from "ai";
-import type { MeshContext } from "../core/mesh-context";
 import { getHarnessFactory } from "./registry";
 import type { HarnessId, HarnessStreamInput } from "./types";
+import type { MeshContext } from "../core/mesh-context";
 
 /** Invoke a harness in-process. Looks up the factory, creates a harness with
  *  the provided `ctx`, and returns its stream. Throws synchronously if the id

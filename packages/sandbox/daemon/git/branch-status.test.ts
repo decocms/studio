@@ -148,7 +148,7 @@ describe("BranchStatusMonitor", () => {
   });
 
   // Regression: when appRoot != repoDir AND appRoot is nested inside another
-  // git worktree (e.g. host runner: <project>/.deco/sandboxes/<handle>/repo
+  // git worktree (e.g. host runner: <project>/sandboxes/<handle>/repo
   // sits under the project's own .git), git's parent-directory walk used to
   // hijack the lookup and report the outer repo's branch. The monitor must
   // resolve git from repoDir and refuse to escape it.

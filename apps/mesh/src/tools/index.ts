@@ -35,8 +35,9 @@ import * as FileConfigTools from "./file-configs";
 import { getPrompts, getResources } from "./guides";
 import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
-import * as VmTools from "./vm";
+import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
+import * as LinkTools from "./links";
 import { ToolName } from "./registry-metadata";
 // Core tools - always available
 const CORE_TOOLS = [
@@ -128,6 +129,7 @@ const CORE_TOOLS = [
   AutomationTools.AUTOMATION_DELETE,
   AutomationTools.AUTOMATION_TRIGGER_ADD,
   AutomationTools.AUTOMATION_TRIGGER_REMOVE,
+  AutomationTools.AUTOMATION_TRIGGER_ROTATE_TOKEN,
   AutomationTools.AUTOMATION_RUN,
 
   // Virtual MCP plugin config tools
@@ -148,8 +150,6 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_PROVISION_KEY,
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
-  AiProvidersTools.AI_PROVIDER_CLI_ACTIVATE,
-
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,
@@ -172,11 +172,14 @@ const CORE_TOOLS = [
   ...RegistryTools.tools,
 
   // VM tools (app-only)
-  VmTools.VM_START,
-  VmTools.VM_DELETE,
+  SandboxTools.SANDBOX_START,
+  SandboxTools.SANDBOX_DELETE,
 
   // GitHub tools (app-only)
   GitHubTools.GITHUB_LIST_USER_ORGS,
+
+  // Link tools
+  LinkTools.LINK_CURRENT_GET,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

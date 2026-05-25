@@ -147,3 +147,12 @@ export function getDb(): MeshDatabase {
   }
   return dbInstance;
 }
+
+/**
+ * Test-only: override the lazy `getDb()` singleton with a specific instance
+ * (typically the PGlite-backed one from `createTestDatabase`). Pass `null` in
+ * afterEach to clear. Production code paths must never call this.
+ */
+export function __setDbForTesting(db: MeshDatabase | null): void {
+  dbInstance = db;
+}

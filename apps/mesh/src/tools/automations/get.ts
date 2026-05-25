@@ -41,12 +41,13 @@ export const AUTOMATION_GET = defineTool({
         triggers: z.array(
           z.object({
             id: z.string(),
-            type: z.enum(["cron", "event"]),
+            type: z.enum(["cron", "event", "webhook"]),
             cron_expression: z.string().nullable(),
             connection_id: z.string().nullable(),
             event_type: z.string().nullable(),
             params: z.unknown().nullable(),
             last_run_at: z.string().nullable(),
+            api_key_id: z.string().nullable(),
             created_at: z.string(),
           }),
         ),
@@ -95,6 +96,7 @@ export const AUTOMATION_GET = defineTool({
           event_type: t.event_type,
           params: t.params ? JSON.parse(t.params) : null,
           last_run_at: t.last_run_at,
+          api_key_id: t.api_key_id,
           created_at: t.created_at,
         })),
       },

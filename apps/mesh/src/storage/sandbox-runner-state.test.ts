@@ -1,21 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import type { SandboxId } from "@decocms/sandbox/runner";
+import type { SandboxId } from "@decocms/sandbox/provider";
 import {
   closeTestDatabase,
   createTestDatabase,
   type TestDatabase,
 } from "../database/test-db";
-import { KyselySandboxRunnerStateStore } from "./sandbox-runner-state";
+import { KyselySandboxProviderStateStore } from "./sandbox-runner-state";
 import { createTestSchema } from "./test-helpers";
 
-describe("KyselySandboxRunnerStateStore", () => {
+describe("KyselySandboxProviderStateStore", () => {
   let database: TestDatabase;
-  let store: KyselySandboxRunnerStateStore;
+  let store: KyselySandboxProviderStateStore;
 
   beforeAll(async () => {
     database = await createTestDatabase();
     await createTestSchema(database.db);
-    store = new KyselySandboxRunnerStateStore(database.db);
+    store = new KyselySandboxProviderStateStore(database.db);
   });
 
   afterAll(async () => {
@@ -31,12 +31,12 @@ describe("KyselySandboxRunnerStateStore", () => {
   it("put + get round-trips all fields", async () => {
     const id = mkId("round-trip");
     const before = Date.now();
-    await store.put(id, "docker", {
+    await store.put(id, "local-docker", {
       handle: "handle-round-trip",
       state: { token: "abc", hostPort: 1234, nested: { k: "v" } },
     });
 
-    const row = await store.get(id, "docker");
+    const row = await store.get(id, "local-docker");
     expect(row).not.toBeNull();
     expect(row!.handle).toBe("handle-round-trip");
     expect(row!.state).toEqual({
@@ -50,18 +50,18 @@ describe("KyselySandboxRunnerStateStore", () => {
     expect(row!.updatedAt.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
   });
 
-  it("put UPSERTs on same (user_id, project_ref, runner_kind)", async () => {
+  it("put UPSERTs on same (user_id, project_ref, sandbox_provider_kind)", async () => {
     const id = mkId("upsert");
-    await store.put(id, "docker", {
+    await store.put(id, "local-docker", {
       handle: "upsert-handle-1",
       state: { version: 1 },
     });
-    await store.put(id, "docker", {
+    await store.put(id, "local-docker", {
       handle: "upsert-handle-2",
       state: { version: 2 },
     });
 
-    const row = await store.get(id, "docker");
+    const row = await store.get(id, "local-docker");
     expect(row).not.toBeNull();
     expect(row!.handle).toBe("upsert-handle-2");
     expect(row!.state).toEqual({ version: 2 });
@@ -69,8 +69,8 @@ describe("KyselySandboxRunnerStateStore", () => {
     // Verify only one row exists for this (user, project, kind).
     const { rows } = await database.pglite.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM sandbox_runner_state
-         WHERE user_id = $1 AND project_ref = $2 AND runner_kind = $3`,
-      [id.userId, id.projectRef, "docker"],
+         WHERE user_id = $1 AND project_ref = $2 AND sandbox_provider_kind = $3`,
+      [id.userId, id.projectRef, "local-docker"],
     );
     expect(rows[0]!.count).toBe("1");
   });
@@ -80,7 +80,7 @@ describe("KyselySandboxRunnerStateStore", () => {
     const id2 = mkId("dup-handle-b");
     const sharedHandle = "shared-handle-conflict";
 
-    await store.put(id1, "docker", {
+    await store.put(id1, "local-docker", {
       handle: sharedHandle,
       state: { which: "a" },
     });
@@ -97,32 +97,32 @@ describe("KyselySandboxRunnerStateStore", () => {
 
   it("delete removes the row", async () => {
     const id = mkId("delete");
-    await store.put(id, "docker", {
+    await store.put(id, "local-docker", {
       handle: "delete-handle",
       state: { x: 1 },
     });
-    expect(await store.get(id, "docker")).not.toBeNull();
+    expect(await store.get(id, "local-docker")).not.toBeNull();
 
-    await store.delete(id, "docker");
-    expect(await store.get(id, "docker")).toBeNull();
+    await store.delete(id, "local-docker");
+    expect(await store.get(id, "local-docker")).toBeNull();
   });
 
   it("deleteByHandle removes the row", async () => {
     const id = mkId("delete-by-handle");
     const handle = "delete-by-handle-h";
-    await store.put(id, "docker", { handle, state: { x: 1 } });
-    expect(await store.get(id, "docker")).not.toBeNull();
+    await store.put(id, "local-docker", { handle, state: { x: 1 } });
+    expect(await store.get(id, "local-docker")).not.toBeNull();
 
-    await store.deleteByHandle("docker", handle);
-    expect(await store.get(id, "docker")).toBeNull();
+    await store.deleteByHandle("local-docker", handle);
+    expect(await store.get(id, "local-docker")).toBeNull();
   });
 
   it("getByHandle returns populated row with id", async () => {
     const id = mkId("get-by-handle");
     const handle = "get-by-handle-h";
-    await store.put(id, "docker", { handle, state: { token: "t" } });
+    await store.put(id, "local-docker", { handle, state: { token: "t" } });
 
-    const row = await store.getByHandle("docker", handle);
+    const row = await store.getByHandle("local-docker", handle);
     expect(row).not.toBeNull();
     expect(row!.handle).toBe(handle);
     expect(row!.id).toEqual(id);
@@ -133,7 +133,7 @@ describe("KyselySandboxRunnerStateStore", () => {
   it("getByHandle returns null when kind does not match", async () => {
     const id = mkId("kind-mismatch");
     const handle = "kind-mismatch-handle";
-    await store.put(id, "docker", { handle, state: {} });
+    await store.put(id, "local-docker", { handle, state: {} });
 
     const row = await store.getByHandle("host", handle);
     expect(row).toBeNull();
@@ -141,8 +141,8 @@ describe("KyselySandboxRunnerStateStore", () => {
 
   it("withLock returns the callback's result and persists writes", async () => {
     const id = mkId("withlock-happy");
-    const result = await store.withLock(id, "docker", async (scoped) => {
-      await scoped.put(id, "docker", {
+    const result = await store.withLock(id, "local-docker", async (scoped) => {
+      await scoped.put(id, "local-docker", {
         handle: "withlock-happy-handle",
         state: { ok: true },
       });
@@ -150,7 +150,7 @@ describe("KyselySandboxRunnerStateStore", () => {
     });
     expect(result).toBe(42);
 
-    const row = await store.get(id, "docker");
+    const row = await store.get(id, "local-docker");
     expect(row).not.toBeNull();
     expect(row!.handle).toBe("withlock-happy-handle");
     expect(row!.state).toEqual({ ok: true });
@@ -161,8 +161,8 @@ describe("KyselySandboxRunnerStateStore", () => {
     const boom = new Error("boom");
 
     await expect(
-      store.withLock(id, "docker", async (scoped) => {
-        await scoped.put(id, "docker", {
+      store.withLock(id, "local-docker", async (scoped) => {
+        await scoped.put(id, "local-docker", {
           handle: "withlock-throw-handle",
           state: { bad: true },
         });
@@ -171,7 +171,7 @@ describe("KyselySandboxRunnerStateStore", () => {
     ).rejects.toThrow("boom");
 
     // The put inside the throwing txn must not be visible.
-    const row = await store.get(id, "docker");
+    const row = await store.get(id, "local-docker");
     expect(row).toBeNull();
   });
 
@@ -186,14 +186,14 @@ describe("KyselySandboxRunnerStateStore", () => {
     const firstStarted = Promise.withResolvers<void>();
     let secondSawHandle: string | undefined;
 
-    const first = store.withLock(id, "docker", async (scoped) => {
+    const first = store.withLock(id, "local-docker", async (scoped) => {
       firstStarted.resolve();
-      await scoped.put(id, "docker", {
+      await scoped.put(id, "local-docker", {
         handle: "serialize-handleA",
         state: { step: "A" },
       });
       await new Promise((r) => setTimeout(r, 50));
-      await scoped.put(id, "docker", {
+      await scoped.put(id, "local-docker", {
         handle: "serialize-handleB",
         state: { step: "B" },
       });
@@ -202,8 +202,8 @@ describe("KyselySandboxRunnerStateStore", () => {
 
     const second = (async () => {
       await firstStarted.promise;
-      return store.withLock(id, "docker", async (scoped) => {
-        const row = await scoped.get(id, "docker");
+      return store.withLock(id, "local-docker", async (scoped) => {
+        const row = await scoped.get(id, "local-docker");
         secondSawHandle = row?.handle;
         return "second-done";
       });

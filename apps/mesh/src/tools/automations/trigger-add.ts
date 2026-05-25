@@ -1,11 +1,13 @@
 /**
  * AUTOMATION_TRIGGER_ADD Tool
  *
- * Adds a trigger (cron or event) to an automation.
+ * Adds a trigger (cron, event, or webhook) to an automation.
  * - Cron triggers: validated with croner, minimum interval enforced
  *   (`AUTOMATION_CRON_MIN_INTERVAL_MS`) to keep one tenant from flooding the
  *   DBOS scheduler and gate queues.
  * - Event triggers: fail-atomic — if TRIGGER_CONFIGURE call fails, trigger is not inserted
+ * - Webhook triggers: mint a Better Auth API key scoped to the trigger and
+ *   return the plaintext token + URL. Token is shown only here.
  */
 
 import { computeNextRunAt } from "../../automations/fire";
@@ -15,6 +17,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
+import { webhookPermissionResource, webhookUrl } from "./webhook-trigger";
 
 // Cluster-wide floor on cron firing frequency. Tighter than the 60s floor
 // the old NATS dispatcher allowed: each fire writes ~4 DBOS workflow rows
@@ -31,7 +34,8 @@ const CRON_PROBE_RUNS = 10;
 
 export const AUTOMATION_TRIGGER_ADD = defineTool({
   name: "AUTOMATION_TRIGGER_ADD",
-  description: "Add a cron or event-based trigger to an automation.",
+  description:
+    "Add a cron, event, or webhook trigger to an automation. For webhook triggers the response includes a one-time URL + secret token.",
   annotations: {
     title: "Add Trigger",
     readOnlyHint: false,
@@ -41,7 +45,7 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
   },
   inputSchema: z.object({
     automation_id: z.string(),
-    type: z.enum(["cron", "event"]),
+    type: z.enum(["cron", "event", "webhook"]),
     cron_expression: z.string().optional(),
     connection_id: z.string().optional(),
     event_type: z.string().optional(),
@@ -50,8 +54,17 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
   outputSchema: z.object({
     id: z.string(),
     automation_id: z.string(),
-    type: z.enum(["cron", "event"]),
+    type: z.enum(["cron", "event", "webhook"]),
     created_at: z.string(),
+    // Only set for `type: "webhook"`. The token is plaintext and is
+    // shown only here — rotate via AUTOMATION_TRIGGER_ROTATE_TOKEN.
+    webhook: z
+      .object({
+        url: z.string(),
+        token: z.string(),
+      })
+      .nullable()
+      .optional(),
   }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -128,6 +141,7 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
         params: input.params ? JSON.stringify(input.params) : null,
         last_run_at: null,
         next_run_at: null,
+        api_key_id: null,
         created_at: "",
       };
 
@@ -160,9 +174,44 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       next_run_at: nextRunAt?.toISOString() ?? null,
     });
 
+    // For webhook triggers, mint a Better Auth API key now that we know
+    // the trigger id (so the permission can be scoped to it). If the key
+    // creation fails, roll the trigger insert back so the user doesn't
+    // end up with an unfireable webhook trigger.
+    let webhook: { url: string; token: string } | null = null;
+    if (input.type === "webhook") {
+      try {
+        const created = await ctx.boundAuth.apiKey.create({
+          name: `webhook:${automation.name}:${trigger.id.slice(0, 8)}`,
+          permissions: { [webhookPermissionResource(trigger.id)]: ["FIRE"] },
+          metadata: {
+            kind: "webhook_trigger",
+            automation_id: automation.id,
+            trigger_id: trigger.id,
+          },
+        });
+        await ctx.storage.automations.setTriggerApiKeyId(
+          trigger.id,
+          created.id,
+        );
+        webhook = {
+          url: webhookUrl(ctx.baseUrl, organization.slug, trigger.id),
+          token: created.key,
+        };
+      } catch (err) {
+        await ctx.storage.automations.removeTrigger(
+          trigger.id,
+          trigger.automation_id,
+        );
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to mint webhook token: ${msg}`);
+      }
+    }
+
     // Register the DBOS schedule for cron triggers so it fires without
     // waiting for the boot-time reconciler. Event triggers don't have
     // schedules (they fire on AutomationEventDispatcher.dispatchForEvents).
+    // Webhook triggers also have no schedule — they fire on HTTP POST.
     await syncTriggerCreated(trigger, automation);
 
     return {
@@ -170,6 +219,7 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
       automation_id: trigger.automation_id,
       type: trigger.type,
       created_at: trigger.created_at,
+      webhook,
     };
   },
 });

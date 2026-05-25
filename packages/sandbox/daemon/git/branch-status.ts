@@ -117,7 +117,7 @@ export class BranchStatusMonitor {
       return gitSync(args, {
         cwd: this.config.repoDir,
         // Pin discovery to repoDir so a parent .git (e.g. the host's
-        // workspace tree containing .deco/sandboxes/<handle>/repo) can't
+        // workspace tree containing sandboxes/<handle>/repo) can't
         // hijack the lookup and report the wrong branch.
         env: { ...process.env, GIT_CEILING_DIRECTORIES: this.config.repoDir },
       });

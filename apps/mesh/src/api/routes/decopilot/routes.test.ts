@@ -1,15 +1,30 @@
 /**
- * Tests for Decopilot route helpers.
+ * Tests for Decopilot route helpers + POST /messages dispatch-target
+ * resolution.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { MeshContext } from "@/core/mesh-context";
-import { computeIdempotencyKey, createDecopilotRoutes } from "./routes";
-import type { CancelBroadcast } from "./cancel-broadcast";
-import type { RunRegistry } from "./run-registry";
-import type { StreamBuffer } from "./stream-buffer";
+import type { Capability } from "@/links/protocol";
+import { createInMemoryLinkRegistry } from "../../../links/link-registry";
+import { computeIdempotencyKey } from "./routes";
 import type { ChatMessage } from "./types";
+
+// Capture the REAL implementations of every module we mock below so we
+// can put them back in `afterAll`. Static imports are hoisted to the
+// top of the module and evaluated before the `mock.module()` calls
+// further down, so these references point at the originals. Without
+// these the mocks installed by this file persist for the entire shard
+// and break sibling tests (e.g. model-permissions.test.ts, which
+// imports `./model-permissions` and ends up reading our stub instead
+// of the real functions).
+const _realModelPermissions = await import("./model-permissions");
+const _realResolveTier = await import("@/core/resolve-tier");
+const _realDispatchQueue = await import("@/dispatch-queue");
+const _realResolveDefaultSandboxProviderKind = await import(
+  "@/sandbox/resolve-default-provider-kind"
+);
 
 describe("computeIdempotencyKey", () => {
   test("returns undefined for no message", () => {
@@ -96,60 +111,136 @@ describe("computeIdempotencyKey", () => {
 });
 
 // ============================================================================
-// Stream Endpoint — pure live tail (no snapshot)
+// POST /:org/decopilot/threads/:threadId/messages — VM-based dispatch
 // ============================================================================
+//
+// Bun's mock.module is module-global within a shard. Register stubs for
+// `resolveTier`, `model-permissions`, `dispatch-queue`, `ensureSandbox`
+// and Hono helpers BEFORE importing routes so the route module captures the
+// mocked implementations. Other tests in this file don't import the route
+// factory, so the mocks don't bleed into them.
 
-interface StreamTestSetup {
-  app: Hono<{ Variables: { meshContext: MeshContext } }>;
-  listMessagesCalls: number;
-}
+// Capture the real implementations BEFORE mocking so we can restore them in
+// afterAll. Bun's mock.module is module-global within a shard, and
+// model-permissions.test.ts (same shard) imports the real module — without
+// restoration the stub here causes that file's tests to fail.
+const realModelPermissions = await import("./model-permissions");
 
-function makeStreamApp(opts: {
-  threadStatus?: "idle" | "in_progress";
-  tailChunks?: ReadableStream | null;
-}): StreamTestSetup {
-  let listMessagesCalls = 0;
+mock.module("@/core/resolve-tier", () => ({
+  resolveTier: async () => ({
+    credentialId: "cred_local",
+    modelId: "claude-3-5-sonnet",
+    modelMeta: { title: "Claude 3.5 Sonnet", capabilities: [], limits: null },
+  }),
+  TierUnavailableError: class TierUnavailableError extends Error {},
+}));
+
+mock.module("./model-permissions", () => ({
+  fetchModelPermissions: async () => undefined, // no restriction
+  checkModelPermission: () => true,
+  parseModelsToMap: () => ({}),
+}));
+
+mock.module("@/dispatch-queue", () => ({
+  enqueueThreadRun: async () => ({ workflowID: "wf_test" }),
+}));
+
+afterAll(() => {
+  mock.module("./model-permissions", () => realModelPermissions);
+});
+
+// `./helpers` is mocked minimally — only `ensureOrganization` is exercised
+// on the 409 path, and the real one already works against our stub context.
+// We do NOT mock the module, to keep the rest of the imports intact.
+
+// The POST handler resolves the sandbox provider kind to feed
+// `resolveDispatchTarget` and to persist on the thread row, but no longer
+// eagerly provisions a sandbox — that happens lazily inside the built-in
+// tools layer on the first VM-tool call. We only need to stub the kind
+// resolver; each test pins it via the module-level `vmKindForTest`.
+type VmKind = "local-docker" | "cluster" | "user-desktop";
+let vmKindForTest: VmKind = "local-docker";
+
+mock.module("@/sandbox/resolve-default-provider-kind", () => ({
+  resolveDefaultSandboxProviderKind: async () => vmKindForTest,
+}));
+
+const { createDecopilotRoutes } = await import("./routes");
+
+const THREAD_ID = "thread_test_1";
+const AGENT_ID = "agent_1";
+const BRANCH = "main";
+
+function buildApp(opts: {
+  vmKind: VmKind;
+  linkOnline: boolean;
+  linkCapabilities?: Capability[];
+  userId?: string;
+  /**
+   * Controls what the `threads.get` stub returns for (sandbox_provider_kind,
+   * harness_id). Defaults to already-pinned values so existing "VM-based
+   * dispatch" tests continue to act like subsequent messages. Pass both as
+   * null to simulate a first-message scenario where no pins have been
+   * persisted yet.
+   */
+  threadPins?: {
+    sandbox_provider_kind?: string | null;
+    harness_id?: string | null;
+  };
+}) {
+  vmKindForTest = opts.vmKind;
+
+  const resolvedPins = opts.threadPins ?? {
+    sandbox_provider_kind: opts.vmKind,
+    harness_id: "claude-code",
+  };
+
+  const linkRegistry = createInMemoryLinkRegistry({
+    nowSeconds: () => Math.floor(Date.now() / 1000),
+  });
+
+  const threadUpdateSpy = mock(async () => {});
 
   const ctx = {
-    organization: { id: "org_1", slug: "acme" },
-    auth: { user: { id: "user_1" } },
+    organization: { id: "org_1", slug: "org_1" },
+    auth: { user: { id: opts.userId ?? "user_1" } },
     storage: {
+      aiProviderKeys: {
+        findById: mock(async () => ({
+          id: "cred_local",
+          providerId: "claude-code",
+        })),
+      },
       threads: {
-        get: async () => ({
-          id: "thread_1",
+        get: mock(async () => ({
+          id: THREAD_ID,
+          branch: BRANCH,
+          sandbox_provider_kind: resolvedPins.sandbox_provider_kind ?? null,
+          harness_id: resolvedPins.harness_id ?? null,
+        })),
+        update: threadUpdateSpy,
+      },
+      virtualMcps: {
+        findById: mock(async () => ({
+          id: AGENT_ID,
           organization_id: "org_1",
-          status: opts.threadStatus ?? "idle",
-          created_by: "user_1",
-        }),
-        listMessages: async () => {
-          listMessagesCalls += 1;
-          return { messages: [], total: 0 };
-        },
+          metadata: {
+            sandboxMap: {
+              user_1: {
+                [BRANCH]: {
+                  sandboxHandle: "vm_test",
+                  previewUrl: null,
+                  sandboxProviderKind: opts.vmKind,
+                },
+              },
+            },
+          },
+        })),
       },
     },
+    linkRegistry,
+    db: {} as MeshContext["db"],
   } as unknown as MeshContext;
-
-  const tail =
-    opts.tailChunks === undefined
-      ? new ReadableStream({
-          start(controller) {
-            controller.close();
-          },
-        })
-      : opts.tailChunks;
-
-  const streamBuffer = {
-    init: async () => {},
-    pump: () => {},
-    purge: () => {},
-    teardown: () => {},
-    createTailStream: async () => tail,
-  } as unknown as StreamBuffer;
-
-  const cancelBroadcast = {
-    broadcast: () => {},
-  } as unknown as CancelBroadcast;
-  const runRegistry = {} as unknown as RunRegistry;
 
   const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
   app.use("*", async (c, next) => {
@@ -157,67 +248,237 @@ function makeStreamApp(opts: {
     await next();
   });
   app.route(
-    "/",
-    createDecopilotRoutes({ cancelBroadcast, streamBuffer, runRegistry }),
+    "/api",
+    createDecopilotRoutes({
+      cancelBroadcast: {
+        start: async () => {},
+        broadcast: () => {},
+        stop: async () => {},
+      } as unknown as Parameters<
+        typeof createDecopilotRoutes
+      >[0]["cancelBroadcast"],
+      streamBuffer: {} as Parameters<
+        typeof createDecopilotRoutes
+      >[0]["streamBuffer"],
+      runRegistry: {} as Parameters<
+        typeof createDecopilotRoutes
+      >[0]["runRegistry"],
+      linkRegistry,
+    }),
   );
 
-  return {
-    app,
-    get listMessagesCalls() {
-      return listMessagesCalls;
-    },
+  // Populate the link registry if the test scenario requires an online link.
+  const seedLink = async () => {
+    if (opts.linkOnline) {
+      await linkRegistry.put(opts.userId ?? "user_1", {
+        machineId: "m1",
+        cliVersion: "1.0.0",
+        protocolVersion: 1,
+        capabilities:
+          opts.linkCapabilities ?? (["claude-code"] as Capability[]),
+        tunnelUrl: "http://localhost:5174",
+        linkSecret: "secret-hash",
+        createdAt: new Date().toISOString(),
+      });
+    }
   };
+
+  return { app, linkRegistry, ctx, seedLink, threadUpdateSpy };
 }
 
-async function readSseBody(res: Response): Promise<string> {
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buf = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-  }
-  buf += decoder.decode();
-  return buf;
-}
+describe("POST /messages — VM-based dispatch", () => {
+  const validBody = {
+    messages: [
+      {
+        role: "user",
+        parts: [{ type: "text", text: "hi" }],
+      },
+    ],
+    agent: { id: AGENT_ID },
+    branch: BRANCH,
+    temperature: 0.5,
+  };
 
-describe("GET /:org/decopilot/threads/:threadId/stream", () => {
-  test("does not call listMessages or emit a snapshot frame", async () => {
-    const setup = makeStreamApp({});
-
-    const res = await setup.app.request(
-      "/acme/decopilot/threads/thread_1/stream",
+  test("VM with user-desktop kind + no online link → 409 user_desktop_link_offline", async () => {
+    const { app } = buildApp({ vmKind: "user-desktop", linkOnline: false });
+    const res = await app.request(
+      `/api/org_1/decopilot/threads/${THREAD_ID}/messages`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(validBody),
+      },
     );
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/event-stream");
-
-    const body = await readSseBody(res);
-
-    // No snapshot frame anywhere in the response — the client owns initial
-    // load via COLLECTION_THREAD_MESSAGES_LIST.
-    expect(body).not.toContain("event: snapshot");
-
-    // Handler never touches storage.threads.listMessages.
-    expect(setup.listMessagesCalls).toBe(0);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; code: string };
+    expect(body.error).toBe("link_unavailable");
+    expect(body.code).toBe("user_desktop_link_offline");
   });
 
-  test("forwards tail chunks from streamBuffer with no preceding snapshot", async () => {
-    const tail = new ReadableStream({
-      start(controller) {
-        controller.enqueue({ type: "start" });
-        controller.close();
+  test("VM with user-desktop kind + link missing capability → 409 user_desktop_link_capability_missing", async () => {
+    const { app, seedLink } = buildApp({
+      vmKind: "user-desktop",
+      linkOnline: true,
+      linkCapabilities: ["decopilot-sandbox"],
+    });
+    await seedLink();
+    // Link exists but only advertises decopilot-sandbox — claude-code
+    // provider expects "claude-code".
+    const res = await app.request(
+      `/api/org_1/decopilot/threads/${THREAD_ID}/messages`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(validBody),
+      },
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as {
+      error: string;
+      code: string;
+      activeCapabilities: string[];
+    };
+    expect(body.code).toBe("user_desktop_link_capability_missing");
+    expect(body.activeCapabilities).toEqual(["decopilot-sandbox"]);
+  });
+
+  test("VM with cloud kind → 202 (target is local/default)", async () => {
+    const { app } = buildApp({ vmKind: "local-docker", linkOnline: false });
+    const res = await app.request(
+      `/api/org_1/decopilot/threads/${THREAD_ID}/messages`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(validBody),
+      },
+    );
+    expect(res.status).toBe(202);
+  });
+});
+
+// ============================================================================
+// POST /messages — first-message pinning
+// ============================================================================
+//
+// These tests exercise the logic added in Task 3.2:
+//   - First message (thread row has null pins) → derive + persist pins.
+//   - Subsequent message (thread row already has pins) → use them, no update.
+
+describe("POST /messages — first-message pinning", () => {
+  const validBody = {
+    messages: [
+      {
+        role: "user",
+        parts: [{ type: "text", text: "hi" }],
+      },
+    ],
+    agent: { id: AGENT_ID },
+    branch: BRANCH,
+    temperature: 0.5,
+  };
+
+  test("first message with explicit pins persists them and uses them", async () => {
+    const { app, seedLink, threadUpdateSpy } = buildApp({
+      vmKind: "user-desktop",
+      linkOnline: true,
+      threadPins: { sandbox_provider_kind: null, harness_id: null },
+    });
+    await seedLink();
+    const res = await app.request(
+      `/api/org_1/decopilot/threads/${THREAD_ID}/messages`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...validBody,
+          sandboxProviderKind: "user-desktop",
+          harnessId: "claude-code",
+        }),
+      },
+    );
+    expect(res.status).toBe(202);
+    expect(threadUpdateSpy).toHaveBeenCalledWith(
+      THREAD_ID,
+      expect.objectContaining({
+        sandbox_provider_kind: "user-desktop",
+        harness_id: "claude-code",
+      }),
+    );
+  });
+
+  test("first message without explicit pins derives defaults and persists", async () => {
+    const { app, seedLink, threadUpdateSpy } = buildApp({
+      vmKind: "user-desktop",
+      linkOnline: true,
+      threadPins: { sandbox_provider_kind: null, harness_id: null },
+    });
+    await seedLink();
+    const res = await app.request(
+      `/api/org_1/decopilot/threads/${THREAD_ID}/messages`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(validBody),
+      },
+    );
+    expect(res.status).toBe(202);
+    // link is online → resolveDefaultSandboxProviderKind returns vmKindForTest
+    // which is "user-desktop"
+    expect(threadUpdateSpy).toHaveBeenCalledWith(
+      THREAD_ID,
+      expect.objectContaining({
+        sandbox_provider_kind: "user-desktop",
+      }),
+    );
+  });
+
+  test("subsequent message ignores request pins and uses thread row", async () => {
+    // Thread is pinned to (user-desktop, claude-code). The request body sends
+    // harnessId: "decopilot" which would require the decopilot-sandbox
+    // capability. If the route mistakenly uses the body's harnessId, the link
+    // check fails with 409 user_desktop_link_capability_missing. Using the pinned harness
+    // (claude-code) instead → the link's claude-code capability matches → 202.
+    const { app, seedLink, threadUpdateSpy } = buildApp({
+      vmKind: "user-desktop",
+      linkOnline: true,
+      threadPins: {
+        sandbox_provider_kind: "user-desktop",
+        harness_id: "claude-code",
       },
     });
-    const setup = makeStreamApp({ tailChunks: tail });
-
-    const res = await setup.app.request(
-      "/acme/decopilot/threads/thread_1/stream",
+    await seedLink();
+    const res = await app.request(
+      `/api/org_1/decopilot/threads/${THREAD_ID}/messages`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...validBody,
+          sandboxProviderKind: "local-docker", // should be ignored — thread row has user-desktop
+          harnessId: "decopilot", // should be ignored — thread row has claude-code
+        }),
+      },
     );
-    expect(res.status).toBe(200);
-
-    const body = await readSseBody(res);
-    expect(body).not.toContain("event: snapshot");
-    expect(body).toContain('"type":"start"');
+    // 202 proves the pinned harness (claude-code) was used, not "decopilot"
+    // which would have produced a 409 user_desktop_link_capability_missing.
+    expect(res.status).toBe(202);
+    // Pins were already set — no update should be written.
+    expect(threadUpdateSpy).not.toHaveBeenCalled();
   });
+});
+
+// Restore the originals at the end of the shard. Bun's `mock.module()`
+// replaces the module registry process-wide, so without re-pointing
+// these modules back to their real implementations any sibling test
+// file that runs after us in the same `bun test ...` invocation
+// continues to see our stubs. See the captured `_real*` namespaces at
+// the top of this file.
+afterAll(() => {
+  mock.module("./model-permissions", () => _realModelPermissions);
+  mock.module("@/core/resolve-tier", () => _realResolveTier);
+  mock.module("@/dispatch-queue", () => _realDispatchQueue);
+  mock.module(
+    "@/sandbox/resolve-default-provider-kind",
+    () => _realResolveDefaultSandboxProviderKind,
+  );
 });

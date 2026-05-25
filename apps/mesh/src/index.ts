@@ -29,10 +29,15 @@ const { DBOS } = await import("@dbos-inc/dbos-sdk");
 // DBOS uses its own pg client (separate from mesh's pool), so the `sslmode`
 // must travel in the URL. RDS's pg_hba.conf rejects unencrypted connections
 // with `no pg_hba.conf entry for host ... no encryption` when this is missing.
+// Use `verify-full` explicitly: pg-connection-string v2 silently upgrades
+// `require` to `verify-full`, but v3 / pg v9 will drop that upgrade and treat
+// `require` as encrypt-without-verification (libpq semantics).
 function withSslmode(url: string, ssl: boolean): string {
   if (!ssl) return url;
   const u = new URL(url);
-  if (!u.searchParams.has("sslmode")) u.searchParams.set("sslmode", "require");
+  if (!u.searchParams.has("sslmode")) {
+    u.searchParams.set("sslmode", "verify-full");
+  }
   return u.toString();
 }
 DBOS.setConfig({
@@ -111,59 +116,59 @@ const previewProxyDeps = {
   baseDomain: previewBaseDomain ?? "",
   getRunner: async () => {
     const runner = await getOrInitRunnerForPreview();
-    if (!runner || runner.kind !== "agent-sandbox") return null;
-    // The agent-sandbox runner is the only one that exposes proxyPreviewRequest /
+    if (!runner || runner.kind !== "cluster") return null;
+    // The cluster (agent-sandbox) runner is the only one that exposes proxyPreviewRequest /
     // resolvePreviewUpstreamUrl; cast is safe after the kind check.
-    return runner as unknown as import("@decocms/sandbox/runner/agent-sandbox").AgentSandboxRunner;
+    return runner as unknown as import("@decocms/sandbox/provider/agent-sandbox").AgentSandboxProvider;
   },
 };
 
-// Boot/dev wiring for local runners (docker + host). The boot sweep is
-// Docker-only — host runner's rehydrate() probes /health and discards dead
-// state on its own. The local ingress is shared by both runners.
-const { resolveRunnerKindFromEnv } = await import("@decocms/sandbox/runner");
-const sandboxRunnerKind = resolveRunnerKindFromEnv();
-const ingressEligible =
-  sandboxRunnerKind === "docker" || sandboxRunnerKind === "host";
+// Boot/dev wiring for the Docker runner. The boot sweep + local ingress
+// are local-docker-only — other runners (cluster, user-desktop)
+// either don't run on this machine or expose previews via their own
+// publicly-reachable URLs.
+const { resolveSandboxProviderKindFromEnv } = await import(
+  "@decocms/sandbox/provider"
+);
+const sandboxProviderKind = resolveSandboxProviderKindFromEnv();
+const ingressEligible = sandboxProviderKind === "local-docker";
 
 if (ingressEligible) {
-  const { startLocalSandboxIngress } = await import("@decocms/sandbox/runner");
-  const { getSharedRunnerIfInit, getOrInitSharedRunner } = await import(
-    "./sandbox/lifecycle"
+  const { startLocalSandboxIngress } = await import(
+    "@decocms/sandbox/provider"
   );
+  const { getSharedSandboxProviderIfInit, getOrInitSharedRunner } =
+    await import("./sandbox/lifecycle");
 
   // Boot sweep (best-effort). Shutdown cleanup can't cover crashes —
   // SIGTERM races with the parent killing postgres — so the boot sweep is
   // what actually keeps `docker ps` empty between sessions.
-  // Host runner's rehydrate() probes /health and discards dead state on its own.
-  if (sandboxRunnerKind === "docker") {
-    const { sweepDockerOrphansOnBoot } = await import(
-      "@decocms/sandbox/runner"
-    );
-    await sweepDockerOrphansOnBoot();
-  }
+  const { sweepDockerOrphansOnBoot } = await import(
+    "@decocms/sandbox/provider"
+  );
+  await sweepDockerOrphansOnBoot();
 
   // Port 7070 default: macOS AirPlay Receiver owns `*:7000` on v4+v6, so a
   // Chrome Happy-Eyeballs race would hit Apple. The ingress is part of the
-  // host/docker runner contract — those runners only expose user dev servers
-  // through `<handle>.localhost:7070`, so the gate is the runner kind, not
+  // Docker runner contract — Docker exposes user dev servers through
+  // `<handle>.localhost:7070`, so the gate is the runner kind, not
   // NODE_ENV. Set `SANDBOX_INGRESS_PORT=0` to skip binding entirely.
   const ingressPort = Number(process.env.SANDBOX_INGRESS_PORT ?? 7070);
   if (ingressPort > 0) {
     ingressServers = startLocalSandboxIngress(() => {
-      const r = getSharedRunnerIfInit();
+      const r = getSharedSandboxProviderIfInit();
       if (!r) return null;
-      if (r.kind !== "docker" && r.kind !== "host") return null;
-      // Both DockerSandboxRunner and HostSandboxRunner expose
-      // resolveDaemonPort; the structural cast is safe after the kind check.
+      if (r.kind !== "local-docker") return null;
+      // DockerSandboxProvider exposes resolveDaemonPort; the structural
+      // cast is safe after the kind check.
       return r as unknown as {
         resolveDaemonPort(handle: string): Promise<number | null>;
       };
     }, ingressPort);
 
-    // Construct the runner up-front. The first preview-iframe request
-    // typically arrives on a page reload with a warm vmMap, before either
-    // VM_START or `/api/vm-events` has touched the runner — without this
+    // Construct the provider up-front. The first preview-iframe request
+    // typically arrives on a page reload with a warm sandboxMap, before either
+    // SANDBOX_START or `/api/vm-events` has touched the provider — without this
     // eager init the ingress would 503 with "Sandbox Runner Not Initialized".
     await getOrInitSharedRunner();
   }
@@ -254,6 +259,35 @@ if (settings.localMode) {
       try {
         const seeded = await seedLocalMode();
         void seeded;
+        // When the cluster is in dev mode (MESH_ALLOW_LOCALHOST_LINKS=1
+        // set by `bun run dev`), bootstrap an API-key-backed session for
+        // the desktop-side link binary that `bun run dev` auto-spawns.
+        // The link reads it from `<DATA_DIR>/dev-link/session.json` and
+        // presents the API key as a Bearer token to POST /api/links.
+        if (process.env.MESH_ALLOW_LOCALHOST_LINKS === "1") {
+          try {
+            const { bootstrapDevLinkSession } = await import(
+              "./auth/dev-link-session"
+            );
+            const clusterBaseUrl =
+              settings.baseUrl ?? `http://localhost:${settings.port}`;
+            const result = await bootstrapDevLinkSession(
+              settings.dataDir,
+              clusterBaseUrl,
+            );
+            if (result) {
+              console.log(
+                `[dev-link] session ready at ${result.path} (userSub=${result.userSub})`,
+              );
+            } else {
+              console.warn(
+                "[dev-link] no admin user yet — skipping session bootstrap. The auto-spawned link will refuse to start until an admin exists.",
+              );
+            }
+          } catch (err) {
+            console.error("[dev-link] bootstrap failed:", err);
+          }
+        }
       } catch (error) {
         console.error("Failed to seed local mode:", error);
       } finally {

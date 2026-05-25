@@ -37,18 +37,19 @@
  */
 
 import { streamText, type UIMessageChunk } from "ai";
-import {
-  createCodexModel,
-  resolveCodexModelId,
-} from "../../ai-providers/adapters/codex";
-import type { MeshContext } from "../../core/mesh-context";
+import { createCodexModel, resolveCodexModelId } from "./model";
 import { prepCliMessages } from "../cli-message-prep";
-import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
+import type {
+  Harness,
+  HarnessContext,
+  HarnessFactory,
+  HarnessStreamInput,
+} from "../types";
 import { createUsageAccumulator } from "../usage-accumulator";
 
 export const codexHarnessFactory: HarnessFactory = {
   id: "codex",
-  create(_ctx: MeshContext): Harness {
+  create(_ctx: HarnessContext): Harness {
     return {
       id: "codex",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {

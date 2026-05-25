@@ -414,6 +414,7 @@ function MessagePart({
           part={part}
           annotations={getMeta(part.toolCallId)?.annotations}
           latency={getMeta(part.toolCallId)?.latencySeconds}
+          outputBytes={getMeta(part.toolCallId)?.outputBytes}
           isLastMessage={isLastMessage}
           toolMeta={getMeta(part.toolCallId)?._meta}
         />
@@ -489,6 +490,7 @@ function MessagePart({
             part={fallback}
             annotations={meta?.annotations}
             latency={meta?.latencySeconds}
+            outputBytes={meta?.outputBytes}
             isLastMessage={isLastMessage}
             toolMeta={meta?._meta}
           />

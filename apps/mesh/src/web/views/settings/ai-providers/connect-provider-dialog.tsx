@@ -42,8 +42,6 @@ function activeProviderId(state: DialogState): string | null {
   switch (state.kind) {
     case "form":
     case "oauth-pending":
-    case "cli-pending":
-    case "cli-error":
     case "provision-pending":
     case "provision-error":
       return state.providerId;
@@ -128,48 +126,6 @@ export function ConnectProviderDialog({
     },
   });
 
-  const { mutate: activateCli } = useMutation({
-    mutationFn: async (providerId: string) => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_CLI_ACTIVATE",
-        arguments: { providerId },
-      })) as {
-        structuredContent?: { activated: boolean; error?: string };
-        isError?: boolean;
-        content?: { text?: string }[];
-      };
-      if (result?.isError) {
-        throw new Error(result.content?.[0]?.text ?? "CLI activation failed");
-      }
-      return { providerId, ...result.structuredContent };
-    },
-    onSuccess: (data) => {
-      if (!data?.activated) {
-        track("ai_provider_cli_activate_failed", {
-          provider_id: data.providerId,
-          error: data?.error ?? "unknown",
-        });
-        dispatch({
-          type: "cli-error",
-          error: data?.error ?? "CLI activation failed",
-        });
-        return;
-      }
-      track("ai_provider_cli_activated", { provider_id: data.providerId });
-      invalidateKeys();
-      const provider = providers.find((p) => p.id === data.providerId);
-      toast.success(`${provider?.name ?? "Provider"} activated`);
-      close();
-    },
-    onError: (err, providerId) => {
-      track("ai_provider_cli_activate_failed", {
-        provider_id: providerId,
-        error: err.message,
-      });
-      dispatch({ type: "cli-error", error: err.message });
-    },
-  });
-
   const { mutate: provisionKey } = useMutation({
     mutationFn: async (providerId: string) => {
       const result = (await client.callTool({
@@ -204,7 +160,6 @@ export function ConnectProviderDialog({
         ? (selection.preset?.id ?? null)
         : null;
     const supportsOAuth = provider.supportedMethods.includes("oauth-pkce");
-    const supportsCli = provider.supportedMethods.includes("cli-activate");
     const supportsApiKey = provider.supportedMethods.includes("api-key");
     const supportsProvision = provider.supportsProvision === true;
 
@@ -215,16 +170,6 @@ export function ConnectProviderDialog({
       });
       dispatch({ type: "select-provision", providerId: provider.id });
       provisionKey(provider.id);
-      return;
-    }
-
-    if (supportsCli) {
-      track("ai_provider_connect_clicked", {
-        provider_id: provider.id,
-        method: "cli-activate",
-      });
-      dispatch({ type: "select-cli", providerId: provider.id });
-      activateCli(provider.id);
       return;
     }
 
@@ -366,7 +311,7 @@ export function ConnectProviderDialog({
 
   return (
     <Dialog open={state.kind !== "closed"} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
             {showBack && (
@@ -429,17 +374,14 @@ export function ConnectProviderDialog({
           </div>
         )}
 
-        {(state.kind === "cli-pending" ||
-          state.kind === "provision-pending") && (
+        {state.kind === "provision-pending" && (
           <div className="flex flex-col items-center gap-4 py-8">
             <Spinner size="lg" />
-            <p className="text-sm text-muted-foreground">
-              {state.kind === "cli-pending" ? "Checking CLI…" : "Connecting…"}
-            </p>
+            <p className="text-sm text-muted-foreground">Connecting…</p>
           </div>
         )}
 
-        {(state.kind === "cli-error" || state.kind === "provision-error") && (
+        {state.kind === "provision-error" && (
           <div className="flex flex-col items-center gap-4 py-6">
             <AlertCircle size={28} className="text-destructive" />
             <p className="text-sm text-foreground text-center">{state.error}</p>
@@ -454,13 +396,8 @@ export function ConnectProviderDialog({
               <Button
                 size="sm"
                 onClick={() => {
-                  if (state.kind === "cli-error") {
-                    dispatch({ type: "retry-cli" });
-                    activateCli(state.providerId);
-                  } else {
-                    dispatch({ type: "retry-provision" });
-                    provisionKey(state.providerId);
-                  }
+                  dispatch({ type: "retry-provision" });
+                  provisionKey(state.providerId);
                 }}
               >
                 Retry

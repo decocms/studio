@@ -25,16 +25,19 @@
 import type { MeshContext } from "@/core/mesh-context";
 import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
-import { localDispatch } from "../../../harnesses";
+import { localDispatch } from "@/harnesses";
+import { remoteDispatch } from "@/harnesses/remote-dispatch";
+import { ensureSandbox } from "@/tools/sandbox/start";
+import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
   HarnessId,
   HarnessProcessLocal,
   HarnessStreamInput,
-} from "../../../harnesses/types";
+} from "@/harnesses";
 import {
   sanitizeStreamError,
   stringifyError,
-} from "../../../harnesses/decopilot/stream-error";
+} from "@/harnesses/decopilot/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { loadAndMergeMessages } from "./conversation";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
@@ -55,8 +58,8 @@ import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
 import type { ThreadMessage } from "@/storage/types";
-import type { PendingImage } from "../../../harnesses/decopilot/built-in-tools";
-import { getInternalUrl } from "@/core/server-constants";
+import type { PendingImage } from "@/harnesses/decopilot/built-in-tools";
+import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
 import { traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
@@ -105,8 +108,12 @@ function classifyStreamError(
  * Anything that isn't a recognized CLI agent provider id maps to
  * decopilot — the native in-tree harness. The CLI agent providers each
  * own their own harness (see `apps/mesh/src/harnesses/{claude-code,codex}`).
+ *
+ * Exported so POST /messages can resolve the harness up-front (before
+ * enqueuing onto the thread gate) to decide whether the request needs
+ * a link daemon and which capability to check.
  */
-function resolveHarnessId(providerId: string | undefined): HarnessId {
+export function resolveHarnessId(providerId: string | undefined): HarnessId {
   if (providerId === "claude-code") return "claude-code";
   if (providerId === "codex") return "codex";
   return "decopilot";
@@ -178,16 +185,30 @@ function lookupResumeSessionRef(
  * called for harnesses that actually open an HTTP MCP connection
  * (claude-code, codex); decopilot's in-process passthrough doesn't need
  * this.
+ *
+ * `targetRunsIn` decides which base URL to mint:
+ *   - `"cluster"` — `getInternalUrl()` (loopback; the harness runs inside
+ *     the cluster pod alongside the API).
+ *   - `"user-desktop"` — `getPublicUrl()` (the harness runs on the user's
+ *     desktop and dials the cluster back over the public network — or, in
+ *     dev mode, localhost via `MESH_ALLOW_LOCALHOST_LINKS=1`).
  */
+const MCP_KEY_TTL_SECONDS = 3600;
+
 async function mintMcpEndpoint(
   ctx: MeshContext,
   agentId: string,
   organization: { id: string; slug?: string; name?: string },
   apiKeyName: string,
-): Promise<{ url: string; headers: Record<string, string> }> {
+  targetRunsIn: DispatchTarget["runsIn"],
+): Promise<{
+  url: string;
+  headers: Record<string, string>;
+  expiresAt: number;
+}> {
   const apiKey = await ctx.boundAuth.apiKey.create({
     name: apiKeyName,
-    expiresIn: 3600,
+    expiresIn: MCP_KEY_TTL_SECONDS,
     metadata: {
       organization: {
         id: organization.id,
@@ -196,12 +217,18 @@ async function mintMcpEndpoint(
       },
     },
   });
+  const baseUrl =
+    targetRunsIn === "user-desktop" ? getPublicUrl() : getInternalUrl();
   return {
-    url: `${getInternalUrl()}/mcp/virtual-mcp/${agentId}`,
+    url: `${baseUrl}/mcp/virtual-mcp/${agentId}`,
     headers: {
       Authorization: `Bearer ${apiKey.key}`,
       "x-org-id": organization.id,
     },
+    // Wire-shape: HarnessStreamInputWire requires expiresAt for the
+    // remote-cli path so the daemon can pre-empt expiry with a refresh
+    // (v2 — currently only used for logging / forward-compat).
+    expiresAt: Date.now() + MCP_KEY_TTL_SECONDS * 1000,
   };
 }
 
@@ -230,6 +257,26 @@ export interface DispatchRunInput {
   isResume?: boolean;
   /** Persisted to the thread row on first-message creation. */
   branch?: string | null;
+  /**
+   * Pre-resolved dispatch target. Set by POST /messages before enqueuing
+   * onto the per-thread gate so the workflow body never has to call
+   * `resolveDispatchTarget` itself (avoids replay-time drift if the link
+   * goes offline between enqueue and dispatch). Defaults to
+   * `{ runsIn: "cluster", sandbox: "cluster" }` when omitted, preserving
+   * the pre-Phase-4 behavior.
+   */
+  target?: DispatchTarget;
+  /**
+   * Pre-resolved harness id (Decopilot / Claude Code / Codex) from POST
+   * /messages — taken from the thread's persisted pin or the request
+   * body. When omitted, falls back to deriving from the credential's
+   * provider id (legacy behavior; still correct for Decopilot).
+   *
+   * Necessary because the desktop-CLI harnesses no longer have an
+   * `ai_provider_keys` row to drive the credential→harness lookup —
+   * their `credentialId` is the sentinel `desktop:<harness>`.
+   */
+  harnessId?: HarnessId | null;
 }
 
 export interface DispatchRunDeps {
@@ -384,8 +431,42 @@ async function prepareRun(
     const credentialKey = await ctx.storage.aiProviderKeys
       .findById(input.models.credentialId, input.organizationId)
       .catch(() => null);
-    const harnessId = resolveHarnessId(credentialKey?.providerId);
+    // Prefer the pre-resolved pin from POST /messages (covers desktop-CLI
+    // harnesses whose synthetic credentialId doesn't match any row);
+    // fall back to deriving from the credential's provider id for legacy
+    // callers (e.g. older automation paths) that don't set `harnessId`.
+    const harnessId: HarnessId =
+      input.harnessId ?? resolveHarnessId(credentialKey?.providerId);
     rootSpan.setAttribute("decopilot.harnessId", harnessId);
+
+    // Resolve the dispatch target. POST /messages already runs
+    // `resolveDispatchTarget` and forwards the result on `input.target`;
+    // we re-read it here (defaulting to a cluster-default target for any
+    // caller — e.g. legacy automation paths — that hasn't been migrated
+    // yet).
+    const target: DispatchTarget = input.target ?? {
+      runsIn: "cluster",
+      sandbox: "cluster",
+    };
+
+    // Stash the resolved target on the context so downstream consumers
+    // (the desktop sandbox provider, remote-cli dispatch) can read it
+    // without re-querying the registry.
+    if (target.runsIn === "cluster") {
+      // Cluster harness: either the default cluster sandbox or, when
+      // sandbox is "user-desktop", tunnel sandbox tool calls to the user's
+      // link daemon.
+      ctx.sandboxPreference =
+        target.sandbox === "user-desktop" ? "user-desktop" : "cluster-default";
+      ctx.linkForCurrentRun = target.link;
+    } else {
+      // runsIn === "user-desktop": no in-cluster sandbox runs, but we
+      // still hold the link reference for the eventual remoteDispatch
+      // call below.
+      ctx.linkForCurrentRun = target.link;
+    }
+    rootSpan.setAttribute("decopilot.dispatchTarget.runsIn", target.runsIn);
+    rootSpan.setAttribute("decopilot.dispatchTarget.sandbox", target.sandbox);
 
     // 1. Check model permissions (decopilot-only; CLI harnesses run with
     //    the user's own provider credential / local CLI binary, which is
@@ -631,7 +712,14 @@ async function prepareRun(
         // in-process), so we skip the API-key mint for that path.
         const mcp =
           harnessId === "decopilot"
-            ? { url: "", headers: {} as Record<string, string> }
+            ? {
+                url: "",
+                headers: {} as Record<string, string>,
+                // Sentinel for the in-process decopilot path — its
+                // passthrough client doesn't consume mcp.* but the
+                // shared HarnessStreamInput type requires the field.
+                expiresAt: 0,
+              }
             : await mintMcpEndpoint(
                 ctx,
                 input.agent.id,
@@ -639,6 +727,7 @@ async function prepareRun(
                 harnessId === "claude-code"
                   ? "claude-code-session"
                   : "codex-session",
+                target.runsIn,
               );
 
         // Build the in-process extras that decopilot needs to participate
@@ -700,6 +789,15 @@ async function prepareRun(
           processLocal,
         };
 
+        // claude-code cwd resolution: with the `host` runner gone, the
+        // cluster never has a local on-disk workdir to point the CLI at,
+        // so the harness falls back to its own ambient cwd. Remote-user
+        // dispatch runs the harness inside the desktop daemon, where the
+        // daemon is spawned with workdir = sandbox path; remote-cli runs
+        // claude-code in-process on the user's machine (no resolver
+        // needed). Production runners (docker, agent-sandbox, freestyle)
+        // don't surface a local FS to mesh.
+
         // Dispatch through the registry. The harness produces a stream
         // of UIMessageChunk; we adapt it to a ReadableStream so it can
         // flow through writer.merge(). When a streamBuffer is wired, its
@@ -708,7 +806,42 @@ async function prepareRun(
         // tails. We do NOT pipe through the buffer here; the pump is
         // detached and consumes uiStream directly after prepareRun
         // returns.
-        const harnessChunks = localDispatch(harnessId, harnessInput, ctx);
+        //
+        // Branch on the resolved target:
+        //   - `runsIn === "user-desktop"` — the whole stream is delegated
+        //     to the user's link daemon. `resolveRemoteCliSandboxUrl`
+        //     calls `ensureSandbox` (handle == `computeHandle(sandboxId,
+        //     branch)`) so the sandbox is the same one SANDBOX_START
+        //     provisions — repo cloned, env pushed, dev server primed.
+        //     The cluster talks to the daemon directly at the returned
+        //     per-handle tunnel URL (`https://<handle>.deco.host` in
+        //     prod), no link reverse-proxy hop. Per-run state inside the
+        //     daemon stays keyed by `runId` (cancellation via DELETE
+        //     /_sandbox/runs/<runId>).
+        //   - `runsIn === "cluster"` — runs in-cluster. When `sandbox`
+        //     is `"user-desktop"` the sandbox tool calls are forwarded
+        //     to the user's link daemon; the harness still runs here.
+        let harnessChunks;
+        if (target.runsIn === "user-desktop") {
+          // Unify with SANDBOX_START: resolve the sandbox via `ensureSandbox` so
+          // claude-code/codex runs share the workdir SANDBOX_START already
+          // provisioned (cloned repo + env + lockfile probe). Falls
+          // through to a blank sandbox for ephemeral threads. See
+          // `resolveRemoteCliSandboxUrl` below for why the helper
+          // exists.
+          const sandboxApiUrl = await resolveRemoteCliSandboxUrl(
+            { agent: input.agent, branch: mem.thread.branch ?? input.branch },
+            ctx,
+          );
+          harnessChunks = remoteDispatch(
+            harnessId,
+            harnessInput,
+            target.link,
+            sandboxApiUrl,
+          );
+        } else {
+          harnessChunks = localDispatch(harnessId, harnessInput, ctx);
+        }
         const harnessStream = asReadableStream(harnessChunks);
 
         // Cast: the outer createUIMessageStream is typed via ChatMessage so
@@ -811,6 +944,7 @@ async function prepareRun(
           return sanitizeStreamError(error);
         }
         console.error("[decopilot] stream error:", error);
+        const sanitized = sanitizeStreamError(error);
         posthog.capture({
           distinctId: input.userId,
           event: "chat_message_failed",
@@ -829,6 +963,20 @@ async function prepareRun(
           },
         });
 
+        // Persist the error as a synthetic assistant message so the thread
+        // doesn't render a confusing "No response was generated" — the UI
+        // pairs user/assistant by created_at and drops orphan assistants.
+        // Particularly important for background runs (cron/webhook/event
+        // automations) where the user has no console to read the error from.
+        saveMessagesToThread({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          parts: [{ type: "text", text: `Error: ${sanitized}` }],
+          metadata: { errorCategory: classifyStreamError(error) },
+        } as ChatMessage).catch((e) => {
+          console.error("[decopilot:stream] error-message save failed", e);
+        });
+
         runRegistry
           .execute({
             type: "FINISH",
@@ -839,7 +987,7 @@ async function prepareRun(
             console.error("[decopilot:stream] onError reactor failed", e);
           });
 
-        return sanitizeStreamError(error);
+        return sanitized;
       },
     });
 
@@ -867,4 +1015,41 @@ async function prepareRun(
 
     throw err;
   }
+}
+
+/**
+ * Resolve the sandbox URL the cluster should dispatch a `remote-cli`
+ * harness stream to. Calls `ensureSandbox` (lazy/idempotent — fast path
+ * returns the existing entry, slow path provisions through the
+ * desktop sandbox provider) so the resulting sandbox is the same one
+ * SANDBOX_START / the always-on sandbox tools use. Returns the daemon's
+ * `previewUrl`, which is the per-handle tunnel URL the cluster
+ * already talks to directly.
+ *
+ * Branch defaults to `"ephemeral"` to match
+ * `apps/mesh/src/api/routes/decopilot/routes.ts:434` — threads
+ * without a connected repo share one sandbox per virtualMcp under
+ * that synthetic branch.
+ *
+ * Exported so the unification can be unit-tested without standing up
+ * the full `dispatchRunAndWait` machinery.
+ */
+export async function resolveRemoteCliSandboxUrl(
+  input: { agent: { id: string }; branch?: string | null },
+  ctx: MeshContext,
+): Promise<string> {
+  const entry = await ensureSandbox(
+    {
+      virtualMcpId: input.agent.id,
+      branch: input.branch ?? "ephemeral",
+      sandboxProviderKind: "user-desktop",
+    },
+    ctx,
+  );
+  if (!entry.previewUrl) {
+    throw new Error(
+      `Sandbox for agent ${input.agent.id} has no previewUrl — the desktop daemon may still be starting`,
+    );
+  }
+  return entry.previewUrl;
 }

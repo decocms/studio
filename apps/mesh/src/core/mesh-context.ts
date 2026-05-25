@@ -13,9 +13,12 @@
 
 import type { Meter, Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
+import type { LinkEntry } from "../links/protocol";
+import type { LinkRegistry } from "@/links/link-registry";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { Database, Permission } from "../storage/types";
 import type { AccessControl } from "./access-control";
+import type { HarnessContext } from "./harness-context";
 export type { BetterAuthInstance } from "@/auth";
 // Re-export for consumers
 export type { AccessControl, CredentialVault };
@@ -320,7 +323,7 @@ export interface Timings {
  * This provides access to all necessary services without coupling
  * to implementation details.
  */
-export interface MeshContext {
+export interface MeshContext extends HarnessContext {
   // Connection ID (from url)
   connectionId?: string;
 
@@ -397,6 +400,38 @@ export interface MeshContext {
     orgId: string,
     userId: string,
   ) => Promise<FireAutomationOutcome>;
+
+  /**
+   * Sandbox dispatch preference for the in-flight run, populated by
+   * `prepareRun` from the resolved `DispatchTarget`:
+   *   - `"cluster-default"` — use whichever sandbox kind `STUDIO_SANDBOX_PROVIDER`
+   *     resolves to on this cluster (could be `local-docker`, `cluster`, or
+   *     `user-desktop` depending on the env).
+   *   - `"user-desktop"` — decopilot still runs in the cluster, but its
+   *     Code Sandbox tool calls are forwarded to the user's link daemon.
+   * Unset for non-decopilot harnesses (`remote-cli` runs never enter the
+   * sandbox tool path on the cluster side).
+   */
+  sandboxPreference?: "cluster-default" | "user-desktop";
+
+  /**
+   * Link entry for the user this run is dispatched on behalf of, if any.
+   * Set by `prepareRun` when the resolved `DispatchTarget` references a
+   * link (either `local/desktop` or `remote-cli`). The desktop sandbox
+   * provider reads this to know which daemon URL + secret to talk to
+   * without re-querying the registry. Unset for `local/default` runs.
+   */
+  linkForCurrentRun?: LinkEntry;
+
+  /**
+   * Cluster-wide LinkRegistry, injected by the context factory. Tools that
+   * touch the sandbox provider outside the decopilot dispatch path (e.g.
+   * `SANDBOX_START`, the always-on sandbox auto-provisioner) read this to resolve the
+   * acting user's link on demand — there is no `prepareRun` to pre-populate
+   * `linkForCurrentRun` for them. Undefined in test contexts that don't
+   * supply a registry.
+   */
+  linkRegistry?: LinkRegistry;
 }
 
 // ============================================================================

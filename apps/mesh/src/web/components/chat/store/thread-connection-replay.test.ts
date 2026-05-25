@@ -191,6 +191,166 @@ describe("UI message stream replay (web_search)", () => {
     expect(String(combined?.message ?? "")).toContain(TOOL_CALL_ID);
   });
 
+  test("reattach mid-research with stub seed: web_search completes and follow-up steps fold cleanly", async () => {
+    // The customer scenario: proxy cuts SSE every ~2 minutes. On
+    // reattach, the client refetches the DB (which now contains the
+    // `msg_async_stub_<toolCallId>` row written at markPolling time)
+    // and starts a fresh foldSubStream seeded with that stub. The
+    // JetStream subject's 5-minute retention has aged out the original
+    // `start` / `start-step` / `tool-input-*` chunks, so the new
+    // SSE response begins with `data-web-search` and proceeds straight
+    // to `tool-output-available` (web_search done), then a chain of
+    // follow-up tool calls, then a text answer, then `finish`.
+    //
+    // Production symptom: the UI gets stuck on the web_search loading
+    // skeleton even though the stream completes cleanly. A page
+    // refresh fixes it (loadInitialPage replaces the stub with the
+    // fully-populated assistant row).
+    //
+    // This test exercises the reader exactly as foldSubStream does:
+    // seed = the persisted stub, no `start` chunk, the rest of the
+    // run. If the final emitted message has the tool-web_search part
+    // in `output-available` state plus the follow-up text, the SDK
+    // reader path is fine and the bug lives in our wrapper (most
+    // likely in how messages reconcile after refetch). If it doesn't,
+    // we've reproduced the bug at the SDK layer.
+    const STUB_ID = "msg_async_stub_" + TOOL_CALL_ID;
+    const FOLLOWUP_TOOL_CALL_ID = "tc_followup_1";
+    const FINAL_TEXT = "Aqui está o relatório final.";
+
+    const stubSeed: UIMessage = {
+      id: STUB_ID,
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-web_search",
+          toolCallId: TOOL_CALL_ID,
+          state: "input-available",
+          input: { query: QUERY },
+        },
+      ],
+    } as unknown as UIMessage;
+
+    // Chunks the client sees on this reattach: no start, no start-step
+    // for the web_search step (those aged out of JetStream). Mirrors
+    // the production capture in
+    // .context/attachments/.../pasted_text_2026-05-22_15-20-03.txt.
+    const reattachChunks: UIMessageChunk[] = [
+      // Late progress chunks (text now non-empty as the report streams in)
+      {
+        type: "data-web-search",
+        id: TOOL_CALL_ID,
+        data: { text: REPORT.slice(0, 30) },
+      } as UIMessageChunk,
+      {
+        type: "data-web-search",
+        id: TOOL_CALL_ID,
+        data: { text: REPORT },
+      } as UIMessageChunk,
+      // web_search finishes
+      {
+        type: "data-tool-metadata",
+        id: TOOL_CALL_ID,
+        data: { latencyMs: 482_000 },
+      } as UIMessageChunk,
+      {
+        type: "tool-output-available",
+        toolCallId: TOOL_CALL_ID,
+        output: { success: true, content: REPORT, query: QUERY },
+      },
+      { type: "finish-step" },
+      { type: "message-metadata", messageMetadata: {} } as UIMessageChunk,
+      // Next step in the agent loop — follow-up tool call
+      { type: "start-step" },
+      {
+        type: "tool-input-start",
+        toolCallId: FOLLOWUP_TOOL_CALL_ID,
+        toolName: "DECO_SLIDES_CREATE",
+      },
+      {
+        type: "tool-input-delta",
+        toolCallId: FOLLOWUP_TOOL_CALL_ID,
+        inputTextDelta: JSON.stringify({ title: "Relatório" }),
+      },
+      {
+        type: "tool-input-available",
+        toolCallId: FOLLOWUP_TOOL_CALL_ID,
+        toolName: "DECO_SLIDES_CREATE",
+        input: { title: "Relatório" },
+      },
+      {
+        type: "tool-output-available",
+        toolCallId: FOLLOWUP_TOOL_CALL_ID,
+        output: { id: "slides_1" },
+      },
+      { type: "finish-step" },
+      { type: "message-metadata", messageMetadata: {} } as UIMessageChunk,
+      // Final synthesis step — text deltas
+      { type: "start-step" },
+      { type: "text-start", id: "txt_1" } as UIMessageChunk,
+      {
+        type: "text-delta",
+        id: "txt_1",
+        delta: FINAL_TEXT,
+      } as UIMessageChunk,
+      { type: "text-end", id: "txt_1" } as UIMessageChunk,
+      { type: "finish-step" },
+      { type: "message-metadata", messageMetadata: {} } as UIMessageChunk,
+      { type: "finish" },
+    ];
+
+    const errors: unknown[] = [];
+    const iter = readUIMessageStream({
+      message: stubSeed,
+      stream: streamOf(reattachChunks),
+      onError: (e) => errors.push(e),
+    });
+
+    const { messages, error } = await drain(iter);
+    expect(error).toBeNull();
+    expect(errors).toEqual([]);
+
+    const final = messages.at(-1);
+    expect(final).toBeDefined();
+    // Should keep the stub's id (we seeded with it, and no `start`
+    // chunk arrived to rewrite it).
+    expect(final!.id).toBe(STUB_ID);
+
+    // The web_search tool part must have transitioned to output-available.
+    const webSearchPart = final!.parts.find(
+      (p) =>
+        typeof p === "object" &&
+        p !== null &&
+        "type" in p &&
+        (p as { type: string }).type === "tool-web_search",
+    ) as { state: string; output?: { content?: string } } | undefined;
+    expect(webSearchPart).toBeDefined();
+    expect(webSearchPart!.state).toBe("output-available");
+    expect(webSearchPart!.output?.content).toBe(REPORT);
+
+    // The follow-up tool call should be present and finished too.
+    const followupPart = final!.parts.find(
+      (p) =>
+        typeof p === "object" &&
+        p !== null &&
+        "type" in p &&
+        (p as { type: string }).type === "tool-DECO_SLIDES_CREATE",
+    ) as { state: string } | undefined;
+    expect(followupPart).toBeDefined();
+    expect(followupPart!.state).toBe("output-available");
+
+    // And the final synthesis text must have streamed in.
+    const textPart = final!.parts.find(
+      (p) =>
+        typeof p === "object" &&
+        p !== null &&
+        "type" in p &&
+        (p as { type: string }).type === "text",
+    ) as { text: string } | undefined;
+    expect(textPart).toBeDefined();
+    expect(textPart!.text).toContain(FINAL_TEXT);
+  });
+
   test("refresh AT completion with seed-from-DB containing tool-input recovers", async () => {
     // The fix-path: if we persist the tool-input-available part to
     // the DB when the row goes to 'polling', the client's

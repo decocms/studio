@@ -35,7 +35,8 @@ export type ToolCategory =
   | "Object Storage"
   | "Registry"
   | "GitHub"
-  | "VM";
+  | "VM"
+  | "Links";
 
 /**
  * All tool names - keep in sync with ALL_TOOLS in index.ts
@@ -120,6 +121,7 @@ const ALL_TOOL_NAMES = [
   "AUTOMATION_DELETE",
   "AUTOMATION_TRIGGER_ADD",
   "AUTOMATION_TRIGGER_REMOVE",
+  "AUTOMATION_TRIGGER_ROTATE_TOKEN",
   "AUTOMATION_RUN",
   // Virtual MCP plugin config and pinned views tools
   "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
@@ -139,7 +141,6 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_PROVISION_KEY",
   "AI_PROVIDER_TOPUP_URL",
   "AI_PROVIDER_CREDITS",
-  "AI_PROVIDER_CLI_ACTIVATE",
 
   // Secrets vault tools
   "SECRET_CREATE",
@@ -194,11 +195,14 @@ const ALL_TOOL_NAMES = [
   "REGISTRY_MONITOR_SCHEDULE_CANCEL",
 
   // VM tools (app-only)
-  "VM_START",
-  "VM_DELETE",
+  "SANDBOX_START",
+  "SANDBOX_DELETE",
 
   // GitHub tools (app-only)
   "GITHUB_LIST_USER_ORGS",
+
+  // Link tools
+  "LINK_CURRENT_GET",
 ] as const;
 
 /**
@@ -600,6 +604,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Automations",
   },
   {
+    name: "AUTOMATION_TRIGGER_ROTATE_TOKEN",
+    description: "Rotate the secret token for a webhook automation trigger",
+    category: "Automations",
+  },
+  {
     name: "AUTOMATION_RUN",
     description: "Manually trigger an automation run",
     category: "Automations",
@@ -681,11 +690,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Get current credit balance for a provider",
     category: "AI Providers",
   },
-  {
-    name: "AI_PROVIDER_CLI_ACTIVATE",
-    description: "Activate Claude Code via local CLI",
-    category: "AI Providers",
-  },
   // Secrets tools
   {
     name: "SECRET_CREATE",
@@ -720,6 +724,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete an S3 bucket configuration",
     category: "File Configs",
   },
+
   // Object Storage tools
   {
     name: "LIST_OBJECTS",
@@ -918,12 +923,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Registry",
   },
   {
-    name: "VM_START",
+    name: "SANDBOX_START",
     description: "Start a sandbox VM with dev server preview",
     category: "VM",
   },
   {
-    name: "VM_DELETE",
+    name: "SANDBOX_DELETE",
     description: "Stop and delete a sandbox VM",
     category: "VM",
   },
@@ -931,6 +936,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "GITHUB_LIST_USER_ORGS",
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
+  },
+  // Link tools
+  {
+    name: "LINK_CURRENT_GET",
+    description:
+      "Return the calling user's current desktop link status (online/offline, capabilities)",
+    category: "Links",
   },
 ];
 
@@ -983,8 +995,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "GET_PRESIGNED_URL",
       "PUT_PRESIGNED_URL",
       // VM previews
-      "VM_START",
-      "VM_DELETE",
+      "SANDBOX_START",
+      "SANDBOX_DELETE",
     ],
   },
   // Organization
@@ -1066,6 +1078,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AUTOMATION_DELETE",
       "AUTOMATION_TRIGGER_ADD",
       "AUTOMATION_TRIGGER_REMOVE",
+      "AUTOMATION_TRIGGER_ROTATE_TOKEN",
       "AUTOMATION_RUN",
     ],
     dangerous: true,
@@ -1115,7 +1128,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_PROVISION_KEY",
       "AI_PROVIDER_TOPUP_URL",
       "AI_PROVIDER_CREDITS",
-      "AI_PROVIDER_CLI_ACTIVATE",
     ],
   },
   // Organization (tags moved here from Developer)
@@ -1313,6 +1325,7 @@ export function getToolsByCategory() {
     Registry: [],
     GitHub: [],
     VM: [],
+    Links: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

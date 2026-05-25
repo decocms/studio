@@ -49,12 +49,22 @@ export const KEYS = {
   mcpTools: (url: string, token?: string | null) =>
     ["mcp", "tools", url, token] as const,
 
+  // Prefix for all mesh-sdk mcp-client queries (mcpClient, mcpToolsList,
+  // mcpResourcesList, mcpPromptsList, mcpReadResource, mcpGetPrompt,
+  // mcpToolCall — all start with ["mcp", "client", ...]). Use with
+  // invalidateQueries to blow away every cached client query at once,
+  // e.g. after an MCP connection re-authenticates.
+  mcpClientPrefix: () => ["mcp", "client"] as const,
+
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
 
   // Active organization
   activeOrganization: (org: string | undefined) =>
     ["activeOrganization", org] as const,
+
+  // Org access status (for /:org gate — pending invite / auto-join / no access)
+  orgAccessStatus: (slug: string) => ["org-access-status", slug] as const,
 
   // Models list (scoped by organization)
   modelsList: (orgId: string) => ["models-list", orgId] as const,
@@ -320,6 +330,13 @@ export const KEYS = {
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
   liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
+
+  // Link daemon status (user-scoped; the cluster derives the userSub
+  // from the bearer session, so we don't include it in the key).
+  linkStatus: () => ["link-status"] as const,
+
+  // Current link info (org-scoped; includes capabilities, machineId, cliVersion).
+  currentLink: (orgId: string) => ["current-link", orgId] as const,
 
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>

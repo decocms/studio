@@ -1,5 +1,5 @@
 import { type UIEvent, useRef, useState } from "react";
-import type { VmMap } from "@decocms/mesh-sdk";
+import type { SandboxMap } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Command,
@@ -23,26 +23,31 @@ interface Props {
   orgId: string;
   orgSlug: string;
   userId: string;
-  connectionId: string;
+  virtualMcpId: string;
+  connectionId: string | null;
   owner: string;
   repo: string;
-  vmMap: VmMap | undefined;
+  sandboxMap: SandboxMap | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
 }
 
 /**
- * Grouped branch picker: "Your branches" (from vmMap) + "Other branches in
+ * Grouped branch picker: "Your branches" (from sandboxMap) + "Other branches in
  * repo" (from github-mcp-server.list_branches).
  */
 export function BranchPicker({
   orgId,
   orgSlug,
   userId,
+  // virtualMcpId is consumed by callers via Props (e.g. ThreadPills);
+  // BranchPicker itself doesn't use it directly. Kept on the Props
+  // contract so v2's pill container can pass it down uniformly.
+  virtualMcpId: _virtualMcpId,
   connectionId,
   owner,
   repo,
-  vmMap,
+  sandboxMap,
   value,
   onChange,
 }: Props) {
@@ -65,7 +70,7 @@ export function BranchPicker({
     orgSlug,
     userId,
     connectionId,
-    vmMap,
+    sandboxMap,
     owner,
     repo,
     enabled: open,

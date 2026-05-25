@@ -15,6 +15,7 @@ import { generatePrefixedId } from "@/shared/utils/generate-id";
 import {
   getWellKnownDecopilotVirtualMCP,
   isDecopilot,
+  normalizeSandboxMap,
 } from "@decocms/mesh-sdk";
 import type {
   VirtualMCPCreateData,
@@ -492,7 +493,19 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     const status: "active" | "inactive" =
       row.status === "active" ? "active" : "inactive";
 
-    const metadata = this.parseJson<{ instructions?: string }>(row.metadata);
+    const rawMetadata = this.parseJson<{
+      instructions?: string;
+      sandboxMap?: unknown;
+    }>(row.metadata);
+
+    // Migration 091 rewrote every row to the canonical `sandboxMap` key with
+    // the strict 3-level shape; we still run it through `normalizeSandboxMap`
+    // to defend against per-row corruption without crashing the read path.
+    const { sandboxMap: rawSandboxMap, ...metadataRest } = rawMetadata ?? {};
+    const normalizedSandboxMap =
+      rawSandboxMap !== undefined
+        ? normalizeSandboxMap(rawSandboxMap)
+        : undefined;
 
     return {
       id: row.id,
@@ -507,8 +520,11 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       created_by: row.created_by,
       updated_by: row.updated_by ?? undefined,
       metadata: {
-        ...metadata,
-        instructions: metadata?.instructions ?? null,
+        ...metadataRest,
+        instructions: rawMetadata?.instructions ?? null,
+        ...(normalizedSandboxMap !== undefined
+          ? { sandboxMap: normalizedSandboxMap }
+          : {}),
       },
       connections: aggregationRows.map((agg) => ({
         connection_id: agg.child_connection_id,

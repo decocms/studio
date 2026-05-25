@@ -6,7 +6,7 @@ import { TaskManager } from "../process/task-manager";
 import { makeBashHandler } from "./bash";
 
 function post(obj: unknown): Request {
-  return new Request("http://x/_decopilot_vm/bash", {
+  return new Request("http://x/_sandbox/bash", {
     method: "POST",
     body: JSON.stringify(obj),
     headers: { "Content-Type": "application/json" },
