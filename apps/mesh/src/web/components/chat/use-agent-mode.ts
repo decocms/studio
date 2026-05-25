@@ -96,18 +96,24 @@ export function useTierSubtitle(
 
   if (keys.length === 0 || !slotKeyId) return null;
 
-  // Fallback: replicate pickSimpleModeDefaults over the active slot's
-  // key. This matches what the server picks when the slot is unset
-  // and the effective key is also the first match for the tier.
+  // Mirrors chat-context.tsx's pickFallbackChatModel: restrict to the
+  // effective key only, because the client has loaded models for that
+  // key alone. Matches the server when the effective key is also the
+  // server's tier pick; diverges only when they differ (server wins).
+  const effectiveKey = keys.find((k) => k.id === slotKeyId);
+  if (!effectiveKey) return null;
+
   const defaults = pickSimpleModeDefaults(
-    keys.map((k) => ({
-      id: k.id,
-      providerId: k.providerId,
-      label: k.label,
-      presetId: k.presetId,
-      createdBy: k.createdBy,
-      createdAt: k.createdAt,
-    })),
+    [
+      {
+        id: effectiveKey.id,
+        providerId: effectiveKey.providerId,
+        label: effectiveKey.label,
+        presetId: effectiveKey.presetId,
+        createdBy: effectiveKey.createdBy,
+        createdAt: effectiveKey.createdAt,
+      },
+    ],
     { [slotKeyId]: slotModels },
   );
   const pick =
