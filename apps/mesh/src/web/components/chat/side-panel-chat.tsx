@@ -14,9 +14,7 @@ import { Chat } from "./index";
 import { useChatStream, useChatPrefs, useChatTask } from "./context";
 import { ChatContextPanel } from "./context-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
-import { ThreadPills } from "./pills/thread-pills";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { HarnessId } from "@/harnesses";
+import { ChatModeRow } from "./pills/chat-mode-row";
 
 import {
   agentHasClonableSource,
@@ -29,25 +27,11 @@ import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 // ---------- Default sidebar empty state ----------
 
 function SidebarEmptyState() {
-  const { org } = useProjectContext();
   const { selectedVirtualMcp } = useChatPrefs();
-  const { data: session } = authClient.useSession();
-  const { activeTask, currentBranch, setCurrentTaskBranch } = useChatTask();
+  const { org } = useProjectContext();
 
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
-  const fullVm = useVirtualMCP(displayAgent.id);
-
-  const userId = session?.user?.id ?? "";
-  const agentId = displayAgent.id;
-  const githubRepo = fullVm?.metadata?.githubRepo ?? null;
-  const showBranchPicker =
-    agentHasClonableSource(fullVm?.metadata) && !!userId && !!agentId;
-
-  // Active thread's pinned kind + harness (null on a brand-new thread).
-  const threadKind = (activeTask?.sandbox_provider_kind ??
-    null) as SandboxProviderKind | null;
-  const threadHarness = (activeTask?.harness_id ?? null) as HarnessId | null;
 
   return (
     <div className="h-full w-full flex flex-col items-center justify-center gap-6 px-4">
@@ -66,24 +50,6 @@ function SidebarEmptyState() {
           {displayAgent.description ??
             "Ask anything about configuring model providers or using MCP Mesh."}
         </div>
-        {showBranchPicker && (
-          <div className="mt-2">
-            <ThreadPills
-              orgId={org.id}
-              orgSlug={org.slug}
-              userId={userId}
-              virtualMcpId={agentId!}
-              connectionId={githubRepo?.connectionId ?? ""}
-              owner={githubRepo?.owner ?? ""}
-              repo={githubRepo?.name ?? ""}
-              sandboxMap={fullVm?.metadata?.sandboxMap}
-              currentBranch={currentBranch}
-              onBranchChange={setCurrentTaskBranch}
-              threadKind={threadKind}
-              threadHarness={threadHarness}
-            />
-          </div>
-        )}
       </div>
       <div className="w-full max-w-3xl mx-auto">
         <Chat.IceBreakers />
@@ -101,10 +67,13 @@ function ChatPanelContent() {
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
   const { selectedVirtualMcp } = useChatPrefs();
+  const { currentBranch, setCurrentTaskBranch } = useChatTask();
+  const { data: session } = authClient.useSession();
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
   const fullVm = useVirtualMCP(displayAgent.id);
   const link = useCurrentLink();
+  const userId = session?.user?.id ?? "";
 
   // Clonable agents (Start Website + GitHub-imported) can route through
   // a desktop CLI harness when one is online, so the no-provider gate
@@ -155,6 +124,15 @@ function ChatPanelContent() {
               <Chat.Messages />
             </Chat.Main>
             <Chat.Footer>
+              <ChatModeRow
+                orgId={org.id}
+                orgSlug={org.slug}
+                userId={userId}
+                virtualMcp={fullVm}
+                sandboxMap={fullVm?.metadata?.sandboxMap}
+                currentBranch={currentBranch}
+                onBranchChange={setCurrentTaskBranch}
+              />
               <Chat.Input
                 onOpenContextPanel={() => setActivePanel("context")}
               />
@@ -166,6 +144,15 @@ function ChatPanelContent() {
               <SidebarEmptyState />
             </Chat.Main>
             <Chat.Footer>
+              <ChatModeRow
+                orgId={org.id}
+                orgSlug={org.slug}
+                userId={userId}
+                virtualMcp={fullVm}
+                sandboxMap={fullVm?.metadata?.sandboxMap}
+                currentBranch={currentBranch}
+                onBranchChange={setCurrentTaskBranch}
+              />
               <Chat.Input
                 onOpenContextPanel={() => setActivePanel("context")}
               />
