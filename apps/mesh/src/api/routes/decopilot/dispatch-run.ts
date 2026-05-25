@@ -27,9 +27,8 @@ import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
-import { ensureVm } from "@/tools/vm/start";
+import { ensureSandbox } from "@/tools/sandbox/start";
 import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
-import { LinkOfflineError } from "../../../links/link-offline-error";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
   HarnessId,
@@ -188,10 +187,10 @@ function lookupResumeSessionRef(
  * (claude-code, codex); decopilot's in-process passthrough doesn't need
  * this.
  *
- * `targetKind` decides which base URL to mint:
- *   - `"local"` — `getInternalUrl()` (loopback; the harness runs inside
+ * `targetRunsIn` decides which base URL to mint:
+ *   - `"cluster"` — `getInternalUrl()` (loopback; the harness runs inside
  *     the cluster pod alongside the API).
- *   - `"remote-cli"` — `getPublicUrl()` (the harness runs on the user's
+ *   - `"user-desktop"` — `getPublicUrl()` (the harness runs on the user's
  *     desktop and dials the cluster back over the public network — or, in
  *     dev mode, localhost via `MESH_ALLOW_LOCALHOST_LINKS=1`).
  */
@@ -202,7 +201,7 @@ async function mintMcpEndpoint(
   agentId: string,
   organization: { id: string; slug?: string; name?: string },
   apiKeyName: string,
-  targetKind: DispatchTarget["kind"],
+  targetRunsIn: DispatchTarget["runsIn"],
 ): Promise<{
   url: string;
   headers: Record<string, string>;
@@ -220,7 +219,7 @@ async function mintMcpEndpoint(
     },
   });
   const baseUrl =
-    targetKind === "remote-cli" ? getPublicUrl() : getInternalUrl();
+    targetRunsIn === "user-desktop" ? getPublicUrl() : getInternalUrl();
   return {
     url: `${baseUrl}/mcp/virtual-mcp/${agentId}`,
     headers: {
@@ -264,8 +263,8 @@ export interface DispatchRunInput {
    * onto the per-thread gate so the workflow body never has to call
    * `resolveDispatchTarget` itself (avoids replay-time drift if the link
    * goes offline between enqueue and dispatch). Defaults to
-   * `{ kind: "local", sandbox: "default" }` when omitted, preserving the
-   * pre-Phase-4 behavior.
+   * `{ runsIn: "cluster", sandbox: "cluster" }` when omitted, preserving
+   * the pre-Phase-4 behavior.
    */
   target?: DispatchTarget;
   /**
@@ -443,36 +442,32 @@ async function prepareRun(
 
     // Resolve the dispatch target. POST /messages already runs
     // `resolveDispatchTarget` and forwards the result on `input.target`;
-    // we re-read it here (defaulting to local/default for any caller —
-    // e.g. legacy automation paths — that hasn't been migrated yet).
-    //
-    // An `error` target reaching this far means a request without a
-    // pre-resolved target somehow slipped past the 409 in POST /messages.
-    // Surface a typed exception so the gate workflow records the run as
-    // failed instead of a generic stream error.
+    // we re-read it here (defaulting to a cluster-default target for any
+    // caller — e.g. legacy automation paths — that hasn't been migrated
+    // yet).
     const target: DispatchTarget = input.target ?? {
-      kind: "local",
-      sandbox: "default",
+      runsIn: "cluster",
+      sandbox: "cluster",
     };
-    if (target.kind === "error") {
-      throw new LinkOfflineError(target.reason, target.activeCapabilities);
-    }
 
     // Stash the resolved target on the context so downstream consumers
-    // (Phase 5's desktop sandbox provider, Phase 6's remote-cli
-    // dispatch) can read it without re-querying the registry.
-    if (target.kind === "local") {
-      ctx.sandboxPreference = target.sandbox;
+    // (the desktop sandbox provider, remote-cli dispatch) can read it
+    // without re-querying the registry.
+    if (target.runsIn === "cluster") {
+      // Cluster harness: either the default cluster sandbox or, when
+      // sandbox is "user-desktop", tunnel sandbox tool calls to the user's
+      // link daemon.
+      ctx.sandboxPreference =
+        target.sandbox === "user-desktop" ? "user-desktop" : "cluster-default";
       ctx.linkForCurrentRun = target.link;
     } else {
-      // remote-cli: no in-cluster sandbox runs, but we still hold the
-      // link reference for the eventual remoteDispatch call below.
+      // runsIn === "user-desktop": no in-cluster sandbox runs, but we
+      // still hold the link reference for the eventual remoteDispatch
+      // call below.
       ctx.linkForCurrentRun = target.link;
     }
-    rootSpan.setAttribute("decopilot.dispatchTarget.kind", target.kind);
-    if (target.kind === "local") {
-      rootSpan.setAttribute("decopilot.dispatchTarget.sandbox", target.sandbox);
-    }
+    rootSpan.setAttribute("decopilot.dispatchTarget.runsIn", target.runsIn);
+    rootSpan.setAttribute("decopilot.dispatchTarget.sandbox", target.sandbox);
 
     // 1. Check model permissions (decopilot-only; CLI harnesses run with
     //    the user's own provider credential / local CLI binary, which is
@@ -738,7 +733,7 @@ async function prepareRun(
                 harnessId === "claude-code"
                   ? "claude-code-session"
                   : "codex-session",
-                target.kind,
+                target.runsIn,
               );
 
         // Build the in-process extras that decopilot needs to participate
@@ -827,28 +822,28 @@ async function prepareRun(
         // returns.
         //
         // Branch on the resolved target:
-        //   - `remote-cli` — the whole stream is delegated to the user's
-        //     link daemon. `resolveRemoteCliSandboxUrl` calls `ensureVm`
-        //     (handle == `computeHandle(sandboxId, branch)`) so the
-        //     sandbox is the same one VM_START provisions — repo cloned,
-        //     env pushed, dev server primed. The cluster talks to the
-        //     daemon directly at the returned per-handle tunnel URL
-        //     (`https://<handle>.deco.host` in prod), no link
-        //     reverse-proxy hop. Per-run state inside the daemon stays
-        //     keyed by `runId` (cancellation via DELETE
-        //     /_decopilot_vm/runs/<runId>).
-        //   - `local` (default OR desktop) — runs in-cluster.
-        //     `desktop` only changes where the sandbox tool calls go;
-        //     the harness still runs here.
+        //   - `runsIn === "user-desktop"` — the whole stream is delegated
+        //     to the user's link daemon. `resolveRemoteCliSandboxUrl`
+        //     calls `ensureSandbox` (handle == `computeHandle(sandboxId,
+        //     branch)`) so the sandbox is the same one SANDBOX_START
+        //     provisions — repo cloned, env pushed, dev server primed.
+        //     The cluster talks to the daemon directly at the returned
+        //     per-handle tunnel URL (`https://<handle>.deco.host` in
+        //     prod), no link reverse-proxy hop. Per-run state inside the
+        //     daemon stays keyed by `runId` (cancellation via DELETE
+        //     /_sandbox/runs/<runId>).
+        //   - `runsIn === "cluster"` — runs in-cluster. When `sandbox`
+        //     is `"user-desktop"` the sandbox tool calls are forwarded
+        //     to the user's link daemon; the harness still runs here.
         let harnessChunks;
-        if (target.kind === "remote-cli") {
-          // Unify with VM_START: resolve the sandbox via `ensureVm` so
-          // claude-code/codex runs share the workdir VM_START already
+        if (target.runsIn === "user-desktop") {
+          // Unify with SANDBOX_START: resolve the sandbox via `ensureSandbox` so
+          // claude-code/codex runs share the workdir SANDBOX_START already
           // provisioned (cloned repo + env + lockfile probe). Falls
           // through to a blank sandbox for ephemeral threads. See
           // `resolveRemoteCliSandboxUrl` below for why the helper
           // exists.
-          const sandboxUrl = await resolveRemoteCliSandboxUrl(
+          const sandboxApiUrl = await resolveRemoteCliSandboxUrl(
             { agent: input.agent, branch: mem.thread.branch ?? input.branch },
             ctx,
           );
@@ -856,7 +851,7 @@ async function prepareRun(
             harnessId,
             harnessInput,
             target.link,
-            sandboxUrl,
+            sandboxApiUrl,
           );
         } else {
           harnessChunks = localDispatch(harnessId, harnessInput, ctx);
@@ -1055,10 +1050,10 @@ async function prepareRun(
 
 /**
  * Resolve the sandbox URL the cluster should dispatch a `remote-cli`
- * harness stream to. Calls `ensureVm` (lazy/idempotent — fast path
+ * harness stream to. Calls `ensureSandbox` (lazy/idempotent — fast path
  * returns the existing entry, slow path provisions through the
  * desktop sandbox provider) so the resulting sandbox is the same one
- * VM_START / the always-on VM tools use. Returns the daemon's
+ * SANDBOX_START / the always-on sandbox tools use. Returns the daemon's
  * `previewUrl`, which is the per-handle tunnel URL the cluster
  * already talks to directly.
  *
@@ -1074,11 +1069,11 @@ export async function resolveRemoteCliSandboxUrl(
   input: { agent: { id: string }; branch?: string | null },
   ctx: MeshContext,
 ): Promise<string> {
-  const entry = await ensureVm(
+  const entry = await ensureSandbox(
     {
       virtualMcpId: input.agent.id,
       branch: input.branch ?? "ephemeral",
-      sandboxProviderKind: "desktop",
+      sandboxProviderKind: "user-desktop",
     },
     ctx,
   );

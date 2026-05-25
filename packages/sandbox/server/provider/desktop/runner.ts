@@ -4,11 +4,11 @@
  * developer's desktop. The link exposes:
  *
  *   - `<tunnelUrl>/api/sandboxes`                 (POST: ensure, DELETE/<h>: tear down)
- *   - `<sandboxUrl>/_decopilot_vm/*`              (exec + daemon proxy passthrough)
- *   - `<sandboxUrl>/health`                       (alive probe)
+ *   - `<sandboxApiUrl>/_sandbox/*`              (exec + daemon proxy passthrough)
+ *   - `<sandboxApiUrl>/health`                       (alive probe)
  *
  * The control plane is authenticated with the link-protocol HMAC scheme. The
- * per-daemon `sandboxUrl` (returned by the link's `POST /api/sandboxes`)
+ * per-daemon `sandboxApiUrl` (returned by the link's `POST /api/sandboxes`)
  * is itself a daemon-authenticated URL — the daemon accepts the same HMAC
  * against `DAEMON_LINK_SECRET` (set up by Task 1). HMAC requires symmetric
  * key material; v2 will encrypt at rest with a cluster KMS key.
@@ -16,7 +16,7 @@
  * The cluster builds a fresh `DesktopSandboxProvider` per request, so the
  * in-memory `records` map is almost always empty. To remain functional across
  * cluster pod boundaries we mirror docker's pattern: take a `stateStore` in
- * the constructor, persist `{handle, sandboxUrl}` on ensure, hydrate on cache
+ * the constructor, persist `{handle, sandboxApiUrl}` on ensure, hydrate on cache
  * miss. The `records` map becomes an advisory in-process cache; the state
  * store is the canonical lookup.
  *
@@ -40,7 +40,7 @@ import type {
   SandboxProvider,
 } from "../types";
 
-const RUNNER_KIND = "desktop" as const;
+const RUNNER_KIND = "user-desktop" as const;
 
 /**
  * Subset of `LinkEntry` the provider actually needs. The dispatch path passes
@@ -74,7 +74,7 @@ export interface DesktopProviderOptions {
 interface RemoteRecord {
   handle: string;
   /** Daemon's public URL — `https://<handle>.deco.host` or `http://127.0.0.1:<port>`. */
-  sandboxUrl: string;
+  sandboxApiUrl: string;
 }
 
 export class DesktopSandboxProvider implements SandboxProvider {
@@ -113,7 +113,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
     // drop the stale record and fall through to (re)spawn via the link.
     const cached = this.records.get(handle);
     if (cached) {
-      if (await this.probeHealth(cached.sandboxUrl))
+      if (await this.probeHealth(cached.sandboxApiUrl))
         return this.toSandbox(cached);
       this.records.delete(handle);
       if (this.stateStore) {
@@ -123,11 +123,12 @@ export class DesktopSandboxProvider implements SandboxProvider {
       }
     } else if (this.stateStore) {
       const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
-      const sandboxUrl = (row?.state as { sandboxUrl?: string } | undefined)
-        ?.sandboxUrl;
-      if (sandboxUrl) {
-        if (await this.probeHealth(sandboxUrl)) {
-          const rec: RemoteRecord = { handle, sandboxUrl };
+      const sandboxApiUrl = (
+        row?.state as { sandboxApiUrl?: string } | undefined
+      )?.sandboxApiUrl;
+      if (sandboxApiUrl) {
+        if (await this.probeHealth(sandboxApiUrl)) {
+          const rec: RemoteRecord = { handle, sandboxApiUrl };
           this.records.set(handle, rec);
           return this.toSandbox(rec);
         }
@@ -148,18 +149,18 @@ export class DesktopSandboxProvider implements SandboxProvider {
         `desktop ensure failed: ${res.status}${detail ? ` ${detail}` : ""}`,
       );
     }
-    const body = (await res.json()) as { sandboxUrl?: unknown };
-    if (typeof body.sandboxUrl !== "string") {
+    const body = (await res.json()) as { sandboxApiUrl?: unknown };
+    if (typeof body.sandboxApiUrl !== "string") {
       throw new Error(
-        "desktop ensure: link did not return a sandboxUrl string",
+        "desktop ensure: link did not return a sandboxApiUrl string",
       );
     }
-    const rec: RemoteRecord = { handle, sandboxUrl: body.sandboxUrl };
+    const rec: RemoteRecord = { handle, sandboxApiUrl: body.sandboxApiUrl };
     this.records.set(handle, rec);
     if (this.stateStore) {
       await this.stateStore.put(id, RUNNER_KIND, {
         handle,
-        state: { handle, sandboxUrl: body.sandboxUrl },
+        state: { handle, sandboxApiUrl: body.sandboxApiUrl },
       });
     }
     return this.toSandbox(rec);
@@ -173,7 +174,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
       );
     }
     const bodyString = JSON.stringify(input);
-    const targetUrl = `${rec.sandboxUrl}/_decopilot_vm/exec`;
+    const targetUrl = `${rec.sandboxApiUrl}/_sandbox/exec`;
     const sig = signRequest({
       secret: this.link.linkSecret,
       method: "POST",
@@ -207,7 +208,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
       });
     }
     const fullPath = path.startsWith("/") ? path : `/${path}`;
-    const targetUrl = `${rec.sandboxUrl}${fullPath}`;
+    const targetUrl = `${rec.sandboxApiUrl}${fullPath}`;
     const body = await normalizeBodyForSigning(init.body);
     const headers = new Headers(init.headers);
     // Strip hop-by-hop / cookie headers; HMAC headers replace any client-set
@@ -243,12 +244,12 @@ export class DesktopSandboxProvider implements SandboxProvider {
 
   async alive(handle: string): Promise<boolean> {
     // The daemon's /health endpoint is unauthenticated; probe it directly.
-    // Hydrate the {handle → sandboxUrl} mapping from the state store on
+    // Hydrate the {handle → sandboxApiUrl} mapping from the state store on
     // cache miss so a fresh provider in a different pod can still reach
     // the daemon.
     const rec = await this.resolveRecord(handle);
     if (!rec) return false;
-    return this.probeHealth(rec.sandboxUrl);
+    return this.probeHealth(rec.sandboxApiUrl);
   }
 
   /**
@@ -314,7 +315,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
 
   async getPreviewUrl(handle: string): Promise<string | null> {
     const rec = await this.resolveRecord(handle);
-    return rec?.sandboxUrl ?? null;
+    return rec?.sandboxApiUrl ?? null;
   }
 
   /**
@@ -345,11 +346,11 @@ export class DesktopSandboxProvider implements SandboxProvider {
   private toSandbox(rec: RemoteRecord): Sandbox {
     return {
       handle: rec.handle,
-      // workdir is opaque to the cluster — surface the sandboxUrl so debug
+      // workdir is opaque to the cluster — surface the sandboxApiUrl so debug
       // logs that include `sandbox.workdir` show something meaningful, but
       // anything that tries to fs.stat() this string will (correctly) fail.
-      workdir: rec.sandboxUrl,
-      previewUrl: rec.sandboxUrl,
+      workdir: rec.sandboxApiUrl,
+      previewUrl: rec.sandboxApiUrl,
     };
   }
 
@@ -364,10 +365,10 @@ export class DesktopSandboxProvider implements SandboxProvider {
     if (cached) return cached;
     if (!this.stateStore) return null;
     const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
-    const sandboxUrl = (row?.state as { sandboxUrl?: string } | undefined)
-      ?.sandboxUrl;
-    if (!sandboxUrl) return null;
-    const rec: RemoteRecord = { handle, sandboxUrl };
+    const sandboxApiUrl = (row?.state as { sandboxApiUrl?: string } | undefined)
+      ?.sandboxApiUrl;
+    if (!sandboxApiUrl) return null;
+    const rec: RemoteRecord = { handle, sandboxApiUrl };
     this.records.set(handle, rec);
     return rec;
   }

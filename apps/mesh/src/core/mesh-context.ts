@@ -402,13 +402,15 @@ export interface MeshContext extends HarnessContext {
   /**
    * Sandbox dispatch preference for the in-flight run, populated by
    * `prepareRun` from the resolved `DispatchTarget`:
-   *   - `"default"` — cluster sandbox (today's behavior).
-   *   - `"desktop"` — decopilot still runs in the cluster, but its
+   *   - `"cluster-default"` — use whichever sandbox kind `STUDIO_SANDBOX_PROVIDER`
+   *     resolves to on this cluster (could be `local-docker`, `cluster`, or
+   *     `user-desktop` depending on the env).
+   *   - `"user-desktop"` — decopilot still runs in the cluster, but its
    *     Code Sandbox tool calls are forwarded to the user's link daemon.
    * Unset for non-decopilot harnesses (`remote-cli` runs never enter the
    * sandbox tool path on the cluster side).
    */
-  sandboxPreference?: "default" | "desktop";
+  sandboxPreference?: "cluster-default" | "user-desktop";
 
   /**
    * Link entry for the user this run is dispatched on behalf of, if any.
@@ -422,7 +424,7 @@ export interface MeshContext extends HarnessContext {
   /**
    * Cluster-wide LinkRegistry, injected by the context factory. Tools that
    * touch the sandbox provider outside the decopilot dispatch path (e.g.
-   * `VM_START`, the always-on VM auto-provisioner) read this to resolve the
+   * `SANDBOX_START`, the always-on sandbox auto-provisioner) read this to resolve the
    * acting user's link on demand — there is no `prepareRun` to pre-populate
    * `linkForCurrentRun` for them. Undefined in test contexts that don't
    * supply a registry.

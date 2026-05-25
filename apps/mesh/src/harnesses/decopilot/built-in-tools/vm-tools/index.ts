@@ -3,7 +3,7 @@
  *
  * Registers the six LLM-visible tools (read/write/edit/grep/glob/bash) on
  * top of any `SandboxProvider.proxyDaemonRequest`. All runners speak the
- * unified `/_decopilot_vm/*` surface with plain JSON bodies.
+ * unified `/_sandbox/*` surface with plain JSON bodies.
  */
 
 import { tool, zodSchema } from "ai";
@@ -270,7 +270,7 @@ export function createVmTools(params: VmToolsParams) {
     description: READ_DESCRIPTION,
     inputSchema: zodSchema(ReadInputSchema),
     execute: async (input) => {
-      const result = (await call("/_decopilot_vm/read", input)) as
+      const result = (await call("/_sandbox/read", input)) as
         | { kind: "text"; content: string; lineCount: number }
         | {
             kind: "image";
@@ -304,7 +304,7 @@ export function createVmTools(params: VmToolsParams) {
     description: WRITE_DESCRIPTION,
     inputSchema: zodSchema(WriteInputSchema),
     execute: async (input) => {
-      const daemonResult = await call("/_decopilot_vm/write", input);
+      const daemonResult = await call("/_sandbox/write", input);
       // Enqueue the mirror; the actual S3 PUT happens once per step from
       // `htmlPageBuffer.flush()`, so a burst of writes/edits to the same
       // slug collapses to a single round-trip.
@@ -320,7 +320,7 @@ export function createVmTools(params: VmToolsParams) {
     description: EDIT_DESCRIPTION,
     inputSchema: zodSchema(EditInputSchema),
     execute: async (input) => {
-      const daemonResult = (await call("/_decopilot_vm/edit", input)) as {
+      const daemonResult = (await call("/_sandbox/edit", input)) as {
         ok: boolean;
         replacements: number;
         content?: string;
@@ -340,7 +340,7 @@ export function createVmTools(params: VmToolsParams) {
     description: GREP_DESCRIPTION,
     inputSchema: zodSchema(GrepInputSchema),
     execute: async (input) => {
-      const result = await call("/_decopilot_vm/grep", input);
+      const result = await call("/_sandbox/grep", input);
       return maybeTruncate(result, toolOutputMap);
     },
   });
@@ -350,7 +350,7 @@ export function createVmTools(params: VmToolsParams) {
     description: GLOB_DESCRIPTION,
     inputSchema: zodSchema(GlobInputSchema),
     execute: async (input) => {
-      const result = await call("/_decopilot_vm/glob", input);
+      const result = await call("/_sandbox/glob", input);
       return maybeTruncate(result, toolOutputMap);
     },
   });
@@ -360,7 +360,7 @@ export function createVmTools(params: VmToolsParams) {
     description: buildBashDescription(),
     inputSchema: zodSchema(BashInputSchema),
     execute: async (input) => {
-      const result = await call("/_decopilot_vm/bash", input);
+      const result = await call("/_sandbox/bash", input);
       return maybeTruncate(result, toolOutputMap);
     },
   });
@@ -371,7 +371,7 @@ export function createVmTools(params: VmToolsParams) {
     inputSchema: zodSchema(CopyToSandboxInputSchema),
     execute: async (input) => {
       const sourceUrl = await resolveSourceUrl(input.url, ctx);
-      const result = await call("/_decopilot_vm/write_from_url", {
+      const result = await call("/_sandbox/write_from_url", {
         url: sourceUrl,
         path: input.target,
       });
@@ -397,7 +397,7 @@ export function createVmTools(params: VmToolsParams) {
       }
       const key = `model-outputs/${threadId}/${filename}`;
       const presignedPutUrl = await storage.presignedPutUrl(key);
-      await call("/_decopilot_vm/upload_to_url", {
+      await call("/_sandbox/upload_to_url", {
         path: input.source,
         url: presignedPutUrl,
       });

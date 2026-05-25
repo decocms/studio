@@ -183,9 +183,10 @@ app.post("/local-session", async (c) => {
 /**
  * Domain Lookup Endpoint (authenticated, verified email required)
  *
- * For the onboarding flow: checks if the authenticated user's email domain
- * has a claimed organization. Derives the domain from the session — no
- * query params needed.
+ * For the onboarding flow: returns the list of organizations that have
+ * claimed the authenticated user's email domain. A domain can be claimed
+ * by multiple orgs, so callers should present a picker when more than
+ * one match is returned.
  *
  * Route: GET /api/auth/custom/domain-lookup
  */
@@ -199,31 +200,49 @@ app.get("/domain-lookup", async (c) => {
     return c.json({ success: false, error: "Authentication required" }, 401);
   }
   if (!session.user.emailVerified) {
-    return c.json({ found: false });
+    return c.json({ found: false, organizations: [] });
   }
   const domain = session.user.email?.split("@")[1]?.toLowerCase();
   if (!domain || GENERIC_EMAIL_DOMAINS.has(domain)) {
-    return c.json({ found: false });
+    return c.json({ found: false, organizations: [] });
   }
 
   try {
     const domainStorage = new OrganizationDomainStorage(getDb().db);
-    const record = await domainStorage.getByDomain(domain);
+    const records = await domainStorage.getAllByDomain(domain);
 
-    if (!record) {
-      return c.json({ found: false });
+    if (records.length === 0) {
+      return c.json({ found: false, organizations: [] });
     }
 
-    const org = await getDb()
+    const orgs = await getDb()
       .db.selectFrom("organization")
-      .select(["name", "slug"])
-      .where("id", "=", record.organizationId)
-      .executeTakeFirst();
+      .select(["id", "name", "slug", "logo"])
+      .where(
+        "id",
+        "in",
+        records.map((r) => r.organizationId),
+      )
+      .execute();
+
+    const orgById = new Map(orgs.map((o) => [o.id, o]));
+    const organizations = records
+      .map((r) => {
+        const org = orgById.get(r.organizationId);
+        if (!org) return null;
+        return {
+          id: org.id,
+          name: org.name,
+          slug: org.slug,
+          logo: org.logo,
+          autoJoinEnabled: r.autoJoinEnabled,
+        };
+      })
+      .filter((o): o is NonNullable<typeof o> => o !== null);
 
     return c.json({
-      found: true,
-      autoJoinEnabled: record.autoJoinEnabled,
-      organization: org ? { name: org.name, slug: org.slug } : null,
+      found: organizations.length > 0,
+      organizations,
     });
   } catch (error) {
     console.error("[Auth] Domain lookup failed:", error);
@@ -234,11 +253,15 @@ app.get("/domain-lookup", async (c) => {
 /**
  * Domain Auto-Join Endpoint (authenticated, verified email required)
  *
- * Adds the authenticated user to the organization that claimed their
- * email domain, provided auto_join_enabled is true. Everything is
- * derived from the session — no request body needed.
+ * Adds the authenticated user to an organization that claimed their
+ * email domain, provided that org has auto_join_enabled. With multiple
+ * orgs allowed to claim a domain, callers SHOULD pass the target org's
+ * slug in the body (e.g. picked from /domain-lookup). When omitted, the
+ * endpoint joins the matching org only if exactly one auto-join-eligible
+ * org exists for the domain — otherwise it returns 409 with the list.
  *
  * Route: POST /api/auth/custom/domain-join
+ * Body (optional): { organizationSlug?: string }
  */
 app.post("/domain-join", async (c) => {
   const session = (await auth.api.getSession({
@@ -263,10 +286,20 @@ app.post("/domain-join", async (c) => {
     );
   }
 
+  const body = (await c.req.json().catch(() => ({}))) as {
+    organizationSlug?: unknown;
+  };
+  const targetSlug =
+    typeof body.organizationSlug === "string" && body.organizationSlug.trim()
+      ? body.organizationSlug.trim()
+      : null;
+
   try {
-    const domainStorage = new OrganizationDomainStorage(getDb().db);
-    const domainRecord = await domainStorage.getByDomain(emailDomain);
-    if (!domainRecord || !domainRecord.autoJoinEnabled) {
+    const db = getDb().db;
+    const domainStorage = new OrganizationDomainStorage(db);
+    const domainRecords = await domainStorage.getAllByDomain(emailDomain);
+    const eligible = domainRecords.filter((r) => r.autoJoinEnabled);
+    if (eligible.length === 0) {
       return c.json(
         {
           success: false,
@@ -276,13 +309,49 @@ app.post("/domain-join", async (c) => {
       );
     }
 
-    const org = await getDb()
-      .db.selectFrom("organization")
-      .select(["id", "slug"])
-      .where("id", "=", domainRecord.organizationId)
-      .executeTakeFirst();
-    if (!org) {
-      return c.json({ success: false, error: "Organization not found" }, 404);
+    // Resolve target org. With a slug, look it up directly and confirm it
+    // claims the domain with auto-join. Without a slug, only proceed when
+    // exactly one match exists so we never silently pick for the user.
+    let org: { id: string; slug: string } | undefined;
+    if (targetSlug) {
+      const candidate = await db
+        .selectFrom("organization")
+        .select(["id", "slug"])
+        .where("slug", "=", targetSlug)
+        .executeTakeFirst();
+      if (
+        !candidate ||
+        !eligible.some((r) => r.organizationId === candidate.id)
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              "This organization is not available for auto-join with your email domain.",
+          },
+          403,
+        );
+      }
+      org = candidate;
+    } else if (eligible.length === 1) {
+      const only = await db
+        .selectFrom("organization")
+        .select(["id", "slug"])
+        .where("id", "=", eligible[0]!.organizationId)
+        .executeTakeFirst();
+      if (!only) {
+        return c.json({ success: false, error: "Organization not found" }, 404);
+      }
+      org = only;
+    } else {
+      return c.json(
+        {
+          success: false,
+          error: "Multiple organizations match this domain. Please pick one.",
+          requiresSelection: true,
+        },
+        409,
+      );
     }
 
     // Add the user as a member — if they're already a member
@@ -381,39 +450,31 @@ app.post("/domain-setup", async (c) => {
     const db = getDb().db;
     const domainStorage = new OrganizationDomainStorage(db);
 
-    // Only block on existing claim if the caller actually wants to claim
-    // the domain. If they're opting out, another org owning the domain
-    // doesn't conflict with creating a new (unclaimed) org.
-    const existing = shouldClaimDomain
-      ? await domainStorage.getByDomain(emailDomain)
-      : null;
-    if (existing) {
-      // Verify the user is actually a member of this org
-      const membership = await db
+    // If the user already belongs to an org that claims this domain, send
+    // them there instead of creating a duplicate. Multiple orgs may claim
+    // the same domain, so we look at every claim and pick the first one
+    // the user is a member of.
+    const existingClaims = await domainStorage.getAllByDomain(emailDomain);
+    if (existingClaims.length > 0) {
+      const existingMembership = await db
         .selectFrom("member")
         .innerJoin("organization", "organization.id", "member.organizationId")
         .select(["organization.slug"])
         .where("member.userId", "=", session.user.id)
-        .where("member.organizationId", "=", existing.organizationId)
+        .where(
+          "member.organizationId",
+          "in",
+          existingClaims.map((c) => c.organizationId),
+        )
         .executeTakeFirst();
 
-      if (membership) {
+      if (existingMembership) {
         return c.json({
           success: true,
-          slug: membership.slug,
+          slug: existingMembership.slug,
           alreadyExists: true,
         });
       }
-
-      // Domain claimed but user isn't a member — they can't use this flow
-      return c.json(
-        {
-          success: false,
-          error:
-            "This domain is already claimed. Ask an admin for an invitation.",
-        },
-        403,
-      );
     }
 
     // Org name/slug: prefer caller-supplied name, else derive from domain
@@ -467,40 +528,12 @@ app.post("/domain-setup", async (c) => {
     }
     const orgId = orgResult.id;
 
-    // Claim the domain (optional). Only clean up the org on a domain race
-    // (specific "already claimed" error from the storage layer). Transient
-    // DB errors should not delete the org — it can be reclaimed later.
+    // Claim the domain (optional). Multiple orgs may claim the same
+    // domain, so there's no race to handle — the storage layer just
+    // inserts another row. Transient DB errors leave the org in place so
+    // the user can retry claiming later.
     if (shouldClaimDomain) {
-      try {
-        await domainStorage.setDomain(orgId, emailDomain, true);
-      } catch (claimError) {
-        const isDomainRace =
-          claimError instanceof Error &&
-          claimError.message.includes("already claimed");
-        if (isDomainRace) {
-          try {
-            await auth.api.deleteOrganization({
-              headers: c.req.raw.headers,
-              body: { organizationId: orgId },
-            });
-          } catch {
-            console.error(
-              "[Auth] Failed to clean up orphaned org after domain race:",
-              orgId,
-            );
-          }
-          return c.json(
-            {
-              success: false,
-              error:
-                "This domain was just claimed by another user. Please refresh and try again.",
-            },
-            409,
-          );
-        }
-        // Transient error — org exists but domain claim failed. Don't delete.
-        throw claimError;
-      }
+      await domainStorage.setDomain(orgId, emailDomain, true);
     }
 
     // Brand extraction (best-effort — don't fail the setup if this errors).

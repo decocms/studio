@@ -22,6 +22,8 @@ export function AutoDomainJoinScreen({
       const res = await fetch("/api/auth/custom/domain-join", {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationSlug: orgSlug }),
       });
       const data = (await res.json()) as {
         success?: boolean;

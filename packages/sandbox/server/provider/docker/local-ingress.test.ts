@@ -177,7 +177,7 @@ describe("startLocalSandboxIngress", () => {
     expect(daemon.received()).toContain("Host: alpha.localhost");
   });
 
-  it("routes /_decopilot_vm/* paths to the daemon port", async () => {
+  it("routes /_sandbox/* paths to the daemon port", async () => {
     const daemon = await startUpstream("DAEMON");
     currentUpstreams.push(daemon);
 
@@ -185,13 +185,9 @@ describe("startLocalSandboxIngress", () => {
     const { servers, port } = await startIngress(() => runner);
     currentServers = servers;
 
-    const res = await sendHttp(
-      port,
-      "alpha.localhost",
-      "/_decopilot_vm/events",
-    );
+    const res = await sendHttp(port, "alpha.localhost", "/_sandbox/events");
     expect(res.status).toBe(200);
-    expect(daemon.received()).toContain("GET /_decopilot_vm/events HTTP/1.1");
+    expect(daemon.received()).toContain("GET /_sandbox/events HTTP/1.1");
   });
 
   it("accepts a host with an explicit port suffix (e.g. …:7070)", async () => {

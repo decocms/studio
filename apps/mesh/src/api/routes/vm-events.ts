@@ -5,17 +5,17 @@
  * on (virtualMcpId, branch, callerUserId):
  *
  *   1. Pre-Ready lifecycle phases (`event: phase`) — surfaces the gap between
- *      VM_START posting a SandboxClaim and the daemon coming online.
- *      Agent-sandbox runner emits real K8s phases; other runners emit a
+ *      SANDBOX_START posting a SandboxClaim and the daemon coming online.
+ *      Agent-sandbox provider emits real K8s phases; other providers emit a
  *      single synthetic `ready`.
  *   2. Daemon events (`event: log|lifecycle|status|tasks|scripts|branch|reload`)
- *      — proxied from the in-pod daemon's `/_decopilot_vm/events` SSE once
+ *      — proxied from the in-pod daemon's `/_sandbox/events` SSE once
  *      lifecycle reaches `ready`. Wire format is preserved verbatim by raw
  *      byte-piping the upstream body, so daemon and client speak the same
  *      protocol they always have.
  *   3. `event: gone` — synthetic. Mesh's upstream daemon fetch returned 404
  *      (sandbox handle missing → operator evicted on idle TTL, etc). Client
- *      maps to `notFound` and triggers self-heal via VM_START.
+ *      maps to `notFound` and triggers self-heal via SANDBOX_START.
  *   4. `event: keepalive` — heartbeat. 15s matches the existing daemon SSE.
  *
  * Auth model:
@@ -28,7 +28,7 @@
  *
  * Why one stream instead of two: prior design had the browser open
  * `/api/vm-lifecycle` (mesh) plus a direct EventSource to the daemon's public
- * `/_decopilot_vm/events`. The daemon endpoint is unauthenticated (Vercel-style
+ * `/_sandbox/events`. The daemon endpoint is unauthenticated (Vercel-style
  * "URL is the secret") and putting two long-lived SSEs in every tab burned
  * the EventSource budget. Routing through mesh authenticates the surface and
  * collapses to one connection per session.
@@ -52,14 +52,14 @@ import {
   type MeshContext,
 } from "../../core/mesh-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
-import { readVmMap, resolveVm } from "../../tools/vm/vm-map";
+import { readSandboxMap, resolveVm } from "../../tools/sandbox/sandbox-map";
 import type { Env } from "../hono-env";
 
 /**
  * Cap on how long we keep the SSE open if a claim never materializes (e.g.
- * caller raced VM_START but VM_START failed before `createSandboxClaim`).
+ * caller raced SANDBOX_START but SANDBOX_START failed before `createSandboxClaim`).
  * 90s is enough to absorb karpenter cold-start (~60–90s) plus a few seconds
- * of operator latency; longer waits indicate VM_START never posted the claim
+ * of operator latency; longer waits indicate SANDBOX_START never posted the claim
  * and the user benefits from a faster failure surface so the retry button
  * appears promptly.
  */
@@ -113,7 +113,7 @@ export const createVmEventsRoutes = () => {
     const virtualMcpMetadata =
       (virtualMcp.metadata as Record<string, unknown> | null) ?? null;
 
-    // Source of truth: vmMap. The resolver returns the provider bound for
+    // Source of truth: sandboxMap. The resolver returns the provider bound for
     // the recorded kind (or the link-or-env default when no entry exists
     // yet), so a sandbox provisioned via `desktop` remains addressable
     // via `desktop` even on a cluster whose env kind is `agent-sandbox`.
@@ -136,19 +136,24 @@ export const createVmEventsRoutes = () => {
       runner = null;
     }
 
-    // Snapshot vmMap from the same metadata read used for the org-ownership
+    // Snapshot sandboxMap from the same metadata read used for the org-ownership
     // check. Used below to gate the stale-handle probe: we only run it when
-    // this user already had a vmMap entry pointing at *this exact* claim.
-    // The vmId-match guard avoids racing VM_START's claim-creation window
+    // this user already had a sandboxMap entry pointing at *this exact* claim.
+    // The handle-match guard avoids racing SANDBOX_START's claim-creation window
     // (~250ms–1.2s for agent-sandbox before `createSandboxClaim` lands;
-    // similar window for host/docker between `runner.ensure` returning and
-    // `setVmMapEntry` writing the row). Without it, an SSE that opens during
+    // similar window for host/docker between `provider.ensure` returning and
+    // `setSandboxMapEntry` writing the row). Without it, an SSE that opens during
     // that window would observe alive=false and emit a spurious `gone`.
     const existingVmEntry =
       providerKind &&
-      resolveVm(readVmMap(virtualMcpMetadata), userId, branch, providerKind);
+      resolveVm(
+        readSandboxMap(virtualMcpMetadata),
+        userId,
+        branch,
+        providerKind,
+      );
     const expectingHandle =
-      !!existingVmEntry && existingVmEntry.vmId === claimName;
+      !!existingVmEntry && existingVmEntry.sandboxHandle === claimName;
 
     if (!runner) {
       return streamSSE(c, async (stream) => {
@@ -184,7 +189,7 @@ export const createVmEventsRoutes = () => {
         // Same probe for every runner. `runner.alive` is honest across
         // host/docker/agent-sandbox: each implementation queries its
         // respective source-of-truth (state-store + pid for host, docker
-        // inspect, K8s API). When the prior vmMap entry's runner kind
+        // inspect, K8s API). When the prior sandboxMap entry's runner kind
         // differs from the env's current runner, we route the stale-state
         // cleanup through the *prior* kind so we don't leave behind rows
         // in the wrong table.
@@ -247,29 +252,29 @@ async function isStaleHandle(
 
 /**
  * Drop the stale in-memory record (closes its port-forward) AND the
- * state-store row, so the next VM_START's `runner.ensure` skips the
+ * state-store row, so the next SANDBOX_START's `provider.ensure` skips the
  * rehydrate path (which would chase a dead port-forward and timeout) and
  * falls through to fresh provision. The state-store delete alone wasn't
- * enough — when `runner.alive` returns false because the operator's
+ * enough — when `provider.alive` returns false because the operator's
  * housekeeper reaped the claim out from under us, mesh's `records` map
  * still held the K8sRecord pointing at the now-deleted pod, and the
  * deterministic preview port stayed bound to that dead pod's WS forwarder
- * until process restart. Calling `runner.delete` invalidates both.
+ * until process restart. Calling `provider.delete` invalidates both.
  *
- * `runner.delete` is idempotent: it 404-tolerantly tries to delete the
+ * `provider.delete` is idempotent: it 404-tolerantly tries to delete the
  * SandboxClaim, closes any forwarder, drops in-memory + state-store rows.
  * The provider-kind dispatch matches the *prior* kind (existingRunnerKind)
- * so we don't leave behind rows in the wrong table when the env's runner
+ * so we don't leave behind rows in the wrong table when the env's provider
  * has flipped between starts and stops.
  *
- * We deliberately do NOT touch the vmMap entry. Two reasons:
- *   1. `runner.ensure` resumes from the state-store, not vmMap — vmMap is
+ * We deliberately do NOT touch the sandboxMap entry. Two reasons:
+ *   1. `provider.ensure` resumes from the state-store, not sandboxMap — sandboxMap is
  *      informational metadata read by tools/UI, never the source of truth
  *      for provisioning.
- *   2. Removing it here would race with a concurrent VM_START's
- *      `setVmMapEntry` on the same metadata JSON column (read-modify-write
- *      is not atomic; see vm-map.ts). The next VM_START overwrites the
- *      entry with a fresh one anyway — the `vmId` is deterministic
+ *   2. Removing it here would race with a concurrent SANDBOX_START's
+ *      `setSandboxMapEntry` on the same metadata JSON column (read-modify-write
+ *      is not atomic; see sandbox-map.ts). The next SANDBOX_START overwrites the
+ *      entry with a fresh one anyway — the `sandboxHandle` is deterministic
  *      (computeHandle), so the entry's identity is stable across
  *      reprovisions.
  *
@@ -346,10 +351,10 @@ async function emitLifecycle(args: {
     };
 
     // Watchdog: if the source has only ever surfaced `claiming` after
-    // NO_CLAIM_MAX_MS, the SandboxClaim was never posted (VM_START likely
+    // NO_CLAIM_MAX_MS, the SandboxClaim was never posted (SANDBOX_START likely
     // failed earlier). Surface `claim-never-created` so the UI shows the
     // retry affordance instead of stalling. Only meaningful for
-    // agent-sandbox; other runners go straight to `ready` so the watchdog
+    // agent-sandbox; other providers go straight to `ready` so the watchdog
     // never fires.
     const watchdogTimer = setTimeout(() => {
       if (claimSeen || settled) return;
@@ -360,7 +365,7 @@ async function emitLifecycle(args: {
             kind: "failed",
             reason: "claim-never-created",
             message:
-              "Sandbox claim was never created. The VM_START call may have failed earlier — check the start error.",
+              "Sandbox claim was never created. The SANDBOX_START call may have failed earlier — check the start error.",
           } satisfies ClaimPhase),
         })
         .catch(() => {});
@@ -396,7 +401,7 @@ const PROXY_OPEN_RETRY_BUDGET_MS = 60_000;
 const PROXY_OPEN_RETRY_DELAY_MS = 500;
 
 /**
- * Open the daemon's `/_decopilot_vm/events` SSE through the runner and pipe
+ * Open the daemon's `/_sandbox/events` SSE through the runner and pipe
  * raw bytes to the client. Daemon emits a stable wire format the browser's
  * EventSource already groks, so byte-passthrough preserves event names,
  * payloads, and frame boundaries without parsing.
@@ -424,16 +429,12 @@ async function proxyDaemonEvents(args: {
   while (!signal.aborted) {
     let attempt: Response | null = null;
     try {
-      attempt = await runner.proxyDaemonRequest(
-        claimName,
-        "/_decopilot_vm/events",
-        {
-          method: "GET",
-          headers: new Headers({ accept: "text/event-stream" }),
-          body: null,
-          signal,
-        },
-      );
+      attempt = await runner.proxyDaemonRequest(claimName, "/_sandbox/events", {
+        method: "GET",
+        headers: new Headers({ accept: "text/event-stream" }),
+        body: null,
+        signal,
+      });
     } catch (err) {
       if (signal.aborted) return;
       // Network-level failure (port-forward not yet open, daemon health
@@ -468,7 +469,7 @@ async function proxyDaemonEvents(args: {
         continue;
       }
       // Budget elapsed and handle still missing — genuine eviction. Emit
-      // `gone` so the client's self-heal (VM_START) takes over.
+      // `gone` so the client's self-heal (SANDBOX_START) takes over.
       await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
       return;
     }

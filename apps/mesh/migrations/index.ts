@@ -89,6 +89,8 @@ import * as migration087fixvmmaprekey from "./087-fix-vm-map-rekey.ts";
 import * as migration088purgecliactivatekeys from "./088-purge-cli-activate-keys.ts";
 import * as migration089renameremoteusertodesktop from "./089-rename-remote-user-to-desktop.ts";
 import * as migration090automationwebhooktriggers from "./090-automation-webhook-triggers.ts";
+import * as migration091organizationdomainsallowmulti from "./091-organization-domains-allow-multi.ts";
+import * as migration092sandboxnaminguniformization from "./092-sandbox-naming-uniformization.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -195,6 +197,9 @@ const migrations: Record<string, Migration> = {
   "088-purge-cli-activate-keys": migration088purgecliactivatekeys,
   "089-rename-remote-user-to-desktop": migration089renameremoteusertodesktop,
   "090-automation-webhook-triggers": migration090automationwebhooktriggers,
+  "091-organization-domains-allow-multi":
+    migration091organizationdomainsallowmulti,
+  "092-sandbox-naming-uniformization": migration092sandboxnaminguniformization,
 };
 
 export default migrations;

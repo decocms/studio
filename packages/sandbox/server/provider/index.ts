@@ -64,29 +64,31 @@ export function createDockerProvider(
   });
 }
 
-const RUNNER_KINDS: ReadonlySet<SandboxProviderKind> = new Set([
-  "docker",
-  "agent-sandbox",
-  "desktop",
+const SANDBOX_PROVIDER_KINDS: ReadonlySet<SandboxProviderKind> = new Set([
+  "local-docker",
+  "cluster",
+  "user-desktop",
 ]);
 
 /**
  * Single resolution rule:
- *   - explicit STUDIO_SANDBOX_RUNNER wins (validated against the kind set);
- *   - otherwise default to "desktop" (the user's desktop link daemon —
+ *   - explicit STUDIO_SANDBOX_PROVIDER wins (validated against the kind set);
+ *   - otherwise default to "user-desktop" (the user's desktop link daemon —
  *     auto-spawned by `bun run dev` in local dev, and the supported
  *     topology for single-machine self-hosts running the link side-by-side).
  *
- * Production deploys MUST set STUDIO_SANDBOX_RUNNER explicitly to
- * "docker" or "agent-sandbox" — the default is only meaningful when paired
+ * Production deploys MUST set STUDIO_SANDBOX_PROVIDER explicitly to
+ * "local-docker" or "cluster" — the default is only meaningful when paired
  * with a co-located link binary.
  */
 export function resolveSandboxProviderKindFromEnv(): SandboxProviderKind {
-  const raw = process.env.STUDIO_SANDBOX_RUNNER;
-  const kind = (raw && raw.length > 0 ? raw : "desktop") as SandboxProviderKind;
-  if (!RUNNER_KINDS.has(kind)) {
+  const raw = process.env.STUDIO_SANDBOX_PROVIDER;
+  const kind = (
+    raw && raw.length > 0 ? raw : "user-desktop"
+  ) as SandboxProviderKind;
+  if (!SANDBOX_PROVIDER_KINDS.has(kind)) {
     throw new Error(
-      `Unknown STUDIO_SANDBOX_RUNNER="${raw}" — expected "docker", "agent-sandbox", or "desktop".`,
+      `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "local-docker", "cluster", or "user-desktop".`,
     );
   }
   return kind;

@@ -39,8 +39,8 @@ import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createVmTools } from "./vm-tools";
 import type { HtmlPageBuffer } from "./vm-tools/html-page-buffer";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
-import { ensureVm } from "@/tools/vm/start";
-import { removeVmMapEntry } from "@/tools/vm/vm-map";
+import { ensureSandbox } from "@/tools/sandbox/start";
+import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import { todoWriteTool } from "./todo-write";
@@ -91,7 +91,7 @@ export interface BuiltinToolParams {
   /**
    * When set, the six VM file tools (read/write/edit/grep/glob/bash) are
    * registered with a memoized lazy provisioner: the first tool call
-   * triggers `ensureVmForBranch`, subsequent calls reuse the same handle.
+   * triggers `ensureSandbox`, subsequent calls reuse the same handle.
    * When null, no VM-backed code execution tool is included.
    */
   vmContext?: VmContext | null;
@@ -154,8 +154,8 @@ async function buildAllTools(
   };
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
-  // lazily on the first tool invocation: `ensureVmForBranch` either reuses
-  // the existing vmMap entry (fast path) or provisions a new sandbox via
+  // lazily on the first tool invocation: `ensureSandbox` either reuses
+  // the existing sandboxMap entry (fast path) or provisions a new sandbox via
   // the env-selected runner. The promise is memoized on the closure so
   // parallel first calls (e.g. the model emitting bash + read in one step)
   // share a single provisioning round-trip.
@@ -164,9 +164,9 @@ async function buildAllTools(
   if (vmContext) {
     // `dispatch-run` already populated `ctx.sandboxPreference` /
     // `ctx.linkForCurrentRun` from the resolved `DispatchTarget`, so the
-    // resolver short-circuits on those ctx hints without reading vmMap —
+    // resolver short-circuits on those ctx hints without reading sandboxMap —
     // no DB hit on the decopilot hot path. The same `kind` flows into
-    // `ensureVm` below so `runner` and the provisioned handle are
+    // `ensureSandbox` below so `runner` and the provisioned handle are
     // guaranteed to come from the same provider.
     const { provider: runner, kind: providerKind } =
       await resolveSandboxProvider(ctx, {
@@ -177,14 +177,14 @@ async function buildAllTools(
     let cached: Promise<string> | null = null;
     const ensureHandle = () => {
       if (!cached) {
-        cached = ensureVm(
+        cached = ensureSandbox(
           {
             virtualMcpId: vmContext.virtualMcpId,
             branch: vmContext.branch,
             sandboxProviderKind: providerKind,
           },
           ctx,
-        ).then((entry) => entry.vmId);
+        ).then((entry) => entry.sandboxHandle);
         // Reset on failure so the next tool call retries instead of
         // permanently caching a rejected promise.
         cached.catch(() => {
@@ -208,7 +208,7 @@ async function buildAllTools(
       // Reap the vmMap entry so the next `ensureVm` provisions fresh
       // rather than returning the dead vmId from the fast path.
       try {
-        await removeVmMapEntry(
+        await removeSandboxMapEntry(
           ctx.storage.virtualMcps,
           vmContext.virtualMcpId,
           vmContext.userId,

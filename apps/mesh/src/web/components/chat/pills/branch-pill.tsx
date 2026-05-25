@@ -1,4 +1,4 @@
-import type { VmMap } from "@decocms/mesh-sdk";
+import type { SandboxMap } from "@decocms/mesh-sdk";
 import { GitBranch01 } from "@untitledui/icons";
 import { BranchPicker } from "../../thread/github/branch-picker";
 
@@ -10,7 +10,7 @@ interface Props {
   connectionId: string | null;
   owner: string;
   repo: string;
-  vmMap: VmMap | undefined;
+  sandboxMap: SandboxMap | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
   locked: boolean;

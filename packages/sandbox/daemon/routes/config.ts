@@ -45,7 +45,7 @@ const TOKEN_MIN_LENGTH = 32;
 const TOKEN_MAX_LENGTH = 256;
 
 /**
- * GET /_decopilot_vm/config — current TenantConfig plus live daemon state.
+ * GET /_sandbox/config — current TenantConfig plus live daemon state.
  * Always returns 200 (config is null when not yet set) so callers get full
  * state context even on a fresh daemon before the first PUT /config.
  */
@@ -65,7 +65,7 @@ export function makeConfigReadHandler(deps: ConfigDeps) {
 }
 
 /**
- * POST /_decopilot_vm/config — set initial tenant config. PUT/POST share
+ * POST /_sandbox/config — set initial tenant config. PUT/POST share
  * the same handler shape: both deep-merge into current. POST is the
  * conventional first-set; PUT is the conventional patch.
  *

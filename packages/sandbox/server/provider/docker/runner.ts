@@ -45,7 +45,7 @@ import type {
 } from "../types";
 import type { ClaimPhase } from "../lifecycle-types";
 
-const RUNNER_KIND = "docker" as const;
+const RUNNER_KIND = "local-docker" as const;
 const LABEL_ROOT = "studio-sandbox";
 const LABEL_ID = "studio-sandbox.id";
 const DEFAULT_DEV_PORT = 3000;
@@ -186,7 +186,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     return proxyDaemonRequest(rec.daemonUrl, rec.token, path, init);
   }
 
-  // No pre-Ready window worth surfacing: VM_START's `runner.ensure` blocks on
+  // No pre-Ready window worth surfacing: SANDBOX_START's `provider.ensure` blocks on
   // `waitForDaemonReady`, which returns once the container's daemon `/health`
   // is reachable — typically <1s after `docker run` returns. Yield a single
   // `ready` so the unified vm-events route can proceed straight to the
@@ -305,7 +305,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const devContainerPort = opts.workload?.devPort ?? DEFAULT_DEV_PORT;
 
     // Bootstrap-only env: identity + ports. Repo + workload are pushed via
-    // POST /_decopilot_vm/config after the daemon is healthy. opts.env is
+    // POST /_sandbox/config after the daemon is healthy. opts.env is
     // spread last to match the host runner's escape-hatch semantics —
     // overriding daemon bootstrap names is rare and breaks things, but the
     // hatch stays.
