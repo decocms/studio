@@ -82,6 +82,11 @@ function FileConfigRow({
               prefix: {config.prefix}
             </p>
           ) : null}
+          {config.publicUrlBase ? (
+            <p className="text-xs text-muted-foreground/80 mt-0.5 truncate font-mono">
+              public: {config.publicUrlBase}
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -139,6 +144,7 @@ function CreateFileConfigDialog({
   const [endpoint, setEndpoint] = useState("");
   const [forcePathStyle, setForcePathStyle] = useState(false);
   const [prefix, setPrefix] = useState("");
+  const [publicUrlBase, setPublicUrlBase] = useState("");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const createConfig = useCreateFileConfig();
@@ -151,6 +157,7 @@ function CreateFileConfigDialog({
     setEndpoint("");
     setForcePathStyle(false);
     setPrefix("");
+    setPublicUrlBase("");
     setAccessKeyId("");
     setSecretAccessKey("");
   }
@@ -174,6 +181,7 @@ function CreateFileConfigDialog({
         endpoint: endpoint.trim() || undefined,
         forcePathStyle,
         prefix: prefix.trim() || undefined,
+        publicUrlBase: publicUrlBase.trim() || undefined,
         accessKeyId,
         secretAccessKey,
       });
@@ -295,6 +303,25 @@ function CreateFileConfigDialog({
               All object keys are written under this prefix. Useful for
               multi-tenant buckets or credentials scoped to a sub-path. A
               trailing slash is added automatically.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="file-config-public-url-base">
+              Public URL base (optional)
+            </Label>
+            <Input
+              id="file-config-public-url-base"
+              type="url"
+              value={publicUrlBase}
+              onChange={(e) => setPublicUrlBase(e.target.value)}
+              placeholder="https://pub-xxxx.r2.dev or https://cdn.example.com"
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              Host used to build public URLs returned by the picker (R2 dev
+              domain, CDN, custom host). Leave blank to use the bucket's S3 host
+              (AWS default).
             </p>
           </div>
 

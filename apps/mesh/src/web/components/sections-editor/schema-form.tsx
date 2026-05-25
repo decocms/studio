@@ -7,12 +7,11 @@ import { EnumField } from "./fields/enum-field";
 import { ArrayField } from "./fields/array-field";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
+import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
-
-const IMAGE_FORMATS = new Set(["image-uri", "file-uri"]);
 
 function humanize(key: string): string {
   return key
@@ -62,9 +61,13 @@ export function renderField(props: FieldProps) {
     return null;
   }
 
-  // Image formats
-  if (schema.format && IMAGE_FORMATS.has(schema.format)) {
+  // image-uri → ImageField (preview + image-only picker)
+  if (schema.format === "image-uri") {
     return <ImageField key={props.path} {...props} />;
+  }
+  // file-uri → FileField (filename chip + any-type picker)
+  if (schema.format === "file-uri") {
+    return <FileField key={props.path} {...props} />;
   }
 
   // Enum (including extracted const enums)

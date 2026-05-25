@@ -321,6 +321,8 @@ export interface OrgFileConfigTable {
   endpoint: string | null;
   force_path_style: ColumnType<boolean, boolean | undefined, boolean>;
   prefix: string | null;
+  // Public URL host (e.g. R2 dev domain, CDN). Null = compute from bucket+region.
+  public_url_base: string | null;
   encrypted_credentials: string;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
@@ -339,6 +341,7 @@ export interface FileConfigInfo {
   endpoint: string | null;
   forcePathStyle: boolean;
   prefix: string | null;
+  publicUrlBase: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;

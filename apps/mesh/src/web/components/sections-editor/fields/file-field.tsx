@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Image01, Upload01 } from "@untitledui/icons";
+import { File02, Upload01, X } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { FilePickerDialog } from "@/web/components/file-picker/file-picker-dialog";
 import type { FieldProps } from "./field-props";
 
-export function ImageField({
+export function FileField({
   schema,
   value,
   onChange,
@@ -27,16 +27,23 @@ export function ImageField({
         )}
       </div>
       {strValue ? (
-        <div className="overflow-hidden rounded-lg border border-border/50 bg-muted/30">
-          <img
-            src={strValue}
-            alt={label}
-            className="max-h-32 w-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).parentElement!.style.display =
-                "none";
-            }}
-          />
+        <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+          <div className="size-9 rounded-md bg-muted flex items-center justify-center shrink-0">
+            <File02 size={16} className="text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium truncate">{basename(strValue)}</p>
+            <p className="text-xs text-muted-foreground truncate">{strValue}</p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange("")}
+            aria-label="Clear file"
+          >
+            <X size={14} />
+          </Button>
         </div>
       ) : (
         <button
@@ -44,8 +51,8 @@ export function ImageField({
           onClick={() => setPickerOpen(true)}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-muted/30 py-6 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground transition"
         >
-          <Image01 size={16} />
-          <span>Pick or upload an image</span>
+          <File02 size={16} />
+          <span>Pick or upload a file</span>
         </button>
       )}
       <div className="flex items-center gap-2">
@@ -71,9 +78,20 @@ export function ImageField({
       <FilePickerDialog
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        mode="image"
+        mode="any"
         onSelect={(url) => onChange(url)}
       />
     </div>
   );
+}
+
+function basename(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const parts = path.split("/");
+    return parts[parts.length - 1] || url;
+  } catch {
+    const parts = url.split("/");
+    return parts[parts.length - 1] || url;
+  }
 }

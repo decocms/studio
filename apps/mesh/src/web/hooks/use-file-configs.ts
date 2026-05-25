@@ -20,6 +20,7 @@ export interface FileConfigInfo {
   endpoint: string | null;
   forcePathStyle: boolean;
   prefix: string | null;
+  publicUrlBase: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -57,6 +58,7 @@ export interface CreateFileConfigInput {
   endpoint?: string;
   forcePathStyle?: boolean;
   prefix?: string;
+  publicUrlBase?: string;
   accessKeyId: string;
   secretAccessKey: string;
 }

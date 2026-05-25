@@ -152,6 +152,8 @@ const ALL_TOOL_NAMES = [
   "FILE_CONFIG_LIST",
   "FILE_CONFIG_UPDATE",
   "FILE_CONFIG_DELETE",
+  "FILE_PRESIGN_UPLOAD",
+  "FILE_OBJECTS_LIST",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -728,6 +730,17 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete an S3 bucket configuration",
     category: "File Configs",
   },
+  {
+    name: "FILE_PRESIGN_UPLOAD",
+    description:
+      "Generate a presigned PUT URL for uploading to a configured bucket",
+    category: "File Configs",
+  },
+  {
+    name: "FILE_OBJECTS_LIST",
+    description: "List existing objects in a configured bucket",
+    category: "File Configs",
+  },
 
   // Object Storage tools
   {
@@ -1123,6 +1136,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "FILE_CONFIG_LIST",
       "FILE_CONFIG_UPDATE",
       "FILE_CONFIG_DELETE",
+      "FILE_PRESIGN_UPLOAD",
+      "FILE_OBJECTS_LIST",
     ],
   },
   // AI Providers

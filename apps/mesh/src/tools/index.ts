@@ -160,6 +160,8 @@ const CORE_TOOLS = [
   FileConfigTools.FILE_CONFIG_LIST,
   FileConfigTools.FILE_CONFIG_UPDATE,
   FileConfigTools.FILE_CONFIG_DELETE,
+  FileConfigTools.FILE_PRESIGN_UPLOAD,
+  FileConfigTools.FILE_OBJECTS_LIST,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,
