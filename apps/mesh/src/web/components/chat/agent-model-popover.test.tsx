@@ -58,7 +58,7 @@ describe("AgentModelPopover", () => {
         onSelect={onSelect}
       />,
     );
-    getByText("Haiku").click();
+    getByText("Haiku 4.5").click();
     expect(onSelect).toHaveBeenCalledWith("claude-code", "fast");
   });
 

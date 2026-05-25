@@ -67,7 +67,7 @@ describe("AgentModelTriggerPure", () => {
         onSelect={() => {}}
       />,
     );
-    expect(getByText("Opus")).toBeInTheDocument();
+    expect(getByText("Opus 4.7")).toBeInTheDocument();
   });
 
   test("label reflects the active Decopilot tier label (Smart)", () => {

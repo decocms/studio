@@ -57,7 +57,11 @@ import {
   vmUserStop,
   type VmStartArgs,
 } from "../hooks/use-vm-start";
-import { computePreviewState, type PreviewState } from "./preview-state";
+import {
+  computePreviewState,
+  type LifecycleFailure,
+  type PreviewState,
+} from "./preview-state";
 import { VmStateCard } from "./state-card";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import {
@@ -239,6 +243,22 @@ export function PreviewContent() {
   const userStopped =
     !!virtualMcpId && !!branch && vmUserStop.isStopped(virtualMcpId, branch);
 
+  // Terminal lifecycle failures from the daemon (clone/install/dev script
+  // exited non-zero). Distinct from `lastStartError`, which is a VM_START
+  // mutation rejection — these come from the daemon AFTER it came online.
+  // The daemon also flips status.state to "error", but lifecycle.phase
+  // carries which step failed, which the card uses to pick a log source.
+  const lifecycleFailure: LifecycleFailure | null =
+    lifecyclePhase === "start-failed" ||
+    lifecyclePhase === "install-failed" ||
+    lifecyclePhase === "clone-failed"
+      ? lifecyclePhase
+      : null;
+  const lifecycleFailureError =
+    lifecycleFailure && "error" in vmEvents.lifecycle
+      ? (vmEvents.lifecycle.error ?? null)
+      : null;
+
   const previewState = computePreviewState({
     previewUrl,
     status: upstreamStatus,
@@ -247,10 +267,34 @@ export function PreviewContent() {
     appPaused,
     vmStartPending,
     lastStartError,
+    lifecycleFailure,
+    lifecycleFailureError,
     claimPhase,
     notFound: vmEvents.notFound,
     userStopped,
   });
+
+  // Daemon is reachable independent of the dev script: ready claim, handle
+  // still present, not user-stopped/suspended. Gates surfaces (FileExplorer,
+  // terminal) that talk to the daemon's HTTP API and don't need a dev server.
+  const daemonReady =
+    !!virtualMcpId &&
+    !!branch &&
+    !vmEvents.notFound &&
+    !userStopped &&
+    !suspended &&
+    !appPaused &&
+    (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
+
+  // `visual` and `cms` drop out of the toggle options when the iframe is
+  // gone (they require a live dev server to inject overlays into). Fall
+  // back to `preview` for the toggle binding + overlay renders so the
+  // toggle never carries a value not in its option list.
+  const effectiveViewMode: PreviewViewMode =
+    previewState.kind !== "iframe" &&
+    (viewMode === "visual" || viewMode === "cms")
+      ? "preview"
+      : viewMode;
 
   // ref-latest pattern: effects below depend only on upstream signals, not
   // on this closure's churning captures (branch, mutation, setter).
@@ -542,14 +586,21 @@ export function PreviewContent() {
     }
   })();
 
+  // visual + cms require a live iframe (they inject overlays into the dev
+  // server); when the iframe isn't up we still offer preview + code so the
+  // user can browse files after a dev-script crash.
   const viewModeOptions: ViewModeOption<PreviewViewMode>[] = [
     { value: "preview", icon: <Monitor04 size={14} />, tooltip: "Interactive" },
-    {
-      value: "visual",
-      icon: <CursorClick01 size={14} />,
-      tooltip: "Visual editor",
-    },
-    ...(pages.length > 0
+    ...(previewState.kind === "iframe"
+      ? [
+          {
+            value: "visual" as PreviewViewMode,
+            icon: <CursorClick01 size={14} />,
+            tooltip: "Visual editor",
+          },
+        ]
+      : []),
+    ...(previewState.kind === "iframe" && pages.length > 0
       ? [
           {
             value: "cms" as PreviewViewMode,
@@ -563,209 +614,217 @@ export function PreviewContent() {
 
   return (
     <div className="flex flex-col w-full h-full">
-      {previewState.kind === "iframe" && (
+      {daemonReady && (
         <div className="flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
-          {/* Group 1: view mode toggle */}
+          {/* Group 1: view mode toggle. Always visible when the daemon is up
+              so the user can drop into code mode after a dev-script crash. */}
           <div className="flex shrink-0 items-center gap-1">
-            {hasHtmlPreview && (
-              <ViewModeToggle
-                value={viewMode}
-                onValueChange={handleViewModeChange}
-                options={viewModeOptions}
-                size="sm"
-                className="shrink-0 bg-foreground/4.5"
-              />
-            )}
+            <ViewModeToggle
+              value={effectiveViewMode}
+              onValueChange={handleViewModeChange}
+              options={viewModeOptions}
+              size="sm"
+              className="shrink-0 bg-foreground/4.5"
+            />
           </div>
 
-          {/* Group 2: nav + url (hidden in code mode) */}
-          <div
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-0.5",
-              viewMode === "code" && "hidden",
-            )}
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() =>
-                    previewIframeRef.current?.contentWindow?.history.back()
-                  }
-                >
-                  <ArrowLeft size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Back</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() =>
-                    previewIframeRef.current?.contentWindow?.history.forward()
-                  }
-                >
-                  <ArrowRight size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Forward</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={handleRefresh}>
-                  <RefreshCw01 size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Refresh</TooltipContent>
-            </Tooltip>
-
-            <div ref={pagesContainerRef} className="relative min-w-0 flex-1">
-              <button
-                type="button"
-                className="flex h-8 w-full min-w-0 items-center gap-1 rounded-md bg-background px-2 transition-colors duration-200 hover:bg-accent"
-                onClick={() => setPagesOpen((prev) => !prev)}
+          {/* Groups 2+3 only render when the iframe is live — they read
+              `previewState.previewUrl` and steer the iframe directly. */}
+          {previewState.kind === "iframe" && (
+            <>
+              {/* Group 2: nav + url (hidden in code mode) */}
+              <div
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-0.5",
+                  viewMode === "code" && "hidden",
+                )}
               >
-                <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
-                  {previewLabel}
-                </span>
-                {currentPageName && (
-                  <span className="shrink-0 text-[12px] text-muted-foreground">
-                    {currentPageName}
-                  </span>
-                )}
-                {pages.length > 0 && (
-                  <ChevronDown
-                    size={12}
-                    className={cn(
-                      "shrink-0 text-muted-foreground transition-transform",
-                      pagesOpen && "rotate-180",
-                    )}
-                  />
-                )}
-              </button>
-
-              {pagesOpen && pages.length > 0 && (
-                <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
-                  <div className="px-2 pt-2 pb-1">
-                    <input
-                      type="text"
-                      value={pagesSearch}
-                      onChange={(e) => setPagesSearch(e.target.value)}
-                      placeholder="Search pages..."
-                      className="w-full rounded-md border border-input bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
-                      autoFocus
-                    />
-                  </div>
-                  <ScrollArea className="max-h-[60vh]">
-                    <div className="p-1.5">
-                      {pages
-                        .filter((page) => {
-                          if (!pagesSearch) return true;
-                          const q = pagesSearch.toLowerCase();
-                          return (
-                            page.name.toLowerCase().includes(q) ||
-                            page.path.toLowerCase().includes(q)
-                          );
-                        })
-                        .map((page) => (
-                          <button
-                            key={page.key}
-                            type="button"
-                            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                            onClick={() => {
-                              setPagesOpen(false);
-                              setPagesSearch("");
-                              setCurrentPath(page.path);
-                              // Navigate the iframe
-                              const iframe = previewIframeRef.current;
-                              if (iframe && previewUrl) {
-                                iframe.src = new URL(
-                                  page.path,
-                                  previewUrl,
-                                ).href;
-                              }
-                            }}
-                          >
-                            <span className="min-w-0 flex-1 truncate font-medium">
-                              {page.name}
-                            </span>
-                            <span className="shrink-0 text-xs text-muted-foreground">
-                              {page.path}
-                            </span>
-                          </button>
-                        ))}
-                      {pagesSearch &&
-                        pages.every((page) => {
-                          const q = pagesSearch.toLowerCase();
-                          return (
-                            !page.name.toLowerCase().includes(q) &&
-                            !page.path.toLowerCase().includes(q)
-                          );
-                        }) && (
-                          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                            No pages match "{pagesSearch}"
-                          </div>
-                        )}
-                    </div>
-                  </ScrollArea>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Group 3: open in new tab + more actions (hidden in code mode) */}
-          <div
-            className={cn(
-              "flex shrink-0 items-center gap-0.5",
-              viewMode === "code" && "hidden",
-            )}
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    let url = previewState.previewUrl;
-                    if (url && currentPath && currentPath !== "/") {
-                      try {
-                        const parsed = new URL(url);
-                        parsed.pathname = currentPath;
-                        url = parsed.href;
-                      } catch {
-                        // keep original url
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        previewIframeRef.current?.contentWindow?.history.back()
                       }
-                    }
-                    window.open(url, "_blank", "noopener");
-                  }}
-                >
-                  <LinkExternal01 size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Open in new tab</TooltipContent>
-            </Tooltip>
+                    >
+                      <ArrowLeft size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Back</TooltipContent>
+                </Tooltip>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
-                  <DotsHorizontal size={14} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleHardReload}>
-                  Hard Reload
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleCopyUrl}>
-                  Copy Current URL
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        previewIframeRef.current?.contentWindow?.history.forward()
+                      }
+                    >
+                      <ArrowRight size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Forward</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={handleRefresh}>
+                      <RefreshCw01 size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Refresh</TooltipContent>
+                </Tooltip>
+
+                <div
+                  ref={pagesContainerRef}
+                  className="relative min-w-0 flex-1"
+                >
+                  <button
+                    type="button"
+                    className="flex h-8 w-full min-w-0 items-center gap-1 rounded-md bg-background px-2 transition-colors duration-200 hover:bg-accent"
+                    onClick={() => setPagesOpen((prev) => !prev)}
+                  >
+                    <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
+                      {previewLabel}
+                    </span>
+                    {currentPageName && (
+                      <span className="shrink-0 text-[12px] text-muted-foreground">
+                        {currentPageName}
+                      </span>
+                    )}
+                    {pages.length > 0 && (
+                      <ChevronDown
+                        size={12}
+                        className={cn(
+                          "shrink-0 text-muted-foreground transition-transform",
+                          pagesOpen && "rotate-180",
+                        )}
+                      />
+                    )}
+                  </button>
+
+                  {pagesOpen && pages.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
+                      <div className="px-2 pt-2 pb-1">
+                        <input
+                          type="text"
+                          value={pagesSearch}
+                          onChange={(e) => setPagesSearch(e.target.value)}
+                          placeholder="Search pages..."
+                          className="w-full rounded-md border border-input bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
+                          autoFocus
+                        />
+                      </div>
+                      <ScrollArea className="max-h-[60vh]">
+                        <div className="p-1.5">
+                          {pages
+                            .filter((page) => {
+                              if (!pagesSearch) return true;
+                              const q = pagesSearch.toLowerCase();
+                              return (
+                                page.name.toLowerCase().includes(q) ||
+                                page.path.toLowerCase().includes(q)
+                              );
+                            })
+                            .map((page) => (
+                              <button
+                                key={page.key}
+                                type="button"
+                                className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                onClick={() => {
+                                  setPagesOpen(false);
+                                  setPagesSearch("");
+                                  setCurrentPath(page.path);
+                                  // Navigate the iframe
+                                  const iframe = previewIframeRef.current;
+                                  if (iframe && previewUrl) {
+                                    iframe.src = new URL(
+                                      page.path,
+                                      previewUrl,
+                                    ).href;
+                                  }
+                                }}
+                              >
+                                <span className="min-w-0 flex-1 truncate font-medium">
+                                  {page.name}
+                                </span>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  {page.path}
+                                </span>
+                              </button>
+                            ))}
+                          {pagesSearch &&
+                            pages.every((page) => {
+                              const q = pagesSearch.toLowerCase();
+                              return (
+                                !page.name.toLowerCase().includes(q) &&
+                                !page.path.toLowerCase().includes(q)
+                              );
+                            }) && (
+                              <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                                No pages match "{pagesSearch}"
+                              </div>
+                            )}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Group 3: open in new tab + more actions (hidden in code mode) */}
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-0.5",
+                  viewMode === "code" && "hidden",
+                )}
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        let url = previewState.previewUrl;
+                        if (url && currentPath && currentPath !== "/") {
+                          try {
+                            const parsed = new URL(url);
+                            parsed.pathname = currentPath;
+                            url = parsed.href;
+                          } catch {
+                            // keep original url
+                          }
+                        }
+                        window.open(url, "_blank", "noopener");
+                      }}
+                    >
+                      <LinkExternal01 size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Open in new tab</TooltipContent>
+                </Tooltip>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon">
+                      <DotsHorizontal size={14} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleHardReload}>
+                      Hard Reload
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCopyUrl}>
+                      Copy Current URL
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -891,6 +950,28 @@ export function PreviewContent() {
             </div>
           )}
 
+          {/* Dev-script (or install/clone) exited after the daemon came up.
+              Card overlay is suppressed in `code` mode so the user can drop
+              into the FileExplorer to debug what went wrong. */}
+          {previewState.kind === "dev-script-failed" && viewMode !== "code" && (
+            <div className="absolute inset-0 z-40">
+              <VmStateCard
+                kind="dev-script-failed"
+                progress={progress}
+                logSource={
+                  previewState.failure === "start-failed" ? "dev" : "setup"
+                }
+                errorLine={
+                  previewState.error.split("\n")[0] ?? "Dev script exited"
+                }
+                onRetry={retryAutoStart}
+                onOpenTerminal={openDrawer}
+                onBrowseFiles={() => setViewMode("code")}
+                drawerOpen={drawerOpenEffective}
+              />
+            </div>
+          )}
+
           {previewState.kind === "suspended" && (
             <div className="absolute inset-0 z-30">
               <VmStateCard kind="suspended" onResume={retryAutoStart} />
@@ -918,42 +999,42 @@ export function PreviewContent() {
             </div>
           )}
 
-          {viewMode === "visual" && !visualElement && (
+          {effectiveViewMode === "visual" && !visualElement && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
               <CursorClick01 size={12} />
               Click any element to ask the AI
             </div>
           )}
-          {viewMode === "visual" && visualElement && (
+          {effectiveViewMode === "visual" && visualElement && (
             <VisualEditorPrompt
               element={visualElement}
               onDismiss={() => setVisualElement(null)}
             />
           )}
-          {/* File explorer (code mode) */}
-          {viewMode === "code" &&
-            previewState.kind === "iframe" &&
-            virtualMcpId &&
-            branch && (
-              <div className="absolute inset-0 z-10 bg-background">
-                <Suspense
-                  fallback={
-                    <div className="h-full flex items-center justify-center">
-                      <Loading01
-                        size={20}
-                        className="animate-spin text-muted-foreground"
-                      />
-                    </div>
-                  }
-                >
-                  <FileExplorer
-                    orgSlug={org.slug}
-                    virtualMcpId={virtualMcpId}
-                    branch={branch}
-                  />
-                </Suspense>
-              </div>
-            )}
+          {/* File explorer (code mode). Gated on daemon-ready, NOT on the
+              dev server: the daemon's FS endpoints (/read, /glob, …) keep
+              serving even when the dev script has crashed, so the user can
+              still browse files to debug a `start-failed`. */}
+          {viewMode === "code" && daemonReady && virtualMcpId && branch && (
+            <div className="absolute inset-0 z-10 bg-background">
+              <Suspense
+                fallback={
+                  <div className="h-full flex items-center justify-center">
+                    <Loading01
+                      size={20}
+                      className="animate-spin text-muted-foreground"
+                    />
+                  </div>
+                }
+              >
+                <FileExplorer
+                  orgSlug={org.slug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                />
+              </Suspense>
+            </div>
+          )}
 
           {previewState.kind === "iframe" && (
             <iframe

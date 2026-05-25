@@ -10,6 +10,8 @@ const base: PreviewStateInput = {
   appPaused: false,
   vmStartPending: false,
   lastStartError: null,
+  lifecycleFailure: null,
+  lifecycleFailureError: null,
   claimPhase: null,
   notFound: false,
   userStopped: false,
@@ -167,5 +169,73 @@ describe("computePreviewState", () => {
         suspended: true,
       }),
     ).toEqual({ kind: "suspended" });
+  });
+
+  test("lifecycle start-failed → dev-script-failed", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        lifecycleFailure: "start-failed",
+        lifecycleFailureError: "dev script exited with code 1",
+      }),
+    ).toEqual({
+      kind: "dev-script-failed",
+      failure: "start-failed",
+      error: "dev script exited with code 1",
+    });
+  });
+
+  test("lifecycle install-failed → dev-script-failed", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        lifecycleFailure: "install-failed",
+        lifecycleFailureError: "exit 1",
+      }),
+    ).toEqual({
+      kind: "dev-script-failed",
+      failure: "install-failed",
+      error: "exit 1",
+    });
+  });
+
+  test("lifecycle failure with null error uses default reason", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        lifecycleFailure: "start-failed",
+        lifecycleFailureError: null,
+      }),
+    ).toEqual({
+      kind: "dev-script-failed",
+      failure: "start-failed",
+      error: "Sandbox start-failed",
+    });
+  });
+
+  test("lastStartError still wins over lifecycleFailure", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        lastStartError: "boom",
+        lifecycleFailure: "start-failed",
+        lifecycleFailureError: "dev script exited with code 1",
+      }),
+    ).toEqual({ kind: "errored", error: "boom" });
+  });
+
+  test("lifecycleFailure wins over suspended", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        suspended: true,
+        lifecycleFailure: "start-failed",
+        lifecycleFailureError: "dev script exited with code 1",
+      }),
+    ).toEqual({
+      kind: "dev-script-failed",
+      failure: "start-failed",
+      error: "dev script exited with code 1",
+    });
   });
 });
