@@ -5,7 +5,6 @@ import {
   resolveTierSubtitle,
   type AgentMode,
 } from "./use-agent-mode";
-import type { AiProviderKey, AiProviderModel } from "@decocms/mesh-sdk";
 
 describe("agentOptionFromMode <-> agentModeFromOption", () => {
   const cases: Array<
@@ -29,105 +28,51 @@ describe("agentOptionFromMode <-> agentModeFromOption", () => {
 });
 
 describe("resolveTierSubtitle", () => {
-  const emptyCtx = {
-    slot: null,
-    keys: [] as AiProviderKey[],
-    slotModels: [] as AiProviderModel[],
-    slotKeyId: null,
-  };
-
-  describe("local-claude-code", () => {
-    it("returns Haiku label for fast tier", () => {
-      expect(resolveTierSubtitle("local-claude-code", "fast", emptyCtx)).toBe(
-        "Haiku",
+  describe("local-claude-code: returns the versioned model label", () => {
+    it("fast → Haiku 4.5", () => {
+      expect(resolveTierSubtitle("local-claude-code", "fast")).toBe(
+        "Haiku 4.5",
       );
     });
-
-    it("returns Sonnet label for smart tier", () => {
-      expect(resolveTierSubtitle("local-claude-code", "smart", emptyCtx)).toBe(
-        "Sonnet",
+    it("smart → Sonnet 4.6", () => {
+      expect(resolveTierSubtitle("local-claude-code", "smart")).toBe(
+        "Sonnet 4.6",
       );
     });
-
-    it("returns Opus label for thinking tier", () => {
-      expect(
-        resolveTierSubtitle("local-claude-code", "thinking", emptyCtx),
-      ).toBe("Opus");
-    });
-  });
-
-  describe("local-codex", () => {
-    it("returns GPT-5.4 Mini label for fast tier", () => {
-      expect(resolveTierSubtitle("local-codex", "fast", emptyCtx)).toBe(
-        "GPT-5.4 Mini",
-      );
-    });
-
-    it("returns GPT-5.3 Codex label for smart tier", () => {
-      expect(resolveTierSubtitle("local-codex", "smart", emptyCtx)).toBe(
-        "GPT-5.3 Codex",
-      );
-    });
-
-    it("returns GPT-5.5 label for thinking tier", () => {
-      expect(resolveTierSubtitle("local-codex", "thinking", emptyCtx)).toBe(
-        "GPT-5.5",
+    it("thinking → Opus 4.7", () => {
+      expect(resolveTierSubtitle("local-claude-code", "thinking")).toBe(
+        "Opus 4.7",
       );
     });
   });
 
-  describe("cloud-decopilot", () => {
-    it("returns slot.title when set", () => {
-      const ctx = {
-        slot: {
-          keyId: "k1",
-          modelId: "claude-sonnet-3.7",
-          title: "Sonnet 3.7",
-        },
-        keys: [] as AiProviderKey[],
-        slotModels: [] as AiProviderModel[],
-        slotKeyId: "k1",
-      };
-      expect(resolveTierSubtitle("cloud-decopilot", "smart", ctx)).toBe(
-        "Sonnet 3.7",
+  describe("local-codex: returns the versioned model label", () => {
+    it("fast → GPT-5.4 Mini", () => {
+      expect(resolveTierSubtitle("local-codex", "fast")).toBe("GPT-5.4 Mini");
+    });
+    it("smart → GPT-5.3 Codex", () => {
+      expect(resolveTierSubtitle("local-codex", "smart")).toBe("GPT-5.3 Codex");
+    });
+    it("thinking → GPT-5.5", () => {
+      expect(resolveTierSubtitle("local-codex", "thinking")).toBe("GPT-5.5");
+    });
+  });
+
+  describe("cloud-decopilot: returns the intent description", () => {
+    it("fast → Quicker responses", () => {
+      expect(resolveTierSubtitle("cloud-decopilot", "fast")).toBe(
+        "Quicker responses",
       );
     });
-
-    it("falls back to slot.modelId when title is absent", () => {
-      const ctx = {
-        slot: { keyId: "k1", modelId: "claude-sonnet-3.7" },
-        keys: [] as AiProviderKey[],
-        slotModels: [] as AiProviderModel[],
-        slotKeyId: "k1",
-      };
-      expect(resolveTierSubtitle("cloud-decopilot", "smart", ctx)).toBe(
-        "claude-sonnet-3.7",
+    it("smart → Balanced quality", () => {
+      expect(resolveTierSubtitle("cloud-decopilot", "smart")).toBe(
+        "Balanced quality",
       );
     });
-
-    it("returns null when slot is null and no keys are configured", () => {
-      expect(resolveTierSubtitle("cloud-decopilot", "smart", emptyCtx)).toBe(
-        null,
+    it("thinking → Deeper reasoning", () => {
+      expect(resolveTierSubtitle("cloud-decopilot", "thinking")).toBe(
+        "Deeper reasoning",
       );
-    });
-
-    it("returns null when slot is null and slotKeyId is null (current hook behaviour)", () => {
-      const ctx = {
-        slot: null,
-        keys: [
-          {
-            id: "k1",
-            providerId: "anthropic",
-            label: "Anthropic",
-            presetId: null,
-            createdBy: "u1",
-            createdAt: "2026-05-25",
-          },
-        ] as AiProviderKey[],
-        slotModels: [] as AiProviderModel[],
-        slotKeyId: null,
-      };
-      expect(resolveTierSubtitle("cloud-decopilot", "smart", ctx)).toBe(null);
     });
   });
 });

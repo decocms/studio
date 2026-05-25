@@ -9,10 +9,10 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { ChevronDown, Check } from "@untitledui/icons";
 import type { ChatTier } from "@/tools/organization/schema";
 import {
+  resolveTierSubtitle,
   useAgentMode,
   useChatTier,
   useSetChatTier,
-  useTierSubtitle,
 } from "./use-agent-mode";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
@@ -112,18 +112,8 @@ export function TierTrigger() {
   const setTier = useSetChatTier();
   const mode = useAgentMode();
 
-  // Resolve subtitles at popover-open time. Calling `useTierSubtitle`
-  // for each tier here is fine — it's three hook calls, all backed by
-  // React Query caches.
-  const fast = useTierSubtitle(mode, "fast");
-  const smart = useTierSubtitle(mode, "smart");
-  const thinking = useTierSubtitle(mode, "thinking");
-
-  const subtitleFor = (t: ChatTier): string | null => {
-    if (t === "fast") return fast;
-    if (t === "thinking") return thinking;
-    return smart;
-  };
+  const subtitleFor = (t: ChatTier): string | null =>
+    resolveTierSubtitle(mode, t);
 
   return (
     <TierTriggerPure tier={tier} subtitleFor={subtitleFor} onSelect={setTier} />
