@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { CurrentLink } from "@/web/hooks/use-current-link";
 import {
   agentHasClonableSource,
+  agentHasConnectedGithub,
   hasLocalCliHarness,
 } from "./agent-capabilities";
 
@@ -50,6 +51,57 @@ describe("agentHasClonableSource", () => {
   it("ignores non-object metadata", () => {
     expect(agentHasClonableSource("string")).toBe(false);
     expect(agentHasClonableSource(42)).toBe(false);
+  });
+});
+
+describe("agentHasConnectedGithub", () => {
+  it("returns false for null/undefined virtualMcp", () => {
+    expect(agentHasConnectedGithub(null)).toBe(false);
+    expect(agentHasConnectedGithub(undefined)).toBe(false);
+  });
+
+  it("returns false for a Start Website agent (no connectionId)", () => {
+    const vm = {
+      connections: [],
+      metadata: {
+        githubRepo: {
+          url: "https://github.com/decocms/webapp-template",
+          owner: "decocms",
+          name: "webapp-template",
+        },
+      },
+    } as any;
+    expect(agentHasConnectedGithub(vm)).toBe(false);
+  });
+
+  it("returns false when connectionId is set but the connection is detached", () => {
+    const vm = {
+      connections: [{ connection_id: "conn_other" }],
+      metadata: {
+        githubRepo: {
+          url: "https://github.com/acme/app",
+          owner: "acme",
+          name: "app",
+          connectionId: "conn_github",
+        },
+      },
+    } as any;
+    expect(agentHasConnectedGithub(vm)).toBe(false);
+  });
+
+  it("returns true when connectionId is set and the connection is attached", () => {
+    const vm = {
+      connections: [{ connection_id: "conn_github" }],
+      metadata: {
+        githubRepo: {
+          url: "https://github.com/acme/app",
+          owner: "acme",
+          name: "app",
+          connectionId: "conn_github",
+        },
+      },
+    } as any;
+    expect(agentHasConnectedGithub(vm)).toBe(true);
   });
 });
 
