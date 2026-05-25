@@ -18,7 +18,8 @@ type IdPrefixes =
   | "dash"
   | "aik"
   | "sec"
-  | "vpc";
+  | "vpc"
+  | "fcfg";
 
 export function generatePrefixedId(prefix: IdPrefixes) {
   return `${prefix}_${nanoid()}`;

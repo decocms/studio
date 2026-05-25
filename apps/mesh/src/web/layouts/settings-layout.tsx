@@ -39,6 +39,7 @@ import {
   Users03,
   Zap,
   Key01,
+  HardDrive,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -95,6 +96,12 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "Secrets",
           icon: <Key01 size={14} />,
           to: "/$org/settings/secrets",
+        },
+        {
+          key: "files",
+          label: "Files",
+          icon: <HardDrive size={14} />,
+          to: "/$org/settings/files",
         },
       ],
     },

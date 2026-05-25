@@ -307,6 +307,45 @@ export interface SecretInfo {
 }
 
 /**
+ * Org-scoped S3-compatible bucket configuration. Stores connection metadata
+ * plus an encrypted JSON blob holding the access key / secret key pair.
+ * `endpoint` and `force_path_style` support non-AWS S3 (R2, MinIO, GCS).
+ */
+export interface OrgFileConfigTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  bucket: string;
+  region: string;
+  endpoint: string | null;
+  force_path_style: ColumnType<boolean, boolean | undefined, boolean>;
+  prefix: string | null;
+  encrypted_credentials: string;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/** Public DTO for a file config — never exposes access key / secret key. */
+export interface FileConfigInfo {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  bucket: string;
+  region: string;
+  endpoint: string | null;
+  forcePathStyle: boolean;
+  prefix: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+/**
  * Short-lived PKCE state table — stores codeVerifier server-side during OAuth flow.
  * Records expire after 10 minutes and are deleted on consumption (single-use).
  */
@@ -1304,6 +1343,9 @@ export interface Database {
 
   // Generic secrets vault (org and user scoped)
   secrets: SecretTable;
+
+  // Org-scoped S3 bucket configurations
+  org_file_configs: OrgFileConfigTable;
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;

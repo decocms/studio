@@ -30,6 +30,7 @@ export type ToolCategory =
   | "Tags"
   | "AI Providers"
   | "Secrets"
+  | "File Configs"
   | "Automations"
   | "Object Storage"
   | "Registry"
@@ -145,6 +146,12 @@ const ALL_TOOL_NAMES = [
   // Secrets vault tools
   "SECRET_CREATE",
   "SECRET_LIST",
+
+  // File config tools (org-scoped S3 bucket configurations)
+  "FILE_CONFIG_CREATE",
+  "FILE_CONFIG_LIST",
+  "FILE_CONFIG_UPDATE",
+  "FILE_CONFIG_DELETE",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -698,6 +705,29 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List secrets visible to the caller (no values returned)",
     category: "Secrets",
   },
+  // File config tools
+  {
+    name: "FILE_CONFIG_CREATE",
+    description: "Create an S3-compatible bucket configuration for the org",
+    category: "File Configs",
+  },
+  {
+    name: "FILE_CONFIG_LIST",
+    description:
+      "List S3 bucket configurations for the org (no creds returned)",
+    category: "File Configs",
+  },
+  {
+    name: "FILE_CONFIG_UPDATE",
+    description:
+      "Update an S3 bucket configuration, optionally rotating credentials",
+    category: "File Configs",
+  },
+  {
+    name: "FILE_CONFIG_DELETE",
+    description: "Delete an S3 bucket configuration",
+    category: "File Configs",
+  },
 
   // Object Storage tools
   {
@@ -1081,6 +1111,19 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Create and list secrets stored in the credential vault",
     section: "Organization",
     tools: ["SECRET_CREATE", "SECRET_LIST"],
+  },
+  // File Configs
+  {
+    id: "file-configs:manage",
+    label: "Manage file configs",
+    description: "Create, list, update and delete S3 bucket configurations",
+    section: "Organization",
+    tools: [
+      "FILE_CONFIG_CREATE",
+      "FILE_CONFIG_LIST",
+      "FILE_CONFIG_UPDATE",
+      "FILE_CONFIG_DELETE",
+    ],
   },
   // AI Providers
   {
