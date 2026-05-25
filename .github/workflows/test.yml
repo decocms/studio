@@ -113,45 +113,50 @@ jobs:
                 fi
               done)
           file_count=$(echo "$files" | wc -l)
-          echo "Running $file_count test files"
+          echo "Running $file_count test files (one bun process per file)"
           echo "$files"
-          # Bun 1.3.5 has known signal-induced crash bugs (SIGILL/exit 132 on
-          # WASM cleanup; sporadic SIGSEGV/exit 139 with "multiple threads
-          # crashing" during inter-file teardown). Both are bun-internal and
-          # not related to the tests themselves. Run once; on a signal crash,
-          # retry once before giving up.
-          set +e
-          bun test $files 2>&1 | tee /tmp/test-output.txt
-          exit_code=${PIPESTATUS[0]}
-          set -e
-          # Signal-induced exit codes (>128) on Bun 1.3.5 are spurious — retry once.
-          if [ "$exit_code" -gt 128 ]; then
-            echo "⚠️  Bun exited with signal (exit $exit_code) — retrying once"
+          # Bun 1.3.5 has known signal-induced crash bugs in WASM/JSC teardown
+          # (SIGILL/exit 132, SIGSEGV/exit 139, SIGBUS) — triggered most
+          # reliably by PGlite (WASM-backed test DB) when bun moves between
+          # test files. Running each file in its own bun process pushes the
+          # crash to process exit, where it's harmless (no further tests
+          # depend on the dead process).
+          failed_files=""
+          crashed_files=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            echo "::group::$f"
             set +e
-            bun test $files 2>&1 | tee /tmp/test-output.txt
-            exit_code=${PIPESTATUS[0]}
+            out=$(bun test "$f" 2>&1)
+            code=$?
             set -e
-          fi
-          # Detect failures via per-test markers AND the summary line. The
-          # crash can happen before bun prints its "N fail" summary, so
-          # relying on the summary alone hides real failures.
-          if grep -qE '^\(fail\)|[1-9][0-9]* fail' /tmp/test-output.txt; then
-            echo "❌ Test failures detected in output"
+            echo "$out"
+            echo "::endgroup::"
+            if echo "$out" | grep -qE '^\(fail\)|[1-9][0-9]* fail'; then
+              failed_files="$failed_files $f"
+              continue
+            fi
+            if [ "$code" -eq 0 ]; then
+              continue
+            fi
+            # Non-zero exit with no (fail) markers. If signal-induced AND we
+            # saw a "pass" count, tests ran and bun crashed at cleanup — known
+            # Bun 1.3.5 bug, accept. Otherwise treat as real failure.
+            if [ "$code" -gt 128 ] && echo "$out" | grep -qE '[1-9][0-9]* pass'; then
+              echo "⚠️  $f: bun crashed at teardown (exit $code) after tests passed — accepting"
+              continue
+            fi
+            crashed_files="$crashed_files $f"
+          done <<< "$files"
+          if [ -n "$failed_files" ]; then
+            echo "❌ Test failures in:$failed_files"
             exit 1
           fi
-          if [ "$exit_code" -eq 0 ]; then
-            exit 0
+          if [ -n "$crashed_files" ]; then
+            echo "❌ Bun crashed before tests ran in:$crashed_files"
+            exit 1
           fi
-          # Bun crashed (even after retry). Only accept the crash if every
-          # input file printed its ##[group] header — otherwise tests were
-          # skipped and we must fail.
-          ran_count=$(grep -cE '^##\[group\]apps/|^##\[group\]packages/' /tmp/test-output.txt || true)
-          if [ "$exit_code" -gt 128 ] && [ "$ran_count" -ge "$file_count" ]; then
-            echo "⚠️  Bun crashed (exit $exit_code) after all $file_count test files ran — accepting"
-            exit 0
-          fi
-          echo "❌ Bun exited $exit_code; only $ran_count of $file_count test files started"
-          exit $exit_code
+          echo "✅ All $file_count test files passed"
 
   build:
     runs-on: ubuntu-latest
