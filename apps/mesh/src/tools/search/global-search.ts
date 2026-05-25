@@ -18,8 +18,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireOrganization } from "../../core/mesh-context";
 
-export const SEARCHABLE_TYPES = ["thread"] as const;
-export type SearchableType = (typeof SEARCHABLE_TYPES)[number];
+const SEARCHABLE_TYPES = ["thread"] as const;
 
 const ThreadResultSchema = z.object({
   type: z.literal("thread"),
