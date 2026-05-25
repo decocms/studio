@@ -7,7 +7,6 @@
  */
 
 import {
-  GetObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -24,7 +23,7 @@ export interface FileConfigContext {
   credentials: FileConfigCredentials;
 }
 
-export function buildS3Client(ctx: FileConfigContext): S3Client {
+function buildS3Client(ctx: FileConfigContext): S3Client {
   return new S3Client({
     region: ctx.info.region,
     endpoint: ctx.info.endpoint ?? undefined,
@@ -90,27 +89,6 @@ export async function presignPutUrl(params: {
       ContentType: params.contentType,
     }),
     { expiresIn: params.expiresInSeconds ?? 300 },
-  );
-}
-
-/**
- * Presigned GET for picker thumbnails when the bucket isn't fully public
- * (publicUrlBase unset and endpoint is private — e.g. an R2 bucket with no
- * dev domain). Short-lived; the URL is only used inside the picker UI.
- */
-export async function presignGetUrl(params: {
-  ctx: FileConfigContext;
-  key: string;
-  expiresInSeconds?: number;
-}): Promise<string> {
-  const client = buildS3Client(params.ctx);
-  return getSignedUrl(
-    client,
-    new GetObjectCommand({
-      Bucket: params.ctx.info.bucket,
-      Key: params.key,
-    }),
-    { expiresIn: params.expiresInSeconds ?? 600 },
   );
 }
 
