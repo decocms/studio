@@ -1,5 +1,5 @@
 /**
- * Integration test for migration 091: sandbox-naming uniformization sweep.
+ * Integration test for migration 092: sandbox-naming uniformization sweep.
  *
  * Covers four rewrites in one migration:
  *  1. `sandbox_runner_state.sandbox_provider_kind` value rewrites
@@ -101,7 +101,7 @@ async function insertRunnerState(
   `.execute(database.db);
 }
 
-describe("migration 091 — sandbox naming uniformization", () => {
+describe("migration 092 — sandbox naming uniformization", () => {
   let database: TestDatabase;
 
   beforeEach(async () => {

@@ -1,7 +1,7 @@
 /**
  * Unit test for the helper that the remote-cli dispatch branch uses to
  * resolve which sandbox URL to talk to. The helper unifies with
- * `ensureSandbox` so claude-code/codex runs share the VM_START sandbox
+ * `ensureSandbox` so claude-code/codex runs share the SANDBOX_START sandbox
  * instead of provisioning a per-run empty workdir.
  */
 import { describe, expect, it, mock } from "bun:test";
