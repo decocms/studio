@@ -1,4 +1,4 @@
-import { PreviewContent } from "@/web/components/vm/preview/preview";
+import { PreviewContent } from "@/web/components/sandbox/preview/preview";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { AlertCircle } from "@untitledui/icons";

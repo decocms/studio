@@ -25,7 +25,7 @@ export function useSaveBlock({
       const path = `.deco/blocks/${blockKey}.json`;
       const content = JSON.stringify(data, null, 2);
       const res = await fetch(
-        `/api/${orgSlug}/vm/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/write`,
+        `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/write`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },

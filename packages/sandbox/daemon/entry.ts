@@ -86,7 +86,7 @@ const bootConfig = {
   repoDir: join(APP_ROOT, "repo"),
   proxyPort: parseInt(resolvedDaemonPort, 10),
   // HMAC secret used to authenticate the cluster's harness-dispatch
-  // calls (POST /_decopilot_vm/dispatch + DELETE /_decopilot_vm/runs/:id).
+  // calls (POST /_sandbox/dispatch + DELETE /_sandbox/runs/:id).
   // Equals the link's `linkSecret` from the cluster's `LinkRegistry`.
   // Spawned by the `deco link` daemon for the desktop case; absent on legacy
   // cluster-side runner daemons that don't accept remote harness
@@ -373,7 +373,7 @@ const dispatchMeter = metrics.getMeter("link-daemon");
 // Per-process replay-protection cache. 100k nonces ≈ a few MB; the
 // cluster's signing layer rotates nonces per request so the set fills
 // slowly under legitimate traffic. Shared across dispatch/cancel AND
-// the dual-auth (HMAC-or-bearer) guard on the rest of /_decopilot_vm/*
+// the dual-auth (HMAC-or-bearer) guard on the rest of /_sandbox/*
 // — collision is computationally infeasible since the nonce is part of
 // the signed string.
 //
@@ -464,17 +464,49 @@ void lastProbe;
 
 let firstWorkLogged = false;
 
-async function configH(req: Request): Promise<Response> {
+// Canonical and legacy daemon route prefixes. The cluster speaks only
+// `/_sandbox/*` (see T11 in 2026-05-22-sandbox-naming-uniformization.md);
+// `/_decopilot_vm/*` is dual-served for one release window so old clusters
+// rolling out keep working until they pick up the rename. Remove the
+// legacy prefix in a follow-up release once all clusters and the
+// housekeeper sweep script have updated.
+const SANDBOX_PREFIX = "/_sandbox";
+const LEGACY_SANDBOX_PREFIX = "/_decopilot_vm";
+const SANDBOX_IDLE_PATH = `${SANDBOX_PREFIX}/idle`;
+const LEGACY_SANDBOX_IDLE_PATH = `${LEGACY_SANDBOX_PREFIX}/idle`;
+
+/**
+ * If `pathname` is under one of the known sandbox prefixes, return the
+ * prefix actually used plus the suffix. Otherwise `null`. Used by the
+ * top-level fetch dispatcher and propagated into HMAC verification so
+ * the daemon validates against the same prefix the cluster signed.
+ */
+function matchSandboxPrefix(
+  pathname: string,
+): { prefix: string; suffix: string } | null {
+  for (const prefix of [SANDBOX_PREFIX, LEGACY_SANDBOX_PREFIX]) {
+    if (pathname === prefix || pathname === `${prefix}/`) {
+      return { prefix, suffix: "/" };
+    }
+    if (pathname.startsWith(`${prefix}/`)) {
+      return { prefix, suffix: pathname.slice(prefix.length) };
+    }
+  }
+  return null;
+}
+
+async function configH(req: Request, prefix: string): Promise<Response> {
   const { method } = req;
   if (method === "GET") return configReadH();
   if (method === "PUT" || method === "POST") return configUpdateH(req);
-  return jsonResponse({ error: "Not found: /_decopilot_vm/config" }, 404);
+  return jsonResponse({ error: `Not found: ${prefix}/config` }, 404);
 }
 
 function tasksRouteH(
   req: Request,
   method: string,
   vmPath: string,
+  prefix: string,
 ): Response | Promise<Response> {
   if (method === "GET" && vmPath === "/tasks") return tasksListH(req);
   if (method === "POST" && vmPath === "/tasks/kill-all") return tasksKillAllH();
@@ -486,7 +518,7 @@ function tasksRouteH(
     return tasksDeleteH(req);
   if (method === "GET" && /^\/tasks\/[^/]+$/.test(vmPath))
     return tasksGetH(req);
-  return jsonResponse({ error: `Not found: /_decopilot_vm${vmPath}` }, 404);
+  return jsonResponse({ error: `Not found: ${prefix}${vmPath}` }, 404);
 }
 
 function execRouteH(
@@ -535,6 +567,7 @@ async function vmRouteH(
   req: Request,
   method: string,
   vmPath: string,
+  prefix: string,
 ): Promise<Response> {
   if (method === "GET" && vmPath === "/idle") return idleH();
   if (method === "GET" && vmPath === "/events") return eventsH();
@@ -564,7 +597,10 @@ async function vmRouteH(
   // Request for downstream handlers that re-read.
   const hasBody = method !== "GET" && method !== "HEAD" && method !== "DELETE";
   const body = hasBody ? await req.text() : "";
-  const path = `/_decopilot_vm${vmPath}`;
+  // HMAC must verify against the prefix the client actually signed.
+  // During the dual-serve window callers may sign against either prefix;
+  // the daemon validates against whichever prefix arrived on the wire.
+  const path = `${prefix}${vmPath}`;
 
   const denied = requireHmacOrToken(req, path, body, {
     linkSecret: bootConfig.linkSecret,
@@ -577,14 +613,15 @@ async function vmRouteH(
     ? new Request(req.url, { method, headers: req.headers, body })
     : req;
 
-  if (vmPath === "/config") return configH(rebuilt);
-  if (vmPath.startsWith("/tasks")) return tasksRouteH(rebuilt, method, vmPath);
+  if (vmPath === "/config") return configH(rebuilt, prefix);
+  if (vmPath.startsWith("/tasks"))
+    return tasksRouteH(rebuilt, method, vmPath, prefix);
   if (method === "POST" && vmPath in setupH) return setupH[vmPath]();
   if (method === "POST" && vmPath in fsH) return fsH[vmPath](rebuilt);
   if (method === "POST" && vmPath.startsWith("/exec/"))
     return execRouteH(rebuilt, vmPath);
 
-  return jsonResponse({ error: `Not found: /_decopilot_vm${vmPath}` }, 404);
+  return jsonResponse({ error: `Not found: ${prefix}${vmPath}` }, 404);
 }
 
 Bun.serve<WsProxyData, never>({
@@ -595,7 +632,11 @@ Bun.serve<WsProxyData, never>({
     const { pathname: p } = new URL(req.url);
     const { method } = req;
 
-    if (p !== "/health" && p !== "/_decopilot_vm/idle") {
+    if (
+      p !== "/health" &&
+      p !== SANDBOX_IDLE_PATH &&
+      p !== LEGACY_SANDBOX_IDLE_PATH
+    ) {
       bumpActivity();
       if (!firstWorkLogged) {
         firstWorkLogged = true;
@@ -605,9 +646,11 @@ Bun.serve<WsProxyData, never>({
       }
     }
 
+    const sandboxMatch = matchSandboxPrefix(p);
+
     if (
       req.headers.get("upgrade")?.toLowerCase() === "websocket" &&
-      !p.startsWith("/_decopilot_vm/")
+      !sandboxMatch
     ) {
       const ok = server.upgrade(req, { data: wsProxy.upgradeData(req) });
       return ok
@@ -616,8 +659,8 @@ Bun.serve<WsProxyData, never>({
     }
 
     if (method === "GET" && p === "/health") return healthH();
-    if (p.startsWith("/_decopilot_vm/"))
-      return vmRouteH(req, method, p.slice("/_decopilot_vm".length));
+    if (sandboxMatch)
+      return vmRouteH(req, method, sandboxMatch.suffix, sandboxMatch.prefix);
     return proxyH(req);
   },
   websocket: {

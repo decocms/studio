@@ -33,7 +33,7 @@ describe("fs handlers", () => {
   it("read: returns numbered content for text", async () => {
     writeFileSync(join(appRoot, "a.txt"), "one\ntwo\nthree\n");
     const h = makeReadHandler({ appRoot, repoDir: appRoot });
-    const res = await h(post("/_decopilot_vm/read", { path: "a.txt" }));
+    const res = await h(post("/_sandbox/read", { path: "a.txt" }));
     const body = (await res.json()) as {
       kind: string;
       content: string;
@@ -50,7 +50,7 @@ describe("fs handlers", () => {
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0xff, 0xd9]);
     writeFileSync(join(appRoot, "img.jpg"), jpeg);
     const h = makeReadHandler({ appRoot, repoDir: appRoot });
-    const res = await h(post("/_decopilot_vm/read", { path: "img.jpg" }));
+    const res = await h(post("/_sandbox/read", { path: "img.jpg" }));
     const body = (await res.json()) as {
       kind: string;
       mediaType: string;
@@ -69,7 +69,7 @@ describe("fs handlers", () => {
     ]);
     writeFileSync(join(appRoot, "img.png"), png);
     const h = makeReadHandler({ appRoot, repoDir: appRoot });
-    const res = await h(post("/_decopilot_vm/read", { path: "img.png" }));
+    const res = await h(post("/_sandbox/read", { path: "img.png" }));
     const body = (await res.json()) as { kind: string; mediaType: string };
     expect(body.kind).toBe("image");
     expect(body.mediaType).toBe("image/png");
@@ -78,13 +78,13 @@ describe("fs handlers", () => {
   it("read: rejects non-image binary files", async () => {
     writeFileSync(join(appRoot, "bin"), Buffer.from([0, 1, 2, 3]));
     const h = makeReadHandler({ appRoot, repoDir: appRoot });
-    const res = await h(post("/_decopilot_vm/read", { path: "bin" }));
+    const res = await h(post("/_sandbox/read", { path: "bin" }));
     expect(res.status).toBe(400);
   });
 
   it("read: rejects relative path escape", async () => {
     const h = makeReadHandler({ appRoot, repoDir: appRoot });
-    const res = await h(post("/_decopilot_vm/read", { path: "../etc/passwd" }));
+    const res = await h(post("/_sandbox/read", { path: "../etc/passwd" }));
     expect(res.status).toBe(400);
   });
 
@@ -92,7 +92,7 @@ describe("fs handlers", () => {
     writeFileSync(join(appRoot, "abs.txt"), "hello");
     const h = makeReadHandler({ appRoot, repoDir: appRoot });
     const res = await h(
-      post("/_decopilot_vm/read", { path: join(appRoot, "abs.txt") }),
+      post("/_sandbox/read", { path: join(appRoot, "abs.txt") }),
     );
     const body = (await res.json()) as { kind: string; content: string };
     expect(body.kind).toBe("text");
@@ -102,7 +102,7 @@ describe("fs handlers", () => {
   it("write: creates file and returns byte count", async () => {
     const h = makeWriteHandler({ appRoot, repoDir: appRoot });
     const res = await h(
-      post("/_decopilot_vm/write", { path: "new.txt", content: "hello" }),
+      post("/_sandbox/write", { path: "new.txt", content: "hello" }),
     );
     expect(res.status).toBe(200);
     expect(readFileSync(join(appRoot, "new.txt"), "utf-8")).toBe("hello");
@@ -112,7 +112,7 @@ describe("fs handlers", () => {
     writeFileSync(join(appRoot, "e.txt"), "abc");
     const h = makeEditHandler({ appRoot, repoDir: appRoot });
     const res = await h(
-      post("/_decopilot_vm/edit", {
+      post("/_sandbox/edit", {
         path: "e.txt",
         old_string: "xyz",
         new_string: "q",
@@ -125,7 +125,7 @@ describe("fs handlers", () => {
     writeFileSync(join(appRoot, "e.txt"), "a a a");
     const h = makeEditHandler({ appRoot, repoDir: appRoot });
     const res = await h(
-      post("/_decopilot_vm/edit", {
+      post("/_sandbox/edit", {
         path: "e.txt",
         old_string: "a",
         new_string: "b",
@@ -138,7 +138,7 @@ describe("fs handlers", () => {
     writeFileSync(join(appRoot, "e.txt"), "a a a");
     const h = makeEditHandler({ appRoot, repoDir: appRoot });
     const res = await h(
-      post("/_decopilot_vm/edit", {
+      post("/_sandbox/edit", {
         path: "e.txt",
         old_string: "a",
         new_string: "b",
@@ -153,7 +153,7 @@ describe("fs handlers", () => {
     writeFileSync(join(appRoot, "needle.txt"), "hello world\n");
     const h = makeGrepHandler({ appRoot, repoDir: appRoot });
     const res = await h(
-      post("/_decopilot_vm/grep", {
+      post("/_sandbox/grep", {
         pattern: "hello",
         output_mode: "content",
       }),
@@ -165,7 +165,7 @@ describe("fs handlers", () => {
   (hasRg ? it : it.skip)("glob: returns matching file names", async () => {
     writeFileSync(join(appRoot, "x.txt"), "");
     const h = makeGlobHandler({ appRoot, repoDir: appRoot });
-    const res = await h(post("/_decopilot_vm/glob", { pattern: "*.txt" }));
+    const res = await h(post("/_sandbox/glob", { pattern: "*.txt" }));
     const body = (await res.json()) as { files: string[] };
     expect(body.files).toContain("x.txt");
   });

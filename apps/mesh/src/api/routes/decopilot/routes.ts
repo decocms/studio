@@ -427,7 +427,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // Fall back to the "ephemeral" synthetic branch when neither the
       // thread row nor the request body pins one. Synthetic branches
       // (see packages/sandbox/daemon/constants.ts:isSyntheticBranch) are
-      // accepted by the daemon as vmMap routing keys but never checked
+      // accepted by the daemon as sandboxMap routing keys but never checked
       // out — exactly the right semantics for Decopilot threads on
       // agents with no clonable repo, where the branch is purely an
       // isolation key.
@@ -481,11 +481,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // provisioning happens lazily inside the built-in tools layer
       // (`apps/mesh/src/harnesses/decopilot/built-in-tools/index.ts`'s
       // `ensureHandle`) on the first VM-tool invocation. Eagerly calling
-      // `ensureVm` at POST time used to fail in environments without a
+      // `ensureSandbox` at POST time used to fail in environments without a
       // link daemon for the user even when the run never touches the
       // sandbox (e.g. CI multi-pod tests that drive only the mock AI
       // provider).
-      const target = await resolveDispatchTarget(
+      const result = await resolveDispatchTarget(
         {
           harnessId: pinnedHarness,
           sandboxProviderKind: pinnedKind,
@@ -493,16 +493,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         },
         { linkRegistry },
       );
-      if (target.kind === "error") {
+      if (!result.ok) {
         return c.json(
           {
             error: "link_unavailable",
-            code: target.reason,
-            activeCapabilities: target.activeCapabilities,
+            code: result.error.kind,
+            activeCapabilities:
+              result.error.kind === "user_desktop_link_capability_missing"
+                ? result.error.activeCapabilities
+                : undefined,
           },
           409,
         );
       }
+      const target = result.target;
 
       const { abortSignal: _ignored, ...rest } = input;
       const serializableRequest = {

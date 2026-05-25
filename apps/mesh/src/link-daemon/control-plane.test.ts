@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { signRequest } from "@/links/protocol";
 import { makeControlPlaneHandler } from "./control-plane";
-import { createDesktopSandboxProvider } from "./sandbox-provider";
+import { createDesktopSandboxProvider } from "./user-desktop-provider";
 
 const SECRET = "test-link-secret";
 
@@ -44,7 +44,7 @@ describe("control plane handler", () => {
     expect(body).toMatchObject({ error: "unauthorized" });
   });
 
-  it("accepts signed POST /api/sandboxes and returns sandboxUrl", async () => {
+  it("accepts signed POST /api/sandboxes and returns sandboxApiUrl", async () => {
     const { handler } = buildHandler();
     const body = JSON.stringify({ handle: "abc" });
     const sig = signRequest({
@@ -61,8 +61,8 @@ describe("control plane handler", () => {
       }),
     );
     expect(res.status).toBe(200);
-    const out = (await res.json()) as { sandboxUrl: string };
-    expect(out.sandboxUrl).toBe("https://abc.deco.host");
+    const out = (await res.json()) as { sandboxApiUrl: string };
+    expect(out.sandboxApiUrl).toBe("https://abc.deco.host");
   });
 
   it("rejects nonce replay", async () => {

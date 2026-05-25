@@ -18,7 +18,7 @@ import { createSelfRoutes } from "./self";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
-import { createVmRoutes } from "./vm-proxy";
+import { createSandboxRoutes } from "./sandbox-proxy";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -63,7 +63,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
-  app.route("/vm", createVmRoutes()); // /api/:org/vm/:vmId/:branch/*
+  app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(

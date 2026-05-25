@@ -211,7 +211,7 @@ export function useChatMainPanelState(
   };
 
   // Carry the active task's branch into the new thread so it lands on the
-  // same warm sandbox. Server picks from vmMap when no branch is provided.
+  // same warm sandbox. Server picks from sandboxMap when no branch is provided.
   const createNewTask = async () => {
     const newTaskId = crypto.randomUUID();
     const branch = readCachedTaskBranch(orgSlug, locator, taskId);

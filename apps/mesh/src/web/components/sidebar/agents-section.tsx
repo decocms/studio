@@ -94,7 +94,7 @@ import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thre
  * virtualmcpid, the active task's branch is carried into the new thread
  * so the new task lands on the same warm sandbox. When the clicked vMCP
  * differs, no branch is passed and the server picks the most-recently-
- * touched vmMap entry for that vMCP.
+ * touched sandboxMap entry for that vMCP.
  *
  * The sidebar pinned-agent click uses `useNavigateToAgentThread` instead,
  * which resumes the user's last thread when one exists.

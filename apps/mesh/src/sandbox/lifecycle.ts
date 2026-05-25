@@ -1,9 +1,9 @@
 /**
- * Runner singletons, one per kind. VM_DELETE dispatches on the entry's
- * recorded sandboxProviderKind (not env), so a pod that flipped STUDIO_SANDBOX_RUNNER
- * between start and stop still tears down the right kind of VM.
- * Boot/shutdown sweeps are Docker-only — other runners' sandboxes outlive
- * mesh by design, so a generic sweep would nuke active user VMs.
+ * Provider singletons, one per kind. SANDBOX_DELETE dispatches on the entry's
+ * recorded sandboxProviderKind (not env), so a pod that flipped STUDIO_SANDBOX_PROVIDER
+ * between start and stop still tears down the right kind of sandbox.
+ * Boot/shutdown sweeps are Docker-only — other providers' sandboxes outlive
+ * mesh by design, so a generic sweep would nuke active user sandboxes.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -68,7 +68,7 @@ function resolveOnce(
   return promise;
 }
 
-// Set in prod (k8s/docker behind ingress) so the runner skips the local
+// Set in prod (k8s/docker behind ingress) so the provider skips the local
 // 127.0.0.1 port-forward path and emits a URL the user's browser can
 // actually reach. Empty/unset = local forwarder fallback (dev).
 function readPreviewUrlPattern(): string | undefined {
@@ -109,7 +109,7 @@ function readSandboxSentinelToken(): string | undefined {
 // HTTPRoute per SandboxClaim so the wildcard Gateway can route directly
 // to each sandbox's Service:9000 (mesh leaves the data path).
 //
-// Both required — no default — because the runner is Gateway-API-generic
+// Both required — no default — because the provider is Gateway-API-generic
 // (Istio, Envoy Gateway, Cilium, Kong, ...) and there's no portable
 // "default gateway namespace": Istio classic uses istio-system, Istio
 // ambient prefers a separate `istio-ingress`/`gateway` ns, and other
@@ -117,7 +117,7 @@ function readSandboxSentinelToken(): string | undefined {
 // fail to attach (parentRef → non-existent Gateway) and the failure mode
 // is a 404 from the gateway with no log on the mesh side.
 //
-// Both unset → runner falls back to in-process preview proxying (legacy).
+// Both unset → provider falls back to in-process preview proxying (legacy).
 // Half-configured (one set, the other not) → fail fast at boot rather
 // than silently choose a behavior the operator didn't ask for.
 function readPreviewGateway(): { name: string; namespace: string } | undefined {
@@ -140,17 +140,17 @@ async function instantiate(
   const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   switch (kind) {
-    case "docker":
+    case "local-docker":
       return new DockerSandboxProvider({ stateStore, previewUrlPattern });
-    case "agent-sandbox": {
+    case "cluster": {
       // Dynamic import — @kubernetes/client-node is heavy and only needed
-      // when STUDIO_SANDBOX_RUNNER=agent-sandbox. Docker deploys never
+      // when STUDIO_SANDBOX_PROVIDER=cluster. Local-docker deploys never
       // load it.
       const { AgentSandboxProvider } = await import(
         "@decocms/sandbox/provider/agent-sandbox"
       );
       // `meter` is reassigned by initObservability() after sdk.start(); read
-      // it at runner construction (post-init) so we get the real instruments
+      // it at provider construction (post-init) so we get the real instruments
       // not the no-op evaluated at module load.
       return new AgentSandboxProvider({
         stateStore,
@@ -162,17 +162,17 @@ async function instantiate(
         meter,
       });
     }
-    case "desktop": {
-      // desktop is never the cluster-wide default — there is no
+    case "user-desktop": {
+      // user-desktop is never the cluster-wide default — there is no
       // ambient `LinkEntry` to bind to here. It is constructed per-run by
       // `resolveSandboxProvider` (sandbox/resolve-provider.ts) from
-      // either the per-run ctx hint or the recorded vmMap kind, both of
-      // which carry the user's link. Hitting this branch means VM_DELETE
-      // was called for a `desktop` row without a live link context,
-      // which today should not happen (the desktop provider doesn't
+      // either the per-run ctx hint or the recorded sandboxMap kind, both of
+      // which carry the user's link. Hitting this branch means SANDBOX_DELETE
+      // was called for a `user-desktop` row without a live link context,
+      // which today should not happen (the user-desktop provider doesn't
       // write to `sandbox_runner_state`).
       throw new Error(
-        "desktop runner cannot be instantiated without a per-run LinkEntry — call resolveSandboxProvider, which binds the link before constructing the provider.",
+        "user-desktop runner cannot be instantiated without a per-run LinkEntry — call resolveSandboxProvider, which binds the link before constructing the provider.",
       );
     }
     default: {
@@ -187,7 +187,7 @@ async function instantiate(
  * Exported so the unified resolver in `resolve-provider.ts` can build one
  * without going through `getSharedSandboxProvider` (which requires
  * pre-populating `ctx.sandboxPreference` / `ctx.linkForCurrentRun` as a
- * side-effect — the resolver decides the kind from vmMap, not from those
+ * side-effect — the resolver decides the kind from sandboxMap, not from those
  * ctx fields, so the side-effect would be misleading).
  */
 export async function buildDesktopProvider(
@@ -204,7 +204,7 @@ export async function buildDesktopProvider(
   });
 }
 
-/** VM_DELETE uses this so teardown follows the entry's recorded sandboxProviderKind. */
+/** SANDBOX_DELETE uses this so teardown follows the entry's recorded sandboxProviderKind. */
 export function getSandboxProviderByKind(
   ctx: MeshContext,
   kind: SandboxProviderKind,
@@ -213,11 +213,11 @@ export function getSandboxProviderByKind(
 }
 
 /**
- * Eager runner accessor for paths that need the runner before any user
+ * Eager provider accessor for paths that need the provider before any user
  * request — preview-host proxying at the Bun.serve layer is the only caller
- * today. Reads the runner kind from env and constructs without a
+ * today. Reads the provider kind from env and constructs without a
  * MeshContext (the state store only needs a Kysely instance). Returns null
- * when no runner kind is configured.
+ * when no provider kind is configured.
  */
 export async function getOrInitSharedRunner(): Promise<SandboxProvider | null> {
   let kind: SandboxProviderKind;
@@ -234,7 +234,7 @@ export async function getOrInitSharedRunner(): Promise<SandboxProvider | null> {
 }
 
 /**
- * Return the active runner iff already constructed — avoids forcing a
+ * Return the active provider iff already constructed — avoids forcing a
  * MeshContext (and DB connection) before any request touches a sandbox.
  * Returns null if env is unresolved.
  */

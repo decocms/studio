@@ -20,6 +20,6 @@ import {
 export function computeClaimHandle(id: SandboxId, branch: string): string {
   const providerKind = resolveSandboxProviderKindFromEnv();
   const useLongHash =
-    providerKind === "agent-sandbox" || providerKind === "desktop";
+    providerKind === "cluster" || providerKind === "user-desktop";
   return computeHandle(id, branch, useLongHash ? { hashLen: 16 } : {});
 }

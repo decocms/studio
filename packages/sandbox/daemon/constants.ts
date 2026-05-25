@@ -1,7 +1,7 @@
 import { IFRAME_BOOTSTRAP_SCRIPT } from "../shared";
 
 // Per-daemon SSE subscriber cap. Each browser tab opens one
-// /api/.../vm-events SSE upstream to the daemon's /_decopilot_vm/events,
+// /api/.../vm-events SSE upstream to the daemon's /_sandbox/events,
 // and any failed reconnect quickly stacks: with 10 the cluster's retry
 // storm on cold-start (auto-resume vm-events SSE) blew the budget and
 // the daemon started returning 429, which the cluster surfaced as

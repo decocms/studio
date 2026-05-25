@@ -122,7 +122,7 @@ export function usePanelActions() {
     );
 
   // Create a new task carrying the current task's branch (if any) so the
-  // new thread lands on the same warm sandbox. Server picks from vmMap when
+  // new thread lands on the same warm sandbox. Server picks from sandboxMap when
   // no branch is provided. Awaiting the create avoids the route loader's
   // create-on-404 fallback firing without a branch hint.
   //

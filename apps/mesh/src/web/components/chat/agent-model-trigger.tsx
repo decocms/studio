@@ -17,7 +17,7 @@ import {
 import { track } from "@/web/lib/posthog-client";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
-import { useVmStart } from "@/web/components/vm/hooks/use-vm-start";
+import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { useChatPrefs } from "./context";
 import { AgentModelPopover } from "./agent-model-popover";
 import {
@@ -57,9 +57,9 @@ function agentKindFromHarness(
   agent: HarnessId | null,
   sandboxKind: SandboxProviderKind | null,
 ): AgentKind | null {
-  if (agent === "claude-code" && sandboxKind === "desktop")
+  if (agent === "claude-code" && sandboxKind === "user-desktop")
     return "claude-code";
-  if (agent === "codex" && sandboxKind === "desktop") return "codex";
+  if (agent === "codex" && sandboxKind === "user-desktop") return "codex";
   if (agent === "decopilot") return "decopilot";
   return null;
 }
@@ -89,7 +89,7 @@ export function AgentModelTrigger({
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const startVm = useVmStart(mcpClient);
+  const startVm = useSandboxStart(mcpClient);
 
   const sections = getAgentSections({
     hasAnyKey: keys.length > 0,
@@ -106,7 +106,7 @@ export function AgentModelTrigger({
       startVm.mutate({
         virtualMcpId,
         branch: currentBranch,
-        sandboxProviderKind: "desktop" as const,
+        sandboxProviderKind: "user-desktop" as const,
       });
     }
     track("agent_model_selected", { agent: kind, tier: nextTier });

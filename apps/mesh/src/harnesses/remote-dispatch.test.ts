@@ -143,16 +143,16 @@ describe("remoteDispatch", () => {
     }) as typeof fetch;
 
     const input = makeInput({ runId: "run-abc" });
-    // Per-daemon tunnel URL — dispatch-run resolves this via `ensureVm`
+    // Per-daemon tunnel URL — dispatch-run resolves this via `ensureSandbox`
     // (through the desktop sandbox provider's `POST /api/sandboxes`), and
     // the cluster talks to the daemon directly with no link hop.
-    const sandboxUrl = `https://${input.runId}.deco.host`;
+    const sandboxApiUrl = `https://${input.runId}.deco.host`;
     const out: unknown[] = [];
     for await (const chunk of remoteDispatch(
       "claude-code",
       input,
       link,
-      sandboxUrl,
+      sandboxApiUrl,
       { fetchImpl },
     )) {
       out.push(chunk);
@@ -161,8 +161,8 @@ describe("remoteDispatch", () => {
 
     expect(captured).not.toBeNull();
     const cap = captured!;
-    const expectedPath = "/_decopilot_vm/dispatch";
-    expect(cap.url).toBe(`${sandboxUrl}${expectedPath}`);
+    const expectedPath = "/_sandbox/dispatch";
+    expect(cap.url).toBe(`${sandboxApiUrl}${expectedPath}`);
     expect(cap.method).toBe("POST");
 
     // Verify HMAC headers round-trip through verifyRequest with the
@@ -233,7 +233,7 @@ describe("remoteDispatch", () => {
 
     const ctrl = new AbortController();
     const input = makeInput({ runId: "run-xyz", signal: ctrl.signal });
-    const sandboxUrl = `https://${input.runId}.deco.host`;
+    const sandboxApiUrl = `https://${input.runId}.deco.host`;
     const out: unknown[] = [];
     let firstChunkSeen = false;
     try {
@@ -241,7 +241,7 @@ describe("remoteDispatch", () => {
         "codex",
         input,
         link,
-        sandboxUrl,
+        sandboxApiUrl,
         { fetchImpl },
       )) {
         out.push(chunk);
@@ -261,8 +261,8 @@ describe("remoteDispatch", () => {
 
     const deleteCall = calls.find((c) => c.method === "DELETE");
     expect(deleteCall).toBeDefined();
-    const expectedCancelPath = "/_decopilot_vm/runs/run-xyz";
-    expect(deleteCall!.url).toBe(`${sandboxUrl}${expectedCancelPath}`);
+    const expectedCancelPath = "/_sandbox/runs/run-xyz";
+    expect(deleteCall!.url).toBe(`${sandboxApiUrl}${expectedCancelPath}`);
 
     // HMAC signature on the DELETE verifies against the same secret.
     const v = verifyRequest({
@@ -285,14 +285,14 @@ describe("remoteDispatch", () => {
     }) as typeof fetch;
 
     const input = makeInput();
-    const sandboxUrl = `https://${input.runId}.deco.host`;
+    const sandboxApiUrl = `https://${input.runId}.deco.host`;
     let caught: Error | null = null;
     try {
       for await (const _ of remoteDispatch(
         "claude-code",
         input,
         link,
-        sandboxUrl,
+        sandboxApiUrl,
         { fetchImpl },
       )) {
         // consume

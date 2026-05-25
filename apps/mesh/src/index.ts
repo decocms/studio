@@ -111,22 +111,22 @@ const previewProxyDeps = {
   baseDomain: previewBaseDomain ?? "",
   getRunner: async () => {
     const runner = await getOrInitRunnerForPreview();
-    if (!runner || runner.kind !== "agent-sandbox") return null;
-    // The agent-sandbox runner is the only one that exposes proxyPreviewRequest /
+    if (!runner || runner.kind !== "cluster") return null;
+    // The cluster (agent-sandbox) runner is the only one that exposes proxyPreviewRequest /
     // resolvePreviewUpstreamUrl; cast is safe after the kind check.
     return runner as unknown as import("@decocms/sandbox/provider/agent-sandbox").AgentSandboxProvider;
   },
 };
 
 // Boot/dev wiring for the Docker runner. The boot sweep + local ingress
-// are Docker-only — other runners (agent-sandbox, desktop)
+// are local-docker-only — other runners (cluster, user-desktop)
 // either don't run on this machine or expose previews via their own
 // publicly-reachable URLs.
 const { resolveSandboxProviderKindFromEnv } = await import(
   "@decocms/sandbox/provider"
 );
 const sandboxProviderKind = resolveSandboxProviderKindFromEnv();
-const ingressEligible = sandboxProviderKind === "docker";
+const ingressEligible = sandboxProviderKind === "local-docker";
 
 if (ingressEligible) {
   const { startLocalSandboxIngress } = await import(
@@ -153,7 +153,7 @@ if (ingressEligible) {
     ingressServers = startLocalSandboxIngress(() => {
       const r = getSharedSandboxProviderIfInit();
       if (!r) return null;
-      if (r.kind !== "docker") return null;
+      if (r.kind !== "local-docker") return null;
       // DockerSandboxProvider exposes resolveDaemonPort; the structural
       // cast is safe after the kind check.
       return r as unknown as {
@@ -161,9 +161,9 @@ if (ingressEligible) {
       };
     }, ingressPort);
 
-    // Construct the runner up-front. The first preview-iframe request
-    // typically arrives on a page reload with a warm vmMap, before either
-    // VM_START or `/api/vm-events` has touched the runner — without this
+    // Construct the provider up-front. The first preview-iframe request
+    // typically arrives on a page reload with a warm sandboxMap, before either
+    // SANDBOX_START or `/api/vm-events` has touched the provider — without this
     // eager init the ingress would 503 with "Sandbox Runner Not Initialized".
     await getOrInitSharedRunner();
   }

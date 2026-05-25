@@ -76,7 +76,7 @@ function SidebarEmptyState() {
               connectionId={githubRepo?.connectionId ?? ""}
               owner={githubRepo?.owner ?? ""}
               repo={githubRepo?.name ?? ""}
-              vmMap={fullVm?.metadata?.vmMap}
+              sandboxMap={fullVm?.metadata?.sandboxMap}
               currentBranch={currentBranch}
               onBranchChange={setCurrentTaskBranch}
               threadKind={threadKind}

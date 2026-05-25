@@ -7,7 +7,7 @@
  * lazily-opened 127.0.0.1 TCP listener that tunnels each inbound connection
  * to the daemon container port through the apiserver as a fresh WebSocket.
  *
- * The daemon owns the public surface: it serves `/_decopilot_vm/*` + `/health`
+ * The daemon owns the public surface: it serves `/_sandbox/*` + `/health`
  * in-process and reverse-proxies everything else to in-pod localhost:DEV_PORT
  * (CSP/X-Frame stripping + HMR bootstrap injection live in that proxy). One
  * port-forward per pod is therefore enough; opening a second forwarder for
@@ -86,7 +86,7 @@ import {
 import { watchClaimLifecycle } from "./lifecycle-watcher";
 import type { ClaimPhase } from "../lifecycle-types";
 
-const RUNNER_KIND = "agent-sandbox" as const;
+const RUNNER_KIND = "cluster" as const;
 const LOG_LABEL = "AgentSandboxProvider";
 
 // Shared-namespace topology for MVP; tenancy enforced by unguessable claim
@@ -111,7 +111,7 @@ const DAEMON_TOKEN_BYTES = 32;
  * + ports) — silently overriding any of them would break daemon startup.
  *
  * Workload (clone URL, branch, package manager, runtime, intent, dev port)
- * is no longer env-injected: it's POSTed to `/_decopilot_vm/config` after
+ * is no longer env-injected: it's POSTed to `/_sandbox/config` after
  * the daemon comes up healthy. See `buildConfigPayload`.
  */
 const RESERVED_ENV_KEYS = new Set([
@@ -168,7 +168,7 @@ const PREVIEW_STRIP_RESPONSE_HEADERS = [
 
 // Deterministic local-port range for port-forward listeners. Same
 // (handle, containerPort) pair → same host port across mesh restarts, so
-// `previewUrl` cached in the thread's vmMap stays valid when the mesh
+// `previewUrl` cached in the thread's sandboxMap stays valid when the mesh
 // process recycles. Birthday-collision probability stays <1% up to ~140
 // concurrent forwarders. EADDRINUSE walks the range forward until bind.
 const PORT_RANGE_START = 40000;
@@ -234,7 +234,7 @@ interface K8sRecord {
    * (15-min idle TTL deletes the claim — without these we'd come back as
    * an empty pod with no repo cloned). Null on adopt paths where we can't
    * recover the original opts; resurrection falls back to throwing/404 in
-   * that case so the caller's normal VM_START flow can repopulate them.
+   * that case so the caller's normal SANDBOX_START flow can repopulate them.
    */
   ensureOpts: EnsureOptions | null;
 }
@@ -253,7 +253,7 @@ interface PersistedK8sState {
    * after the operator deletes the claim on idle TTL. Optional for
    * back-compat: rows written before this field existed lack it; resurrection
    * returns null in that case and the caller surfaces 404 (UI's existing
-   * VM_START reprovision flow then runs with full opts).
+   * SANDBOX_START reprovision flow then runs with full opts).
    */
   ensureOpts?: EnsureOptions;
   [k: string]: unknown;
@@ -276,7 +276,7 @@ export interface AgentSandboxProviderOptions {
    *     (the operator rejects per-claim env when warmpool != "none"),
    *   - mesh's first contact with the daemon authenticates with the
    *     sentinel and rotates to a per-claim token via
-   *     `auth.rotateToken` on POST /_decopilot_vm/config,
+   *     `auth.rotateToken` on POST /_sandbox/config,
    *   - subsequent calls use the per-claim token (persisted in
    *     RunnerStateStore.state.token).
    *
@@ -464,7 +464,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   /**
    * Stream of phase transitions for a SandboxClaim's pre-Ready lifecycle.
    * Used by mesh's lifecycle SSE route to surface what's happening between
-   * `VM_START` posting a claim and the daemon SSE coming online.
+   * `SANDBOX_START` posting a claim and the daemon SSE coming online.
    *
    * Generator closes on terminal phase (`ready`/`failed`) or on
    * `signal.abort()`. Safe to call before the claim exists — the generator
@@ -616,7 +616,9 @@ export class AgentSandboxProvider implements SandboxProvider {
    * Unauthenticated by design — preview URLs are open the same way Vercel
    * preview URLs are; the *handle* is the secret.
    *
-   * `/_decopilot_vm/*` access policy at the edge:
+   * `/_sandbox/*` access policy at the edge (legacy `/_decopilot_vm/*`
+   * dual-served by the daemon is also matched here for the duration of
+   * the rename rollout):
    *   - **GET** is allowed through. The daemon's `/events` SSE and `/scripts`
    *     are intentionally unauthenticated and CORS-enabled (`Allow-Origin: *`)
    *     because the studio UI consumes them cross-origin from the preview
@@ -649,6 +651,8 @@ export class AgentSandboxProvider implements SandboxProvider {
 
       const reqUrl = new URL(request.url);
       const isAdminPath =
+        reqUrl.pathname === "/_sandbox" ||
+        reqUrl.pathname.startsWith("/_sandbox/") ||
         reqUrl.pathname === "/_decopilot_vm" ||
         reqUrl.pathname.startsWith("/_decopilot_vm/");
       if (isAdminPath && request.method !== "GET") {
@@ -922,7 +926,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   ): SandboxClaim {
     // Warm-pool mode: the operator rejects claim.spec.env outright when
     // warmpool != "none". Mesh delivers the per-claim secret post-bind via
-    // POST /_decopilot_vm/config + auth.rotateToken instead.
+    // POST /_sandbox/config + auth.rotateToken instead.
     const warmPoolMode = this.sentinelToken !== null;
     const envEntries = warmPoolMode
       ? []
@@ -1371,7 +1375,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // without state-store, or state-store wipe). The original opts aren't
       // recoverable from the claim alone, so resurrection on this record
       // can't autonomously re-provision; falls back to the caller's
-      // VM_START path.
+      // SANDBOX_START path.
       ensureOpts: null,
     };
   }
@@ -1432,7 +1436,7 @@ export class AgentSandboxProvider implements SandboxProvider {
    *  - row predates `ensureOpts` persistence (back-compat: rows from before
    *    this change). Resurrecting with empty opts would create an empty pod
    *    with no repo cloned, which is worse than 404. UI's existing
-   *    notFound→VM_START flow re-supplies opts in that case.
+   *    notFound→SANDBOX_START flow re-supplies opts in that case.
    */
   private async resurrectByHandle(handle: string): Promise<K8sRecord | null> {
     if (!this.stateStore) return null;
@@ -1497,7 +1501,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   }
 
   // Local mode: route preview traffic through the daemon port-forward, not
-  // a separate dev forwarder. The daemon serves /_decopilot_vm/* + /health
+  // a separate dev forwarder. The daemon serves /_sandbox/* + /health
   // in-process and reverse-proxies everything else to in-pod localhost:DEV_PORT
   // (with CSP/X-Frame stripping + HMR bootstrap injection). Pointing the URL
   // straight at the dev port would bypass that proxy and break SSE + iframe
@@ -1556,7 +1560,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     podName: string,
     containerPort: number,
     // `handle` is passed separately so the deterministic port survives pod
-    // recreation (operator-driven): vmMap's cached previewUrl stays valid.
+    // recreation (operator-driven): sandboxMap's cached previewUrl stays valid.
     handle: string = podName,
   ): Promise<PortForwarder> {
     const startPort = deterministicLocalPort(handle, containerPort);
@@ -1748,7 +1752,7 @@ function deterministicLocalPort(handle: string, containerPort: number): number {
 
 // CORS headers on synthesized preview-proxy responses. The studio iframe
 // renders under the studio origin and fetches the preview origin cross-site
-// (SSE at `/_decopilot_vm/events`, plus the EventSource probeMissing fetch);
+// (SSE at `/_sandbox/events`, plus the EventSource probeMissing fetch);
 // without ACAO the browser blocks the response *and* hides the actual status,
 // so a 404 from us looks like an opaque CORS failure in devtools. The daemon
 // already sets ACAO on its own responses — these headers only fire on errors

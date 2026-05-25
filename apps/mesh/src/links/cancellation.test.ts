@@ -72,10 +72,10 @@ function signedDispatch(body: string): Request {
   const sig = signRequest({
     secret: SECRET,
     method: "POST",
-    path: "/_decopilot_vm/dispatch",
+    path: "/_sandbox/dispatch",
     body,
   });
-  return new Request("http://localhost/_decopilot_vm/dispatch", {
+  return new Request("http://localhost/_sandbox/dispatch", {
     method: "POST",
     body,
     headers: { ...sig, "Content-Type": "application/json" },
@@ -83,7 +83,7 @@ function signedDispatch(body: string): Request {
 }
 
 function signedCancel(runId: string): Request {
-  const path = `/_decopilot_vm/runs/${runId}`;
+  const path = `/_sandbox/runs/${runId}`;
   const sig = signRequest({ secret: SECRET, method: "DELETE", path, body: "" });
   return new Request(`http://localhost${path}`, {
     method: "DELETE",
@@ -186,7 +186,7 @@ describe("cancellation matrix", () => {
   });
 
   it("DELETE with a bad HMAC signature returns 401", async () => {
-    const path = "/_decopilot_vm/runs/run-bad-sig";
+    const path = "/_sandbox/runs/run-bad-sig";
     const sig = signRequest({
       secret: "wrong-secret-32-bytes-paddingpaddingpadding",
       method: "DELETE",

@@ -4,37 +4,37 @@ import { resolveSandboxProviderKindFromEnv } from "./index";
 describe("resolveSandboxProviderKindFromEnv", () => {
   const ORIG = { ...process.env };
   beforeEach(() => {
-    delete process.env.STUDIO_SANDBOX_RUNNER;
+    delete process.env.STUDIO_SANDBOX_PROVIDER;
   });
   afterEach(() => {
     process.env = { ...ORIG };
   });
 
-  it("defaults to 'desktop' when nothing is configured", () => {
-    expect(resolveSandboxProviderKindFromEnv()).toBe("desktop");
+  it("defaults to 'user-desktop' when nothing is configured", () => {
+    expect(resolveSandboxProviderKindFromEnv()).toBe("user-desktop");
   });
 
-  it("honors explicit STUDIO_SANDBOX_RUNNER=docker", () => {
-    process.env.STUDIO_SANDBOX_RUNNER = "docker";
-    expect(resolveSandboxProviderKindFromEnv()).toBe("docker");
+  it("honors explicit STUDIO_SANDBOX_PROVIDER=local-docker", () => {
+    process.env.STUDIO_SANDBOX_PROVIDER = "local-docker";
+    expect(resolveSandboxProviderKindFromEnv()).toBe("local-docker");
   });
 
-  it("honors explicit STUDIO_SANDBOX_RUNNER=agent-sandbox", () => {
-    process.env.STUDIO_SANDBOX_RUNNER = "agent-sandbox";
-    expect(resolveSandboxProviderKindFromEnv()).toBe("agent-sandbox");
+  it("honors explicit STUDIO_SANDBOX_PROVIDER=cluster", () => {
+    process.env.STUDIO_SANDBOX_PROVIDER = "cluster";
+    expect(resolveSandboxProviderKindFromEnv()).toBe("cluster");
   });
 
-  it("throws on unknown STUDIO_SANDBOX_RUNNER value", () => {
-    process.env.STUDIO_SANDBOX_RUNNER = "nonsense";
+  it("throws on unknown STUDIO_SANDBOX_PROVIDER value", () => {
+    process.env.STUDIO_SANDBOX_PROVIDER = "nonsense";
     expect(() => resolveSandboxProviderKindFromEnv()).toThrow(
-      /Unknown STUDIO_SANDBOX_RUNNER/,
+      /Unknown STUDIO_SANDBOX_PROVIDER/,
     );
   });
 
   it("rejects the retired 'host' runner kind", () => {
-    process.env.STUDIO_SANDBOX_RUNNER = "host";
+    process.env.STUDIO_SANDBOX_PROVIDER = "host";
     expect(() => resolveSandboxProviderKindFromEnv()).toThrow(
-      /Unknown STUDIO_SANDBOX_RUNNER/,
+      /Unknown STUDIO_SANDBOX_PROVIDER/,
     );
   });
 });

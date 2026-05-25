@@ -15,7 +15,7 @@ function makeHeaders(input: {
     ...signRequest({
       secret: input.secret ?? SECRET,
       method: input.method ?? "POST",
-      path: input.path ?? "/_decopilot_vm/dispatch",
+      path: input.path ?? "/_sandbox/dispatch",
       body: input.body ?? "{}",
       timestamp: input.timestampOverride,
       nonce: input.nonceOverride,
@@ -29,7 +29,7 @@ describe("HMAC request signing", () => {
     const ok = verifyRequest({
       secret: SECRET,
       method: "POST",
-      path: "/_decopilot_vm/dispatch",
+      path: "/_sandbox/dispatch",
       body: "{}",
       headers,
       seenNonce: () => false,
@@ -42,7 +42,7 @@ describe("HMAC request signing", () => {
     const result = verifyRequest({
       secret: SECRET,
       method: "POST",
-      path: "/_decopilot_vm/dispatch",
+      path: "/_sandbox/dispatch",
       body: '{"x":1}',
       headers,
       seenNonce: () => false,
@@ -55,7 +55,7 @@ describe("HMAC request signing", () => {
     const result = verifyRequest({
       secret: "wrong-secret-32-bytes-padding-padding-padding",
       method: "POST",
-      path: "/_decopilot_vm/dispatch",
+      path: "/_sandbox/dispatch",
       body: "{}",
       headers,
       seenNonce: () => false,
@@ -70,7 +70,7 @@ describe("HMAC request signing", () => {
     const result = verifyRequest({
       secret: SECRET,
       method: "POST",
-      path: "/_decopilot_vm/dispatch",
+      path: "/_sandbox/dispatch",
       body: "{}",
       headers,
       seenNonce: () => false,
@@ -84,7 +84,7 @@ describe("HMAC request signing", () => {
     const result = verifyRequest({
       secret: SECRET,
       method: "POST",
-      path: "/_decopilot_vm/dispatch",
+      path: "/_sandbox/dispatch",
       body: "{}",
       headers,
       seenNonce: (n) => n === "fixed-nonce",
