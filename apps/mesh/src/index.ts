@@ -29,10 +29,15 @@ const { DBOS } = await import("@dbos-inc/dbos-sdk");
 // DBOS uses its own pg client (separate from mesh's pool), so the `sslmode`
 // must travel in the URL. RDS's pg_hba.conf rejects unencrypted connections
 // with `no pg_hba.conf entry for host ... no encryption` when this is missing.
+// Use `verify-full` explicitly: pg-connection-string v2 silently upgrades
+// `require` to `verify-full`, but v3 / pg v9 will drop that upgrade and treat
+// `require` as encrypt-without-verification (libpq semantics).
 function withSslmode(url: string, ssl: boolean): string {
   if (!ssl) return url;
   const u = new URL(url);
-  if (!u.searchParams.has("sslmode")) u.searchParams.set("sslmode", "require");
+  if (!u.searchParams.has("sslmode")) {
+    u.searchParams.set("sslmode", "verify-full");
+  }
   return u.toString();
 }
 DBOS.setConfig({
