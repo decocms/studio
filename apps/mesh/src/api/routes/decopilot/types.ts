@@ -29,6 +29,8 @@ export type ChatMessage = UIMessage<
     "tool-metadata": {
       annotations?: NonNullable<ToolDefinition["annotations"]>;
       latencyMs?: number;
+      /** UTF-8 byte length of the JSON-serialized tool result. */
+      outputBytes?: number;
     };
     "tool-subtask-metadata": {
       usage: UsageStats;

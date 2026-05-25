@@ -25,14 +25,14 @@ export class OrganizationDomainStorage
 {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async getByDomain(domain: string): Promise<OrganizationDomain | null> {
-    const record = await this.db
+  async getAllByDomain(domain: string): Promise<OrganizationDomain[]> {
+    const records = await this.db
       .selectFrom("organization_domains")
       .selectAll()
       .where("domain", "=", domain.toLowerCase())
-      .executeTakeFirst();
+      .execute();
 
-    return record ? toEntity(record) : null;
+    return records.map(toEntity);
   }
 
   async getByOrganizationId(
@@ -55,36 +55,23 @@ export class OrganizationDomainStorage
     const now = new Date().toISOString();
     const normalizedDomain = domain.toLowerCase();
 
-    try {
-      await this.db
-        .insertInto("organization_domains")
-        .values({
-          organization_id: organizationId,
+    await this.db
+      .insertInto("organization_domains")
+      .values({
+        organization_id: organizationId,
+        domain: normalizedDomain,
+        auto_join_enabled: autoJoinEnabled,
+        created_at: now,
+        updated_at: now,
+      })
+      .onConflict((oc) =>
+        oc.column("organization_id").doUpdateSet({
           domain: normalizedDomain,
           auto_join_enabled: autoJoinEnabled,
-          created_at: now,
           updated_at: now,
-        })
-        .onConflict((oc) =>
-          oc.column("organization_id").doUpdateSet({
-            domain: normalizedDomain,
-            auto_join_enabled: autoJoinEnabled,
-            updated_at: now,
-          }),
-        )
-        .execute();
-    } catch (error) {
-      // Handle unique constraint violation on 'domain' column —
-      // another org already claimed this domain (race-safe).
-      // PostgreSQL SQLSTATE 23505 = unique_violation (locale-independent).
-      const pgCode = (error as { code?: string }).code;
-      if (pgCode === "23505") {
-        throw new Error(
-          `Domain "${normalizedDomain}" is already claimed by another organization.`,
-        );
-      }
-      throw error;
-    }
+        }),
+      )
+      .execute();
 
     const result = await this.getByOrganizationId(organizationId);
     if (!result) {

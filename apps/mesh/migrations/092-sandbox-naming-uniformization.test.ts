@@ -28,7 +28,7 @@ import {
   createTestSchema,
   seedCommonTestFixtures,
 } from "../src/storage/test-helpers";
-import { up as up091 } from "./091-sandbox-naming-uniformization";
+import { up as up092 } from "./092-sandbox-naming-uniformization";
 
 const USER = "user_test";
 const ORG = "org_test";
@@ -123,7 +123,7 @@ describe("migration 091 — sandbox naming uniformization", () => {
     await insertRunnerState(database, "h-cluster", "cluster");
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up091(database.db as any);
+    await up092(database.db as any);
 
     const rows = await listRunnerState(database);
     const byHandle = Object.fromEntries(
@@ -155,7 +155,7 @@ describe("migration 091 — sandbox naming uniformization", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up091(database.db as any);
+    await up092(database.db as any);
 
     const meta = await getMetadata(database, "vir_rename_map");
     expect(meta.vmMap).toBeUndefined();
@@ -202,7 +202,7 @@ describe("migration 091 — sandbox naming uniformization", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up091(database.db as any);
+    await up092(database.db as any);
 
     const meta = (await getMetadata(database, "vir_inner_keys")) as {
       sandboxMap: Record<string, Record<string, Record<string, unknown>>>;
@@ -252,7 +252,7 @@ describe("migration 091 — sandbox naming uniformization", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up091(database.db as any);
+    await up092(database.db as any);
 
     const meta = (await getMetadata(database, "vir_drop_legacy")) as {
       sandboxMap: Record<string, Record<string, Record<string, unknown>>>;
@@ -273,7 +273,7 @@ describe("migration 091 — sandbox naming uniformization", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up091(database.db as any);
+    await up092(database.db as any);
 
     const meta = (await getMetadata(database, "vir_tool_names")) as {
       toolAllowList: string[];
@@ -315,12 +315,12 @@ describe("migration 091 — sandbox naming uniformization", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up091(database.db as any);
+    await up092(database.db as any);
     const after1Meta = await getMetadata(database, "vir_idem");
     const after1Runner = await listRunnerState(database);
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up091(database.db as any);
+    await up092(database.db as any);
     const after2Meta = await getMetadata(database, "vir_idem");
     const after2Runner = await listRunnerState(database);
 
@@ -334,7 +334,7 @@ describe("migration 091 — sandbox naming uniformization", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up091(database.db as any);
+    await up092(database.db as any);
 
     const meta = await getMetadata(database, "vir_no_map");
     expect(meta).toEqual({ instructions: "hello" });

@@ -1,5 +1,5 @@
 /**
- * Migration 091: Sweep persisted state to the new sandbox-naming vocabulary.
+ * Migration 092: Sweep persisted state to the new sandbox-naming vocabulary.
  *
  * The runtime renames from the sandbox-naming uniformization effort are
  * complete; this migration brings stored data in line so the readers can
