@@ -7,6 +7,7 @@ import {
   makeGitDiffHandler,
   makeGitDiscardHandler,
   makeGitPublishHandler,
+  makeGitRebaseHandler,
   makeGitStatusHandler,
 } from "./git";
 
@@ -148,6 +149,22 @@ describe("git routes", () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({
       error: "Invalid path: ../outside-secret.txt",
+    });
+  });
+
+  it("rebase rejects invalid base branch names", async () => {
+    const { appRoot, repoDir } = initRepo();
+    const handler = makeGitRebaseHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/rebase", {
+        method: "POST",
+        body: JSON.stringify({ base: "--upload-pack=evil" }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Invalid base branch name: --upload-pack=evil",
     });
   });
 });

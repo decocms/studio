@@ -148,7 +148,7 @@ export function isDecoOnlyDiff(
 }
 
 export const PUBLISH_REQUIRES_SUBMIT_TOOLTIP =
-  "You need Submit for review for changes outside .deco";
+  "You need submit for review for code changes";
 
 export async function discardGitFiles(
   orgSlug: string,

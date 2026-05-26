@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gitSync as rawGitSync } from "./git-sync";
 import { parsePorcelainEntry } from "./porcelain";
+import { assertValidRemoteBranchName } from "./ref-name";
 
 const MAX_CONFLICT_RESOLUTION_ATTEMPTS = 50;
 
@@ -129,6 +130,8 @@ function commitBeforeRebase(repoDir: string): void {
       "-c",
       `core.hooksPath=${getEmptyHooksDir()}`,
       "commit",
+      // --no-verify: see publish() in routes/git.ts — removing it means surfacing
+      // hook failures clearly in the publish UI instead of opaque daemon errors.
       "--no-verify",
       "-m",
       "Before rebase",
@@ -182,6 +185,8 @@ function continueRebase(repoDir: string): void {
         `core.hooksPath=${getEmptyHooksDir()}`,
         "commit",
         "--no-edit",
+        // --no-verify: see publish() in routes/git.ts — removing it means surfacing
+        // hook failures clearly in the publish UI instead of opaque daemon errors.
         "--no-verify",
       ],
       { env: { ...env, ...SKIP_HOOKS_ENV } },
@@ -309,6 +314,8 @@ function rebaseOntoBaseInner(
   repoDir: string,
   base: string,
 ): { rebased: boolean } {
+  assertValidRemoteBranchName(base);
+
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
     throw new Error("Cannot rebase from a detached HEAD");

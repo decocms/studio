@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { rebaseOntoBase } from "../git/rebase-onto-base";
+import { InvalidRemoteBranchNameError } from "../git/ref-name";
 import { safePath } from "../paths";
 import { git } from "../setup/git";
 import { jsonResponse, parseJsonBody } from "./body-parser";
@@ -231,8 +232,11 @@ function publish(deps: GitDeps, message: string): { pushed: boolean } {
     const commitMsg =
       message.trim().length > 0 ? message.trim() : "Update from sandbox";
     // Sandbox repos often ship lefthook/husky hooks (deno fmt, lint, check)
-    // that need a full dev toolchain + network. Skip hooks here — CI validates
-    // on the PR after push.
+    // that need a full dev toolchain + network. Push still runs normal hooks
+    // (e.g. pre-push branch protection); only this commit skips them.
+    // --no-verify: we may want to run hooks here eventually, but removing it
+    // requires surfacing hook failures clearly in the publish UI (which step
+    // failed, logs, retry) instead of a generic daemon 500.
     runGit(
       repoDir,
       [
@@ -363,6 +367,9 @@ export function makeGitRebaseHandler(deps: GitDeps) {
     try {
       return jsonResponse(rebaseOntoBase(deps.repoDir, base));
     } catch (err) {
+      if (err instanceof InvalidRemoteBranchNameError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
       return jsonResponse({ error: formatGitError(err) }, 500);
     }
   };
