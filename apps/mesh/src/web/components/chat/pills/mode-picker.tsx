@@ -21,7 +21,6 @@ import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { track } from "@/web/lib/posthog-client";
 import { ClaudeCodeIcon, CodexIcon } from "../agent-icons";
-import type { PillPriority } from "../pill-priority";
 import {
   type AgentMode,
   useAgentMode,
@@ -37,8 +36,6 @@ interface PureProps {
   mode: AgentMode;
   availability: ModePickerAvailability;
   locked: boolean;
-  /** Container-query priority for the closed-pill label / chevron. */
-  priority?: PillPriority;
   onSelect: (mode: AgentMode) => void;
 }
 
@@ -100,7 +97,6 @@ export function ModePickerPure({
   mode,
   availability,
   locked,
-  priority = "primary",
   onSelect,
 }: PureProps) {
   const [open, setOpen] = useState(false);
@@ -128,30 +124,21 @@ export function ModePickerPure({
                   baseClasses,
                   isLocal && localActiveClasses,
                   "shrink min-w-0",
-                  priority === "secondary"
-                    ? "gap-0 @[628px]/chat-bottom:gap-1.5"
-                    : "gap-0 @[320px]/chat-bottom:gap-1.5",
+                  "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
                 {icon}
                 <span
                   className={cn(
                     "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                    priority === "secondary"
-                      ? "@[628px]/chat-bottom:max-w-32 @[628px]/chat-bottom:opacity-100"
-                      : "@[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100",
+                    "@[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100",
                   )}
                 >
                   {text}
                 </span>
                 <ChevronDown
                   size={12}
-                  className={cn(
-                    "opacity-60 hidden",
-                    priority === "secondary"
-                      ? "@[628px]/chat-bottom:inline-block"
-                      : "@[320px]/chat-bottom:inline-block",
-                  )}
+                  className="opacity-60 hidden @[320px]/chat-bottom:inline-block"
                 />
               </Button>
             </PopoverTrigger>
@@ -233,7 +220,6 @@ interface SmartProps {
   locked: boolean;
   currentBranch: string | null;
   virtualMcpId: string;
-  priority?: PillPriority;
 }
 
 /**
@@ -245,7 +231,6 @@ export function ModePicker({
   locked,
   currentBranch,
   virtualMcpId,
-  priority = "primary",
 }: SmartProps) {
   const mode = useAgentMode();
   const setAgentMode = useSetAgentMode();
@@ -280,7 +265,6 @@ export function ModePicker({
       mode={mode}
       availability={availability}
       locked={locked}
-      priority={priority}
       onSelect={handleSelect}
     />
   );

@@ -5,7 +5,6 @@ import {
   agentHasConnectedGithub,
 } from "@/web/lib/agent-capabilities";
 import { useOptionalChatStream } from "../context";
-import type { PillPriority } from "../pill-priority";
 import { BranchPill } from "./branch-pill";
 import { ModePicker } from "./mode-picker";
 
@@ -50,9 +49,6 @@ interface SmartProps {
   sandboxMap: SandboxMap | undefined;
   currentBranch: string | null;
   onBranchChange: (branch: string) => void;
-  /** Forwarded to both BranchPill and ModePicker. The row itself is a
-   *  fragment — it doesn't render labels of its own. */
-  priority?: PillPriority;
 }
 
 /**
@@ -70,7 +66,6 @@ export function ChatModeRow({
   sandboxMap,
   currentBranch,
   onBranchChange,
-  priority = "primary",
 }: SmartProps) {
   const stream = useOptionalChatStream();
   const locked = (stream?.messages ?? []).length > 0;
@@ -96,7 +91,6 @@ export function ChatModeRow({
           value={currentBranch}
           onChange={onBranchChange}
           locked={locked}
-          priority={priority}
         />
       }
       modePicker={
@@ -104,7 +98,6 @@ export function ChatModeRow({
           locked={locked}
           currentBranch={currentBranch}
           virtualMcpId={virtualMcp?.id ?? ""}
-          priority={priority}
         />
       }
     />
