@@ -12,30 +12,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@deco/ui/components/sidebar.tsx";
-import {
-  Check,
-  Coins04,
-  ZapSquare,
-  Inbox01,
-  Settings02,
-  XClose,
-} from "@untitledui/icons";
+import { Check, Inbox01, Settings02, XClose } from "@untitledui/icons";
 import { AuthUIContext } from "@daveyplate/better-auth-ui";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Component, Suspense, useContext, useState } from "react";
-import type { ErrorInfo, ReactNode } from "react";
+import { useContext, useState } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useMCPToolCallQuery,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
-import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
-import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
-import { track } from "@/web/lib/posthog-client";
 
 interface Invitation {
   id: string;
@@ -141,125 +124,6 @@ function usePendingInvitations() {
   );
 }
 
-class SilentErrorBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(): { hasError: boolean } {
-    return { hasError: true };
-  }
-
-  override componentDidCatch(_error: Error, _info: ErrorInfo): void {
-    // Silently catch errors in the credit chip
-  }
-
-  override render(): ReactNode {
-    if (this.state.hasError) return null;
-    return this.props.children;
-  }
-}
-
-function creditColor(balanceDollars: number): string {
-  if (balanceDollars <= 1) return "text-destructive";
-  if (balanceDollars <= 5) return "text-amber-500 dark:text-amber-400";
-  return "text-foreground/70";
-}
-
-function CreditChip() {
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
-
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-
-  const { data, isPending, isError } = useMCPToolCallQuery<
-    { balanceCents: number } | undefined
-  >({
-    client,
-    toolName: "AI_PROVIDER_CREDITS",
-    toolArguments: { providerId: "deco" },
-    staleTime: 60_000,
-    select: (result) =>
-      (result as { structuredContent?: { balanceCents: number } })
-        .structuredContent,
-  });
-
-  const balanceDollars =
-    data?.balanceCents != null ? data.balanceCents / 100 : null;
-
-  const tooltipLabel =
-    isPending || isError || balanceDollars == null
-      ? "Credits"
-      : `Credits: $${balanceDollars.toFixed(2)}`;
-
-  return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          tooltip={tooltipLabel}
-          className={cn(balanceDollars != null && creditColor(balanceDollars))}
-          onClick={() =>
-            navigate({
-              to: "/$org/settings/ai-providers",
-              params: { org: org.slug },
-            })
-          }
-        >
-          <Coins04 size={24} />
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
-  );
-}
-
-function CreditChipConditional() {
-  const keys = useAiProviderKeys();
-  const hasDecoKey = keys.some((k) => k.providerId === "deco");
-
-  if (!hasDecoKey) return null;
-
-  return <CreditChip />;
-}
-
-function ConnectionsButton() {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Connections"
-            onClick={() => {
-              track("connections_dialog_opened", {
-                source: "sidebar_footer",
-                mode: "browse",
-              });
-              setOpen(true);
-            }}
-          >
-            <ZapSquare size={24} />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-      <AddConnectionDialog
-        mode="browse"
-        open={open}
-        onOpenChange={setOpen}
-        defaultTab="all"
-      />
-    </>
-  );
-}
-
 function InboxButton() {
   const pendingInvitations = usePendingInvitations();
 
@@ -335,12 +199,6 @@ function SettingsButton() {
 export function SidebarInboxFooter() {
   return (
     <SidebarFooter className="px-2 pb-3 gap-1">
-      <SilentErrorBoundary>
-        <Suspense fallback={null}>
-          <CreditChipConditional />
-        </Suspense>
-      </SilentErrorBoundary>
-      <ConnectionsButton />
       <InboxButton />
       <SettingsButton />
       <SidebarMenu>
