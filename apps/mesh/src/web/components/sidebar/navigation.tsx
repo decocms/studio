@@ -25,7 +25,7 @@ function SidebarLogoHeader({ rightContent }: { rightContent?: ReactNode }) {
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
   return (
-    <SidebarHeader className="flex flex-row items-center justify-between shrink-0 h-12 px-3 pb-0 group-data-[state=collapsed]/sidebar:justify-center">
+    <SidebarHeader className="flex flex-row items-center justify-between shrink-0 h-12 px-3 pb-0">
       <div className="flex items-center shrink-0">
         <img
           src={lightSrc}

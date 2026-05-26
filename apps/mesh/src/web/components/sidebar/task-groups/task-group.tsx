@@ -253,6 +253,7 @@ export function StatusGroup({
               onClick={() => onSelectTask(task)}
               onArchive={() => onArchiveTask(task)}
               showAutomationBadge={Boolean(task.trigger_id)}
+              showAgentIcon
             />
           ))}
         </div>

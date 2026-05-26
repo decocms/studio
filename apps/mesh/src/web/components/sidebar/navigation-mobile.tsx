@@ -52,9 +52,10 @@ function MobileNavigationItem({
         }}
         isActive={item.isActive}
         tooltip={item.label}
-        className="bg-muted/75"
+        className="h-10! text-sm!"
       >
-        <span className="[&>svg]:size-8">{item.icon}</span>
+        <span className="[&>svg]:size-5 shrink-0">{item.icon}</span>
+        <span>{item.label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -142,7 +143,11 @@ export function MobileNavigationSidebar({
             onClose={onClose}
           />
         ))}
-        {additionalContent}
+        {additionalContent && (
+          <div className="mt-3 flex flex-col flex-1 min-h-0">
+            {additionalContent}
+          </div>
+        )}
       </SidebarContent>
       {footer}
     </div>

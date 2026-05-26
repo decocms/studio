@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { useSidebar } from "@deco/ui/components/sidebar.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
@@ -304,13 +303,13 @@ export function TaskGroupsList() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="shrink-0 pl-2 pr-1 h-7 flex items-center justify-between">
+      <div className="shrink-0 pl-2 pr-1 h-10 md:h-7 flex items-center justify-between">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
               aria-label="Switch view"
-              className="flex items-center gap-1 rounded-md px-1 py-0.5 -ml-1 text-xs font-medium text-muted-foreground outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
+              className="flex items-center gap-1 rounded-md px-2 h-10 md:h-7 -ml-1 text-sm md:text-xs font-medium text-muted-foreground outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
             >
               <span>{VIEW_MODE_LABELS[viewMode]}</span>
               <ChevronDown size={12} />
@@ -344,7 +343,7 @@ export function TaskGroupsList() {
               setSearchOpen(true);
             }}
           >
-            <SearchSm size={14} />
+            <SearchSm size={16} />
           </ToolbarIconButton>
           <Popover>
             <PopoverTrigger asChild>
@@ -352,7 +351,7 @@ export function TaskGroupsList() {
                 aria-label="Filter tasks"
                 active={filtersActive}
               >
-                <FilterLines size={14} />
+                <FilterLines size={16} />
               </ToolbarIconButton>
             </PopoverTrigger>
             <PopoverContent
@@ -447,13 +446,18 @@ export function TaskGroupsList() {
       >
         {viewMode === "suggestions" ? (
           <div className="flex flex-col gap-2 pt-1 px-1 pb-2">
-            {visibleChecklists.map((c) => (
-              <ChecklistCard
-                key={c.agent.id}
-                checklist={c}
-                onItemClick={handleChecklistItemClick}
-              />
-            ))}
+            {visibleChecklists.flatMap((c) =>
+              c.items
+                .filter((item) => !item.completed)
+                .map((item, idx) => (
+                  <ChecklistItemCard
+                    key={`${c.agent.id}-${idx}`}
+                    checklist={c}
+                    item={item}
+                    onClick={() => handleChecklistItemClick(c, item)}
+                  />
+                )),
+            )}
             {isLoadingSuggestions || isLoadingChecklists
               ? Array.from({ length: 3 }, (_, i) => (
                   <div
@@ -596,82 +600,34 @@ function FilterRow({
   );
 }
 
-function ChecklistCard({
+function ChecklistItemCard({
   checklist,
-  onItemClick,
+  item,
+  onClick,
 }: {
   checklist: StudioPackChecklist;
-  onItemClick: (
-    checklist: StudioPackChecklist,
-    item: StudioPackChecklistItem,
-  ) => void;
+  item: StudioPackChecklistItem;
+  onClick: () => void;
 }) {
   return (
-    <div className="flex w-full flex-col gap-2 rounded-xl border border-border bg-background px-3 py-2.5">
-      <div className="flex items-center gap-3">
-        <AgentAvatar
-          icon={checklist.agent.icon}
-          name={checklist.agent.name}
-          size="xs"
-        />
-        <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+    <button
+      type="button"
+      onClick={onClick}
+      className="group/row flex w-full items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <AgentAvatar
+        icon={checklist.agent.icon}
+        name={checklist.agent.name}
+        size="sm+"
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="w-full truncate text-xs text-muted-foreground">
           {checklist.agent.name}
         </div>
+        <div className="line-clamp-2 w-full text-sm font-medium text-foreground">
+          {item.label}
+        </div>
       </div>
-      <ul className="flex flex-col gap-0.5">
-        {checklist.items.map((item, i) => (
-          <li key={`${checklist.agent.id}-${i}`}>
-            <button
-              type="button"
-              onClick={() => onItemClick(checklist, item)}
-              disabled={item.completed}
-              className={cn(
-                "flex w-full items-start gap-2 rounded-md px-1 py-0.5 text-left text-sm outline-none transition-colors",
-                "hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring",
-                item.completed && "cursor-default hover:bg-transparent",
-              )}
-            >
-              <ChecklistCheckbox completed={item.completed} />
-              <span
-                className={cn(
-                  "leading-snug",
-                  item.completed
-                    ? "text-muted-foreground line-through"
-                    : "text-foreground",
-                )}
-              >
-                {item.label}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ChecklistCheckbox({ completed }: { completed: boolean }) {
-  return completed ? (
-    <span
-      aria-label="completed"
-      className="mt-0.5 inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm bg-primary"
-    >
-      <svg
-        viewBox="0 0 10 8"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="size-2 text-primary-foreground"
-        style={{ strokeWidth: 2 }}
-      >
-        <path d="M1 4l2.5 2.5L9 1" />
-      </svg>
-    </span>
-  ) : (
-    <span
-      aria-label="pending"
-      className="mt-0.5 inline-block size-3.5 shrink-0 rounded-sm border-[1.5px] border-muted-foreground/50"
-    />
+    </button>
   );
 }

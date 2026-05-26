@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
@@ -19,12 +20,15 @@ export function TaskRow({
   onClick,
   onArchive,
   showAutomationBadge,
+  showAgentIcon,
 }: {
   task: Task;
   isActive: boolean;
   onClick: () => void;
   onArchive: () => void;
   showAutomationBadge?: boolean;
+  /** Render the originating agent's icon on the left of the row. */
+  showAgentIcon?: boolean;
 }) {
   const config = getStatusConfig(task.status);
   const StatusIcon = config.icon;
@@ -58,6 +62,13 @@ export function TaskRow({
           : "hover:bg-accent/60",
       )}
     >
+      {showAgentIcon && !isToolCallRun && (
+        <AgentAvatar
+          icon={virtualMcp?.icon ?? null}
+          name={virtualMcp?.title ?? "?"}
+          size="2xs"
+        />
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           {isAutomation && (

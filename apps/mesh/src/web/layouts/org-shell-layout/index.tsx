@@ -18,6 +18,11 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
 import { LayoutLeft, Loading01, Menu01 } from "@untitledui/icons";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { SidebarResizeHandle } from "@/web/components/sidebar/sidebar-resize-handle";
+import {
+  SIDEBAR_MAX_WIDTH,
+  useSidebarResize,
+} from "@/web/hooks/use-sidebar-resize";
 import { Outlet, useParams } from "@tanstack/react-router";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
@@ -99,6 +104,8 @@ export default function OrgShellLayout() {
     SIDEBAR_OPEN_STORAGE_KEY,
     false,
   );
+  const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
+  const effectiveWidth = hasTaskRoute ? width : SIDEBAR_MAX_WIDTH;
 
   return (
     <ThreadManagerProvider>
@@ -106,9 +113,11 @@ export default function OrgShellLayout() {
         <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <div className="flex flex-col h-dvh overflow-hidden">
             <SidebarLayout
-              className="flex-1 bg-sidebar"
+              ref={wrapperRef}
+              className="flex-1 bg-sidebar relative"
               style={
                 {
+                  "--sidebar-width": `${effectiveWidth}px`,
                   "--sidebar-width-icon": "3.5rem",
                 } as Record<string, string>
               }
@@ -116,6 +125,12 @@ export default function OrgShellLayout() {
               <StudioSidebar
                 headerRight={sidebarOpen ? <SidebarNavControls /> : undefined}
               />
+              {hasTaskRoute && (
+                <SidebarResizeHandle
+                  onPointerDown={onStartResize}
+                  onDoubleClick={resetWidth}
+                />
+              )}
               <SidebarInset
                 className="flex flex-col"
                 style={{
