@@ -7,7 +7,11 @@
 
 import { createHash } from "node:crypto";
 import type { MeshContext } from "@/core/mesh-context";
-import { TierUnavailableError, resolveTier } from "@/core/resolve-tier";
+import {
+  TierUnavailableError,
+  resolveTier,
+  tryResolveTier,
+} from "@/core/resolve-tier";
 import { resolveAgentTier } from "@/ai-providers/agent-tiers";
 import type { ChatTier, SimpleModeTier } from "@/tools/organization/schema";
 import { posthog } from "@/posthog";
@@ -151,38 +155,15 @@ function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
 }
 
 /**
- * Try to resolve a tier without failing the whole request. Returns null when
- * the tier is unconfigured + has no curated default — used for optional
- * auxiliary tiers (image, web_research) where missing-credentials should
- * disable the corresponding tool, not 400 the chat request.
- */
-async function tryResolveTier(ctx: MeshContext, tier: SimpleModeTier) {
-  try {
-    return await resolveTier(ctx, tier);
-  } catch (err) {
-    if (err instanceof TierUnavailableError) return null;
-    console.warn(`[decopilot] tier "${tier}" resolution failed:`, err);
-    return null;
-  }
-}
-
-/**
- * Resolves a tier (defaulting to "smart") to a full ModelsConfig.
+ * Resolves a tier (defaulting to "smart") to a full ModelsConfig via the
+ * shared resolveTier(), which falls back to curated provider defaults when
+ * the org's tier slot is unset. Also resolves the "image" and "web_research"
+ * tiers — when present they enable the generate_image and web_search
+ * built-in tools (registration is conditional in built-in-tools/index.ts).
  *
- * Two paths:
- *
- * - **Decopilot:** goes through `resolveTier()`, which consults the org's
- *   AI provider keys + simple-mode slot configuration. Also resolves
- *   `image` and `web_research` tiers — when present they enable the
- *   `generate_image` and `web_search` built-in tools.
- *
- * - **Desktop-CLI harnesses (`claude-code`, `codex`):** the model lives
- *   on the user's desktop, not in any AI provider key. We synthesize the
- *   ModelsConfig from the agent's hardcoded tier map (`agent-tiers.ts`).
- *   The `credentialId` is a sentinel — the harness reads `models.thinking.id`
- *   to know which CLI sub-command to invoke and ignores the credential.
- *   `image` / `web_research` are not supported in this path; the
- *   corresponding built-in tools stay unregistered.
+ * Exported so server-initiated dispatch paths (e.g. preset-task /start)
+ * can compose a ModelsConfig the same way HTTP chat does, instead of
+ * duplicating the tier-resolution + tryResolve fallback logic.
  */
 async function resolvePerRequestModels(
   ctx: MeshContext,

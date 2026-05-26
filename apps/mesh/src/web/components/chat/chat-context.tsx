@@ -24,7 +24,7 @@ import {
   useSyncExternalStore,
   type PropsWithChildren,
 } from "react";
-import { useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AUTOSEND_QUERY_VALUE,
@@ -44,6 +44,7 @@ import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
 import { AGENT_OPTION_PINS, type AgentOption } from "./pills/agent-options";
 import {
+  isStudioPackAgent,
   pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -771,6 +772,7 @@ export function ActiveTaskProvider({
   const onToolCall = useInvalidateCollectionsOnToolCall();
   const queryClient = useQueryClient();
   const manager = useThreadManager();
+  const navigate = useNavigate();
 
   // The connection owns SSE subscription, POSTs, and message state. The
   // provider is keyed by taskId at the layout level, so this resolves to a
@@ -802,6 +804,7 @@ export function ActiveTaskProvider({
     rawNavigateToTask,
     taskId,
     manager,
+    navigate,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   cbRef.current = {
@@ -810,6 +813,7 @@ export function ActiveTaskProvider({
     rawNavigateToTask,
     taskId,
     manager,
+    navigate,
   };
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
@@ -819,16 +823,34 @@ export function ActiveTaskProvider({
       // the new title into the manager's thread row so the tasks panel updates
       // — no `/events` thread.title event exists; this is the only path.
       onData: (chunk) => {
-        if (chunk.type !== "data-thread-title") return;
-        const data = (chunk as unknown as { data: { title?: string } }).data;
-        if (!data?.title) return;
-        const cb = cbRef.current;
-        if (!cb.taskId) return;
-        cb.manager.patchThread({
-          id: cb.taskId,
-          title: data.title,
-          updated_at: new Date().toISOString(),
-        });
+        if (chunk.type === "data-thread-title") {
+          const data = (chunk as unknown as { data: { title?: string } }).data;
+          if (!data?.title) return;
+          const cb = cbRef.current;
+          if (!cb.taskId) return;
+          cb.manager.patchThread({
+            id: cb.taskId,
+            title: data.title,
+            updated_at: new Date().toISOString(),
+          });
+          return;
+        }
+        // Auto-open the preview panel on every published HTML page. Latest
+        // slug always wins — matches the model's current focus.
+        if (chunk.type === "data-html-page-published") {
+          const data = (chunk as unknown as { data: { slug?: string } }).data;
+          if (!data?.slug) return;
+          const slug = data.slug;
+          cbRef.current.navigate({
+            to: ".",
+            search: (prev: Record<string, unknown>) => ({
+              ...prev,
+              main: `web-page:${slug}`,
+            }),
+            replace: true,
+          });
+          return;
+        }
       },
       onFinish: (message) => {
         const cb = cbRef.current;
@@ -847,6 +869,17 @@ export function ActiveTaskProvider({
             queryKey: KEYS.threadOutputs(cb.taskId),
           });
         }
+
+        // The "what's next for this agent" hint is derived server-side from
+        // org state (brand exists? has pages? connections healthy?). Any turn
+        // can flip that state, so re-fetch on every finish — covers both
+        // `mine=true` and `mine=false` variants via partial-key match.
+        cb.queryClient.invalidateQueries({
+          queryKey: ["suggested-actions", org.slug],
+        });
+        cb.queryClient.invalidateQueries({
+          queryKey: KEYS.studioPackChecklists(org.slug),
+        });
 
         const serverThreadId = (message.metadata as Metadata | undefined)
           ?.thread_id;
@@ -1009,6 +1042,48 @@ export function ActiveTaskProvider({
     });
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage status, not function identity, gates duplicate sends
   }, [shouldAutosend, messages.length, locator, taskId, sendMessageInternal]);
+
+  // Studio Pack welcome materializer: when landing on a fresh
+  // `thrd_welcome_<agentId>` thread with no autosend queued, ask the server
+  // to insert the agent's state-aware welcome (text greeting or user_ask)
+  // and merge it into the local message stream. The route is idempotent;
+  // any later remount that finds messages already present is a no-op.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot fetch gated by empty messages + no autosend
+  useEffect(() => {
+    if (shouldAutosend) return;
+    if (messages.length > 0) return;
+    if (!virtualMcpId) return;
+    if (!isStudioPackAgent(virtualMcpId)) return;
+    if (taskId !== `thrd_welcome_${virtualMcpId}`) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/${org.slug}/studio-pack-welcome/${encodeURIComponent(
+            virtualMcpId,
+          )}/${encodeURIComponent(taskId)}`,
+          { method: "POST", credentials: "include" },
+        );
+        if (cancelled || !res.ok) return;
+        const data = (await res.json()) as {
+          inserted: boolean;
+          message: ChatMessage | null;
+        };
+        if (!data.inserted || !data.message) return;
+        conn.messages.update((curr) =>
+          curr.some((m) => m.id === data.message?.id)
+            ? curr
+            : [...curr, data.message as ChatMessage],
+        );
+      } catch (err) {
+        console.warn("[chat] studio-pack-welcome failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldAutosend, messages.length, virtualMcpId, taskId, org.slug, conn]);
 
   const streamValue: ChatStreamContextValue = {
     messages,

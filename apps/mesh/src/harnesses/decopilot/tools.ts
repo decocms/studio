@@ -31,6 +31,7 @@ import {
   type PendingImage,
   type VmContext,
 } from "./built-in-tools";
+import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import type { ConnectionsBlockTool } from "./connections-block";
 import { toolsFromMCP } from "../../api/routes/decopilot/helpers";
 import type { HarnessStreamInput } from "../types";
@@ -100,6 +101,10 @@ export interface AssembleDecopilotToolsExtras {
    *  activates this in advance — `null` is rejected by `getBuiltInTools`
    *  for tools that require it, but we forward whatever the caller has. */
   provider: MeshProvider | null;
+  /** Per-turn HTML-page coalescing buffer. Created in dispatch-run.ts
+   *  alongside `pendingOps` so the dispatch layer can also schedule a
+   *  flush at step-end. */
+  htmlPageBuffer: HtmlPageBuffer;
 }
 
 /**
@@ -199,6 +204,7 @@ export async function assembleDecopilotTools(
         pendingImages: extras.pendingImages,
         passthroughClient,
         vmContext,
+        htmlPageBuffer: extras.htmlPageBuffer,
         taskId: extras.threadId,
       },
       ctx,

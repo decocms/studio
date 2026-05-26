@@ -53,8 +53,9 @@ export async function configureTriggerOnMcp(
       }, TIMEOUT_MS),
     );
 
+    let mcpResult: unknown;
     try {
-      await Promise.race([
+      mcpResult = await Promise.race([
         client.TRIGGER_CONFIGURE({
           type: trigger.event_type!,
           params: JSON.parse(trigger.params ?? "{}"),
@@ -76,7 +77,29 @@ export async function configureTriggerOnMcp(
       }
       // On definitive (non-timeout) failure, skip persistence —
       // the MCP rejected the call, old token (if any) is still valid.
+      console.error(
+        `[configureTriggerOnMcp] TRIGGER_CONFIGURE threw on connection=${trigger.connection_id} type=${trigger.event_type}:`,
+        err,
+      );
       return { success: false, error: String(err) };
+    }
+
+    // The contract (TriggerConfigureOutputSchema) is `{ success: boolean }`.
+    // The proxy only throws on `isError: true`; anything else — `{ success:
+    // false }`, missing field, null, raw text — slipped through and the
+    // caller would save a trigger the MCP never actually accepted. Be
+    // strict: require an explicit `success === true`. Log the raw payload
+    // so we can see exactly what the MCP returned when this fires.
+    const payload = mcpResult as { success?: unknown } | null | undefined;
+    if (!payload || payload.success !== true) {
+      console.error(
+        `[configureTriggerOnMcp] TRIGGER_CONFIGURE did not return success=true on connection=${trigger.connection_id} type=${trigger.event_type}. Raw payload:`,
+        JSON.stringify(mcpResult),
+      );
+      return {
+        success: false,
+        error: `TRIGGER_CONFIGURE did not return success=true (got ${JSON.stringify(mcpResult)})`,
+      };
     }
 
     // MCP confirmed — persist token or clean up.

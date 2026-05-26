@@ -61,10 +61,49 @@ describe("desktop sandbox provider", () => {
         waitForHealth: async () => {},
         openDaemonTunnel: nullTunnelOpener(),
         pickPort: () => portCounter++,
+        // Cache-hit path now probes /health; mock as alive so the second
+        // ensureSandbox re-attaches instead of evicting + respawning.
+        fetchImpl: (async () =>
+          new Response("", { status: 200 })) as unknown as typeof fetch,
       });
       await provider.ensureSandbox({ handle: "abc", repo: undefined });
       await provider.ensureSandbox({ handle: "abc", repo: undefined });
       expect(spawnCount).toBe(1);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("evicts and respawns when the cached daemon fails /health", async () => {
+    // Spawned daemon dies in a way that doesn't resolve `exited` (the
+    // realistic failure mode — laptop sleep, OOM kill, tunnel drop).
+    // The watchdog misses it, but the cache-hit probe must catch it
+    // and force a respawn instead of returning the stale URL.
+    const dataDir = tmpDataDir();
+    try {
+      let spawnCount = 0;
+      let portCounter = 30000;
+      let healthAlive = true;
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        spawnDaemon: () => {
+          spawnCount++;
+          return fakeDaemonSpawner();
+        },
+        postConfig: async () => {},
+        waitForHealth: async () => {},
+        openDaemonTunnel: nullTunnelOpener(),
+        pickPort: () => portCounter++,
+        fetchImpl: (async () =>
+          new Response("", {
+            status: healthAlive ? 200 : 503,
+          })) as unknown as typeof fetch,
+      });
+      await provider.ensureSandbox({ handle: "abc", repo: undefined });
+      // Daemon "dies" — /health starts failing.
+      healthAlive = false;
+      await provider.ensureSandbox({ handle: "abc", repo: undefined });
+      expect(spawnCount).toBe(2);
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }

@@ -4,11 +4,8 @@
  * Org-wide config for which agents appear on the home view.
  * Stored in `organization_settings.default_home_agents` as { ids: string[] }.
  *
- * IDs are either WELL_KNOWN_AGENT_TEMPLATES ids ("site-editor", "ai-image", …)
- * or custom virtual MCP ids (UUIDs). The home view resolves both at render time.
- *
- * When the org has never configured this, the form pre-fills with
- * `DEFAULT_HOME_AGENT_IDS` so admins start from today's defaults.
+ * IDs are custom virtual MCP ids (UUIDs). The home view resolves them at
+ * render time.
  */
 
 import { Suspense, useState } from "react";
@@ -29,11 +26,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  isDecopilot,
-  WELL_KNOWN_AGENT_TEMPLATES,
-  useVirtualMCPs,
-} from "@decocms/mesh-sdk";
+import { isDecopilot, useVirtualMCPs } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Popover,
@@ -57,48 +50,23 @@ import {
 } from "@/web/hooks/use-organization-settings";
 import { track } from "@/web/lib/posthog-client";
 
-/**
- * IDs that appear in the home view today before any admin config exists.
- * Order matches what the home view currently renders.
- */
-const DEFAULT_HOME_AGENT_IDS: readonly string[] = [
-  "site-editor",
-  "site-diagnostics",
-  "ai-image",
-  "ai-research",
-];
-
-/**
- * Visible cap on the home view. The admin can add more, but only the first
- * HOME_VIEW_DISPLAY_LIMIT will be rendered.
- */
 const HOME_VIEW_DISPLAY_LIMIT = 8;
 
 interface ResolvedAgent {
   id: string;
   title: string;
   icon: string | null | undefined;
-  kind: "template" | "custom" | "missing";
+  kind: "custom" | "missing";
 }
 
 function resolveAgent(
   id: string,
-  templates: typeof WELL_KNOWN_AGENT_TEMPLATES,
   customAgents: ReadonlyArray<{
     id: string | null;
     title: string;
     icon?: string | null;
   }>,
 ): ResolvedAgent {
-  const template = templates.find((t) => t.id === id);
-  if (template) {
-    return {
-      id: template.id,
-      title: template.title,
-      icon: template.icon,
-      kind: "template",
-    };
-  }
   const custom = customAgents.find((a) => a.id === id);
   if (custom) {
     return {
@@ -161,11 +129,7 @@ function SortableAgentRow({
       <div className="flex flex-col min-w-0 flex-1">
         <span className="text-sm text-foreground truncate">{agent.title}</span>
         <span className="text-xs text-muted-foreground">
-          {agent.kind === "template"
-            ? "Template"
-            : agent.kind === "custom"
-              ? "Custom agent"
-              : "Unavailable"}
+          {agent.kind === "custom" ? "Custom agent" : "Unavailable"}
         </span>
       </div>
       <button
@@ -193,12 +157,6 @@ function AddAgentPopover({
 
   const selectedSet = new Set(selectedIds);
   const lowerSearch = search.toLowerCase();
-
-  const availableTemplates = WELL_KNOWN_AGENT_TEMPLATES.filter(
-    (t) =>
-      !selectedSet.has(t.id) &&
-      (!search || t.title.toLowerCase().includes(lowerSearch)),
-  );
 
   const availableCustom = customAgents
     .filter(
@@ -228,29 +186,8 @@ function AddAgentPopover({
           placeholder="Search agents..."
         />
         <div className="max-h-[320px] overflow-y-auto p-2 flex flex-col gap-3">
-          {availableTemplates.length > 0 && (
+          {availableCustom.length > 0 ? (
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted-foreground px-1">
-                Templates
-              </span>
-              {availableTemplates.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => handlePick(t.id)}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-left"
-                >
-                  <IntegrationIcon icon={t.icon} name={t.title} size="xs" />
-                  <span className="text-sm truncate">{t.title}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {availableCustom.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted-foreground px-1">
-                Custom agents
-              </span>
               {availableCustom.map((a) => (
                 <button
                   key={a.id}
@@ -268,8 +205,7 @@ function AddAgentPopover({
                 </button>
               ))}
             </div>
-          )}
-          {availableTemplates.length === 0 && availableCustom.length === 0 && (
+          ) : (
             <div className="text-xs text-muted-foreground text-center py-6">
               {search ? "No agents found" : "All agents are already added"}
             </div>
@@ -285,7 +221,7 @@ function DefaultHomeAgentsFormContent() {
   const customAgents = useVirtualMCPs();
   const updateMutation = useUpdateDefaultHomeAgents();
 
-  const initialIds = saved?.ids ?? [...DEFAULT_HOME_AGENT_IDS];
+  const initialIds = saved?.ids ?? [];
   const [draftIds, setDraftIds] = useState<string[]>(initialIds);
 
   const isDirty =
@@ -317,8 +253,8 @@ function DefaultHomeAgentsFormContent() {
     setDraftIds(draftIds.filter((existing) => existing !== id));
   };
 
-  const handleResetDefaults = () => {
-    setDraftIds([...DEFAULT_HOME_AGENT_IDS]);
+  const handleClear = () => {
+    setDraftIds([]);
   };
 
   const handleSave = () => {
@@ -328,9 +264,6 @@ function DefaultHomeAgentsFormContent() {
         onSuccess: () => {
           track("default_home_agents_updated", {
             count: draftIds.length,
-            template_count: draftIds.filter((id) =>
-              WELL_KNOWN_AGENT_TEMPLATES.some((t) => t.id === id),
-            ).length,
           });
           toast.success("Default home agents updated");
         },
@@ -345,9 +278,7 @@ function DefaultHomeAgentsFormContent() {
     );
   };
 
-  const resolvedDraft = draftIds.map((id) =>
-    resolveAgent(id, WELL_KNOWN_AGENT_TEMPLATES, customAgents),
-  );
+  const resolvedDraft = draftIds.map((id) => resolveAgent(id, customAgents));
 
   const overflowCount = Math.max(0, draftIds.length - HOME_VIEW_DISPLAY_LIMIT);
 
@@ -359,11 +290,11 @@ function DefaultHomeAgentsFormContent() {
           type="button"
           variant="ghost"
           size="sm"
-          onClick={handleResetDefaults}
-          disabled={updateMutation.isPending}
+          onClick={handleClear}
+          disabled={updateMutation.isPending || draftIds.length === 0}
         >
           <RefreshCw01 size={14} />
-          Reset defaults
+          Clear all
         </Button>
       }
     >

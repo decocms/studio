@@ -37,8 +37,10 @@ import { createReadPromptTool } from "./prompts";
 import { createReadResourceTool } from "./resources";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createVmTools } from "./vm-tools";
+import type { HtmlPageBuffer } from "./vm-tools/html-page-buffer";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { ensureSandbox } from "@/tools/sandbox/start";
+import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import { todoWriteTool } from "./todo-write";
@@ -93,6 +95,13 @@ export interface BuiltinToolParams {
    * When null, no VM-backed code execution tool is included.
    */
   vmContext?: VmContext | null;
+  /**
+   * Per-turn coalescing buffer for `pages/<slug>.html` writes. Created once
+   * per run in the dispatch layer; the VM tools enqueue here and the
+   * dispatch layer flushes (and emits the UI signal) at step-end so a
+   * burst of edits collapses to one S3 PUT.
+   */
+  htmlPageBuffer: HtmlPageBuffer;
   /** Thread (task) id of the current run — needed by tools that persist
    *  thread-scoped state (e.g. web_search reconnecting to Gemini Deep Research). */
   taskId: string;
@@ -122,6 +131,7 @@ async function buildAllTools(
     pendingImages,
     passthroughClient,
     vmContext,
+    htmlPageBuffer,
     taskId,
   } = params;
   const approvalOpts = { isPlanMode };
@@ -183,11 +193,54 @@ async function buildAllTools(
       }
       return cached;
     };
+    // Ephemeral agents (no GitHub repo) run on a synthetic "ephemeral"
+    // branch — they have no server-button UI for the user to restart a
+    // dead sandbox, so the call layer is allowed to auto-restart on
+    // proxy failure. GitHub-linked agents keep the manual-recovery
+    // behavior; the user may have paused the sandbox intentionally.
+    const canAutoRestart = vmContext.branch === "ephemeral";
+    const invalidateHandle = async () => {
+      // Capture before clearing — we need the dead handle to flush the
+      // captured runner's cache below.
+      const lastHandlePromise = cached;
+      cached = null;
+      if (!canAutoRestart) return;
+      // Reap the vmMap entry so the next `ensureVm` provisions fresh
+      // rather than returning the dead vmId from the fast path.
+      try {
+        await removeSandboxMapEntry(
+          ctx.storage.virtualMcps,
+          vmContext.virtualMcpId,
+          vmContext.userId,
+          vmContext.userId,
+          vmContext.branch,
+          providerKind,
+        );
+      } catch (err) {
+        console.warn("[built-in-tools] failed to reap vmMap entry", err);
+      }
+      // Flush the captured runner's in-process cache + state-store row.
+      // `ensureVm` constructs its own provider instance for the respawn, so
+      // without this the captured `runner` (used for proxy calls) would keep
+      // serving the dead URL out of its records map on the retry — even
+      // though the state store + new provider have already moved on.
+      if (lastHandlePromise && typeof runner.forgetHandle === "function") {
+        try {
+          const lastHandle = await lastHandlePromise;
+          await runner.forgetHandle(lastHandle);
+        } catch (err) {
+          console.warn("[built-in-tools] forgetHandle failed", err);
+        }
+      }
+    };
     Object.assign(
       tools,
       createVmTools({
         runner,
         ensureHandle,
+        invalidateHandle,
+        canAutoRestart,
+        htmlPageBuffer,
         toolOutputMap,
         needsApproval: vmNeedsApproval,
         pendingImages,

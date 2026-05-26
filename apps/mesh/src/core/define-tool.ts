@@ -58,6 +58,12 @@ export interface ToolBinder<
    * ```
    */
   _meta?: Record<string, unknown>;
+  /**
+   * Optional summary shown to the model in place of the full result JSON.
+   * Use when the UI renders the rich result and the model only needs a terse
+   * confirmation. The UI still receives the full structuredContent.
+   */
+  modelSummary?: (result: z.infer<TOutput>) => string;
 }
 /**
  * Tool definition structure

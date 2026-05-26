@@ -131,7 +131,13 @@ export const READ_DESCRIPTION =
 
 export const WRITE_DESCRIPTION =
   "Write content to a file in the VM's project directory. " +
-  "Creates parent directories if needed. Overwrites existing files entirely.";
+  "Creates parent directories if needed. Overwrites existing files entirely.\n\n" +
+  "Reserved path — `pages/<slug>.html`: writes to this prefix are " +
+  "automatically published to the org's object storage and rendered as a " +
+  "live preview in the chat side panel. Use this whenever the user wants " +
+  "a viewable HTML page (landing pages, brand kits, one-pagers). Slug " +
+  "must be lowercase kebab (e.g. `pages/landing.html`). HTML written " +
+  "elsewhere stays sandbox-only and will not render a preview.";
 
 export const EDIT_DESCRIPTION =
   "Perform exact string replacement in a file in the VM. " +

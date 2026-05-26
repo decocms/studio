@@ -53,7 +53,7 @@ import {
   awaitThreadRun,
   type SerializableDispatchRunInput,
 } from "@/dispatch-queue";
-import { resolveTier } from "@/core/resolve-tier";
+import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
 import { sseHub } from "@/event-bus";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
@@ -201,22 +201,34 @@ async function prepareFireStep(
     );
   }
   const tier: SimpleModeTier = parsedModels.tier ?? "smart";
-  const resolved = await resolveTier(meshCtx, tier);
+  // Match the chat POST /messages path: resolve the chat tier strictly
+  // (failure aborts the run), and optimistically resolve `image` and
+  // `web_research` so the corresponding built-in tools (generate_image,
+  // web_search) light up the same way they do in interactive chat. Without
+  // these, the automation agent reports "I don't have a web_search tool"
+  // even when the org has Perplexity/Gemini Deep Research configured.
+  const [resolved, image, webResearch] = await Promise.all([
+    resolveTier(meshCtx, tier),
+    tryResolveTier(meshCtx, "image"),
+    tryResolveTier(meshCtx, "web_research"),
+  ]);
+  const toModel = (r: Awaited<ReturnType<typeof resolveTier>>) => ({
+    id: r.modelId,
+    title: r.modelMeta.title,
+    provider: r.modelMeta.providerId ?? null,
+    capabilities: toThinkingCapabilities(r.modelMeta.capabilities),
+    limits: r.modelMeta.limits
+      ? {
+          contextWindow: r.modelMeta.limits.contextWindow,
+          maxOutputTokens: r.modelMeta.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  });
   const resolvedModel: ResolvedAutomationModel = {
     credentialId: resolved.credentialId,
-    thinking: {
-      id: resolved.modelId,
-      title: resolved.modelMeta.title,
-      provider: resolved.modelMeta.providerId ?? null,
-      capabilities: toThinkingCapabilities(resolved.modelMeta.capabilities),
-      limits: resolved.modelMeta.limits
-        ? {
-            contextWindow: resolved.modelMeta.limits.contextWindow,
-            maxOutputTokens:
-              resolved.modelMeta.limits.maxOutputTokens ?? undefined,
-          }
-        : undefined,
-    },
+    thinking: toModel(resolved),
+    ...(image ? { image: toModel(image) } : {}),
+    ...(webResearch ? { deepResearch: toModel(webResearch) } : {}),
   };
 
   return { automation, resolvedModel };

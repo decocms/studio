@@ -1,7 +1,6 @@
 /**
  * Hook to fetch an MCP app's metadata from the deco registry by app ID.
- * Used at CTA time (e.g., recruit modal) to get full connection details.
- * Display metadata (title, icon) comes from WELL_KNOWN_AGENT_TEMPLATES constants.
+ * Used at CTA time to get full connection details.
  */
 
 import {

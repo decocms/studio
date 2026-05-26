@@ -16,7 +16,12 @@ import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
-import { isLegacySettingsTab, parsePinnedViewTabId } from "./tab-id";
+import { WebPageTab } from "./web-page-tab";
+import {
+  isLegacySettingsTab,
+  parsePinnedViewTabId,
+  parseWebPageTabId,
+} from "./tab-id";
 
 const AppViewContent = lazy(() =>
   import("@/web/routes/project-app-view").then((m) => ({
@@ -51,6 +56,11 @@ export function MainPanelContent({
   }
   if (automationTabParsed) {
     return <AutomationTab tabId={activeTab} />;
+  }
+
+  const webPage = parseWebPageTabId(activeTab);
+  if (webPage) {
+    return <WebPageTab slug={webPage.slug} />;
   }
 
   const pinnedView = parsePinnedViewTabId(activeTab);

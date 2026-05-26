@@ -33,6 +33,7 @@ const mockParams: BuiltinToolParams = {
     listTools: () => Promise.resolve({ tools: [] }),
     callTool: () => Promise.resolve({ content: [] }),
   } as never,
+  htmlPageBuffer: {} as never,
 };
 
 const mockCtx = {

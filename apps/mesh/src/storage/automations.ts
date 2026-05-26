@@ -96,6 +96,9 @@ export interface AutomationsStorage {
     automationId: string,
   ): Promise<{ success: boolean }>;
   listTriggers(automationId: string): Promise<AutomationTrigger[]>;
+  listTriggersForAutomations(
+    automationIds: string[],
+  ): Promise<AutomationTrigger[]>;
   findTriggerById(triggerId: string): Promise<AutomationTrigger | null>;
   setTriggerApiKeyId(triggerId: string, apiKeyId: string | null): Promise<void>;
   findActiveEventTriggers(
@@ -479,6 +482,20 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .selectFrom("automation_triggers")
       .selectAll()
       .where("automation_id", "=", automationId)
+      .orderBy("created_at", "asc")
+      .execute();
+
+    return rows.map(triggerFromDbRow);
+  }
+
+  async listTriggersForAutomations(
+    automationIds: string[],
+  ): Promise<AutomationTrigger[]> {
+    if (automationIds.length === 0) return [];
+    const rows = await this.db
+      .selectFrom("automation_triggers")
+      .selectAll()
+      .where("automation_id", "in", automationIds)
       .orderBy("created_at", "asc")
       .execute();
 

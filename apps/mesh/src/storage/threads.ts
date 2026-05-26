@@ -129,6 +129,14 @@ export class OrgScopedThreadStorage {
   ): Promise<{ messages: ThreadMessage[]; total: number }> {
     return this.inner.listMessages(taskId, this.requireOrg(), options);
   }
+
+  listWithLastMessage(options: {
+    limit: number;
+    createdBy?: string;
+    lastMessageRole: "assistant" | "user";
+  }): Promise<Array<{ thread: Thread; lastMessage: ThreadMessage }>> {
+    return this.inner.listWithLastMessage(this.requireOrg(), options);
+  }
 }
 
 // ============================================================================
@@ -529,6 +537,80 @@ export class SqlThreadStorage implements ThreadStoragePort {
         .where("organization_id", "=", organizationId)
         .execute();
     });
+  }
+
+  /**
+   * Last N threads whose most recent `thread_messages` row has the given
+   * `lastMessageRole`. Backs the "Suggested actions" cards on the Tasks
+   * panel — `assistant` for the primary set (AI is waiting on the user),
+   * `user` for the fallback set (user wrote last) used to fill the panel
+   * when the primary set is short.
+   *
+   * One round-trip: a LATERAL subquery picks each thread's last message
+   * (created_at DESC, id DESC for stable tiebreak), then the outer query
+   * keeps only the rows whose last message matches the requested role.
+   * Ordered by the last-message timestamp.
+   */
+  async listWithLastMessage(
+    organizationId: string,
+    options: {
+      limit: number;
+      createdBy?: string;
+      lastMessageRole: "assistant" | "user";
+    },
+  ): Promise<Array<{ thread: Thread; lastMessage: ThreadMessage }>> {
+    let query = this.db
+      .selectFrom("threads as t")
+      .innerJoinLateral(
+        (eb) =>
+          eb
+            .selectFrom("thread_messages as m")
+            .selectAll()
+            .whereRef("m.thread_id", "=", "t.id")
+            .orderBy("m.created_at", "desc")
+            .orderBy("m.id", "desc")
+            .limit(1)
+            .as("lm"),
+        (join) => join.onTrue(),
+      )
+      .selectAll("t")
+      .select([
+        "lm.id as lm_id",
+        "lm.thread_id as lm_thread_id",
+        "lm.metadata as lm_metadata",
+        "lm.parts as lm_parts",
+        "lm.role as lm_role",
+        "lm.created_at as lm_created_at",
+        "lm.updated_at as lm_updated_at",
+      ])
+      .where("t.organization_id", "=", organizationId)
+      .where("t.hidden", "=", false)
+      .where("lm.role", "=", options.lastMessageRole)
+      .orderBy("lm.created_at", "desc")
+      .limit(options.limit);
+
+    if (options.createdBy) {
+      query = query.where("t.created_by", "=", options.createdBy);
+    }
+
+    const rows = await query.execute();
+
+    return rows.map((row) => ({
+      thread: this.threadFromDbRow(row),
+      lastMessage: this.messageFromDbRow({
+        id: row.lm_id,
+        thread_id: row.lm_thread_id,
+        // `thread_messages.metadata` is `string | null`. Kysely's inference
+        // unions it with `threads.metadata` (ThreadMetadata) because both
+        // tables expose a `metadata` column under the same join row — the
+        // values are unrelated, so we narrow back to the messages shape.
+        metadata: row.lm_metadata as string | null,
+        parts: row.lm_parts as string | Record<string, unknown>[],
+        role: row.lm_role,
+        created_at: row.lm_created_at,
+        updated_at: row.lm_updated_at,
+      }),
+    }));
   }
 
   async listMessages(

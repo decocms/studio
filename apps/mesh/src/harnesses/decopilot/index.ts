@@ -43,6 +43,11 @@ import { assembleDecopilotTools } from "./tools";
 import { assembleDecopilotPrompt } from "./prompt";
 import { runDecopilotStream } from "./run-stream";
 import type { PendingImage } from "./built-in-tools";
+import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
+import {
+  findStudioPackAgentByMcpId,
+  resolveStudioPackRuntime,
+} from "../../tools/virtual/studio-pack";
 
 /** Narrowed view of `HarnessStreamInput.processLocal` for the cluster
  *  decopilot harness. The package types those structurally-deep fields
@@ -66,6 +71,9 @@ interface ClusterProcessLocal {
     totalTokens: number;
   }) => void;
   onTitleUpdated?: (title: string) => void | Promise<void>;
+  /** Per-turn HTML-page coalescing buffer. Built in dispatch-run.ts so the
+   *  flush hook can be scheduled alongside the other `pendingOps`. */
+  htmlPageBuffer: HtmlPageBuffer;
 }
 
 /** Narrowed view of the cluster's richer input fields, mirroring what
@@ -114,12 +122,46 @@ export const decopilotHarnessFactory: HarnessFactory = {
           );
         }
 
-        const tools = await assembleDecopilotTools(input, ctx, {
+        // Studio pack agents (Brand Manager, etc.) resolve their prompt
+        // and tool allowlist at request time based on org state — e.g. Brand
+        // Manager exposes a bootstrap toolset before any brand context
+        // exists and a manage toolset after. The resolver overrides
+        // `metadata.instructions` and `connections[].selected_tools`, which
+        // the passthrough client honors transparently.
+        const studioPackAgent = findStudioPackAgentByMcpId(input.agent.id);
+        let effectiveInput: HarnessStreamInput = input;
+        if (studioPackAgent) {
+          const resolved = await resolveStudioPackRuntime(studioPackAgent, {
+            orgId: ctx.organization!.id,
+            ctx,
+          });
+          const baseVm = clusterInput.virtualMcp;
+          const selectedTools = resolved.selectedTools
+            ? [...resolved.selectedTools]
+            : null;
+          effectiveInput = {
+            ...input,
+            virtualMcp: {
+              ...baseVm,
+              metadata: {
+                ...((baseVm.metadata as Record<string, unknown>) ?? {}),
+                instructions: resolved.instructions,
+              },
+              connections: baseVm.connections.map((c) => ({
+                ...c,
+                selected_tools: selectedTools,
+              })),
+            },
+          };
+        }
+
+        const tools = await assembleDecopilotTools(effectiveInput, ctx, {
           writer: pl.writer,
           toolOutputMap: pl.toolOutputMap,
           pendingImages: pl.pendingImages,
           threadId: pl.threadId,
           provider: pl.provider,
+          htmlPageBuffer: pl.htmlPageBuffer,
         });
 
         try {
@@ -151,9 +193,13 @@ export const decopilotHarnessFactory: HarnessFactory = {
             typeof runDecopilotStream
           >[4]["processedMessages"];
 
-          const prompt = await assembleDecopilotPrompt(input, ctx, tools);
+          const prompt = await assembleDecopilotPrompt(
+            effectiveInput,
+            ctx,
+            tools,
+          );
 
-          yield* runDecopilotStream(input, ctx, tools, prompt, {
+          yield* runDecopilotStream(effectiveInput, ctx, tools, prompt, {
             provider: pl.provider,
             registrySignal: pl.registrySignal,
             runRegistry: pl.runRegistry,

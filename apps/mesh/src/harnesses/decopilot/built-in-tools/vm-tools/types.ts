@@ -1,6 +1,7 @@
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { MeshContext } from "@/core/mesh-context";
 import type { PendingImage } from "../take-screenshot";
+import type { HtmlPageBuffer } from "./html-page-buffer";
 
 export interface VmToolsParams {
   readonly runner: SandboxProvider;
@@ -9,6 +10,28 @@ export interface VmToolsParams {
    * to memoise so the first invocation provisions and later calls reuse.
    */
   readonly ensureHandle: () => Promise<string>;
+  /**
+   * Invalidate the memoised handle and (for ephemeral branches) reap the
+   * underlying `vmMap` entry, so the next `ensureHandle` call provisions
+   * a fresh sandbox. Used by the call-level retry layer when the daemon
+   * proxy reports the sandbox is unreachable.
+   */
+  readonly invalidateHandle: () => Promise<void>;
+  /**
+   * When true, the call wrapper will retry once on
+   * `DaemonUnreachableError` (after invalidating the handle). Should be
+   * enabled for ephemeral agents (no server-button UI to restart from)
+   * and disabled for GitHub-linked agents where the user may have
+   * paused the sandbox intentionally.
+   */
+  readonly canAutoRestart: boolean;
+  /**
+   * Buffer for coalescing `pages/<slug>.html` mirrors. `write`/`edit` calls
+   * enqueue the new content and return the preview shape synchronously; the
+   * actual S3 PUT runs from `flush()`, which the dispatch layer wires into
+   * `onStepFinish` so the iframe never races the write.
+   */
+  readonly htmlPageBuffer: HtmlPageBuffer;
   readonly toolOutputMap: Map<string, string>;
   readonly needsApproval: boolean;
   /**

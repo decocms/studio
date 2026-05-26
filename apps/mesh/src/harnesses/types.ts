@@ -146,6 +146,12 @@ export interface HarnessProcessLocal {
    *  in-cluster. When undefined (or returns undefined), the harness
    *  falls back to `process.cwd()`. */
   resolveCwd?: () => Promise<string | undefined>;
+
+  /** Per-turn buffer for coalescing `pages/<slug>.html` mirrors. The VM
+   *  `write`/`edit` tools enqueue, the dispatch layer flushes once per
+   *  step (via `pendingOps`). Cluster-only type; narrowed at the harness
+   *  boundary. */
+  htmlPageBuffer?: unknown;
 }
 
 /** Input passed to every Harness.stream() call. Fully serializable except
