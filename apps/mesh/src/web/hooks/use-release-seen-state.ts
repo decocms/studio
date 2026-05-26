@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 import { RELEASES } from "@/web/lib/release-feed";
 
 const STORAGE_KEY = "studio.release-feed.v1";
@@ -11,38 +11,70 @@ export interface ReleaseSeenState {
   unseenCount: number;
 }
 
-function readSeenMap(): SeenMap {
+const listeners = new Set<() => void>();
+let cachedSerialized = "";
+let cachedSnapshot: SeenMap = {};
+
+function readSerialized(): string {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
+    return localStorage.getItem(STORAGE_KEY) ?? "{}";
+  } catch {
+    return "{}";
+  }
+}
+
+function parse(serialized: string): SeenMap {
+  try {
+    const parsed = JSON.parse(serialized) as unknown;
     return parsed && typeof parsed === "object" ? (parsed as SeenMap) : {};
   } catch {
     return {};
   }
 }
 
-function writeSeenMap(map: SeenMap): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // localStorage unavailable (private mode, sandbox). Treat writes as no-ops.
+function getSnapshot(): SeenMap {
+  const serialized = readSerialized();
+  if (serialized !== cachedSerialized) {
+    cachedSerialized = serialized;
+    cachedSnapshot = parse(serialized);
   }
+  return cachedSnapshot;
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY || event.key === null) listener();
+  };
+  window.addEventListener("storage", onStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function commit(next: SeenMap): void {
+  cachedSnapshot = next;
+  cachedSerialized = JSON.stringify(next);
+  try {
+    localStorage.setItem(STORAGE_KEY, cachedSerialized);
+  } catch {
+    // localStorage unavailable (private mode, sandbox). Continue in-memory.
+  }
+  listeners.forEach((l) => l());
 }
 
 export function useReleaseSeenState(): ReleaseSeenState {
-  const [seen, setSeen] = useState<SeenMap>(readSeenMap);
+  const seen = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const isSeen = (id: string) => Boolean(seen[id]);
 
   const markSeen = (id: string) => {
     if (seen[id]) return;
-    const next: SeenMap = {
+    commit({
       ...seen,
       [id]: { seenAt: new Date().toISOString() },
-    };
-    writeSeenMap(next);
-    setSeen(next);
+    });
   };
 
   const unseenCount = RELEASES.reduce(

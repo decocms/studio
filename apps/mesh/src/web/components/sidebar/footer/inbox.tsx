@@ -10,7 +10,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@deco/ui/components/sidebar.tsx";
-import { Coins04, ZapSquare, Inbox01, Settings02 } from "@untitledui/icons";
+import {
+  ArrowLeft,
+  Coins04,
+  Inbox01,
+  Settings02,
+  ZapSquare,
+} from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Component, Suspense, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
@@ -26,7 +32,10 @@ import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dial
 import { track } from "@/web/lib/posthog-client";
 import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
 import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
+import { ReleaseCard } from "@/web/components/release-channel/release-card";
 import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
+import { useReleaseSeenState } from "@/web/hooks/use-release-seen-state";
+import { Button } from "@deco/ui/components/button.tsx";
 
 class SilentErrorBoundary extends Component<
   { children: ReactNode },
@@ -149,9 +158,28 @@ function ConnectionsButton() {
 
 function InboxButton() {
   const { items, redDotCount } = useInboxFeed();
+  const { markSeen } = useReleaseSeenState();
+  const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(
+    null,
+  );
+
+  const selectedRelease = items.find(
+    (item) => item.type === "release" && item.release.id === selectedReleaseId,
+  );
+  const selectedReleaseData =
+    selectedRelease?.type === "release" ? selectedRelease.release : null;
+
+  const handleSelectRelease = (releaseId: string) => {
+    markSeen(releaseId);
+    setSelectedReleaseId(releaseId);
+  };
 
   return (
-    <Popover>
+    <Popover
+      onOpenChange={(open) => {
+        if (!open) setSelectedReleaseId(null);
+      }}
+    >
       <SidebarMenu>
         <SidebarMenuItem>
           <PopoverTrigger asChild>
@@ -171,36 +199,61 @@ function InboxButton() {
         collisionPadding={16}
         className="w-[min(400px,calc(100vw-2rem))] p-0 h-[min(650px,calc(100dvh-4rem))] flex flex-col"
       >
-        <div className="px-4 py-3 border-b border-border shrink-0">
-          <h3 className="text-sm font-medium">Inbox</h3>
-        </div>
-        {items.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-            <Inbox01 size={24} className="text-muted-foreground/50" />
-            <p className="text-sm font-medium text-foreground">
-              Nothing here yet
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Invitations and release updates will appear here
-            </p>
-          </div>
+        {selectedReleaseData ? (
+          <>
+            <div className="flex items-center gap-2 px-3 py-3 border-b border-border shrink-0">
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Back to inbox"
+                className="size-7 text-muted-foreground"
+                onClick={() => setSelectedReleaseId(null)}
+              >
+                <ArrowLeft size={16} />
+              </Button>
+              <h3 className="text-sm font-medium truncate">
+                {selectedReleaseData.title}
+              </h3>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              <ReleaseCard release={selectedReleaseData} />
+            </div>
+          </>
         ) : (
-          <div className="overflow-y-auto flex-1">
-            {items.map((item) =>
-              item.type === "invitation" ? (
-                <InvitationItem
-                  key={`inv-${item.invitation.id}`}
-                  invitation={item.invitation}
-                />
-              ) : (
-                <InboxReleaseItem
-                  key={`rel-${item.release.id}`}
-                  release={item.release}
-                  isSeen={item.isSeen}
-                />
-              ),
+          <>
+            <div className="px-4 py-3 border-b border-border shrink-0">
+              <h3 className="text-sm font-medium">Inbox</h3>
+            </div>
+            {items.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+                <Inbox01 size={24} className="text-muted-foreground/50" />
+                <p className="text-sm font-medium text-foreground">
+                  Nothing here yet
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Invitations and release updates will appear here
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-y-auto flex-1">
+                {items.map((item) =>
+                  item.type === "invitation" ? (
+                    <InvitationItem
+                      key={`inv-${item.invitation.id}`}
+                      invitation={item.invitation}
+                    />
+                  ) : (
+                    <InboxReleaseItem
+                      key={`rel-${item.release.id}`}
+                      release={item.release}
+                      isSeen={item.isSeen}
+                      onSelect={() => handleSelectRelease(item.release.id)}
+                    />
+                  ),
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </PopoverContent>
     </Popover>
