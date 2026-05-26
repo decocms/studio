@@ -1098,9 +1098,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     // framable (it serves the host shell that loads /files/* into the
     // preview iframe).
     if (c.req.path.includes("/files/")) return;
-    if (
-      /^\/api\/[^/]+\/page-preview\/host(\/|$)/.test(c.req.path)
-    ) {
+    if (/^\/api\/[^/]+\/page-preview\/host(\/|$)/.test(c.req.path)) {
       c.header("X-Frame-Options", "SAMEORIGIN");
       c.header("Content-Security-Policy", "frame-ancestors 'self'");
       return;
