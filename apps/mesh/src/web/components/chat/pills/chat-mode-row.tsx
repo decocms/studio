@@ -20,6 +20,11 @@ interface PureProps {
  * clonable; hides the branch pill for template-cloned agents (the
  * `connected` flag being false). Locking is owned by the child pills,
  * not the row layout.
+ *
+ * Renders as a fragment (no wrapping div) so the pills sit in the
+ * parent flex flow with the same gap as their siblings. The previous
+ * wrapping `<div gap-2 px-1>` made Branch→Mode and Mode→TierTrigger
+ * visually inconsistent.
  */
 export function ChatModeRowPure({
   clonable,
@@ -29,10 +34,10 @@ export function ChatModeRowPure({
 }: PureProps) {
   if (!clonable) return null;
   return (
-    <div className="flex items-center gap-2 px-1 py-1 text-xs">
+    <>
       {connected && branchPill}
       {modePicker}
-    </div>
+    </>
   );
 }
 
