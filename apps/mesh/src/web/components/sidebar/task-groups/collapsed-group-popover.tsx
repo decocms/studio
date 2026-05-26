@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   HoverCard,
   HoverCardContent,
@@ -36,7 +35,6 @@ export function CollapsedGroupPopover({
   onArchiveTask,
   onNewTaskInGroup,
 }: CollapsedGroupPopoverProps) {
-  const [_open, setOpen] = useState(false);
   const entity = useVirtualMCP(virtualMcpId);
 
   return (
@@ -49,7 +47,6 @@ export function CollapsedGroupPopover({
             virtual_mcp_id: virtualMcpId,
           });
         }
-        setOpen(next);
       }}
     >
       <SidebarMenuItem>

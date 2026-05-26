@@ -8,6 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { useSidebar } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -25,6 +26,7 @@ import { usePanelActions } from "@/web/layouts/shell-layout";
 import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dialog";
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
+import { CollapsedGroupPopover } from "./collapsed-group-popover";
 import { groupThreadsByVirtualMcp } from "./group-threads";
 import { TaskGroup } from "./task-group";
 
@@ -73,6 +75,7 @@ export function TaskGroupsList() {
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
+  const { state: sidebarState } = useSidebar();
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastElementRef = useInfiniteScroll(
@@ -131,6 +134,31 @@ export function TaskGroupsList() {
   };
 
   const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
+
+  const isCollapsed = sidebarState === "collapsed";
+
+  if (isCollapsed) {
+    return (
+      <div className="flex flex-col min-h-0 px-1 py-1 gap-0.5 overflow-y-auto">
+        {groups.map((group) => {
+          const filtered = typeFiltered(memberFiltered(group.threads));
+          const dimmed = filtersActive && filtered.length === 0;
+          if (dimmed) return null;
+          return (
+            <CollapsedGroupPopover
+              key={group.virtualMcpId}
+              virtualMcpId={group.virtualMcpId}
+              threads={filtered}
+              activeTaskId={activeTaskId}
+              onSelectTask={(t) => setTaskId(t.id, t.virtual_mcp_id)}
+              onArchiveTask={handleArchive}
+              onNewTaskInGroup={handleNewInGroup}
+            />
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full min-h-0">
