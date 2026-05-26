@@ -43,7 +43,10 @@ export async function loginCommand(options: LoginOptions): Promise<number> {
   const state = randomUUID();
   const pkce = generatePkcePair();
 
-  const server = await startOAuthCallbackServer({ expectedState: state });
+  const server = await startOAuthCallbackServer({
+    expectedState: state,
+    successRedirectUrl: `${target}/cli/auth-success`,
+  });
   try {
     const redirectUri = `${server.url}/`;
 

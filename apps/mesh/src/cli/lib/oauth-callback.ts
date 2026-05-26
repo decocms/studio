@@ -11,6 +11,13 @@ export interface OAuthCallbackServer {
 
 export interface StartOptions {
   expectedState: string;
+  /**
+   * Absolute URL the browser is redirected to after a successful callback.
+   * The CLI typically points this at the studio's `/cli/auth-success`
+   * route so the user lands on a polished, personalized success page
+   * instead of inline localhost HTML.
+   */
+  successRedirectUrl: string;
   /** If provided, bind to this port. Defaults to 0 (OS-chosen). */
   port?: number;
 }
@@ -52,8 +59,9 @@ export async function startOAuthCallbackServer(
       }
       settled = true;
       resolveCallback({ code });
-      return new Response(SUCCESS_PAGE, {
-        headers: { "content-type": "text/html; charset=utf-8" },
+      return new Response(null, {
+        status: 302,
+        headers: { location: options.successRedirectUrl },
       });
     },
   });
@@ -64,8 +72,3 @@ export async function startOAuthCallbackServer(
     close: () => server.stop(true),
   };
 }
-
-const SUCCESS_PAGE = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Login complete</title>
-<style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b0b0b;color:#0f0}</style>
-</head><body><div><h1>You're logged in.</h1><p>You can return to your terminal.</p></div></body></html>`;
