@@ -337,7 +337,7 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
                 }}
               >
                 <Plus />
-                <span>New</span>
+                <span>New agent</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
@@ -369,7 +369,7 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
               <PopoverTrigger asChild>
                 <SidebarMenuButton tooltip="Browse agents">
                   <Plus />
-                  <span>New</span>
+                  <span>New agent</span>
                 </SidebarMenuButton>
               </PopoverTrigger>
             </SidebarMenuItem>

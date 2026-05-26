@@ -128,16 +128,27 @@ export function TaskGroup({
       )}
       {expanded && (
         <div className="flex flex-col gap-0.5 pb-1 pl-4">
-          {threads.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              isActive={activeTaskId === task.id}
-              onClick={() => onSelectTask(task)}
-              onArchive={() => onArchiveTask(task)}
-              showAutomationBadge={Boolean(task.trigger_id)}
-            />
-          ))}
+          {threads.length === 0 && !isToolCallRuns ? (
+            <button
+              type="button"
+              onClick={() => onNewTaskInGroup(virtualMcpId)}
+              className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
+            >
+              <Plus size={14} />
+              <span>New thread</span>
+            </button>
+          ) : (
+            threads.map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                isActive={activeTaskId === task.id}
+                onClick={() => onSelectTask(task)}
+                onArchive={() => onArchiveTask(task)}
+                showAutomationBadge={Boolean(task.trigger_id)}
+              />
+            ))
+          )}
         </div>
       )}
     </div>
