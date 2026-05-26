@@ -76,7 +76,7 @@ describe("rebaseOntoBase", () => {
   it("rebases with -X theirs and resolves conflicts from branch changes", () => {
     const { repoDir, cleanup } = setupConflictingRepo();
     try {
-      rebaseOntoBase(repoDir, "main");
+      rebaseOntoBase(repoDir, "main", { asUser: false });
 
       const content = readFileSync(
         join(repoDir, ".deco/blocks/shipping.json"),

@@ -9,6 +9,13 @@ const MAX_CONFLICT_RESOLUTION_ATTEMPTS = 50;
 const gitSync = (args: string[], opts: Parameters<typeof rawGitSync>[1]) =>
   rawGitSync(["-c", "safe.directory=*", ...args], opts);
 
+/** Production daemon drops to deco user; unit tests run git as the current user. */
+let rebaseGitAsUser = true;
+
+export interface RebaseOntoBaseOptions {
+  asUser?: boolean;
+}
+
 function gitEnv(repoDir: string): Record<string, string> {
   return { ...process.env, GIT_CEILING_DIRECTORIES: repoDir };
 }
@@ -21,6 +28,7 @@ function runGit(
   return gitSync(args, {
     cwd: repoDir,
     env: { ...gitEnv(repoDir), ...opts?.env },
+    asUser: rebaseGitAsUser,
   });
 }
 
@@ -131,16 +139,29 @@ function commitBeforeRebase(repoDir: string): void {
 
 function resolveConflictFile(repoDir: string, summary: StatusFile): void {
   const filePath = summary.path;
+  const xy = `${summary.index}${summary.working_dir}`;
+  const abs = path.join(repoDir, filePath);
+
+  // modify/delete during rebase: keep the replayed commit version when present.
   if (
-    summary.working_dir === "D" &&
-    !`${summary.index}${summary.working_dir}`.includes("U")
+    xy.includes("U") &&
+    (summary.index === "D" || summary.working_dir === "D")
   ) {
+    if (fs.existsSync(abs)) {
+      runGit(repoDir, ["add", "--", filePath]);
+      return;
+    }
+    runGit(repoDir, ["rm", "-f", "--", filePath]);
+    return;
+  }
+
+  if (summary.working_dir === "D" && !xy.includes("U")) {
     runGit(repoDir, ["rm", "-f", filePath]);
     return;
   }
 
   // During rebase, `--theirs` is the commit being replayed (branch changes).
-  tryGit(repoDir, ["checkout", "--theirs", "--", filePath]);
+  runGit(repoDir, ["checkout", "--theirs", "--", filePath]);
   runGit(repoDir, ["add", "--", filePath]);
 }
 
@@ -199,11 +220,16 @@ function resolveConflictsRecursively(
     continueRebase(repoDir);
   } catch (err) {
     const message = formatGitError(err);
+    const remaining = getConflictedFiles(repoDir);
     if (
       !message.includes("CONFLICT") &&
-      getConflictedFiles(repoDir).length === 0 &&
+      remaining.length === 0 &&
       !isRebaseInProgress(repoDir)
     ) {
+      abortRebase(repoDir);
+      throw err;
+    }
+    if (remaining.length === 0) {
       abortRebase(repoDir);
       throw err;
     }
@@ -266,6 +292,20 @@ function forcePushRebasedBranch(
  * remaining conflicts, then force-push.
  */
 export function rebaseOntoBase(
+  repoDir: string,
+  base: string,
+  options?: RebaseOntoBaseOptions,
+): { rebased: boolean } {
+  const previousAsUser = rebaseGitAsUser;
+  rebaseGitAsUser = options?.asUser ?? true;
+  try {
+    return rebaseOntoBaseInner(repoDir, base);
+  } finally {
+    rebaseGitAsUser = previousAsUser;
+  }
+}
+
+function rebaseOntoBaseInner(
   repoDir: string,
   base: string,
 ): { rebased: boolean } {

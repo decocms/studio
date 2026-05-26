@@ -41,9 +41,13 @@ function setupBareRepo(): { url: string; root: string; cleanup: () => void } {
 
 function cloneWorkspace(url: string, root: string): string {
   const repoDir = join(root, "workspace");
-  execSync(`git clone --depth 1 --branch feature/x ${url} ${repoDir}`, {
-    stdio: "ignore",
-  });
+  const gitcfg = `-c user.email=test@example.com -c user.name=test -c commit.gpgsign=false`;
+  execSync(
+    `git ${gitcfg} clone --depth 1 --branch feature/x ${url} ${repoDir}`,
+    {
+      stdio: "ignore",
+    },
+  );
   return repoDir;
 }
 
@@ -90,13 +94,22 @@ describe("spawnCheckoutBranch", () => {
 
   it("checks out an existing local branch when absent from remote", async () => {
     const { url, root, cleanup } = setupBareRepo();
+    const gitcfg = `-c user.email=test@example.com -c user.name=test -c commit.gpgsign=false`;
     try {
       const repoDir = cloneWorkspace(url, root);
-      execSync(`git -C ${repoDir} checkout -b local-only`, { stdio: "ignore" });
+      execSync(`git ${gitcfg} -C ${repoDir} checkout -b local-only`, {
+        stdio: "ignore",
+      });
       writeFileSync(join(repoDir, "local.txt"), "local\n");
-      execSync(`git -C ${repoDir} add local.txt`, { stdio: "ignore" });
-      execSync(`git -C ${repoDir} commit -m local`, { stdio: "ignore" });
-      execSync(`git -C ${repoDir} checkout feature/x`, { stdio: "ignore" });
+      execSync(`git ${gitcfg} -C ${repoDir} add local.txt`, {
+        stdio: "ignore",
+      });
+      execSync(`git ${gitcfg} -C ${repoDir} commit -m local`, {
+        stdio: "ignore",
+      });
+      execSync(`git ${gitcfg} -C ${repoDir} checkout feature/x`, {
+        stdio: "ignore",
+      });
 
       const gc = `git -C ${repoDir}`;
       await spawnCheckoutBranch({
