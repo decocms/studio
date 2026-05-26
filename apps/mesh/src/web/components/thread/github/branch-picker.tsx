@@ -142,7 +142,7 @@ export function BranchPicker({
                 className={cn(
                   "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
                   priority === "secondary"
-                    ? "gap-0 @[720px]/chat-bottom:gap-1.5"
+                    ? "gap-0 @[628px]/chat-bottom:gap-1.5"
                     : "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
@@ -151,7 +151,7 @@ export function BranchPicker({
                   className={cn(
                     "inline-block overflow-hidden whitespace-nowrap truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
                     priority === "secondary"
-                      ? "@[720px]/chat-bottom:max-w-[200px] @[720px]/chat-bottom:opacity-100"
+                      ? "@[628px]/chat-bottom:max-w-[200px] @[628px]/chat-bottom:opacity-100"
                       : "@[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
                   )}
                 >
@@ -162,7 +162,7 @@ export function BranchPicker({
                   className={cn(
                     "opacity-60 hidden",
                     priority === "secondary"
-                      ? "@[720px]/chat-bottom:inline-block"
+                      ? "@[628px]/chat-bottom:inline-block"
                       : "@[320px]/chat-bottom:inline-block",
                   )}
                 />

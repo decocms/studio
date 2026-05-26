@@ -128,7 +128,7 @@ export function ModePickerPure({
                   baseClasses,
                   isLocal && localActiveClasses,
                   priority === "secondary"
-                    ? "gap-0 @[720px]/chat-bottom:gap-1.5"
+                    ? "gap-0 @[628px]/chat-bottom:gap-1.5"
                     : "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
@@ -137,7 +137,7 @@ export function ModePickerPure({
                   className={cn(
                     "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
                     priority === "secondary"
-                      ? "@[720px]/chat-bottom:max-w-32 @[720px]/chat-bottom:opacity-100"
+                      ? "@[628px]/chat-bottom:max-w-32 @[628px]/chat-bottom:opacity-100"
                       : "@[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100",
                   )}
                 >
@@ -148,7 +148,7 @@ export function ModePickerPure({
                   className={cn(
                     "opacity-60 hidden",
                     priority === "secondary"
-                      ? "@[720px]/chat-bottom:inline-block"
+                      ? "@[628px]/chat-bottom:inline-block"
                       : "@[320px]/chat-bottom:inline-block",
                   )}
                 />

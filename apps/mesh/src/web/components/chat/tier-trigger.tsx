@@ -79,7 +79,7 @@ export function TierTriggerPure({
                 className={cn(
                   "text-muted-foreground hover:text-foreground transition-[gap] duration-200",
                   priority === "secondary"
-                    ? "gap-0 @[720px]/chat-bottom:gap-1.5"
+                    ? "gap-0 @[628px]/chat-bottom:gap-1.5"
                     : "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
@@ -88,7 +88,7 @@ export function TierTriggerPure({
                   className={cn(
                     "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
                     priority === "secondary"
-                      ? "@[720px]/chat-bottom:max-w-24 @[720px]/chat-bottom:opacity-100"
+                      ? "@[628px]/chat-bottom:max-w-24 @[628px]/chat-bottom:opacity-100"
                       : "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
                   )}
                 >
@@ -99,7 +99,7 @@ export function TierTriggerPure({
                   className={cn(
                     "opacity-60 hidden",
                     priority === "secondary"
-                      ? "@[720px]/chat-bottom:inline-block"
+                      ? "@[628px]/chat-bottom:inline-block"
                       : "@[320px]/chat-bottom:inline-block",
                   )}
                 />
