@@ -6,21 +6,19 @@
  *   ├── Toolbar                            (outside Suspense)
  *   │   • Toolbar.Nav (back/forward)
  *   │   • Toolbar.TabsSlot    (portal target — main-panel tab bar)
- *   │   • Toolbar.TogglesSlot (portal target — tasks/chat)
- *   └── flex-row
- *       ├── TasksPanelColumn               (owned by org-shell-layout)
- *       └── Suspense
- *           └── AgentInsetProvider
- *               • useVirtualMCP (suspends here)
- *               • Toolbar.Toggles → portal into slot
- *               • Toolbar.Tabs → portal into slot
- *               • Chat.Provider
- *                 └── VmEventsBridge
- *                     └── Chat.ActiveTaskProvider
- *                         └── ChatMainPanelGroup
- *                             (the per-thread todo list is rendered
- *                              by TodosHighlight inside ChatHighlight,
- *                              not as a side column)
+ *   │   • Toolbar.TogglesSlot (portal target — chat / new-task)
+ *   └── Suspense
+ *       └── AgentInsetProvider
+ *           • useVirtualMCP (suspends here)
+ *           • Toolbar.Toggles → portal into slot
+ *           • Toolbar.Tabs → portal into slot
+ *           • Chat.Provider
+ *             └── VmEventsBridge
+ *                 └── Chat.ActiveTaskProvider
+ *                     └── ChatMainPanelGroup
+ *                         (the per-thread todo list is rendered
+ *                          by TodosHighlight inside ChatHighlight,
+ *                          not as a side column)
  *
  * Mobile layout:
  *   Chat.Provider
