@@ -20,20 +20,29 @@ export function InvitationItem({ invitation }: { invitation: Invitation }) {
       if (result.error) {
         toast.error(result.error.message);
         setIsAccepting(false);
-      } else {
-        // Fetch org slug for redirect without mutating the session's active
-        // org (avoids cross-tab leak — see shell-layout.tsx).
-        const orgResult = await authClient.organization.getFullOrganization({
-          query: { organizationId: invitation.organizationId },
-        });
-        toast.success("Invitation accepted!");
-        const slug = orgResult?.data?.slug;
-        window.location.href = slug ? `/${slug}` : "/";
+        return;
       }
     } catch {
       toast.error("Failed to accept invitation");
       setIsAccepting(false);
+      return;
     }
+
+    // Acceptance succeeded. Fetch org slug for redirect without mutating the
+    // session's active org (avoids cross-tab leak — see shell-layout.tsx).
+    // A failure here should not surface as "failed to accept" — fall back to
+    // the root and let the post-redirect flow pick a default org.
+    toast.success("Invitation accepted!");
+    let slug: string | undefined;
+    try {
+      const orgResult = await authClient.organization.getFullOrganization({
+        query: { organizationId: invitation.organizationId },
+      });
+      slug = orgResult?.data?.slug;
+    } catch {
+      // Ignore — redirect to "/" below.
+    }
+    window.location.href = slug ? `/${slug}` : "/";
   };
 
   const handleReject = async () => {

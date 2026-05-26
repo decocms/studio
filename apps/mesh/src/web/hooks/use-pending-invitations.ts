@@ -1,15 +1,8 @@
 import { AuthUIContext } from "@daveyplate/better-auth-ui";
 import { useContext } from "react";
+import type { Invitation } from "@/web/components/sidebar/types";
 
-export interface Invitation {
-  id: string;
-  organizationId: string;
-  organizationName?: string;
-  email: string;
-  role: string;
-  status: string;
-  expiresAt: Date;
-}
+export type { Invitation };
 
 export function usePendingInvitations(): Invitation[] {
   const authUi = useContext(AuthUIContext);
