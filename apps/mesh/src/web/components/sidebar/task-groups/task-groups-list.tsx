@@ -129,7 +129,7 @@ export function TaskGroupsList() {
 
   if (isCollapsed) {
     return (
-      <div className="flex flex-col min-h-0 px-1 py-1 gap-0.5 overflow-y-auto">
+      <div className="flex flex-col min-h-0 px-1 py-1 gap-1.5 overflow-y-auto">
         {groups.map((group) => {
           const filtered = typeFiltered(memberFiltered(group.threads));
           const dimmed = filtersActive && filtered.length === 0;
