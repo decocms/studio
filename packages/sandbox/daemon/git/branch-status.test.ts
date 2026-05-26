@@ -111,6 +111,26 @@ describe("BranchStatusMonitor", () => {
       expect(last.workingTreeDirty).toBe(false);
     });
 
+    it("flips dirty=true when a baseline-boot file is edited again", () => {
+      commitFile(repo.repoDir, "tailwind.css", "/* original */");
+      writeFileSync(join(repo.repoDir, "tailwind.css"), "/* regenerated */");
+
+      const m = newMonitor();
+      m.armBaseline();
+      expect(
+        (m.getLast() as { workingTreeDirty: boolean }).workingTreeDirty,
+      ).toBe(false);
+
+      writeFileSync(
+        join(repo.repoDir, "tailwind.css"),
+        "/* user edit after boot */",
+      );
+      m.refresh();
+      expect(
+        (m.getLast() as { workingTreeDirty: boolean }).workingTreeDirty,
+      ).toBe(true);
+    });
+
     it("flips dirty=true when a non-baseline file changes", () => {
       commitFile(repo.repoDir, "tailwind.css", "/* original */");
       commitFile(repo.repoDir, "src.ts", "export const x = 1;");

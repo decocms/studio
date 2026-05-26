@@ -23,6 +23,8 @@ export interface FsDeps {
    * bash's cwd.
    */
   repoDir: string;
+  /** Called after a successful write/edit so branch dirty state can refresh. */
+  onRepoChange?: () => void;
 }
 
 function spawnOpts(
@@ -187,6 +189,7 @@ export function makeWriteHandler(deps: FsDeps) {
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, body.content, "utf-8");
+    deps.onRepoChange?.();
     return jsonResponse({
       ok: true,
       bytesWritten: Buffer.byteLength(body.content, "utf-8"),
@@ -240,6 +243,7 @@ export function makeEditHandler(deps: FsDeps) {
       ? content.replaceAll(body.old_string, body.new_string)
       : content.replace(body.old_string, body.new_string);
     fs.writeFileSync(filePath, updated, "utf-8");
+    deps.onRepoChange?.();
     return jsonResponse({
       ok: true,
       replacements: replaceAll ? count : 1,

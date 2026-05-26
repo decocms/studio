@@ -170,6 +170,23 @@ export function selectHeaderButton(
     };
   }
 
+  // Fall-through debug: why not Save changes?
+  if (
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem("DEBUG_SAVE_CHANGES") === "1"
+  ) {
+    console.log("[github-header] no local work — checking PR/sync state", {
+      workingTreeDirty: ready.workingTreeDirty,
+      unpushed: ready.unpushed,
+      aheadOfBase: ready.aheadOfBase,
+      behindBase: ready.behindBase,
+      branch: ready.branch,
+      base: ready.base,
+      prMerged: pr?.merged ?? null,
+      prState: pr?.state ?? null,
+    });
+  }
+
   // Merged PR is terminal UNLESS the branch has advanced past the PR's
   // head (i.e. new commits were pushed after the merge). Squash-merges
   // leave the branch's pre-merge commits intact on origin/<branch> with
