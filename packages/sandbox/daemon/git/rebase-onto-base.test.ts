@@ -60,7 +60,9 @@ function setupConflictingRepo(): {
   execSync(`git ${gitcfg} -C ${seed} push origin main`, gitOpts);
 
   const repoDir = join(root, "workspace");
-  execSync(`git clone --branch feat/shipping ${bare} ${repoDir}`, gitOpts);
+  execSync(`git ${gitcfg} clone --branch feat/shipping ${bare} ${repoDir}`, gitOpts);
+  execSync(`git ${gitcfg} -C ${repoDir} config user.email test@example.com`, gitOpts);
+  execSync(`git ${gitcfg} -C ${repoDir} config user.name test`, gitOpts);
   execSync(
     `git ${gitcfg} -C ${repoDir} remote set-url origin ${bare}`,
     gitOpts,
