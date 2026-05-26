@@ -2,7 +2,6 @@ import { StudioPackAgentId, isStudioPackAgent } from "@decocms/mesh-sdk";
 import type {
   BuildWelcomeMessage,
   ResolveRuntime,
-  StudioPackChecklistItem,
   StudioPackConnectionKey,
   WelcomeContext,
 } from "./types";
@@ -153,43 +152,5 @@ export const agentManagerAgent = {
       ],
     };
   }) satisfies ResolveRuntime,
-  checklist: [
-    {
-      label: "Create your first agent",
-      activeForm: "Creating your first agent",
-      action: {
-        kind: "open-agent-thread",
-        prompt:
-          "Walk me through creating my first agent. Start by asking what problem I want it to solve, then suggest a sensible default toolset.",
-      },
-      isCompleted: async ({ orgId, ctx }) => {
-        const all = await ctx.storage.virtualMcps.list(orgId);
-        return all.some((vm) => !isStudioPackAgent(vm.id));
-      },
-    },
-    {
-      label: "Wire up your agent",
-      activeForm: "Wiring up your agent",
-      action: {
-        kind: "open-agent-thread",
-        prompt:
-          "Help me wire up my agent — add the right connections and pick the tools it should expose. Look at my existing agents and suggest what's missing.",
-      },
-      isCompleted: async ({ orgId, ctx }) => {
-        const all = await ctx.storage.virtualMcps.list(orgId);
-        const custom = all.filter((vm) => !isStudioPackAgent(vm.id));
-        if (custom.length === 0) return false;
-        return !custom.some(
-          (vm) =>
-            vm.connections.length === 0 ||
-            vm.connections.every(
-              (c) =>
-                Array.isArray(c.selected_tools) &&
-                c.selected_tools.length === 0,
-            ),
-        );
-      },
-    },
-  ] as const satisfies readonly StudioPackChecklistItem[],
   getId: StudioPackAgentId.AGENT_MANAGER,
 } as const;
