@@ -82,7 +82,12 @@ function CreditChip() {
             })
           }
         >
-          <Coins04 size={20} />
+          <Coins04 />
+          <span>
+            {balanceDollars != null
+              ? `$${balanceDollars.toFixed(2)}`
+              : "Credits"}
+          </span>
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
@@ -112,7 +117,8 @@ function ConnectionsButton() {
               setOpen(true);
             }}
           >
-            <ZapSquare size={20} />
+            <ZapSquare />
+            <span>Connections</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

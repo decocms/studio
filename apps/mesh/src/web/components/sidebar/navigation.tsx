@@ -25,19 +25,17 @@ function SidebarLogoHeader() {
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
   return (
-    <SidebarHeader className="flex items-center justify-center shrink-0 px-2 pb-0">
-      <div className="flex w-full aspect-square items-center justify-center">
-        <img
-          src={lightSrc}
-          alt="Logo"
-          className="size-6 object-contain dark:hidden"
-        />
-        <img
-          src={darkSrc}
-          alt="Logo"
-          className="size-6 object-contain hidden dark:block"
-        />
-      </div>
+    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0">
+      <img
+        src={lightSrc}
+        alt="Logo"
+        className="size-6 object-contain dark:hidden"
+      />
+      <img
+        src={darkSrc}
+        alt="Logo"
+        className="size-6 object-contain hidden dark:block"
+      />
     </SidebarHeader>
   );
 }
@@ -72,9 +70,9 @@ function SidebarNavigationItem({ item }: { item: NavigationSidebarItem }) {
         onClick={handleClick}
         isActive={item.isActive}
         tooltip={item.label}
-        className="bg-muted/75"
       >
         {item.icon}
+        <span>{item.label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

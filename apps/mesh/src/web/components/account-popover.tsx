@@ -663,6 +663,7 @@ export function AccountPopover() {
                   </span>
                 )}
               </div>
+              <span className="truncate">{currentOrg?.name ?? "Account"}</span>
             </SidebarMenuButton>
           </PopoverTrigger>
 

@@ -519,6 +519,7 @@ function PinAgentPopover() {
               }}
             >
               <Plus className="!opacity-100" />
+              <span>New</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <Drawer open={open} onOpenChange={setOpen} direction="bottom">
@@ -545,6 +546,7 @@ function PinAgentPopover() {
                 className="bg-muted/75 hover:bg-sidebar-accent"
               >
                 <Plus className="!opacity-100" />
+                <span>New</span>
               </SidebarMenuButton>
             </PopoverTrigger>
           </SidebarMenuItem>
