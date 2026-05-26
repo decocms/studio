@@ -194,18 +194,6 @@ export {
   type OAuthWindowMode,
 } from "./lib/mcp-oauth";
 
-// Preset task types (shared FE/BE)
-export type {
-  PresetTaskDisplay,
-  PresetTaskAction,
-  PresetTaskStatus,
-  PresetTaskStepStatus,
-  PresetTaskStep,
-  PresetTaskState,
-  VisiblePresetTask,
-  StartPresetTaskResult,
-} from "./lib/preset-tasks";
-
 // Usage utilities
 export {
   getCostFromUsage,
