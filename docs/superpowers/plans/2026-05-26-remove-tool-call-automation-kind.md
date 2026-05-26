@@ -15,7 +15,7 @@
 ## File Inventory
 
 **Create:**
-- `apps/mesh/migrations/082-remove-automation-tool-call-kind.ts`
+- `apps/mesh/migrations/095-remove-automation-tool-call-kind.ts`
 
 **Modify:**
 - `apps/mesh/src/storage/types.ts`
@@ -41,10 +41,13 @@
 
 ---
 
-## Task 1: Add migration 082 to drop tool-call schema
+## Task 1: Add migration 095 to drop tool-call schema
 
 **Files:**
-- Create: `apps/mesh/migrations/082-remove-automation-tool-call-kind.ts`
+- Create: `apps/mesh/migrations/095-remove-automation-tool-call-kind.ts`
+- Modify: `apps/mesh/migrations/index.ts` (register the new migration)
+
+**Important:** The migration number 082 is already taken (`082-secrets`). The latest migration is `094-org-file-configs`, so this new migration is **095**.
 
 - [ ] **Step 1: Write the migration file**
 
@@ -137,11 +140,20 @@ export async function down(db: Kysely<unknown>): Promise<void> {
 }
 ```
 
-- [ ] **Step 2: Confirm the migrations index picks it up**
+- [ ] **Step 2: Register the migration in the index**
 
-The repo uses file-based migration discovery (`apps/mesh/migrations/index.ts` or Kysely's FileMigrationProvider). Read it once to confirm — if it auto-discovers `*.ts` files, no edit needed. If it has an explicit list, add the new file in order.
+`apps/mesh/migrations/index.ts` uses explicit registration. Add an import alongside the others (preserving alphabetical order — after the `094` import):
 
-Run: `cat apps/mesh/migrations/index.ts` to inspect.
+```typescript
+import * as migration095removeautomationtoolcallkind from "./095-remove-automation-tool-call-kind.ts";
+```
+
+And add an entry to the `migrations` object after `"094-org-file-configs": migration094orgfileconfigs,`:
+
+```typescript
+  "095-remove-automation-tool-call-kind":
+    migration095removeautomationtoolcallkind,
+```
 
 - [ ] **Step 3: Do not run the migration yet**
 
@@ -150,8 +162,8 @@ The migration depends on column references that the storage layer still has. Lea
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/mesh/migrations/082-remove-automation-tool-call-kind.ts
-git commit -m "feat(automations): add migration 082 to remove tool-call kind"
+git add apps/mesh/migrations/095-remove-automation-tool-call-kind.ts apps/mesh/migrations/index.ts
+git commit -m "feat(automations): add migration 095 to remove tool-call kind"
 ```
 
 ---
@@ -1912,7 +1924,7 @@ Start dev server if not already running (`bun run dev` from repo root) and run:
 bun run --cwd=apps/mesh migrate
 ```
 
-Expected: migration 082 applies cleanly. If a local DB already has automations rows, any with `kind='tool_call'` are deleted.
+Expected: migration 095 applies cleanly. If a local DB already has automations rows, any with `kind='tool_call'` are deleted.
 
 - [ ] **Step 6: Run the full test suite**
 
@@ -1948,7 +1960,7 @@ git push -u origin HEAD
 gh pr create --base main --title "refactor(automations): remove tool-call automation kind" --body "$(cat <<'EOF'
 ## Summary
 - Drop the `kind = "tool_call"` execution mode for automations (introduced in migration 078).
-- Migration 082 deletes `kind='tool_call'` rows, drops the four conditional columns, restores `virtual_mcp_id NOT NULL`, and removes the three CHECK constraints.
+- Migration 095 deletes `kind='tool_call'` rows, drops the four conditional columns, restores `virtual_mcp_id NOT NULL`, and removes the three CHECK constraints.
 - Strips every tool-call branch from storage, the DBOS workflow, the MCP tools, the per-agent + org-scoped UI lists, the automation detail page (no more dual rendering), and the task panel.
 - Deletes `tool-call-config-fields.tsx`.
 
@@ -1958,7 +1970,7 @@ Spec: `docs/superpowers/specs/2026-05-26-remove-tool-call-automation-kind-design
 - [ ] `bun run check` passes
 - [ ] `bun run lint` passes
 - [ ] `bun test` passes
-- [ ] Migration 082 applies cleanly against a local DB with a synthetic tool_call row
+- [ ] Migration 095 applies cleanly against a local DB with a synthetic tool_call row
 - [ ] Manual smoke: per-agent + org-scoped automations lists each show a single "New automation" button; detail page surfaces the instructions editor only
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

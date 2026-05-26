@@ -32,7 +32,7 @@ The decision to drop tool-call rows without preservation reflects that the featu
 
 ### Database
 
-**`apps/mesh/migrations/082-remove-automation-tool-call-kind.ts`** (new)
+**`apps/mesh/migrations/095-remove-automation-tool-call-kind.ts`** (new)
 
 - `up()`: drop `chk_automation_tool_call_fields`, `chk_automation_agent_fields`, `chk_automation_kind`; `DELETE FROM automations WHERE kind = 'tool_call'`; restore `NOT NULL` on `virtual_mcp_id`; drop columns `tool_input`, `tool_name`, `connection_id`, `kind`.
 - `down()`: mirror of `078.up()` — re-adds the four columns nullable, makes `virtual_mcp_id` nullable, re-adds the three CHECK constraints. Data is not restored. The `down()` is structurally reversible only.
@@ -118,7 +118,7 @@ Grep `kind: "tool_call"` and `tool_call_run` across the repo and remove remainin
 ## Risks
 
 - **Stale references after refactor.** The kind discriminator is touched in many UI files; a missed branch could leave dead code that renders nothing or a never-reached conditional. Mitigation: `bun run check` (typecheck) and `bun run lint` will catch most; a final repo-wide grep for `tool_call` and `AutomationKind` after editing closes the gap.
-- **Migration ordering.** `082` must apply cleanly after `081`. Since `081` is `async-research-jobs-result-content` and is unrelated to automations, no interaction is expected.
+- **Migration ordering.** `095` must apply cleanly after `094`. The intervening migrations (078 → 094) are unrelated to the automations execution mode, so no interaction is expected.
 - **Existing `tool_call_run` thread metadata.** Some thread rows in production-like environments may carry `metadata.kind = 'tool_call_run'`. After the UI stops special-casing this, those threads will render as ordinary agent threads. This is acceptable — they remain readable, just without the dedicated icon.
 
 ## Verification
@@ -127,4 +127,4 @@ Grep `kind: "tool_call"` and `tool_call_run` across the repo and remove remainin
 - `bun run lint` passes.
 - `bun test` passes; updated `automation-event-dispatcher.test.ts` still covers the agent path.
 - Manual: create an automation through the UI, confirm only one "New automation" entry point exists; confirm the detail page no longer surfaces tool-call fields; confirm an existing agent automation still fires when triggered.
-- Migration: apply `082` against a local DB with at least one synthetic `kind='tool_call'` row, confirm the row is deleted and the columns are gone.
+- Migration: apply `095` against a local DB with at least one synthetic `kind='tool_call'` row, confirm the row is deleted and the columns are gone.
