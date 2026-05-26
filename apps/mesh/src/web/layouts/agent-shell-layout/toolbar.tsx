@@ -60,9 +60,15 @@ export function Toolbar({ children }: { children?: ReactNode }) {
   );
 }
 
+/**
+ * The header occupies the WCO title-bar strip when the app is installed as a
+ * PWA. `env(titlebar-area-*)` resolves to non-zero values only inside that
+ * mode; in a regular browser tab the fallbacks (0 left/right, 3rem height)
+ * give the standard h-12 toolbar.
+ */
 function ToolbarHeader({ children }: { children?: ReactNode }) {
   return (
-    <div className="shrink-0 grid grid-cols-3 items-center pl-1 pr-2 pt-0.25 h-12">
+    <div className="app-titlebar wco-drag shrink-0 grid grid-cols-3 items-center pl-1 pr-2 pt-0.25 h-12 bg-sidebar">
       {children}
     </div>
   );
