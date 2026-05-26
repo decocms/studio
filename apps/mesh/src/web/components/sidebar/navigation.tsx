@@ -8,7 +8,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
-  SidebarTrigger,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
@@ -26,20 +25,17 @@ function SidebarLogoHeader() {
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
   return (
-    <SidebarHeader className="group/header flex flex-row items-center justify-between shrink-0 h-12 px-3 pb-0 group-data-[state=collapsed]/sidebar:grid group-data-[state=collapsed]/sidebar:[grid-template-areas:'slot'] group-data-[state=collapsed]/sidebar:justify-center group-data-[state=collapsed]/sidebar:place-items-center group-data-[state=collapsed]/sidebar:px-0">
-      <div className="flex items-center group-data-[state=collapsed]/sidebar:[grid-area:slot] group-data-[state=collapsed]/sidebar:transition-opacity group-data-[state=collapsed]/sidebar:group-hover/header:opacity-0 group-data-[state=collapsed]/sidebar:group-hover/header:pointer-events-none">
-        <img
-          src={lightSrc}
-          alt="Logo"
-          className="size-6 object-contain dark:hidden"
-        />
-        <img
-          src={darkSrc}
-          alt="Logo"
-          className="size-6 object-contain hidden dark:block"
-        />
-      </div>
-      <SidebarTrigger className="text-muted-foreground hover:text-foreground group-data-[state=collapsed]/sidebar:[grid-area:slot] group-data-[state=collapsed]/sidebar:opacity-0 group-data-[state=collapsed]/sidebar:pointer-events-none group-data-[state=collapsed]/sidebar:group-hover/header:opacity-100 group-data-[state=collapsed]/sidebar:group-hover/header:pointer-events-auto group-data-[state=collapsed]/sidebar:transition-opacity" />
+    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0 group-data-[state=collapsed]/sidebar:justify-center">
+      <img
+        src={lightSrc}
+        alt="Logo"
+        className="size-6 object-contain dark:hidden"
+      />
+      <img
+        src={darkSrc}
+        alt="Logo"
+        className="size-6 object-contain hidden dark:block"
+      />
     </SidebarHeader>
   );
 }

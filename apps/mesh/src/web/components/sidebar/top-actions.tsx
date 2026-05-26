@@ -1,4 +1,4 @@
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import {
@@ -6,7 +6,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@deco/ui/components/sidebar.tsx";
-import { Coins04, ZapSquare } from "@untitledui/icons";
+import { Coins04 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import {
   SELF_MCP_ALIAS_ID,
@@ -15,8 +15,6 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
-import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
-import { track } from "@/web/lib/posthog-client";
 import { cn } from "@deco/ui/lib/utils.ts";
 
 class SilentErrorBoundary extends Component<
@@ -100,46 +98,12 @@ function CreditChipConditional() {
   return <CreditChip />;
 }
 
-function ConnectionsButton() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Connections"
-            onClick={() => {
-              track("connections_dialog_opened", {
-                source: "sidebar_top",
-                mode: "browse",
-              });
-              setOpen(true);
-            }}
-          >
-            <ZapSquare />
-            <span>Connections</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-      <AddConnectionDialog
-        mode="browse"
-        open={open}
-        onOpenChange={setOpen}
-        defaultTab="all"
-      />
-    </>
-  );
-}
-
 export function SidebarTopActions() {
   return (
-    <div className="flex flex-col gap-0.5">
-      <ConnectionsButton />
-      <SilentErrorBoundary>
-        <Suspense fallback={null}>
-          <CreditChipConditional />
-        </Suspense>
-      </SilentErrorBoundary>
-    </div>
+    <SilentErrorBoundary>
+      <Suspense fallback={null}>
+        <CreditChipConditional />
+      </Suspense>
+    </SilentErrorBoundary>
   );
 }

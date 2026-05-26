@@ -12,6 +12,7 @@ import {
   SidebarInset,
   SidebarLayout,
   SidebarProvider,
+  SidebarTrigger,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -112,6 +113,7 @@ export default function OrgShellLayout() {
                     <Toolbar.Header>
                       <Toolbar.LeftColumn>
                         <Toolbar.Nav />
+                        <SidebarTrigger className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors" />
                         <Toolbar.TogglesSlot />
                         <LinkedDesktopIndicator />
                       </Toolbar.LeftColumn>

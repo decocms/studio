@@ -18,13 +18,21 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { Check, Inbox01, Settings02, XClose } from "@untitledui/icons";
+import {
+  Check,
+  Inbox01,
+  Settings02,
+  XClose,
+  ZapSquare,
+} from "@untitledui/icons";
 import { AuthUIContext } from "@daveyplate/better-auth-ui";
 import { useContext, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
+import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
+import { track } from "@/web/lib/posthog-client";
 
 interface Invitation {
   id: string;
@@ -205,6 +213,33 @@ function InboxIconButton() {
   );
 }
 
+function ConnectionsFullButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <SidebarMenuButton
+        tooltip="Connections"
+        onClick={() => {
+          track("connections_dialog_opened", {
+            source: "sidebar_footer",
+            mode: "browse",
+          });
+          setOpen(true);
+        }}
+      >
+        <ZapSquare />
+        <span>Connections</span>
+      </SidebarMenuButton>
+      <AddConnectionDialog
+        mode="browse"
+        open={open}
+        onOpenChange={setOpen}
+        defaultTab="all"
+      />
+    </>
+  );
+}
+
 function SettingsFullButton() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
@@ -258,6 +293,9 @@ export function SidebarInboxFooter() {
       <SidebarFooter className="px-2 pb-3 gap-1">
         <SidebarMenu>
           <SidebarMenuItem>
+            <ConnectionsFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
             <InboxFullButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -272,7 +310,16 @@ export function SidebarInboxFooter() {
   }
 
   return (
-    <SidebarFooter className="px-2 pb-3">
+    <SidebarFooter className="px-2 pb-3 gap-1">
+      <div className="flex items-center gap-1">
+        <div className="flex-1 min-w-0">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <ConnectionsFullButton />
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </div>
+      </div>
       <div className="flex items-center gap-1">
         <div className="flex-1 min-w-0">
           <SidebarMenu>

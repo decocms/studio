@@ -58,7 +58,7 @@ export function TaskGroup({
           "cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors",
         )}
       >
-        <div className="relative size-5 shrink-0 flex items-center justify-center">
+        <div className="relative size-6 shrink-0 flex items-center justify-center">
           <span className="absolute inset-0 flex items-center justify-center transition-opacity group-hover/group:opacity-0">
             <TaskGroupAvatar
               virtualMcpId={virtualMcpId}
