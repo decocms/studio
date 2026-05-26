@@ -1,6 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { RELEASES } from "@/web/lib/release-feed";
 
 const STORAGE_KEY = "studio.release-feed.v1";
@@ -13,36 +11,42 @@ export interface ReleaseSeenState {
   unseenCount: number;
 }
 
-export function useReleaseSeenState(): ReleaseSeenState {
-  // `useLocalStorage` provides the long-lived cache (so other components and
-  // re-mounts stay in sync). We mirror its value into local state for two
-  // reasons:
-  //  1. Synchronous re-render on `markSeen`, so consumers see the new value on
-  //     the very next render (the underlying mutation is async).
-  //  2. The local mirror seeds from the initial cache value, which itself
-  //     hydrates from localStorage.
-  const [seen] = useLocalStorage<SeenMap>(STORAGE_KEY, {});
-  const [localSeen, setLocalSeen] = useState<SeenMap>(seen);
-  const queryClient = useQueryClient();
+function readSeenMap(): SeenMap {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as SeenMap) : {};
+  } catch {
+    return {};
+  }
+}
 
-  const isSeen = (id: string) => Boolean(localSeen[id]);
+function writeSeenMap(map: SeenMap): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // localStorage unavailable (private mode, sandbox). Treat writes as no-ops.
+  }
+}
+
+export function useReleaseSeenState(): ReleaseSeenState {
+  const [seen, setSeen] = useState<SeenMap>(readSeenMap);
+
+  const isSeen = (id: string) => Boolean(seen[id]);
 
   const markSeen = (id: string) => {
-    if (localSeen[id]) return;
+    if (seen[id]) return;
     const next: SeenMap = {
-      ...localSeen,
+      ...seen,
       [id]: { seenAt: new Date().toISOString() },
     };
-    // Write through synchronously: update the localStorage backing store and
-    // the TanStack Query cache so other consumers of `useLocalStorage` pick
-    // up the new value on their next read.
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    queryClient.setQueryData(["localStorage", STORAGE_KEY], next);
-    setLocalSeen(next);
+    writeSeenMap(next);
+    setSeen(next);
   };
 
   const unseenCount = RELEASES.reduce(
-    (count, release) => (localSeen[release.id] ? count : count + 1),
+    (count, release) => (seen[release.id] ? count : count + 1),
     0,
   );
 
