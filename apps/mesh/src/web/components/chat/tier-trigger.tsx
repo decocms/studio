@@ -69,7 +69,7 @@ export function TierTriggerPure({
     <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex">
+          <span className="inline-flex min-w-0 shrink">
             <PopoverTrigger asChild>
               <Button
                 type="button"

@@ -116,7 +116,7 @@ export function ModePickerPure({
     <Popover open={open} onOpenChange={locked ? undefined : setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex">
+          <span className="inline-flex min-w-0 shrink">
             <PopoverTrigger asChild>
               <Button
                 type="button"

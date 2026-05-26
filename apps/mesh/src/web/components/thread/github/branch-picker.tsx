@@ -132,7 +132,7 @@ export function BranchPicker({
     <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex">
+          <span className="inline-flex min-w-0 shrink">
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
