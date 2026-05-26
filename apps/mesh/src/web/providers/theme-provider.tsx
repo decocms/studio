@@ -104,14 +104,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (!raw) return;
       const ctx = document.createElement("canvas").getContext("2d");
       if (!ctx) return;
-      // Canvas rejects invalid values silently (keeps the prior fillStyle),
-      // so seed with a sentinel we can detect.
-      ctx.fillStyle = "#000";
+      if (!CSS.supports("color", raw)) return;
       ctx.fillStyle = raw;
-      const normalised = ctx.fillStyle as string;
-      if (normalised && normalised !== "#000000") {
-        meta.content = normalised;
-      }
+      meta.content = ctx.fillStyle as string;
     };
 
     if (preferences.theme === "dark") {

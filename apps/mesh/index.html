@@ -1,14 +1,21 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <meta name="theme-color" content="#f6f4ed" />
     <script>
       // Apply dark mode class before first paint to prevent flash
       (function() {
         try {
           var p = JSON.parse(localStorage.getItem("mesh:user:preferences") || "{}");
           var theme = p.theme || "system";
-          if (theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+          var isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (isDark) {
             document.documentElement.classList.add("dark");
+            // Also pre-set <meta name="theme-color"> so the PWA title-bar (WCO)
+            // doesn't flash light before the React runtime syncs it from --sidebar.
+            // Value approximates dark --sidebar: oklch(0.155 0.005 60).
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute("content", "#272524");
           }
         } catch(e) {}
       })();
@@ -26,7 +33,6 @@
     <meta name="twitter:image" content="/og-image.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#f6f4ed" />
   </head>
   <body>
     <div id="root"></div>
