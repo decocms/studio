@@ -5,6 +5,7 @@ import {
   TS_HEADER,
   verifyRequest,
 } from "../../../../../apps/mesh/src/links/protocol/hmac";
+import { computeHandle } from "../shared";
 import type { RunnerStateStoreOps } from "../state-store";
 import { DesktopSandboxProvider } from "./runner";
 
@@ -173,10 +174,14 @@ describe("DesktopSandboxProvider.ensure", () => {
     expect(sandbox.previewUrl).toBe(`${TUNNEL}/_sandbox/handle-abc`);
   });
 
-  it("returns the same Sandbox on re-ensure without a second POST", async () => {
-    const { fetch, calls } = makeFakeFetch(() =>
-      jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/handle-abc` }),
-    );
+  it("returns the same Sandbox on re-ensure when /health passes (no second POST)", async () => {
+    // Re-ensure with a live daemon: cache hit → /health probe → trust.
+    // The second call probes but does NOT re-POST.
+    const { fetch, calls } = makeFakeFetch((call) => {
+      if (call.url.endsWith("/health"))
+        return new Response("", { status: 200 });
+      return jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/handle-abc` });
+    });
     const provider = new DesktopSandboxProvider({
       link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
       fetchImpl: fetch,
@@ -186,7 +191,10 @@ describe("DesktopSandboxProvider.ensure", () => {
     const first = await provider.ensure(id);
     const second = await provider.ensure(id);
 
-    expect(calls).toHaveLength(1);
+    const posts = calls.filter(
+      (c) => c.method === "POST" && c.url.endsWith("/api/sandboxes"),
+    );
+    expect(posts).toHaveLength(1);
     expect(second.handle).toBe(first.handle);
     expect(second.workdir).toBe(first.workdir);
   });
@@ -501,6 +509,131 @@ describe("DesktopSandboxProvider + state store", () => {
       stateStore,
     });
     expect(await provider.alive("never-seen")).toBe(false);
+  });
+
+  it("re-POSTs to the link when state-store URL is dead (/health fails)", async () => {
+    // The daemon died but `sandbox_runner_state` still holds its URL.
+    // ensure() must probe, find it dead, drop the stale row, and re-POST
+    // the link to respawn. This is the auto-restart path that was broken
+    // before — without the probe, every retry replayed the corpse URL.
+    const stateStore = makeFakeStateStore();
+    const STALE_URL = `${TUNNEL}/_sandbox/dead`;
+    const FRESH_URL = `${TUNNEL}/_sandbox/fresh`;
+    // Seed under the *real* handle ensure() will compute, so the state-store
+    // hydration path actually finds the stale row.
+    const handle = computeHandle({ userId: "u", projectRef: "p" }, undefined, {
+      hashLen: 16,
+    });
+    await stateStore.put({ userId: "u", projectRef: "p" }, "desktop", {
+      handle,
+      state: { handle, sandboxApiUrl: STALE_URL },
+    });
+
+    const { fetch, calls } = makeFakeFetch((call) => {
+      if (call.url === `${STALE_URL}/health`)
+        return new Response("", { status: 503 });
+      if (call.url.endsWith("/api/sandboxes"))
+        return jsonResponse({ sandboxApiUrl: FRESH_URL });
+      return jsonResponse({});
+    });
+    const provider = new DesktopSandboxProvider({
+      link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
+      fetchImpl: fetch,
+      stateStore,
+    });
+
+    // Seed the state-store row under the handle ensure() will compute, so
+    // the hydration path actually hits the stale URL. computeHandle is
+    // deterministic from (id, branch); easier to just discover the handle.
+    const sandbox = await provider.ensure({ userId: "u", projectRef: "p" });
+
+    expect(sandbox.previewUrl).toBe(FRESH_URL);
+    const probes = calls.filter((c) => c.url.endsWith("/health"));
+    const posts = calls.filter(
+      (c) => c.method === "POST" && c.url.endsWith("/api/sandboxes"),
+    );
+    expect(probes.length).toBeGreaterThanOrEqual(1);
+    expect(posts).toHaveLength(1);
+
+    // Stale row must be replaced, not left behind.
+    const stillStale = Array.from(stateStore.rows.values()).some(
+      (r) => r.state.sandboxApiUrl === STALE_URL,
+    );
+    expect(stillStale).toBe(false);
+  });
+
+  it("clears in-process cache and state-store row when cache hit fails /health", async () => {
+    // Mirrors the within-request retry path: first ensure() succeeds and
+    // populates the cache. The daemon dies during the tool call; harness
+    // re-invokes ensure(). Probe must catch the cached corpse and respawn.
+    const stateStore = makeFakeStateStore();
+    let healthAlive = true;
+    let postCount = 0;
+    const { fetch } = makeFakeFetch((call) => {
+      if (call.url.endsWith("/health")) {
+        return new Response("", { status: healthAlive ? 200 : 503 });
+      }
+      if (call.url.endsWith("/api/sandboxes")) {
+        postCount++;
+        return jsonResponse({
+          sandboxApiUrl: `${TUNNEL}/_sandbox/v${postCount}`,
+        });
+      }
+      return jsonResponse({});
+    });
+    const provider = new DesktopSandboxProvider({
+      link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
+      fetchImpl: fetch,
+      stateStore,
+    });
+
+    const id = { userId: "u", projectRef: "p" };
+    const first = await provider.ensure(id);
+    expect(first.previewUrl).toBe(`${TUNNEL}/_sandbox/v1`);
+
+    // Simulate the daemon dying between ensures.
+    healthAlive = false;
+    const second = await provider.ensure(id);
+    expect(second.previewUrl).toBe(`${TUNNEL}/_sandbox/v2`);
+    expect(postCount).toBe(2);
+  });
+
+  it("forgetHandle() clears records + state-store row without calling the link", async () => {
+    // The auto-restart path needs this: when the captured runner's
+    // proxy fails, the harness must flush THIS runner's cache so the
+    // retry doesn't replay the dead URL from records. Hitting the link
+    // would be wasted (we already know the daemon is gone).
+    const stateStore = makeFakeStateStore();
+    const { fetch, calls } = makeFakeFetch((call) => {
+      if (call.url.endsWith("/health"))
+        return new Response("", { status: 200 });
+      if (call.url.endsWith("/api/sandboxes"))
+        return jsonResponse({ sandboxApiUrl: `${TUNNEL}/_sandbox/forget` });
+      // Surface any unexpected call (e.g. DELETE) so the test fails loud.
+      return new Response("UNEXPECTED", { status: 599 });
+    });
+    const provider = new DesktopSandboxProvider({
+      link: { tunnelUrl: TUNNEL, linkSecret: SECRET },
+      fetchImpl: fetch,
+      stateStore,
+    });
+
+    const sandbox = await provider.ensure({ userId: "u", projectRef: "p" });
+    expect(stateStore.rows.size).toBe(1);
+    const callsBefore = calls.length;
+
+    await provider.forgetHandle(sandbox.handle);
+
+    expect(stateStore.rows.size).toBe(0);
+    // No new fetches beyond what ensure already issued.
+    expect(calls.length).toBe(callsBefore);
+    // Cache is empty — proxy now returns 404 since record can't be found.
+    const res = await provider.proxyDaemonRequest(sandbox.handle, "/x", {
+      method: "GET",
+      headers: new Headers(),
+      body: null,
+    });
+    expect(res.status).toBe(404);
   });
 
   it("delete() clears the state store row", async () => {

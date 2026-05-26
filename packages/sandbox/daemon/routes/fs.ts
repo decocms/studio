@@ -240,7 +240,11 @@ export function makeEditHandler(deps: FsDeps) {
       ? content.replaceAll(body.old_string, body.new_string)
       : content.replace(body.old_string, body.new_string);
     fs.writeFileSync(filePath, updated, "utf-8");
-    return jsonResponse({ ok: true, replacements: replaceAll ? count : 1 });
+    return jsonResponse({
+      ok: true,
+      replacements: replaceAll ? count : 1,
+      content: updated,
+    });
   };
 }
 

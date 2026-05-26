@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { createContext, useContext } from "react";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { createContext, useContext, useState } from "react";
+import { useParams, useSearch } from "@tanstack/react-router";
 import { useThreads } from "@/web/components/chat/store/hooks";
 import { filterThreads } from "@/web/components/chat/task";
 import { resolveTasksOpen } from "@/web/hooks/use-layout-state";
@@ -13,34 +13,32 @@ interface TasksPanelState {
 const TasksPanelStateContext = createContext<TasksPanelState | null>(null);
 
 /**
- * Provider for the tasks-panel open/closed state.
- *
- * The URL is the single source of truth: `?tasks=0|1`. When the param is
- * absent the panel defaults to open iff we are on a task route with open
- * threads — see `resolveTasksOpen`. `toggleTasks` writes the flipped value
- * back into the URL search; consumers re-render off the URL.
+ * Provider for the tasks-panel open/closed state — per-route. Closing the
+ * panel inside a chat shouldn't follow you to home and vice versa, so we
+ * keep one state for the home route and one for any chat route. URL
+ * `?tasks=0|1` seeds the initial value on first mount.
  */
 export function TasksPanelStateProvider({ children }: { children: ReactNode }) {
-  const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { tasks?: number };
   const params = useParams({ strict: false }) as { taskId?: string };
   const { threads: allThreads } = useThreads();
   const threads = filterThreads(allThreads, { hidden: false });
+  const onHome = !params.taskId;
+  const hasChats = threads.length > 0;
 
-  const tasksOpen = resolveTasksOpen(
-    search.tasks,
-    Boolean(params.taskId) && threads.length > 0,
+  const [homeOpen, setHomeOpen] = useState<boolean>(() =>
+    onHome ? resolveTasksOpen(search.tasks, true) : true,
+  );
+  const [chatOpen, setChatOpen] = useState<boolean>(() =>
+    !onHome ? resolveTasksOpen(search.tasks, hasChats) : hasChats,
   );
 
-  const toggleTasks = () =>
-    navigate({
-      // biome-ignore lint/suspicious/noExplicitAny: tanstack router search-reducer signature
-      search: ((prev: Record<string, unknown>) => ({
-        ...prev,
-        tasks: tasksOpen ? 0 : 1,
-      })) as any,
-      replace: true,
-    });
+  const tasksOpen = onHome ? homeOpen : chatOpen;
+
+  const toggleTasks = () => {
+    if (onHome) setHomeOpen((p) => !p);
+    else setChatOpen((p) => !p);
+  };
 
   return (
     <TasksPanelStateContext.Provider value={{ tasksOpen, toggleTasks }}>

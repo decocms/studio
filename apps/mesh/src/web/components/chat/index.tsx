@@ -161,7 +161,7 @@ function ChatMessages() {
         )}
         {messagePairs.slice(0, -1).map((pair, index) => (
           <MessagePair
-            key={`pair-${pair.user.id}`}
+            key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
             pair={pair}
             isLastPair={false}
             status={index === messagePairs.length - 1 ? status : undefined}
@@ -171,7 +171,7 @@ function ChatMessages() {
       {lastMessagePair && (
         <div className="min-h-full min-w-0 max-w-2xl mx-auto w-full">
           <MessagePair
-            key={`pair-${lastMessagePair?.user.id}`}
+            key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
             pair={lastMessagePair}
             isLastPair={true}
             status={status}

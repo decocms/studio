@@ -69,6 +69,15 @@ export const KEYS = {
   // Models list (scoped by organization)
   modelsList: (orgId: string) => ["models-list", orgId] as const,
 
+  // Suggested actions on the Tasks panel — last N threads where the
+  // assistant spoke last, optionally scoped to the current user.
+  suggestedActions: (orgSlug: string, mine: boolean) =>
+    ["suggested-actions", orgSlug, mine] as const,
+
+  // Studio Pack onboarding checklists — per-agent state-derived items.
+  studioPackChecklists: (orgSlug: string) =>
+    ["studio-pack-checklists", orgSlug] as const,
+
   // Allowed models for current user (scoped by organization)
   allowedModels: (locator: ProjectLocator) =>
     [locator, "allowed-models"] as const,

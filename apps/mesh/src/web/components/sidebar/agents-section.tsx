@@ -55,8 +55,6 @@ import {
 } from "@deco/ui/components/context-menu.tsx";
 import {
   isDecopilot,
-  isStudioPackAgent,
-  WELL_KNOWN_AGENT_TEMPLATES,
   useProjectContext,
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
@@ -70,20 +68,12 @@ import {
   useCreateAgentFromTemplate,
 } from "@/web/hooks/use-create-website-agent";
 import { track } from "@/web/lib/posthog-client";
-import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 import { GitHubRepoPicker } from "@/web/components/github-repo-picker.tsx";
-import { SelfHealingRepoFlow } from "@/web/components/self-healing-repo/self-healing-repo-flow.tsx";
-import { SiteDiagnosticsRecruitModal } from "@/web/components/home/site-diagnostics-recruit-modal.tsx";
-import { StudioPackRecruitModal } from "@/web/components/home/studio-pack-recruit-modal.tsx";
-import { LeanCanvasRecruitModal } from "@/web/components/home/lean-canvas-recruit-modal.tsx";
-import { AiImageRecruitModal } from "@/web/components/home/ai-image-recruit-modal.tsx";
-import { AiResearchRecruitModal } from "@/web/components/home/ai-research-recruit-modal.tsx";
-import { QaAgentRecruitModal } from "@/web/components/home/qa-agent-recruit-modal.tsx";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { useNavigateToAgentThread } from "@/web/hooks/use-navigate-to-agent-thread";
@@ -355,26 +345,11 @@ function AgentGridItem({
 
 function PinAgentPopoverContent({
   onClose,
-  onOpenImportDeco,
   onOpenGithubImport,
-  onOpenSelfHealing,
-  onOpenDiagnosticsModal,
-  onOpenLeanCanvasModal,
-  onOpenStudioPackModal,
-  onOpenAiImageModal,
-  onOpenAiResearchModal,
-  onOpenQaAgentModal,
 }: {
   onClose: () => void;
   onOpenImportDeco: () => void;
   onOpenGithubImport: () => void;
-  onOpenSelfHealing: () => void;
-  onOpenDiagnosticsModal: () => void;
-  onOpenLeanCanvasModal: () => void;
-  onOpenStudioPackModal: () => void;
-  onOpenAiImageModal: () => void;
-  onOpenAiResearchModal: () => void;
-  onOpenQaAgentModal: () => void;
 }) {
   const [search, setSearch] = useState("");
   const allAgents = useVirtualMCPs();
@@ -389,79 +364,11 @@ function PinAgentPopoverContent({
   const [preferences] = usePreferences();
 
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
-  const navigateToAgent = useNavigateToAgent();
 
   const lowerSearch = search.toLowerCase();
   const userAgents = allAgents
     .filter((s) => !isDecopilot(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
-
-  const studioPackInstalled = allAgents.some((a) => isStudioPackAgent(a.id));
-  const filteredTemplates = WELL_KNOWN_AGENT_TEMPLATES.filter(
-    (t) =>
-      (!search || t.title.toLowerCase().includes(lowerSearch)) &&
-      !(t.id === "studio-pack" && studioPackInstalled) &&
-      !(
-        t.id === "self-healing-storefront" && !preferences.experimental_vibecode
-      ),
-  );
-
-  // Find existing recruited Site Diagnostics agent
-  const siteDiagnosticsTemplate = WELL_KNOWN_AGENT_TEMPLATES.find(
-    (t) => t.id === "site-diagnostics",
-  );
-  const existingDiagnostics = siteDiagnosticsTemplate
-    ? allAgents.find(
-        (a) =>
-          (a as { metadata?: { type?: string } }).metadata?.type ===
-          siteDiagnosticsTemplate.id,
-      )
-    : undefined;
-
-  // Find existing recruited Lean Canvas agent
-  const leanCanvasTemplate = WELL_KNOWN_AGENT_TEMPLATES.find(
-    (t) => t.id === "lean-canvas",
-  );
-  const existingLeanCanvas = leanCanvasTemplate
-    ? allAgents.find(
-        (a) =>
-          (a as { metadata?: { type?: string } }).metadata?.type ===
-          leanCanvasTemplate.id,
-      )
-    : undefined;
-
-  const aiImageTemplate = WELL_KNOWN_AGENT_TEMPLATES.find(
-    (t) => t.id === "ai-image",
-  );
-  const existingAiImage = aiImageTemplate
-    ? allAgents.find(
-        (a) =>
-          (a as { metadata?: { type?: string } }).metadata?.type ===
-          aiImageTemplate.id,
-      )
-    : undefined;
-
-  const aiResearchTemplate = WELL_KNOWN_AGENT_TEMPLATES.find(
-    (t) => t.id === "ai-research",
-  );
-  const existingAiResearch = aiResearchTemplate
-    ? allAgents.find(
-        (a) =>
-          (a as { metadata?: { type?: string } }).metadata?.type ===
-          aiResearchTemplate.id,
-      )
-    : undefined;
-
-  const qaAgentTemplate = WELL_KNOWN_AGENT_TEMPLATES.find(
-    (t) => t.id === "qa-agent",
-  );
-  const existingQaAgent = qaAgentTemplate
-    ? allAgents.find(
-        (a) =>
-          (a as { metadata?: { type?: string } }).metadata?.type ===
-          qaAgentTemplate.id,
-      )
-    : undefined;
 
   const handleSelect = (agent: VirtualMCPEntity) => {
     if (!isPinned(agent.id)) {
@@ -470,50 +377,6 @@ function PinAgentPopoverContent({
     onClose();
     setSearch("");
     navigateToNewTask(agent.id);
-  };
-
-  const handleTemplateClick = (templateId: string) => {
-    onClose();
-    setSearch("");
-    if (templateId === "self-healing-storefront") {
-      onOpenSelfHealing();
-    } else if (templateId === "site-editor") {
-      onOpenImportDeco();
-    } else if (templateId === "site-diagnostics") {
-      if (existingDiagnostics) {
-        navigateToAgent(existingDiagnostics.id);
-      } else {
-        onOpenDiagnosticsModal();
-      }
-    } else if (templateId === "lean-canvas") {
-      if (existingLeanCanvas) {
-        navigateToAgent(existingLeanCanvas.id);
-      } else {
-        onOpenLeanCanvasModal();
-      }
-    } else if (templateId === "ai-image") {
-      if (existingAiImage) {
-        navigateToAgent(existingAiImage.id);
-      } else {
-        onOpenAiImageModal();
-      }
-    } else if (templateId === "ai-research") {
-      if (existingAiResearch) {
-        navigateToAgent(existingAiResearch.id);
-      } else {
-        onOpenAiResearchModal();
-      }
-    } else if (templateId === "qa-agent") {
-      if (existingQaAgent) {
-        navigateToAgent(existingQaAgent.id);
-      } else {
-        onOpenQaAgentModal();
-      }
-    } else if (templateId === "studio-pack") {
-      onOpenStudioPackModal();
-    } else {
-      navigateToNewTask(templateId);
-    }
   };
 
   return (
@@ -627,50 +490,11 @@ function PinAgentPopoverContent({
           ))}
         </div>
 
-        {/* Agent templates section */}
-        {filteredTemplates.length > 0 && (
-          <>
-            <div className="px-1 pt-4 pb-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Agent templates
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-1">
-              {filteredTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => {
-                    track("agent_template_clicked", {
-                      template_id: template.id,
-                      template_title: template.title,
-                    });
-                    handleTemplateClick(template.id);
-                  }}
-                  className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <AgentAvatar
-                    icon={template.icon}
-                    name={template.title}
-                    size="md"
-                    className="transition-transform group-hover:scale-105"
-                  />
-                  <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground line-clamp-2 w-full">
-                    {template.title}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </>
+        {userAgents.length === 0 && !isCreating && (
+          <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
+            {search ? "No agents found" : "No agents yet"}
+          </div>
         )}
-
-        {userAgents.length === 0 &&
-          filteredTemplates.length === 0 &&
-          !isCreating && (
-            <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-              {search ? "No agents found" : "No agents yet"}
-            </div>
-          )}
       </div>
 
       {/* Footer */}
@@ -692,13 +516,6 @@ function PinAgentPopover() {
   const [open, setOpen] = useState(false);
   const [importDecoOpen, setImportDecoOpen] = useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
-  const [selfHealingOpen, setSelfHealingOpen] = useState(false);
-  const [diagnosticsModalOpen, setDiagnosticsModalOpen] = useState(false);
-  const [leanCanvasModalOpen, setLeanCanvasModalOpen] = useState(false);
-  const [studioPackModalOpen, setStudioPackModalOpen] = useState(false);
-  const [aiImageModalOpen, setAiImageModalOpen] = useState(false);
-  const [aiResearchModalOpen, setAiResearchModalOpen] = useState(false);
-  const [qaAgentModalOpen, setQaAgentModalOpen] = useState(false);
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
 
@@ -722,16 +539,6 @@ function PinAgentPopover() {
           setGithubPickerOpen(true);
           handleClose();
         }}
-        onOpenSelfHealing={() => {
-          setSelfHealingOpen(true);
-          handleClose();
-        }}
-        onOpenDiagnosticsModal={() => setDiagnosticsModalOpen(true)}
-        onOpenLeanCanvasModal={() => setLeanCanvasModalOpen(true)}
-        onOpenStudioPackModal={() => setStudioPackModalOpen(true)}
-        onOpenAiImageModal={() => setAiImageModalOpen(true)}
-        onOpenAiResearchModal={() => setAiResearchModalOpen(true)}
-        onOpenQaAgentModal={() => setQaAgentModalOpen(true)}
       />
     </Suspense>
   );
@@ -795,34 +602,6 @@ function PinAgentPopover() {
       <GitHubRepoPicker
         open={githubPickerOpen}
         onOpenChange={setGithubPickerOpen}
-      />
-      <SelfHealingRepoFlow
-        open={selfHealingOpen}
-        onOpenChange={setSelfHealingOpen}
-      />
-      <SiteDiagnosticsRecruitModal
-        open={diagnosticsModalOpen}
-        onOpenChange={setDiagnosticsModalOpen}
-      />
-      <LeanCanvasRecruitModal
-        open={leanCanvasModalOpen}
-        onOpenChange={setLeanCanvasModalOpen}
-      />
-      <StudioPackRecruitModal
-        open={studioPackModalOpen}
-        onOpenChange={setStudioPackModalOpen}
-      />
-      <AiImageRecruitModal
-        open={aiImageModalOpen}
-        onOpenChange={setAiImageModalOpen}
-      />
-      <AiResearchRecruitModal
-        open={aiResearchModalOpen}
-        onOpenChange={setAiResearchModalOpen}
-      />
-      <QaAgentRecruitModal
-        open={qaAgentModalOpen}
-        onOpenChange={setQaAgentModalOpen}
       />
     </>
   );

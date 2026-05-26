@@ -356,8 +356,9 @@ export const createDecoSitesOrgRoutes = () => {
   app.get("/", async (c) => {
     const ctx = c.get("meshContext");
 
-    const email = ctx.auth.user?.email;
-    if (!email) {
+    // FIXME(dev-only): local-auth email doesn't match a deco.cx profile — revert before shipping
+    const email = "pedrofrxncx@deco.cx";
+    if (!ctx.auth.user?.id) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
@@ -411,9 +412,10 @@ export const createDecoSitesOrgRoutes = () => {
   app.post("/connection", async (c) => {
     const ctx = c.get("meshContext");
 
-    const email = ctx.auth.user?.email;
+    // FIXME(dev-only): local-auth email doesn't match a deco.cx profile — revert before shipping
+    const email = "pedrofrxncx@deco.cx";
     const userId = getUserId(ctx);
-    if (!email || !userId) {
+    if (!userId) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 

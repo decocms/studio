@@ -461,6 +461,7 @@ export interface VirtualMCPStoragePort {
     organizationId: string,
     options?: { pinnedOnly?: boolean },
   ): Promise<VirtualMCPEntity[]>;
+  listByIds(organizationId: string, ids: string[]): Promise<VirtualMCPEntity[]>;
   listByConnectionId(
     organizationId: string,
     connectionId: string,

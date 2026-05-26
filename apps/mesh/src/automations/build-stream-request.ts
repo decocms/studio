@@ -11,7 +11,7 @@
 import type { DispatchRunInput } from "@/api/routes/decopilot/dispatch-run";
 import type { Automation } from "@/storage/types";
 
-type ThinkingShape = {
+type ModelShape = {
   id: string;
   title?: string;
   provider?: string | null;
@@ -30,7 +30,9 @@ type ThinkingShape = {
 
 export interface ResolvedAutomationModel {
   credentialId: string;
-  thinking: ThinkingShape;
+  thinking: ModelShape;
+  image?: ModelShape;
+  deepResearch?: ModelShape;
 }
 
 export function buildStreamRequest(
@@ -54,6 +56,8 @@ export function buildStreamRequest(
     models: {
       credentialId: resolved.credentialId,
       thinking: resolved.thinking,
+      ...(resolved.image ? { image: resolved.image } : {}),
+      ...(resolved.deepResearch ? { deepResearch: resolved.deepResearch } : {}),
     },
     // Caller guarantees `automation.kind === "agent"` (the workflow only
     // takes the agent branch when this invariant holds), so virtual_mcp_id

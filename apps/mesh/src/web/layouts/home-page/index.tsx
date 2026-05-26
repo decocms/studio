@@ -1,16 +1,17 @@
-import { AgentsList } from "@/web/components/home/agents-list.tsx";
+import { ArrowRight } from "@untitledui/icons";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Chat } from "@/web/components/chat";
 import { NoAiProviderEmptyState } from "@/web/components/chat/no-ai-provider-empty-state";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+import { useCurrentLink } from "@/web/hooks/use-current-link";
+import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
-import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { ArrowRight } from "@untitledui/icons";
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { HomeBackground } from "./background";
 
 const DECO_BANNER_GRADIENT = [
   "radial-gradient(ellipse 25% 220% at -5% 120%, rgba(165,149,255,0.35) 0%, transparent 100%)",
@@ -81,6 +82,7 @@ export function HomePage() {
   const isDecoUser = useIsDecoUser();
   const isMobile = useIsMobile();
   const allKeys = useAiProviderKeys();
+  const link = useCurrentLink();
   const {
     hasDecoKey,
     isZeroBalance,
@@ -89,7 +91,7 @@ export function HomePage() {
     hasOnlyDecoProvider,
   } = useDecoCredits();
 
-  if (allKeys.length === 0) {
+  if (allKeys.length === 0 && !link.online) {
     return (
       <div className="flex-1 overflow-y-auto">
         <div className="min-h-full flex items-center justify-center px-4 py-10">
@@ -100,40 +102,33 @@ export function HomePage() {
   }
 
   const userName = session?.user?.name?.split(" ")[0] || "there";
-
   const showEyebrow =
     hasDecoKey && isInitialFreeCredit && balanceDollars != null;
   const showNoCreditsEyebrow =
     hasDecoKey && isZeroBalance && hasOnlyDecoProvider;
+  const eyebrow = showEyebrow ? (
+    <Chat.CreditsEyebrow balanceDollars={balanceDollars} />
+  ) : showNoCreditsEyebrow ? (
+    <Chat.NoCreditsEyebrow />
+  ) : null;
 
   if (isMobile) {
     return (
       <>
-        <div className="flex-1 relative flex flex-col items-center px-4">
-          <div className="flex-1 flex flex-col items-center justify-center w-full">
-            {showEyebrow && (
-              <div className="mb-4">
-                <Chat.CreditsEyebrow balanceDollars={balanceDollars} />
-              </div>
-            )}
-            {showNoCreditsEyebrow && (
-              <div className="mb-4">
-                <Chat.NoCreditsEyebrow />
-              </div>
-            )}
+        <div className="flex-1 relative flex flex-col items-center overflow-y-auto">
+          <HomeBackground />
+          <div className="relative flex flex-col items-center justify-center w-full pt-28 pb-8 px-4">
+            {eyebrow && <div className="mb-4">{eyebrow}</div>}
             <p className="text-3xl font-medium text-foreground text-center max-w-[280px]">
               What's on your mind, {userName}?
             </p>
           </div>
-          <div className="w-full flex flex-col gap-4 pb-4">
-            <AgentsList />
+          <div className="relative w-full flex flex-col gap-4 pb-8 px-4">
             <Chat.Input showConnectionsBanner />
-          </div>
-          {isDecoUser && (
-            <div className="w-full">
+            {isDecoUser && (
               <ImportDecoSiteBanner onClick={() => setImportOpen(true)} />
-            </div>
-          )}
+            )}
+          </div>
         </div>
         <ImportFromDecoDialog open={importOpen} onOpenChange={setImportOpen} />
       </>
@@ -142,34 +137,26 @@ export function HomePage() {
 
   return (
     <>
-      <div className="flex-1 relative flex flex-col items-center px-10">
-        <div className="flex-1 flex flex-col items-center justify-center w-full">
-          <div className="flex flex-col items-center w-full max-w-[672px]">
-            <div className="text-center mb-10">
-              {showEyebrow && (
-                <div className="mb-4">
-                  <Chat.CreditsEyebrow balanceDollars={balanceDollars} />
-                </div>
-              )}
-              {showNoCreditsEyebrow && (
-                <div className="mb-4">
-                  <Chat.NoCreditsEyebrow />
-                </div>
-              )}
-              <p className="text-3xl font-medium text-foreground">
-                What's on your mind, {userName}?
-              </p>
+      <div className="flex-1 relative flex flex-col min-h-0">
+        <HomeBackground />
+        <div className="flex-1 relative flex flex-col overflow-y-auto">
+          <div className="relative flex flex-col items-center px-10 pb-4 flex-1 justify-center">
+            <div className="flex flex-col items-center w-full max-w-[672px]">
+              <div className="text-center mb-10">
+                {eyebrow && <div className="mb-4">{eyebrow}</div>}
+                <p className="text-3xl font-medium text-foreground">
+                  What's on your mind, {userName}?
+                </p>
+              </div>
+              <div className="relative w-full">
+                <Capybara />
+                <Chat.Input showConnectionsBanner />
+              </div>
             </div>
-            <div className="w-full">
-              <Chat.Input showConnectionsBanner />
-            </div>
-          </div>
-          <div className="w-full mt-10 mx-auto">
-            <AgentsList />
           </div>
         </div>
         {isDecoUser && (
-          <div className="absolute bottom-6 left-0 right-0 px-10">
+          <div className="absolute bottom-6 left-0 right-0 px-10 z-10">
             <div className="w-full max-w-[500px] mx-auto">
               <ImportDecoSiteBanner onClick={() => setImportOpen(true)} />
             </div>
@@ -178,5 +165,16 @@ export function HomePage() {
       </div>
       <ImportFromDecoDialog open={importOpen} onOpenChange={setImportOpen} />
     </>
+  );
+}
+
+function Capybara() {
+  return (
+    <img
+      src="/home/capybara.png"
+      alt=""
+      aria-hidden
+      className="pointer-events-none absolute -top-10 right-6 z-20 h-12 w-auto select-none"
+    />
   );
 }

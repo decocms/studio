@@ -20,8 +20,13 @@ import {
   SubtaskPart,
   SubtaskPartFallback,
   UserAskPart,
+  BrandContextPart,
+  BrandContextGetPart,
+  BrandContextListPart,
 } from "./parts/tool-call-part/index.ts";
+import { NextActionChip } from "./next-action-chip.tsx";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
+import { ThreadHtmlPreviews } from "./thread-html-previews.tsx";
 import { ThreadOutputs } from "./thread-outputs.tsx";
 import {
   type DataParts,
@@ -482,6 +487,33 @@ function MessagePart({
       return null;
     default: {
       const fallback = part as ToolUIPart;
+      if (
+        fallback.type === "tool-brand_context_setup" ||
+        fallback.type === "tool-BRAND_CONTEXT_EXTRACT"
+      ) {
+        return (
+          <BrandContextPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (fallback.type === "tool-BRAND_CONTEXT_GET") {
+        return (
+          <BrandContextGetPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (fallback.type === "tool-BRAND_CONTEXT_LIST") {
+        return (
+          <BrandContextListPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
       if (fallback.type.startsWith("tool-")) {
         const toolCallId = (fallback as ToolUIPart).toolCallId;
         const meta = dataParts.toolMetadata.get(toolCallId);
@@ -687,7 +719,11 @@ export function MessageAssistant({
             <GeneratingFooter startedAt={startedAt} />
           )}
           {isLast && !isLoading && taskId && (
-            <ThreadOutputs threadId={taskId} />
+            <>
+              <ThreadHtmlPreviews />
+              <ThreadOutputs threadId={taskId} />
+              {isTerminallyDone && <NextActionChip />}
+            </>
           )}
         </div>
       ) : isLoading ? (
