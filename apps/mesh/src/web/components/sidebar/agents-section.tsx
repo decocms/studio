@@ -914,3 +914,11 @@ export function SidebarAgentsSection() {
     </Suspense>
   );
 }
+
+/**
+ * BrowseAgentsButton — the "+" sidebar button that opens the Browse Agents
+ * popover (desktop) / drawer (mobile). Re-exported from this module so other
+ * sidebar surfaces can mount the trigger without depending on the full agents
+ * list. Same component as PinAgentPopover.
+ */
+export { PinAgentPopover as BrowseAgentsButton };
