@@ -95,7 +95,9 @@ export function BranchPicker({
     setOpen(false);
   };
 
-  const label = value ?? "Select branch…";
+  const fullLabel = value ?? "Select branch…";
+  const label =
+    fullLabel.length > 20 ? `${fullLabel.slice(0, 19)}…` : fullLabel;
   const handleSearchChange = (nextSearch: string) => {
     setSearch(nextSearch);
     searchRequestId.current += 1;
@@ -137,7 +139,7 @@ export function BranchPicker({
               <Button
                 variant="ghost"
                 size="default"
-                aria-label={label}
+                aria-label={fullLabel}
                 disabled={disabled}
                 className={cn(
                   "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
@@ -170,7 +172,7 @@ export function BranchPicker({
             </PopoverTrigger>
           </span>
         </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
+        <TooltipContent>{fullLabel}</TooltipContent>
       </Tooltip>
       <PopoverContent
         className="w-[min(420px,calc(100vw-2rem))] p-0"
