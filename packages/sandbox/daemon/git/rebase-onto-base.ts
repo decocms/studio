@@ -128,6 +128,49 @@ function commitBeforeRebase(repoDir: string): void {
   );
 }
 
+function resolveConflictFile(repoDir: string, summary: StatusFile): void {
+  const filePath = summary.path;
+  if (
+    summary.working_dir === "D" &&
+    !`${summary.index}${summary.working_dir}`.includes("U")
+  ) {
+    runGit(repoDir, ["rm", "-f", filePath]);
+    return;
+  }
+
+  // During rebase, `--theirs` is the commit being replayed (branch changes).
+  tryGit(repoDir, ["checkout", "--theirs", "--", filePath]);
+  runGit(repoDir, ["add", "--", filePath]);
+}
+
+function continueRebase(repoDir: string): void {
+  const env = NON_INTERACTIVE_ENV;
+  try {
+    runGit(repoDir, ["rebase", "--continue"], { env });
+  } catch (err) {
+    const message = formatGitError(err);
+    if (!message.includes("staged changes in your working tree")) {
+      throw err;
+    }
+
+    runGit(
+      repoDir,
+      [
+        "-c",
+        `core.hooksPath=${getEmptyHooksDir()}`,
+        "commit",
+        "--no-edit",
+        "--no-verify",
+      ],
+      { env: { ...env, ...SKIP_HOOKS_ENV } },
+    );
+
+    if (isRebaseInProgress(repoDir)) {
+      runGit(repoDir, ["rebase", "--continue"], { env });
+    }
+  }
+}
+
 function resolveConflictsRecursively(
   repoDir: string,
   wip = MAX_CONFLICT_RESOLUTION_ATTEMPTS,
@@ -143,11 +186,7 @@ function resolveConflictsRecursively(
   );
 
   for (const summary of conflicted) {
-    if (summary.working_dir === "D") {
-      runGit(repoDir, ["rm", summary.path]);
-    } else {
-      runGit(repoDir, ["add", summary.path]);
-    }
+    resolveConflictFile(repoDir, summary);
   }
 
   if (getConflictedFiles(repoDir).length !== 0) {
@@ -156,12 +195,13 @@ function resolveConflictsRecursively(
   }
 
   try {
-    runGit(repoDir, ["rebase", "--continue"], { env: NON_INTERACTIVE_ENV });
+    continueRebase(repoDir);
   } catch (err) {
     const message = formatGitError(err);
     if (
       !message.includes("CONFLICT") &&
-      getConflictedFiles(repoDir).length === 0
+      getConflictedFiles(repoDir).length === 0 &&
+      !isRebaseInProgress(repoDir)
     ) {
       abortRebase(repoDir);
       throw err;

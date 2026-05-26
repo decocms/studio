@@ -20,11 +20,11 @@ function setupConflictingRepo(): {
   const seed = join(root, "seed");
   const gitOpts = { stdio: "ignore" as const };
   const gitcfg = `-c init.defaultBranch=main -c user.email=test@example.com -c user.name=test -c commit.gpgsign=false`;
+  const decoPath = ".deco/blocks/shipping.json";
 
   execSync(`git ${gitcfg} init --bare ${bare}`, gitOpts);
   execSync(`git ${gitcfg} init ${seed}`, gitOpts);
 
-  const decoPath = ".deco/blocks/shipping.json";
   mkdirSync(join(seed, ".deco/blocks"), { recursive: true });
   writeFileSync(
     join(seed, decoPath),
@@ -50,24 +50,17 @@ function setupConflictingRepo(): {
   );
   execSync(`git ${gitcfg} -C ${seed} push -u origin feat/shipping`, gitOpts);
 
+  // Diverge main so rebase always hits conflict resolution (modify/delete).
   execSync(`git ${gitcfg} -C ${seed} checkout main`, gitOpts);
-  writeFileSync(
-    join(seed, decoPath),
-    JSON.stringify({ threshold: 300 }, null, 2),
-    "utf-8",
-  );
-  execSync(`git ${gitcfg} -C ${seed} add .`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} rm ${decoPath}`, gitOpts);
   execSync(
-    `git ${gitcfg} -C ${seed} commit -m "Raise shipping threshold on main"`,
+    `git ${gitcfg} -C ${seed} commit -m "Remove shipping block from main"`,
     gitOpts,
   );
   execSync(`git ${gitcfg} -C ${seed} push origin main`, gitOpts);
 
   const repoDir = join(root, "workspace");
-  execSync(
-    `git clone --branch feat/shipping ${bare.replace(/ /g, "%20")} ${repoDir}`,
-    gitOpts,
-  );
+  execSync(`git clone --branch feat/shipping ${bare} ${repoDir}`, gitOpts);
   execSync(
     `git ${gitcfg} -C ${repoDir} remote set-url origin ${bare}`,
     gitOpts,
