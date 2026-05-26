@@ -401,6 +401,12 @@ export const createSandboxRoutes = () => {
       map404to410: true,
     }),
   );
+  app.post("/:virtualMcpId/:branch/git/rebase", (c) =>
+    proxyDaemon(c, "/_sandbox/git/rebase", {
+      forwardJsonBody: true,
+      map404to410: true,
+    }),
+  );
   app.post("/:virtualMcpId/:branch/git/suggest-commit", async (c) => {
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;

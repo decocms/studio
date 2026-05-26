@@ -4,6 +4,7 @@ import path from "node:path";
 import { gitSync as rawGitSync } from "../git/git-sync";
 import { parsePorcelainEntry } from "../git/porcelain";
 import { safePath } from "../paths";
+import { rebaseOntoBase } from "../git/rebase-onto-base";
 import { jsonResponse, parseJsonBody } from "./body-parser";
 
 export interface GitDeps {
@@ -365,6 +366,26 @@ export function makeGitDiscardHandler(deps: GitDeps) {
         { error: err instanceof Error ? err.message : String(err) },
         500,
       );
+    }
+  };
+}
+
+export function makeGitRebaseHandler(deps: GitDeps) {
+  return async (req: Request): Promise<Response> => {
+    let body: { base?: string };
+    try {
+      body = (await parseJsonBody(req)) as { base?: string };
+    } catch (e) {
+      return jsonResponse({ error: (e as Error).message }, 400);
+    }
+    const base = typeof body.base === "string" ? body.base.trim() : "";
+    if (!base) {
+      return jsonResponse({ error: "base is required" }, 400);
+    }
+    try {
+      return jsonResponse(rebaseOntoBase(deps.repoDir, base));
+    } catch (err) {
+      return jsonResponse({ error: formatGitError(err) }, 500);
     }
   };
 }

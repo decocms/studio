@@ -120,6 +120,36 @@ export async function publishGitChanges(
   await parseJson(res);
 }
 
+export async function rebaseGitBranch(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+  base: string,
+): Promise<void> {
+  const res = await sandboxFetch(
+    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "rebase"),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ base }),
+    },
+  );
+  await parseJson(res);
+}
+
+/** Publish (squash-merge) is only allowed for CMS JSON under `.deco/`. */
+export function isDecoOnlyDiff(
+  diff: GitDiffResult | null | undefined,
+): boolean {
+  if (!diff) return false;
+  const paths = Object.keys(diff.diffs);
+  if (paths.length === 0) return false;
+  return paths.every((p) => p === ".deco" || p.startsWith(".deco/"));
+}
+
+export const PUBLISH_REQUIRES_SUBMIT_TOOLTIP =
+  "You need Submit for review for changes outside .deco";
+
 export async function discardGitFiles(
   orgSlug: string,
   virtualMcpId: string,

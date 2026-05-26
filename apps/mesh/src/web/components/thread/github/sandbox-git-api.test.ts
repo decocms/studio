@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { BranchMeta } from "@decocms/sandbox/shared";
 import {
   hasUnpublishedWork,
+  isDecoOnlyDiff,
   mergeBranchMetaWithGitStatus,
   type GitDiffResult,
   type GitStatus,
@@ -68,5 +69,32 @@ describe("hasUnpublishedWork", () => {
 
   test("false when clean with no unpushed commits", () => {
     expect(hasUnpublishedWork(cleanStatus, { diffs: {} })).toBe(false);
+  });
+});
+
+describe("isDecoOnlyDiff", () => {
+  test("true when all paths are under .deco", () => {
+    const diff: GitDiffResult = {
+      diffs: {
+        ".deco/blocks/foo.json": { from: "{}", to: "{}" },
+        ".deco/meta.json": { from: null, to: "{}" },
+      },
+    };
+    expect(isDecoOnlyDiff(diff)).toBe(true);
+  });
+
+  test("false when any path is outside .deco", () => {
+    const diff: GitDiffResult = {
+      diffs: {
+        ".deco/blocks/foo.json": { from: "{}", to: "{}" },
+        "routes/index.tsx": { from: "a", to: "b" },
+      },
+    };
+    expect(isDecoOnlyDiff(diff)).toBe(false);
+  });
+
+  test("false for empty diff", () => {
+    expect(isDecoOnlyDiff({ diffs: {} })).toBe(false);
+    expect(isDecoOnlyDiff(null)).toBe(false);
   });
 });

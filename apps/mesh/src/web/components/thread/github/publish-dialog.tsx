@@ -16,6 +16,12 @@ import {
   TabsTrigger,
 } from "@deco/ui/components/tabs.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ArrowRight,
@@ -42,7 +48,10 @@ import {
   fetchGitStatus,
   fetchSuggestCommitMessage,
   hasUnpublishedWork,
+  isDecoOnlyDiff,
   publishGitChanges,
+  PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
+  rebaseGitBranch,
   type GitDiffResult,
   type GitStatus,
 } from "./sandbox-git-api.ts";
@@ -60,7 +69,7 @@ function editorTheme(): "vs" | "vs-dark" {
 class PublishFlowError extends Error {
   constructor(
     message: string,
-    readonly step: "push" | "open-pr" | "merge",
+    readonly step: "push" | "rebase" | "open-pr" | "merge",
     readonly pr?: CreatedPullRequest,
   ) {
     super(message);
@@ -82,6 +91,8 @@ export interface PublishDialogProps {
   previewUrl?: string | null;
   /** Called after commit/push or PR open/merge so the header can refresh. */
   onPullRequestChanged?: () => void | Promise<void>;
+  /** Called after a successful publish (squash-merge to base). */
+  onPublished?: () => void | Promise<void>;
 }
 
 export function PublishDialog(props: PublishDialogProps) {
@@ -117,6 +128,7 @@ function PublishDialogBody({
   repo,
   previewUrl,
   onPullRequestChanged,
+  onPublished,
 }: PublishDialogProps) {
   const githubClient = useMCPClient({
     connectionId: githubConnectionId,
@@ -208,6 +220,11 @@ function PublishDialogBody({
   const theme = editorTheme();
 
   const canSubmit = !isLoadingGitDiff && hasUnpublishedWork(gitStatus, gitDiff);
+  const canPublish = canSubmit && isDecoOnlyDiff(gitDiff);
+  const publishDisabledReason =
+    canSubmit && !isDecoOnlyDiff(gitDiff)
+      ? PUBLISH_REQUIRES_SUBMIT_TOOLTIP
+      : null;
 
   const commitMessage = () =>
     [publishTitle.trim(), publishBody.trim()].filter(Boolean).join("\n\n");
@@ -233,6 +250,15 @@ function PublishDialogBody({
         throw new PublishFlowError(
           error instanceof Error ? error.message : "Failed to push changes",
           "push",
+        );
+      }
+
+      try {
+        await rebaseGitBranch(orgSlug, virtualMcpId, branch, baseBranch);
+      } catch (error) {
+        throw new PublishFlowError(
+          error instanceof Error ? error.message : "Failed to rebase onto base",
+          "rebase",
         );
       }
 
@@ -276,9 +302,8 @@ function PublishDialogBody({
       setGitDiff(null);
       setPublishTitle("");
       setPublishBody("");
-      const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
-      setGitStatus(status);
       await onPullRequestChanged?.();
+      await onPublished?.();
     } catch (error) {
       if (
         error instanceof PublishFlowError &&
@@ -719,18 +744,13 @@ function PublishDialogBody({
               )}
               Submit for review
             </Button>
-            <Button
-              type="button"
-              variant="success"
-              className="flex-1"
-              onClick={handlePublish}
-              disabled={!canSubmit || isPublishing || isSubmittingForReview}
-            >
-              {isPublishing ? (
-                <Loading01 className="h-4 w-4 animate-spin" />
-              ) : null}
-              Publish
-            </Button>
+            <PublishButton
+              canPublish={canPublish}
+              disabledReason={publishDisabledReason}
+              isPublishing={isPublishing}
+              isSubmittingForReview={isSubmittingForReview}
+              onPublish={handlePublish}
+            />
           </div>
           {submitForReviewError && (
             <p className="mt-2 text-xs text-destructive">
@@ -743,5 +763,45 @@ function PublishDialogBody({
         </div>
       </Tabs>
     </DialogContent>
+  );
+}
+
+function PublishButton({
+  canPublish,
+  disabledReason,
+  isPublishing,
+  isSubmittingForReview,
+  onPublish,
+}: {
+  canPublish: boolean;
+  disabledReason: string | null;
+  isPublishing: boolean;
+  isSubmittingForReview: boolean;
+  onPublish: () => void;
+}) {
+  const button = (
+    <Button
+      type="button"
+      variant="success"
+      className="flex-1"
+      onClick={onPublish}
+      disabled={!canPublish || isPublishing || isSubmittingForReview}
+    >
+      {isPublishing ? <Loading01 className="h-4 w-4 animate-spin" /> : null}
+      Publish
+    </Button>
+  );
+
+  if (!disabledReason) return button;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="flex flex-1">{button}</span>
+        </TooltipTrigger>
+        <TooltipContent>{disabledReason}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

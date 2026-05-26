@@ -23,6 +23,7 @@ import {
   makeGitDiffHandler,
   makeGitDiscardHandler,
   makeGitPublishHandler,
+  makeGitRebaseHandler,
   makeGitStatusHandler,
 } from "./routes/git";
 import {
@@ -322,6 +323,7 @@ const gitStatusH = makeGitStatusHandler(gitDeps);
 const gitDiffH = makeGitDiffHandler(gitDeps);
 const gitPublishH = makeGitPublishHandler(gitDeps);
 const gitDiscardH = makeGitDiscardHandler(gitDeps);
+const gitRebaseH = makeGitRebaseHandler(gitDeps);
 const execH = makeExecHandler({
   repoDir,
   store,
@@ -575,6 +577,7 @@ const gitH: Record<string, (req: Request) => Response | Promise<Response>> = {
   "/git/diff": gitDiffH,
   "/git/publish": gitPublishH,
   "/git/discard": gitDiscardH,
+  "/git/rebase": gitRebaseH,
 };
 
 const setupH: Record<string, () => Response> = {
