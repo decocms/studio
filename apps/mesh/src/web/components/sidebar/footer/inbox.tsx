@@ -1,6 +1,4 @@
-import { authClient } from "@/web/lib/auth-client";
 import { AccountPopover } from "@/web/components/account-popover";
-import { Button } from "@deco/ui/components/button.tsx";
 import {
   Popover,
   PopoverContent,
@@ -12,19 +10,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@deco/ui/components/sidebar.tsx";
-import {
-  Check,
-  Coins04,
-  ZapSquare,
-  Inbox01,
-  Settings02,
-  XClose,
-} from "@untitledui/icons";
+import { Coins04, ZapSquare, Inbox01, Settings02 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Component, Suspense, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
-import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -35,95 +24,9 @@ import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useNavigate } from "@tanstack/react-router";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { track } from "@/web/lib/posthog-client";
-import {
-  type Invitation,
-  usePendingInvitations,
-} from "@/web/hooks/use-pending-invitations";
-
-function InvitationItem({ invitation }: { invitation: Invitation }) {
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [isRejecting, setIsRejecting] = useState(false);
-  const queryClient = useQueryClient();
-
-  const handleAccept = async () => {
-    setIsAccepting(true);
-    try {
-      const result = await authClient.organization.acceptInvitation({
-        invitationId: invitation.id,
-      });
-      if (result.error) {
-        toast.error(result.error.message);
-        setIsAccepting(false);
-      } else {
-        // Fetch org slug for redirect without mutating the session's active
-        // org (avoids cross-tab leak — see shell-layout.tsx).
-        const orgResult = await authClient.organization.getFullOrganization({
-          query: { organizationId: invitation.organizationId },
-        });
-        toast.success("Invitation accepted!");
-        const slug = orgResult?.data?.slug;
-        window.location.href = slug ? `/${slug}` : "/";
-      }
-    } catch {
-      toast.error("Failed to accept invitation");
-      setIsAccepting(false);
-    }
-  };
-
-  const handleReject = async () => {
-    setIsRejecting(true);
-    try {
-      const result = await authClient.organization.rejectInvitation({
-        invitationId: invitation.id,
-      });
-      if (result.error) {
-        toast.error(result.error.message);
-        setIsRejecting(false);
-      } else {
-        toast.success("Invitation declined");
-        queryClient.invalidateQueries();
-      }
-    } catch {
-      toast.error("Failed to decline invitation");
-      setIsRejecting(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-3 px-5 py-4 border-b border-border last:border-0 hover:bg-muted/25 transition-colors">
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-muted-foreground">
-          You&apos;ve been invited to join
-        </p>
-        <p className="text-sm font-medium truncate">
-          {invitation.organizationName ?? "Unknown organization"}
-        </p>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-          onClick={handleAccept}
-          disabled={isAccepting || isRejecting}
-          aria-label="Accept invitation"
-        >
-          <Check size={14} />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          onClick={handleReject}
-          disabled={isAccepting || isRejecting}
-          aria-label="Decline invitation"
-        >
-          <XClose size={14} />
-        </Button>
-      </div>
-    </div>
-  );
-}
+import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
+import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
+import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
 
 class SilentErrorBoundary extends Component<
   { children: ReactNode },
@@ -245,7 +148,7 @@ function ConnectionsButton() {
 }
 
 function InboxButton() {
-  const pendingInvitations = usePendingInvitations();
+  const { items, redDotCount } = useInboxFeed();
 
   return (
     <Popover>
@@ -254,7 +157,7 @@ function InboxButton() {
           <PopoverTrigger asChild>
             <SidebarMenuButton tooltip="Inbox" className="relative">
               <Inbox01 size={24} />
-              {pendingInvitations.length > 0 && (
+              {redDotCount > 0 && (
                 <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
               )}
             </SidebarMenuButton>
@@ -271,21 +174,32 @@ function InboxButton() {
         <div className="px-4 py-3 border-b border-border shrink-0">
           <h3 className="text-sm font-medium">Inbox</h3>
         </div>
-        {pendingInvitations.length === 0 ? (
+        {items.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
             <Inbox01 size={24} className="text-muted-foreground/50" />
             <p className="text-sm font-medium text-foreground">
-              No invites pending
+              Nothing here yet
             </p>
             <p className="text-xs text-muted-foreground">
-              Organization invitations will appear here
+              Invitations and release updates will appear here
             </p>
           </div>
         ) : (
           <div className="overflow-y-auto flex-1">
-            {pendingInvitations.map((inv) => (
-              <InvitationItem key={inv.id} invitation={inv} />
-            ))}
+            {items.map((item) =>
+              item.type === "invitation" ? (
+                <InvitationItem
+                  key={`inv-${item.invitation.id}`}
+                  invitation={item.invitation}
+                />
+              ) : (
+                <InboxReleaseItem
+                  key={`rel-${item.release.id}`}
+                  release={item.release}
+                  isSeen={item.isSeen}
+                />
+              ),
+            )}
           </div>
         )}
       </PopoverContent>
