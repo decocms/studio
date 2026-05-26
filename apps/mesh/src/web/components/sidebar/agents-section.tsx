@@ -512,13 +512,12 @@ function PinAgentPopover() {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Browse agents"
-              className="bg-muted/75 hover:bg-sidebar-accent"
               onClick={() => {
                 track("agent_browser_opened", { surface: "mobile_drawer" });
                 setOpen(true);
               }}
             >
-              <Plus className="!opacity-100" />
+              <Plus />
               <span>New</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -541,10 +540,7 @@ function PinAgentPopover() {
         >
           <SidebarMenuItem>
             <PopoverTrigger asChild>
-              <SidebarMenuButton
-                tooltip="Browse agents"
-                className="bg-muted/75 hover:bg-sidebar-accent"
-              >
+              <SidebarMenuButton tooltip="Browse agents">
                 <Plus className="!opacity-100" />
                 <span>New</span>
               </SidebarMenuButton>
