@@ -32,6 +32,13 @@ function buildS3Client(ctx: FileConfigContext): S3Client {
       accessKeyId: ctx.credentials.accessKeyId,
       secretAccessKey: ctx.credentials.secretAccessKey,
     },
+    // AWS SDK v3 ships with checksum auto-injection enabled by default,
+    // which adds `x-amz-checksum-crc32` + `x-amz-sdk-checksum-algorithm`
+    // params to presigned URLs. GCS, R2, and MinIO don't all honor those
+    // and the extra headers complicate CORS preflights. Disable unless a
+    // command explicitly asks for it.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   });
 }
 
