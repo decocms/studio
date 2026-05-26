@@ -326,10 +326,8 @@ export function SettingsTab({
 }) {
   const agentId = automation.virtual_mcp_id;
   const { org } = useProjectContext();
-  const {
-    update: updateMutation,
-    triggerAdd: addTrigger,
-  } = useAutomationActions();
+  const { update: updateMutation, triggerAdd: addTrigger } =
+    useAutomationActions();
   const allConnections = useConnections();
   const connectionNameMap = new Map(allConnections.map((c) => [c.id, c.title]));
 
