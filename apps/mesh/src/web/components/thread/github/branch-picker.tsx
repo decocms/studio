@@ -124,6 +124,8 @@ export function BranchPicker({
         <Button
           variant="ghost"
           size="default"
+          title={label}
+          aria-label={label}
           className={cn(
             "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
             compact ? "gap-0" : "gap-1.5",

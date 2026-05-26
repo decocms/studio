@@ -129,6 +129,7 @@ export function ModePickerPure({
           type="button"
           variant="ghost"
           size="default"
+          title={text}
           aria-label={text}
           className={cn(
             baseClasses,

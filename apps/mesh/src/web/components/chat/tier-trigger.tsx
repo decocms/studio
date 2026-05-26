@@ -67,6 +67,7 @@ export function TierTriggerPure({
           type="button"
           variant="ghost"
           size="default"
+          title={TIER_LABELS[tier]}
           aria-label={TIER_LABELS[tier]}
           className={cn(
             "text-muted-foreground hover:text-foreground transition-[gap] duration-200",
