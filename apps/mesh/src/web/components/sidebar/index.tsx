@@ -1,6 +1,8 @@
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { useProjectSidebarItems } from "@/web/hooks/use-project-sidebar-items";
 import { Suspense } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { NavigationSidebar } from "./navigation";
 import { MobileNavigationSidebar } from "./navigation-mobile";
 import { SidebarInboxFooter } from "./footer/inbox";
@@ -15,12 +17,20 @@ export type {
   Invitation,
 } from "./types";
 
+function useNavigateHome() {
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  return () => navigate({ to: "/$org", params: { org: org.slug } });
+}
+
 export function StudioSidebar() {
   const sections = useProjectSidebarItems();
+  const goHome = useNavigateHome();
 
   return (
     <NavigationSidebar
       sections={sections}
+      onLogoClick={goHome}
       footer={<SidebarInboxFooter />}
       additionalContent={
         <ErrorBoundary>
@@ -42,10 +52,15 @@ export function StudioSidebar() {
 
 export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
   const sections = useProjectSidebarItems();
+  const goHome = useNavigateHome();
 
   return (
     <MobileNavigationSidebar
       sections={sections}
+      onLogoClick={() => {
+        goHome();
+        onClose();
+      }}
       onClose={onClose}
       footer={<SidebarInboxFooterMobile />}
       additionalContent={

@@ -18,14 +18,14 @@ import { SidebarCollapsibleGroup } from "./sidebar-group";
 import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 import { track } from "@/web/lib/posthog-client";
 
-function SidebarLogoHeader() {
+function SidebarLogoHeader({ onLogoClick }: { onLogoClick?: () => void }) {
   const config = usePublicConfig();
   const logo = config.logo ?? DEFAULT_LOGO;
   const lightSrc = typeof logo === "string" ? logo : logo.light;
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
-  return (
-    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0">
+  const logoImgs = (
+    <>
       <img
         src={lightSrc}
         alt="Logo"
@@ -36,12 +36,31 @@ function SidebarLogoHeader() {
         alt="Logo"
         className="size-6 object-contain hidden dark:block"
       />
+    </>
+  );
+
+  return (
+    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0">
+      {onLogoClick ? (
+        <button
+          type="button"
+          onClick={onLogoClick}
+          aria-label="Home"
+          className="flex items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          {logoImgs}
+        </button>
+      ) : (
+        logoImgs
+      )}
     </SidebarHeader>
   );
 }
 
 interface NavigationSidebarProps {
   sections: SidebarSection[];
+  /** Click handler for the logo. When provided, the logo renders as a button. */
+  onLogoClick?: () => void;
   header?: ReactNode;
   footer?: ReactNode;
   additionalContent?: ReactNode;
@@ -116,6 +135,7 @@ function SidebarSectionRenderer({ section }: { section: SidebarSection }) {
  */
 function NavigationSidebarInner({
   sections,
+  onLogoClick,
   header,
   footer,
   additionalContent,
@@ -125,7 +145,7 @@ function NavigationSidebarInner({
   return (
     <Sidebar variant={variant}>
       <Suspense fallback={<div className="h-10 shrink-0" />}>
-        <SidebarLogoHeader />
+        <SidebarLogoHeader onLogoClick={onLogoClick} />
       </Suspense>
       {header}
       <SidebarContent
