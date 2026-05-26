@@ -148,7 +148,7 @@ export function isDecoOnlyDiff(
 }
 
 export const PUBLISH_REQUIRES_SUBMIT_TOOLTIP =
-  "You need submit for review for code changes";
+  "Code changes can't be published directly — use Submit for review";
 
 export async function discardGitFiles(
   orgSlug: string,
