@@ -15,17 +15,20 @@
 
 /* Window Controls Overlay (installed PWA on Chromium):
    - lift the toolbar out of flow and pin it to the title-bar strip
-   - reserve space on the shell root for the now-floating bar
-   - shrink the toolbar's children so they fit the (smaller) WCO strip
+   - reserve matching space on the shell root for the now-floating bar
    - make the strip background draggable; opt buttons back to clickable
    - hide elements that duplicate browser chrome (e.g. app logo)
 
    These rules live outside @layer base so they win against Tailwind's
-   utility classes (h-12, pl-1, pr-2, size-7, etc.) which would otherwise
-   cascade later and beat them. */
+   utility classes (h-12, pl-1, pr-2, etc.) which would otherwise cascade
+   later and beat them. */
 @media (display-mode: window-controls-overlay) {
+  /* The bar uses the OS title-bar height but never less than 2rem (32px) so
+     size-7 icon buttons and h-8 tab buttons keep their natural sizing without
+     overflowing. macOS's WCO strip is ~28-32px so this is usually a no-op on
+     Mac; the floor only matters on platforms with skinnier WCO strips. */
   .app-shell-root {
-    padding-top: env(titlebar-area-height, 0);
+    padding-top: max(env(titlebar-area-height, 0), 2rem);
   }
   .app-titlebar {
     position: fixed;
@@ -33,7 +36,7 @@
     left: 0;
     right: 0;
     z-index: 50;
-    height: env(titlebar-area-height, 3rem);
+    height: max(env(titlebar-area-height, 3rem), 2rem);
     padding-top: 0;
     padding-left: env(titlebar-area-x, 0px);
     padding-right: calc(
@@ -41,17 +44,6 @@
       env(titlebar-area-x, 0px) -
       env(titlebar-area-width, 100vw)
     );
-  }
-  /* Make interactive controls in the title-bar a tad more compact so they
-     match the typical macOS title-bar height (~28-32px). */
-  .app-titlebar button,
-  .app-titlebar [role="button"] {
-    width: 1.375rem;
-    height: 1.375rem;
-  }
-  .app-titlebar svg {
-    width: 14px;
-    height: 14px;
   }
   .wco-drag {
     -webkit-app-region: drag;
