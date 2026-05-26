@@ -39,7 +39,6 @@ import {
 } from "react";
 import { Chat, useChatTask } from "@/web/components/chat/index";
 import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
-import { TasksPanel } from "@/web/layouts/tasks-panel";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { StudioSidebarMobile } from "@/web/components/sidebar";
@@ -413,15 +412,12 @@ function AgentInsetProvider() {
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-full">
             <div
-              className="w-14 shrink-0 bg-sidebar flex flex-col items-center border-r border-border overflow-y-auto group/sidebar"
-              data-state="collapsed"
+              className="w-full bg-sidebar flex flex-col overflow-y-auto group/sidebar"
+              data-state="expanded"
             >
               <StudioSidebarMobile
                 onClose={() => setMobileSidebarOpen(false)}
               />
-            </div>
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <TasksPanel />
             </div>
           </div>
         </SheetContent>
