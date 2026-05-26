@@ -35,6 +35,34 @@ import {
   useFileConfigs,
 } from "@/web/hooks/use-file-configs";
 
+/**
+ * MCP tool errors arrive as Error messages like
+ * `Invalid arguments for tool FILE_CONFIG_CREATE: [ {...zod issues...} ]`.
+ * Dumping that into a toast is unreadable, so try to pull the first Zod
+ * issue's `message` (or path-qualified message) out before falling back to
+ * the raw text.
+ */
+function formatToolError(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  const match = err.message.match(/\[\s*\{[\s\S]*\}\s*\]/);
+  if (match) {
+    try {
+      const issues = JSON.parse(match[0]) as Array<{
+        message?: string;
+        path?: Array<string | number>;
+      }>;
+      const first = issues[0];
+      if (first?.message) {
+        const path = first.path?.join(".");
+        return path ? `${path}: ${first.message}` : first.message;
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return err.message || fallback;
+}
+
 function ErrorFallback({ error }: { error: Error }) {
   return (
     <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
@@ -162,11 +190,6 @@ function CreateFileConfigDialog({
     setSecretAccessKey("");
   }
 
-  function handleClose() {
-    reset();
-    onOpenChange(false);
-  }
-
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!name.trim() || !bucket.trim() || !region.trim()) return;
@@ -186,9 +209,10 @@ function CreateFileConfigDialog({
         secretAccessKey,
       });
       toast.success(`Bucket "${name.trim()}" added`);
-      handleClose();
+      reset();
+      onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to add bucket");
+      toast.error(formatToolError(err, "Failed to add bucket"));
     }
   }
 
@@ -201,13 +225,7 @@ function CreateFileConfigDialog({
     !secretAccessKey;
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) handleClose();
-        else onOpenChange(o);
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add S3 bucket</DialogTitle>
@@ -365,7 +383,10 @@ function CreateFileConfigDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={handleClose}
+              onClick={() => {
+                reset();
+                onOpenChange(false);
+              }}
               disabled={createConfig.isPending}
             >
               Cancel
