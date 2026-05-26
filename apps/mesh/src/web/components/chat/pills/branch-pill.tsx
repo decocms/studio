@@ -18,13 +18,14 @@ interface Props {
 
 export function BranchPill({ locked, value, ...props }: Props) {
   if (locked) {
+    const label = value ?? "—";
     return (
       <span
         className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-mono text-muted-foreground"
-        title="Fixed for this thread"
+        title={`${label} · Fixed for this thread`}
       >
         <GitBranch01 size={12} />
-        {value ?? "—"}
+        <span className="sr-only">{label}</span>
       </span>
     );
   }

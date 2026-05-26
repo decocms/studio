@@ -105,10 +105,10 @@ export function ModePickerPure({
           "inline-flex items-center gap-1.5 px-2 py-1 text-xs",
           isLocal ? "text-success" : "text-muted-foreground",
         )}
-        title="Fixed for this thread"
+        title={`${text} · Fixed for this thread`}
       >
         {icon}
-        {text}
+        <span className="sr-only">{text}</span>
       </span>
     );
   }
