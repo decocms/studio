@@ -95,9 +95,7 @@ export function BranchPicker({
     setOpen(false);
   };
 
-  const fullLabel = value ?? "Select branch…";
-  const label =
-    fullLabel.length > 20 ? `${fullLabel.slice(0, 19)}…` : fullLabel;
+  const label = value ?? "Select branch…";
   const handleSearchChange = (nextSearch: string) => {
     setSearch(nextSearch);
     searchRequestId.current += 1;
@@ -139,10 +137,10 @@ export function BranchPicker({
               <Button
                 variant="ghost"
                 size="default"
-                aria-label={fullLabel}
+                aria-label={label}
                 disabled={disabled}
                 className={cn(
-                  "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
+                  "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
                   priority === "secondary"
                     ? "gap-0 @[628px]/chat-bottom:gap-1.5"
                     : "gap-0 @[320px]/chat-bottom:gap-1.5",
@@ -151,7 +149,7 @@ export function BranchPicker({
                 <GitBranch01 className="h-3.5 w-3.5" />
                 <span
                   className={cn(
-                    "inline-block overflow-hidden whitespace-nowrap truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+                    "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
                     priority === "secondary"
                       ? "@[628px]/chat-bottom:max-w-[200px] @[628px]/chat-bottom:opacity-100"
                       : "@[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
@@ -172,7 +170,7 @@ export function BranchPicker({
             </PopoverTrigger>
           </span>
         </TooltipTrigger>
-        <TooltipContent>{fullLabel}</TooltipContent>
+        <TooltipContent>{label}</TooltipContent>
       </Tooltip>
       <PopoverContent
         className="w-[min(420px,calc(100vw-2rem))] p-0"

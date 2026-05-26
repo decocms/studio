@@ -127,6 +127,7 @@ export function ModePickerPure({
                 className={cn(
                   baseClasses,
                   isLocal && localActiveClasses,
+                  "shrink min-w-0",
                   priority === "secondary"
                     ? "gap-0 @[628px]/chat-bottom:gap-1.5"
                     : "gap-0 @[320px]/chat-bottom:gap-1.5",
@@ -135,7 +136,7 @@ export function ModePickerPure({
                 {icon}
                 <span
                   className={cn(
-                    "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+                    "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
                     priority === "secondary"
                       ? "@[628px]/chat-bottom:max-w-32 @[628px]/chat-bottom:opacity-100"
                       : "@[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100",
