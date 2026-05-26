@@ -5,6 +5,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Check, ChevronDown, Cloud01 } from "@untitledui/icons";
 import {
@@ -107,48 +112,40 @@ export function ModePickerPure({
     setOpen(false);
   };
 
-  if (locked) {
-    return (
-      <span
-        className={cn(
-          "inline-flex items-center gap-1.5 px-2 py-1 text-xs",
-          isLocal ? "text-success" : "text-muted-foreground",
-        )}
-        title={`${text} · Fixed for this thread`}
-      >
-        {icon}
-        <span className="sr-only">{text}</span>
-      </span>
-    );
-  }
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="default"
-          title={text}
-          aria-label={text}
-          className={cn(
-            baseClasses,
-            isLocal && localActiveClasses,
-            compact ? "gap-0" : "gap-1.5",
-          )}
-        >
-          {icon}
-          <span
-            className={cn(
-              "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out",
-              compact ? "max-w-0 opacity-0" : "max-w-32 opacity-100",
-            )}
-          >
-            {text}
+    <Popover open={open} onOpenChange={locked ? undefined : setOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="default"
+                aria-label={text}
+                disabled={locked}
+                className={cn(
+                  baseClasses,
+                  isLocal && localActiveClasses,
+                  compact ? "gap-0" : "gap-1.5",
+                )}
+              >
+                {icon}
+                <span
+                  className={cn(
+                    "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out",
+                    compact ? "max-w-0 opacity-0" : "max-w-32 opacity-100",
+                  )}
+                >
+                  {text}
+                </span>
+                <ChevronDown size={12} className="opacity-60" />
+              </Button>
+            </PopoverTrigger>
           </span>
-          <ChevronDown size={12} className="opacity-60" />
-        </Button>
-      </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{text}</TooltipContent>
+      </Tooltip>
       <PopoverContent align="start" className="p-1 w-64">
         <div role="menu" className="flex flex-col">
           <Section title="Cloud" />

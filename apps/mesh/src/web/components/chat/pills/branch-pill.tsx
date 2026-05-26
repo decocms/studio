@@ -1,5 +1,4 @@
 import type { SandboxMap } from "@decocms/mesh-sdk";
-import { GitBranch01 } from "@untitledui/icons";
 import { BranchPicker } from "../../thread/github/branch-picker";
 
 interface Props {
@@ -17,18 +16,12 @@ interface Props {
   compact?: boolean;
 }
 
-export function BranchPill({ locked, value, ...props }: Props) {
-  if (locked) {
-    const label = value ?? "—";
-    return (
-      <span
-        className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-mono text-muted-foreground"
-        title={`${label} · Fixed for this thread`}
-      >
-        <GitBranch01 size={12} />
-        <span className="sr-only">{label}</span>
-      </span>
-    );
-  }
-  return <BranchPicker {...props} value={value} />;
+/**
+ * Thin wrapper over `BranchPicker` that maps the chat-level `locked`
+ * flag onto the picker's `disabled` prop. The picker still renders its
+ * Button + Tooltip when disabled — the user just can't open the
+ * popover. The compact + tooltip treatment is delegated downstream.
+ */
+export function BranchPill({ locked, ...props }: Props) {
+  return <BranchPicker {...props} disabled={locked} />;
 }

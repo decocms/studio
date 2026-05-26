@@ -30,8 +30,8 @@ describe("ModePickerPure", () => {
     expect(getByRole("button", { name: /Claude Code/i })).toBeInTheDocument();
   });
 
-  it("locked state renders a span, not a button", () => {
-    const { queryByRole, getByText } = render(
+  it("locked state renders the button disabled (label still in DOM)", () => {
+    const { getByRole } = render(
       <ModePickerPure
         mode="cloud-decopilot"
         availability={{ claudeCode: true, codex: true }}
@@ -39,8 +39,8 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    expect(queryByRole("button")).toBeNull();
-    expect(getByText(/Cloud/)).toBeInTheDocument();
+    const button = getByRole("button", { name: /Cloud/i });
+    expect(button).toBeDisabled();
   });
 
   it("opens the popover and shows all three rows in order", () => {

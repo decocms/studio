@@ -5,6 +5,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Atom01,
@@ -62,30 +67,36 @@ export function TierTriggerPure({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="default"
-          title={TIER_LABELS[tier]}
-          aria-label={TIER_LABELS[tier]}
-          className={cn(
-            "text-muted-foreground hover:text-foreground transition-[gap] duration-200",
-            compact ? "gap-0" : "gap-1.5",
-          )}
-        >
-          {iconFor?.(tier)}
-          <span
-            className={cn(
-              "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out",
-              compact ? "max-w-0 opacity-0" : "max-w-24 opacity-100",
-            )}
-          >
-            {TIER_LABELS[tier]}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="default"
+                aria-label={TIER_LABELS[tier]}
+                className={cn(
+                  "text-muted-foreground hover:text-foreground transition-[gap] duration-200",
+                  compact ? "gap-0" : "gap-1.5",
+                )}
+              >
+                {iconFor?.(tier)}
+                <span
+                  className={cn(
+                    "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out",
+                    compact ? "max-w-0 opacity-0" : "max-w-24 opacity-100",
+                  )}
+                >
+                  {TIER_LABELS[tier]}
+                </span>
+                <ChevronDown size={12} className="opacity-60" />
+              </Button>
+            </PopoverTrigger>
           </span>
-          <ChevronDown size={12} className="opacity-60" />
-        </Button>
-      </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{TIER_LABELS[tier]}</TooltipContent>
+      </Tooltip>
       <PopoverContent align="end" className="p-1 w-56">
         <div role="menu" className="flex flex-col">
           {TIER_ORDER.map((t) => {

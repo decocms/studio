@@ -16,6 +16,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { ChevronDown, GitBranch01 } from "@untitledui/icons";
 import { generateBranchName } from "@/shared/branch-name";
 import { useBranches } from "./use-branches";
@@ -33,6 +38,9 @@ interface Props {
   onChange: (branch: string) => void;
   /** When true, hide the label and render icon + chevron only. */
   compact?: boolean;
+  /** When true, the trigger is disabled — the user can't open the
+   *  picker. The tooltip still surfaces the current branch on hover. */
+  disabled?: boolean;
 }
 
 /**
@@ -54,6 +62,7 @@ export function BranchPicker({
   value,
   onChange,
   compact = false,
+  disabled = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -119,30 +128,37 @@ export function BranchPicker({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="default"
-          title={label}
-          aria-label={label}
-          className={cn(
-            "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
-            compact ? "gap-0" : "gap-1.5",
-          )}
-        >
-          <GitBranch01 className="h-3.5 w-3.5" />
-          <span
-            className={cn(
-              "inline-block overflow-hidden whitespace-nowrap truncate transition-[max-width,opacity] duration-200 ease-out",
-              compact ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100",
-            )}
-          >
-            {label}
+    <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="default"
+                aria-label={label}
+                disabled={disabled}
+                className={cn(
+                  "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
+                  compact ? "gap-0" : "gap-1.5",
+                )}
+              >
+                <GitBranch01 className="h-3.5 w-3.5" />
+                <span
+                  className={cn(
+                    "inline-block overflow-hidden whitespace-nowrap truncate transition-[max-width,opacity] duration-200 ease-out",
+                    compact ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100",
+                  )}
+                >
+                  {label}
+                </span>
+                <ChevronDown size={12} className="opacity-60" />
+              </Button>
+            </PopoverTrigger>
           </span>
-          <ChevronDown size={12} className="opacity-60" />
-        </Button>
-      </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
       <PopoverContent
         className="w-[min(420px,calc(100vw-2rem))] p-0"
         align="start"
