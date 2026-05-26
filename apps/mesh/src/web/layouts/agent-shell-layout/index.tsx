@@ -71,7 +71,6 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "@/web/components/empty-state";
 import { useChatMainPanelState } from "@/web/hooks/use-layout-state";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
-import { useOptionalTasksPanelState } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "./toolbar";
 import { ChatMainPanelGroup } from "./chat-main-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
@@ -281,7 +280,6 @@ function AgentInsetProvider() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const tasksOpen = useOptionalTasksPanelState()?.tasksOpen ?? false;
 
   useStatusSounds(org.slug);
 
@@ -509,7 +507,7 @@ function AgentInsetProvider() {
           <ToggleButtons
             chatOpen={layout.chatOpen}
             toggleChat={layout.toggleChat}
-            onNewTask={tasksOpen ? undefined : layout.createNewTask}
+            onNewTask={layout.createNewTask}
           />
         </Toolbar.Toggles>
 
