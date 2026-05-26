@@ -58,13 +58,17 @@ export function TaskGroup({
           "cursor-pointer hover:bg-accent/40",
         )}
       >
-        <span className="shrink-0 text-muted-foreground">
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </span>
-        <TaskGroupAvatar
-          virtualMcpId={virtualMcpId}
-          isToolCallRuns={isToolCallRuns}
-        />
+        <div className="relative size-5 shrink-0 flex items-center justify-center">
+          <span className="absolute inset-0 flex items-center justify-center transition-opacity group-hover/group:opacity-0">
+            <TaskGroupAvatar
+              virtualMcpId={virtualMcpId}
+              isToolCallRuns={isToolCallRuns}
+            />
+          </span>
+          <span className="absolute inset-0 flex items-center justify-center text-muted-foreground opacity-0 transition-opacity group-hover/group:opacity-100">
+            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+        </div>
         <span className="flex-1 truncate">
           <TaskGroupLabel
             virtualMcpId={virtualMcpId}
