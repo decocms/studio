@@ -139,7 +139,7 @@ function NavigationSidebarInner({
       </Suspense>
       {header}
       <SidebarContent
-        className={cn("flex flex-col flex-1 px-2 py-2 gap-0", contentClassName)}
+        className={cn("flex flex-col flex-1 px-2 py-2 gap-2", contentClassName)}
       >
         {sections.map((section, index) => (
           <SidebarSectionRenderer key={index} section={section} />

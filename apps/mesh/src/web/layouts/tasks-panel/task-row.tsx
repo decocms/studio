@@ -53,7 +53,9 @@ export function TaskRow({
       className={cn(
         "group/row flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
         "focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-ring/50",
-        isActive ? "bg-accent" : "hover:bg-accent/60",
+        isActive
+          ? "bg-accent text-accent-foreground shadow-sm"
+          : "hover:bg-accent/60",
       )}
     >
       <div className="flex-1 min-w-0">
@@ -70,7 +72,7 @@ export function TaskRow({
           </div>
         </div>
         {task.updated_at && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+          <div className="flex items-center gap-1 text-[11px] text-muted-foreground/60 min-w-0">
             {task.branch && !isSyntheticBranch(task.branch) ? (
               <>
                 <span className="truncate font-mono">{task.branch}</span>
@@ -92,7 +94,7 @@ export function TaskRow({
       </div>
       <div className="shrink-0 grid [grid-template-areas:'slot'] items-center justify-items-center">
         <span
-          className="[grid-area:slot] flex size-7 items-center justify-center group-hover/row:invisible"
+          className="[grid-area:slot] flex size-7 items-center justify-center transition-opacity group-hover/row:opacity-0"
           aria-label={config.label}
         >
           <StatusIcon
@@ -112,7 +114,7 @@ export function TaskRow({
                 e.stopPropagation();
                 onArchive();
               }}
-              className="[grid-area:slot] invisible group-hover/row:visible flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+              className="[grid-area:slot] opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 transition-opacity flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <Archive size={14} />
             </button>

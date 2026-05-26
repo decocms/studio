@@ -54,8 +54,8 @@ export function TaskGroup({
           }
         }}
         className={cn(
-          "group/group flex items-center gap-1.5 px-1.5 py-1 rounded-md text-xs font-medium",
-          "cursor-pointer hover:bg-accent/40",
+          "group/group flex items-center gap-2 px-2 py-1 rounded-md text-sm font-semibold text-foreground",
+          "cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors",
         )}
       >
         <div className="relative size-5 shrink-0 flex items-center justify-center">
@@ -83,14 +83,14 @@ export function TaskGroup({
               e.stopPropagation();
               onNewTaskInGroup(virtualMcpId);
             }}
-            className="invisible group-hover/group:visible flex size-6 items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
+            className="opacity-0 group-hover/group:opacity-100 focus-visible:opacity-100 transition-opacity flex size-7 items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           >
             <Plus size={14} />
           </button>
         )}
       </div>
       {expanded && (
-        <div className="flex flex-col gap-0.5 pb-1">
+        <div className="flex flex-col gap-0.5 pb-1 pl-2">
           {threads.map((task) => (
             <TaskRow
               key={task.id}

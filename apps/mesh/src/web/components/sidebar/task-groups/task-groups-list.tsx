@@ -161,8 +161,10 @@ export function TaskGroupsList() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="shrink-0 pl-2 pr-1 h-7 flex items-center justify-between text-xs font-medium text-muted-foreground">
-        <span>Tasks</span>
+      <div className="shrink-0 pl-2 pr-1 h-7 flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          Tasks
+        </span>
         <div className="flex items-center gap-0.5">
           <button
             type="button"
@@ -172,7 +174,7 @@ export function TaskGroupsList() {
               setSearchEverOpened(true);
               setSearchOpen(true);
             }}
-            className="flex size-7 items-center justify-center rounded-md hover:bg-muted hover:text-foreground"
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
           >
             <SearchSm size={14} />
           </button>
@@ -182,8 +184,8 @@ export function TaskGroupsList() {
                 type="button"
                 aria-label="Filter tasks"
                 className={cn(
-                  "flex size-7 items-center justify-center rounded-md hover:bg-muted hover:text-foreground",
-                  filtersActive && "text-purple-500",
+                  "flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors",
+                  filtersActive && "bg-accent text-foreground",
                 )}
               >
                 <FilterLines size={14} />
