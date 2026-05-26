@@ -181,7 +181,7 @@ export function FileField({
         )}
       </div>
 
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex w-full min-w-0 items-center gap-2">
         <Input
           id={path}
           type="url"
