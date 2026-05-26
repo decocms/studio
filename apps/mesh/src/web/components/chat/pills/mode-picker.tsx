@@ -6,7 +6,7 @@ import {
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Check, ChevronDown, Cloud01, Monitor01 } from "@untitledui/icons";
+import { Check, ChevronDown, Cloud01 } from "@untitledui/icons";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -15,6 +15,7 @@ import {
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { track } from "@/web/lib/posthog-client";
+import { ClaudeCodeIcon, CodexIcon } from "../agent-icons";
 import {
   type AgentMode,
   useAgentMode,
@@ -53,7 +54,7 @@ const ROW_CLAUDE_CODE: ModeRow = {
   mode: "local-claude-code",
   label: "Claude Code",
   group: "local",
-  icon: <Monitor01 size={14} />,
+  icon: <ClaudeCodeIcon size={14} />,
   isAvailable: (a) => a.claudeCode,
 };
 
@@ -61,15 +62,15 @@ const ROW_CODEX: ModeRow = {
   mode: "local-codex",
   label: "Codex",
   group: "local",
-  icon: <Monitor01 size={14} />,
+  icon: <CodexIcon size={14} />,
   isAvailable: (a) => a.codex,
 };
 
 function pillLabel(mode: AgentMode): { icon: React.ReactNode; text: string } {
   if (mode === "local-claude-code")
-    return { icon: <Monitor01 size={14} />, text: "Claude Code" };
+    return { icon: <ClaudeCodeIcon size={14} />, text: "Claude Code" };
   if (mode === "local-codex")
-    return { icon: <Monitor01 size={14} />, text: "Codex" };
+    return { icon: <CodexIcon size={14} />, text: "Codex" };
   return { icon: <Cloud01 size={14} />, text: "Cloud" };
 }
 

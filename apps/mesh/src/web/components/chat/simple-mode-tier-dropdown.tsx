@@ -21,7 +21,7 @@ export function SimpleModeTierDropdown({
     <TierTriggerPure
       tier={tier}
       subtitleFor={(t) => resolveTierSubtitle("cloud-decopilot", t)}
-      iconFor={(t) => tierIconFor("cloud-decopilot", t)}
+      iconFor={tierIconFor}
       onSelect={onSelect}
     />
   );

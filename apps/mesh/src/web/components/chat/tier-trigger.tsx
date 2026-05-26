@@ -14,13 +14,11 @@ import {
   Stars01,
 } from "@untitledui/icons";
 import type { ChatTier } from "@/tools/organization/schema";
-import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 import {
   resolveTierSubtitle,
   useAgentMode,
   useChatTier,
   useSetChatTier,
-  type AgentMode,
 } from "./use-agent-mode";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
@@ -117,34 +115,21 @@ export function TierTriggerPure({
 }
 
 /**
- * Per-tier intent glyphs for the cloud-Decopilot popover. Same icons
- * the merged `AgentModelPopover` used pre-refactor, so users see the
- * same affordance for Fast/Smart/Thinking they're already used to.
+ * Per-tier intent glyph (Lightning / Stars / Atom). The same affordance
+ * lands on every tier popover regardless of the active mode — the brand
+ * glyph for the harness (Claude, Codex, Cloud) belongs on the ModePicker
+ * pill, not here. Exported so the automations tier dropdown can reuse
+ * it without depending on the chat AgentMode concept.
  */
-function decopilotIcon(tier: ChatTier): ReactNode {
+export function tierIconFor(tier: ChatTier): ReactNode {
   if (tier === "fast") return <Lightning01 size={16} />;
   if (tier === "thinking") return <Atom01 size={16} />;
   return <Stars01 size={16} />;
 }
 
 /**
- * Picks the glyph for a given (mode, tier) pair:
- *   - cloud-decopilot: per-tier intent icon (Lightning / Stars / Atom)
- *   - local-claude-code: the Claude brand glyph for every tier
- *   - local-codex: the Codex brand glyph for every tier
- * Exposed so the automations tier dropdown can reuse the cloud-Decopilot
- * icons without depending on the chat AgentMode concept.
- */
-export function tierIconFor(mode: AgentMode, tier: ChatTier): ReactNode {
-  if (mode === "local-claude-code") return <ClaudeCodeIcon size={16} />;
-  if (mode === "local-codex") return <CodexIcon size={16} />;
-  return decopilotIcon(tier);
-}
-
-/**
  * Smart wrapper used by `Chat.Input`. Reads current tier + mode, builds
- * the per-tier subtitle + icon resolvers, and writes through
- * `useSetChatTier`.
+ * the per-tier subtitle resolver, and writes through `useSetChatTier`.
  */
 export function TierTrigger() {
   const tier = useChatTier();
@@ -153,13 +138,12 @@ export function TierTrigger() {
 
   const subtitleFor = (t: ChatTier): string | null =>
     resolveTierSubtitle(mode, t);
-  const iconFor = (t: ChatTier): ReactNode => tierIconFor(mode, t);
 
   return (
     <TierTriggerPure
       tier={tier}
       subtitleFor={subtitleFor}
-      iconFor={iconFor}
+      iconFor={tierIconFor}
       onSelect={setTier}
     />
   );
