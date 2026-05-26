@@ -66,7 +66,7 @@ export function TierTriggerPure({
         <Button
           type="button"
           variant="ghost"
-          size="sm"
+          size="default"
           aria-label={TIER_LABELS[tier]}
           className={cn(
             "text-muted-foreground hover:text-foreground transition-[gap] duration-200",
