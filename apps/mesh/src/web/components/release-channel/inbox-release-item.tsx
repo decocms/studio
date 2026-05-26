@@ -32,10 +32,7 @@ export function InboxReleaseItem({
           {release.title}
         </p>
       </div>
-      <ChevronRight
-        size={16}
-        className="text-muted-foreground shrink-0"
-      />
+      <ChevronRight size={16} className="text-muted-foreground shrink-0" />
     </button>
   );
 }
