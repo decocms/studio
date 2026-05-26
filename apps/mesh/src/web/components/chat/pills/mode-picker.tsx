@@ -58,7 +58,7 @@ const ROW_DECOPILOT: ModeRow = {
 const ROW_CLAUDE_CODE: ModeRow = {
   mode: "local-claude-code",
   label: "Claude Code",
-  description: "Runs locally via the Claude Code CLI",
+  description: "Runs via Claude Code CLI",
   group: "local",
   icon: <ClaudeCodeIcon size={16} />,
   isAvailable: (a) => a.claudeCode,
@@ -67,7 +67,7 @@ const ROW_CLAUDE_CODE: ModeRow = {
 const ROW_CODEX: ModeRow = {
   mode: "local-codex",
   label: "Codex",
-  description: "Runs locally via the Codex CLI",
+  description: "Runs via Codex CLI",
   group: "local",
   icon: <CodexIcon size={16} />,
   isAvailable: (a) => a.codex,
