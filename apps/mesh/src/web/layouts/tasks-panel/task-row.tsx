@@ -72,7 +72,14 @@ export function TaskRow({
           </div>
         </div>
         {task.updated_at && (
-          <div className="flex items-center gap-1 text-[11px] text-muted-foreground/60 min-w-0">
+          <div
+            className={cn(
+              "flex items-center gap-1 text-[11px] min-w-0",
+              isActive
+                ? "text-accent-foreground/70"
+                : "text-muted-foreground/60",
+            )}
+          >
             {task.branch && !isSyntheticBranch(task.branch) ? (
               <>
                 <span className="truncate font-mono">{task.branch}</span>

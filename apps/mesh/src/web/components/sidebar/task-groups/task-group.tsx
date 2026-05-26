@@ -54,7 +54,7 @@ export function TaskGroup({
           }
         }}
         className={cn(
-          "group/group flex items-center gap-2 px-2 py-1 rounded-md text-sm font-semibold text-foreground",
+          "group/group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-semibold text-foreground",
           "cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors",
         )}
       >
@@ -90,7 +90,7 @@ export function TaskGroup({
         )}
       </div>
       {expanded && (
-        <div className="flex flex-col gap-0.5 pb-1 pl-2">
+        <div className="flex flex-col gap-0.5 pb-1 pl-2 pr-0.5">
           {threads.map((task) => (
             <TaskRow
               key={task.id}
