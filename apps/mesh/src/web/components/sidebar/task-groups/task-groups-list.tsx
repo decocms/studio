@@ -130,7 +130,7 @@ export function TaskGroupsList() {
     createNewTask();
   };
 
-  const filtersActive = typeFilter !== "all" || memberFilter !== "all";
+  const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
 
   return (
     <div className="flex flex-col h-full min-h-0">
