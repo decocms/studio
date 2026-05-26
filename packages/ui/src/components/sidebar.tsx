@@ -53,21 +53,36 @@ function useSidebar() {
 function SidebarProvider({
   children,
   defaultOpen = false,
+  open: openProp,
+  onOpenChange,
 }: {
   children: React.ReactNode;
   defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const isMobile = useIsMobile();
-  const [open, setOpen] = React.useState(defaultOpen);
+  const [internalOpen, setInternalOpen] = React.useState(defaultOpen);
   const [openMobile, setOpenMobile] = React.useState(false);
+
+  const isControlled = openProp !== undefined;
+  const open = isControlled ? openProp : internalOpen;
+
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (!isControlled) setInternalOpen(next);
+      onOpenChange?.(next);
+    },
+    [isControlled, onOpenChange],
+  );
 
   const toggleSidebar = React.useCallback(() => {
     if (isMobile) {
       setOpenMobile((prev) => !prev);
     } else {
-      setOpen((prev) => !prev);
+      setOpen(!open);
     }
-  }, [isMobile]);
+  }, [isMobile, open, setOpen]);
 
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
@@ -79,7 +94,7 @@ function SidebarProvider({
       setOpenMobile,
       toggleSidebar,
     }),
-    [open, isMobile, openMobile, toggleSidebar],
+    [open, setOpen, isMobile, openMobile, toggleSidebar],
   );
 
   return (

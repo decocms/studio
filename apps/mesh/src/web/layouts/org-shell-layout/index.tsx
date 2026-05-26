@@ -23,6 +23,9 @@ import { ChatPrefsProvider } from "@/web/components/chat/context";
 import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
+import { useLocalStorage } from "@/web/hooks/use-local-storage";
+
+const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 
 function RouteFallback() {
   return (
@@ -71,10 +74,14 @@ export default function OrgShellLayout() {
   const isMobile = useIsMobile();
   const params = useParams({ strict: false }) as { taskId?: string };
   const hasTaskRoute = Boolean(params.taskId);
+  const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
+    SIDEBAR_OPEN_STORAGE_KEY,
+    false,
+  );
 
   return (
     <ThreadManagerProvider>
-      <SidebarProvider defaultOpen={true}>
+      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <div className="flex flex-col h-dvh overflow-hidden">
           <SidebarLayout
             className="flex-1 bg-sidebar"
