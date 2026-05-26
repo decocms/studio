@@ -13,34 +13,6 @@ import { ImageField } from "./fields/image-field";
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
 
-/**
- * Detect image-typed string fields when the JSON Schema doesn't carry an
- * explicit `format: "image-uri"`. Deco section authors frequently leave the
- * type as plain `string` and just name the field something like `image` or
- * `logo`; this fallback gives those fields the picker UX too.
- */
-const IMAGE_NAME =
-  /^(image|img|picture|photo|thumbnail|thumb|avatar|logo|banner|cover|hero|icon)s?$/i;
-const IMAGE_NAME_SUFFIX =
-  /(image|img|picture|photo|thumbnail|avatar|logo|banner|icon|cover|hero)(url|src|uri|href)?$/i;
-
-function isLikelyImageField(schema: SchemaProperty, path: string): boolean {
-  if (schema.format === "image-uri") return true;
-  if (schema.type !== "string" || schema.enum) return false;
-  const key = path.split(".").pop() ?? "";
-  if (!key) return false;
-  return IMAGE_NAME.test(key) || IMAGE_NAME_SUFFIX.test(key);
-}
-
-function isLikelyFileField(schema: SchemaProperty, path: string): boolean {
-  if (schema.format === "file-uri") return true;
-  if (schema.type !== "string" || schema.enum) return false;
-  const key = path.split(".").pop() ?? "";
-  return /^(file|document|attachment|asset|media|video|audio|pdf)s?$/i.test(
-    key,
-  );
-}
-
 function humanize(key: string): string {
   return key
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -89,13 +61,12 @@ export function renderField(props: FieldProps) {
     return null;
   }
 
-  // Image fields: explicit `format: "image-uri"` or a name that strongly
-  // suggests an image (image/logo/avatar/banner/…).
-  if (isLikelyImageField(schema, props.path)) {
+  // image-uri → ImageField (preview + image-only picker)
+  if (schema.format === "image-uri") {
     return <ImageField key={props.path} {...props} />;
   }
-  // File fields: explicit `format: "file-uri"` or a generic file/attachment name.
-  if (isLikelyFileField(schema, props.path)) {
+  // file-uri → FileField (filename chip + any-type picker)
+  if (schema.format === "file-uri") {
     return <FileField key={props.path} {...props} />;
   }
 

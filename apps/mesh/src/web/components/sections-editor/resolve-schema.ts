@@ -158,8 +158,13 @@ export function resolveSchema(
       }
     }
 
-    // Determine type
+    // Determine type. When the schema is a nullable union
+    // (`anyOf: [T, null]`), `unionLeaf` holds the single non-null branch
+    // so downstream metadata (format, title, description) can be inherited
+    // from it — without this, `format: "image-uri"` on the inner branch
+    // would be silently dropped.
     let type: string | undefined;
+    let unionLeaf: RawSchema | undefined;
     if (resolved.type) {
       type = Array.isArray(resolved.type)
         ? String(resolved.type.find((t) => t !== "null") ?? resolved.type[0])
@@ -178,6 +183,7 @@ export function resolveSchema(
         type = "null";
       } else if (nonNull.length === 1) {
         const first = nonNull[0]!;
+        unionLeaf = first;
         type = first.type
           ? Array.isArray(first.type)
             ? String(first.type[0])
@@ -327,6 +333,11 @@ export function resolveSchema(
       }
     }
 
+    const fromLeaf = <T>(key: string): T | undefined => {
+      const fromUnion = unionLeaf?.[key];
+      return typeof fromUnion === "string" ? (fromUnion as T) : undefined;
+    };
+
     return {
       type: type ?? "string",
       title:
@@ -334,22 +345,27 @@ export function resolveSchema(
           ? v.title
           : typeof resolved.title === "string"
             ? resolved.title
-            : undefined,
+            : fromLeaf<string>("title"),
       description:
         typeof v.description === "string"
           ? v.description
           : typeof resolved.description === "string"
             ? resolved.description
-            : undefined,
-      default: v.default ?? resolved.default,
+            : fromLeaf<string>("description"),
+      default: v.default ?? resolved.default ?? unionLeaf?.default,
       enum: Array.isArray(resolved.enum)
         ? resolved.enum
         : (enumFromConsts ?? undefined),
-      format: typeof resolved.format === "string" ? resolved.format : undefined,
+      format:
+        typeof resolved.format === "string"
+          ? resolved.format
+          : fromLeaf<string>("format"),
       properties: nestedProperties,
       items: itemsSchema,
       titleBy:
-        typeof resolved.titleBy === "string" ? resolved.titleBy : undefined,
+        typeof resolved.titleBy === "string"
+          ? resolved.titleBy
+          : fromLeaf<string>("titleBy"),
     };
   };
 
