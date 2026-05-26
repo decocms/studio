@@ -78,7 +78,7 @@ describe("groupThreadsByVirtualMcp", () => {
       ],
       null,
     );
-    expect(result[0].threads.map((th) => th.id)).toEqual(["a", "b", "c"]);
+    expect(result[0]?.threads.map((th) => th.id)).toEqual(["a", "b", "c"]);
   });
 
   it("inserts decopilot as an empty group when it has no threads", () => {
@@ -96,7 +96,7 @@ describe("groupThreadsByVirtualMcp", () => {
       "vm-decopilot",
       "vm-other",
     ]);
-    expect(result[0].threads).toEqual([]);
+    expect(result[0]?.threads).toEqual([]);
   });
 
   it("buckets threads without virtual_mcp_id under a synthetic 'tool-call-runs' group at the end", () => {
