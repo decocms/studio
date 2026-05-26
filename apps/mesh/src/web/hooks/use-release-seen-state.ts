@@ -19,7 +19,7 @@ function readSerialized(): string {
   try {
     return localStorage.getItem(STORAGE_KEY) ?? "{}";
   } catch {
-    return "{}";
+    return cachedSerialized || "{}";
   }
 }
 

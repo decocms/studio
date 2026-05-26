@@ -34,7 +34,6 @@ import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item"
 import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
 import { ReleaseCard } from "@/web/components/release-channel/release-card";
 import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
-import { useReleaseSeenState } from "@/web/hooks/use-release-seen-state";
 import { Button } from "@deco/ui/components/button.tsx";
 
 class SilentErrorBoundary extends Component<
@@ -158,7 +157,6 @@ function ConnectionsButton() {
 
 function InboxButton() {
   const { items, redDotCount } = useInboxFeed();
-  const { markSeen } = useReleaseSeenState();
   const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(
     null,
   );
@@ -170,7 +168,6 @@ function InboxButton() {
     selectedRelease?.type === "release" ? selectedRelease.release : null;
 
   const handleSelectRelease = (releaseId: string) => {
-    markSeen(releaseId);
     setSelectedReleaseId(releaseId);
   };
 
