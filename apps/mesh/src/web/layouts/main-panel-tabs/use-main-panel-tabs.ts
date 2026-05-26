@@ -21,7 +21,7 @@ import {
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
-import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { agentHasConnectedGithub } from "@/web/lib/agent-capabilities";
 import { useChatTask } from "@/web/components/chat/index";
 import { useThreadManager } from "@/web/components/chat/store/hooks";
 import type {
@@ -154,7 +154,7 @@ export function useMainPanelTabs(ctx: {
   const layoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
   const pinnedViews = entityUI?.pinnedViews ?? [];
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
-  const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
+  const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   const connections = useConnections({ includeVirtual: true });
 
   const { activeTab, mainOpen } = resolveActiveTabAndOpen({
