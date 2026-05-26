@@ -22,7 +22,7 @@ import { Hono } from "hono";
 import { isBrandContextSetup, isDecopilot } from "@decocms/mesh-sdk";
 import type { MeshContext } from "@/core/mesh-context";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
-import { findStudioPackAgentByMcpId } from "@/tools/virtual/studio-pack";
+import { STUDIO_PACK_AGENTS } from "@/tools/virtual/studio-pack";
 
 type Variables = {
   meshContext: MeshContext;
@@ -51,6 +51,15 @@ export function createSuggestedActionsRoutes() {
 
     const mine = c.req.query("mine") !== "false";
 
+    const studioPackAgentIds = STUDIO_PACK_AGENTS.map((a) => a.getId(orgId));
+    const existingStudioPack = await mesh.storage.virtualMcps.listByIds(
+      orgId,
+      studioPackAgentIds,
+    );
+    const existingStudioPackIds = new Set(existingStudioPack.map((a) => a.id));
+    const isHandledByChecklist = (virtualMcpId: string | null | undefined) =>
+      !!virtualMcpId && existingStudioPackIds.has(virtualMcpId);
+
     // Over-fetch so we still hit `limit` real rows after dropping Studio
     // Pack threads (handled by the checklist endpoint). Storage layer
     // already orders by last-message created_at DESC.
@@ -65,11 +74,7 @@ export function createSuggestedActionsRoutes() {
     // (they pass null), so we key off the title prefix written by both
     // createAutomationRunThread and createToolCallRunThread.
     const primary = assistantLast
-      .filter(
-        (r) =>
-          !r.thread.virtual_mcp_id ||
-          findStudioPackAgentByMcpId(r.thread.virtual_mcp_id) === null,
-      )
+      .filter((r) => !isHandledByChecklist(r.thread.virtual_mcp_id))
       .map((r) => ({
         ...r,
         fromState: describeFromThreadState(r.lastMessage.parts),
@@ -89,11 +94,7 @@ export function createSuggestedActionsRoutes() {
         lastMessageRole: "user",
       });
       const fallback = userLast
-        .filter(
-          (r) =>
-            !r.thread.virtual_mcp_id ||
-            findStudioPackAgentByMcpId(r.thread.virtual_mcp_id) === null,
-        )
+        .filter((r) => !isHandledByChecklist(r.thread.virtual_mcp_id))
         .map((r) => ({ ...r, fromState: null as string | null }));
       rows = [...primary, ...fallback.slice(0, limit - primary.length)];
     }

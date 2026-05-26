@@ -79,3 +79,29 @@ export async function enqueueInstallStudioPack(
     workflowID: `install-studio-pack:${input.orgId}`,
   })(input);
 }
+
+export async function backfillStudioPackForAllOrgs(): Promise<void> {
+  const database = getDb();
+  const rows = await database.db
+    .selectFrom("member")
+    .select(["organizationId", "userId"])
+    .orderBy("createdAt", "asc")
+    .execute();
+
+  const orgToUser = new Map<string, string>();
+  for (const r of rows) {
+    if (!orgToUser.has(r.organizationId)) {
+      orgToUser.set(r.organizationId, r.userId);
+    }
+  }
+
+  await Promise.all(
+    Array.from(orgToUser).map(async ([orgId, createdBy]) => {
+      try {
+        await enqueueInstallStudioPack({ orgId, createdBy });
+      } catch (err) {
+        console.error("[studio-pack-backfill] enqueue failed", { orgId }, err);
+      }
+    }),
+  );
+}
