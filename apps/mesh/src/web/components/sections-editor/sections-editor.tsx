@@ -885,7 +885,11 @@ export function SectionsEditor({
       {/* Drill-down: section list OR section form */}
       {isEditing ? (
         <ScrollArea className="flex-1 min-h-0">
-          <div className="min-w-0 w-full p-4">
+          {/* overflow-x-hidden + max-w-full forces internal content to
+              fit the panel width, no matter what nested field misbehaves.
+              ScrollArea's viewport otherwise creates a horizontal
+              scrollbar the moment anything overflows. */}
+          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
             <SchemaForm
               key={formResetKey}
               schema={activeSchema}
