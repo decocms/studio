@@ -14,8 +14,10 @@ export interface ReleaseSeenState {
 const listeners = new Set<() => void>();
 let cachedSerialized = "";
 let cachedSnapshot: SeenMap = {};
+let writeFailed = false;
 
 function readSerialized(): string {
+  if (writeFailed) return cachedSerialized || "{}";
   try {
     return localStorage.getItem(STORAGE_KEY) ?? "{}";
   } catch {
@@ -58,8 +60,11 @@ function commit(next: SeenMap): void {
   cachedSerialized = JSON.stringify(next);
   try {
     localStorage.setItem(STORAGE_KEY, cachedSerialized);
+    writeFailed = false;
   } catch {
-    // localStorage unavailable (private mode, sandbox). Continue in-memory.
+    // localStorage write unavailable (private-mode quota, sandbox).
+    // Latch so subsequent reads don't clobber the in-memory state.
+    writeFailed = true;
   }
   listeners.forEach((l) => l());
 }
