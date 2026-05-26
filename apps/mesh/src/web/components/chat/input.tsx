@@ -233,6 +233,7 @@ export function ChatInput({
   const stream = useOptionalChatStream();
   const taskCtx = useOptionalChatTask();
   const messages = stream?.messages ?? [];
+  const isChatEmpty = messages.length === 0;
   const isStreaming = stream?.isStreaming ?? false;
   const isRunInProgress = stream?.isRunInProgress ?? false;
   const stop = stream?.stop ?? (() => {});
@@ -500,6 +501,7 @@ export function ChatInput({
                         selectedModel={selectedModel}
                         isStreaming={isStreaming}
                         onUnsupportedFile={onUnsupportedFile}
+                        compact={isChatEmpty}
                       />
                       {isPlanMode && (
                         <button
@@ -603,33 +605,35 @@ export function ChatInput({
                         onBranchChange={
                           taskCtx?.setCurrentTaskBranch ?? (() => {})
                         }
+                        compact={!isChatEmpty}
                       />
-                      <TierTrigger />
+                      <TierTrigger compact={isChatEmpty} />
 
-                      {/* Microphone button — only shown when not streaming and speech is supported */}
-                      {voice.isSupported &&
-                        !isStreaming &&
-                        !isRunInProgress && (
-                          <Button
-                            type="button"
-                            onClick={handleVoiceStart}
-                            variant="ghost"
-                            size="icon"
-                            className={cn(
-                              "size-8 rounded-lg transition-colors",
-                              voice.status === "permission-denied"
-                                ? "text-destructive hover:text-destructive hover:bg-destructive/10"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                            title={
-                              voice.status === "permission-denied"
-                                ? "Microphone access denied — click to try again"
-                                : "Voice input"
-                            }
-                          >
-                            <Microphone01 size={18} />
-                          </Button>
-                        )}
+                      {/* Microphone button — kept mounted (and disabled)
+                          during streaming/run to avoid layout shift when
+                          the send button morphs into stop/cancel. */}
+                      {voice.isSupported && (
+                        <Button
+                          type="button"
+                          onClick={handleVoiceStart}
+                          disabled={isStreaming || isRunInProgress}
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "size-8 rounded-lg transition-colors",
+                            voice.status === "permission-denied"
+                              ? "text-destructive hover:text-destructive hover:bg-destructive/10"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                          title={
+                            voice.status === "permission-denied"
+                              ? "Microphone access denied — click to try again"
+                              : "Voice input"
+                          }
+                        >
+                          <Microphone01 size={18} />
+                        </Button>
+                      )}
 
                       <Button
                         type={showStopOrCancel ? "button" : "submit"}

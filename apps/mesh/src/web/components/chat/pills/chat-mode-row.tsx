@@ -44,6 +44,9 @@ interface SmartProps {
   sandboxMap: SandboxMap | undefined;
   currentBranch: string | null;
   onBranchChange: (branch: string) => void;
+  /** Forwarded to both BranchPill and ModePicker. The row itself is a
+   *  plain flex container — it doesn't render labels of its own. */
+  compact?: boolean;
 }
 
 /**
@@ -61,6 +64,7 @@ export function ChatModeRow({
   sandboxMap,
   currentBranch,
   onBranchChange,
+  compact = false,
 }: SmartProps) {
   const stream = useOptionalChatStream();
   const locked = (stream?.messages ?? []).length > 0;
@@ -86,6 +90,7 @@ export function ChatModeRow({
           value={currentBranch}
           onChange={onBranchChange}
           locked={locked}
+          compact={compact}
         />
       }
       modePicker={
@@ -93,6 +98,7 @@ export function ChatModeRow({
           locked={locked}
           currentBranch={currentBranch}
           virtualMcpId={virtualMcp?.id ?? ""}
+          compact={compact}
         />
       }
     />

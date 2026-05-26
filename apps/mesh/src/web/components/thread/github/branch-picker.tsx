@@ -1,6 +1,7 @@
 import { type UIEvent, useRef, useState } from "react";
 import type { SandboxMap } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Command,
   CommandEmpty,
@@ -30,6 +31,8 @@ interface Props {
   sandboxMap: SandboxMap | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
+  /** When true, hide the label and render icon + chevron only. */
+  compact?: boolean;
 }
 
 /**
@@ -50,6 +53,7 @@ export function BranchPicker({
   sandboxMap,
   value,
   onChange,
+  compact = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -120,10 +124,18 @@ export function BranchPicker({
         <Button
           variant="ghost"
           size="sm"
-          className="gap-0 @[496px]/chat-bottom:gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
+          className={cn(
+            "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
+            compact ? "gap-0" : "gap-1.5",
+          )}
         >
           <GitBranch01 className="h-3.5 w-3.5" />
-          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-[200px] @[496px]/chat-bottom:opacity-100 truncate">
+          <span
+            className={cn(
+              "inline-block overflow-hidden whitespace-nowrap truncate transition-[max-width,opacity] duration-200 ease-out",
+              compact ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100",
+            )}
+          >
             {label}
           </span>
           <ChevronDown size={12} className="opacity-60" />

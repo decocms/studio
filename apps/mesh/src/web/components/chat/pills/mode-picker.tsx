@@ -31,6 +31,9 @@ interface PureProps {
   mode: AgentMode;
   availability: ModePickerAvailability;
   locked: boolean;
+  /** When true, the closed pill hides its label and renders icon +
+   *  chevron only. Popover rows are unaffected. */
+  compact?: boolean;
   onSelect: (mode: AgentMode) => void;
 }
 
@@ -75,7 +78,7 @@ function pillLabel(mode: AgentMode): { icon: React.ReactNode; text: string } {
 }
 
 const baseClasses =
-  "gap-0 @[496px]/chat-bottom:gap-1.5 text-muted-foreground hover:text-foreground text-xs";
+  "text-muted-foreground hover:text-foreground text-xs transition-[gap] duration-200";
 const localActiveClasses = "text-success hover:text-success";
 
 /**
@@ -88,6 +91,7 @@ export function ModePickerPure({
   mode,
   availability,
   locked,
+  compact = false,
   onSelect,
 }: PureProps) {
   const [open, setOpen] = useState(false);
@@ -122,10 +126,19 @@ export function ModePickerPure({
           variant="ghost"
           size="sm"
           aria-label={text}
-          className={cn(baseClasses, isLocal && localActiveClasses)}
+          className={cn(
+            baseClasses,
+            isLocal && localActiveClasses,
+            compact ? "gap-0" : "gap-1.5",
+          )}
         >
           {icon}
-          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-32 @[496px]/chat-bottom:opacity-100">
+          <span
+            className={cn(
+              "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out",
+              compact ? "max-w-0 opacity-0" : "max-w-32 opacity-100",
+            )}
+          >
             {text}
           </span>
           <ChevronDown size={12} className="opacity-60" />
@@ -204,6 +217,7 @@ interface SmartProps {
   locked: boolean;
   currentBranch: string | null;
   virtualMcpId: string;
+  compact?: boolean;
 }
 
 /**
@@ -215,6 +229,7 @@ export function ModePicker({
   locked,
   currentBranch,
   virtualMcpId,
+  compact = false,
 }: SmartProps) {
   const mode = useAgentMode();
   const setAgentMode = useSetAgentMode();
@@ -249,6 +264,7 @@ export function ModePicker({
       mode={mode}
       availability={availability}
       locked={locked}
+      compact={compact}
       onSelect={handleSelect}
     />
   );

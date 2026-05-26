@@ -96,6 +96,8 @@ interface ToolsPopoverProps {
   selectedModel: AiProviderModel | null | undefined;
   isStreaming: boolean;
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
+  /** When true, hide the "Tools" label and render icon-only. */
+  compact?: boolean;
 }
 
 export function ToolsPopover({
@@ -105,6 +107,7 @@ export function ToolsPopover({
   selectedModel,
   isStreaming,
   onUnsupportedFile,
+  compact = false,
 }: ToolsPopoverProps) {
   const [open, setOpen] = useState(false);
   const playSwitchSound = useSound(switch005Sound);
@@ -309,10 +312,18 @@ export function ToolsPopover({
             disabled={disabled}
             title="Tools"
             aria-label="Tools"
-            className="gap-0 @[496px]/chat-bottom:gap-1.5 text-muted-foreground hover:text-foreground"
+            className={cn(
+              "text-muted-foreground hover:text-foreground transition-[gap] duration-200",
+              compact ? "gap-0" : "gap-1.5",
+            )}
           >
             <Settings04 size={14} />
-            <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-24 @[496px]/chat-bottom:opacity-100">
+            <span
+              className={cn(
+                "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out",
+                compact ? "max-w-0 opacity-0" : "max-w-24 opacity-100",
+              )}
+            >
               Tools
             </span>
           </Button>

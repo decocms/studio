@@ -14,6 +14,7 @@ interface Props {
   value: string | null | undefined;
   onChange: (branch: string) => void;
   locked: boolean;
+  compact?: boolean;
 }
 
 export function BranchPill({ locked, value, ...props }: Props) {

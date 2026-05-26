@@ -34,6 +34,9 @@ interface PureProps {
   /** Optional per-tier glyph rendered on the closed pill and on each
    *  popover row. Omit for a label-only treatment. */
   iconFor?: (tier: ChatTier) => ReactNode;
+  /** When true, the closed pill hides its label and renders icon +
+   *  chevron only. Popover rows are unaffected. */
+  compact?: boolean;
   onSelect: (tier: ChatTier) => void;
 }
 
@@ -48,6 +51,7 @@ export function TierTriggerPure({
   tier,
   subtitleFor,
   iconFor,
+  compact = false,
   onSelect,
 }: PureProps) {
   const [open, setOpen] = useState(false);
@@ -64,10 +68,18 @@ export function TierTriggerPure({
           variant="ghost"
           size="sm"
           aria-label={TIER_LABELS[tier]}
-          className="gap-0 @[496px]/chat-bottom:gap-1.5 text-muted-foreground hover:text-foreground"
+          className={cn(
+            "text-muted-foreground hover:text-foreground transition-[gap] duration-200",
+            compact ? "gap-0" : "gap-1.5",
+          )}
         >
           {iconFor?.(tier)}
-          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-24 @[496px]/chat-bottom:opacity-100">
+          <span
+            className={cn(
+              "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out",
+              compact ? "max-w-0 opacity-0" : "max-w-24 opacity-100",
+            )}
+          >
             {TIER_LABELS[tier]}
           </span>
           <ChevronDown size={12} className="opacity-60" />
@@ -133,7 +145,7 @@ export function tierIconFor(tier: ChatTier): ReactNode {
  * Smart wrapper used by `Chat.Input`. Reads current tier + mode, builds
  * the per-tier subtitle resolver, and writes through `useSetChatTier`.
  */
-export function TierTrigger() {
+export function TierTrigger({ compact = false }: { compact?: boolean }) {
   const tier = useChatTier();
   const setTier = useSetChatTier();
   const mode = useAgentMode();
@@ -146,6 +158,7 @@ export function TierTrigger() {
       tier={tier}
       subtitleFor={subtitleFor}
       iconFor={tierIconFor}
+      compact={compact}
       onSelect={setTier}
     />
   );
