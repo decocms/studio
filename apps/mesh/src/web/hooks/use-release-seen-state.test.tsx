@@ -63,7 +63,16 @@ describe("useReleaseSeenState", () => {
 
   it("unseenCount reflects entries in RELEASES that have no seenAt", () => {
     const { result } = renderHook(() => useReleaseSeenState(), { wrapper });
-    // RELEASES starts empty; unseenCount should be 0 regardless of localStorage.
-    expect(result.current.unseenCount).toBe(RELEASES.filter(() => true).length);
+    const total = RELEASES.length;
+    expect(result.current.unseenCount).toBe(total);
+
+    const first = RELEASES[0];
+    if (!first) return;
+
+    act(() => {
+      result.current.markSeen(first.id);
+    });
+
+    expect(result.current.unseenCount).toBe(total - 1);
   });
 });
