@@ -41,9 +41,9 @@ describe("resolveSandboxBranchFromMap", () => {
   });
 
   test("falls back to first branch with sandbox records", () => {
-    expect(
-      resolveSandboxBranchFromMap(fallbackMapFixture, "user1", null),
-    ).toBe("deco/other");
+    expect(resolveSandboxBranchFromMap(fallbackMapFixture, "user1", null)).toBe(
+      "deco/other",
+    );
   });
 });
 
