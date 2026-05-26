@@ -16,7 +16,16 @@ interface FakeAuth {
   apiKey?: { id: string; name: string; userId: string };
 }
 
-const buildApp = (db: TestDatabase, auth: FakeAuth) => {
+interface BuildAppOptions {
+  // Pre-seed ctx.objectStorage so we can verify cross-org rebinding.
+  preboundObjectStorage?: unknown;
+}
+
+const buildApp = (
+  db: TestDatabase,
+  auth: FakeAuth,
+  opts: BuildAppOptions = {},
+) => {
   const app = new Hono<{ Variables: Variables }>();
   app.use("*", async (c, next) => {
     // Track the organization id forwarded into AccessControl so tests can
@@ -50,7 +59,7 @@ const buildApp = (db: TestDatabase, auth: FakeAuth) => {
         },
         asyncResearchJobs: { setOrganizationId: () => {} },
       },
-      objectStorage: null,
+      objectStorage: opts.preboundObjectStorage ?? null,
     } as unknown as MeshContext);
     await next();
   });
@@ -66,6 +75,8 @@ const buildApp = (db: TestDatabase, auth: FakeAuth) => {
         ctx.storage.threads as unknown as { _orgIds: (string | undefined)[] }
       )._orgIds,
       objectStorageBound: ctx.objectStorage !== null,
+      objectStorageIsPrebound:
+        ctx.objectStorage === (opts.preboundObjectStorage ?? null),
     });
   });
   return app;
@@ -201,6 +212,26 @@ describe("resolveOrgFromPath", () => {
     const body = await res.json();
     expect(body.threadOrgIds).toEqual(["org-1"]);
     expect(body.objectStorageBound).toBe(true);
+  });
+
+  it("rebinds objectStorage even when it was prebound to a stale org", async () => {
+    // Regression: meshContext is built eagerly from the session's
+    // activeOrganizationId. When the URL targets a different org (e.g. session
+    // active=A, path=B), the eagerly-bound objectStorage points at A. The
+    // middleware must replace it so /api/:org/files/* reads from B's tenant
+    // scope — otherwise files 404 in B's storage and surface as a misleading
+    // "Object storage not configured" 503.
+    const staleStorage = { __sentinel: "stale-org-binding" };
+    const app = buildApp(
+      db,
+      { user: { id: "user-1" } },
+      { preboundObjectStorage: staleStorage },
+    );
+    const res = await app.request("/api/acme/probe");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.objectStorageBound).toBe(true);
+    expect(body.objectStorageIsPrebound).toBe(false);
   });
 
   it("authorizes api-key principals via the same membership check", async () => {

@@ -23,5 +23,7 @@ export function useDecofile(params: UseDecofileParams | null) {
     },
     enabled: !!params,
     staleTime: 30_000,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
 }

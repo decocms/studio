@@ -114,12 +114,7 @@ export interface AutomationListItem {
   created_by: string;
   created_at: string;
   trigger_count: number;
-  // 'agent' or 'tool_call'. 'tool_call' rows have virtual_mcp_id=null
-  // and instead carry connection_id + tool_name.
-  kind: "agent" | "tool_call";
-  virtual_mcp_id: string | null;
-  connection_id: string | null;
-  tool_name: string | null;
+  virtual_mcp_id: string;
   nearest_next_run_at: string | null;
 }
 
@@ -143,11 +138,7 @@ export interface AutomationDetail {
   created_by: string;
   created_at: string;
   updated_at: string;
-  kind: "agent" | "tool_call";
-  virtual_mcp_id: string | null;
-  connection_id: string | null;
-  tool_name: string | null;
-  tool_input: Record<string, unknown> | null;
+  virtual_mcp_id: string;
   messages: unknown[];
   models: {
     tier?: "fast" | "smart" | "thinking";
@@ -228,19 +219,6 @@ export function buildDefaultAutomationInput(virtualMcpId: string) {
     temperature: 0.5,
     active: true,
     virtual_mcp_id: virtualMcpId,
-  };
-}
-
-export function buildDefaultToolCallAutomationInput() {
-  return {
-    name: "New tool-call automation",
-    kind: "tool_call" as const,
-    // connection/tool/input are filled in on the detail screen; the
-    // workflow refuses to fire until they're set (invokeFixedToolStep).
-    connection_id: "",
-    tool_name: "",
-    tool_input: {},
-    active: true,
   };
 }
 

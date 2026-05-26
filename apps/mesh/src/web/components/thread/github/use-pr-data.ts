@@ -15,6 +15,7 @@
 
 import { useMCPClient, useMCPToolCallQuery } from "@decocms/mesh-sdk";
 
+import { extractPullRequestList } from "./github-pr-api.ts";
 import { extractToolJson } from "./extract-tool-json.ts";
 
 export interface PrSummary {
@@ -101,7 +102,7 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
       owner: args.owner,
       repo: args.repo,
       state: "all",
-      head: args.branch ? `${args.owner}:${args.branch}` : undefined,
+      ...(args.branch ? { head: `${args.owner}:${args.branch}` } : {}),
       perPage: 1,
     },
     enabled: !!args.branch,
@@ -109,8 +110,8 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
-      const arr = extractToolJson<Record<string, unknown>[]>(r);
-      if (!arr || !Array.isArray(arr) || arr.length === 0) return null;
+      const arr = extractPullRequestList(r);
+      if (arr.length === 0) return null;
       const p = arr[0]!;
       const base = p.base as Record<string, unknown> | undefined;
       const head = p.head as Record<string, unknown> | undefined;

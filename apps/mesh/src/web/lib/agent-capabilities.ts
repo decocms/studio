@@ -1,4 +1,6 @@
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import type { CurrentLink } from "@/web/hooks/use-current-link";
+import { getActiveGithubRepo } from "./github-repo";
 
 /**
  * True when the agent has source code we can check out into a per-branch
@@ -16,6 +18,20 @@ export function agentHasClonableSource(metadata: unknown): boolean {
   const meta = metadata as { githubRepo?: { url?: unknown } | null };
   const url = meta.githubRepo?.url;
   return typeof url === "string" && url.length > 0;
+}
+
+/**
+ * True only when the virtual MCP has a GitHub repo with an attached
+ * connection (i.e. authenticated github identity, not a public-clone
+ * template). Gate the BranchPill and the git tab on this predicate.
+ *
+ * Built on top of `getActiveGithubRepo`, which already returns null
+ * when a stale connectionId references a detached connection.
+ */
+export function agentHasConnectedGithub(
+  virtualMcp: VirtualMCPEntity | null | undefined,
+): boolean {
+  return !!getActiveGithubRepo(virtualMcp ?? null)?.connectionId;
 }
 
 /**

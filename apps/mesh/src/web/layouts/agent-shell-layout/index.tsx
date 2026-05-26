@@ -139,6 +139,8 @@ function MobileToolbar({
   mainOpen,
   onToggleMain,
   onNewTask,
+  entity,
+  hasActiveGithubRepo,
 }: {
   onOpenSidebar: () => void;
   virtualMcpId: string;
@@ -146,6 +148,8 @@ function MobileToolbar({
   mainOpen: boolean;
   onToggleMain: () => void;
   onNewTask: () => void;
+  entity: VirtualMCPEntity | null;
+  hasActiveGithubRepo: boolean;
 }) {
   return (
     <div className="shrink-0 flex items-center gap-1 px-2 h-12 bg-background border-b border-border">
@@ -161,6 +165,9 @@ function MobileToolbar({
         <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
       </div>
       <div className="flex items-center gap-0.5 shrink-0">
+        {entity && hasActiveGithubRepo ? (
+          <VirtualMcpHeaderInfo virtualMcp={entity} inline />
+        ) : null}
         <button
           type="button"
           onClick={onToggleMain}
@@ -447,18 +454,20 @@ function AgentInsetProvider() {
                 onNewTaskRef={onNewTask}
                 createNewTask={layout.createNewTask}
               />
-              <MobileToolbar
-                onOpenSidebar={() => setMobileSidebarOpen(true)}
-                virtualMcpId={chatVirtualMcpId}
-                taskId={layout.taskId}
-                mainOpen={layout.mainOpen}
-                onToggleMain={layout.toggleMain}
-                onNewTask={layout.createNewTask}
-              />
               <Chat.ActiveTaskProvider
                 key={layout.taskId}
                 taskId={layout.taskId}
               >
+                <MobileToolbar
+                  onOpenSidebar={() => setMobileSidebarOpen(true)}
+                  virtualMcpId={chatVirtualMcpId}
+                  taskId={layout.taskId}
+                  mainOpen={layout.mainOpen}
+                  onToggleMain={layout.toggleMain}
+                  onNewTask={layout.createNewTask}
+                  entity={entity}
+                  hasActiveGithubRepo={hasActiveGithubRepo}
+                />
                 <Suspense fallback={<Chat.Skeleton />}>
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {layout.mainOpen ? (

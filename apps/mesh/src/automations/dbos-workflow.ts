@@ -48,13 +48,11 @@
  */
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
-import { createDecopilotThreadStatusEvent } from "@decocms/mesh-sdk";
 import {
   awaitThreadRun,
   type SerializableDispatchRunInput,
 } from "@/dispatch-queue";
-import { resolveTier } from "@/core/resolve-tier";
-import { sseHub } from "@/event-bus";
+import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
 import type { SimpleModeTier } from "@/tools/organization/schema";
@@ -152,12 +150,6 @@ function toThinkingCapabilities(caps: string[] | undefined) {
 type PrepareOutcome =
   | { skip: "not_found" | "inactive" | "creator_invalid" }
   | {
-      // kind='tool_call' — no model resolution needed.
-      automation: Automation;
-      resolvedModel: null;
-    }
-  | {
-      // kind='agent' — full tier resolution.
       automation: Automation;
       resolvedModel: ResolvedAutomationModel;
     };
@@ -186,12 +178,6 @@ async function prepareFireStep(
     return { skip: "creator_invalid" };
   }
 
-  // Tool-call automations skip tier resolution and model lookup entirely —
-  // they invoke a fixed MCP tool with fixed args, no LLM involved.
-  if (automation.kind === "tool_call") {
-    return { automation, resolvedModel: null };
-  }
-
   const parsedModels = JSON.parse(automation.models) as {
     tier?: SimpleModeTier;
   };
@@ -201,22 +187,34 @@ async function prepareFireStep(
     );
   }
   const tier: SimpleModeTier = parsedModels.tier ?? "smart";
-  const resolved = await resolveTier(meshCtx, tier);
+  // Match the chat POST /messages path: resolve the chat tier strictly
+  // (failure aborts the run), and optimistically resolve `image` and
+  // `web_research` so the corresponding built-in tools (generate_image,
+  // web_search) light up the same way they do in interactive chat. Without
+  // these, the automation agent reports "I don't have a web_search tool"
+  // even when the org has Perplexity/Gemini Deep Research configured.
+  const [resolved, image, webResearch] = await Promise.all([
+    resolveTier(meshCtx, tier),
+    tryResolveTier(meshCtx, "image"),
+    tryResolveTier(meshCtx, "web_research"),
+  ]);
+  const toModel = (r: Awaited<ReturnType<typeof resolveTier>>) => ({
+    id: r.modelId,
+    title: r.modelMeta.title,
+    provider: r.modelMeta.providerId ?? null,
+    capabilities: toThinkingCapabilities(r.modelMeta.capabilities),
+    limits: r.modelMeta.limits
+      ? {
+          contextWindow: r.modelMeta.limits.contextWindow,
+          maxOutputTokens: r.modelMeta.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  });
   const resolvedModel: ResolvedAutomationModel = {
     credentialId: resolved.credentialId,
-    thinking: {
-      id: resolved.modelId,
-      title: resolved.modelMeta.title,
-      provider: resolved.modelMeta.providerId ?? null,
-      capabilities: toThinkingCapabilities(resolved.modelMeta.capabilities),
-      limits: resolved.modelMeta.limits
-        ? {
-            contextWindow: resolved.modelMeta.limits.contextWindow,
-            maxOutputTokens:
-              resolved.modelMeta.limits.maxOutputTokens ?? undefined,
-          }
-        : undefined,
-    },
+    thinking: toModel(resolved),
+    ...(image ? { image: toModel(image) } : {}),
+    ...(webResearch ? { deepResearch: toModel(webResearch) } : {}),
   };
 
   return { automation, resolvedModel };
@@ -326,20 +324,6 @@ async function fireAutomationWorkflowFn(
   });
   if ("skip" in prep) return { skipped: prep.skip };
 
-  // Tool-call automations skip the agent dispatch entirely: spawn a
-  // synthetic thread, invoke the configured MCP tool, persist the
-  // input/output as a single assistant message, done. No model, no LLM,
-  // no streaming. TODO(retry-policy): step-level retries are intentionally
-  // not configured — cron re-fires on next tick and the event bus retries
-  // its own deliveries, which covers the common transient cases without
-  // a tool_call holding a queue slot through long backoffs.
-  // TODO(continue-with-agent): expose a UI action to convert a completed
-  // tool_call_run thread into a regular agent thread so the user can chat
-  // about the result.
-  if (prep.automation.kind === "tool_call") {
-    return await runToolCallFire(prep.automation, ctx.triggerId);
-  }
-
   const taskId = await DBOS.runStep(
     () => createRunThreadStep(prep.automation, ctx.triggerId),
     { name: "createRunThread" },
@@ -365,10 +349,7 @@ async function fireAutomationWorkflowFn(
     () =>
       buildDispatchRequestStep(
         prep.automation,
-        // The agent branch in prepareFireStep always returns a non-null
-        // resolvedModel; the tool_call branch above exits before reaching
-        // here. The `!` documents that invariant for the type checker.
-        prep.resolvedModel!,
+        prep.resolvedModel,
         ctx,
         taskId,
       ),
@@ -401,252 +382,6 @@ async function fireAutomationWorkflowFn(
     return { taskId, error: runError };
   }
 
-  return { taskId };
-}
-
-// ============================================================================
-// Tool-call branch (kind='tool_call')
-// ============================================================================
-
-type ToolCallInvocation =
-  | { ok: true; output: unknown }
-  | { ok: false; error: string };
-
-async function createToolCallRunThreadStep(
-  automation: Automation,
-  triggerId: string | null,
-): Promise<string> {
-  const rt = requireRuntime();
-  return await rt.storage.createToolCallRunThread(automation, triggerId);
-}
-
-async function invokeFixedToolStep(
-  automation: Automation,
-): Promise<ToolCallInvocation> {
-  if (!automation.connection_id || !automation.tool_name) {
-    return {
-      ok: false,
-      error: "tool_call automation missing connection_id or tool_name",
-    };
-  }
-
-  const rt = requireRuntime();
-  const meshCtx = await rt.meshContextFactory(
-    automation.organization_id,
-    automation.created_by,
-  );
-  if (!meshCtx) {
-    return { ok: false, error: "creator membership lost mid-fire" };
-  }
-
-  // Scope by org. Without the second arg, `findById` matches across all
-  // organizations — a tool_call automation saved with a foreign-org
-  // connection id (via API misuse) would then invoke that connection on
-  // each fire. CREATE/UPDATE also reject foreign ids; this is the
-  // load-bearing defense at fire time.
-  const connection = await meshCtx.storage.connections.findById(
-    automation.connection_id,
-    automation.organization_id,
-  );
-  if (!connection) {
-    return {
-      ok: false,
-      error: `connection ${automation.connection_id} not found in org`,
-    };
-  }
-
-  const args = automation.tool_input ? JSON.parse(automation.tool_input) : {};
-  const { createLazyClient } = await import("@/mcp-clients/lazy-client");
-  const client = createLazyClient(connection, meshCtx, false);
-  try {
-    const result = (await client.callTool({
-      name: automation.tool_name,
-      arguments: args,
-    })) as {
-      isError?: boolean;
-      content?: Array<{ type?: string; text?: string }>;
-    };
-    // MCP convention: tools signal application-level failures by
-    // returning { isError: true, content: [...] } rather than throwing.
-    // Treat these the same as a thrown error — mark the run failed and
-    // show the message — otherwise the thread is left in 'completed'
-    // with a misleading "output-available" card.
-    if (result.isError) {
-      const message =
-        result.content
-          ?.map((c) => (c.type === "text" ? c.text : undefined))
-          .filter((t): t is string => typeof t === "string")
-          .join("\n")
-          .trim() || "Tool returned an error";
-      return { ok: false, error: message };
-    }
-    return { ok: true, output: result };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  } finally {
-    await client.close().catch(() => {});
-  }
-}
-
-async function persistToolCallResultStep(
-  automation: Automation,
-  taskId: string,
-  triggerId: string | null,
-  result: ToolCallInvocation,
-): Promise<void> {
-  const rt = requireRuntime();
-  const meshCtx = await rt.meshContextFactory(
-    automation.organization_id,
-    automation.created_by,
-  );
-  // If membership was lost between invocation and persistence we still
-  // need to close out the thread, but we can't write the message. Fall
-  // back to marking the run failed.
-  if (!meshCtx) {
-    await rt.storage.markRunFailed(taskId);
-    return;
-  }
-
-  const input = automation.tool_input ? JSON.parse(automation.tool_input) : {};
-  // Stamp the user message 1ms before the assistant so the chat's
-  // mergeAndSort (sort by created_at, tiebreak by id) reliably puts the
-  // user message first. Without this, identical timestamps fall back to
-  // id-ascending and `tool-call` < `trigger` flips the pair order,
-  // which makes useMessagePairs drop the assistant as an orphan and
-  // the UI shows "No response was generated".
-  const userTime = new Date(Date.now() - 1).toISOString();
-  const assistantTime = new Date().toISOString();
-  // The thread UI pairs user/assistant messages; an orphan assistant
-  // message is dropped (apps/mesh/src/web/components/chat/message/pair.tsx
-  // useMessagePairs). Write a synthetic user message labelling the
-  // trigger so the assistant message renders. IDs are also numbered to
-  // make the lex order match the chronological order — belt-and-braces
-  // because mergeAndSort uses id as the tiebreaker. Both ids are
-  // deterministic so step replay overwrites in place rather than
-  // duplicating rows.
-  await meshCtx.storage.threads.saveMessages([
-    {
-      id: `${taskId}-msg-1-trigger`,
-      thread_id: taskId,
-      role: "user",
-      parts: [
-        {
-          type: "text",
-          text: `Tool call: ${automation.tool_name ?? "—"}`,
-        },
-      ],
-      metadata: undefined,
-      created_at: userTime,
-      updated_at: userTime,
-    },
-    {
-      id: `${taskId}-msg-2-tool-call`,
-      thread_id: taskId,
-      role: "assistant",
-      // AI-SDK-native dynamic-tool part. Using this shape (vs the
-      // custom data-tool-call-* parts we had originally) means two
-      // things come for free: the existing GenericToolCallPart
-      // renderer draws the input/output card, AND when the user
-      // sends a follow-up message in the thread the AI SDK
-      // serializes this into a proper tool_call + tool_result pair
-      // for the LLM — so the agent actually sees the tool was
-      // executed, not just a text reference to its name.
-      parts: [
-        result.ok
-          ? {
-              type: "dynamic-tool",
-              toolCallId: `${taskId}-tool-call`,
-              toolName: automation.tool_name ?? "",
-              state: "output-available",
-              input,
-              output: result.output,
-            }
-          : {
-              type: "dynamic-tool",
-              toolCallId: `${taskId}-tool-call`,
-              toolName: automation.tool_name ?? "",
-              state: "output-error",
-              input,
-              errorText: result.error,
-            },
-      ],
-      // Thread-level metadata.kind='tool_call_run' is the canonical
-      // discriminator; the message itself doesn't carry it.
-      metadata: undefined,
-      created_at: assistantTime,
-      updated_at: assistantTime,
-    },
-  ]);
-
-  if (result.ok) {
-    await rt.storage.markRunCompleted(taskId);
-  } else {
-    await rt.storage.markRunFailed(taskId);
-  }
-
-  // Push a thread-status event so the tasks panel materialises this run
-  // without waiting for a refresh. The handler in ThreadManagerStore
-  // upserts the row on first sighting, so this single event both creates
-  // the panel row and marks its final status. We don't bother with an
-  // earlier in_progress event because the tool-call leaf is synchronous
-  // (millisecond-scale) — emitting two events would race the UI.
-  sseHub.emit(
-    automation.organization_id,
-    createDecopilotThreadStatusEvent(
-      taskId,
-      result.ok ? "completed" : "failed",
-      {
-        virtualMcpId: undefined,
-        createdBy: automation.created_by,
-        // Carry through the trigger id so cron/event-driven runs appear
-        // with the automation badge immediately. Manual fires from the
-        // detail page pass null, matching how the thread row itself was
-        // created.
-        triggerId,
-        title: `Automation: ${automation.name}`,
-        branch: null,
-        createdAt: assistantTime,
-        updatedAt: assistantTime,
-        // Without this the panel row appears with a generic agent
-        // avatar until a refetch — task-row branches on
-        // task.metadata?.kind === 'tool_call_run' to pick the tool
-        // icon. The thread row itself was created with this same
-        // metadata in createToolCallRunThread.
-        metadata: { kind: "tool_call_run" },
-      },
-    ),
-  );
-}
-
-async function runToolCallFire(
-  automation: Automation,
-  triggerId: string | null,
-): Promise<FireAutomationOutcome> {
-  const taskId = await DBOS.runStep(
-    () => createToolCallRunThreadStep(automation, triggerId),
-    { name: "createToolCallRunThread" },
-  );
-
-  if (triggerId) {
-    const tid = triggerId;
-    await DBOS.runStep(() => updateTriggerTimingStep(tid), {
-      name: "updateTriggerTiming",
-    });
-  }
-
-  const invocation = await DBOS.runStep(() => invokeFixedToolStep(automation), {
-    name: "invokeFixedTool",
-  });
-
-  await DBOS.runStep(
-    () => persistToolCallResultStep(automation, taskId, triggerId, invocation),
-    { name: "persistToolCallResult" },
-  );
-
-  if (!invocation.ok) return { taskId, error: invocation.error };
   return { taskId };
 }
 

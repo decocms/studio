@@ -151,3 +151,16 @@ export async function resolveTier(
     ),
   };
 }
+
+export async function tryResolveTier(
+  ctx: MeshContext,
+  tier: SimpleModeTier,
+): Promise<ResolvedTier | null> {
+  try {
+    return await resolveTier(ctx, tier);
+  } catch (err) {
+    if (err instanceof TierUnavailableError) return null;
+    console.warn(`[resolveTier] tier "${tier}" resolution failed:`, err);
+    return null;
+  }
+}

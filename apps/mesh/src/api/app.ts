@@ -42,6 +42,11 @@ import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
 import {
+  DownstreamTokenStorage,
+  type DownstreamTokenData,
+} from "../storage/downstream-token";
+import { resolveOriginTokenEndpoint } from "../oauth/resolve-token-endpoint";
+import {
   createLogDeprecatedRoute,
   logDeprecatedRoute,
 } from "./middleware/log-deprecated-route";
@@ -105,6 +110,7 @@ import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import type { Thread } from "../storage/types";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
+import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
 import {
@@ -123,6 +129,7 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
+import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
 import {
@@ -423,16 +430,47 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   // For token endpoint, we may need to rewrite the 'resource' parameter in the body
   // (same reason as authorize: auth servers validate it's their actual endpoint)
   let requestBody: BodyInit | undefined;
+  // Capture client_id/client_secret from the token request so we can persist
+  // them server-side alongside the resulting access/refresh tokens. The DCR
+  // registration that minted these credentials happened in a prior request,
+  // so the body of /token is the only place we can read them on the proxy.
+  let capturedClientId: string | null = null;
+  let capturedClientSecret: string | null = null;
   if (c.req.method !== "GET" && c.req.method !== "HEAD") {
     if (
       endpoint === "token" &&
       contentType?.includes("application/x-www-form-urlencoded")
     ) {
+      // Per RFC 6749 §2.3.1, confidential clients may send credentials via
+      // HTTP Basic auth instead of the form body. Capture from the header
+      // first so the body parse below can still override when a client sends
+      // both — without this fallback, Basic-auth clients persist with a
+      // null clientId and become non-refreshable.
+      if (authorization?.toLowerCase().startsWith("basic ")) {
+        try {
+          const decoded = atob(authorization.slice(6).trim());
+          const colonIdx = decoded.indexOf(":");
+          if (colonIdx !== -1) {
+            // RFC 6749 §2.3.1: the credentials are form-urlencoded before
+            // being base64'd as the Basic value.
+            const id = decodeURIComponent(decoded.slice(0, colonIdx));
+            const secret = decodeURIComponent(decoded.slice(colonIdx + 1));
+            capturedClientId = id || null;
+            capturedClientSecret = secret || null;
+          }
+        } catch {
+          // Malformed Basic header — let origin reject the request.
+        }
+      }
       // Parse form body and rewrite resource if present
       const formData = await c.req.formData();
       if (formData.has("resource")) {
         formData.set("resource", connection.connection_url);
       }
+      const cidRaw = formData.get("client_id");
+      const csRaw = formData.get("client_secret");
+      if (typeof cidRaw === "string" && cidRaw) capturedClientId = cidRaw;
+      if (typeof csRaw === "string" && csRaw) capturedClientSecret = csRaw;
       // Convert back to URLSearchParams for form-urlencoded
       const params = new URLSearchParams();
       for (const [key, value] of formData.entries()) {
@@ -523,6 +561,62 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     if (!excludedHeaders.includes(key.toLowerCase())) {
       responseHeaders.set(key, value);
     }
+  }
+
+  // For successful token exchanges (initial code-for-token and refresh_token
+  // grants), persist the token server-side immediately. This decouples the
+  // OAuth flow from the browser's session cookie state — the client used to
+  // POST the token back to /api/:org/connections/:id/oauth-token with
+  // cookie auth, which 401s when the popup's redirect chain leaves the
+  // parent's session in an inconsistent state.
+  if (endpoint === "token" && response.ok) {
+    const bodyText = await response.text();
+    try {
+      const parsed = JSON.parse(bodyText) as {
+        access_token?: unknown;
+        refresh_token?: unknown;
+        expires_in?: unknown;
+        scope?: unknown;
+      };
+      if (typeof parsed.access_token === "string" && parsed.access_token) {
+        const expiresAt =
+          typeof parsed.expires_in === "number"
+            ? new Date(Date.now() + parsed.expires_in * 1000)
+            : null;
+        // Prefer the origin's real token endpoint so future refreshes don't
+        // self-loop through the proxy.
+        let tokenEndpoint: string | null = null;
+        try {
+          tokenEndpoint =
+            (await resolveOriginTokenEndpoint(connection.connection_url)) ??
+            originEndpointUrl;
+        } catch {
+          tokenEndpoint = originEndpointUrl;
+        }
+        const tokenData: DownstreamTokenData = {
+          connectionId,
+          accessToken: parsed.access_token,
+          refreshToken:
+            typeof parsed.refresh_token === "string"
+              ? parsed.refresh_token
+              : null,
+          scope: typeof parsed.scope === "string" ? parsed.scope : null,
+          expiresAt,
+          clientId: capturedClientId,
+          clientSecret: capturedClientSecret,
+          tokenEndpoint,
+        };
+        const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
+        await tokenStorage.upsert(tokenData);
+      }
+    } catch (err) {
+      console.error("[oauth-proxy] failed to persist downstream token:", err);
+    }
+    return new Response(bodyText, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
   }
 
   return new Response(response.body, {
@@ -969,6 +1063,11 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.use("*", async (c, next) => {
     await next();
+    // Org-scoped /files/* serves user content (HTML pages written by the
+    // web-developer agent, uploaded images, etc.) that we deliberately
+    // iframe back into the app. Same-origin only — auth middleware still
+    // gates access — and consumers are expected to sandbox the iframe.
+    if (c.req.path.includes("/files/")) return;
     c.header("X-Frame-Options", "DENY");
     c.header("Content-Security-Policy", "frame-ancestors 'none'");
   });
@@ -1767,6 +1866,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // PR removes them after the deprecation window.
   const orgScopedApi = createOrgScopedApi({
     kvStorage,
+    runRegistry,
+    streamBuffer,
+    cancelBroadcast,
     tokenStorage: triggerCallbackTokenStorage,
     automationEventDispatcher,
     mountDevAssets: usesLocalObjectStorage(),
@@ -1907,50 +2009,14 @@ export async function createApp(options: CreateAppOptions = {}) {
       concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
     });
     await reconcileAutomationSchedules(automationsStorage);
-  };
 
-  // Fire-and-forget backfill of the Studio Pack for every org.
-  // `installStudioPack` is idempotent (skip-if-exists), so this is a near
-  // no-op in steady state; first-boot after the Store Manager ships, it
-  // installs the missing manager for every existing org without a migration.
-  {
-    const { installStudioPack } = await import("@/tools/virtual/studio-pack");
-    const { ensureStudioPackForAllOrgs } = await import(
-      "@/tools/virtual/ensure-studio-pack"
-    );
-    const { VirtualMCPStorage } = await import("@/storage/virtual");
-    const virtualMcpStorage = new VirtualMCPStorage(database.db);
-    ensureStudioPackForAllOrgs({
-      listOrgs: async () => {
-        const rows = await database.db
-          .selectFrom("organization")
-          .select(["id"])
-          .execute();
-        // Pick a deterministic createdBy per org: first owner from member
-        // table. Fall back to "system" if none — installStudioPack only
-        // uses createdBy as audit metadata, not for auth.
-        return Promise.all(
-          rows.map(async (org) => {
-            const owner = await database.db
-              .selectFrom("member")
-              .select(["userId"])
-              .where("organizationId", "=", org.id)
-              .where("role", "=", "owner")
-              .limit(1)
-              .executeTakeFirst();
-            return {
-              id: org.id,
-              createdBy: owner?.userId ?? "system",
-            };
-          }),
-        );
-      },
-      installer: installStudioPack,
-      virtualMcpStorage,
-    }).catch((error) => {
-      console.error("[studio-pack] backfill driver failed:", error);
+    // Fire-and-forget backfill of studio pack agents for every org. Safe
+    // to skip awaiting — the workflow IDs are deterministic per-org, so
+    // replicas/workers all enqueueing in parallel collapse via OAOO.
+    backfillStudioPackForAllOrgs().catch((err) => {
+      console.error("[studio-pack-backfill] failed:", err);
     });
-  }
+  };
 
   return Object.assign(app, { markShuttingDown, shutdown, initDbos });
 }

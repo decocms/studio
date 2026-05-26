@@ -112,6 +112,16 @@ export interface SandboxProvider {
   delete(handle: string): Promise<void>;
   alive(handle: string): Promise<boolean>;
 
+  /**
+   * Drop this provider's in-process cache + persistent state for `handle`
+   * WITHOUT contacting the daemon. Used by the auto-restart path when the
+   * daemon is known-dead — `delete()` would try to reach the link and
+   * either fail or be wasteful. Optional: callers must `?.()`. Providers
+   * that don't keep a per-instance cache (or where the state store is
+   * the sole source of truth) can omit.
+   */
+  forgetHandle?(handle: string): Promise<void>;
+
   /** Null when no workload was requested or the sandbox isn't running. */
   getPreviewUrl(handle: string): Promise<string | null>;
 

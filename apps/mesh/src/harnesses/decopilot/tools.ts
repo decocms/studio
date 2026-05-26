@@ -7,8 +7,7 @@
  *  - Built-in platform tools via `getBuiltInTools` (subtask, user_ask, vm
  *    file tools, sandbox, web_search, etc.).
  *  - Single `listTools()` round-trip to derive (a) connections-block
- *    entries, (b) connection ids for `enable_tool` short-name resolution,
- *    and (c) per-tool annotations used for plan-mode gating.
+ *    entries and (b) per-tool annotations used for plan-mode gating.
  *  - VM file-tool binding context (`vmContext`) keyed on whether the
  *    agent is GitHub-linked or ephemeral.
  *
@@ -31,6 +30,7 @@ import {
   type PendingImage,
   type VmContext,
 } from "./built-in-tools";
+import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import type { ConnectionsBlockTool } from "./connections-block";
 import { toolsFromMCP } from "../../api/routes/decopilot/helpers";
 import type { HarnessStreamInput } from "../types";
@@ -61,9 +61,6 @@ export interface AssembledTools {
   /** ConnectionsBlockTool entries derived from `listTools()` — consumed
    *  by `buildConnectionsBlock` in the prompt-assembly step. */
   connectionsBlockTools: ConnectionsBlockTool[];
-  /** Connection ids known to the agent; used by `createEnableToolTool`
-   *  to resolve short tool names against connection prefixes. */
-  connectionIds: Set<string>;
   /** Per-tool annotations (only populated in plan mode) — used to gate
    *  read-only vs write tools during enable_tool. */
   toolAnnotations: Map<string, { readOnlyHint?: boolean }>;
@@ -100,6 +97,10 @@ export interface AssembleDecopilotToolsExtras {
    *  activates this in advance — `null` is rejected by `getBuiltInTools`
    *  for tools that require it, but we forward whatever the caller has. */
   provider: MeshProvider | null;
+  /** Per-turn HTML-page coalescing buffer. Created in dispatch-run.ts
+   *  alongside `pendingOps` so the dispatch layer can also schedule a
+   *  flush at step-end. */
+  htmlPageBuffer: HtmlPageBuffer;
 }
 
 /**
@@ -110,8 +111,7 @@ export interface AssembleDecopilotToolsExtras {
  *     `result.close()` or `result.passthroughClient.close()`).
  *  2. Issues one `listTools()` call — its result is exposed via
  *     `passthroughToolList` so the caller doesn't need a second
- *     round-trip when building the connections block / enable_tool
- *     short-name index.
+ *     round-trip when building the connections block.
  */
 export async function assembleDecopilotTools(
   input: HarnessStreamInput,
@@ -199,18 +199,17 @@ export async function assembleDecopilotTools(
         pendingImages: extras.pendingImages,
         passthroughClient,
         vmContext,
+        htmlPageBuffer: extras.htmlPageBuffer,
         taskId: extras.threadId,
       },
       ctx,
     );
 
     // Collect (rawName, safeName, connectionId) triples for the
-    // connections block, the set of connection ids for enable_tool
-    // short-name resolution, and the per-tool annotations used for
-    // plan-mode gating — all from a single listTools() round-trip.
+    // connections block and the per-tool annotations used for plan-mode
+    // gating — both from a single listTools() round-trip.
     const passthroughToolList = (await passthroughClient.listTools()).tools;
     const connectionsBlockTools: ConnectionsBlockTool[] = [];
-    const connectionIds = new Set<string>();
     const toolAnnotations = new Map<string, { readOnlyHint?: boolean }>();
     for (const t of passthroughToolList) {
       const safeName = passthroughNameMap.get(t.name);
@@ -229,7 +228,6 @@ export async function assembleDecopilotTools(
         safeName,
         connectionId,
       });
-      connectionIds.add(connectionId);
       if (isPlanMode) {
         toolAnnotations.set(safeName, {
           readOnlyHint: t.annotations?.readOnlyHint,
@@ -263,7 +261,6 @@ export async function assembleDecopilotTools(
       builtInTools,
       passthroughToolList,
       connectionsBlockTools,
-      connectionIds,
       toolAnnotations,
       vmContext,
       connectionTitleMap,

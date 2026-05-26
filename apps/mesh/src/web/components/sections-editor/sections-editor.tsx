@@ -344,6 +344,7 @@ export function SectionsEditor({
   orgSlug,
   virtualMcpId,
   branch,
+  previewReady = true,
   currentPath,
   externalSelectedIndex,
   onSaved,
@@ -351,13 +352,17 @@ export function SectionsEditor({
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /** When false, waits for the sandbox dev server before preview-fetch. */
+  previewReady?: boolean;
   currentPath: string;
   /** Section index selected via click-through from the preview iframe. */
   externalSelectedIndex?: number | null;
   /** Called after a successful auto-save so the parent can reload the preview. */
   onSaved?: () => void;
 }) {
-  const previewFetchParams = { orgSlug, virtualMcpId, branch };
+  const previewFetchParams = previewReady
+    ? { orgSlug, virtualMcpId, branch }
+    : null;
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(previewFetchParams);
   const { data: meta, isLoading: metaLoading } =
@@ -423,7 +428,7 @@ export function SectionsEditor({
     variantIndex: 0,
   });
 
-  if (decofileLoading || metaLoading) {
+  if (!previewReady || decofileLoading || metaLoading) {
     return (
       <div className="h-full w-full flex items-center justify-center">
         <Loading01 size={20} className="animate-spin text-muted-foreground" />

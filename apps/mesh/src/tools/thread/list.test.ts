@@ -28,7 +28,6 @@ describe("COLLECTION_THREADS_LIST", () => {
         models: "{}",
         temperature: 0.5,
         virtual_mcp_id: "vmcp_test",
-        kind: "agent",
         created_at: now,
         updated_at: now,
       })

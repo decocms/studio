@@ -10,16 +10,15 @@ import { CredentialVault } from "@/encryption/credential-vault";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { ConnectionStorage } from "@/storage/connection";
 import { Permission } from "@/storage/types";
-import { VirtualMCPStorage } from "@/storage/virtual";
 import { fetchToolsFromMCP } from "@/tools/connection/fetch-tools";
 import {
   ConnectionCreateData,
   ToolDefinition,
 } from "@/tools/connection/schema";
-import { installStudioPack } from "@/tools/virtual/studio-pack";
 import { z } from "zod";
 import { getSettings } from "../settings";
 import { auth } from "./index";
+import { enqueueInstallStudioPack } from "./install-studio-pack-workflow";
 import { mintGatewayJwt } from "./jwt";
 
 interface MCPCreationSpec {
@@ -149,12 +148,10 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
       }),
     );
 
-    // Install studio pack agents (Agent Manager, Automation Manager, Connection Manager)
     try {
-      const virtualMcpStorage = new VirtualMCPStorage(database.db);
-      await installStudioPack(organizationId, createdBy, virtualMcpStorage);
+      await enqueueInstallStudioPack({ orgId: organizationId, createdBy });
     } catch (err) {
-      console.error("Failed to install studio pack agents:", err);
+      console.error("Failed to enqueue studio pack install:", err);
     }
 
     if (

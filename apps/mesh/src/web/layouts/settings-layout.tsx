@@ -205,7 +205,7 @@ export function SettingsSidebar() {
 
   return (
     <Sidebar variant="sidebar">
-      <SidebarContent className="flex flex-col flex-1 mt-2 px-2 pb-2 gap-0">
+      <SidebarContent className="flex flex-col flex-1 mt-2 px-2 pb-2 gap-0 overflow-y-auto">
         {/* Back to org */}
         <SidebarGroup className="pt-0 pr-0 pb-3 md:pb-3 pl-0">
           <SidebarGroupContent>

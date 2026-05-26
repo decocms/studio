@@ -5,29 +5,21 @@ import { MessageAssistant } from "./assistant.tsx";
 import { MessageUser } from "./user.tsx";
 
 export interface MessagePair {
-  user: ChatMessage;
+  user: ChatMessage | null;
   assistant: ChatMessage | null;
 }
 
 /**
  * Converts a flat array of messages into user/assistant pairs.
  *
- * Pairing logic:
- * - Each user message creates a new pair
- * - The following assistant message (if any) is paired with it
- * - Orphaned assistant messages (no preceding user) are ignored
- *
- * Examples:
- * - [user, assistant] → [[user, assistant]]
- * - [user, user, assistant] → [[user, null], [user, assistant]]
- * - [user, assistant, user] → [[user, assistant], [user, null]]
- * - [assistant, user, assistant] → [[user, assistant]] (first assistant ignored)
+ * - User message + following assistant → paired together.
+ * - User message with no following assistant → { user, assistant: null }.
+ * - Assistant message with no preceding user (onboarding welcomes, etc.) →
+ *   { user: null, assistant } on its own.
  */
 export function useMessagePairs(messages: ChatMessage[]): MessagePair[] {
   const pairs: MessagePair[] = [];
 
-  // Filter out system messages (e.g. infrastructure restart notices) so they
-  // don't break user/assistant pairing.
   const filtered = messages.filter((m) => m.role !== "system");
 
   for (let i = 0; i < filtered.length; i++) {
@@ -36,20 +28,17 @@ export function useMessagePairs(messages: ChatMessage[]): MessagePair[] {
     if (!message) continue;
 
     if (message.role === "user") {
-      // Look ahead for the next message
       const nextMessage = filtered[i + 1];
 
       if (nextMessage && nextMessage.role === "assistant") {
-        // Pair with the following assistant message
         pairs.push({ user: message, assistant: nextMessage });
-        // Skip the assistant message in the next iteration
         i++;
       } else {
-        // No assistant follows - create pair with null (pending or no response)
         pairs.push({ user: message, assistant: null });
       }
+    } else if (message.role === "assistant") {
+      pairs.push({ user: null, assistant: message });
     }
-    // Orphaned assistant messages (no preceding user) are ignored
   }
 
   return pairs;
@@ -108,13 +97,18 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
   };
 
   return (
-    <div ref={handlePairRef} className={cn("flex flex-col pb-2 sm:pb-2")}>
-      {/* Sticky overlay to prevent scrolling content from appearing above the user message */}
-      <div className="sticky top-0 z-50 w-full h-4 bg-background" />
-      <div className="sticky mb-8 sm:mb-6 top-4 z-50">
-        <MessageUser message={pair.user} onScrollToPair={scrollToPair} />
-      </div>
-      {/* Single MessageAssistant - handles all states internally */}
+    <div
+      ref={handlePairRef}
+      className={cn("flex flex-col pb-2 sm:pb-2", !pair.user && "pt-8 sm:pt-6")}
+    >
+      {pair.user && (
+        <>
+          <div className="sticky top-0 z-50 w-full h-4 bg-background" />
+          <div className="sticky mb-8 sm:mb-6 top-4 z-50">
+            <MessageUser message={pair.user} onScrollToPair={scrollToPair} />
+          </div>
+        </>
+      )}
       <MessageAssistant
         message={pair.assistant}
         status={status}

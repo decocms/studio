@@ -30,16 +30,11 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import {
-  SELF_MCP_ALIAS_ID,
   StudioPackAgentId,
   useConnections,
-  useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useQueryClient } from "@tanstack/react-query";
-import { KEYS } from "@/web/lib/query-keys";
 import { usePanelActions } from "@/web/layouts/shell-layout";
-import { useEnsureStudioPack } from "@/web/components/home/use-ensure-studio-pack";
 import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improve-prompt-doc";
 import {
   ArrowLeft,
@@ -64,10 +59,6 @@ import {
   derivePartsFromTiptapDoc,
   tiptapDocToMessages,
 } from "@/web/components/chat/derive-parts.ts";
-import {
-  ToolCallConfigFields,
-  type ToolCallConfigValue,
-} from "./tool-call-config-fields";
 
 // ============================================================================
 // Types
@@ -335,11 +326,8 @@ export function SettingsTab({
 }) {
   const agentId = automation.virtual_mcp_id;
   const { org } = useProjectContext();
-  const {
-    update: updateMutation,
-    triggerAdd: addTrigger,
-    run: runMutation,
-  } = useAutomationActions();
+  const { update: updateMutation, triggerAdd: addTrigger } =
+    useAutomationActions();
   const allConnections = useConnections();
   const connectionNameMap = new Map(allConnections.map((c) => [c.id, c.title]));
 
@@ -348,7 +336,6 @@ export function SettingsTab({
   const { setSimpleModeTier } = useChatPrefs();
   const { setChatOpen } = usePanelActions();
   const { sendMessage } = useChatStream();
-  const ensureStudioPack = useEnsureStudioPack();
   const [preferences, setPreferences] = usePreferences();
   const initialTiptapDoc =
     (automation.messages?.[0] as { metadata?: Metadata } | undefined)?.metadata
@@ -373,18 +360,6 @@ export function SettingsTab({
   // dirtyFields.
   const [tiptapDirty, setTiptapDirty] = useState(false);
 
-  // Tool-call config (only meaningful for kind='tool_call' automations).
-  // Tracked outside RHF because the field set is different from the agent
-  // form and the schema-driven input shape doesn't compose with RHF's
-  // flat field map.
-  const [toolCallConfig, setToolCallConfig] = useState<ToolCallConfigValue>(
-    () => ({
-      connectionId: automation.connection_id ?? "",
-      toolName: automation.tool_name ?? "",
-      input: (automation.tool_input as Record<string, unknown> | null) ?? {},
-    }),
-  );
-
   const handleImprovePrompt = async () => {
     if (isImproving) return;
     const parts = derivePartsFromTiptapDoc(tiptapDoc);
@@ -402,8 +377,6 @@ export function SettingsTab({
         agent_id: agentId,
         instructions_length: instructionsText.length,
       });
-
-      await ensureStudioPack(["studio-automation-manager"]);
 
       setChatOpen(true);
 
@@ -510,54 +483,6 @@ export function SettingsTab({
     save: saveForm,
   });
 
-  // Tool-call autosave bypasses the global `update` mutation hook because
-  // that hook toasts on every success — fine for a deliberate save but
-  // noisy when the user is just typing in the JSON input. We call the
-  // MCP tool directly here and silently invalidate the affected query
-  // keys; toasts only fire on the explicit Test action.
-  const selfClient = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-  const queryClient = useQueryClient();
-  const saveToolCallConfig = async (
-    next: ToolCallConfigValue,
-  ): Promise<boolean> => {
-    if (automation.kind !== "tool_call") return true;
-    try {
-      const result = (await selfClient.callTool({
-        name: "AUTOMATION_UPDATE",
-        arguments: {
-          id: automationId,
-          connection_id: next.connectionId,
-          tool_name: next.toolName,
-          tool_input: next.input,
-        },
-      })) as { isError?: boolean; content?: Array<{ text?: string }> };
-      if (result.isError) {
-        toast.error(
-          result.content?.[0]?.text ?? "Failed to save tool-call config",
-        );
-        return false;
-      }
-      queryClient.invalidateQueries({ queryKey: KEYS.automationsAll(org.id) });
-      queryClient.invalidateQueries({
-        queryKey: KEYS.automation(org.id, automationId),
-      });
-      return true;
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to save tool-call config",
-      );
-      return false;
-    }
-  };
-  const { schedule: scheduleToolCallSave, flush: flushToolCallSave } =
-    useDebouncedAutosave({
-      save: () => saveToolCallConfig(toolCallConfig),
-    });
-
   const { schedule: scheduleSessionFlush, flush: forceSessionFlush } =
     useDebouncedAutosave({
       delayMs: 30_000,
@@ -593,24 +518,7 @@ export function SettingsTab({
     track("automation_test_clicked", {
       automation_id: automationId,
       agent_id: agentId,
-      kind: automation.kind,
     });
-
-    if (automation.kind === "tool_call") {
-      // Persist any pending edits before firing — otherwise we'd run the
-      // previously-saved config and the user would see stale behavior.
-      // `flush` also cancels the pending debounce timer, so we don't
-      // race with a delayed autosave firing a duplicate update after
-      // this explicit save returns.
-      const saved = await flushToolCallSave();
-      if (!saved) return;
-      try {
-        await runMutation.mutateAsync(automationId);
-      } catch {
-        // The mutation's onError already toast-notifies; nothing more to do.
-      }
-      return;
-    }
 
     const saved = await flushAndSave();
     forceSessionFlush();
@@ -639,9 +547,7 @@ export function SettingsTab({
         <div className="flex items-center pb-4 shrink-0">
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ArrowLeft size={14} />
-            {automation.kind === "tool_call"
-              ? "Back to all automations"
-              : "Back to list"}
+            Back to list
           </Button>
         </div>
       )}
@@ -856,97 +762,60 @@ export function SettingsTab({
           />
         </div>
 
-        {/* Section: Instructions (agent kind) or Tool call (tool_call kind).
-            Tool-call edits autosave via AUTOMATION_UPDATE on debounce; the
-            Test button below uses AUTOMATION_RUN for tool_call kind instead
-            of opening a chat thread. */}
-        {automation.kind === "tool_call" ? (
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground/60">
-                Tool call
-              </span>
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                className="h-7 gap-1.5 px-3 text-xs"
-                onClick={handleRunClick}
-                disabled={
-                  runMutation.isPending ||
-                  !toolCallConfig.connectionId ||
-                  !toolCallConfig.toolName
-                }
-              >
-                <ArrowUp size={14} />
-                Test
-              </Button>
-            </div>
-            <div className="rounded-xl border border-border p-3">
-              <ToolCallConfigFields
-                value={toolCallConfig}
-                onChange={(next) => {
-                  setToolCallConfig(next);
-                  scheduleToolCallSave();
-                }}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground/60">
-                Instructions
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs"
-                disabled={isImproving || !tiptapDoc}
-                onClick={handleImprovePrompt}
-              >
-                <Stars01 size={13} />
-                Improve
-              </Button>
-            </div>
-            <TiptapProvider
-              tiptapDoc={tiptapDoc}
-              setTiptapDoc={setTiptapDoc}
-              placeholder="What should this automation do?"
+        {/* Section: Instructions */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-muted-foreground/60">
+              Instructions
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs"
+              disabled={isImproving || !tiptapDoc}
+              onClick={handleImprovePrompt}
             >
-              <div className="rounded-xl border border-border min-h-[120px] flex flex-col">
-                <TiptapInput
-                  virtualMcpId={agentId || null}
-                  className="max-h-[45vh]"
-                />
-
-                <div className="@container/chat-bottom flex items-center justify-end gap-1.5 p-2.5">
-                  <SimpleModeTierDropdown
-                    tier={form.watch("tier")}
-                    onSelect={(tier) =>
-                      form.setValue("tier", tier, { shouldDirty: true })
-                    }
-                  />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="default"
-                        className="h-8 gap-1.5 rounded-md px-3 text-sm font-medium"
-                        onClick={handleRunClick}
-                        disabled={!agentId}
-                      >
-                        <ArrowUp size={16} />
-                        Test
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Test Automation</TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
-            </TiptapProvider>
+              <Stars01 size={13} />
+              Improve
+            </Button>
           </div>
-        )}
+          <TiptapProvider
+            tiptapDoc={tiptapDoc}
+            setTiptapDoc={setTiptapDoc}
+            placeholder="What should this automation do?"
+          >
+            <div className="rounded-xl border border-border min-h-[120px] flex flex-col">
+              <TiptapInput
+                virtualMcpId={agentId || null}
+                className="max-h-[45vh]"
+              />
+
+              <div className="@container/chat-bottom flex items-center justify-end gap-1.5 p-2.5">
+                <SimpleModeTierDropdown
+                  tier={form.watch("tier")}
+                  onSelect={(tier) =>
+                    form.setValue("tier", tier, { shouldDirty: true })
+                  }
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="default"
+                      className="h-8 gap-1.5 rounded-md px-3 text-sm font-medium"
+                      onClick={handleRunClick}
+                      disabled={!agentId}
+                    >
+                      <ArrowUp size={16} />
+                      Test
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Test Automation</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+          </TiptapProvider>
+        </div>
       </div>
     </>
   );

@@ -3,6 +3,7 @@ import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-c
 import { CLAIM_PHASE_COPY } from "@/web/components/sandbox/claim-phase-copy";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
+import { saveChangesDebug } from "./save-changes-debug.ts";
 
 /**
  * Header copy for claim-phase variants while lifecycle is still `idle`.
@@ -169,6 +170,18 @@ export function selectHeaderButton(
       tooltip: "Commit and push local changes",
     };
   }
+
+  // Fall-through debug: why not Save changes?
+  saveChangesDebug("no local work — checking PR/sync state", {
+    workingTreeDirty: ready.workingTreeDirty,
+    unpushed: ready.unpushed,
+    aheadOfBase: ready.aheadOfBase,
+    behindBase: ready.behindBase,
+    branch: ready.branch,
+    base: ready.base,
+    prMerged: pr?.merged ?? null,
+    prState: pr?.state ?? null,
+  });
 
   // Merged PR is terminal UNLESS the branch has advanced past the PR's
   // head (i.e. new commits were pushed after the merge). Squash-merges

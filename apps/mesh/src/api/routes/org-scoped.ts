@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
 import type { AutomationEventDispatcher } from "@/automations/automation-event-dispatcher";
+import type { CancelBroadcast } from "@/api/routes/decopilot/cancel-broadcast";
+import type { RunRegistry } from "@/api/routes/decopilot/run-registry";
+import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
 import type { KVStorage } from "@/storage/kv";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
@@ -16,6 +19,9 @@ import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
+import { createStudioPackChecklistsRoutes } from "./studio-pack-checklists";
+import { createStudioPackWelcomeRoutes } from "./studio-pack-welcome";
+import { createSuggestedActionsRoutes } from "./suggested-actions";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
@@ -23,6 +29,17 @@ import { createSandboxRoutes } from "./sandbox-proxy";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
+  /**
+   * Decopilot dispatch primitives — required by the preset-task `/start`
+   * route, which kicks an agent run server-side and returns the taskId
+   * for the FE to navigate to. The same trio is wired into
+   * `createDecopilotRoutes` in app.ts; threading them through here lets
+   * server-initiated runs share the JetStream pump + cancel reactor +
+   * run registry the chat path uses.
+   */
+  runRegistry: RunRegistry;
+  streamBuffer: StreamBuffer;
+  cancelBroadcast: CancelBroadcast;
   tokenStorage: TriggerCallbackTokenStorage;
   automationEventDispatcher: AutomationEventDispatcher;
   /** Whether dev-only routes should be mounted (no S3 → DevObjectStorage). */
@@ -66,6 +83,9 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
   app.route("/", createFileUploadRoutes()); // /api/:org/file-configs/:id/upload
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
+  app.route("/", createSuggestedActionsRoutes());
+  app.route("/", createStudioPackChecklistsRoutes());
+  app.route("/", createStudioPackWelcomeRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(

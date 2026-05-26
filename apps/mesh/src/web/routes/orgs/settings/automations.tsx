@@ -4,11 +4,7 @@ import { SearchInput } from "@deco/ui/components/search-input.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Page } from "@/web/components/page";
 import { EmptyState } from "@/web/components/empty-state.tsx";
-import {
-  buildDefaultToolCallAutomationInput,
-  useAutomationActions,
-  useAutomations,
-} from "@/web/hooks/use-automations";
+import { useAutomations } from "@/web/hooks/use-automations";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { AutomationListRow } from "@/web/views/automations/automation-list-row";
 import {
@@ -26,20 +22,6 @@ export default function SettingsAutomationsPage() {
   const navigateToAgent = useNavigateToAgent();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const { create } = useAutomationActions();
-
-  const handleCreateToolCall = async () => {
-    if (create.isPending) return;
-    track("automations_new_tool_call_clicked", {
-      existing_count: automations.length,
-    });
-    const created = await create.mutateAsync(
-      buildDefaultToolCallAutomationInput(),
-    );
-    // tool_call automations have no agent; route the detail panel through
-    // Decopilot as the host shell (same fallback as orphaned agent refs).
-    handleRowClick(created.id, null);
-  };
 
   const lowerSearch = search.toLowerCase();
   const agentMap = new Map(agents.map((a) => [a.id, a]));
@@ -51,15 +33,12 @@ export default function SettingsAutomationsPage() {
       const agent = agentMap.get(a.virtual_mcp_id);
       if (agent && agent.title.toLowerCase().includes(lowerSearch)) return true;
     }
-    if (a.tool_name?.toLowerCase().includes(lowerSearch)) return true;
     return false;
   });
 
   const handleRowClick = (automationId: string, agentId: string | null) => {
-    // Tool-call automations have no agent (virtual_mcp_id=null), and an
-    // agent-kind row whose virtual_mcp_id no longer resolves is orphaned —
-    // either way the detail panel needs a host shell, so we fall back to
-    // Decopilot.
+    // Agent-kind rows whose virtual_mcp_id no longer resolves are orphaned;
+    // fall back to Decopilot so the detail panel still has a host shell.
     const target =
       agentId && agentMap.has(agentId) ? agentId : getDecopilotId(org.id);
     track("automations_list_row_clicked", {
@@ -82,18 +61,7 @@ export default function SettingsAutomationsPage() {
       <Page.Content>
         <Page.Body>
           <div className="flex flex-col gap-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Page.Title>Automations</Page.Title>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleCreateToolCall}
-                disabled={create.isPending}
-              >
-                <Plus size={14} />
-                New tool-call automation
-              </Button>
-            </div>
+            <Page.Title>Automations</Page.Title>
             {automations.length > 0 && (
               <SearchInput
                 value={search}

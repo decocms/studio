@@ -8,10 +8,8 @@
 
 import { Suspense } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { ClipboardCheck } from "@untitledui/icons";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Chat } from "@/web/components/chat";
-import { EmptyState } from "@/web/components/empty-state";
 import {
   useThreads,
   useThreadActions,
@@ -66,18 +64,6 @@ function TasksPanelContent() {
       });
     }
   };
-
-  if (allTasks.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center p-4">
-        <EmptyState
-          image={<ClipboardCheck size={48} className="text-muted-foreground" />}
-          title="No tasks yet"
-          description="Start a conversation to create your first task."
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col h-full min-h-0 p-2 gap-3">

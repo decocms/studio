@@ -81,7 +81,7 @@ export default function OrgShellLayout() {
   return (
     <ThreadManagerProvider>
       <SidebarProvider defaultOpen={false}>
-        <div className="flex flex-col h-dvh overflow-hidden">
+        <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
           <SidebarLayout
             className="flex-1 bg-sidebar"
             style={
@@ -117,7 +117,9 @@ export default function OrgShellLayout() {
                         </Toolbar.LeftColumn>
                         <Toolbar.CenterSlot />
                         <Toolbar.RightColumn>
-                          <Toolbar.TabsSlot />
+                          <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end">
+                            <Toolbar.TabsSlot />
+                          </div>
                           <Toolbar.RightSlot />
                         </Toolbar.RightColumn>
                       </Toolbar.Header>

@@ -309,10 +309,18 @@ export function ToolsPopover({
             disabled={disabled}
             title="Tools"
             aria-label="Tools"
-            className="gap-0 @[496px]/chat-bottom:gap-1.5 text-muted-foreground hover:text-foreground"
+            className={cn(
+              "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
+              "gap-0 @[320px]/chat-bottom:gap-1.5",
+            )}
           >
             <Settings04 size={14} />
-            <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-24 @[496px]/chat-bottom:opacity-100">
+            <span
+              className={cn(
+                "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+                "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
+              )}
+            >
               Tools
             </span>
           </Button>

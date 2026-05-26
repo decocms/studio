@@ -105,18 +105,36 @@ export class DesktopSandboxProvider implements SandboxProvider {
     // change too or the cluster's state-store lookup will silently miss.
     const handle = computeHandle(id, opts.repo?.branch, { hashLen: 16 });
 
+    // Neither the in-process cache nor the state-store row gets invalidated
+    // when a daemon dies asynchronously (laptop sleep, process killed,
+    // tunnel dropped). Without a liveness check here, ensure() happily
+    // returns a corpse URL and every retry replays it — breaking the
+    // harness's auto-restart loop. Probe before trusting; on a dead URL,
+    // drop the stale record and fall through to (re)spawn via the link.
     const cached = this.records.get(handle);
-    if (cached) return this.toSandbox(cached);
-
-    if (this.stateStore) {
+    if (cached) {
+      if (await this.probeHealth(cached.sandboxApiUrl))
+        return this.toSandbox(cached);
+      this.records.delete(handle);
+      if (this.stateStore) {
+        await this.stateStore
+          .deleteByHandle(RUNNER_KIND, handle)
+          .catch(() => {});
+      }
+    } else if (this.stateStore) {
       const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
       const sandboxApiUrl = (
         row?.state as { sandboxApiUrl?: string } | undefined
       )?.sandboxApiUrl;
       if (sandboxApiUrl) {
-        const rec: RemoteRecord = { handle, sandboxApiUrl };
-        this.records.set(handle, rec);
-        return this.toSandbox(rec);
+        if (await this.probeHealth(sandboxApiUrl)) {
+          const rec: RemoteRecord = { handle, sandboxApiUrl };
+          this.records.set(handle, rec);
+          return this.toSandbox(rec);
+        }
+        await this.stateStore
+          .deleteByHandle(RUNNER_KIND, handle)
+          .catch(() => {});
       }
     }
 
@@ -231,11 +249,42 @@ export class DesktopSandboxProvider implements SandboxProvider {
     // the daemon.
     const rec = await this.resolveRecord(handle);
     if (!rec) return false;
+    return this.probeHealth(rec.sandboxApiUrl);
+  }
+
+  /**
+   * Short-timeout GET to `<sandboxUrl>/health`. Treats any throw (connection
+   * refused, DNS fail, abort) as dead. 1500ms cap so a slow tunnel doesn't
+   * block every `ensure` — the daemon's `/health` is a cheap in-memory check.
+   */
+  private async probeHealth(sandboxUrl: string): Promise<boolean> {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 1500);
     try {
-      const res = await this.fetcher(`${rec.sandboxApiUrl}/health`);
+      const res = await this.fetcher(`${sandboxUrl}/health`, {
+        signal: ac.signal,
+      });
       return res.ok;
     } catch {
       return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Drop our knowledge of `handle` without contacting the link. The cluster
+   * builds a fresh provider per request, so this provider instance's cache
+   * is invisible to the next request — but within a single chat run, the
+   * harness captures one provider for proxy calls and a *different* one
+   * (built inside `ensureVm`) does the respawn. Without this method the
+   * captured instance keeps serving the corpse URL out of its in-process
+   * `records` map on the retry, defeating auto-restart.
+   */
+  async forgetHandle(handle: string): Promise<void> {
+    this.records.delete(handle);
+    if (this.stateStore) {
+      await this.stateStore.deleteByHandle(RUNNER_KIND, handle).catch(() => {});
     }
   }
 

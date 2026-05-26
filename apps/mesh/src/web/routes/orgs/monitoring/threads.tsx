@@ -455,7 +455,7 @@ function ThreadConversationPanel({
           <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
             {messagePairs.map((pair, idx) => (
               <div
-                key={pair.user.id}
+                key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
                 ref={
                   idx === messagePairs.length - 1
                     ? (lastMsgRef as (node: HTMLDivElement | null) => void)

@@ -499,7 +499,6 @@ export async function* runDecopilotStream(
             {
               isPlanMode: modeConfig.isPlanMode,
               toolAnnotations: tools.toolAnnotations,
-              connectionIds: [...tools.connectionIds],
             },
           ),
         }
@@ -519,11 +518,32 @@ export async function* runDecopilotStream(
 
   const languageModel = createLanguageModel(provider, input.models.thinking);
 
+  // Non-cached system tail telling the model exactly which tools it has
+  // already enabled this thread. Lives outside the cached prefix so it
+  // can vary per-turn without invalidating Anthropic cache breakpoints.
+  // Bridges the gap between the static `<available-connections>` block
+  // (cached, state-free) and the model's actual `activeTools` list, so
+  // the model doesn't re-call `enable_tool` for tools it already enabled
+  // earlier in the conversation.
+  const enabledToolsSystemMessage =
+    enabledTools.size > 0
+      ? {
+          role: "system" as const,
+          content: `<currently-enabled-tools>\n${[...enabledTools]
+            .sort()
+            .join("\n")}\n</currently-enabled-tools>`,
+        }
+      : null;
+
   let result;
   try {
     result = streamText({
       model: languageModel,
-      system: [...prompt.systemMessages, ...processedSystemMessages],
+      system: [
+        ...prompt.systemMessages,
+        ...processedSystemMessages,
+        ...(enabledToolsSystemMessage ? [enabledToolsSystemMessage] : []),
+      ],
       messages: processedMessages,
       tools: streamTools,
       providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,

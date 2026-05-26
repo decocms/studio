@@ -13,7 +13,9 @@
 import type { Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import {
+  getWellKnownBrandContextSetupVirtualMCP,
   getWellKnownDecopilotVirtualMCP,
+  isBrandContextSetup,
   isDecopilot,
   normalizeSandboxMap,
 } from "@decocms/mesh-sdk";
@@ -145,6 +147,19 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       };
     }
 
+    // Well-known guided-onboarding agent for the brand-context preset.
+    // System prompt lives in `metadata.instructions`; the matching
+    // built-in tool is injected by dispatchRun based on this id.
+    const bcsOrgId = isBrandContextSetup(id);
+    if (bcsOrgId) {
+      const resolvedOrgId = organizationId ?? bcsOrgId;
+      return {
+        ...getWellKnownBrandContextSetupVirtualMCP(resolvedOrgId),
+        pinned: false,
+        connections: [],
+      };
+    }
+
     // Normal database lookup for string IDs
     return this.findByIdInternal(this.db, id);
   }
@@ -209,6 +224,46 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       .execute();
 
     // Group aggregations by parent_connection_id
+    const aggregationsByParent = new Map<string, RawAggregationRow[]>();
+    for (const agg of aggregationRows as RawAggregationRow[]) {
+      const existing = aggregationsByParent.get(agg.parent_connection_id) ?? [];
+      existing.push(agg);
+      aggregationsByParent.set(agg.parent_connection_id, existing);
+    }
+
+    return rows.map((row) =>
+      this.deserializeVirtualMCPEntity(
+        row as unknown as RawConnectionRow,
+        aggregationsByParent.get(row.id) ?? [],
+      ),
+    );
+  }
+
+  async listByIds(
+    organizationId: string,
+    ids: string[],
+  ): Promise<VirtualMCPEntity[]> {
+    if (ids.length === 0) return [];
+
+    const rows = await this.db
+      .selectFrom("connections")
+      .selectAll()
+      .where("id", "in", ids)
+      .where("organization_id", "=", organizationId)
+      .where("connection_type", "=", "VIRTUAL")
+      .execute();
+
+    if (rows.length === 0) return [];
+
+    const virtualMcpIds = rows.map((r) => r.id);
+
+    const aggregationRows = await this.db
+      .selectFrom("connection_aggregations")
+      .selectAll()
+      .where("parent_connection_id", "in", virtualMcpIds)
+      .where("dependency_mode", "=", "direct")
+      .execute();
+
     const aggregationsByParent = new Map<string, RawAggregationRow[]>();
     for (const agg of aggregationRows as RawAggregationRow[]) {
       const existing = aggregationsByParent.get(agg.parent_connection_id) ?? [];
