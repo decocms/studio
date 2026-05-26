@@ -156,7 +156,7 @@ function ConnectionsButton() {
 }
 
 function InboxButton() {
-  const { items, redDotCount } = useInboxFeed();
+  const { items, redDotCount, markReleaseSeen } = useInboxFeed();
   const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(
     null,
   );
@@ -169,6 +169,7 @@ function InboxButton() {
 
   const handleSelectRelease = (releaseId: string) => {
     setSelectedReleaseId(releaseId);
+    markReleaseSeen(releaseId);
   };
 
   return (

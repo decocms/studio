@@ -18,10 +18,11 @@ export interface InboxFeed {
   items: InboxFeedItem[];
   pendingInvitations: Invitation[];
   redDotCount: number;
+  markReleaseSeen: (id: string) => void;
 }
 
 export function useInboxFeed(): InboxFeed {
-  const { isSeen, unseenCount } = useReleaseSeenState();
+  const { isSeen, markSeen, unseenCount } = useReleaseSeenState();
   const pendingInvitations = usePendingInvitations();
 
   const dated: DatedItem[] = [
@@ -41,5 +42,6 @@ export function useInboxFeed(): InboxFeed {
     items: dated.map((d) => d.item),
     pendingInvitations,
     redDotCount: unseenCount + pendingInvitations.length,
+    markReleaseSeen: markSeen,
   };
 }

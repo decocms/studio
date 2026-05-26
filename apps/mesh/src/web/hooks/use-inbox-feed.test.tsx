@@ -1,7 +1,7 @@
 import { setupComponentTest } from "../../test/setup";
 setupComponentTest();
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
@@ -74,5 +74,19 @@ describe("useInboxFeed", () => {
   it("redDotCount is unseen releases + pending invitations", () => {
     const { result } = renderHook(() => useInboxFeed(), { wrapper });
     expect(result.current.redDotCount).toBe(2 + 1);
+  });
+
+  it("markReleaseSeen flips isSeen for the matching release", () => {
+    const { result } = renderHook(() => useInboxFeed(), { wrapper });
+
+    act(() => {
+      result.current.markReleaseSeen("newer-release");
+    });
+
+    const newer = result.current.items.find(
+      (i) => i.type === "release" && i.release.id === "newer-release",
+    );
+    expect(newer && newer.type === "release" && newer.isSeen).toBe(true);
+    expect(result.current.redDotCount).toBe(1 + 1);
   });
 });
