@@ -120,10 +120,12 @@ export function BranchPicker({
         <Button
           variant="ghost"
           size="sm"
-          className="gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
+          className="gap-0 @[496px]/chat-bottom:gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
         >
           <GitBranch01 className="h-3.5 w-3.5" />
-          <span className="max-w-[200px] truncate">{label}</span>
+          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-[200px] @[496px]/chat-bottom:opacity-100 truncate">
+            {label}
+          </span>
           <ChevronDown size={12} className="opacity-60" />
         </Button>
       </PopoverTrigger>

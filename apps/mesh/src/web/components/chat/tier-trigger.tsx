@@ -64,10 +64,12 @@ export function TierTriggerPure({
           variant="ghost"
           size="sm"
           aria-label={TIER_LABELS[tier]}
-          className="gap-1.5 text-muted-foreground hover:text-foreground"
+          className="gap-0 @[496px]/chat-bottom:gap-1.5 text-muted-foreground hover:text-foreground"
         >
           {iconFor?.(tier)}
-          <span>{TIER_LABELS[tier]}</span>
+          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-24 @[496px]/chat-bottom:opacity-100">
+            {TIER_LABELS[tier]}
+          </span>
           <ChevronDown size={12} className="opacity-60" />
         </Button>
       </PopoverTrigger>

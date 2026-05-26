@@ -75,7 +75,7 @@ function pillLabel(mode: AgentMode): { icon: React.ReactNode; text: string } {
 }
 
 const baseClasses =
-  "gap-1.5 text-muted-foreground hover:text-foreground text-xs";
+  "gap-0 @[496px]/chat-bottom:gap-1.5 text-muted-foreground hover:text-foreground text-xs";
 const localActiveClasses = "text-success hover:text-success";
 
 /**
@@ -125,7 +125,9 @@ export function ModePickerPure({
           className={cn(baseClasses, isLocal && localActiveClasses)}
         >
           {icon}
-          <span>{text}</span>
+          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-32 @[496px]/chat-bottom:opacity-100">
+            {text}
+          </span>
           <ChevronDown size={12} className="opacity-60" />
         </Button>
       </PopoverTrigger>
