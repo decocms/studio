@@ -1,5 +1,4 @@
-import { StudioPackAgentId } from "@decocms/mesh-sdk";
-import { isWellKnownSeededConnection } from "./helpers";
+import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type {
   BuildWelcomeMessage,
   StudioPackChecklistItem,
@@ -78,8 +77,22 @@ export const storeManagerAgent = {
           "Show me what's in the Deco Store and the Community Registry. Ask me what problem I'm trying to solve and recommend a few MCPs that fit.",
       },
       isCompleted: async ({ orgId, ctx }) => {
-        const { items } = await ctx.storage.connections.list(orgId);
-        return items.some((c) => !isWellKnownSeededConnection(orgId, c.id));
+        // Push "any non-seeded connection?" down to SQL with LIMIT 1, so we
+        // don't decrypt every connection's token + env vars just to count.
+        const seededIds = [
+          WellKnownOrgMCPId.SELF(orgId),
+          WellKnownOrgMCPId.REGISTRY(orgId),
+          WellKnownOrgMCPId.COMMUNITY_REGISTRY(orgId),
+          WellKnownOrgMCPId.DEV_ASSETS(orgId),
+        ];
+        const { totalCount } = await ctx.storage.connections.list(orgId, {
+          where: {
+            operator: "not",
+            conditions: [{ field: ["id"], operator: "in", value: seededIds }],
+          },
+          limit: 1,
+        });
+        return totalCount > 0;
       },
     },
   ] as const satisfies readonly StudioPackChecklistItem[],

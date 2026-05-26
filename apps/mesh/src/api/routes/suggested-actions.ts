@@ -19,6 +19,7 @@
  */
 
 import { Hono } from "hono";
+import { isBrandContextSetup, isDecopilot } from "@decocms/mesh-sdk";
 import type { MeshContext } from "@/core/mesh-context";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import { findStudioPackAgentByMcpId } from "@/tools/virtual/studio-pack";
@@ -100,19 +101,31 @@ export function createSuggestedActionsRoutes() {
     const agentIds = Array.from(
       new Set(rows.map((r) => r.thread.virtual_mcp_id).filter(Boolean)),
     ) as string[];
-    const agentEntries = await Promise.all(
-      agentIds.map(async (id) => {
-        const agent = await mesh.storage.virtualMcps.findById(id, orgId);
-        // findById does not filter DB rows by organization_id (only the
-        // well-known synthetic agents respect the param). Drop any agent
-        // whose org doesn't match so cross-org metadata can't leak.
-        if (agent && agent.organization_id !== orgId) {
-          return [id, null] as const;
-        }
-        return [id, agent] as const;
-      }),
-    );
-    const agentById = new Map(agentEntries);
+    // Synthetic well-known agents (Decopilot, Brand Context Setup) aren't
+    // backed by a DB row — resolve them via findById, which short-circuits.
+    // Real ids batch through `listByIds`, which filters by organization_id
+    // at the DB level so cross-org rows silently drop out (no leak).
+    const syntheticIds: string[] = [];
+    const realIds: string[] = [];
+    for (const id of agentIds) {
+      if (isDecopilot(id) || isBrandContextSetup(id)) {
+        syntheticIds.push(id);
+      } else {
+        realIds.push(id);
+      }
+    }
+    const [realAgents, syntheticAgents] = await Promise.all([
+      mesh.storage.virtualMcps.listByIds(orgId, realIds),
+      Promise.all(
+        syntheticIds.map((id) => mesh.storage.virtualMcps.findById(id, orgId)),
+      ),
+    ]);
+    const agentById = new Map<string, (typeof realAgents)[number]>();
+    for (const a of realAgents) agentById.set(a.id, a);
+    syntheticAgents.forEach((a, i) => {
+      const id = syntheticIds[i];
+      if (a && id) agentById.set(id, a);
+    });
 
     const suggestions = rows
       .slice(0, limit)
@@ -166,6 +179,10 @@ export function createSuggestedActionsRoutes() {
         };
       });
 
+    // Short private cache absorbs rapid window-focus refetches. Thread
+    // mutations invalidate the React Query key, so the user still sees
+    // their own actions reflected immediately.
+    c.header("Cache-Control", "private, max-age=10");
     return c.json({ suggestions });
   });
 

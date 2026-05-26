@@ -53,6 +53,11 @@ export function createStudioPackWelcomeRoutes() {
       return c.json({ error: "Not a Studio Pack agent" }, 404);
     }
 
+    const thread = await mesh.storage.threads.get(taskId);
+    if (!thread) {
+      return c.json({ inserted: false, message: null, pending: true }, 202);
+    }
+
     const { messages } = await mesh.storage.threads.listMessages(taskId, {
       limit: 1,
     });
