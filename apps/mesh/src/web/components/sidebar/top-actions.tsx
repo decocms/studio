@@ -133,7 +133,7 @@ function ConnectionsButton() {
 
 export function SidebarTopActions() {
   return (
-    <div className="pb-2 flex flex-col gap-0.5">
+    <div className="flex flex-col gap-0.5">
       <ConnectionsButton />
       <SilentErrorBoundary>
         <Suspense fallback={null}>

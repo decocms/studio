@@ -14,14 +14,14 @@ import { type ReactNode, Suspense } from "react";
 import { SidebarCollapsibleGroup } from "./sidebar-group";
 import type { NavigationSidebarItem, SidebarSection } from "./types";
 
-function MobileLogoHeader({ onLogoClick }: { onLogoClick?: () => void }) {
+function MobileLogoHeader() {
   const config = usePublicConfig();
   const logo = config.logo ?? DEFAULT_LOGO;
   const lightSrc = typeof logo === "string" ? logo : logo.light;
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
-  const logoImgs = (
-    <>
+  return (
+    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0">
       <img
         src={lightSrc}
         alt="Logo"
@@ -32,23 +32,6 @@ function MobileLogoHeader({ onLogoClick }: { onLogoClick?: () => void }) {
         alt="Logo"
         className="size-6 object-contain hidden dark:block"
       />
-    </>
-  );
-
-  return (
-    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0">
-      {onLogoClick ? (
-        <button
-          type="button"
-          onClick={onLogoClick}
-          aria-label="Home"
-          className="flex items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-        >
-          {logoImgs}
-        </button>
-      ) : (
-        logoImgs
-      )}
     </SidebarHeader>
   );
 }
@@ -126,7 +109,6 @@ function MobileSectionRenderer({
 interface MobileNavigationSidebarProps {
   sections: SidebarSection[];
   onClose: () => void;
-  onLogoClick?: () => void;
   footer?: ReactNode;
   additionalContent?: ReactNode;
 }
@@ -139,7 +121,6 @@ interface MobileNavigationSidebarProps {
 export function MobileNavigationSidebar({
   sections,
   onClose,
-  onLogoClick,
   footer,
   additionalContent,
 }: MobileNavigationSidebarProps) {
@@ -149,7 +130,7 @@ export function MobileNavigationSidebar({
       data-sidebar="sidebar"
     >
       <Suspense fallback={<div className="h-10 shrink-0" />}>
-        <MobileLogoHeader onLogoClick={onLogoClick} />
+        <MobileLogoHeader />
       </Suspense>
       <SidebarContent className="flex flex-col flex-1 px-2 py-2 gap-0">
         {sections.map((section, index) => (

@@ -19,42 +19,25 @@ import { SidebarCollapsibleGroup } from "./sidebar-group";
 import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 import { track } from "@/web/lib/posthog-client";
 
-function SidebarLogoHeader({ onLogoClick }: { onLogoClick?: () => void }) {
+function SidebarLogoHeader() {
   const config = usePublicConfig();
   const logo = config.logo ?? DEFAULT_LOGO;
   const lightSrc = typeof logo === "string" ? logo : logo.light;
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
-  const logoImgs = (
-    <>
-      <img
-        src={lightSrc}
-        alt="Logo"
-        className="size-6 object-contain dark:hidden"
-      />
-      <img
-        src={darkSrc}
-        alt="Logo"
-        className="size-6 object-contain hidden dark:block"
-      />
-    </>
-  );
-
   return (
     <SidebarHeader className="flex flex-row items-center justify-between shrink-0 h-12 px-3 pb-0 group-data-[state=collapsed]/sidebar:justify-center group-data-[state=collapsed]/sidebar:px-0">
-      <div className="group-data-[state=collapsed]/sidebar:hidden">
-        {onLogoClick ? (
-          <button
-            type="button"
-            onClick={onLogoClick}
-            aria-label="Home"
-            className="flex items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            {logoImgs}
-          </button>
-        ) : (
-          logoImgs
-        )}
+      <div className="flex items-center group-data-[state=collapsed]/sidebar:hidden">
+        <img
+          src={lightSrc}
+          alt="Logo"
+          className="size-6 object-contain dark:hidden"
+        />
+        <img
+          src={darkSrc}
+          alt="Logo"
+          className="size-6 object-contain hidden dark:block"
+        />
       </div>
       <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
     </SidebarHeader>
@@ -63,8 +46,6 @@ function SidebarLogoHeader({ onLogoClick }: { onLogoClick?: () => void }) {
 
 interface NavigationSidebarProps {
   sections: SidebarSection[];
-  /** Click handler for the logo. When provided, the logo renders as a button. */
-  onLogoClick?: () => void;
   header?: ReactNode;
   footer?: ReactNode;
   additionalContent?: ReactNode;
@@ -139,7 +120,6 @@ function SidebarSectionRenderer({ section }: { section: SidebarSection }) {
  */
 function NavigationSidebarInner({
   sections,
-  onLogoClick,
   header,
   footer,
   additionalContent,
@@ -149,11 +129,14 @@ function NavigationSidebarInner({
   return (
     <Sidebar variant={variant}>
       <Suspense fallback={<div className="h-10 shrink-0" />}>
-        <SidebarLogoHeader onLogoClick={onLogoClick} />
+        <SidebarLogoHeader />
       </Suspense>
       {header}
       <SidebarContent
-        className={cn("flex flex-col flex-1 px-2 py-2 gap-3", contentClassName)}
+        className={cn(
+          "flex flex-col flex-1 px-2 py-2 gap-0.5",
+          contentClassName,
+        )}
       >
         {sections.map((section, index) => (
           <SidebarSectionRenderer key={index} section={section} />
