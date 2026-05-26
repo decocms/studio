@@ -12,12 +12,11 @@ import {
   SidebarInset,
   SidebarLayout,
   SidebarProvider,
-  SidebarTrigger,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
-import { Loading01, Menu01 } from "@untitledui/icons";
+import { LayoutLeft, Loading01, Menu01 } from "@untitledui/icons";
 import { Outlet, useParams } from "@tanstack/react-router";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
@@ -27,6 +26,20 @@ import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
+
+function SidebarToggleButton() {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <button
+      type="button"
+      onClick={toggleSidebar}
+      aria-label="Toggle sidebar"
+      className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+    >
+      <LayoutLeft size={16} />
+    </button>
+  );
+}
 
 function RouteFallback() {
   return (
@@ -113,7 +126,7 @@ export default function OrgShellLayout() {
                     <Toolbar.Header>
                       <Toolbar.LeftColumn>
                         <Toolbar.Nav />
-                        <SidebarTrigger className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors" />
+                        <SidebarToggleButton />
                         <Toolbar.TogglesSlot />
                         <LinkedDesktopIndicator />
                       </Toolbar.LeftColumn>
