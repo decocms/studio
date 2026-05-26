@@ -151,7 +151,11 @@ export function ImageField({
   }
 
   return (
-    <div className="min-w-0 space-y-2">
+    // grid-cols-[minmax(0,1fr)] forces every child to be at most 100% of
+    // the grid, no matter what intrinsic-content sizing tries to do —
+    // the only reliable way to bulletproof a deeply-nested form field
+    // against a misbehaving min-w-0 chain.
+    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
       <div className="min-w-0 space-y-0.5">
         <Label htmlFor={path}>{label}</Label>
         {schema.description && (

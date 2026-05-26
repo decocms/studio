@@ -119,7 +119,9 @@ export function FileField({
   }
 
   return (
-    <div className="min-w-0 space-y-2">
+    // See ImageField for the grid-cols-[minmax(0,1fr)] rationale —
+    // bulletproofs against any broken min-w-0 chain above.
+    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
       <div className="min-w-0 space-y-0.5">
         <Label htmlFor={path}>{label}</Label>
         {schema.description && (
