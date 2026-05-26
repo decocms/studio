@@ -1,58 +1,80 @@
 /**
  * Stable group ordering for the sidebar.
  *
- * The first non-empty render seeds an order for the org. Subsequent renders
- * reuse that order — task updates and reshuffles inside `groupThreadsByVirtualMcp`
- * don't move groups around. New groups (a VM that wasn't seen before) are
- * inserted immediately after Decopilot, so users notice them at the top
- * without disturbing the rest of the list.
+ * Once a VM appears in the sidebar it keeps its slot forever (per-org,
+ * persisted in localStorage). The first time we see a new VM it slots in
+ * immediately after Decopilot, so the user notices it at the top without
+ * bumping existing groups around. Archiving every task in a group does NOT
+ * remove the group — it stays in the order list and renders with an empty
+ * thread array.
  *
- * The cache is in-memory only (module-scoped) and resets on page refresh —
- * matches the "until next refresh" contract the UX asks for.
+ * The cache is a module-scoped Map that mirrors localStorage so we don't
+ * re-parse the stored JSON on every render. Both the cache and the
+ * localStorage entry are keyed by org id.
  */
 import type { TaskGroupData } from "./group-threads";
 
-const orderByOrg = new Map<string, string[]>();
+const STORAGE_KEY_PREFIX = "sidebar.group-order.";
+const orderCache = new Map<string, string[]>();
+
+function loadOrder(orgId: string): string[] {
+  const cached = orderCache.get(orgId);
+  if (cached) return cached;
+  try {
+    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${orgId}`);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    const order = Array.isArray(parsed)
+      ? (parsed.filter((v) => typeof v === "string") as string[])
+      : [];
+    orderCache.set(orgId, order);
+    return order;
+  } catch {
+    return [];
+  }
+}
+
+function saveOrder(orgId: string, order: string[]): void {
+  orderCache.set(orgId, order);
+  try {
+    localStorage.setItem(
+      `${STORAGE_KEY_PREFIX}${orgId}`,
+      JSON.stringify(order),
+    );
+  } catch {
+    // localStorage unavailable / quota — in-memory cache still wins.
+  }
+}
 
 export function stabilizeGroupOrder(
   orgId: string,
   groups: TaskGroupData[],
   decopilotVirtualMcpId: string | null,
 ): TaskGroupData[] {
-  if (groups.length === 0) return groups;
+  let order = loadOrder(orgId);
+  const known = new Set(order);
+  const currentIds = groups.map((g) => g.virtualMcpId);
+  const newIds = currentIds.filter((id) => !known.has(id));
 
-  const existing = orderByOrg.get(orgId);
-
-  // First non-empty render for this org — seed with current groupThreadsByVirtualMcp
-  // order (Decopilot pinned, others by max(updated_at) desc).
-  if (!existing || existing.length === 0) {
-    orderByOrg.set(
-      orgId,
-      groups.map((g) => g.virtualMcpId),
-    );
-    return groups;
-  }
-
-  const known = new Set(existing);
-  const newIds = groups
-    .map((g) => g.virtualMcpId)
-    .filter((id) => !known.has(id));
-
-  // Splice new VMs in just after Decopilot, preserving everyone else's slot.
-  let nextOrder = existing;
   if (newIds.length > 0) {
-    const insertAt =
-      decopilotVirtualMcpId && existing[0] === decopilotVirtualMcpId ? 1 : 0;
-    nextOrder = [
-      ...existing.slice(0, insertAt),
-      ...newIds,
-      ...existing.slice(insertAt),
-    ];
-    orderByOrg.set(orgId, nextOrder);
+    const decopilotIsFirst =
+      decopilotVirtualMcpId !== null && order[0] === decopilotVirtualMcpId;
+    // If Decopilot is the first known id, keep it pinned; new VMs slot in
+    // right after. Otherwise prepend at index 0 (initial seed for a new org).
+    const insertAt = decopilotIsFirst ? 1 : 0;
+    order = [...order.slice(0, insertAt), ...newIds, ...order.slice(insertAt)];
+    saveOrder(orgId, order);
   }
 
+  // Build the final list: respect `order`, fill empty groups for any tracked
+  // VM that no longer has threads (group keeps its slot forever).
   const byId = new Map(groups.map((g) => [g.virtualMcpId, g] as const));
-  return nextOrder
-    .map((id) => byId.get(id))
-    .filter((g): g is TaskGroupData => !!g);
+  return order.map((id) => {
+    const existing = byId.get(id);
+    if (existing) return existing;
+    return {
+      virtualMcpId: id,
+      threads: [],
+      latestUpdatedAt: "",
+    } satisfies TaskGroupData;
+  });
 }
