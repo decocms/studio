@@ -20,9 +20,8 @@ import {
   Settings02,
   XClose,
 } from "@untitledui/icons";
-import { AuthUIContext } from "@daveyplate/better-auth-ui";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Component, Suspense, useContext, useState } from "react";
+import { Component, Suspense, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -36,16 +35,10 @@ import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useNavigate } from "@tanstack/react-router";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { track } from "@/web/lib/posthog-client";
-
-interface Invitation {
-  id: string;
-  organizationId: string;
-  organizationName?: string;
-  email: string;
-  role: string;
-  status: string;
-  expiresAt: Date;
-}
+import {
+  type Invitation,
+  usePendingInvitations,
+} from "@/web/hooks/use-pending-invitations";
 
 function InvitationItem({ invitation }: { invitation: Invitation }) {
   const [isAccepting, setIsAccepting] = useState(false);
@@ -129,15 +122,6 @@ function InvitationItem({ invitation }: { invitation: Invitation }) {
         </Button>
       </div>
     </div>
-  );
-}
-
-function usePendingInvitations() {
-  const authUi = useContext(AuthUIContext);
-  const { data } = authUi.hooks.useListUserInvitations();
-  const invitations = (data ?? []) as Invitation[];
-  return invitations.filter(
-    (inv) => inv.status === "pending" && new Date(inv.expiresAt) > new Date(),
   );
 }
 
