@@ -1,7 +1,9 @@
 /**
- * Hooks that wrap the FILE_OBJECTS_LIST and FILE_PRESIGN_UPLOAD MCP tools.
- * Used by the picker dialog (and any future caller that wants to upload to
- * a configured bucket from the browser).
+ * File picker hooks: list objects (via FILE_OBJECTS_LIST MCP tool) and
+ * upload through the org-scoped proxy endpoint. Uploads do not use the
+ * browser→S3 presigned PUT path because that would require CORS on every
+ * customer bucket; instead we POST multipart to mesh and let it stream
+ * to S3 server-side.
  */
 
 import {
@@ -50,53 +52,49 @@ export function useFilePickerObjects(params: {
   });
 }
 
-export interface PresignedUpload {
-  uploadUrl: string;
+export interface UploadResult {
   key: string;
   publicUrl: string;
   contentType: string;
-  expiresInSeconds: number;
+  size: number;
 }
 
+/**
+ * Upload a file to a configured bucket via the mesh proxy endpoint. We
+ * don't presign + PUT directly from the browser because that requires
+ * per-bucket CORS configuration on every customer bucket (S3, GCS, R2),
+ * which is too much friction for a CMS. The proxy streams through mesh
+ * once and avoids the cross-origin problem entirely.
+ */
 export function useFilePickerUpload() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
 
   return useMutation({
     mutationFn: async (input: {
       configId: string;
       file: File;
-    }): Promise<PresignedUpload> => {
-      const contentType = input.file.type || "application/octet-stream";
-      const presignResult = await client.callTool({
-        name: "FILE_PRESIGN_UPLOAD",
-        arguments: {
-          configId: input.configId,
-          filename: input.file.name,
-          contentType,
-          size: input.file.size,
-        },
-      });
-      const presigned = unwrapToolResult<PresignedUpload>(presignResult);
+    }): Promise<UploadResult> => {
+      const form = new FormData();
+      form.append("file", input.file);
 
-      const putResponse = await fetch(presigned.uploadUrl, {
-        method: "PUT",
-        // S3 requires the Content-Type that was signed; if these mismatch,
-        // S3 returns 403 SignatureDoesNotMatch.
-        headers: { "Content-Type": presigned.contentType },
-        body: input.file,
-      });
-      if (!putResponse.ok) {
-        const body = await putResponse.text().catch(() => "");
-        throw new Error(
-          `Upload failed (${putResponse.status}): ${body.slice(0, 200) || putResponse.statusText}`,
-        );
+      const response = await fetch(
+        `/api/${encodeURIComponent(org.slug)}/file-configs/${encodeURIComponent(input.configId)}/upload`,
+        { method: "POST", body: form },
+      );
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        let message = `${response.status} ${response.statusText}`;
+        try {
+          const parsed = JSON.parse(text) as { message?: string };
+          if (parsed.message) message = parsed.message;
+        } catch {
+          if (text) message = text.slice(0, 200);
+        }
+        throw new Error(`Upload failed: ${message}`);
       }
-      return presigned;
+
+      return (await response.json()) as UploadResult;
     },
   });
 }
