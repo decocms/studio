@@ -160,9 +160,15 @@ export function PreviewContent() {
   const virtualMcpId = inset?.entity?.id ?? null;
   const { org } = useProjectContext();
 
-  // Decofile pages for the URL bar dropdown
+  const vmEvents = useSandboxEvents();
+  const lifecyclePhase = vmEvents.lifecycle.phase;
+  const devServerReady = lifecyclePhase === "running";
+
+  // Decofile pages for the URL bar dropdown — fetch only after dev server is up.
   const decofileParams =
-    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+    virtualMcpId && branch && devServerReady
+      ? { orgSlug: org.slug, virtualMcpId, branch }
+      : null;
   const { data: decofile } = useDecofile(decofileParams);
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
@@ -170,7 +176,6 @@ export function PreviewContent() {
   const currentPageName = pages.find((p) => p.path === currentPath)?.name;
 
   // "reload" fires on config edits framework HMR won't catch (.ts/.tsx use HMR).
-  const vmEvents = useSandboxEvents();
   useSandboxReloadHandler(() => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
@@ -186,7 +191,6 @@ export function PreviewContent() {
   // sticky across `running` → `crashed` so a transient drop doesn't flip a
   // working preview to the "No web page" empty state. Latch the last seen
   // value, keyed on previewUrl so a new VM resets it.
-  const lifecyclePhase = vmEvents.lifecycle.phase;
   const htmlSupportRef = useRef<{ url: string; value: boolean }>({
     url: "",
     value: false,
@@ -825,6 +829,7 @@ export function PreviewContent() {
                   orgSlug={org.slug}
                   virtualMcpId={virtualMcpId}
                   branch={branch}
+                  previewReady={devServerReady}
                   currentPath={currentPath}
                   externalSelectedIndex={cmsSelectedSectionIndex}
                   onSaved={() => {
