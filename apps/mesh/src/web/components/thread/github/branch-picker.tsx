@@ -137,22 +137,25 @@ export function BranchPicker({
                 disabled={disabled}
                 className={cn(
                   "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
-                  "gap-0 @[320px]/chat-bottom:gap-1.5",
+                  disabled ? "gap-0" : "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
                 <GitBranch01 className="h-3.5 w-3.5" />
                 <span
                   className={cn(
                     "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                    "@[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
+                    !disabled &&
+                      "@[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
                   )}
                 >
                   {label}
                 </span>
-                <ChevronDown
-                  size={12}
-                  className="opacity-60 hidden @[320px]/chat-bottom:inline-block"
-                />
+                {!disabled && (
+                  <ChevronDown
+                    size={12}
+                    className="opacity-60 hidden @[320px]/chat-bottom:inline-block"
+                  />
+                )}
               </Button>
             </PopoverTrigger>
           </span>

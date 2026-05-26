@@ -124,22 +124,25 @@ export function ModePickerPure({
                   baseClasses,
                   isLocal && localActiveClasses,
                   "shrink min-w-0",
-                  "gap-0 @[320px]/chat-bottom:gap-1.5",
+                  locked ? "gap-0" : "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
                 {icon}
                 <span
                   className={cn(
                     "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                    "@[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100",
+                    !locked &&
+                      "@[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100",
                   )}
                 >
                   {text}
                 </span>
-                <ChevronDown
-                  size={12}
-                  className="opacity-60 hidden @[320px]/chat-bottom:inline-block"
-                />
+                {!locked && (
+                  <ChevronDown
+                    size={12}
+                    className="opacity-60 hidden @[320px]/chat-bottom:inline-block"
+                  />
+                )}
               </Button>
             </PopoverTrigger>
           </span>
