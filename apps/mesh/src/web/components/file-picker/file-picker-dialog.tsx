@@ -265,15 +265,11 @@ function BucketPanel({
         />
       </button>
 
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          {config.bucket} · {config.region}
-          {config.prefix ? ` · ${config.prefix}` : ""}
-        </p>
-        {objectsQuery.isFetching && !objectsQuery.isFetchingNextPage ? (
+      {objectsQuery.isFetching && !objectsQuery.isFetchingNextPage ? (
+        <div className="flex justify-end">
           <span className="text-xs text-muted-foreground">Loading…</span>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         {items.length === 0 ? (
