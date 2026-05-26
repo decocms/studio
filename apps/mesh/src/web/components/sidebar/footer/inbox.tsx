@@ -1,6 +1,4 @@
-import { authClient } from "@/web/lib/auth-client";
 import { AccountPopover } from "@/web/components/account-popover";
-import { Button } from "@deco/ui/components/button.tsx";
 import {
   Popover,
   PopoverContent,
@@ -18,131 +16,47 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
 import {
-  Check,
+  ArrowLeft,
   Inbox01,
   Settings02,
-  XClose,
   ZapSquare,
 } from "@untitledui/icons";
-import { AuthUIContext } from "@daveyplate/better-auth-ui";
-import { useContext, useState, type ReactNode } from "react";
-import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { track } from "@/web/lib/posthog-client";
-
-interface Invitation {
-  id: string;
-  organizationId: string;
-  organizationName?: string;
-  email: string;
-  role: string;
-  status: string;
-  expiresAt: Date;
-}
-
-function InvitationItem({ invitation }: { invitation: Invitation }) {
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [isRejecting, setIsRejecting] = useState(false);
-  const queryClient = useQueryClient();
-
-  const handleAccept = async () => {
-    setIsAccepting(true);
-    try {
-      const result = await authClient.organization.acceptInvitation({
-        invitationId: invitation.id,
-      });
-      if (result.error) {
-        toast.error(result.error.message);
-        setIsAccepting(false);
-      } else {
-        // Fetch org slug for redirect without mutating the session's active
-        // org (avoids cross-tab leak — see shell-layout.tsx).
-        const orgResult = await authClient.organization.getFullOrganization({
-          query: { organizationId: invitation.organizationId },
-        });
-        toast.success("Invitation accepted!");
-        const slug = orgResult?.data?.slug;
-        window.location.href = slug ? `/${slug}` : "/";
-      }
-    } catch {
-      toast.error("Failed to accept invitation");
-      setIsAccepting(false);
-    }
-  };
-
-  const handleReject = async () => {
-    setIsRejecting(true);
-    try {
-      const result = await authClient.organization.rejectInvitation({
-        invitationId: invitation.id,
-      });
-      if (result.error) {
-        toast.error(result.error.message);
-        setIsRejecting(false);
-      } else {
-        toast.success("Invitation declined");
-        queryClient.invalidateQueries();
-      }
-    } catch {
-      toast.error("Failed to decline invitation");
-      setIsRejecting(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-3 px-5 py-4 border-b border-border last:border-0 hover:bg-muted/25 transition-colors">
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-muted-foreground">
-          You&apos;ve been invited to join
-        </p>
-        <p className="text-sm font-medium truncate">
-          {invitation.organizationName ?? "Unknown organization"}
-        </p>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-          onClick={handleAccept}
-          disabled={isAccepting || isRejecting}
-          aria-label="Accept invitation"
-        >
-          <Check size={14} />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          onClick={handleReject}
-          disabled={isAccepting || isRejecting}
-          aria-label="Decline invitation"
-        >
-          <XClose size={14} />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function usePendingInvitations() {
-  const authUi = useContext(AuthUIContext);
-  const { data } = authUi.hooks.useListUserInvitations();
-  const invitations = (data ?? []) as Invitation[];
-  return invitations.filter(
-    (inv) => inv.status === "pending" && new Date(inv.expiresAt) > new Date(),
-  );
-}
+import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
+import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
+import { ReleaseCard } from "@/web/components/release-channel/release-card";
+import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
 
 function InboxPopover({ children }: { children: ReactNode }) {
-  const pendingInvitations = usePendingInvitations();
+  const { items, markReleaseSeen } = useInboxFeed();
+  const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(
+    null,
+  );
+
+  const selectedRelease = items.find(
+    (item) => item.type === "release" && item.release.id === selectedReleaseId,
+  );
+  const selectedReleaseData =
+    selectedRelease?.type === "release" ? selectedRelease.release : null;
+
+  const handleSelectRelease = (releaseId: string) => {
+    setSelectedReleaseId(releaseId);
+    markReleaseSeen(releaseId);
+  };
+
   return (
-    <Popover>
+    <Popover
+      onOpenChange={(open) => {
+        if (!open) setSelectedReleaseId(null);
+      }}
+    >
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         side="right"
@@ -151,39 +65,80 @@ function InboxPopover({ children }: { children: ReactNode }) {
         collisionPadding={16}
         className="w-[min(400px,calc(100vw-2rem))] p-0 h-[min(650px,calc(100dvh-4rem))] flex flex-col"
       >
-        <div className="px-4 py-3 border-b border-border shrink-0">
-          <h3 className="text-sm font-medium">Inbox</h3>
-        </div>
-        {pendingInvitations.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-            <Inbox01 size={24} className="text-muted-foreground/50" />
-            <p className="text-sm font-medium text-foreground">
-              No invites pending
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Organization invitations will appear here
-            </p>
-          </div>
+        {selectedReleaseData ? (
+          <>
+            <div className="flex items-center gap-2 px-3 py-3 border-b border-border shrink-0">
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Back to inbox"
+                className="size-7 text-muted-foreground"
+                onClick={() => setSelectedReleaseId(null)}
+              >
+                <ArrowLeft size={16} />
+              </Button>
+              <h3 className="text-sm font-medium truncate">
+                {selectedReleaseData.title}
+              </h3>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              <ReleaseCard release={selectedReleaseData} />
+            </div>
+          </>
         ) : (
-          <div className="overflow-y-auto flex-1">
-            {pendingInvitations.map((inv) => (
-              <InvitationItem key={inv.id} invitation={inv} />
-            ))}
-          </div>
+          <>
+            <div className="px-4 py-3 border-b border-border shrink-0">
+              <h3 className="text-sm font-medium">Inbox</h3>
+            </div>
+            {items.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+                <Inbox01 size={24} className="text-muted-foreground/50" />
+                <p className="text-sm font-medium text-foreground">
+                  Nothing here yet
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Invitations and release updates will appear here
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-y-auto flex-1">
+                {items.map((item) =>
+                  item.type === "invitation" ? (
+                    <InvitationItem
+                      key={`inv-${item.invitation.id}`}
+                      invitation={item.invitation}
+                    />
+                  ) : (
+                    <InboxReleaseItem
+                      key={`rel-${item.release.id}`}
+                      release={item.release}
+                      isSeen={item.isSeen}
+                      onSelect={() => handleSelectRelease(item.release.id)}
+                    />
+                  ),
+                )}
+              </div>
+            )}
+          </>
         )}
       </PopoverContent>
     </Popover>
   );
 }
 
+function useHasUnreadInbox() {
+  const { redDotCount } = useInboxFeed();
+  return redDotCount > 0;
+}
+
 function InboxFullButton() {
-  const pendingInvitations = usePendingInvitations();
+  const hasUnread = useHasUnreadInbox();
   return (
     <InboxPopover>
       <SidebarMenuButton tooltip="Inbox" className="relative">
         <Inbox01 />
         <span>Inbox</span>
-        {pendingInvitations.length > 0 && (
+        {hasUnread && (
           <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
         )}
       </SidebarMenuButton>
@@ -192,14 +147,14 @@ function InboxFullButton() {
 }
 
 function InboxIconButton() {
-  const pendingInvitations = usePendingInvitations();
+  const hasUnread = useHasUnreadInbox();
   return (
     <InboxPopover>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
           <ToolbarIconButton aria-label="Inbox">
             <Inbox01 className="size-4" />
-            {pendingInvitations.length > 0 && (
+            {hasUnread && (
               <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 pointer-events-none" />
             )}
           </ToolbarIconButton>

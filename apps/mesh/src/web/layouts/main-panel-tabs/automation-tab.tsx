@@ -4,7 +4,6 @@ import { useAutomation } from "@/web/hooks/use-automations";
 import { Page } from "@/web/components/page";
 import { Loading01 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
 import { Suspense } from "react";
 
 export function AutomationTab({ tabId }: { tabId: string }) {
@@ -35,21 +34,9 @@ export function AutomationTab({ tabId }: { tabId: string }) {
 
 function AutomationTabInner({ id }: { id: string }) {
   const navigate = useNavigate();
-  const { org } = useProjectContext();
   const { data: automation, isLoading } = useAutomation(id);
-  const isToolCall = automation?.kind === "tool_call";
 
   const onBack = () => {
-    if (isToolCall) {
-      // Tool-call automations are org-scoped (no virtual_mcp_id), so the
-      // natural list view is the org-wide settings page rather than the
-      // current agent shell's automations tab.
-      navigate({
-        to: "/$org/settings/automations",
-        params: { org: org.slug },
-      });
-      return;
-    }
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) => ({

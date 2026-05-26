@@ -32,10 +32,7 @@ export const AUTOMATION_LIST = defineTool({
         created_at: z.string(),
         trigger_count: z.number(),
         nearest_next_run_at: z.string().nullable(),
-        kind: z.enum(["agent", "tool_call"]),
-        virtual_mcp_id: z.string().nullable(),
-        connection_id: z.string().nullable(),
-        tool_name: z.string().nullable(),
+        virtual_mcp_id: z.string(),
       }),
     ),
   }),
@@ -57,10 +54,7 @@ export const AUTOMATION_LIST = defineTool({
       created_at: automation.created_at,
       trigger_count: automation.trigger_count,
       nearest_next_run_at: automation.nearest_next_run_at,
-      kind: automation.kind,
       virtual_mcp_id: automation.virtual_mcp_id,
-      connection_id: automation.connection_id,
-      tool_name: automation.tool_name,
     }));
 
     return { automations: results };

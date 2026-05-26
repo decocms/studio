@@ -71,8 +71,8 @@ export function createSuggestedActionsRoutes() {
     // Primary set: AI spoke last AND (not an automation run, OR the run is
     // blocked on the user). Automation runs (cron OR manual fire) only belong
     // here when blocked on the user — trigger_id alone misses manual fires
-    // (they pass null), so we key off the title prefix written by both
-    // createAutomationRunThread and createToolCallRunThread.
+    // (they pass null), so we key off the title prefix written by
+    // createAutomationRunThread.
     const primary = assistantLast
       .filter((r) => !isHandledByChecklist(r.thread.virtual_mcp_id))
       .map((r) => ({

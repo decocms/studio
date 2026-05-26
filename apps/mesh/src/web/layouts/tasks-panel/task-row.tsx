@@ -37,6 +37,8 @@ export function TaskRow({
     isToolCallRun ? undefined : task.virtual_mcp_id,
   );
   const githubRepo = getActiveGithubRepo(virtualMcp);
+  // Subscribe to a 60s heartbeat so the relative timestamp re-renders even
+  // when `task` is referentially stable.
   useClockTick(60_000);
 
   const isAutomation = showAutomationBadge || Boolean(task.trigger_id);

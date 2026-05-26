@@ -111,7 +111,7 @@ export default function OrgShellLayout() {
     <ThreadManagerProvider>
       <Toolbar.Provider>
         <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          <div className="flex flex-col h-dvh overflow-hidden">
+          <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
             <SidebarLayout
               ref={wrapperRef}
               className="flex-1 bg-sidebar relative"

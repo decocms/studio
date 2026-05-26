@@ -7,10 +7,58 @@
   }
   body {
     @apply bg-background text-foreground;
-    padding-top: env(titlebar-area-height, 0);
   }
   svg {
     stroke-width: 1.75;
+  }
+}
+
+/* Window Controls Overlay (installed PWA on Chromium):
+   - lift the toolbar out of flow and pin it to the title-bar strip
+   - reserve matching space on the shell root for the now-floating bar
+   - make the strip background draggable; opt buttons back to clickable
+   - hide elements that duplicate browser chrome (e.g. app logo)
+
+   These rules live outside @layer base so they win against Tailwind's
+   utility classes (h-12, pl-1, pr-2, etc.) which would otherwise cascade
+   later and beat them. */
+@media (display-mode: window-controls-overlay) {
+  /* The bar uses the OS title-bar height but never less than 2rem (32px) so
+     size-7 icon buttons and h-8 tab buttons keep their natural sizing without
+     overflowing. macOS's WCO strip is ~28-32px so this is usually a no-op on
+     Mac; the floor only matters on platforms with skinnier WCO strips. */
+  .app-shell-root {
+    padding-top: max(env(titlebar-area-height, 0), 2rem);
+  }
+  .app-titlebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    height: max(env(titlebar-area-height, 3rem), 2rem);
+    padding-top: 0;
+    padding-left: env(titlebar-area-x, 0px);
+    padding-right: calc(
+      100vw -
+      env(titlebar-area-x, 0px) -
+      env(titlebar-area-width, 100vw)
+    );
+  }
+  .wco-drag {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  .wco-drag button,
+  .wco-drag a,
+  .wco-drag input,
+  .wco-drag [role="button"],
+  .wco-no-drag {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+  .wco-hide {
+    display: none !important;
   }
 }
 
