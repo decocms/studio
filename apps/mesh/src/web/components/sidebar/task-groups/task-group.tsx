@@ -40,7 +40,7 @@ export function TaskGroup({
   const isToolCallRuns = virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
 
   return (
-    <div className={cn("flex flex-col", dimmed && "opacity-50")}>
+    <div className={cn("flex flex-col gap-0.5", dimmed && "opacity-50")}>
       <div
         role="button"
         tabIndex={0}
@@ -90,7 +90,7 @@ export function TaskGroup({
         )}
       </div>
       {expanded && (
-        <div className="flex flex-col gap-0.5 pb-1 pl-2 pr-0.5">
+        <div className="flex flex-col gap-0.5 pb-1 pl-7 pr-0.5">
           {threads.map((task) => (
             <TaskRow
               key={task.id}
