@@ -1,6 +1,6 @@
 /**
  * Builds the <available-connections> + <connections-usage> system-prompt
- * block. Lists the current Virtual MCP's connections and the short names
+ * block. Lists the current Virtual MCP's connections and the safe names
  * of every tool each one exposes. The usage block teaches the model how
  * to activate them via enable_tool.
  *

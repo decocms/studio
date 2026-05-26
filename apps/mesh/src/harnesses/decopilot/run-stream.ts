@@ -499,7 +499,6 @@ export async function* runDecopilotStream(
             {
               isPlanMode: modeConfig.isPlanMode,
               toolAnnotations: tools.toolAnnotations,
-              connectionIds: [...tools.connectionIds],
             },
           ),
         }
