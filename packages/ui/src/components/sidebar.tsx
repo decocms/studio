@@ -174,6 +174,7 @@ function Sidebar({
     <div
       className={cn(
         "group/sidebar peer text-sidebar-foreground hidden md:flex flex-col shrink-0 overflow-hidden",
+        "transition-[width] duration-200 ease-linear",
         isExpanded ? "w-(--sidebar-width)" : "w-(--sidebar-width-icon)",
       )}
       data-state={state}
@@ -185,7 +186,7 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         className={cn(
-          "flex flex-col h-full",
+          "flex flex-col h-full transition-[width] duration-200 ease-linear",
           isExpanded ? "w-(--sidebar-width)" : "w-(--sidebar-width-icon)",
           className,
         )}
