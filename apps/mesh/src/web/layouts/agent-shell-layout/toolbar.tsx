@@ -137,10 +137,7 @@ function ToolbarTabs({ children }: { children: ReactNode }) {
 function ToolbarTogglesSlot() {
   const { setTogglesEl } = useToolbarCtx();
   return (
-    <div
-      ref={setTogglesEl}
-      className="flex items-center gap-0.5 shrink-0 ml-0.5"
-    />
+    <div ref={setTogglesEl} className="flex items-center gap-0.5 shrink-0" />
   );
 }
 
