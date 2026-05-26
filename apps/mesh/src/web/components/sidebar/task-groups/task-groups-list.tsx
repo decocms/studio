@@ -29,6 +29,7 @@ import type { Task } from "@/web/components/chat/task/types";
 import { BrowseAgentsButton } from "../browse-agents-button";
 import { CollapsedGroupPopover } from "./collapsed-group-popover";
 import { groupThreadsByVirtualMcp } from "./group-threads";
+import { stabilizeGroupOrder } from "./stable-order";
 import { TaskGroup } from "./task-group";
 
 type TypeFilter = "all" | "manual" | "automation";
@@ -86,7 +87,11 @@ export function TaskGroupsList() {
     scrollRef,
   );
 
-  const groups = groupThreadsByVirtualMcp(sortedThreads, decopilotId);
+  const groups = stabilizeGroupOrder(
+    org.id,
+    groupThreadsByVirtualMcp(sortedThreads, decopilotId),
+    decopilotId,
+  );
 
   const memberFiltered = (threads: Task[]) =>
     memberFilter === "mine" && currentUserId
