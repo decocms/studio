@@ -501,7 +501,7 @@ export function ChatInput({
                         selectedModel={selectedModel}
                         isStreaming={isStreaming}
                         onUnsupportedFile={onUnsupportedFile}
-                        compact={isChatEmpty}
+                        priority={isChatEmpty ? "secondary" : "primary"}
                       />
                       {isPlanMode && (
                         <button
@@ -605,9 +605,11 @@ export function ChatInput({
                         onBranchChange={
                           taskCtx?.setCurrentTaskBranch ?? (() => {})
                         }
-                        compact={!isChatEmpty}
+                        priority={isChatEmpty ? "primary" : "secondary"}
                       />
-                      <TierTrigger compact={isChatEmpty} />
+                      <TierTrigger
+                        priority={isChatEmpty ? "secondary" : "primary"}
+                      />
 
                       {/* Microphone button — kept mounted (and disabled)
                           during streaming/run to avoid layout shift when

@@ -19,6 +19,7 @@ import {
   Stars01,
 } from "@untitledui/icons";
 import type { ChatTier } from "@/tools/organization/schema";
+import type { PillPriority } from "./pill-priority";
 import {
   resolveTierSubtitle,
   useAgentMode,
@@ -39,9 +40,8 @@ interface PureProps {
   /** Optional per-tier glyph rendered on the closed pill and on each
    *  popover row. Omit for a label-only treatment. */
   iconFor?: (tier: ChatTier) => ReactNode;
-  /** When true, the closed pill hides its label and renders icon +
-   *  chevron only. Popover rows are unaffected. */
-  compact?: boolean;
+  /** Container-query priority for the closed-pill label / chevron. */
+  priority?: PillPriority;
   onSelect: (tier: ChatTier) => void;
 }
 
@@ -56,7 +56,7 @@ export function TierTriggerPure({
   tier,
   subtitleFor,
   iconFor,
-  compact = false,
+  priority = "primary",
   onSelect,
 }: PureProps) {
   const [open, setOpen] = useState(false);
@@ -78,19 +78,31 @@ export function TierTriggerPure({
                 aria-label={TIER_LABELS[tier]}
                 className={cn(
                   "text-muted-foreground hover:text-foreground transition-[gap] duration-200",
-                  compact ? "gap-0" : "gap-1.5",
+                  priority === "secondary"
+                    ? "gap-0 @[720px]/chat-bottom:gap-1.5"
+                    : "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
                 {iconFor?.(tier)}
                 <span
                   className={cn(
-                    "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out",
-                    compact ? "max-w-0 opacity-0" : "max-w-24 opacity-100",
+                    "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+                    priority === "secondary"
+                      ? "@[720px]/chat-bottom:max-w-24 @[720px]/chat-bottom:opacity-100"
+                      : "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
                   )}
                 >
                   {TIER_LABELS[tier]}
                 </span>
-                {!compact && <ChevronDown size={12} className="opacity-60" />}
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    "opacity-60 hidden",
+                    priority === "secondary"
+                      ? "@[720px]/chat-bottom:inline-block"
+                      : "@[320px]/chat-bottom:inline-block",
+                  )}
+                />
               </Button>
             </PopoverTrigger>
           </span>
@@ -157,7 +169,11 @@ export function tierIconFor(tier: ChatTier): ReactNode {
  * Smart wrapper used by `Chat.Input`. Reads current tier + mode, builds
  * the per-tier subtitle resolver, and writes through `useSetChatTier`.
  */
-export function TierTrigger({ compact = false }: { compact?: boolean }) {
+export function TierTrigger({
+  priority = "primary",
+}: {
+  priority?: PillPriority;
+}) {
   const tier = useChatTier();
   const setTier = useSetChatTier();
   const mode = useAgentMode();
@@ -170,7 +186,7 @@ export function TierTrigger({ compact = false }: { compact?: boolean }) {
       tier={tier}
       subtitleFor={subtitleFor}
       iconFor={tierIconFor}
-      compact={compact}
+      priority={priority}
       onSelect={setTier}
     />
   );

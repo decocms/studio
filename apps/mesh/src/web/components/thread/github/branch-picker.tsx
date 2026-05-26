@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { ChevronDown, GitBranch01 } from "@untitledui/icons";
+import type { PillPriority } from "@/web/components/chat/pill-priority";
 import { generateBranchName } from "@/shared/branch-name";
 import { useBranches } from "./use-branches";
 
@@ -36,8 +37,8 @@ interface Props {
   sandboxMap: SandboxMap | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
-  /** When true, hide the label and render icon + chevron only. */
-  compact?: boolean;
+  /** Container-query priority for the closed-pill label / chevron. */
+  priority?: PillPriority;
   /** When true, the trigger is disabled — the user can't open the
    *  picker. The tooltip still surfaces the current branch on hover. */
   disabled?: boolean;
@@ -61,7 +62,7 @@ export function BranchPicker({
   sandboxMap,
   value,
   onChange,
-  compact = false,
+  priority = "primary",
   disabled = false,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -140,19 +141,31 @@ export function BranchPicker({
                 disabled={disabled}
                 className={cn(
                   "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
-                  compact ? "gap-0" : "gap-1.5",
+                  priority === "secondary"
+                    ? "gap-0 @[720px]/chat-bottom:gap-1.5"
+                    : "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
                 <GitBranch01 className="h-3.5 w-3.5" />
                 <span
                   className={cn(
-                    "inline-block overflow-hidden whitespace-nowrap truncate transition-[max-width,opacity] duration-200 ease-out",
-                    compact ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100",
+                    "inline-block overflow-hidden whitespace-nowrap truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+                    priority === "secondary"
+                      ? "@[720px]/chat-bottom:max-w-[200px] @[720px]/chat-bottom:opacity-100"
+                      : "@[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
                   )}
                 >
                   {label}
                 </span>
-                {!compact && <ChevronDown size={12} className="opacity-60" />}
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    "opacity-60 hidden",
+                    priority === "secondary"
+                      ? "@[720px]/chat-bottom:inline-block"
+                      : "@[320px]/chat-bottom:inline-block",
+                  )}
+                />
               </Button>
             </PopoverTrigger>
           </span>

@@ -63,6 +63,7 @@ import {
 } from "./select-model";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import { KEYBOARD_SHORTCUTS } from "@/web/lib/keyboard-shortcuts";
+import type { PillPriority } from "./pill-priority";
 
 const PLAN_MODE_SHORTCUT = KEYBOARD_SHORTCUTS.togglePlanMode.keys
   .map((k) => (k === "Shift" ? "⇧" : k))
@@ -96,8 +97,8 @@ interface ToolsPopoverProps {
   selectedModel: AiProviderModel | null | undefined;
   isStreaming: boolean;
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
-  /** When true, hide the "Tools" label and render icon-only. */
-  compact?: boolean;
+  /** Container-query priority for the "Tools" label. See pill-priority.ts. */
+  priority?: PillPriority;
 }
 
 export function ToolsPopover({
@@ -107,7 +108,7 @@ export function ToolsPopover({
   selectedModel,
   isStreaming,
   onUnsupportedFile,
-  compact = false,
+  priority = "primary",
 }: ToolsPopoverProps) {
   const [open, setOpen] = useState(false);
   const playSwitchSound = useSound(switch005Sound);
@@ -314,14 +315,18 @@ export function ToolsPopover({
             aria-label="Tools"
             className={cn(
               "text-muted-foreground hover:text-foreground transition-[gap] duration-200",
-              compact ? "gap-0" : "gap-1.5",
+              priority === "secondary"
+                ? "gap-0 @[720px]/chat-bottom:gap-1.5"
+                : "gap-0 @[320px]/chat-bottom:gap-1.5",
             )}
           >
             <Settings04 size={14} />
             <span
               className={cn(
-                "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out",
-                compact ? "max-w-0 opacity-0" : "max-w-24 opacity-100",
+                "inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+                priority === "secondary"
+                  ? "@[720px]/chat-bottom:max-w-24 @[720px]/chat-bottom:opacity-100"
+                  : "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
               )}
             >
               Tools
