@@ -29,11 +29,6 @@ const TIER_LABELS: Record<ChatTier, string> = {
   smart: "Smart",
   thinking: "Thinking",
 };
-const TIER_SHORT: Record<ChatTier, string> = {
-  fast: "F",
-  smart: "S",
-  thinking: "T",
-};
 
 interface PureProps {
   tier: ChatTier;
@@ -74,12 +69,7 @@ export function TierTriggerPure({
           className="gap-1.5 text-muted-foreground hover:text-foreground"
         >
           {iconFor?.(tier)}
-          <span className="inline-block @[496px]/chat-bottom:hidden">
-            {TIER_SHORT[tier]}
-          </span>
-          <span className="hidden @[496px]/chat-bottom:inline">
-            {TIER_LABELS[tier]}
-          </span>
+          <span>{TIER_LABELS[tier]}</span>
           <ChevronDown size={12} className="opacity-60" />
         </Button>
       </PopoverTrigger>
