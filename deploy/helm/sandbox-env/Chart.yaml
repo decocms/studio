@@ -11,5 +11,5 @@ description: |
 type: application
 version: 0.7.3
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "0.5.5"
+appVersion: "0.5.7"
 kubeVersion: ">=1.30.0-0"

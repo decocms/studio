@@ -15,6 +15,7 @@ import type { Broadcaster } from "../events/broadcast";
 import type { DaemonStatus } from "../events/types";
 import type { BranchStatusMonitor } from "../git/branch-status";
 import { gitSync } from "../git/git-sync";
+import { spawnCheckoutBranch } from "../git/checkout-branch";
 import type { InstallState } from "../install/install-state";
 import { InstallState as InstallStateClass } from "../install/install-state";
 import type { LifecycleManager } from "../lifecycle/manager";
@@ -538,63 +539,15 @@ export class SetupOrchestrator {
     const repoDir = this.deps.bootConfig.repoDir;
     if (!repoDir) return;
     const onChunk = (_src: "setup", data: string) => this.rawChunk(data);
-    // http.connectTimeout: fail fast on DNS/TCP failures (seconds).
-    // lowSpeedLimit/Time: abort if transfer rate stays below 1 B/s for 10 s.
-    // GIT_TERMINAL_PROMPT=0 + GIT_ASKPASS=true: never prompt for credentials —
-    // public repos work without auth, private-without-creds fail fast instead
-    // of hanging on a PTY-backed prompt.
     const gc = `GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10 -C ${repoDir}`;
 
-    // Fresh-clone path already lands on the target branch (clone.ts uses
-    // --branch when ls-remote reports it exists). Short-circuit so gitSetup
-    // doesn't re-fetch what we just cloned.
-    try {
-      const head = gitSync(["rev-parse", "--abbrev-ref", "HEAD"], {
-        cwd: repoDir,
-      });
-      if (head === branch) return;
-    } catch {
-      // No HEAD yet / not a repo — fall through and let the checkout fail loudly.
-    }
-
-    // ls-remote --exit-code distinguishes "absent" from "broken":
-    //   0  → branch exists on origin
-    //   2  → origin reachable, no matching ref
-    //   *  → real failure (auth/DNS/TLS) — surface to caller
-    const probe = await spawnSetupStep(
-      `${gc} ls-remote --exit-code --heads origin ${branch}`,
-      onChunk,
-    );
-
-    if (probe === 0) {
-      const fetchCode = await spawnSetupStep(
-        `${gc} fetch --depth 1 origin +refs/heads/${branch}:refs/remotes/origin/${branch}`,
-        onChunk,
-      );
-      if (fetchCode !== 0)
-        throw new Error(`git fetch origin ${branch} exited ${fetchCode}`);
-      // `checkout -B` creates-or-resets, avoiding DWIM ambiguity on slash-named
-      // branches in shallow clones.
-      const checkoutCode = await spawnSetupStep(
-        `${gc} checkout -B ${branch} refs/remotes/origin/${branch}`,
-        onChunk,
-      );
-      if (checkoutCode !== 0)
-        throw new Error(`git checkout -B ${branch} exited ${checkoutCode}`);
-      return;
-    }
-
-    if (probe === 2) {
-      this.chunk(
-        `[orchestrator] branch '${branch}' not on remote; creating local branch from HEAD\r\n`,
-      );
-      const code = await spawnSetupStep(`${gc} checkout -B ${branch}`, onChunk);
-      if (code !== 0)
-        throw new Error(`git checkout -B ${branch} exited ${code}`);
-      return;
-    }
-
-    throw new Error(`git ls-remote --heads origin ${branch} exited ${probe}`);
+    await spawnCheckoutBranch({
+      repoDir,
+      branch,
+      gc,
+      runStep: (cmd) => spawnSetupStep(cmd, onChunk),
+      log: (message) => this.chunk(message),
+    });
   }
 }
 

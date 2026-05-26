@@ -20,6 +20,13 @@ import { makeProxyHandler } from "./proxy";
 import { jsonResponse } from "./routes/body-parser";
 import { makeBashHandler } from "./routes/bash";
 import {
+  makeGitDiffHandler,
+  makeGitDiscardHandler,
+  makeGitPublishHandler,
+  makeGitRebaseHandler,
+  makeGitStatusHandler,
+} from "./routes/git";
+import {
   makeConfigReadHandler,
   makeConfigUpdateHandler,
 } from "./routes/config";
@@ -289,7 +296,16 @@ const getDevPort = (): number | null =>
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   portSniffer.current() ?? store.read()?.application?.port ?? null;
 const { appRoot, repoDir } = bootConfig;
-const fsDeps = { appRoot, repoDir };
+const fsDeps = {
+  appRoot,
+  repoDir,
+  onWorkingTreeWrite: () => {
+    if (process.env.DEBUG_SAVE_CHANGES === "1") {
+      console.log("[branch-status] fs write/edit → refresh", { repoDir });
+    }
+    branchStatus.refresh();
+  },
+};
 const readH = makeReadHandler(fsDeps);
 const writeH = makeWriteHandler(fsDeps);
 const editH = makeEditHandler(fsDeps);
@@ -302,6 +318,12 @@ const bashH = makeBashHandler({
   repoDir,
   taskManager,
 });
+const gitDeps = { appRoot, repoDir };
+const gitStatusH = makeGitStatusHandler(gitDeps);
+const gitDiffH = makeGitDiffHandler(gitDeps);
+const gitPublishH = makeGitPublishHandler(gitDeps);
+const gitDiscardH = makeGitDiscardHandler(gitDeps);
+const gitRebaseH = makeGitRebaseHandler(gitDeps);
 const execH = makeExecHandler({
   repoDir,
   store,
@@ -550,6 +572,14 @@ const fsH: Record<string, (req: Request) => Response | Promise<Response>> = {
   "/bash": bashH,
 };
 
+const gitH: Record<string, (req: Request) => Response | Promise<Response>> = {
+  "/git/status": gitStatusH,
+  "/git/diff": gitDiffH,
+  "/git/publish": gitPublishH,
+  "/git/discard": gitDiscardH,
+  "/git/rebase": gitRebaseH,
+};
+
 const setupH: Record<string, () => Response> = {
   "/setup/clone": setupCloneH,
   "/setup/install": setupInstallH,
@@ -617,7 +647,9 @@ async function vmRouteH(
   if (vmPath.startsWith("/tasks"))
     return tasksRouteH(rebuilt, method, vmPath, prefix);
   if (method === "POST" && vmPath in setupH) return setupH[vmPath]();
+  if (method === "GET" && vmPath in gitH) return gitH[vmPath](rebuilt);
   if (method === "POST" && vmPath in fsH) return fsH[vmPath](rebuilt);
+  if (method === "POST" && vmPath in gitH) return gitH[vmPath](rebuilt);
   if (method === "POST" && vmPath.startsWith("/exec/"))
     return execRouteH(rebuilt, vmPath);
 

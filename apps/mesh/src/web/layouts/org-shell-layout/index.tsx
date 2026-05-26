@@ -117,7 +117,9 @@ export default function OrgShellLayout() {
                         </Toolbar.LeftColumn>
                         <Toolbar.CenterSlot />
                         <Toolbar.RightColumn>
-                          <Toolbar.TabsSlot />
+                          <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end">
+                            <Toolbar.TabsSlot />
+                          </div>
                           <Toolbar.RightSlot />
                         </Toolbar.RightColumn>
                       </Toolbar.Header>

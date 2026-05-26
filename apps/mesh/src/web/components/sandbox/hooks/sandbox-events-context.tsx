@@ -303,9 +303,20 @@ export function SandboxEventsProvider({
           case "scripts":
             setScripts((payload as DaemonEventPayload<"scripts">).scripts);
             return;
-          case "branch":
-            setBranchMeta((payload as DaemonEventPayload<"branch">).meta);
+          case "branch": {
+            const meta = (payload as DaemonEventPayload<"branch">).meta;
+            if (import.meta.env.DEV) {
+              try {
+                if (localStorage.getItem("DEBUG_SAVE_CHANGES") === "1") {
+                  console.log("[github-header] branch SSE event", meta);
+                }
+              } catch {
+                // ignore
+              }
+            }
+            setBranchMeta(meta);
             return;
+          }
           case "reload":
             for (const fn of reloadHandlers.current) {
               try {

@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useState, useRef } from "react";
 import Editor, { loader } from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
@@ -14,6 +15,11 @@ import { cn } from "@deco/ui/lib/utils.js";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { useChatStream } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { saveChangesDebug } from "../../../thread/github/save-changes-debug.ts";
+import {
+  fetchGitStatus,
+  sandboxGitStatusQueryKey,
+} from "../../../thread/github/sandbox-git-api.ts";
 import type { FileBuffer } from "./types";
 import {
   buildFileTree,
@@ -79,6 +85,7 @@ export function FileExplorer({
   } | null>(null);
   const { sendMessage } = useChatStream();
   const { setChatOpen } = usePanelActions();
+  const queryClient = useQueryClient();
 
   // Load file tree on first render
   const loadTreeCalledRef = useRef(false);
@@ -158,7 +165,26 @@ export function FileExplorer({
           body: JSON.stringify({ path: toDaemonPath(path), content }),
         },
       );
-      if (!res.ok) return;
+      if (!res.ok) {
+        saveChangesDebug("file save failed", {
+          path,
+          status: res.status,
+        });
+        return;
+      }
+      saveChangesDebug("file saved via sandbox /write", { path });
+      void queryClient.invalidateQueries({
+        queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
+      });
+      try {
+        const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
+        saveChangesDebug("git status after save", status);
+      } catch (err) {
+        saveChangesDebug("git status after save failed", {
+          path,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       setBuffers((prev) => {
         const next = new Map(prev);
         const buf = next.get(path);

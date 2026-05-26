@@ -28,6 +28,11 @@ import type { Env } from "../hono-env";
 import { handleVmEvents } from "./sandbox-events-handler";
 import { resolveAndPushEnv } from "../../tools/sandbox/resolve-env";
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
+import {
+  type GitDiffLike,
+  type GitStatusLike,
+  suggestCommitMessageWithLlm,
+} from "../../lib/suggest-commit-message";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -135,6 +140,12 @@ function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
 
 // ---- Proxy helpers ----------------------------------------------------------
 
+/** Sandbox runtime responses must never be cached — 410 Gone was getting stuck in disk cache. */
+const SANDBOX_PROXY_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+} as const;
+
 async function proxyDaemon(
   c: Context<VmEnv>,
   daemonPath: string,
@@ -184,6 +195,7 @@ async function proxyDaemon(
           "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
       },
       410,
+      SANDBOX_PROXY_CACHE_HEADERS,
     );
   }
 
@@ -192,8 +204,45 @@ async function proxyDaemon(
     upstream.headers.get("content-type") ?? "application/json";
   return new Response(text, {
     status: upstream.status,
-    headers: { "content-type": contentType },
+    headers: { "content-type": contentType, ...SANDBOX_PROXY_CACHE_HEADERS },
   });
+}
+
+async function fetchDaemonJson<T>(
+  runner: SandboxProvider,
+  claimName: string,
+  daemonPath: string,
+  method: "GET" | "POST" = "GET",
+): Promise<T> {
+  const upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
+    method,
+    headers: new Headers(),
+    body: null,
+  });
+
+  if (upstream.status === 404) {
+    try {
+      await upstream.body?.cancel();
+    } catch {
+      /* ignore */
+    }
+    throw new Error("SANDBOX_GONE");
+  }
+
+  const text = await upstream.text();
+  if (!upstream.ok) {
+    try {
+      const err = JSON.parse(text) as { error?: string };
+      throw new Error(err.error ?? `Daemon error (${upstream.status})`);
+    } catch (parseErr) {
+      if (parseErr instanceof Error && parseErr.message !== text) {
+        throw parseErr;
+      }
+      throw new Error(`Daemon error (${upstream.status})`);
+    }
+  }
+
+  return JSON.parse(text) as T;
 }
 
 // ---- Preview fetch ----------------------------------------------------------
@@ -327,6 +376,98 @@ export const createSandboxRoutes = () => {
       projectRef: claim.projectRef,
       virtualMcpMetadata: claim.virtualMcpMetadata,
     });
+  });
+
+  // -- Git (status, diff, publish, discard) ---------------------------------
+  app.get("/:virtualMcpId/:branch/git/status", (c) =>
+    proxyDaemon(c, "/_sandbox/git/status", {
+      method: "GET",
+      map404to410: true,
+    }),
+  );
+  app.post("/:virtualMcpId/:branch/git/status", (c) =>
+    proxyDaemon(c, "/_sandbox/git/status", { map404to410: true }),
+  );
+  app.post("/:virtualMcpId/:branch/git/diff", (c) =>
+    proxyDaemon(c, "/_sandbox/git/diff", { map404to410: true }),
+  );
+  app.post("/:virtualMcpId/:branch/git/publish", (c) =>
+    proxyDaemon(c, "/_sandbox/git/publish", {
+      forwardJsonBody: true,
+      map404to410: true,
+    }),
+  );
+  app.post("/:virtualMcpId/:branch/git/discard", (c) =>
+    proxyDaemon(c, "/_sandbox/git/discard", {
+      forwardJsonBody: true,
+      map404to410: true,
+    }),
+  );
+  app.post("/:virtualMcpId/:branch/git/rebase", (c) =>
+    proxyDaemon(c, "/_sandbox/git/rebase", {
+      forwardJsonBody: true,
+      map404to410: true,
+    }),
+  );
+  app.post("/:virtualMcpId/:branch/git/suggest-commit", async (c) => {
+    const runner = requireRunner(c);
+    if (runner instanceof Response) return runner;
+
+    const { claimName } = c.get("vmClaim");
+    const ctx = c.var.meshContext;
+
+    let body: { status?: GitStatusLike; diff?: GitDiffLike } = {};
+    try {
+      const text = await c.req.text();
+      if (text.trim()) {
+        body = JSON.parse(text) as {
+          status?: GitStatusLike;
+          diff?: GitDiffLike;
+        };
+      }
+    } catch {
+      return c.json(
+        { error: "Invalid JSON body" },
+        400,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
+
+    try {
+      let status = body.status;
+      let diff = body.diff;
+      if (!status || !diff) {
+        [status, diff] = await Promise.all([
+          fetchDaemonJson<GitStatusLike>(
+            runner,
+            claimName,
+            "/_sandbox/git/status",
+            "GET",
+          ),
+          fetchDaemonJson<GitDiffLike>(
+            runner,
+            claimName,
+            "/_sandbox/git/diff",
+            "GET",
+          ),
+        ]);
+      }
+      const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
+      return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === "SANDBOX_GONE") {
+        return c.json(
+          {
+            error:
+              "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
+          },
+          410,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        );
+      }
+      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+    }
   });
 
   // -- Preview fetch (CORS proxy) -------------------------------------------
