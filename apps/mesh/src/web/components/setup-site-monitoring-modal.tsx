@@ -25,7 +25,6 @@ import { Input } from "@deco/ui/components/input.tsx";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   SELF_MCP_ALIAS_ID,
-  WELL_KNOWN_AGENT_TEMPLATES,
   useConnectionActions,
   useMCPClient,
   useMCPToolCallMutation,
@@ -37,6 +36,7 @@ import type { ConnectionEntity, VirtualMCPEntity } from "@decocms/mesh-sdk";
 import type { CollectionListOutput } from "@decocms/bindings/collections";
 import { toast } from "sonner";
 import { useRegistryApp } from "@/web/hooks/use-registry-app";
+import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 
 function normalizeUrl(raw: string): string | null {
@@ -76,6 +76,9 @@ function findExistingSiteDiagnostics(
 }
 
 const SITE_DIAGNOSTICS_TEMPLATE_ID = "site-diagnostics";
+const SITE_DIAGNOSTICS_APP_ID = "deco/site-diagnostics";
+const SITE_DIAGNOSTICS_FALLBACK_TITLE = "Site Diagnostics";
+const SITE_DIAGNOSTICS_FALLBACK_ICON = "icon://SearchRefraction?color=cyan";
 
 export function SetupSiteMonitoringModal({
   open,
@@ -263,6 +266,7 @@ function useSiteMonitoringSetup({
   const queryClient = useQueryClient();
   const virtualMcpActions = useVirtualMCPActions();
   const connectionActions = useConnectionActions();
+  const navigateToAgent = useNavigateToAgent();
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -270,12 +274,9 @@ function useSiteMonitoringSetup({
   });
   const connectionQuery = useMCPToolCallMutation({ client: selfClient });
 
-  const template = WELL_KNOWN_AGENT_TEMPLATES.find(
-    (t) => t.id === SITE_DIAGNOSTICS_TEMPLATE_ID,
-  );
-  const appId = template && "appId" in template ? template.appId : undefined;
-  const { data: registryItem } = useRegistryApp(appId ?? "", {
-    enabled: !existingDiagnostics && Boolean(appId),
+  const appId = SITE_DIAGNOSTICS_APP_ID;
+  const { data: registryItem } = useRegistryApp(appId, {
+    enabled: !existingDiagnostics,
   });
 
   return useMutation({
@@ -301,9 +302,14 @@ function useSiteMonitoringSetup({
       });
 
       // 2. If a Site Diagnostics agent is already in the org, we're done.
-      if (existingDiagnostics) return { installedDiagnostics: false };
+      if (existingDiagnostics) {
+        return {
+          installedDiagnostics: false,
+          diagnosticsAgentId: existingDiagnostics.id,
+        };
+      }
 
-      if (!template || !appId || !registryItem) {
+      if (!registryItem) {
         throw new Error("Site Diagnostics registry data not available yet.");
       }
 
@@ -311,8 +317,9 @@ function useSiteMonitoringSetup({
         registryItem.title ||
         registryItem.server?.title ||
         registryItem.server?.name ||
-        template.title;
-      const appIcon = registryItem.server?.icons?.[0]?.src ?? template.icon;
+        SITE_DIAGNOSTICS_FALLBACK_TITLE;
+      const appIcon =
+        registryItem.server?.icons?.[0]?.src ?? SITE_DIAGNOSTICS_FALLBACK_ICON;
       const appDescription = registryItem.server?.description ?? null;
 
       // 3. Find or create the HTTP connection.
@@ -360,7 +367,7 @@ function useSiteMonitoringSetup({
       }
 
       // 4. Create the Site Diagnostics virtual MCP.
-      await virtualMcpActions.create.mutateAsync({
+      const diagnosticsVmcp = await virtualMcpActions.create.mutateAsync({
         title: appTitle,
         description: appDescription,
         icon: appIcon,
@@ -396,9 +403,12 @@ function useSiteMonitoringSetup({
         },
       });
 
-      return { installedDiagnostics: true };
+      return {
+        installedDiagnostics: true,
+        diagnosticsAgentId: diagnosticsVmcp.id,
+      };
     },
-    onSuccess: ({ installedDiagnostics }) => {
+    onSuccess: ({ installedDiagnostics, diagnosticsAgentId }) => {
       invalidateVirtualMcpQueries(queryClient, org.id);
       toast.success(
         installedDiagnostics
@@ -406,6 +416,7 @@ function useSiteMonitoringSetup({
           : "Site URL saved.",
       );
       onComplete();
+      if (diagnosticsAgentId) navigateToAgent(diagnosticsAgentId);
     },
     onError: (error) => {
       toast.error(

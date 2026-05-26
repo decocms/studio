@@ -1,11 +1,16 @@
 /**
  * Suggested Actions
  *
- * `GET /api/:org/suggested-actions?limit=5&mine=true|false`
+ * `GET /api/:org/suggested-actions?limit=8&mine=true|false`
  *
- * Returns the last N threads where the most recent message is from the
- * assistant — i.e. conversations the AI left hanging that the user might
- * want to pick back up. Rendered as the "new" cards on the Tasks panel.
+ * Returns up to N threads to render as cards on the Tasks panel. Primary
+ * set is conversations the AI left hanging (assistant wrote last); when
+ * fewer than N of those exist, the response is topped up with threads
+ * where the user wrote last (in-flight conversations).
+ *
+ * Studio Pack agents are NOT surfaced here — their onboarding hints come
+ * from `/api/:org/studio-pack-checklists`, which derives state from the
+ * org rather than from a stale thread.
  *
  * Authorization is implicit: `resolveOrgFromPath` already verified the
  * principal is a member of the resolved org. Scope is either the current
@@ -16,17 +21,13 @@
 import { Hono } from "hono";
 import type { MeshContext } from "@/core/mesh-context";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
-import {
-  findStudioPackAgentByMcpId,
-  resolveStudioPackTaskDescription,
-  studioPackOrder,
-} from "@/tools/virtual/studio-pack";
+import { findStudioPackAgentByMcpId } from "@/tools/virtual/studio-pack";
 
 type Variables = {
   meshContext: MeshContext;
 };
 
-const DEFAULT_LIMIT = 5;
+const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 20;
 const EXCERPT_MAX_LENGTH = 200;
 
@@ -49,21 +50,51 @@ export function createSuggestedActionsRoutes() {
 
     const mine = c.req.query("mine") !== "false";
 
-    // Over-fetch then keep one card per agent (most recent first, since the
-    // storage layer already orders by last-message created_at DESC). Threads
-    // without a virtual_mcp_id (ephemeral / no-agent conversations) stay
-    // unique per thread.
-    const rawRows = await mesh.storage.threads.listWithAssistantLastMessage({
+    // Over-fetch so we still hit `limit` real rows after dropping Studio
+    // Pack threads (handled by the checklist endpoint). Storage layer
+    // already orders by last-message created_at DESC.
+    const assistantLast = await mesh.storage.threads.listWithLastMessage({
       limit: limit * 5,
       createdBy: mine ? userId : undefined,
+      lastMessageRole: "assistant",
     });
-    const seenAgents = new Set<string>();
-    const rows: typeof rawRows = [];
-    for (const r of rawRows) {
-      const key = r.thread.virtual_mcp_id || `__t:${r.thread.id}`;
-      if (seenAgents.has(key)) continue;
-      seenAgents.add(key);
-      rows.push(r);
+    // Primary set: AI spoke last AND (not an automation run, OR the run is
+    // blocked on the user). Automation runs (cron OR manual fire) only belong
+    // here when blocked on the user — trigger_id alone misses manual fires
+    // (they pass null), so we key off the title prefix written by both
+    // createAutomationRunThread and createToolCallRunThread.
+    const primary = assistantLast
+      .filter(
+        (r) =>
+          !r.thread.virtual_mcp_id ||
+          findStudioPackAgentByMcpId(r.thread.virtual_mcp_id) === null,
+      )
+      .map((r) => ({
+        ...r,
+        fromState: describeFromThreadState(r.lastMessage.parts),
+      }))
+      .filter(
+        (r) =>
+          !r.thread.title?.startsWith("Automation: ") || r.fromState !== null,
+      );
+
+    // Fallback: when the primary set is short, top up with threads where the
+    // user wrote last (in-flight conversations, not blocked on the user).
+    let rows = primary;
+    if (primary.length < limit) {
+      const userLast = await mesh.storage.threads.listWithLastMessage({
+        limit: (limit - primary.length) * 5,
+        createdBy: mine ? userId : undefined,
+        lastMessageRole: "user",
+      });
+      const fallback = userLast
+        .filter(
+          (r) =>
+            !r.thread.virtual_mcp_id ||
+            findStudioPackAgentByMcpId(r.thread.virtual_mcp_id) === null,
+        )
+        .map((r) => ({ ...r, fromState: null as string | null }));
+      rows = [...primary, ...fallback.slice(0, limit - primary.length)];
     }
 
     const agentIds = Array.from(
@@ -83,31 +114,14 @@ export function createSuggestedActionsRoutes() {
     );
     const agentById = new Map(agentEntries);
 
-    const built = await Promise.all(
-      rows.map(async ({ thread, lastMessage }) => {
+    const suggestions = rows
+      .slice(0, limit)
+      .map(({ thread, lastMessage, fromState }) => {
         const agent = thread.virtual_mcp_id
           ? agentById.get(thread.virtual_mcp_id)
           : null;
 
-        const studioPackAgent = agent
-          ? findStudioPackAgentByMcpId(agent.id)
-          : null;
-
-        const fromState = describeFromThreadState(lastMessage.parts);
         let description = fromState ?? "";
-
-        if (!description && studioPackAgent && agent) {
-          try {
-            description =
-              (await resolveStudioPackTaskDescription(studioPackAgent, {
-                orgId,
-                ctx: mesh,
-              })) ?? "";
-          } catch {
-            description = "";
-          }
-          if (!description) return null;
-        }
 
         if (!description) {
           const trimmedTitle = thread.title?.trim() ?? "";
@@ -132,44 +146,25 @@ export function createSuggestedActionsRoutes() {
           }
         }
 
-        const order = studioPackAgent
-          ? studioPackOrder(studioPackAgent)
-          : Number.POSITIVE_INFINITY;
-
         return {
-          _order: order,
-          suggestion: {
-            thread: {
-              id: thread.id,
-              title: thread.title,
-              virtual_mcp_id: thread.virtual_mcp_id || null,
-              created_by: thread.created_by,
-              created_at: thread.created_at,
-              updated_at: thread.updated_at,
-              trigger_id: thread.trigger_id,
-            },
-            agent: agent
-              ? { id: agent.id, name: agent.title, icon: agent.icon }
-              : null,
-            icon: agent?.icon ?? null,
-            description,
-            excerpt: extractExcerpt(lastMessage.parts),
-            last_message_at: lastMessage.created_at,
+          thread: {
+            id: thread.id,
+            title: thread.title,
+            virtual_mcp_id: thread.virtual_mcp_id || null,
+            created_by: thread.created_by,
+            created_at: thread.created_at,
+            updated_at: thread.updated_at,
+            trigger_id: thread.trigger_id,
           },
+          agent: agent
+            ? { id: agent.id, name: agent.title, icon: agent.icon }
+            : null,
+          icon: agent?.icon ?? null,
+          description,
+          excerpt: extractExcerpt(lastMessage.parts),
+          last_message_at: lastMessage.created_at,
         };
-      }),
-    );
-
-    const suggestions = built
-      .filter((s): s is NonNullable<typeof s> => s !== null)
-      .sort((a, b) => {
-        const aTime = a.suggestion.last_message_at;
-        const bTime = b.suggestion.last_message_at;
-        if (aTime !== bTime) return aTime < bTime ? 1 : -1;
-        return a._order - b._order;
-      })
-      .slice(0, limit)
-      .map((s) => s.suggestion);
+      });
 
     return c.json({ suggestions });
   });

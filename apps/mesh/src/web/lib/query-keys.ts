@@ -74,6 +74,10 @@ export const KEYS = {
   suggestedActions: (orgSlug: string, mine: boolean) =>
     ["suggested-actions", orgSlug, mine] as const,
 
+  // Studio Pack onboarding checklists — per-agent state-derived items.
+  studioPackChecklists: (orgSlug: string) =>
+    ["studio-pack-checklists", orgSlug] as const,
+
   // Allowed models for current user (scoped by organization)
   allowedModels: (locator: ProjectLocator) =>
     [locator, "allowed-models"] as const,

@@ -130,11 +130,12 @@ export class OrgScopedThreadStorage {
     return this.inner.listMessages(taskId, this.requireOrg(), options);
   }
 
-  listWithAssistantLastMessage(options: {
+  listWithLastMessage(options: {
     limit: number;
     createdBy?: string;
+    lastMessageRole: "assistant" | "user";
   }): Promise<Array<{ thread: Thread; lastMessage: ThreadMessage }>> {
-    return this.inner.listWithAssistantLastMessage(this.requireOrg(), options);
+    return this.inner.listWithLastMessage(this.requireOrg(), options);
   }
 }
 
@@ -539,20 +540,24 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   /**
-   * Last N threads whose most recent `thread_messages` row has
-   * `role = 'assistant'` — i.e. conversations the assistant left
-   * hanging, waiting for the user to come back. Backs the
-   * "Suggested actions" cards on the Tasks panel.
+   * Last N threads whose most recent `thread_messages` row has the given
+   * `lastMessageRole`. Backs the "Suggested actions" cards on the Tasks
+   * panel — `assistant` for the primary set (AI is waiting on the user),
+   * `user` for the fallback set (user wrote last) used to fill the panel
+   * when the primary set is short.
    *
-   * One round-trip: a LATERAL subquery picks each thread's last
-   * message (created_at DESC, id DESC for stable tiebreak), then
-   * the outer query keeps only the rows where that message is from
-   * the assistant. Ordered by the last-message timestamp so the
-   * freshest "AI spoke last" thread is first.
+   * One round-trip: a LATERAL subquery picks each thread's last message
+   * (created_at DESC, id DESC for stable tiebreak), then the outer query
+   * keeps only the rows whose last message matches the requested role.
+   * Ordered by the last-message timestamp.
    */
-  async listWithAssistantLastMessage(
+  async listWithLastMessage(
     organizationId: string,
-    options: { limit: number; createdBy?: string },
+    options: {
+      limit: number;
+      createdBy?: string;
+      lastMessageRole: "assistant" | "user";
+    },
   ): Promise<Array<{ thread: Thread; lastMessage: ThreadMessage }>> {
     let query = this.db
       .selectFrom("threads as t")
@@ -580,7 +585,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       ])
       .where("t.organization_id", "=", organizationId)
       .where("t.hidden", "=", false)
-      .where("lm.role", "=", "assistant")
+      .where("lm.role", "=", options.lastMessageRole)
       .orderBy("lm.created_at", "desc")
       .limit(options.limit);
 

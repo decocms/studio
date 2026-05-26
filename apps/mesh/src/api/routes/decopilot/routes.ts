@@ -7,7 +7,11 @@
 
 import { createHash } from "node:crypto";
 import type { MeshContext } from "@/core/mesh-context";
-import { TierUnavailableError, resolveTier } from "@/core/resolve-tier";
+import {
+  TierUnavailableError,
+  resolveTier,
+  tryResolveTier,
+} from "@/core/resolve-tier";
 import { resolveAgentTier } from "@/ai-providers/agent-tiers";
 import type { ChatTier, SimpleModeTier } from "@/tools/organization/schema";
 import { posthog } from "@/posthog";
@@ -148,22 +152,6 @@ function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
         }
       : undefined,
   };
-}
-
-/**
- * Try to resolve a tier without failing the whole request. Returns null when
- * the tier is unconfigured + has no curated default — used for optional
- * auxiliary tiers (image, web_research) where missing-credentials should
- * disable the corresponding tool, not 400 the chat request.
- */
-async function tryResolveTier(ctx: MeshContext, tier: SimpleModeTier) {
-  try {
-    return await resolveTier(ctx, tier);
-  } catch (err) {
-    if (err instanceof TierUnavailableError) return null;
-    console.warn(`[decopilot] tier "${tier}" resolution failed:`, err);
-    return null;
-  }
 }
 
 /**

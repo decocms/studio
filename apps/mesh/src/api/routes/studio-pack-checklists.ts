@@ -68,7 +68,6 @@ type StorefrontState = {
   githubConnected: boolean;
   storefrontWithRepoExists: boolean;
   githubAutomationsConfigured: boolean;
-  storefrontFullyMonitored: boolean;
 };
 
 async function resolveStorefrontState(
@@ -90,16 +89,6 @@ async function resolveStorefrontState(
   const storefrontWithRepoExists = storefronts.some((vm) =>
     Boolean((vm.metadata as { githubRepo?: unknown } | null)?.githubRepo),
   );
-  const siteDiagnosticsExists = vmcps.some(
-    (vm) =>
-      (vm.metadata as { type?: unknown } | null | undefined)?.type ===
-      "site-diagnostics",
-  );
-  const storefrontWithSiteUrlExists = storefronts.some((vm) => {
-    const sf = (vm.metadata as { storefront?: { siteUrl?: unknown } } | null)
-      ?.storefront;
-    return typeof sf?.siteUrl === "string" && sf.siteUrl.length > 0;
-  });
 
   // "Any storefront has any github automation trigger wired up" — derived
   // from automation_triggers rows (event_type + connection_id) so we don't
@@ -132,8 +121,6 @@ async function resolveStorefrontState(
     githubConnected,
     storefrontWithRepoExists,
     githubAutomationsConfigured,
-    storefrontFullyMonitored:
-      storefrontWithSiteUrlExists && siteDiagnosticsExists,
   };
 }
 
@@ -170,12 +157,6 @@ async function buildStorefrontManagerChecklist(
         activeForm: "Wiring up GitHub automations",
         action: { kind: "configure-github-automations" },
         completed: state.githubAutomationsConfigured,
-      },
-      {
-        label: "Set up site monitoring",
-        activeForm: "Setting up site monitoring",
-        action: { kind: "setup-site-monitoring" },
-        completed: state.storefrontFullyMonitored,
       },
     ],
   };

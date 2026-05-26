@@ -32,7 +32,6 @@ import type { ConnectionEntity } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
 import { ArrowLeft, Loading01 } from "@untitledui/icons";
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
-import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import {
@@ -174,7 +173,7 @@ function Header({
   onSwitchMode: (next: Mode) => void;
 }) {
   return (
-    <div className="flex items-center h-12 border-b border-border px-4 gap-3 shrink-0">
+    <div className="flex items-center h-12 border-b border-border pl-4 pr-12 gap-3 shrink-0">
       {selectedInstallation && mode === "browse" ? (
         <>
           <button
@@ -463,7 +462,6 @@ type CreateStorefrontArgs = {
 function useCreateStorefront({ onComplete }: { onComplete: () => void }) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const navigateToAgent = useNavigateToAgent();
   const virtualMcpActions = useVirtualMCPActions();
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -530,11 +528,10 @@ function useCreateStorefront({ onComplete }: { onComplete: () => void }) {
 
       return { virtualMcp, repo };
     },
-    onSuccess: ({ virtualMcp, repo }) => {
+    onSuccess: ({ repo }) => {
       invalidateVirtualMcpQueries(queryClient, org.id);
       toast.success(`Storefront ${repo.owner}/${repo.name} added.`);
       onComplete();
-      navigateToAgent(virtualMcp.id!);
     },
     onError: (error) => {
       toast.error(

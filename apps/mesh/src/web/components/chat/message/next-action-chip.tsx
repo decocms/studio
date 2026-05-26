@@ -12,18 +12,34 @@ export function NextActionChip() {
 
   if (!virtualMcpId || isStreaming) return null;
 
-  // The welcome message already prompts the same first action that brought
-  // the user here. Only suggest a "next" once the user has actually done
-  // something in this thread.
-  const hasUserTurn = messages.some((m) => m.role === "user");
-  if (!hasUserTurn) return null;
+  // Only suggest a "next" once the user has actually done something in
+  // this thread. A user_ask resolution flips the part to `output-available`
+  // on the existing assistant message — it doesn't produce a user-role
+  // message — so a strict `role === "user"` check would miss it.
+  const hasEngagement = messages.some(
+    (m) =>
+      m.role === "user" ||
+      m.parts.some(
+        (p) =>
+          (p as { type?: string }).type === "tool-user_ask" &&
+          (p as { state?: string }).state === "output-available",
+      ),
+  );
+  if (!hasEngagement) return null;
 
   const match = checklists.find((c) => c.agent.id === virtualMcpId);
+  // Items without a `prompt` (those that rely on the agent's welcome to
+  // drive the first turn) can't be auto-sent from here — skip them.
   const nextItem = match?.items.find(
-    (i) => !i.completed && i.action.kind === "open-agent-thread",
+    (i) =>
+      !i.completed &&
+      i.action.kind === "open-agent-thread" &&
+      typeof i.action.prompt === "string" &&
+      i.action.prompt.length > 0,
   );
   if (!nextItem || nextItem.action.kind !== "open-agent-thread") return null;
   const prompt = nextItem.action.prompt;
+  if (!prompt) return null;
 
   return (
     <button

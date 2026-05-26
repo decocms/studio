@@ -247,7 +247,4 @@ export {
   // Studio Pack utilities
   StudioPackAgentId,
   isStudioPackAgent,
-  // Well-known agent templates (display data + registry appId)
-  WELL_KNOWN_AGENT_TEMPLATES,
-  type WellKnownAgentTemplate,
 } from "./lib/constants";

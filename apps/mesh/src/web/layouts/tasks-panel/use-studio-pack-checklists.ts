@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 
 export type ChecklistItemAction =
-  | { kind: "open-agent-thread"; prompt: string }
+  | { kind: "open-agent-thread"; prompt?: string }
   | { kind: "github-import" }
   | { kind: "install-github-mcp" }
   | { kind: "add-storefront" }

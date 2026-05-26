@@ -1,7 +1,5 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { isStudioPackAgent } from "@decocms/mesh-sdk";
 import { getDb } from "@/database";
-import { BrandContextStorage } from "@/storage/brand-context";
 import { SqlThreadStorage } from "@/storage/threads";
 import { VirtualMCPStorage } from "@/storage/virtual";
 import {
@@ -22,21 +20,21 @@ async function installStudioPackStep(
   await installStudioPack(input.orgId, input.createdBy, virtualMcpStorage);
 }
 
+/**
+ * Create empty thread rows for each Studio Pack agent so the Tasks-panel
+ * checklist can navigate to a stable `thrd_welcome_<agentId>` URL. We
+ * intentionally do NOT persist a greeting message — welcomes are
+ * state-dependent (Agent Manager / Brand Manager / Automation Manager
+ * pivot copy based on org state) and a once-rendered snapshot drifts
+ * from reality the moment the user creates an agent or sets brand
+ * context. The chat renders the welcome from current state when the
+ * thread is opened with no real messages.
+ */
 async function createWelcomeThreadsStep(
   input: InstallStudioPackInput,
 ): Promise<void> {
   const database = getDb();
   const threads = new SqlThreadStorage(database.db);
-  const brandContexts = new BrandContextStorage(database.db);
-  const virtualMcps = new VirtualMCPStorage(database.db);
-  const now = new Date().toISOString();
-
-  const existingBrands = await brandContexts.list(input.orgId);
-  const hasBrandContext = existingBrands.length > 0;
-  const allVirtualMcps = await virtualMcps.list(input.orgId);
-  const hasCustomAgents = allVirtualMcps.some(
-    (vm) => !isStudioPackAgent(vm.id),
-  );
 
   for (const agent of STUDIO_PACK_AGENTS) {
     const agentId = agent.getId(input.orgId);
@@ -50,28 +48,6 @@ async function createWelcomeThreadsStep(
       virtual_mcp_id: agentId,
       created_by: input.createdBy,
     });
-
-    const parts = await agent.welcomeMessage({
-      orgId: input.orgId,
-      createdBy: input.createdBy,
-      hasBrandContext,
-      hasCustomAgents,
-    });
-
-    await threads.saveMessages(
-      [
-        {
-          id: `${threadId}-msg-welcome`,
-          thread_id: threadId,
-          role: "assistant",
-          parts,
-          metadata: undefined,
-          created_at: now,
-          updated_at: now,
-        },
-      ],
-      input.orgId,
-    );
   }
 }
 

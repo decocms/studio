@@ -20,8 +20,15 @@
  * the browser doesn't serve a cached stale body.
  */
 
+import { Button } from "@deco/ui/components/button.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { Check, Copy01, LinkExternal01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useOptionalChatStream } from "@/web/components/chat/context.tsx";
 
@@ -117,6 +124,51 @@ function findLatestPublished(
   return null;
 }
 
+function PreviewToolbar({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
+      <button
+        type="button"
+        onClick={() => window.open(url, "_blank", "noopener")}
+        className="flex min-w-0 flex-1 items-center rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        title={url}
+      >
+        <span className="truncate">{url}</span>
+      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" onClick={handleCopy}>
+            {copied ? <Check size={14} /> : <Copy01 size={14} />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {copied ? "Copied" : "Copy URL"}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => window.open(url, "_blank", "noopener")}
+          >
+            <LinkExternal01 size={14} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Open in new tab</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 export function WebPageTab({ slug }: { slug: string }) {
   const stream = useOptionalChatStream();
   const messages = stream?.messages ?? [];
@@ -131,5 +183,12 @@ export function WebPageTab({ slug }: { slug: string }) {
   }
 
   const cacheBustedUrl = `${latest.url}${latest.url.includes("?") ? "&" : "?"}v=${latest.bytes}`;
-  return <PreviewSlot url={cacheBustedUrl} title={`${slug}.html`} />;
+  return (
+    <div className="flex h-full w-full flex-col bg-background">
+      <PreviewToolbar url={latest.url} />
+      <div className="relative flex-1">
+        <PreviewSlot url={cacheBustedUrl} title={`${slug}.html`} />
+      </div>
+    </div>
+  );
 }
