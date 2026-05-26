@@ -90,7 +90,7 @@ export function TierTriggerPure({
                 >
                   {TIER_LABELS[tier]}
                 </span>
-                <ChevronDown size={12} className="opacity-60" />
+                {!compact && <ChevronDown size={12} className="opacity-60" />}
               </Button>
             </PopoverTrigger>
           </span>
