@@ -11,7 +11,7 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { KEYS } from "../lib/query-keys";
 import { unwrapToolResult } from "../lib/unwrap-tool-result";
 
@@ -27,6 +27,13 @@ export interface ListObjectsResponse {
   nextCursor: string | null;
 }
 
+/**
+ * Infinite query over a configured bucket's objects. Page 1 returns the
+ * server's "newest first" view (year-prefix probe + lastModified sort);
+ * subsequent pages walk the broad prefix via the S3 continuation token.
+ * Recent uploads always sit on page 1, so we can keep showing them at
+ * the top no matter how deep the user pages.
+ */
 export function useFilePickerObjects(params: {
   configId: string | null;
   enabled?: boolean;
@@ -38,17 +45,22 @@ export function useFilePickerObjects(params: {
     orgSlug: org.slug,
   });
 
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: KEYS.filePickerObjects(org.id, params.configId),
     enabled: params.enabled !== false && !!params.configId,
     staleTime: 30_000,
-    queryFn: async () => {
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => {
       const result = await client.callTool({
         name: "FILE_OBJECTS_LIST",
-        arguments: { configId: params.configId },
+        arguments: {
+          configId: params.configId,
+          cursor: pageParam ?? undefined,
+        },
       });
       return unwrapToolResult<ListObjectsResponse>(result);
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
 }
 

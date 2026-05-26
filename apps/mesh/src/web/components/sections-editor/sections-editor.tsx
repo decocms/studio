@@ -797,7 +797,7 @@ export function SectionsEditor({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-w-0 w-full flex-col">
       {/* Page header */}
       <div className="px-3 py-2.5 border-b shrink-0">
         {isEditing ? (
@@ -885,7 +885,7 @@ export function SectionsEditor({
       {/* Drill-down: section list OR section form */}
       {isEditing ? (
         <ScrollArea className="flex-1 min-h-0">
-          <div className="p-4">
+          <div className="min-w-0 w-full p-4">
             <SchemaForm
               key={formResetKey}
               schema={activeSchema}

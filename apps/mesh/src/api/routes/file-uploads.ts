@@ -15,9 +15,6 @@
  * automatically switches to multipart for large files, uploads parts in
  * parallel, and survives transient part failures — none of which a
  * single-shot PutObject offers when the SDK can't replay a stream.
- *
- * The presigned-PUT path (`FILE_PRESIGN_UPLOAD` MCP tool) remains
- * available for non-browser callers that can ignore CORS.
  */
 
 import { S3Client } from "@aws-sdk/client-s3";

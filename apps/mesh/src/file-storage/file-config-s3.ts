@@ -86,30 +86,130 @@ export interface ListObjectsResult {
   nextCursor: string | null;
 }
 
+/**
+ * S3 ListObjectsV2 only returns keys in lexicographic order — there's no
+ * "filter / sort by lastModified" server-side. Our upload key format is
+ * `<configured-prefix>/<yyyy>/<mm>/<uuid>-<filename>`, so to give the
+ * picker a "recent first" feel we:
+ *
+ *   1. List under `<prefix><currentYear>/` first — every upload from this
+ *      year is captured here, no matter what historical UUID-first keys
+ *      live alongside.
+ *   2. If we still have room in the page, list under `<prefix><prevYear>/`.
+ *   3. Finally, list under the broad prefix as a fallback for legacy
+ *      objects that don't follow our date sharding.
+ *
+ * Results are merged, de-duped by key, sorted by lastModified DESC, and
+ * truncated to `maxKeys`. Cursor pagination is only used on the broad
+ * fallback list — once the user pages past the "recent" buckets we
+ * iterate the whole namespace lexicographically (the only thing S3
+ * offers).
+ */
 export async function listObjects(params: {
   ctx: FileConfigContext;
   cursor?: string | null;
   maxKeys?: number;
 }): Promise<ListObjectsResult> {
   const client = buildS3Client(params.ctx);
-  const response = await client.send(
-    new ListObjectsV2Command({
-      Bucket: params.ctx.info.bucket,
-      Prefix: params.ctx.info.prefix ?? undefined,
-      MaxKeys: Math.min(params.maxKeys ?? 50, 200),
-      ContinuationToken: params.cursor ?? undefined,
-    }),
-  );
+  const target = Math.min(params.maxKeys ?? 50, 200);
+  const bucketPrefix = params.ctx.info.prefix ?? "";
 
+  // Subsequent pages walk the broad namespace via continuation token —
+  // skip the date-shard probes since the cursor doesn't apply to them.
+  if (params.cursor) {
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: params.ctx.info.bucket,
+        Prefix: bucketPrefix || undefined,
+        MaxKeys: target,
+        ContinuationToken: params.cursor,
+      }),
+    );
+    return finalize(response, params.ctx, target, false);
+  }
+
+  const now = new Date();
+  const currentYear = String(now.getUTCFullYear());
+  const prevYear = String(now.getUTCFullYear() - 1);
+
+  const probes = [
+    `${bucketPrefix}${currentYear}/`,
+    `${bucketPrefix}${prevYear}/`,
+  ];
+
+  const seen = new Map<string, ListedObject>();
+  for (const prefix of probes) {
+    if (seen.size >= target) break;
+    const res = await client.send(
+      new ListObjectsV2Command({
+        Bucket: params.ctx.info.bucket,
+        Prefix: prefix,
+        MaxKeys: target - seen.size,
+      }),
+    );
+    for (const obj of res.Contents ?? []) {
+      if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
+      seen.set(obj.Key, toListedObject(obj, params.ctx));
+    }
+  }
+
+  // Fallback: walk the broad prefix to top up legacy objects (existing
+  // deco-CMS files that don't have the yyyy/mm shard).
+  let nextCursor: string | null = null;
+  if (seen.size < target) {
+    const res = await client.send(
+      new ListObjectsV2Command({
+        Bucket: params.ctx.info.bucket,
+        Prefix: bucketPrefix || undefined,
+        MaxKeys: target - seen.size,
+      }),
+    );
+    for (const obj of res.Contents ?? []) {
+      if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
+      seen.set(obj.Key, toListedObject(obj, params.ctx));
+    }
+    nextCursor = res.IsTruncated ? (res.NextContinuationToken ?? null) : null;
+  }
+
+  const items = Array.from(seen.values()).sort(byLastModifiedDesc);
+  return { items, nextCursor };
+}
+
+function toListedObject(
+  obj: { Key?: string; Size?: number; LastModified?: Date },
+  ctx: FileConfigContext,
+): ListedObject {
+  return {
+    key: obj.Key!,
+    size: obj.Size ?? 0,
+    lastModified: obj.LastModified ? obj.LastModified.toISOString() : null,
+    publicUrl: buildPublicUrl(ctx.info, obj.Key!),
+  };
+}
+
+function byLastModifiedDesc(a: ListedObject, b: ListedObject): number {
+  // Nulls sink to the bottom.
+  if (!a.lastModified && !b.lastModified) return 0;
+  if (!a.lastModified) return 1;
+  if (!b.lastModified) return -1;
+  return b.lastModified.localeCompare(a.lastModified);
+}
+
+function finalize(
+  response: {
+    Contents?: Array<{ Key?: string; Size?: number; LastModified?: Date }>;
+    IsTruncated?: boolean;
+    NextContinuationToken?: string;
+  },
+  ctx: FileConfigContext,
+  target: number,
+  sort: boolean,
+): ListObjectsResult {
   const items = (response.Contents ?? [])
     .filter((obj) => obj.Key && !obj.Key.endsWith("/"))
-    .map((obj) => ({
-      key: obj.Key!,
-      size: obj.Size ?? 0,
-      lastModified: obj.LastModified ? obj.LastModified.toISOString() : null,
-      publicUrl: buildPublicUrl(params.ctx.info, obj.Key!),
-    }));
-
+    .slice(0, target)
+    .map((obj) => toListedObject(obj, ctx));
+  if (sort) items.sort(byLastModifiedDesc);
   return {
     items,
     nextCursor: response.IsTruncated

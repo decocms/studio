@@ -55,7 +55,7 @@ export function ObjectField({
       {open && (
         <div
           id={contentId}
-          className="ml-3 min-w-0 border-l border-border/80 pl-5"
+          className="ml-3 min-w-0 max-w-full overflow-hidden border-l border-border/80 pl-5"
         >
           <SchemaForm
             schema={schema}
