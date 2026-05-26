@@ -16,7 +16,7 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
-import { LayoutLeft, Loading01, Menu01 } from "@untitledui/icons";
+import { Loading01, Menu01, Menu02 } from "@untitledui/icons";
 import { Outlet, useParams } from "@tanstack/react-router";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
@@ -36,7 +36,7 @@ function SidebarToggleButton() {
       aria-label="Toggle sidebar"
       className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
     >
-      <LayoutLeft size={16} />
+      <Menu02 size={16} />
     </button>
   );
 }
