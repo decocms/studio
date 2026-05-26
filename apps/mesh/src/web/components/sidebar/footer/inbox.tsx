@@ -11,10 +11,16 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { Check, Inbox01, Settings02, XClose } from "@untitledui/icons";
 import { AuthUIContext } from "@daveyplate/better-auth-ui";
-import { useContext, useState } from "react";
+import { useContext, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -124,24 +130,11 @@ function usePendingInvitations() {
   );
 }
 
-function InboxButton() {
+function InboxPopover({ children }: { children: ReactNode }) {
   const pendingInvitations = usePendingInvitations();
-
   return (
     <Popover>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <PopoverTrigger asChild>
-            <SidebarMenuButton tooltip="Inbox" className="relative">
-              <Inbox01 />
-              <span>Inbox</span>
-              {pendingInvitations.length > 0 && (
-                <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
-              )}
-            </SidebarMenuButton>
-          </PopoverTrigger>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         side="right"
         align="start"
@@ -174,40 +167,123 @@ function InboxButton() {
   );
 }
 
-function SettingsButton() {
+function InboxFullButton() {
+  const pendingInvitations = usePendingInvitations();
+  return (
+    <InboxPopover>
+      <SidebarMenuButton tooltip="Inbox" className="relative">
+        <Inbox01 />
+        <span>Inbox</span>
+        {pendingInvitations.length > 0 && (
+          <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
+        )}
+      </SidebarMenuButton>
+    </InboxPopover>
+  );
+}
+
+function InboxIconButton() {
+  const pendingInvitations = usePendingInvitations();
+  return (
+    <InboxPopover>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Inbox"
+            className="relative flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <Inbox01 className="size-4" />
+            {pendingInvitations.length > 0 && (
+              <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 pointer-events-none" />
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top">Inbox</TooltipContent>
+      </Tooltip>
+    </InboxPopover>
+  );
+}
+
+function SettingsFullButton() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
-
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          tooltip="Settings"
+    <SidebarMenuButton
+      tooltip="Settings"
+      onClick={() =>
+        navigate({
+          to: "/$org/settings",
+          params: { org: org.slug },
+        })
+      }
+    >
+      <Settings02 />
+      <span>Settings</span>
+    </SidebarMenuButton>
+  );
+}
+
+function SettingsIconButton() {
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="Settings"
           onClick={() =>
             navigate({
               to: "/$org/settings",
               params: { org: org.slug },
             })
           }
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         >
-          <Settings02 />
-          <span>Settings</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
+          <Settings02 className="size-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">Settings</TooltipContent>
+    </Tooltip>
   );
 }
 
 export function SidebarInboxFooter() {
+  const { state } = useSidebar();
+  const isCollapsed = state === "collapsed";
+
+  if (isCollapsed) {
+    return (
+      <SidebarFooter className="px-2 pb-3 gap-1">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <InboxFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SettingsFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <AccountPopover />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    );
+  }
+
   return (
-    <SidebarFooter className="px-2 pb-3 gap-1">
-      <InboxButton />
-      <SettingsButton />
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <AccountPopover />
-        </SidebarMenuItem>
-      </SidebarMenu>
+    <SidebarFooter className="px-2 pb-3">
+      <div className="flex items-center gap-1">
+        <div className="flex-1 min-w-0">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <AccountPopover />
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </div>
+        <SettingsIconButton />
+        <InboxIconButton />
+      </div>
     </SidebarFooter>
   );
 }
