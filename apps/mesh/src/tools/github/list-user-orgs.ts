@@ -7,6 +7,7 @@ import {
   refreshAndStore,
 } from "@/oauth/token-refresh";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
+import { getGithubConnectionRepoScope } from "@/shared/github-connection";
 
 const GITHUB_API = "https://api.github.com";
 
@@ -40,6 +41,22 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
     await ctx.access.check();
 
     const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
+    const organizationId = ctx.organization?.id;
+    if (!organizationId) {
+      throw new Error("Organization context required");
+    }
+
+    const connection = await ctx.storage.connections.findById(
+      input.connectionId,
+      organizationId,
+    );
+    const repoScope = getGithubConnectionRepoScope(
+      (connection?.metadata ?? null) as Record<string, unknown> | null,
+    );
+    const refreshOptions = repoScope
+      ? { repositoryId: repoScope.repositoryId }
+      : undefined;
+
     let token = await tokenStorage.get(input.connectionId);
     if (!token) {
       throw new Error(
@@ -55,7 +72,11 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
       canRefresh(token) &&
       tokenStorage.isExpired(token, PROACTIVE_REFRESH_BUFFER_MS)
     ) {
-      const refreshed = await refreshAndStore(token, tokenStorage);
+      const refreshed = await refreshAndStore(
+        token,
+        tokenStorage,
+        refreshOptions,
+      );
       if (!refreshed) {
         throw new Error(RECONNECT_ERROR);
       }
@@ -101,7 +122,11 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
         if (!current || !canRefresh(current)) {
           throw new Error(RECONNECT_ERROR);
         }
-        const refreshed = await refreshAndStore(current, tokenStorage);
+        const refreshed = await refreshAndStore(
+          current,
+          tokenStorage,
+          refreshOptions,
+        );
         if (!refreshed) {
           throw new Error(RECONNECT_ERROR);
         }

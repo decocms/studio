@@ -402,6 +402,7 @@ function UrlEntry({ onComplete }: { onComplete: () => void }) {
             private: false,
             description: null,
             updatedAt: "",
+            repositoryId: 0,
           },
           connectionId,
           installationId: undefined,

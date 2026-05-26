@@ -19,10 +19,9 @@ import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import {
   useProjectContext,
   useMCPClient,
-  useConnections,
+  useConnectionActions,
   SELF_MCP_ALIAS_ID,
 } from "@decocms/mesh-sdk";
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { toast } from "sonner";
 import {
@@ -31,13 +30,15 @@ import {
   Lock01,
   LockUnlocked01,
 } from "@untitledui/icons";
-import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
+import { useGithubImportConnection } from "@/web/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import {
   STOREFRONT_GITHUB_AUTOMATIONS,
   setupStorefrontGithubAutomations,
 } from "@/tools/virtual/storefront-github-automations";
+import { githubConnectionTitle } from "@/shared/github-connection";
+import { scopeGithubConnectionToRepository } from "@/web/lib/github-oauth";
 
 export interface GitHubInstallation {
   installationId: number;
@@ -54,6 +55,7 @@ export interface Repo {
   private: boolean;
   description: string | null;
   updatedAt: string;
+  repositoryId: number;
 }
 
 export interface GitHubImportPayload {
@@ -154,8 +156,7 @@ function PickerContent({
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigateToAgent = useNavigateToAgent();
-  const [selectedConnection, setSelectedConnection] =
-    useState<ConnectionEntity | null>(null);
+  const connectionActions = useConnectionActions();
   const [autoRespondEnabled, setAutoRespondEnabled] = useState(true);
   const [selectedAutomationKeys, setSelectedAutomationKeys] = useState<
     Set<string>
@@ -176,16 +177,11 @@ function PickerContent({
       ? selectedAutomationKeys
       : new Set<string>();
 
-  const githubConnections = useConnections({ slug: "mcp-github" });
-
-  const autoInstall = useAutoInstallGitHub({
-    enabled: githubConnections.length === 0,
+  const importSession = useGithubImportConnection({
+    enabled: true,
   });
 
-  const effectiveConnection =
-    githubConnections.length === 1
-      ? (githubConnections[0] ?? null)
-      : selectedConnection;
+  const effectiveConnection = importSession.connection;
 
   const githubClient = useMCPClient({
     connectionId: effectiveConnection?.id ?? "",
@@ -289,6 +285,33 @@ function PickerContent({
 
       const connectionId = effectiveConnection.id;
 
+      await scopeGithubConnectionToRepository({
+        githubClient: githubClient as unknown as Parameters<
+          typeof scopeGithubConnectionToRepository
+        >[0]["githubClient"],
+        orgSlug: org.slug,
+        connectionId,
+        repositoryId: repo.repositoryId,
+        target: repo.owner,
+        existingTokenInfo: importSession.tokenInfo ?? undefined,
+      });
+
+      await connectionActions.update.mutateAsync({
+        id: connectionId,
+        data: {
+          title: githubConnectionTitle(repo.owner, repo.name),
+          metadata: {
+            githubRepo: {
+              owner: repo.owner,
+              name: repo.name,
+              url: repo.url,
+              repositoryId: repo.repositoryId,
+              installationId: selectedInstallation.installationId,
+            },
+          },
+        },
+      });
+
       const result = (await selfClient.callTool({
         name: "COLLECTION_VIRTUAL_MCP_CREATE",
         arguments: {
@@ -302,6 +325,7 @@ function PickerContent({
                 owner: repo.owner,
                 name: repo.name,
                 url: repo.url,
+                repositoryId: repo.repositoryId,
                 installationId: selectedInstallation.installationId,
                 connectionId,
               },
@@ -385,68 +409,35 @@ function PickerContent({
   });
 
   if (
-    autoInstall.status === "installing" ||
-    autoInstall.status === "authenticating"
+    importSession.status === "installing" ||
+    importSession.status === "authenticating"
   ) {
     return (
       <AutoInstallGitHubUI
-        status={autoInstall.status}
+        status={importSession.status}
         error={null}
-        retry={autoInstall.retry}
+        retry={importSession.retry}
       />
     );
   }
 
-  if (autoInstall.status === "error") {
+  if (importSession.status === "error") {
     return (
       <AutoInstallGitHubUI
         status="error"
-        error={autoInstall.error}
-        retry={autoInstall.retry}
+        error={importSession.error}
+        retry={importSession.retry}
       />
     );
   }
 
-  if (githubConnections.length === 0 && autoInstall.status === "idle") {
+  if (!effectiveConnection && importSession.status === "idle") {
     return (
       <AutoInstallGitHubUI
         status="installing"
         error={null}
-        retry={autoInstall.retry}
+        retry={importSession.retry}
       />
-    );
-  }
-
-  if (githubConnections.length > 1 && !effectiveConnection) {
-    return (
-      <div className="flex flex-col py-2">
-        <div className="px-4 py-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            Select a connection
-          </p>
-        </div>
-        {githubConnections.map((conn) => (
-          <button
-            key={conn.id}
-            type="button"
-            onClick={() => setSelectedConnection(conn)}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors text-left"
-          >
-            {conn.icon ? (
-              <img
-                src={conn.icon}
-                alt={conn.title}
-                className="size-7 rounded-full shrink-0"
-              />
-            ) : (
-              <div className="size-7 rounded-full bg-muted flex items-center justify-center shrink-0">
-                <GitHubIcon className="size-3.5 text-muted-foreground" />
-              </div>
-            )}
-            <span className="text-sm font-medium">{conn.title}</span>
-          </button>
-        ))}
-      </div>
     );
   }
 
@@ -459,8 +450,8 @@ function PickerContent({
         orgId={org.id}
         orgSlug={org.slug}
         onSelect={onSelectInstallation}
-        showBackButton={githubConnections.length > 1}
-        onBack={() => setSelectedConnection(null)}
+        showBackButton={false}
+        onBack={() => onSelectInstallation(null)}
       />
     );
   }
@@ -761,6 +752,7 @@ function RepoList({
       if (!content) throw new Error("No response from search_repositories");
       const parsed = JSON.parse(content) as {
         items?: Array<{
+          id: number;
           name: string;
           full_name: string;
           html_url: string;
@@ -777,6 +769,7 @@ function RepoList({
         private: r.private,
         description: r.description,
         updatedAt: r.updated_at,
+        repositoryId: r.id,
       }));
     },
   });

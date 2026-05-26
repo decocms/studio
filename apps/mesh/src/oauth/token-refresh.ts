@@ -30,8 +30,9 @@ export function canRefresh(token: DownstreamToken): boolean {
 export async function refreshAndStore(
   token: DownstreamToken,
   tokenStorage: DownstreamTokenStorage,
+  options?: { repositoryId?: number },
 ): Promise<string | null> {
-  const result = await refreshAccessToken(token);
+  const result = await refreshAccessToken(token, options);
   if (!result.success || !result.accessToken) {
     // Only delete the cached row when the OAuth server told us the
     // refresh_token is permanently invalid (RFC 6749: 400 invalid_grant).

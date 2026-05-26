@@ -1,6 +1,7 @@
 /**
- * Hook to auto-install the mcp-github connection from registry and run OAuth.
- * Used by the GitHub repo picker when no GitHub connection exists.
+ * Create a per-import GitHub MCP connection and run OAuth (GitHub UI selects repos).
+ * Each import session gets its own connection; the token is scoped to one repo
+ * after the user picks it in the repo picker.
  */
 
 import { useRef, useState } from "react";
@@ -15,21 +16,32 @@ import { authClient } from "@/web/lib/auth-client";
 import { useRegistryApp } from "@/web/hooks/use-registry-app";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
+import { resolveGithubMcpConnectionUrl } from "@/shared/github-mcp-url";
 
 type Status = "idle" | "installing" | "authenticating" | "ready" | "error";
 
-interface UseAutoInstallGitHubResult {
+export interface GithubImportTokenInfo {
+  refreshToken?: string | null;
+  expiresIn?: number | null;
+  scope?: string | null;
+  clientId?: string | null;
+  clientSecret?: string | null;
+  tokenEndpoint?: string | null;
+}
+
+interface UseGithubImportConnectionResult {
   status: Status;
   error: string | null;
   connection: ConnectionEntity | null;
+  tokenInfo: GithubImportTokenInfo | null;
   retry: () => void;
 }
 
-const GITHUB_APP_ID = "deco/mcp-github";
+const GITHUB_REGISTRY_APP_ID = "deco/mcp-github";
 
-export function useAutoInstallGitHub(opts: {
+export function useGithubImportConnection(opts: {
   enabled: boolean;
-}): UseAutoInstallGitHubResult {
+}): UseGithubImportConnectionResult {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const actions = useConnectionActions();
@@ -38,18 +50,17 @@ export function useAutoInstallGitHub(opts: {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionEntity | null>(null);
+  const [tokenInfo, setTokenInfo] = useState<GithubImportTokenInfo | null>(
+    null,
+  );
 
   const { data: registryItem, isLoading: isRegistryLoading } = useRegistryApp(
-    GITHUB_APP_ID,
+    GITHUB_REGISTRY_APP_ID,
     { enabled: opts.enabled },
   );
 
-  // Track whether we've started the flow to avoid re-triggering.
-  // useRef (not useState) because refs mutate synchronously — prevents
-  // duplicate fires under React 19 concurrent rendering / Strict Mode.
   const startedRef = useRef(false);
 
-  // Auto-trigger when registry data arrives and we haven't started yet
   if (
     opts.enabled &&
     registryItem &&
@@ -61,16 +72,16 @@ export function useAutoInstallGitHub(opts: {
   ) {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     startedRef.current = true;
-    runInstallFlow();
+    runImportConnectionFlow();
   }
 
-  async function runInstallFlow() {
+  async function runImportConnectionFlow() {
     if (!registryItem || !session?.user?.id || !org) return;
 
     try {
-      // Step 1: Create connection from registry
       setStatus("installing");
       setError(null);
+      setTokenInfo(null);
 
       const connectionData = extractConnectionData(
         registryItem,
@@ -79,14 +90,20 @@ export function useAutoInstallGitHub(opts: {
         { remoteIndex: 0 },
       );
 
-      const remoteUrl = connectionData.connection_url;
-      if (!remoteUrl) {
-        throw new Error("Registry item is missing a remote URL for mcp-github");
+      connectionData.title = "GitHub (importing…)";
+      if (connectionData.metadata) {
+        (
+          connectionData.metadata as Record<string, unknown>
+        ).githubImportPending = true;
       }
+
+      const remoteUrl = resolveGithubMcpConnectionUrl(
+        connectionData.connection_url ?? undefined,
+      );
+      connectionData.connection_url = remoteUrl;
 
       const { id } = await actions.create.mutateAsync(connectionData);
 
-      // Step 2: Check if OAuth is needed
       setStatus("authenticating");
       const mcpProxyUrl = new URL(
         `/api/${org.slug}/mcp/${id}`,
@@ -98,11 +115,12 @@ export function useAutoInstallGitHub(opts: {
         orgId: org.id,
       });
 
+      let savedTokenInfo: GithubImportTokenInfo | null = null;
+
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-        // Step 3: Run OAuth flow
         const {
           token,
-          tokenInfo,
+          tokenInfo: oauthTokenInfo,
           error: oauthError,
         } = await authenticateMcp({
           connectionId: id,
@@ -111,7 +129,6 @@ export function useAutoInstallGitHub(opts: {
         });
 
         if (oauthError || !token) {
-          // OAuth failed or was cancelled — clean up the connection
           try {
             await actions.delete.mutateAsync(id);
           } catch {
@@ -120,25 +137,22 @@ export function useAutoInstallGitHub(opts: {
           throw new Error(oauthError ?? "No token received from GitHub");
         }
 
-        // Step 4: Persist OAuth token
-        if (tokenInfo) {
+        if (oauthTokenInfo) {
           try {
             const response = await fetch(
               `/api/${org.slug}/connections/${id}/oauth-token`,
               {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 credentials: "include",
                 body: JSON.stringify({
-                  accessToken: tokenInfo.accessToken,
-                  refreshToken: tokenInfo.refreshToken,
-                  expiresIn: tokenInfo.expiresIn,
-                  scope: tokenInfo.scope,
-                  clientId: tokenInfo.clientId,
-                  clientSecret: tokenInfo.clientSecret,
-                  tokenEndpoint: tokenInfo.tokenEndpoint,
+                  accessToken: oauthTokenInfo.accessToken,
+                  refreshToken: oauthTokenInfo.refreshToken,
+                  expiresIn: oauthTokenInfo.expiresIn,
+                  scope: oauthTokenInfo.scope,
+                  clientId: oauthTokenInfo.clientId,
+                  clientSecret: oauthTokenInfo.clientSecret,
+                  tokenEndpoint: oauthTokenInfo.tokenEndpoint,
                 }),
               },
             );
@@ -154,13 +168,22 @@ export function useAutoInstallGitHub(opts: {
               data: { connection_token: token },
             });
           }
+
+          savedTokenInfo = {
+            refreshToken: oauthTokenInfo.refreshToken,
+            expiresIn: oauthTokenInfo.expiresIn,
+            scope: oauthTokenInfo.scope,
+            clientId: oauthTokenInfo.clientId,
+            clientSecret: oauthTokenInfo.clientSecret,
+            tokenEndpoint: oauthTokenInfo.tokenEndpoint,
+          };
         }
       }
 
-      // Step 5: Invalidate connection queries so picker re-renders
       invalidateVirtualMcpQueries(queryClient, org.id);
 
-      setConnection(connectionData as ConnectionEntity);
+      setConnection({ ...connectionData, id } as ConnectionEntity);
+      setTokenInfo(savedTokenInfo);
       setStatus("ready");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -172,13 +195,30 @@ export function useAutoInstallGitHub(opts: {
     setStatus("idle");
     setError(null);
     setConnection(null);
+    setTokenInfo(null);
     startedRef.current = false;
   }
 
-  // While registry is loading, show installing status
   if (opts.enabled && isRegistryLoading && status === "idle") {
-    return { status: "installing", error: null, connection: null, retry };
+    return {
+      status: "installing",
+      error: null,
+      connection: null,
+      tokenInfo: null,
+      retry,
+    };
   }
 
-  return { status, error, connection, retry };
+  return { status, error, connection, tokenInfo, retry };
+}
+
+/** @deprecated Use useGithubImportConnection — kept for storefront checklist. */
+export function useAutoInstallGitHub(opts: { enabled: boolean }) {
+  const result = useGithubImportConnection(opts);
+  return {
+    status: result.status,
+    error: result.error,
+    connection: result.connection,
+    retry: result.retry,
+  };
 }

@@ -263,6 +263,7 @@ export function createOAuthHandlers(oauth: OAuthConfig) {
       const oauthParams: OAuthParams = {
         code,
         redirect_uri: cleanRedirectUri,
+        state: pending.clientState,
       };
       const tokenResponse = await oauth.exchangeCode(oauthParams);
 

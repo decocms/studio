@@ -11,6 +11,7 @@ import type { MeshContext } from "@/core/mesh-context";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { refreshAccessToken } from "@/oauth/token-refresh";
 import { resolveOriginTokenEndpoint } from "@/oauth/resolve-token-endpoint";
+import { getGithubConnectionRepoScope } from "@/shared/github-connection";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 
@@ -179,10 +180,17 @@ async function _buildRequestHeaders(
           }
         }
 
-        const refreshResult = await refreshAccessToken({
-          ...cachedToken,
-          tokenEndpoint: tokenEndpointForRefresh,
-        });
+        const repoScope = getGithubConnectionRepoScope(
+          (connection.metadata ?? null) as Record<string, unknown> | null,
+        );
+
+        const refreshResult = await refreshAccessToken(
+          {
+            ...cachedToken,
+            tokenEndpoint: tokenEndpointForRefresh,
+          },
+          repoScope ? { repositoryId: repoScope.repositoryId } : undefined,
+        );
 
         if (refreshResult.success && refreshResult.accessToken) {
           // Save refreshed token (with resolved origin endpoint for future refreshes)

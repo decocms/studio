@@ -143,7 +143,9 @@ describe("GITHUB_LIST_USER_ORGS", () => {
         slug: "test-org",
         name: "Test Organization",
       },
-      storage: {} as never,
+      storage: {
+        connections: connectionStorage,
+      } as never,
       vault,
       authInstance: null as never,
       boundAuth: createMockBoundAuth(),

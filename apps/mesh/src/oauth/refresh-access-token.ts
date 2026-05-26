@@ -33,6 +33,7 @@ export interface TokenRefreshResult {
 
 export async function refreshAccessToken(
   token: DownstreamToken,
+  options?: { repositoryId?: number },
 ): Promise<TokenRefreshResult> {
   if (!token.refreshToken) {
     return {
@@ -71,6 +72,10 @@ export async function refreshAccessToken(
 
     if (token.scope) {
       params.set("scope", token.scope);
+    }
+
+    if (options?.repositoryId !== undefined) {
+      params.set("repository_id", String(options.repositoryId));
     }
 
     const response = await fetch(token.tokenEndpoint, {

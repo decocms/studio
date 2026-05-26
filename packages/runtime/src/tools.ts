@@ -373,6 +373,8 @@ export interface OAuthParams {
    * MUST be identical if included in the authorization request
    */
   redirect_uri?: string;
+  /** OPTIONAL - MCP client state echoed from the authorization request */
+  state?: string;
 }
 
 /**

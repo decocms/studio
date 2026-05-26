@@ -194,6 +194,12 @@ const GithubRepoSchema = z.object({
   url: z.string().describe("GitHub repository URL"),
   owner: z.string().describe("Repository owner"),
   name: z.string().describe("Repository name"),
+  repositoryId: z
+    .number()
+    .optional()
+    .describe(
+      "GitHub repository ID used for repo-scoped OAuth tokens on the connection.",
+    ),
   installationId: z
     .number()
     .optional()

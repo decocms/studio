@@ -20,6 +20,7 @@ import {
   RECONNECT_ERROR,
   refreshAndStore,
 } from "../oauth/token-refresh";
+import { getGithubConnectionRepoScope } from "./github-connection";
 
 export interface GitHubCloneInfo {
   cloneUrl: string;
@@ -51,6 +52,18 @@ export async function buildCloneInfo(
   vault: CredentialVault,
 ): Promise<GitHubCloneInfo> {
   const tokenStorage = new DownstreamTokenStorage(db, vault);
+  const connection = await db
+    .selectFrom("connections")
+    .select("metadata")
+    .where("id", "=", connectionId)
+    .executeTakeFirst();
+  const repoScope = getGithubConnectionRepoScope(
+    (connection?.metadata ?? null) as Record<string, unknown> | null,
+  );
+  const refreshOptions = repoScope
+    ? { repositoryId: repoScope.repositoryId }
+    : undefined;
+
   const token = await tokenStorage.get(connectionId);
   if (!token) {
     throw new Error(
@@ -65,7 +78,11 @@ export async function buildCloneInfo(
     canRefresh(token) &&
     tokenStorage.isExpired(token, PROACTIVE_REFRESH_BUFFER_MS)
   ) {
-    const refreshed = await refreshAndStore(token, tokenStorage);
+    const refreshed = await refreshAndStore(
+      token,
+      tokenStorage,
+      refreshOptions,
+    );
     if (!refreshed) {
       throw new Error(RECONNECT_ERROR);
     }
