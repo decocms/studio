@@ -299,7 +299,7 @@ const { appRoot, repoDir } = bootConfig;
 const fsDeps = {
   appRoot,
   repoDir,
-  onRepoChange: () => {
+  onWorkingTreeWrite: () => {
     if (process.env.DEBUG_SAVE_CHANGES === "1") {
       console.log("[branch-status] fs write/edit → refresh", { repoDir });
     }
