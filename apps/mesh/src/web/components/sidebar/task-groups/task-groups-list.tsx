@@ -119,17 +119,7 @@ export function TaskGroupsList() {
 
   const handleNewInGroup = (virtualMcpId: string) => {
     track("sidebar_group_new_clicked", { virtual_mcp_id: virtualMcpId });
-    if (params.org) {
-      navigate({
-        to: "/$org",
-        params: { org: params.org },
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          virtualmcpid: virtualMcpId,
-        }),
-      });
-    }
-    createNewTask();
+    createNewTask(virtualMcpId);
   };
 
   const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
