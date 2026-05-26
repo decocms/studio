@@ -51,6 +51,7 @@ import {
   isDecoOnlyDiff,
   publishGitChanges,
   PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
+  readGitHeadBranch,
   rebaseGitBranch,
   type GitDiffResult,
   type GitStatus,
@@ -154,7 +155,9 @@ function PublishDialogBody({
   const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
 
   const loadStartedRef = useRef(false);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot load on dialog open
   if (!loadStartedRef.current) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot load on dialog open
     loadStartedRef.current = true;
     void (async () => {
       setIsLoadingGitDiff(true);
@@ -196,7 +199,7 @@ function PublishDialogBody({
     })();
   }
 
-  const githubHeadBranch = gitStatus?.current ?? branch;
+  const githubHeadBranch = readGitHeadBranch(gitStatus) ?? branch;
 
   const regenerateSuggestion = () => {
     if (!gitStatus || !gitDiff) return;

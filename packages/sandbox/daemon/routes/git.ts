@@ -195,7 +195,8 @@ function computeDiff(repoDir: string): GitDiffResult {
 }
 
 function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
+  const esc = String.fromCharCode(0x1b);
+  return text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
 }
 
 function formatGitError(err: unknown): string {

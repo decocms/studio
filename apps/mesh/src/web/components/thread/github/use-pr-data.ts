@@ -16,6 +16,7 @@
 import { useMCPClient, useMCPToolCallQuery } from "@decocms/mesh-sdk";
 
 import { extractPullRequestList } from "./github-pr-api.ts";
+import { extractToolJson } from "./extract-tool-json.ts";
 
 export interface PrSummary {
   number: number;

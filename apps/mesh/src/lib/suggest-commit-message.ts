@@ -69,10 +69,18 @@ function changedLines(
   );
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
-      dp[i][j] =
-        a[i - 1] === b[j - 1]
-          ? dp[i - 1][j - 1] + 1
-          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+      const prevRow = dp[i - 1];
+      const cellLeft = prevRow?.[j] ?? 0;
+      const cellUp = prevRow?.[j - 1] ?? 0;
+      const prevDiag = prevRow?.[j - 1] ?? 0;
+      const row = dp[i];
+      if (!row) continue;
+      const aLine = a[i - 1];
+      const bLine = b[j - 1];
+      row[j] =
+        aLine !== undefined && bLine !== undefined && aLine === bLine
+          ? prevDiag + 1
+          : Math.max(cellLeft, cellUp);
     }
   }
 
@@ -81,16 +89,31 @@ function changedLines(
   let i = n;
   let j = m;
   while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
-      ops.unshift({ op: "=", line: a[i - 1] });
+    const aLine = i > 0 ? a[i - 1] : undefined;
+    const bLine = j > 0 ? b[j - 1] : undefined;
+    const row = dp[i];
+    const prevRow = dp[i - 1];
+    if (
+      i > 0 &&
+      j > 0 &&
+      aLine !== undefined &&
+      bLine !== undefined &&
+      aLine === bLine
+    ) {
+      ops.unshift({ op: "=", line: aLine });
       i--;
       j--;
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      ops.unshift({ op: "+", line: b[j - 1] });
+    } else if (
+      j > 0 &&
+      (i === 0 || (row?.[j - 1] ?? 0) >= (prevRow?.[j] ?? 0))
+    ) {
+      if (bLine !== undefined) ops.unshift({ op: "+", line: bLine });
       j--;
+    } else if (aLine !== undefined) {
+      ops.unshift({ op: "-", line: aLine });
+      i--;
     } else {
-      ops.unshift({ op: "-", line: a[i - 1] });
-      i--;
+      break;
     }
   }
 
@@ -113,7 +136,9 @@ function changedLines(
   let last = -1;
   for (const idx of [...show].sort((a, b) => a - b)) {
     if (last !== -1 && idx > last + 1) result.push("@@ ... @@");
-    const { op, line } = ops[idx];
+    const opEntry = ops[idx];
+    if (!opEntry) continue;
+    const { op, line } = opEntry;
     result.push(`${op === "=" ? " " : op} ${line}`);
     last = idx;
     if (result.length >= maxLines) break;

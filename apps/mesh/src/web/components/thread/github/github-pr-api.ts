@@ -82,7 +82,7 @@ function headRefFromListItem(pr: Record<string, unknown>): string | null {
   return typeof ref === "string" && ref.length > 0 ? ref : null;
 }
 
-export function pullRequestMatchesBranch(
+function pullRequestMatchesBranch(
   pr: Record<string, unknown>,
   branch: string,
 ): boolean {
@@ -192,7 +192,7 @@ export async function findOpenPullRequestForBranch(
   return null;
 }
 
-export async function createPullRequest(
+async function createPullRequest(
   client: GithubMcpClient,
   args: {
     owner: string;

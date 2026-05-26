@@ -28,7 +28,10 @@ import { selectHeaderButton, type HeaderButton } from "./panel-state.ts";
 import * as tpl from "./message-templates.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
 import { resolveSandboxBranchFromMap } from "./resolve-sandbox-branch.ts";
-import { mergeBranchMetaWithGitStatus } from "./sandbox-git-api.ts";
+import {
+  mergeBranchMetaWithGitStatus,
+  readGitHeadBranch,
+} from "./sandbox-git-api.ts";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
@@ -97,7 +100,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   });
 
   const githubHeadBranch =
-    gitStatusQuery.data?.current ?? sandboxRouteBranch ?? null;
+    readGitHeadBranch(gitStatusQuery.data) ?? sandboxRouteBranch ?? null;
 
   const prQuery = usePrByBranch({
     orgId: org.id,
@@ -175,7 +178,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
     lifecycle: lifecycle.phase,
     githubHeadBranch,
   });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- debug dedupe ref
   if (debugKeyRef.current !== debugKey) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- debug dedupe ref
     debugKeyRef.current = debugKey;
     saveChangesDebug("header button", {
       label: button.label,

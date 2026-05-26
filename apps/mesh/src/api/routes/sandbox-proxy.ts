@@ -216,6 +216,8 @@ async function fetchDaemonJson<T>(
 ): Promise<T> {
   const upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
     method,
+    headers: new Headers(),
+    body: null,
   });
 
   if (upstream.status === 404) {

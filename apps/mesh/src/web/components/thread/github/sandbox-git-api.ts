@@ -37,7 +37,7 @@ export interface CommitSuggestion {
   message: string;
 }
 
-export function buildSandboxGitUrl(
+function buildSandboxGitUrl(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
@@ -167,14 +167,20 @@ export async function discardGitFiles(
   await parseJson(res);
 }
 
-export const SANDBOX_GIT_STATUS_QUERY_KEY = "sandbox-git-status";
+const GIT_HEAD_BRANCH_KEY = "current" satisfies keyof GitStatus;
+
+export function readGitHeadBranch(
+  status: GitStatus | null | undefined,
+): string | null {
+  return status?.[GIT_HEAD_BRANCH_KEY] ?? null;
+}
 
 export function sandboxGitStatusQueryKey(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
 ) {
-  return [SANDBOX_GIT_STATUS_QUERY_KEY, orgSlug, virtualMcpId, branch] as const;
+  return ["sandbox-git-status", orgSlug, virtualMcpId, branch] as const;
 }
 
 export function countGitChanges(status: GitStatus | null): number {
@@ -189,7 +195,7 @@ export function countGitChanges(status: GitStatus | null): number {
 }
 
 /** True when the working tree or index has uncommitted work. */
-export function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
+function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
   if (!status) return false;
   return (
     countGitChanges(status) > 0 ||
@@ -222,7 +228,7 @@ export function mergeBranchMetaWithGitStatus(
   if (!gitStatus) return branchMeta;
 
   const gitDirty = hasGitLocalWork(gitStatus);
-  const branchName = gitStatus.current;
+  const branchName = readGitHeadBranch(gitStatus);
 
   if (branchMeta.kind === "ready") {
     return {
