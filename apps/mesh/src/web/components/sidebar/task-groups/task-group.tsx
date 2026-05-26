@@ -90,7 +90,7 @@ export function TaskGroup({
         )}
       </div>
       {expanded && (
-        <div className="flex flex-col gap-0.5 pb-1 pl-7 pr-0.5">
+        <div className="flex flex-col gap-0.5 pb-1">
           {threads.map((task) => (
             <TaskRow
               key={task.id}
