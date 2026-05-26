@@ -7,6 +7,7 @@ import { SidebarInboxFooter } from "./footer/inbox";
 import { SidebarInboxFooterMobile } from "./footer/inbox-mobile";
 import { SidebarTopActions } from "./top-actions";
 import { TaskGroupsList } from "./task-groups/task-groups-list";
+import { BrowseAgentsButton } from "./browse-agents-button";
 
 export type {
   NavigationSidebarItem,
@@ -21,6 +22,7 @@ export function StudioSidebar() {
   return (
     <NavigationSidebar
       sections={sections}
+      headerEnd={<BrowseAgentsButton compact />}
       footer={<SidebarInboxFooter />}
       additionalContent={
         <ErrorBoundary>

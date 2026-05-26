@@ -457,7 +457,7 @@ function PinAgentPopoverContent({
   );
 }
 
-function PinAgentPopover() {
+function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [importDecoOpen, setImportDecoOpen] = useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
@@ -470,6 +470,9 @@ function PinAgentPopover() {
   const [qaAgentModalOpen, setQaAgentModalOpen] = useState(false);
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
+
+  const compactTriggerClass =
+    "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors";
 
   const handleClose = () => {
     setOpen(false);
@@ -509,18 +512,32 @@ function PinAgentPopover() {
     <>
       {isMobile ? (
         <>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="Browse agents"
+          {compact ? (
+            <button
+              type="button"
+              aria-label="Browse agents"
               onClick={() => {
                 track("agent_browser_opened", { surface: "mobile_drawer" });
                 setOpen(true);
               }}
+              className={compactTriggerClass}
             >
-              <Plus />
-              <span>New</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+              <Plus className="size-4" />
+            </button>
+          ) : (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Browse agents"
+                onClick={() => {
+                  track("agent_browser_opened", { surface: "mobile_drawer" });
+                  setOpen(true);
+                }}
+              >
+                <Plus />
+                <span>New</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <Drawer open={open} onOpenChange={setOpen} direction="bottom">
             <DrawerContent className="max-h-[85dvh] p-0">
               <DrawerTitle className="sr-only">Browse agents</DrawerTitle>
@@ -538,14 +555,26 @@ function PinAgentPopover() {
             setOpen(next);
           }}
         >
-          <SidebarMenuItem>
+          {compact ? (
             <PopoverTrigger asChild>
-              <SidebarMenuButton tooltip="Browse agents">
-                <Plus className="!opacity-100" />
-                <span>New</span>
-              </SidebarMenuButton>
+              <button
+                type="button"
+                aria-label="Browse agents"
+                className={compactTriggerClass}
+              >
+                <Plus className="size-4" />
+              </button>
             </PopoverTrigger>
-          </SidebarMenuItem>
+          ) : (
+            <SidebarMenuItem>
+              <PopoverTrigger asChild>
+                <SidebarMenuButton tooltip="Browse agents">
+                  <Plus />
+                  <span>New</span>
+                </SidebarMenuButton>
+              </PopoverTrigger>
+            </SidebarMenuItem>
+          )}
           <PopoverContent
             className="w-[380px] p-0 overflow-hidden"
             side="right"

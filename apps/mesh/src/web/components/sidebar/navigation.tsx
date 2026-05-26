@@ -18,30 +18,39 @@ import { SidebarCollapsibleGroup } from "./sidebar-group";
 import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 import { track } from "@/web/lib/posthog-client";
 
-function SidebarLogoHeader() {
+function SidebarLogoHeader({ rightSlot }: { rightSlot?: ReactNode }) {
   const config = usePublicConfig();
   const logo = config.logo ?? DEFAULT_LOGO;
   const lightSrc = typeof logo === "string" ? logo : logo.light;
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
   return (
-    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0">
-      <img
-        src={lightSrc}
-        alt="Logo"
-        className="size-6 object-contain dark:hidden"
-      />
-      <img
-        src={darkSrc}
-        alt="Logo"
-        className="size-6 object-contain hidden dark:block"
-      />
+    <SidebarHeader className="flex flex-row items-center justify-between shrink-0 h-12 px-3 pb-0">
+      <div className="flex items-center">
+        <img
+          src={lightSrc}
+          alt="Logo"
+          className="size-6 object-contain dark:hidden"
+        />
+        <img
+          src={darkSrc}
+          alt="Logo"
+          className="size-6 object-contain hidden dark:block"
+        />
+      </div>
+      {rightSlot && (
+        <div className="flex items-center gap-1 group-data-[state=collapsed]/sidebar:hidden">
+          {rightSlot}
+        </div>
+      )}
     </SidebarHeader>
   );
 }
 
 interface NavigationSidebarProps {
   sections: SidebarSection[];
+  /** Optional element rendered at the right end of the logo header. */
+  headerEnd?: ReactNode;
   header?: ReactNode;
   footer?: ReactNode;
   additionalContent?: ReactNode;
@@ -116,6 +125,7 @@ function SidebarSectionRenderer({ section }: { section: SidebarSection }) {
  */
 function NavigationSidebarInner({
   sections,
+  headerEnd,
   header,
   footer,
   additionalContent,
@@ -125,7 +135,7 @@ function NavigationSidebarInner({
   return (
     <Sidebar variant={variant}>
       <Suspense fallback={<div className="h-10 shrink-0" />}>
-        <SidebarLogoHeader />
+        <SidebarLogoHeader rightSlot={headerEnd} />
       </Suspense>
       {header}
       <SidebarContent

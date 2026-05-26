@@ -18,7 +18,6 @@ import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { track } from "@/web/lib/posthog-client";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { BrowseAgentsButton } from "./browse-agents-button";
 
 class SilentErrorBoundary extends Component<
   { children: ReactNode },
@@ -135,7 +134,6 @@ function ConnectionsButton() {
 export function SidebarTopActions() {
   return (
     <div className="px-2 pb-2 flex flex-col gap-1">
-      <BrowseAgentsButton />
       <ConnectionsButton />
       <SilentErrorBoundary>
         <Suspense fallback={null}>
