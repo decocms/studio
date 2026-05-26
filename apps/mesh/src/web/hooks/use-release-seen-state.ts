@@ -87,10 +87,13 @@ export function useReleaseSeenState(): ReleaseSeenState {
 
   const isSeen = (id: string) => Boolean(seen[id]);
 
+  // Read from cachedSnapshot rather than the render-captured `seen` so that
+  // multiple synchronous markSeen calls in the same tick compose correctly
+  // instead of overwriting each other.
   const markSeen = (id: string) => {
-    if (seen[id]) return;
+    if (cachedSnapshot[id]) return;
     commit({
-      ...seen,
+      ...cachedSnapshot,
       [id]: { seenAt: new Date().toISOString() },
     });
   };

@@ -54,12 +54,11 @@ describe("useInboxFeed", () => {
     localStorage.clear();
   });
 
-  it("returns releases + invitations sorted by date desc", () => {
+  it("pins invitations above releases and sorts releases newest-first", () => {
     const { result } = renderHook(() => useInboxFeed(), { wrapper });
     const ids = result.current.items.map((item) =>
       item.type === "release" ? item.release.id : item.invitation.id,
     );
-    // Invitation expires 2026-06-01 (most recent), then newer-release (2026-05-20), then older-release (2026-01-10).
     expect(ids).toEqual(["inv-1", "newer-release", "older-release"]);
   });
 
