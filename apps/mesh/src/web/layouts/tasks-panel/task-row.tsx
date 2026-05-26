@@ -6,7 +6,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
-import { McpAvatar, ToolCallRunAvatar } from "./mcp-avatar";
+import { McpAvatar } from "./mcp-avatar";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
@@ -29,18 +29,10 @@ export function TaskRow({
 }) {
   const config = getStatusConfig(task.status);
   const StatusIcon = config.icon;
-  // Tool-call automation runs have no virtual MCP and no chat transcript —
-  // the workflow stamps thread.metadata.kind='tool_call_run' so the row can
-  // render a tool icon + skip the agent lookup.
-  const isToolCallRun = task.metadata?.kind === "tool_call_run";
-  const virtualMcp = useVirtualMCP(
-    isToolCallRun ? undefined : task.virtual_mcp_id,
-  );
+  const virtualMcp = useVirtualMCP(task.virtual_mcp_id);
   const githubRepo = getActiveGithubRepo(virtualMcp);
   // Subscribe to a 60s heartbeat so the relative timestamp re-renders even
-  // when `task` is referentially stable — without this, "3m ago" stays
-  // pinned until something else forces the row to re-render. 60s matches
-  // the resolution of `formatTimeAgo`'s "Xm ago" output.
+  // when `task` is referentially stable.
   useClockTick(60_000);
 
   // Scroll-into-view / focus for the active row is owned by the parent
@@ -67,18 +59,11 @@ export function TaskRow({
         isActive ? "bg-accent" : "hover:bg-accent/60",
       )}
     >
-      {isToolCallRun ? (
-        <ToolCallRunAvatar
-          size="xs"
-          showAutomationBadge={showAutomationBadge}
-        />
-      ) : (
-        <McpAvatar
-          virtualMcpId={task.virtual_mcp_id}
-          size="xs"
-          showAutomationBadge={showAutomationBadge}
-        />
-      )}
+      <McpAvatar
+        virtualMcpId={task.virtual_mcp_id}
+        size="xs"
+        showAutomationBadge={showAutomationBadge}
+      />
       <div className="flex-1 min-w-0">
         <div className="text-sm text-foreground truncate">
           {task.title || "Untitled task"}
