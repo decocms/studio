@@ -1,19 +1,16 @@
 import fs, { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { gitSync as rawGitSync } from "../git/git-sync";
-import { parsePorcelainEntry } from "../git/porcelain";
-import { safePath } from "../paths";
+import { parsePorcelainFiles } from "../git/porcelain";
 import { rebaseOntoBase } from "../git/rebase-onto-base";
+import { safePath } from "../paths";
+import { git } from "../setup/git";
 import { jsonResponse, parseJsonBody } from "./body-parser";
 
 export interface GitDeps {
   appRoot: string;
   repoDir: string;
 }
-
-const gitSync = (args: string[], opts: Parameters<typeof rawGitSync>[1]) =>
-  rawGitSync(["-c", "safe.directory=*", ...args], opts);
 
 function gitEnv(repoDir: string): Record<string, string> {
   return { ...process.env, GIT_CEILING_DIRECTORIES: repoDir };
@@ -24,7 +21,7 @@ function runGit(
   args: string[],
   opts?: { env?: Record<string, string> },
 ): string {
-  return gitSync(args, {
+  return git(args, {
     cwd: repoDir,
     env: { ...gitEnv(repoDir), ...opts?.env },
   });
@@ -69,29 +66,9 @@ export interface GitDiffResult {
   diffs: Record<string, GitDiffEntry>;
 }
 
-function parsePorcelainEntries(out: string): GitStatusFile[] {
-  const files: GitStatusFile[] = [];
-  const parts = out.split("\0");
-  for (let i = 0; i < parts.length; i++) {
-    const entry = parts[i];
-    if (!entry) continue;
-    const parsed = parsePorcelainEntry(entry);
-    if (!parsed) continue;
-    files.push({
-      path: parsed.path,
-      index: parsed.index,
-      working_dir: parsed.working,
-    });
-    if (parsed.index === "R" || parsed.index === "C") {
-      i++;
-    }
-  }
-  return files;
-}
-
 function computeStatus(repoDir: string): GitStatusResult {
   const porcelain = runGit(repoDir, ["status", "--porcelain=v1", "-z"]);
-  const files = parsePorcelainEntries(porcelain);
+  const files: GitStatusFile[] = parsePorcelainFiles(porcelain);
 
   const not_added: string[] = [];
   const conflicted: string[] = [];

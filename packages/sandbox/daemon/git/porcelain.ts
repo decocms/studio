@@ -12,6 +12,33 @@ export function parsePorcelainEntry(
   return { index, working, path };
 }
 
+export interface PorcelainFileStatus {
+  path: string;
+  index: string;
+  working_dir: string;
+}
+
+/** Parse full `-z` porcelain output into per-file index/worktree status. */
+export function parsePorcelainFiles(out: string): PorcelainFileStatus[] {
+  const files: PorcelainFileStatus[] = [];
+  const parts = out.split("\0");
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i];
+    if (!entry) continue;
+    const parsed = parsePorcelainEntry(entry);
+    if (!parsed) continue;
+    files.push({
+      path: parsed.path,
+      index: parsed.index,
+      working_dir: parsed.working,
+    });
+    if (parsed.index === "R" || parsed.index === "C") {
+      i++;
+    }
+  }
+  return files;
+}
+
 /** Parse full `-z` porcelain output into a set of changed paths. */
 export function parsePorcelainZ(out: string): Set<string> {
   const paths = new Set<string>();
