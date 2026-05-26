@@ -63,6 +63,12 @@ const loginRoute = createRoute({
   ),
 });
 
+const cliAuthSuccessRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/cli/auth-success",
+  component: lazyRouteComponent(() => import("./routes/cli-auth-success.tsx")),
+});
+
 const resetPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/reset-password",
@@ -604,6 +610,7 @@ const routeTree = rootRoute.addChildren([
   shellRouteTree,
   onboardingRoute,
   loginRoute,
+  cliAuthSuccessRoute,
   resetPasswordRoute,
   betterAuthRoutes,
   oauthCallbackRoute,
