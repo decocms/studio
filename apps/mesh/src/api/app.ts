@@ -129,6 +129,7 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
+import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
 import {
@@ -2008,6 +2009,13 @@ export async function createApp(options: CreateAppOptions = {}) {
       concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
     });
     await reconcileAutomationSchedules(automationsStorage);
+
+    // Fire-and-forget backfill of studio pack agents for every org. Safe
+    // to skip awaiting — the workflow IDs are deterministic per-org, so
+    // replicas/workers all enqueueing in parallel collapse via OAOO.
+    backfillStudioPackForAllOrgs().catch((err) => {
+      console.error("[studio-pack-backfill] failed:", err);
+    });
   };
 
   return Object.assign(app, { markShuttingDown, shutdown, initDbos });
