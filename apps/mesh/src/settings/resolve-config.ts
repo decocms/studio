@@ -29,6 +29,24 @@ function externalUrlOrNull(url: string | undefined): string | null {
   }
 }
 
+function resolveDecobotPrivateKey(
+  envVars: Record<string, string | undefined>,
+): string | undefined {
+  const b64 = envVars.DECOBOT_PRIVATE_KEY_BASE64?.trim();
+  if (b64) {
+    try {
+      return Buffer.from(b64, "base64").toString("utf-8");
+    } catch {
+      return undefined;
+    }
+  }
+  const inline = envVars.DECOBOT_PRIVATE_KEY?.trim();
+  if (!inline) return undefined;
+  // Allow escaped newlines (\n) — common when env vars are set via shell
+  // exports or CI secret stores that don't preserve literal newlines.
+  return inline.includes("\\n") ? inline.replace(/\\n/g, "\n") : inline;
+}
+
 export interface ResolvedConfig {
   settings: Omit<Settings, "databaseUrl" | "natsUrls">;
   externalDatabaseUrl: string | null;
@@ -107,6 +125,16 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
+
+    // Decobot GitHub App. The private key may be supplied either inline
+    // (DECOBOT_PRIVATE_KEY, PEM with literal newlines) or base64-encoded
+    // (DECOBOT_PRIVATE_KEY_BASE64) to survive env-var transport that mangles
+    // newlines. We decode to canonical PEM here once.
+    decobotAppId: envVars.DECOBOT_APP_ID,
+    decobotPrivateKey: resolveDecobotPrivateKey(envVars),
+    decobotClientId: envVars.DECOBOT_CLIENT_ID,
+    decobotClientSecret: envVars.DECOBOT_CLIENT_SECRET,
+    decobotAppSlug: envVars.DECOBOT_APP_SLUG,
   };
 
   return {

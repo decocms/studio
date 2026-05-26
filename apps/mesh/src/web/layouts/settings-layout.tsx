@@ -29,6 +29,7 @@ import {
   ChevronRight,
   ZapSquare,
   CpuChip01,
+  GitBranch01,
   Loading01,
   Lock01,
   LogOut01,
@@ -89,6 +90,12 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "AI Providers",
           icon: <CpuChip01 size={14} />,
           to: "/$org/settings/ai-providers",
+        },
+        {
+          key: "git-providers",
+          label: "Git Providers",
+          icon: <GitBranch01 size={14} />,
+          to: "/$org/settings/git-providers",
         },
         {
           key: "secrets",

@@ -265,6 +265,50 @@ export interface AIProviderKeyTable {
   created_at: ColumnType<Date, Date | string, never>;
 }
 
+/**
+ * Git provider installation table.
+ *
+ * Records that an org has installed Decobot (GitHub App) onto a specific
+ * GitHub account (org or user). Contains NO secrets — installation tokens
+ * are short-lived (1h), minted on demand from the Decobot App JWT.
+ *
+ * `provider_id` is "github" today; the column exists so other adapters
+ * (GitLab, Bitbucket) can be added later without a migration.
+ */
+export interface GitProviderInstallationTable {
+  id: string;
+  organization_id: string;
+  provider_id: string; // "github"
+  /** GitHub's installation id (stringified — GitHub returns a number). */
+  installation_id: string;
+  /** GitHub account login, e.g. "deco-cx". Used to match repo owner → installation. */
+  account_login: string;
+  /** GitHub account numeric id (stringified). */
+  account_id: string;
+  /** "Organization" | "User". */
+  account_type: string;
+  /** "all" | "selected". */
+  repository_selection: string;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/** Public DTO for a git provider installation. */
+export interface GitProviderInstallationInfo {
+  id: string;
+  providerId: string;
+  installationId: string;
+  accountLogin: string;
+  accountId: string;
+  accountType: "Organization" | "User";
+  repositorySelection: "all" | "selected";
+  organizationId: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Public DTO for an AI provider key — never exposes the encrypted key. */
 export interface ProviderKeyInfo {
   id: string;
@@ -1301,6 +1345,9 @@ export interface Database {
 
   // AI Provider keys tables
   ai_provider_keys: AIProviderKeyTable;
+
+  // Git Provider installations (Decobot GitHub App + future GitLab/etc.)
+  git_provider_installations: GitProviderInstallationTable;
 
   // Generic secrets vault (org and user scoped)
   secrets: SecretTable;

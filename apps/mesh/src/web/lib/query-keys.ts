@@ -288,6 +288,17 @@ export const KEYS = {
   aiProviderCredits: (orgId: string, keyId: string) =>
     ["ai-provider-credits", orgId, keyId] as const,
 
+  // Git providers (static registry — staleTime: Infinity recommended)
+  gitProviders: (orgId: string) => ["git-providers", orgId] as const,
+
+  // Git provider Decobot installations for an org
+  gitProviderInstallations: (orgId: string) =>
+    ["git-provider-installations", orgId] as const,
+
+  // Git provider per-user link status (scoped by org + user)
+  gitProviderUserLink: (orgId: string, userId: string) =>
+    ["git-provider-user-link", orgId, userId] as const,
+
   // Organization SSO
   orgSsoConfig: (organizationId: string) =>
     ["org-sso-config", organizationId] as const,

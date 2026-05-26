@@ -98,6 +98,14 @@ const oauthCallbackAiProviderRoute = createRoute({
   ),
 });
 
+const oauthCallbackGitProviderRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/oauth/callback/git-provider",
+  component: lazyRouteComponent(
+    () => import("./routes/oauth-callback-git-provider.tsx"),
+  ),
+});
+
 // ============================================
 // SHELL LAYOUT (authenticated wrapper)
 // ============================================
@@ -365,6 +373,14 @@ const settingsAiProvidersRoute = createRoute({
   ),
 });
 
+const settingsGitProvidersRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/git-providers",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/git-providers.tsx"),
+  ),
+});
+
 const settingsSecretsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/secrets",
@@ -555,6 +571,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsFeaturesRoute,
   settingsBrandContextRoute,
   settingsAiProvidersRoute,
+  settingsGitProvidersRoute,
   settingsSecretsRoute,
   settingsMembersRoute,
   settingsRolesRoute,
@@ -599,6 +616,7 @@ const routeTree = rootRoute.addChildren([
   betterAuthRoutes,
   oauthCallbackRoute,
   oauthCallbackAiProviderRoute,
+  oauthCallbackGitProviderRoute,
 ]);
 
 const router = createRouter({

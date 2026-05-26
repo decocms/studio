@@ -59,6 +59,14 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
+
+  // Decobot GitHub App (for native Git Provider integration)
+  // When all five are set, the GitHub adapter is available in Settings → Git Providers.
+  decobotAppId: string | undefined;
+  decobotPrivateKey: string | undefined; // PEM, RS256
+  decobotClientId: string | undefined;
+  decobotClientSecret: string | undefined;
+  decobotAppSlug: string | undefined; // GitHub App slug, used to build install URL
 }
 
 export interface CliFlags {

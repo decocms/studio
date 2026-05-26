@@ -32,6 +32,11 @@ export const authEnvSchema = z
     AUTH_GITHUB_CLIENT_ID: z.string().optional(),
     AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
 
+    // Decobot GitHub App OAuth — fallback for github socialProvider when
+    // AUTH_GITHUB_* isn't set. Lets users link via the Git Provider feature.
+    DECOBOT_CLIENT_ID: z.string().optional(),
+    DECOBOT_CLIENT_SECRET: z.string().optional(),
+
     // Resend email provider
     AUTH_RESEND_API_KEY: z.string().optional(),
     AUTH_RESEND_FROM_EMAIL: z.string().optional(),
@@ -84,6 +89,17 @@ export const authEnvSchema = z
       socialProviders.github = {
         clientId: env.AUTH_GITHUB_CLIENT_ID,
         clientSecret: env.AUTH_GITHUB_CLIENT_SECRET ?? "",
+      };
+    } else if (env.DECOBOT_CLIENT_ID && env.DECOBOT_CLIENT_SECRET) {
+      // Fall back to the Decobot GitHub App's OAuth credentials so users can
+      // link their personal GitHub identity for the Git Provider flow. With
+      // a GitHub App, the same client_id/secret is used for both server-to-
+      // server (installation) and user-to-server (OAuth) flows; the access
+      // token granted here is a user-to-server token that GitHub treats as
+      // "this user, acting through the Decobot App".
+      socialProviders.github = {
+        clientId: env.DECOBOT_CLIENT_ID,
+        clientSecret: env.DECOBOT_CLIENT_SECRET,
       };
     }
 

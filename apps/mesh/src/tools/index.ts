@@ -30,6 +30,7 @@ import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
+import * as GitProviderTools from "./git-providers";
 import * as SecretsTools from "./secrets";
 import { getPrompts, getResources } from "./guides";
 import * as ObjectStorageTools from "./object-storage";
@@ -170,6 +171,22 @@ const CORE_TOOLS = [
 
   // GitHub tools (app-only)
   GitHubTools.GITHUB_LIST_USER_ORGS,
+
+  // Git Provider management tools (Decobot GitHub App setup)
+  GitProviderTools.GIT_PROVIDERS_LIST,
+  GitProviderTools.GIT_PROVIDER_INSTALL_URL,
+  GitProviderTools.GIT_PROVIDER_INSTALL_COMPLETE,
+  GitProviderTools.GIT_PROVIDER_INSTALLATION_LIST,
+  GitProviderTools.GIT_PROVIDER_INSTALLATION_DELETE,
+  GitProviderTools.GIT_PROVIDER_USER_LINK_STATUS,
+
+  // Native GitHub tools (Decobot-backed, user-attributed)
+  GitHubTools.GITHUB_READ_FILE,
+  GitHubTools.GITHUB_LIST_REPO_CONTENTS,
+  GitHubTools.GITHUB_CREATE_ISSUE,
+  GitHubTools.GITHUB_COMMENT,
+  GitHubTools.GITHUB_LIST_PRS,
+  GitHubTools.GITHUB_READ_PR,
 
   // Link tools
   LinkTools.LINK_CURRENT_GET,

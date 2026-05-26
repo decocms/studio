@@ -269,6 +269,8 @@ import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
+import type { GitProviderInstallationStorage } from "@/storage/git-provider-installations";
+import type { GitProviderFactory } from "@/git-providers/factory";
 import type { FireAutomationOutcome } from "../automations/dbos-workflow";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 
@@ -295,6 +297,7 @@ export interface MeshStorage {
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
   aiProviderKeys: AIProviderKeyStorage;
+  gitProviderInstallations: GitProviderInstallationStorage;
   secrets: SecretStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   automations: AutomationsStorage;
@@ -366,6 +369,10 @@ export interface MeshContext extends HarnessContext {
 
   // AI Provider factory
   aiProviders: AIProviderFactory;
+
+  // Git Provider factory — resolves per-call GitHub client with proper
+  // identity attribution (acting user when present, Decobot when unattended).
+  gitProviders: GitProviderFactory;
 
   // Utility for creating MCP Proxies
   createMCPProxy: (

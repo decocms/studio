@@ -178,6 +178,7 @@ describe("GITHUB_LIST_USER_ORGS", () => {
       eventBus: {} as EventBus,
       objectStorage: null as never,
       aiProviders: null as never,
+      gitProviders: null as never,
       createMCPProxy: vi.fn().mockResolvedValue({}),
       getOrCreateClient: vi.fn().mockResolvedValue({}),
       pendingRevalidations: [],

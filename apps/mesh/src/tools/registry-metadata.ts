@@ -29,6 +29,7 @@ export type ToolCategory =
   | "Event Bus"
   | "Tags"
   | "AI Providers"
+  | "Git Providers"
   | "Secrets"
   | "Automations"
   | "Object Storage"
@@ -193,6 +194,22 @@ const ALL_TOOL_NAMES = [
 
   // GitHub tools (app-only)
   "GITHUB_LIST_USER_ORGS",
+
+  // Git Provider management tools (Decobot GitHub App)
+  "GIT_PROVIDERS_LIST",
+  "GIT_PROVIDER_INSTALL_URL",
+  "GIT_PROVIDER_INSTALL_COMPLETE",
+  "GIT_PROVIDER_INSTALLATION_LIST",
+  "GIT_PROVIDER_INSTALLATION_DELETE",
+  "GIT_PROVIDER_USER_LINK_STATUS",
+
+  // Native GitHub tools (Decobot-backed)
+  "GITHUB_READ_FILE",
+  "GITHUB_LIST_REPO_CONTENTS",
+  "GITHUB_CREATE_ISSUE",
+  "GITHUB_COMMENT",
+  "GITHUB_LIST_PRS",
+  "GITHUB_READ_PR",
 
   // Link tools
   "LINK_CURRENT_GET",
@@ -907,6 +924,72 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
   },
+
+  // Git Provider management tools
+  {
+    name: "GIT_PROVIDERS_LIST",
+    description: "List supported Git providers and configured status",
+    category: "Git Providers",
+  },
+  {
+    name: "GIT_PROVIDER_INSTALL_URL",
+    description: "Get GitHub App install URL for Decobot",
+    category: "Git Providers",
+  },
+  {
+    name: "GIT_PROVIDER_INSTALL_COMPLETE",
+    description: "Finalize a Decobot GitHub App installation",
+    category: "Git Providers",
+  },
+  {
+    name: "GIT_PROVIDER_INSTALLATION_LIST",
+    description: "List Decobot installations for the org",
+    category: "Git Providers",
+  },
+  {
+    name: "GIT_PROVIDER_INSTALLATION_DELETE",
+    description: "Remove a Decobot installation from Studio records",
+    category: "Git Providers",
+  },
+  {
+    name: "GIT_PROVIDER_USER_LINK_STATUS",
+    description:
+      "Whether the calling user has linked their personal GitHub identity",
+    category: "Git Providers",
+  },
+
+  // Native GitHub tools (Decobot-backed)
+  {
+    name: "GITHUB_READ_FILE",
+    description: "Read a file from a GitHub repo",
+    category: "GitHub",
+  },
+  {
+    name: "GITHUB_LIST_REPO_CONTENTS",
+    description: "List contents of a directory in a GitHub repo",
+    category: "GitHub",
+  },
+  {
+    name: "GITHUB_CREATE_ISSUE",
+    description: "Create a GitHub issue",
+    category: "GitHub",
+  },
+  {
+    name: "GITHUB_COMMENT",
+    description: "Comment on a GitHub issue or pull request",
+    category: "GitHub",
+  },
+  {
+    name: "GITHUB_LIST_PRS",
+    description: "List pull requests in a GitHub repo",
+    category: "GitHub",
+  },
+  {
+    name: "GITHUB_READ_PR",
+    description: "Read a pull request, optionally including its diff",
+    category: "GitHub",
+  },
+
   // Link tools
   {
     name: "LINK_CURRENT_GET",

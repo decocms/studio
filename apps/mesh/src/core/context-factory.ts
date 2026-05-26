@@ -436,6 +436,8 @@ import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
+import { GitProviderInstallationStorage } from "@/storage/git-provider-installations";
+import { GitProviderFactory } from "@/git-providers/factory";
 import type { ModelListCache } from "@/ai-providers/model-list-cache";
 import { getObjectStorageS3Service } from "../object-storage/factory";
 import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
@@ -1021,6 +1023,7 @@ export async function createMeshContextFactory(
     tags: new TagStorage(config.db),
     virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(config.db, vault),
+    gitProviderInstallations: new GitProviderInstallationStorage(config.db),
     secrets: new SecretStorage(config.db, vault),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     automations: createAutomationsStorage(config.db),
@@ -1149,6 +1152,10 @@ export async function createMeshContextFactory(
       config.modelListCache,
     );
 
+    const gitProviderFactory = new GitProviderFactory(
+      storage.gitProviderInstallations,
+    );
+
     // Create org-scoped object storage. Use S3 when configured, otherwise fall
     // back to DevObjectStorage (local filesystem) so the OBJECT_STORAGE binding
     // still resolves on self-host setups without S3.
@@ -1197,6 +1204,7 @@ export async function createMeshContextFactory(
       eventBus: config.eventBus,
       linkRegistry: config.linkRegistry,
       aiProviders: aiProviderFactory,
+      gitProviders: gitProviderFactory,
       createMCPProxy: async (conn: string | ConnectionEntity) => {
         return await createMCPProxy(conn, ctx);
       },
