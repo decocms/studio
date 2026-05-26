@@ -55,7 +55,7 @@ export function CollapsedGroupPopover({
             <AgentAvatar
               icon={entity?.icon ?? null}
               name={entity?.title ?? "?"}
-              size="xs"
+              size="sm+"
             />
           </SidebarMenuButton>
         </HoverCardTrigger>
