@@ -20,19 +20,13 @@ import { getActiveGithubRepo } from "@/web/lib/github-repo.ts";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { useSandboxGitStatus } from "@/web/components/sandbox/hooks/use-sandbox-git-status.ts";
-import {
-  openPullRequestForBranch,
-  squashMergePullRequest,
-} from "./github-pr-api.ts";
+import { squashMergePullRequest } from "./github-pr-api.ts";
 import { MergeSplitButton } from "./merge-split-button.tsx";
 import { PublishDialog } from "./publish-dialog.tsx";
 import { selectHeaderButton, type HeaderButton } from "./panel-state.ts";
 import * as tpl from "./message-templates.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
-import {
-  resolveEffectiveBranch,
-  resolveSandboxBranchFromMap,
-} from "./resolve-sandbox-branch.ts";
+import { resolveSandboxBranchFromMap } from "./resolve-sandbox-branch.ts";
 import { mergeBranchMetaWithGitStatus } from "./sandbox-git-api.ts";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
@@ -91,21 +85,18 @@ export function HeaderActions({ virtualMcpId }: Props) {
     userId,
     branch ?? sandboxBranch,
   );
-  const branchForApi = branch ?? sandboxBranch ?? sandboxMapBranch ?? undefined;
+  const sandboxRouteBranch =
+    branch ?? sandboxBranch ?? sandboxMapBranch ?? undefined;
 
   const gitStatusQuery = useSandboxGitStatus({
     orgSlug: org.slug,
     virtualMcpId,
-    branch: branchForApi ?? null,
-    enabled: !!githubRepo && !!branchForApi && !sandboxGone,
+    branch: sandboxRouteBranch ?? null,
+    enabled: !!githubRepo && !!sandboxRouteBranch && !sandboxGone,
   });
 
-  const effectiveBranch = resolveEffectiveBranch({
-    chatBranch: branch,
-    sandboxBranch,
-    sandboxMapBranch,
-    gitCurrentBranch: gitStatusQuery.data?.current,
-  });
+  const githubHeadBranch =
+    gitStatusQuery.data?.current ?? sandboxRouteBranch ?? null;
 
   const prQuery = usePrByBranch({
     orgId: org.id,
@@ -113,7 +104,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     connectionId: githubRepo?.connectionId ?? "",
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
-    branch: effectiveBranch,
+    branch: githubHeadBranch,
   });
   const pr = prQuery.data ?? null;
 
@@ -143,8 +134,8 @@ export function HeaderActions({ virtualMcpId }: Props) {
   if (!githubRepo) return null;
 
   const branchMap =
-    userId && effectiveBranch
-      ? parseBranchMap(vm?.metadata?.sandboxMap?.[userId]?.[effectiveBranch])
+    userId && githubHeadBranch
+      ? parseBranchMap(vm?.metadata?.sandboxMap?.[userId]?.[githubHeadBranch])
       : {};
   const branchMapEntries = Object.values(branchMap);
   const vmEntry =
@@ -152,7 +143,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     branchMapEntries[0];
   const previewUrl = vmEntry?.previewUrl ?? null;
 
-  const button = effectiveBranch
+  const button = githubHeadBranch
     ? selectHeaderButton({
         lifecycle,
         branch: effectiveBranchMeta,
@@ -181,7 +172,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         ? effectiveBranchMeta.aheadOfBase
         : null,
     lifecycle: lifecycle.phase,
-    effectiveBranch,
+    githubHeadBranch,
   });
   if (debugKeyRef.current !== debugKey) {
     debugKeyRef.current = debugKey;
@@ -192,7 +183,8 @@ export function HeaderActions({ virtualMcpId }: Props) {
       chatBranch: branch,
       sandboxBranch,
       sandboxMapBranch,
-      effectiveBranch,
+      sandboxRouteBranch,
+      githubHeadBranch,
       branchMeta,
       effectiveBranchMeta,
       gitStatus: gitStatusQuery.data ?? null,
@@ -219,35 +211,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
     ]);
   };
 
-  const handleCreatePullRequest = async () => {
-    if (!githubRepo?.connectionId || !effectiveBranch || githubActionPending) {
-      return;
-    }
-    setGithubActionPending(true);
-    try {
-      const pr = await openPullRequestForBranch(githubClient, {
-        owner: githubRepo.owner,
-        repo: githubRepo.name,
-        branch: effectiveBranch,
-        title: `Changes from ${effectiveBranch}`,
-        base: baseBranch,
-      });
-      toast.success(`Submitted pull request #${pr.number} for review`, {
-        action: {
-          label: "View on GitHub",
-          onClick: () => window.open(pr.htmlUrl, "_blank", "noopener"),
-        },
-      });
-      await refreshPrState();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to open pull request",
-      );
-    } finally {
-      setGithubActionPending(false);
-    }
-  };
-
   const handleSquashMerge = async (pullNumber: number) => {
     if (!githubRepo?.connectionId || githubActionPending) return;
     setGithubActionPending(true);
@@ -269,13 +232,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const onActivate = (action: HeaderButton["action"]) => {
-    if (!action || !effectiveBranch) return;
+    if (!action || !githubHeadBranch) return;
     switch (action) {
       case "commit-and-push":
-        setPublishOpen(true);
-        return;
       case "create-pr":
-        void handleCreatePullRequest();
+        setPublishOpen(true);
         return;
       case "reopen":
         if (isStreaming) return;
@@ -283,7 +244,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         return;
       case "rebase":
         if (isStreaming) return;
-        void send(tpl.rebaseOnBase({ branch: effectiveBranch }));
+        void send(tpl.rebaseOnBase({ branch: githubHeadBranch }));
         return;
       case "fix-checks":
         if (isStreaming) return;
@@ -332,14 +293,14 @@ export function HeaderActions({ virtualMcpId }: Props) {
             : undefined
         }
       />
-      {effectiveBranch && (
+      {sandboxRouteBranch && (
         <PublishDialog
           open={publishOpen}
           onOpenChange={setPublishOpen}
           orgSlug={org.slug}
           orgId={org.id}
           virtualMcpId={virtualMcpId}
-          branch={effectiveBranch}
+          branch={sandboxRouteBranch}
           baseBranch={baseBranch}
           githubConnectionId={githubRepo.connectionId ?? ""}
           owner={githubRepo.owner}
@@ -365,16 +326,15 @@ function HeaderButtonRenderer(props: {
   const chatBlocksAction =
     actionBusy &&
     button.action !== "create-pr" &&
+    button.action !== "commit-and-push" &&
     button.action !== "merge-split";
   const disabled =
     Boolean(button.disabled) ||
     chatBlocksAction ||
-    (githubActionPending &&
-      (button.action === "create-pr" || button.action === "merge-split"));
+    (githubActionPending && button.action === "merge-split");
   const loading =
     Boolean(button.loading) ||
-    (githubActionPending &&
-      (button.action === "create-pr" || button.action === "merge-split"));
+    (githubActionPending && button.action === "merge-split");
   const tooltipLabel = chatBlocksAction
     ? "Chat is running"
     : (button.tooltip ?? null);

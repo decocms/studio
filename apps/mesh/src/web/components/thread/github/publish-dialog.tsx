@@ -33,6 +33,7 @@ import { getLanguageFromPath } from "../../sandbox/preview/file-explorer/utils.t
 import {
   openPullRequestForBranch,
   squashMergePullRequest,
+  type CreatedPullRequest,
 } from "./github-pr-api.ts";
 import {
   countGitChanges,
@@ -40,6 +41,7 @@ import {
   fetchGitDiff,
   fetchGitStatus,
   fetchSuggestCommitMessage,
+  hasUnpublishedWork,
   publishGitChanges,
   type GitDiffResult,
   type GitStatus,
@@ -53,6 +55,17 @@ loader.config({
 
 function editorTheme(): "vs" | "vs-dark" {
   return document.documentElement.classList.contains("dark") ? "vs-dark" : "vs";
+}
+
+class PublishFlowError extends Error {
+  constructor(
+    message: string,
+    readonly step: "push" | "open-pr" | "merge",
+    readonly pr?: CreatedPullRequest,
+  ) {
+    super(message);
+    this.name = "PublishFlowError";
+  }
 }
 
 export interface PublishDialogProps {
@@ -133,7 +146,6 @@ function PublishDialogBody({
     loadStartedRef.current = true;
     void (async () => {
       setIsLoadingGitDiff(true);
-      setIsGeneratingSuggestion(true);
       setPublishError(undefined);
       setExpandedDiffFile(null);
       setGitDiff(null);
@@ -141,33 +153,46 @@ function PublishDialogBody({
       setPublishBody("");
       setSubmitForReviewError(undefined);
       try {
-        const [status, diff, commitSuggestion] = await Promise.all([
+        const [status, diff] = await Promise.all([
           fetchGitStatus(orgSlug, virtualMcpId, branch),
           fetchGitDiff(orgSlug, virtualMcpId, branch),
-          fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch).catch(
-            () => null,
-          ),
         ]);
         setGitStatus(status);
         setGitDiff(diff);
-        if (commitSuggestion) {
-          setPublishTitle(commitSuggestion.title);
-          setPublishBody(commitSuggestion.body);
-        }
+        setPublishTitle(`Changes from ${status.current ?? branch}`);
+
+        setIsGeneratingSuggestion(true);
+        fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch, {
+          status,
+          diff,
+        })
+          .then((commitSuggestion) => {
+            setPublishTitle(commitSuggestion.title);
+            setPublishBody(commitSuggestion.body);
+          })
+          .catch(() => {
+            /* best-effort */
+          })
+          .finally(() => setIsGeneratingSuggestion(false));
       } catch (error) {
         setPublishError(
           error instanceof Error ? error.message : "Failed to load changes.",
         );
       } finally {
         setIsLoadingGitDiff(false);
-        setIsGeneratingSuggestion(false);
       }
     })();
   }
 
+  const githubHeadBranch = gitStatus?.current ?? branch;
+
   const regenerateSuggestion = () => {
+    if (!gitStatus || !gitDiff) return;
     setIsGeneratingSuggestion(true);
-    void fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch)
+    void fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch, {
+      status: gitStatus,
+      diff: gitDiff,
+    })
       .then((data) => {
         setPublishTitle(data.title);
         setPublishBody(data.body);
@@ -182,8 +207,7 @@ function PublishDialogBody({
   const diffCount = gitDiff ? Object.keys(gitDiff.diffs).length : changesCount;
   const theme = editorTheme();
 
-  const hasChanges = gitDiff != null && Object.keys(gitDiff.diffs).length > 0;
-  const canSubmit = !isLoadingGitDiff && !isGeneratingSuggestion && hasChanges;
+  const canSubmit = !isLoadingGitDiff && hasUnpublishedWork(gitStatus, gitDiff);
 
   const commitMessage = () =>
     [publishTitle.trim(), publishBody.trim()].filter(Boolean).join("\n\n");
@@ -197,28 +221,55 @@ function PublishDialogBody({
   const handlePublish = async () => {
     setIsPublishing(true);
     setPublishError(undefined);
+    let openedPr: CreatedPullRequest | undefined;
     try {
-      const prTitle = publishTitle.trim() || `Changes from ${branch}`;
+      const prTitle = publishTitle.trim() || `Changes from ${githubHeadBranch}`;
       const prBody = publishBody.trim() || undefined;
       const message = commitMessage() || prTitle;
 
-      await publishGitChanges(orgSlug, virtualMcpId, branch, message);
+      try {
+        await publishGitChanges(orgSlug, virtualMcpId, branch, message);
+      } catch (error) {
+        throw new PublishFlowError(
+          error instanceof Error ? error.message : "Failed to push changes",
+          "push",
+        );
+      }
 
-      const pr = await openPullRequestForBranch(githubClient, {
-        owner,
-        repo,
-        branch,
-        title: prTitle,
-        body: prBody,
-        base: baseBranch,
-      });
+      try {
+        openedPr = await openPullRequestForBranch(githubClient, {
+          owner,
+          repo,
+          branch: githubHeadBranch,
+          title: prTitle,
+          body: prBody,
+          base: baseBranch,
+        });
+      } catch (error) {
+        throw new PublishFlowError(
+          error instanceof Error
+            ? error.message
+            : "Failed to open pull request",
+          "open-pr",
+        );
+      }
 
-      await squashMergePullRequest(githubClient, {
-        owner,
-        repo,
-        pullNumber: pr.number,
-        commitTitle: prTitle,
-      });
+      try {
+        await squashMergePullRequest(githubClient, {
+          owner,
+          repo,
+          pullNumber: openedPr.number,
+          commitTitle: prTitle,
+        });
+      } catch (error) {
+        throw new PublishFlowError(
+          error instanceof Error
+            ? error.message
+            : "Failed to merge pull request",
+          "merge",
+          openedPr,
+        );
+      }
 
       toast.success(`Published to ${baseBranch}`);
       handleOpenChange(false);
@@ -229,6 +280,22 @@ function PublishDialogBody({
       setGitStatus(status);
       await onPullRequestChanged?.();
     } catch (error) {
+      if (
+        error instanceof PublishFlowError &&
+        error.step === "merge" &&
+        error.pr
+      ) {
+        const msg = `Changes were pushed and PR #${error.pr.number} is open, but merge failed: ${error.message}`;
+        setPublishError(msg);
+        toast.error(msg, {
+          action: {
+            label: "View PR",
+            onClick: () => window.open(error.pr!.htmlUrl, "_blank", "noopener"),
+          },
+        });
+        await onPullRequestChanged?.();
+        return;
+      }
       setPublishError(
         error instanceof Error ? error.message : "Failed to publish",
       );
@@ -237,19 +304,10 @@ function PublishDialogBody({
     }
   };
 
-  const discardOrDelete = async (filepath: string) => {
-    const isNewFile = gitDiff?.diffs[filepath]?.from === null;
-    if (isNewFile) {
-      await discardGitFiles(orgSlug, virtualMcpId, branch, [filepath]);
-      return;
-    }
-    await discardGitFiles(orgSlug, virtualMcpId, branch, [filepath]);
-  };
-
   const handleDiscardFile = async (filepath: string) => {
     setDiscardConfirmFile(null);
     try {
-      await discardOrDelete(filepath);
+      await discardGitFiles(orgSlug, virtualMcpId, branch, [filepath]);
       toast.success(`Discarded changes to ${filepath}`);
       setGitDiff((prev) => {
         if (!prev) return prev;
@@ -294,7 +352,7 @@ function PublishDialogBody({
     setIsSubmittingForReview(true);
     setSubmitForReviewError(undefined);
     try {
-      const prTitle = publishTitle.trim() || `Changes from ${branch}`;
+      const prTitle = publishTitle.trim() || `Changes from ${githubHeadBranch}`;
       const prBody = publishBody.trim() || undefined;
       const message = commitMessage() || prTitle;
 
@@ -303,7 +361,7 @@ function PublishDialogBody({
       const pr = await openPullRequestForBranch(githubClient, {
         owner,
         repo,
-        branch,
+        branch: githubHeadBranch,
         title: prTitle,
         body: prBody,
         base: baseBranch,

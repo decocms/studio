@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gitSync as rawGitSync } from "../git/git-sync";
 import { parsePorcelainEntry } from "../git/porcelain";
+import { safePath } from "../paths";
 import { jsonResponse, parseJsonBody } from "./body-parser";
 
 export interface GitDeps {
+  appRoot: string;
   repoDir: string;
 }
 
@@ -214,13 +216,36 @@ const SKIP_HOOKS_ENV: Record<string, string> = {
   HUSKY: "0",
 };
 
-function publish(repoDir: string, message: string): { pushed: boolean } {
+function changedPathsFromStatus(status: GitStatusResult): string[] {
+  return [
+    ...new Set(status.files.map((f) => f.path).filter((p) => p.length > 0)),
+  ];
+}
+
+function resolveRepoRelativePath(deps: GitDeps, userPath: string): string {
+  const abs = safePath(deps.appRoot, deps.repoDir, userPath);
+  if (!abs) {
+    throw new Error(`Invalid path: ${userPath}`);
+  }
+  const rel = path.relative(deps.repoDir, abs);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error(`Invalid path: ${userPath}`);
+  }
+  return rel;
+}
+
+function publish(deps: GitDeps, message: string): { pushed: boolean } {
+  const repoDir = deps.repoDir;
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
     throw new Error("Cannot publish from a detached HEAD");
   }
 
-  runGit(repoDir, ["add", "-A"]);
+  const status = computeStatus(repoDir);
+  const paths = changedPathsFromStatus(status);
+  if (paths.length > 0) {
+    runGit(repoDir, ["add", "--", ...paths]);
+  }
   const hasStagedChanges =
     tryGit(repoDir, ["diff", "--cached", "--quiet"]) === null;
   if (hasStagedChanges) {
@@ -247,12 +272,14 @@ function publish(repoDir: string, message: string): { pushed: boolean } {
   return { pushed: true };
 }
 
-function discard(repoDir: string, filepaths: string[]): void {
+function discard(deps: GitDeps, filepaths: string[]): void {
+  const repoDir = deps.repoDir;
+  const validated = filepaths.map((fp) => resolveRepoRelativePath(deps, fp));
   const status = computeStatus(repoDir);
   const toRestore: string[] = [];
   const toDelete: string[] = [];
 
-  for (const fp of filepaths) {
+  for (const fp of validated) {
     const isNew =
       status.not_added.includes(fp) ||
       status.created.includes(fp) ||
@@ -310,10 +337,7 @@ export function makeGitPublishHandler(deps: GitDeps) {
     }
     try {
       return jsonResponse(
-        publish(
-          deps.repoDir,
-          typeof body.message === "string" ? body.message : "",
-        ),
+        publish(deps, typeof body.message === "string" ? body.message : ""),
       );
     } catch (err) {
       return jsonResponse({ error: formatGitError(err) }, 500);
@@ -334,7 +358,7 @@ export function makeGitDiscardHandler(deps: GitDeps) {
       return jsonResponse({ error: "filepaths is required" }, 400);
     }
     try {
-      discard(deps.repoDir, filepaths);
+      discard(deps, filepaths);
       return jsonResponse({ success: true });
     } catch (err) {
       return jsonResponse(

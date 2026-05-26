@@ -4,7 +4,11 @@ import {
   pullNumberFromUrl,
   pullRequestFromToolText,
 } from "./extract-tool-json.ts";
-import { parseCreatedPullRequestResult } from "./github-pr-api.ts";
+import {
+  findOpenPullRequestForBranch,
+  parseCreatedPullRequestResult,
+  squashMergePullRequest,
+} from "./github-pr-api.ts";
 
 describe("extract-tool-json", () => {
   test("prefers content text when structuredContent is an empty object", () => {
@@ -76,5 +80,66 @@ describe("parseCreatedPullRequestResult", () => {
       number: 3,
       htmlUrl: "https://github.com/o/r/pull/3",
     });
+  });
+});
+
+describe("findOpenPullRequestForBranch", () => {
+  test("uses head filter and does not scan unfiltered PR list", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const client = {
+      callTool: async (req: {
+        name: string;
+        arguments: Record<string, unknown>;
+      }) => {
+        calls.push(req.arguments);
+        if (req.arguments.head === "owner:feat/x") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify([
+                  {
+                    number: 5,
+                    html_url: "https://github.com/o/r/pull/5",
+                    head: { ref: "feat/x" },
+                  },
+                ]),
+              },
+            ],
+          };
+        }
+        return { content: [{ type: "text", text: "[]" }] };
+      },
+    };
+
+    const pr = await findOpenPullRequestForBranch(client, {
+      owner: "owner",
+      repo: "repo",
+      branch: "feat/x",
+    });
+
+    expect(pr).toEqual({
+      number: 5,
+      htmlUrl: "https://github.com/o/r/pull/5",
+    });
+    expect(calls.every((c) => c.head != null)).toBe(true);
+  });
+});
+
+describe("squashMergePullRequest", () => {
+  test("requires merged === true in response", async () => {
+    const client = {
+      callTool: async () => ({
+        content: [{ type: "text", text: JSON.stringify({ merged: false }) }],
+      }),
+    };
+
+    await expect(
+      squashMergePullRequest(client, {
+        owner: "o",
+        repo: "r",
+        pullNumber: 1,
+      }),
+    ).rejects.toThrow("Failed to merge pull request");
   });
 });

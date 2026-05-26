@@ -408,21 +408,42 @@ export const createSandboxRoutes = () => {
     const { claimName } = c.get("vmClaim");
     const ctx = c.var.meshContext;
 
+    let body: { status?: GitStatusLike; diff?: GitDiffLike } = {};
     try {
-      const [status, diff] = await Promise.all([
-        fetchDaemonJson<GitStatusLike>(
-          runner,
-          claimName,
-          "/_sandbox/git/status",
-          "POST",
-        ),
-        fetchDaemonJson<GitDiffLike>(
-          runner,
-          claimName,
-          "/_sandbox/git/diff",
-          "POST",
-        ),
-      ]);
+      const text = await c.req.text();
+      if (text.trim()) {
+        body = JSON.parse(text) as {
+          status?: GitStatusLike;
+          diff?: GitDiffLike;
+        };
+      }
+    } catch {
+      return c.json(
+        { error: "Invalid JSON body" },
+        400,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
+
+    try {
+      let status = body.status;
+      let diff = body.diff;
+      if (!status || !diff) {
+        [status, diff] = await Promise.all([
+          fetchDaemonJson<GitStatusLike>(
+            runner,
+            claimName,
+            "/_sandbox/git/status",
+            "GET",
+          ),
+          fetchDaemonJson<GitDiffLike>(
+            runner,
+            claimName,
+            "/_sandbox/git/diff",
+            "GET",
+          ),
+        ]);
+      }
       const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
       return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
     } catch (err) {

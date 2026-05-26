@@ -90,10 +90,15 @@ export async function fetchSuggestCommitMessage(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
+  payload?: { status: GitStatus; diff: GitDiffResult },
 ): Promise<CommitSuggestion> {
   const res = await sandboxFetch(
     buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "suggest-commit"),
-    { method: "POST" },
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    },
   );
   return parseJson<CommitSuggestion>(res);
 }
@@ -163,6 +168,19 @@ export function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
   );
 }
 
+/** True when there is local work to commit or unpushed commits on the branch. */
+export function hasUnpublishedWork(
+  status: GitStatus | null | undefined,
+  diff: GitDiffResult | null | undefined,
+): boolean {
+  if (!status) return false;
+  return (
+    hasGitLocalWork(status) ||
+    status.ahead > 0 ||
+    (diff != null && Object.keys(diff.diffs).length > 0)
+  );
+}
+
 /**
  * Merge live `/git/status` into SSE `BranchMeta`. The status endpoint is
  * always fresh; branch SSE can lag when the daemon watcher misses a save.
@@ -177,11 +195,10 @@ export function mergeBranchMetaWithGitStatus(
   const branchName = gitStatus.current;
 
   if (branchMeta.kind === "ready") {
-    if (!gitDirty && branchMeta.workingTreeDirty) return branchMeta;
     return {
       ...branchMeta,
       branch: branchName ?? branchMeta.branch,
-      workingTreeDirty: branchMeta.workingTreeDirty || gitDirty,
+      workingTreeDirty: gitDirty,
       unpushed: Math.max(branchMeta.unpushed, gitStatus.ahead),
     };
   }

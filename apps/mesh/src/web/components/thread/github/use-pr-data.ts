@@ -15,22 +15,7 @@
 
 import { useMCPClient, useMCPToolCallQuery } from "@decocms/mesh-sdk";
 
-import { extractToolJson } from "./extract-tool-json.ts";
-
-function headRefFromListItem(pr: Record<string, unknown>): string | null {
-  const head = pr.head as Record<string, unknown> | undefined;
-  const ref = head?.ref;
-  return typeof ref === "string" && ref.length > 0 ? ref : null;
-}
-
-function pullRequestListFromToolResult(r: unknown): Record<string, unknown>[] {
-  const raw = extractToolJson<unknown>(r);
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (item): item is Record<string, unknown> =>
-      item != null && typeof item === "object",
-  );
-}
+import { extractPullRequestList } from "./github-pr-api.ts";
 
 export interface PrSummary {
   number: number;
@@ -116,20 +101,17 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
       owner: args.owner,
       repo: args.repo,
       state: "all",
-      perPage: 30,
+      ...(args.branch ? { head: `${args.owner}:${args.branch}` } : {}),
+      perPage: 1,
     },
     enabled: !!args.branch,
     refetchInterval: POLL,
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
-      const arr = pullRequestListFromToolResult(r);
+      const arr = extractPullRequestList(r);
       if (arr.length === 0) return null;
-      const p =
-        (args.branch
-          ? arr.find((item) => headRefFromListItem(item) === args.branch)
-          : undefined) ?? null;
-      if (!p) return null;
+      const p = arr[0]!;
       const base = p.base as Record<string, unknown> | undefined;
       const head = p.head as Record<string, unknown> | undefined;
       const user = p.user as Record<string, unknown> | undefined;

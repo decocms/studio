@@ -317,7 +317,7 @@ const bashH = makeBashHandler({
   repoDir,
   taskManager,
 });
-const gitDeps = { repoDir };
+const gitDeps = { appRoot, repoDir };
 const gitStatusH = makeGitStatusHandler(gitDeps);
 const gitDiffH = makeGitDiffHandler(gitDeps);
 const gitPublishH = makeGitPublishHandler(gitDeps);

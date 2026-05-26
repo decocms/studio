@@ -82,12 +82,37 @@ function headRefFromListItem(pr: Record<string, unknown>): string | null {
   return typeof ref === "string" && ref.length > 0 ? ref : null;
 }
 
-function pullRequestMatchesBranch(
+export function pullRequestMatchesBranch(
   pr: Record<string, unknown>,
   branch: string,
 ): boolean {
   const headRef = headRefFromListItem(pr);
   return headRef === branch;
+}
+
+export function extractPullRequestList(
+  result: unknown,
+): Record<string, unknown>[] {
+  const raw = extractToolJson<unknown>(result);
+  if (Array.isArray(raw)) {
+    return raw.filter(
+      (item): item is Record<string, unknown> =>
+        item != null && typeof item === "object",
+    );
+  }
+  if (raw && typeof raw === "object") {
+    const record = raw as Record<string, unknown>;
+    for (const key of ["pull_requests", "items", "data"]) {
+      const value = record[key];
+      if (Array.isArray(value)) {
+        return value.filter(
+          (item): item is Record<string, unknown> =>
+            item != null && typeof item === "object",
+        );
+      }
+    }
+  }
+  return [];
 }
 
 function toCreatedPullRequest(
@@ -120,27 +145,8 @@ export function parseCreatedPullRequestResult(
   throw new Error("Failed to open pull request");
 }
 
-function extractPullRequestList(result: unknown): Record<string, unknown>[] {
-  const raw = extractToolJson<unknown>(result);
-  if (Array.isArray(raw)) {
-    return raw.filter(
-      (item): item is Record<string, unknown> =>
-        item != null && typeof item === "object",
-    );
-  }
-  if (raw && typeof raw === "object") {
-    const record = raw as Record<string, unknown>;
-    for (const key of ["pull_requests", "items", "data"]) {
-      const value = record[key];
-      if (Array.isArray(value)) {
-        return value.filter(
-          (item): item is Record<string, unknown> =>
-            item != null && typeof item === "object",
-        );
-      }
-    }
-  }
-  return [];
+function pullRequestAlreadyExists(message: string): boolean {
+  return /already exists|pull request already/i.test(message);
 }
 
 async function listOpenPullRequests(
@@ -154,7 +160,7 @@ async function listOpenPullRequests(
       repo: args.repo,
       state: "open",
       ...(args.head ? { head: args.head } : {}),
-      perPage: 30,
+      perPage: 10,
     },
   });
 
@@ -183,12 +189,7 @@ export async function findOpenPullRequestForBranch(
     if (created) return created;
   }
 
-  const prs = await listOpenPullRequests(client, {
-    owner: args.owner,
-    repo: args.repo,
-  });
-  const match = prs.find((pr) => pullRequestMatchesBranch(pr, args.branch));
-  return match ? toCreatedPullRequest(match) : null;
+  return null;
 }
 
 export async function createPullRequest(
@@ -229,14 +230,26 @@ export async function openPullRequestForBranch(
   });
   if (existing) return existing;
 
-  return createPullRequest(client, {
-    owner: args.owner,
-    repo: args.repo,
-    title: args.title,
-    body: args.body,
-    head: args.branch,
-    base: args.base,
-  });
+  try {
+    return await createPullRequest(client, {
+      owner: args.owner,
+      repo: args.repo,
+      title: args.title,
+      body: args.body,
+      head: args.branch,
+      base: args.base,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!pullRequestAlreadyExists(message)) throw err;
+    const found = await findOpenPullRequestForBranch(client, {
+      owner: args.owner,
+      repo: args.repo,
+      branch: args.branch,
+    });
+    if (found) return found;
+    throw err;
+  }
 }
 
 export async function squashMergePullRequest(
@@ -262,12 +275,12 @@ export async function squashMergePullRequest(
   assertGithubToolSuccess(result);
 
   const data = extractToolJson<{ merged?: boolean; message?: string }>(result);
-  if (data?.merged === false) {
-    throw new Error(data.message ?? "Failed to merge pull request");
+  if (!data || data.merged !== true) {
+    throw new Error(data?.message ?? "Failed to merge pull request");
   }
 
   return {
     merged: true,
-    message: data?.message ?? "Pull request merged",
+    message: data.message ?? "Pull request merged",
   };
 }
