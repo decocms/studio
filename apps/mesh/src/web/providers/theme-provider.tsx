@@ -104,9 +104,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (!raw) return;
       const ctx = document.createElement("canvas").getContext("2d");
       if (!ctx) return;
-      if (!CSS.supports("color", raw)) return;
+      // Canvas rejects invalid values silently (keeps the prior fillStyle), so
+      // seed with a sentinel we can detect. CSS.supports("color", x) is too
+      // lax — it accepts CSS-wide keywords (inherit, unset, …) that fillStyle
+      // does not parse, which would leave the meta tag stuck on the sentinel.
+      ctx.fillStyle = "#010203";
+      const sentinel = ctx.fillStyle as string;
       ctx.fillStyle = raw;
-      meta.content = ctx.fillStyle as string;
+      const normalised = ctx.fillStyle as string;
+      if (normalised === sentinel) return;
+      meta.content = normalised;
     };
 
     if (preferences.theme === "dark") {
