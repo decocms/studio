@@ -46,7 +46,20 @@ function getSnapshot(): SeenMap {
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   const onStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY || event.key === null) listener();
+    if (event.key !== STORAGE_KEY && event.key !== null) return;
+    // Bypass the writeFailed latch: another tab successfully wrote, so
+    // refresh from localStorage. Union with cachedSnapshot so any locally
+    // pending entries (from prior failed writes) aren't lost.
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY) ?? "{}";
+      const remote = parse(raw);
+      const merged: SeenMap = { ...remote, ...cachedSnapshot };
+      cachedSnapshot = merged;
+      cachedSerialized = JSON.stringify(merged);
+    } catch {
+      // ignore — fall through to listener so we at least re-render
+    }
+    listener();
   };
   window.addEventListener("storage", onStorage);
   return () => {
