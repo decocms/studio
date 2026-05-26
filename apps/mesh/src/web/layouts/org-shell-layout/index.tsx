@@ -24,8 +24,6 @@ import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
 import { TasksPanelStateProvider } from "@/web/hooks/use-tasks-panel-state";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
-import { TasksWorkspaceLayout } from "@/web/layouts/agent-shell-layout/tasks-workspace-layout";
-import { TasksPanel } from "@/web/layouts/tasks-panel";
 
 function RouteFallback() {
   return (
@@ -58,13 +56,10 @@ function MobileHomeToolbar() {
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-full">
             <div
-              className="w-14 shrink-0 bg-sidebar flex flex-col items-center border-r border-border overflow-y-auto group/sidebar"
-              data-state="collapsed"
+              className="w-full bg-sidebar flex flex-col overflow-y-auto group/sidebar"
+              data-state="expanded"
             >
               <StudioSidebarMobile onClose={() => setOpenMobile(false)} />
-            </div>
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <TasksPanel />
             </div>
           </div>
         </SheetContent>
@@ -80,7 +75,7 @@ export default function OrgShellLayout() {
 
   return (
     <ThreadManagerProvider>
-      <SidebarProvider defaultOpen={false}>
+      <SidebarProvider defaultOpen={true}>
         <div className="flex flex-col h-dvh overflow-hidden">
           <SidebarLayout
             className="flex-1 bg-sidebar"
@@ -122,11 +117,9 @@ export default function OrgShellLayout() {
                         </Toolbar.RightColumn>
                       </Toolbar.Header>
                       <div className="flex-1 min-h-0 flex flex-row">
-                        <TasksWorkspaceLayout>
-                          <Suspense fallback={<RouteFallback />}>
-                            <Outlet />
-                          </Suspense>
-                        </TasksWorkspaceLayout>
+                        <Suspense fallback={<RouteFallback />}>
+                          <Outlet />
+                        </Suspense>
                       </div>
                     </Toolbar>
                   )}
