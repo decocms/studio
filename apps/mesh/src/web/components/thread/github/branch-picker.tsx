@@ -1,6 +1,7 @@
 import { type UIEvent, useRef, useState } from "react";
 import type { SandboxMap } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Command,
   CommandEmpty,
@@ -15,7 +16,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import { GitBranch01 } from "@untitledui/icons";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import { ChevronDown, GitBranch01 } from "@untitledui/icons";
 import { generateBranchName } from "@/shared/branch-name";
 import { useBranches } from "./use-branches";
 
@@ -30,6 +36,9 @@ interface Props {
   sandboxMap: SandboxMap | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
+  /** When true, the trigger is disabled — the user can't open the
+   *  picker. The tooltip still surfaces the current branch on hover. */
+  disabled?: boolean;
 }
 
 /**
@@ -40,9 +49,9 @@ export function BranchPicker({
   orgId,
   orgSlug,
   userId,
-  // virtualMcpId is consumed by callers via Props (e.g. ThreadPills);
+  // virtualMcpId is consumed by callers via Props (e.g. BranchPill);
   // BranchPicker itself doesn't use it directly. Kept on the Props
-  // contract so v2's pill container can pass it down uniformly.
+  // contract so the pill container can pass it down uniformly.
   virtualMcpId: _virtualMcpId,
   connectionId,
   owner,
@@ -50,6 +59,7 @@ export function BranchPicker({
   sandboxMap,
   value,
   onChange,
+  disabled = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -115,17 +125,43 @@ export function BranchPicker({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1.5 px-2 font-mono text-xs"
-        >
-          <GitBranch01 className="h-3.5 w-3.5" />
-          <span className="max-w-[200px] truncate">{label}</span>
-        </Button>
-      </PopoverTrigger>
+    <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex min-w-0 shrink">
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="default"
+                aria-label={label}
+                disabled={disabled}
+                className={cn(
+                  "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
+                  disabled ? "gap-0" : "gap-0 @[320px]/chat-bottom:gap-1.5",
+                )}
+              >
+                <GitBranch01 className="h-3.5 w-3.5" />
+                <span
+                  className={cn(
+                    "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+                    !disabled &&
+                      "@[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
+                  )}
+                >
+                  {label}
+                </span>
+                {!disabled && (
+                  <ChevronDown
+                    size={12}
+                    className="opacity-60 hidden @[320px]/chat-bottom:inline-block"
+                  />
+                )}
+              </Button>
+            </PopoverTrigger>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
       <PopoverContent
         className="w-[min(420px,calc(100vw-2rem))] p-0"
         align="start"

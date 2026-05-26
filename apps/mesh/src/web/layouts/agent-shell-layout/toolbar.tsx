@@ -136,12 +136,10 @@ function ToolbarTabs({ children }: { children: ReactNode }) {
 
 function ToolbarTogglesSlot() {
   const { setTogglesEl } = useToolbarCtx();
-  return (
-    <div
-      ref={setTogglesEl}
-      className="flex items-center gap-0.5 shrink-0 ml-0.5"
-    />
-  );
+  // `display: contents` keeps the div as a portal target (we need the
+  // ref) but produces no layout box, so the toggle buttons become direct
+  // flex children of Toolbar.LeftColumn and inherit its gap.
+  return <div ref={setTogglesEl} className="contents" />;
 }
 
 function ToolbarToggles({ children }: { children: ReactNode }) {

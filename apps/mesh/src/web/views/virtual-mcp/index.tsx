@@ -96,6 +96,7 @@ import {
 } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { agentHasConnectedGithub } from "@/web/lib/agent-capabilities";
 import { FIXED_SYSTEM_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
 import { EnvVarsField } from "@/web/components/sandbox/runtime-card/env-vars-field";
@@ -856,13 +857,13 @@ function LayoutTabContent({
   const noInteractiveTools =
     connectionsWithTools && connectionsData.length === 0;
 
-  // Check if virtual MCP has an active GitHub repo (enables preview)
-  const hasGithubRepo = !!getActiveGithubRepo(virtualMcp);
+  // Check if virtual MCP has a connected GitHub repo (requires real auth, enables preview/terminal)
+  const hasGithubRepo = agentHasConnectedGithub(virtualMcp);
 
   // Build options for the default main view selector.
   // Order mirrors the right-panel tab order in the unified chat layout:
   // Chat (no main panel), then fixed system tabs, then pinned ext-apps.
-  // Terminal and Preview are gated behind an active GitHub repo,
+  // Terminal and Preview are gated behind a connected GitHub repo,
   // matching the gating in main-panel-tabs/index.tsx.
   const defaultMainOptions: { value: string; label: string }[] = [
     { value: "chat", label: "Chat" },
@@ -1092,10 +1093,10 @@ function VirtualMcpDetailViewWithData({
   // Watch connections for reactive UI
   const connections = form.watch("connections");
 
-  // GitHub repo connected — instructions become read-only
-  const hasGithubRepo = !!getActiveGithubRepo(virtualMcp);
+  // GitHub repo connected (real auth) — instructions become read-only
+  const hasGithubRepo = agentHasConnectedGithub(virtualMcp);
 
-  // Repo info for the Runtime card (same source as hasGithubRepo)
+  // Repo info for the Runtime card (display-only — loose check is intentional)
   const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
   const runtimeCardRepo = githubRepoForRuntimeCard
     ? {

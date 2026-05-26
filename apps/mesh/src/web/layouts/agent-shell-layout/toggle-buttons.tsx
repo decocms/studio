@@ -2,9 +2,9 @@
  * ToggleButtons — left/right panel toggles portal'd into the outer Toolbar.
  *
  * Renders the tasks toggle, chat toggle, and (when armed) the new-task
- * button. When the tasks panel is closed, the new-task button slides in
- * via a grid-cols animation so the shortcut is always reachable without
- * stealing visual weight when tasks are already visible.
+ * button. When the tasks panel is closed, the new-task button appears
+ * so the shortcut is always reachable; when tasks are visible the
+ * button is dropped entirely so it doesn't reserve layout space.
  */
 
 import { Edit05, Menu02, MessageCircle01 } from "@untitledui/icons";
@@ -84,37 +84,20 @@ export function ToggleButtons({
         </TooltipTrigger>
         <TooltipContent side="bottom">Chat</TooltipContent>
       </Tooltip>
-      <div
-        className={cn(
-          "grid transition-[grid-template-columns] duration-200 ease-[var(--ease-out-quart)]",
-          showNewTask ? "grid-cols-[1fr]" : "grid-cols-[0fr]",
-        )}
-      >
-        <div className="overflow-hidden">
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={onNewTask}
-                disabled={!showNewTask}
-                tabIndex={showNewTask ? 0 : -1}
-                aria-hidden={!showNewTask}
-                className={cn(
-                  TOGGLE_BASE,
-                  TOGGLE_INACTIVE,
-                  "transition-[transform,opacity] duration-200 ease-[var(--ease-out-quart)] will-change-transform",
-                  showNewTask
-                    ? "translate-x-0 opacity-100"
-                    : "-translate-x-2 opacity-0",
-                )}
-              >
-                <Edit05 size={16} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">New task</TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
+      {showNewTask && (
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onNewTask}
+              className={cn(TOGGLE_BASE, TOGGLE_INACTIVE)}
+            >
+              <Edit05 size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">New task</TooltipContent>
+        </Tooltip>
+      )}
     </>
   );
 }

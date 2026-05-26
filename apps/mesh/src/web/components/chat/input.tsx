@@ -6,6 +6,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
+  useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -32,7 +33,8 @@ import { useThreadActions } from "./store/hooks";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
-import { AgentModelTrigger } from "./agent-model-trigger";
+import { ChatModeRow } from "./pills/chat-mode-row";
+import { TierTrigger } from "./tier-trigger";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
   UnsupportedFileDialog,
@@ -245,16 +247,13 @@ export function ChatInput({
     deepResearchModel,
     chatMode,
     setChatMode,
-    simpleModeTier,
-    setSimpleModeTier,
-    pendingHarnessId,
-    pendingSandboxProviderKind,
   } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const fullVm = useVirtualMCP(selectedVirtualMcp?.id ?? decopilotId);
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -437,7 +436,7 @@ export function ChatInput({
             <form
               onSubmit={handleSubmit}
               className={cn(
-                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-card card-shadow",
+                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-background dark:bg-muted card-shadow overflow-hidden",
               )}
             >
               <FileDropZone
@@ -487,7 +486,7 @@ export function ChatInput({
                 ) : (
                   <>
                     {/* Left Actions (+, Tools, active tool pills, stats) */}
-                    <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <ToolsPopover
                         disabled={isStreaming}
                         onOpenConnections={() => {
@@ -516,10 +515,10 @@ export function ChatInput({
                           }}
                           title="Plan mode"
                           aria-label="Plan mode"
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group whitespace-nowrap animate-in fade-in duration-200"
+                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group min-w-0 shrink animate-in fade-in duration-200"
                         >
                           <BookOpen01 size={14} className="shrink-0" />
-                          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-32 @[496px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100">
                             Plan mode
                           </span>
                           <X
@@ -543,10 +542,10 @@ export function ChatInput({
                           }}
                           title="Create image"
                           aria-label="Create image"
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group whitespace-nowrap animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Image01 size={14} className="shrink-0" />
-                          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-[120px] @[496px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
                             Create image
                           </span>
                           <X
@@ -570,10 +569,10 @@ export function ChatInput({
                           }}
                           title="Web search"
                           aria-label="Web search"
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group whitespace-nowrap animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Globe02 size={14} className="shrink-0" />
-                          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[496px]/chat-bottom:max-w-[120px] @[496px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
                             Web search
                           </span>
                           <X
@@ -592,41 +591,46 @@ export function ChatInput({
                       )}
                     </div>
 
-                    {/* Right Actions (mic, model, send) */}
+                    {/* Right Actions (branch/mode, model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <AgentModelTrigger
-                        agent={pendingHarnessId}
-                        sandboxKind={pendingSandboxProviderKind}
-                        tier={simpleModeTier}
+                      <ChatModeRow
+                        orgId={org.id}
+                        orgSlug={org.slug}
+                        userId={userId ?? ""}
+                        virtualMcp={fullVm}
+                        sandboxMap={fullVm?.metadata?.sandboxMap}
                         currentBranch={taskCtx?.currentBranch ?? null}
-                        virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
-                        onSelect={setSimpleModeTier}
+                        onBranchChange={
+                          taskCtx?.setCurrentTaskBranch ?? (() => {})
+                        }
                       />
+                      <TierTrigger />
 
-                      {/* Microphone button — only shown when not streaming and speech is supported */}
-                      {voice.isSupported &&
-                        !isStreaming &&
-                        !isRunInProgress && (
-                          <Button
-                            type="button"
-                            onClick={handleVoiceStart}
-                            variant="ghost"
-                            size="icon"
-                            className={cn(
-                              "size-8 rounded-lg transition-colors",
-                              voice.status === "permission-denied"
-                                ? "text-destructive hover:text-destructive hover:bg-destructive/10"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                            title={
-                              voice.status === "permission-denied"
-                                ? "Microphone access denied — click to try again"
-                                : "Voice input"
-                            }
-                          >
-                            <Microphone01 size={18} />
-                          </Button>
-                        )}
+                      {/* Microphone button — kept mounted (and disabled)
+                          during streaming/run to avoid layout shift when
+                          the send button morphs into stop/cancel. */}
+                      {voice.isSupported && (
+                        <Button
+                          type="button"
+                          onClick={handleVoiceStart}
+                          disabled={isStreaming || isRunInProgress}
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "size-8 rounded-lg transition-colors",
+                            voice.status === "permission-denied"
+                              ? "text-destructive hover:text-destructive hover:bg-destructive/10"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                          title={
+                            voice.status === "permission-denied"
+                              ? "Microphone access denied — click to try again"
+                              : "Voice input"
+                          }
+                        >
+                          <Microphone01 size={18} />
+                        </Button>
+                      )}
 
                       <Button
                         type={showStopOrCancel ? "button" : "submit"}
