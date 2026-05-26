@@ -40,6 +40,7 @@ interface PureProps {
 interface ModeRow {
   mode: AgentMode;
   label: string;
+  description: string;
   group: "cloud" | "local";
   icon: React.ReactNode;
   isAvailable: (a: ModePickerAvailability) => boolean;
@@ -48,24 +49,27 @@ interface ModeRow {
 const ROW_DECOPILOT: ModeRow = {
   mode: "cloud-decopilot",
   label: "Decopilot",
+  description: "Runs on the cloud",
   group: "cloud",
-  icon: <Cloud01 size={14} />,
+  icon: <Cloud01 size={16} />,
   isAvailable: () => true,
 };
 
 const ROW_CLAUDE_CODE: ModeRow = {
   mode: "local-claude-code",
   label: "Claude Code",
+  description: "Runs locally via the Claude Code CLI",
   group: "local",
-  icon: <ClaudeCodeIcon size={14} />,
+  icon: <ClaudeCodeIcon size={16} />,
   isAvailable: (a) => a.claudeCode,
 };
 
 const ROW_CODEX: ModeRow = {
   mode: "local-codex",
   label: "Codex",
+  description: "Runs locally via the Codex CLI",
   group: "local",
-  icon: <CodexIcon size={14} />,
+  icon: <CodexIcon size={16} />,
   isAvailable: (a) => a.codex,
 };
 
@@ -191,6 +195,7 @@ function Row({
   available: boolean;
   onSelect: (mode: AgentMode) => void;
 }) {
+  const description = available ? row.description : "Not connected";
   return (
     <button
       type="button"
@@ -198,17 +203,17 @@ function Row({
       data-available={available}
       onClick={() => onSelect(row.mode)}
       className={cn(
-        "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left",
+        "flex items-start gap-2 px-2 py-1.5 rounded-md text-left",
         "hover:bg-muted",
         !available && "opacity-60",
       )}
     >
-      <span className="shrink-0">{row.icon}</span>
-      <span className="flex-1">{row.label}</span>
-      {!available && (
-        <span className="text-xs text-muted-foreground">Not connected</span>
-      )}
-      {active && <Check size={14} className="text-foreground" />}
+      <span className="shrink-0 text-muted-foreground mt-0.5">{row.icon}</span>
+      <div className="flex-1">
+        <div className="text-sm">{row.label}</div>
+        <div className="text-xs text-muted-foreground">{description}</div>
+      </div>
+      {active && <Check size={14} className="text-foreground mt-0.5" />}
     </button>
   );
 }
