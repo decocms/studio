@@ -169,8 +169,6 @@ export function resolveSchema(
       type = Array.isArray(resolved.type)
         ? String(resolved.type.find((t) => t !== "null") ?? resolved.type[0])
         : String(resolved.type);
-    } else if (typeof v.$ref === "string") {
-      type = "object";
     } else if (resolved.anyOf || resolved.allOf || resolved.oneOf) {
       const arr = (resolved.anyOf ??
         resolved.allOf ??
@@ -304,11 +302,17 @@ export function resolveSchema(
 
         type = "object";
       }
+    } else if (typeof v.$ref === "string") {
+      // Last-resort: ref points to a def with no type/union we recognize.
+      // Treat as object so nested-property recursion has a chance to fill in.
+      type = "object";
     }
 
-    // Nested properties for object types (depth < 3)
+    // Nested properties for object types. Bumped past depth 3 because real
+    // deco sections nest images at depth 4+ (`images[].desktop.src`); the
+    // old cap left those leaves un-resolved and stripped their `format`.
     let nestedProperties: Record<string, SchemaProperty> | undefined;
-    if (depth < 3) {
+    if (depth < 6) {
       const nestedRaw = collectProps(resolved);
       const nestedEntries = Object.entries(nestedRaw).filter(
         ([k]) => !k.startsWith("__") && k !== "@type",
@@ -323,7 +327,7 @@ export function resolveSchema(
 
     // Array items
     let itemsSchema: SchemaProperty | undefined;
-    if ((type === "array" || resolved.type === "array") && depth < 3) {
+    if ((type === "array" || resolved.type === "array") && depth < 6) {
       let rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
         if (typeof rawItems.$ref === "string") {

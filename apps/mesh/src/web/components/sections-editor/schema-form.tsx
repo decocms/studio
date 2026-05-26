@@ -13,6 +13,26 @@ import { ImageField } from "./fields/image-field";
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
 
+/**
+ * Deco wraps media fields (ImageWidget, VideoWidget) in a multivariate flag
+ * loader so authors can A/B-test which asset shows. In JSON Schema that
+ * surfaces as a block-ref whose only option is `website/flags/multivariate/{kind}.ts`.
+ * For editing UX we don't want to expose the variant selector for the
+ * common single-asset case — render the inner media widget instead and
+ * persist a plain URL string (deco resolves plain strings at render time).
+ */
+function multivariateMediaKind(
+  schema: SchemaProperty,
+): "image" | "file" | null {
+  if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return null;
+  if (schema.anyOfRefs.length !== 1) return null;
+  const rt = schema.anyOfRefs[0]!.resolveType;
+  if (rt.endsWith("/multivariate/image.ts")) return "image";
+  if (rt.endsWith("/multivariate/video.ts")) return "file";
+  if (rt.endsWith("/multivariate/file.ts")) return "file";
+  return null;
+}
+
 function humanize(key: string): string {
   return key
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -54,6 +74,16 @@ export function renderField(props: FieldProps) {
       typeof (value as Record<string, unknown>).__resolveType === "string" &&
       schema.anyOfRefs)
   ) {
+    // Deco wraps ImageWidget/VideoWidget in a multivariate flag loader by
+    // default. When the only option is the multivariate media loader,
+    // render the underlying media picker instead of a variant selector.
+    const mediaKind = multivariateMediaKind(schema);
+    if (mediaKind === "image") {
+      return <ImageField key={props.path} {...props} />;
+    }
+    if (mediaKind === "file") {
+      return <FileField key={props.path} {...props} />;
+    }
     // For now render as object if we have properties, otherwise skip
     if (schema.anyOfRefs) {
       return <AnyOfField key={props.path} {...props} />;
