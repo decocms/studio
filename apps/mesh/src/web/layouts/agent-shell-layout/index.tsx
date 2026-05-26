@@ -550,10 +550,9 @@ function AgentInsetProvider() {
 // ---------------------------------------------------------------------------
 // Default export — the per-task content for /$org/$taskId.
 //
-// Sidebar, toolbar shell, org-wide tasks panel, ChatPrefsProvider, and
-// TasksPanelStateProvider all live in `org-shell-layout` (the parent route).
-// This component just renders the per-task chrome inside the flex-row Outlet
-// on desktop, or directly inside SidebarInset on mobile.
+// Sidebar, toolbar shell, and ChatPrefsProvider live in `org-shell-layout`
+// (the parent route). This component just renders the per-task chrome inside
+// the flex-row Outlet on desktop, or directly inside SidebarInset on mobile.
 // ---------------------------------------------------------------------------
 
 export default function AgentShellLayout() {

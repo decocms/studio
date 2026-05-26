@@ -113,7 +113,6 @@ export function TaskGroupsList() {
       navigate({
         to: "/$org",
         params: { org: params.org },
-        search: { tasks: 0 },
       });
     }
   };

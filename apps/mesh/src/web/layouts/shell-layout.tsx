@@ -102,9 +102,6 @@ export function usePanelActions() {
   const setChatOpen = (open: boolean) =>
     nav((prev) => ({ ...prev, chat: open ? 1 : 0 }));
 
-  const setTasksOpen = (open: boolean) =>
-    nav((prev) => ({ ...prev, tasks: open ? 1 : 0 }));
-
   const setTaskId = (id: string, virtualMcpId?: string) =>
     navWith(
       id,
@@ -112,7 +109,6 @@ export function usePanelActions() {
         const next: Record<string, unknown> = { chat: 1 };
         if (virtualMcpId) next.virtualmcpid = virtualMcpId;
         else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
-        if (prev.tasks) next.tasks = prev.tasks;
         // Preserve the main panel tab (git / preview / env / …) so that
         // switching tasks keeps the user's current view.
         if (prev.main) next.main = prev.main;
@@ -166,7 +162,6 @@ export function usePanelActions() {
 
   return {
     setChatOpen,
-    setTasksOpen,
     setTaskId,
     createNewTask,
     openTab,
