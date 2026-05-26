@@ -26,6 +26,7 @@ import { usePanelActions } from "@/web/layouts/shell-layout";
 import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dialog";
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
+import { BrowseAgentsButton } from "../browse-agents-button";
 import { CollapsedGroupPopover } from "./collapsed-group-popover";
 import { groupThreadsByVirtualMcp } from "./group-threads";
 import { TaskGroup } from "./task-group";
@@ -224,6 +225,7 @@ export function TaskGroupsList() {
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+          <BrowseAgentsButton compact />
         </div>
       </div>
       <div
