@@ -6,12 +6,7 @@
  * different per config and the SDK client caches the signer.
  */
 
-import {
-  ListObjectsV2Command,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import type {
   FileConfigCredentials,
   OrgFileConfigStorage,
@@ -32,11 +27,9 @@ function buildS3Client(ctx: FileConfigContext): S3Client {
       accessKeyId: ctx.credentials.accessKeyId,
       secretAccessKey: ctx.credentials.secretAccessKey,
     },
-    // AWS SDK v3 ships with checksum auto-injection enabled by default,
-    // which adds `x-amz-checksum-crc32` + `x-amz-sdk-checksum-algorithm`
-    // params to presigned URLs. GCS, R2, and MinIO don't all honor those
-    // and the extra headers complicate CORS preflights. Disable unless a
-    // command explicitly asks for it.
+    // GCS, R2, and MinIO don't all honor the `x-amz-checksum-*` headers
+    // AWS SDK v3 auto-injects. Disable unless an operation explicitly
+    // requires them.
     requestChecksumCalculation: "WHEN_REQUIRED",
     responseChecksumValidation: "WHEN_REQUIRED",
   });
@@ -79,24 +72,6 @@ export async function resolveFileConfig(
   organizationId: string,
 ): Promise<FileConfigContext> {
   return storage.resolveById(id, organizationId);
-}
-
-export async function presignPutUrl(params: {
-  ctx: FileConfigContext;
-  key: string;
-  contentType: string;
-  expiresInSeconds?: number;
-}): Promise<string> {
-  const client = buildS3Client(params.ctx);
-  return getSignedUrl(
-    client,
-    new PutObjectCommand({
-      Bucket: params.ctx.info.bucket,
-      Key: params.key,
-      ContentType: params.contentType,
-    }),
-    { expiresIn: params.expiresInSeconds ?? 300 },
-  );
 }
 
 export interface ListedObject {
