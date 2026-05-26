@@ -58,23 +58,28 @@ function SidebarProvider({
   defaultOpen?: boolean;
 }) {
   const isMobile = useIsMobile();
+  const [open, setOpen] = React.useState(defaultOpen);
   const [openMobile, setOpenMobile] = React.useState(false);
 
   const toggleSidebar = React.useCallback(() => {
-    if (isMobile) setOpenMobile((open) => !open);
+    if (isMobile) {
+      setOpenMobile((prev) => !prev);
+    } else {
+      setOpen((prev) => !prev);
+    }
   }, [isMobile]);
 
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
-      state: defaultOpen ? ("expanded" as const) : ("collapsed" as const),
-      open: defaultOpen,
-      setOpen: () => {},
+      state: open ? ("expanded" as const) : ("collapsed" as const),
+      open,
+      setOpen,
       isMobile,
       openMobile,
       setOpenMobile,
       toggleSidebar,
     }),
-    [defaultOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+    [open, isMobile, openMobile, toggleSidebar],
   );
 
   return (
@@ -393,7 +398,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-lg py-0 pr-0.5 pl-1.5 text-left text-sm outline-0 outline-sidebar-ring transition-[width,height,padding] focus-visible:outline-2 focus-visible:-outline-offset-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&_svg]:opacity-60 hover:[&_svg]:opacity-100",
+  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-lg py-0 pr-0.5 pl-1.5 text-left text-sm outline-0 outline-sidebar-ring transition-[width,height,padding] focus-visible:outline-2 focus-visible:-outline-offset-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate group-data-[state=collapsed]/sidebar:[&>span:last-child]:hidden [&>svg]:size-4 [&>svg]:shrink-0 [&_svg]:opacity-60 hover:[&_svg]:opacity-100",
   {
     variants: {
       variant: {

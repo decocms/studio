@@ -8,6 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
+  SidebarTrigger,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
@@ -40,19 +41,22 @@ function SidebarLogoHeader({ onLogoClick }: { onLogoClick?: () => void }) {
   );
 
   return (
-    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0">
-      {onLogoClick ? (
-        <button
-          type="button"
-          onClick={onLogoClick}
-          aria-label="Home"
-          className="flex items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-        >
-          {logoImgs}
-        </button>
-      ) : (
-        logoImgs
-      )}
+    <SidebarHeader className="flex flex-row items-center justify-between shrink-0 h-12 px-3 pb-0 group-data-[state=collapsed]/sidebar:justify-center group-data-[state=collapsed]/sidebar:px-0">
+      <div className="group-data-[state=collapsed]/sidebar:hidden">
+        {onLogoClick ? (
+          <button
+            type="button"
+            onClick={onLogoClick}
+            aria-label="Home"
+            className="flex items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            {logoImgs}
+          </button>
+        ) : (
+          logoImgs
+        )}
+      </div>
+      <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
     </SidebarHeader>
   );
 }
