@@ -54,7 +54,7 @@ export function TaskRow({
         "group/row flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
         "focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-ring/50",
         isActive
-          ? "bg-accent text-accent-foreground shadow-sm"
+          ? "bg-accent text-accent-foreground"
           : "hover:bg-accent/60",
       )}
     >

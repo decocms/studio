@@ -21,7 +21,8 @@ export type SidebarSection =
   | { type: "items"; items: NavigationSidebarItem[] }
   | { type: "group"; group: SidebarItemGroup }
   | { type: "divider" }
-  | { type: "spacer" };
+  | { type: "spacer" }
+  | { type: "custom"; key: string; content: ReactNode };
 
 export interface Invitation {
   id: string;

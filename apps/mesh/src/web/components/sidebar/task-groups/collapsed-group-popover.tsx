@@ -36,6 +36,15 @@ export function CollapsedGroupPopover({
   onNewTaskInGroup,
 }: CollapsedGroupPopoverProps) {
   const entity = useVirtualMCP(virtualMcpId);
+  const latestTask = threads[0];
+
+  const handleClick = () => {
+    if (latestTask) {
+      onSelectTask(latestTask);
+    } else {
+      onNewTaskInGroup(virtualMcpId);
+    }
+  };
 
   return (
     <HoverCard
@@ -51,11 +60,16 @@ export function CollapsedGroupPopover({
     >
       <SidebarMenuItem>
         <HoverCardTrigger asChild>
-          <SidebarMenuButton tooltip={entity?.title ?? "Agent"}>
+          <SidebarMenuButton
+            onClick={handleClick}
+            isActive={Boolean(
+              latestTask && activeTaskId && latestTask.id === activeTaskId,
+            )}
+          >
             <AgentAvatar
               icon={entity?.icon ?? null}
               name={entity?.title ?? "?"}
-              size="xs"
+              size="sm+"
             />
           </SidebarMenuButton>
         </HoverCardTrigger>

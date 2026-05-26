@@ -16,7 +16,8 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
-import { Loading01, Menu01, Menu02 } from "@untitledui/icons";
+import { LayoutLeft, Loading01, Menu01 } from "@untitledui/icons";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { Outlet, useParams } from "@tanstack/react-router";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
@@ -30,14 +31,9 @@ const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 function SidebarToggleButton() {
   const { toggleSidebar } = useSidebar();
   return (
-    <button
-      type="button"
-      onClick={toggleSidebar}
-      aria-label="Toggle sidebar"
-      className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-    >
-      <Menu02 size={16} />
-    </button>
+    <ToolbarIconButton onClick={toggleSidebar} aria-label="Toggle sidebar">
+      <LayoutLeft size={16} />
+    </ToolbarIconButton>
   );
 }
 
@@ -84,6 +80,17 @@ function MobileHomeToolbar() {
   );
 }
 
+function SidebarNavControls() {
+  return (
+    <>
+      <Toolbar.Nav />
+      <SidebarToggleButton />
+      <Toolbar.TogglesSlot />
+      <LinkedDesktopIndicator />
+    </>
+  );
+}
+
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
   const params = useParams({ strict: false }) as { taskId?: string };
@@ -95,59 +102,60 @@ export default function OrgShellLayout() {
 
   return (
     <ThreadManagerProvider>
-      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <div className="flex flex-col h-dvh overflow-hidden">
-          <SidebarLayout
-            className="flex-1 bg-sidebar"
-            style={
-              {
-                "--sidebar-width-icon": "3.5rem",
-              } as Record<string, string>
-            }
-          >
-            <StudioSidebar />
-            <SidebarInset
-              className="flex flex-col"
-              style={{
-                background: "transparent",
-                containerType: "inline-size",
-              }}
+      <Toolbar.Provider>
+        <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
+          <div className="flex flex-col h-dvh overflow-hidden">
+            <SidebarLayout
+              className="flex-1 bg-sidebar"
+              style={
+                {
+                  "--sidebar-width-icon": "3.5rem",
+                } as Record<string, string>
+              }
             >
-              <ChatPrefsProvider>
-                {isMobile ? (
-                  <>
-                    {!hasTaskRoute && <MobileHomeToolbar />}
-                    <Suspense fallback={<RouteFallback />}>
-                      <Outlet />
-                    </Suspense>
-                  </>
-                ) : (
-                  <Toolbar>
-                    <Toolbar.Header>
-                      <Toolbar.LeftColumn>
-                        <Toolbar.Nav />
-                        <SidebarToggleButton />
-                        <Toolbar.TogglesSlot />
-                        <LinkedDesktopIndicator />
-                      </Toolbar.LeftColumn>
-                      <Toolbar.CenterSlot />
-                      <Toolbar.RightColumn>
-                        <Toolbar.TabsSlot />
-                        <Toolbar.RightSlot />
-                      </Toolbar.RightColumn>
-                    </Toolbar.Header>
-                    <div className="flex-1 min-h-0 flex flex-row">
+              <StudioSidebar
+                headerRight={sidebarOpen ? <SidebarNavControls /> : undefined}
+              />
+              <SidebarInset
+                className="flex flex-col"
+                style={{
+                  background: "transparent",
+                  containerType: "inline-size",
+                }}
+              >
+                <ChatPrefsProvider>
+                  {isMobile ? (
+                    <>
+                      {!hasTaskRoute && <MobileHomeToolbar />}
                       <Suspense fallback={<RouteFallback />}>
                         <Outlet />
                       </Suspense>
+                    </>
+                  ) : (
+                    <div className="flex flex-col h-full min-h-0">
+                      <Toolbar.Header>
+                        <Toolbar.LeftColumn>
+                          {!sidebarOpen && <SidebarNavControls />}
+                        </Toolbar.LeftColumn>
+                        <Toolbar.CenterSlot />
+                        <Toolbar.RightColumn>
+                          <Toolbar.TabsSlot />
+                          <Toolbar.RightSlot />
+                        </Toolbar.RightColumn>
+                      </Toolbar.Header>
+                      <div className="flex-1 min-h-0 flex flex-row">
+                        <Suspense fallback={<RouteFallback />}>
+                          <Outlet />
+                        </Suspense>
+                      </div>
                     </div>
-                  </Toolbar>
-                )}
-              </ChatPrefsProvider>
-            </SidebarInset>
-          </SidebarLayout>
-        </div>
-      </SidebarProvider>
+                  )}
+                </ChatPrefsProvider>
+              </SidebarInset>
+            </SidebarLayout>
+          </div>
+        </SidebarProvider>
+      </Toolbar.Provider>
     </ThreadManagerProvider>
   );
 }

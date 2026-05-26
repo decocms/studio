@@ -1,4 +1,5 @@
 import { Suspense, useState } from "react";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import {
   Link,
   useNavigate,
@@ -288,9 +289,6 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
 
-  const compactTriggerClass =
-    "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors";
-
   const handleClose = () => {
     setOpen(false);
     if (isMobile) setOpenMobile(false);
@@ -320,17 +318,15 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
       {isMobile ? (
         <>
           {compact ? (
-            <button
-              type="button"
+            <ToolbarIconButton
               aria-label="Browse agents"
               onClick={() => {
                 track("agent_browser_opened", { surface: "mobile_drawer" });
                 setOpen(true);
               }}
-              className={compactTriggerClass}
             >
               <Plus className="size-4" />
-            </button>
+            </ToolbarIconButton>
           ) : (
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -364,13 +360,9 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
         >
           {compact ? (
             <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label="Browse agents"
-                className={compactTriggerClass}
-              >
+              <ToolbarIconButton aria-label="Browse agents">
                 <Plus className="size-4" />
-              </button>
+              </ToolbarIconButton>
             </PopoverTrigger>
           ) : (
             <SidebarMenuItem>

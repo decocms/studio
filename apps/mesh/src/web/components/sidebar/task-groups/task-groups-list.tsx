@@ -1,20 +1,25 @@
-import { useRef, useState } from "react";
-import {
-  ChevronDown,
-  FilterLines,
-  SearchSm,
-  User02,
-  Users03,
-} from "@untitledui/icons";
+import { useRef, useState, type ReactNode } from "react";
+import { ChevronDown, FilterLines, SearchSm } from "@untitledui/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@deco/ui/components/popover.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
 import { useSidebar } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import {
@@ -50,15 +55,21 @@ import {
   type StudioPackChecklistItem,
   useStudioPackChecklists,
 } from "@/web/layouts/tasks-panel/use-studio-pack-checklists";
+import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { BrowseAgentsButton } from "../browse-agents-button";
 import { CollapsedGroupPopover } from "./collapsed-group-popover";
-import { groupThreadsByVirtualMcp } from "./group-threads";
+import {
+  groupThreadsByVirtualMcp,
+  groupThreadsByStatus,
+} from "./group-threads";
 import { stabilizeGroupOrder } from "./stable-order";
-import { TaskGroup } from "./task-group";
+import { TaskGroup, StatusGroup } from "./task-group";
 
 type TypeFilter = "all" | "manual" | "automation";
 type MemberFilter = "all" | "mine";
 type ViewMode = "suggestions" | "all";
+type GroupBy = "agent" | "status";
 
 const TYPE_LABELS: Record<TypeFilter, string> = {
   all: "All tasks",
@@ -74,6 +85,11 @@ const MEMBER_LABELS: Record<MemberFilter, string> = {
 const VIEW_MODE_LABELS: Record<ViewMode, string> = {
   suggestions: "Up next",
   all: "All",
+};
+
+const GROUP_BY_LABELS: Record<GroupBy, string> = {
+  agent: "Agent",
+  status: "Status",
 };
 
 export function TaskGroupsList() {
@@ -106,6 +122,7 @@ export function TaskGroupsList() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
   const [viewMode, setViewMode] = useState<ViewMode>("suggestions");
+  const [groupBy, setGroupBy] = useState<GroupBy>("agent");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
@@ -172,6 +189,19 @@ export function TaskGroupsList() {
   const handleNewInGroup = (virtualMcpId: string) => {
     track("sidebar_group_new_clicked", { virtual_mcp_id: virtualMcpId });
     createNewTask(virtualMcpId);
+  };
+
+  const navigateToAgent = useNavigateToAgent();
+  const handleShowSettings = (virtualMcpId: string) => {
+    track("sidebar_group_settings_clicked", { virtual_mcp_id: virtualMcpId });
+    navigateToAgent(virtualMcpId, { search: { main: "instructions" } });
+  };
+
+  const handleHideGroup = (virtualMcpId: string) => {
+    track("sidebar_group_hide_clicked", { virtual_mcp_id: virtualMcpId });
+    const group = groups.find((g) => g.virtualMcpId === virtualMcpId);
+    if (!group) return;
+    for (const t of group.threads) hide(t.id);
   };
 
   function handleSuggestionClick(s: SuggestedAction) {
@@ -251,7 +281,7 @@ export function TaskGroupsList() {
 
   if (isCollapsed) {
     return (
-      <div className="flex flex-col min-h-0 px-1 py-1 gap-1.5 overflow-y-auto">
+      <div className="flex flex-col min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {groups.map((group) => {
           const filtered = typeFiltered(memberFiltered(group.threads));
           const dimmed = filtersActive && filtered.length === 0;
@@ -306,80 +336,114 @@ export function TaskGroupsList() {
           </DropdownMenuContent>
         </DropdownMenu>
         <div className="flex items-center gap-0.5">
-          <button
-            type="button"
+          <ToolbarIconButton
             aria-label="Search threads"
             onClick={() => {
               track("tasks_panel_search_opened");
               setSearchEverOpened(true);
               setSearchOpen(true);
             }}
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
           >
             <SearchSm size={14} />
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
+          </ToolbarIconButton>
+          <Popover>
+            <PopoverTrigger asChild>
+              <ToolbarIconButton
                 aria-label="Filter tasks"
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors",
-                  filtersActive && "bg-accent text-foreground",
-                )}
+                active={filtersActive}
               >
                 <FilterLines size={14} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuRadioGroup
-                value={memberFilter}
-                onValueChange={(v) => {
-                  const next = v as MemberFilter;
-                  if (next !== memberFilter) {
-                    track("tasks_panel_member_filter_changed", {
-                      to_value: next,
-                    });
-                  }
-                  setMemberFilter(next);
-                }}
-              >
-                {(Object.keys(MEMBER_LABELS) as MemberFilter[]).map((opt) => (
-                  <DropdownMenuRadioItem key={opt} value={opt}>
-                    {opt === "mine" ? (
-                      <User02 size={14} className="mr-2" />
-                    ) : (
-                      <Users03 size={14} className="mr-2" />
-                    )}
-                    {MEMBER_LABELS[opt]}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup
-                value={typeFilter}
-                onValueChange={(v) => {
-                  const next = v as TypeFilter;
-                  if (next !== typeFilter) {
-                    track("tasks_panel_filter_changed", { to_value: next });
-                  }
-                  setTypeFilter(next);
-                }}
-              >
-                {(Object.keys(TYPE_LABELS) as TypeFilter[]).map((opt) => (
-                  <DropdownMenuRadioItem key={opt} value={opt}>
-                    {TYPE_LABELS[opt]}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </ToolbarIconButton>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              sideOffset={8}
+              collisionPadding={16}
+              className="w-72 p-3"
+            >
+              <div className="flex flex-col gap-2">
+                <FilterRow label="Group by">
+                  <Select
+                    value={groupBy}
+                    onValueChange={(v) => setGroupBy(v as GroupBy)}
+                  >
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map(
+                        (opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {GROUP_BY_LABELS[opt]}
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
+                </FilterRow>
+                <FilterRow label="Members">
+                  <Select
+                    value={memberFilter}
+                    onValueChange={(v) => {
+                      const next = v as MemberFilter;
+                      if (next !== memberFilter) {
+                        track("tasks_panel_member_filter_changed", {
+                          to_value: next,
+                        });
+                      }
+                      setMemberFilter(next);
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(MEMBER_LABELS) as MemberFilter[]).map(
+                        (opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {MEMBER_LABELS[opt]}
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
+                </FilterRow>
+                <FilterRow label="Type">
+                  <Select
+                    value={typeFilter}
+                    onValueChange={(v) => {
+                      const next = v as TypeFilter;
+                      if (next !== typeFilter) {
+                        track("tasks_panel_filter_changed", {
+                          to_value: next,
+                        });
+                      }
+                      setTypeFilter(next);
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(TYPE_LABELS) as TypeFilter[]).map(
+                        (opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {TYPE_LABELS[opt]}
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
+                </FilterRow>
+              </div>
+            </PopoverContent>
+          </Popover>
           <BrowseAgentsButton compact />
         </div>
       </div>
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5 -mr-2 pr-2"
       >
         {viewMode === "suggestions" ? (
           <div className="flex flex-col gap-2 pt-1 px-1 pb-2">
@@ -427,6 +491,27 @@ export function TaskGroupsList() {
                   </button>
                 ))}
           </div>
+        ) : groupBy === "status" ? (
+          <>
+            {groupThreadsByStatus(
+              typeFiltered(memberFiltered(sortedThreads)),
+            ).map((group) => (
+              <StatusGroup
+                key={group.status}
+                status={group.status}
+                threads={group.threads}
+                activeTaskId={activeTaskId}
+                onSelectTask={(t) => setTaskId(t.id, t.virtual_mcp_id)}
+                onArchiveTask={handleArchive}
+              />
+            ))}
+            {isFetchingMore && (
+              <div className="py-2 text-center text-xs text-muted-foreground">
+                Loading more…
+              </div>
+            )}
+            {hasMore && <div ref={lastElementRef} aria-hidden />}
+          </>
         ) : (
           <>
             {groups.map((group) => {
@@ -446,6 +531,8 @@ export function TaskGroupsList() {
                   onSelectTask={(t) => setTaskId(t.id, t.virtual_mcp_id)}
                   onArchiveTask={handleArchive}
                   onNewTaskInGroup={handleNewInGroup}
+                  onShowSettings={handleShowSettings}
+                  onHideGroup={handleHideGroup}
                   dimmed={dimmed}
                 />
               );
@@ -490,6 +577,21 @@ export function TaskGroupsList() {
           if (!open) invalidateChecklists();
         }}
       />
+    </div>
+  );
+}
+
+function FilterRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <div className="w-36 shrink-0">{children}</div>
     </div>
   );
 }

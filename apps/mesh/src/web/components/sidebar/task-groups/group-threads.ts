@@ -1,4 +1,5 @@
 import type { Task } from "@/web/components/chat/task/types";
+import type { StatusKey } from "@/web/lib/task-status";
 
 /** Synthetic group key for threads with no virtual_mcp_id (tool-call runs etc). */
 export const TOOL_CALL_RUNS_GROUP_KEY = "__tool_call_runs__";
@@ -8,6 +9,35 @@ export interface TaskGroupData {
   threads: Task[];
   /** Latest updated_at in the group (ISO). Empty string for empty groups. */
   latestUpdatedAt: string;
+}
+
+export interface StatusGroupData {
+  status: StatusKey;
+  threads: Task[];
+}
+
+export const STATUS_GROUP_ORDER: StatusKey[] = [
+  "requires_action",
+  "in_progress",
+  "failed",
+  "expired",
+  "completed",
+];
+
+export function groupThreadsByStatus(threads: Task[]): StatusGroupData[] {
+  const byStatus = new Map<StatusKey, Task[]>(
+    STATUS_GROUP_ORDER.map((s) => [s, []]),
+  );
+
+  for (const thread of threads) {
+    const key = (thread.status ?? "completed") as StatusKey;
+    (byStatus.get(key) ?? byStatus.get("completed")!).push(thread);
+  }
+
+  return STATUS_GROUP_ORDER.map((status) => ({
+    status,
+    threads: byStatus.get(status)!,
+  })).filter((g) => g.threads.length > 0);
 }
 
 /**

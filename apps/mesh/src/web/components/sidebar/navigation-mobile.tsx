@@ -103,6 +103,8 @@ function MobileSectionRenderer({
           </SidebarGroupContent>
         </SidebarGroup>
       );
+    case "custom":
+      return section.content;
   }
 }
 

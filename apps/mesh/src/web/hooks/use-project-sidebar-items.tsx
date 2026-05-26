@@ -5,6 +5,13 @@ import type {
 } from "@/web/components/sidebar/types";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Home01 } from "@untitledui/icons";
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  useSidebar,
+} from "@deco/ui/components/sidebar.tsx";
+import { BrowseAgentsButton } from "@/web/components/sidebar/browse-agents-button";
 
 export function useProjectSidebarItems(): SidebarSection[] {
   const { org } = useProjectContext();
@@ -12,6 +19,8 @@ export function useProjectSidebarItems(): SidebarSection[] {
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
   const slug = org.slug;
+  const { state, isMobile } = useSidebar();
+  const isCollapsed = !isMobile && state === "collapsed";
 
   const homeItem: NavigationSidebarItem = {
     key: "home",
@@ -23,5 +32,25 @@ export function useProjectSidebarItems(): SidebarSection[] {
     },
   };
 
-  return [{ type: "items", items: [homeItem] }];
+  const sections: SidebarSection[] = [
+    { type: "items", items: [homeItem] },
+  ];
+
+  if (isCollapsed) {
+    sections.push({
+      type: "custom",
+      key: "new-task",
+      content: (
+        <SidebarGroup className="pt-0 pr-0 pb-0 pl-0">
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-1.5">
+              <BrowseAgentsButton />
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ),
+    });
+  }
+
+  return sections;
 }

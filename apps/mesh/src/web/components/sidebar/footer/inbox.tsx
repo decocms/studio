@@ -32,6 +32,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { track } from "@/web/lib/posthog-client";
 
 interface Invitation {
@@ -196,16 +197,12 @@ function InboxIconButton() {
     <InboxPopover>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label="Inbox"
-            className="relative flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-          >
+          <ToolbarIconButton aria-label="Inbox">
             <Inbox01 className="size-4" />
             {pendingInvitations.length > 0 && (
               <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 pointer-events-none" />
             )}
-          </button>
+          </ToolbarIconButton>
         </TooltipTrigger>
         <TooltipContent side="top">Inbox</TooltipContent>
       </Tooltip>
@@ -230,6 +227,37 @@ function ConnectionsFullButton() {
         <ZapSquare />
         <span>Connections</span>
       </SidebarMenuButton>
+      <AddConnectionDialog
+        mode="browse"
+        open={open}
+        onOpenChange={setOpen}
+        defaultTab="all"
+      />
+    </>
+  );
+}
+
+function ConnectionsIconButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <ToolbarIconButton
+            aria-label="Connections"
+            onClick={() => {
+              track("connections_dialog_opened", {
+                source: "sidebar_footer",
+                mode: "browse",
+              });
+              setOpen(true);
+            }}
+          >
+            <ZapSquare className="size-4" />
+          </ToolbarIconButton>
+        </TooltipTrigger>
+        <TooltipContent side="top">Connections</TooltipContent>
+      </Tooltip>
       <AddConnectionDialog
         mode="browse"
         open={open}
@@ -265,8 +293,7 @@ function SettingsIconButton() {
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
-        <button
-          type="button"
+        <ToolbarIconButton
           aria-label="Settings"
           onClick={() =>
             navigate({
@@ -274,10 +301,9 @@ function SettingsIconButton() {
               params: { org: org.slug },
             })
           }
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         >
           <Settings02 className="size-4" />
-        </button>
+        </ToolbarIconButton>
       </TooltipTrigger>
       <TooltipContent side="top">Settings</TooltipContent>
     </Tooltip>
@@ -310,16 +336,7 @@ export function SidebarInboxFooter() {
   }
 
   return (
-    <SidebarFooter className="px-2 pb-3 gap-1">
-      <div className="flex items-center gap-1">
-        <div className="flex-1 min-w-0">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <ConnectionsFullButton />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </div>
-      </div>
+    <SidebarFooter className="px-2 pb-3">
       <div className="flex items-center gap-1">
         <div className="flex-1 min-w-0">
           <SidebarMenu>
@@ -330,6 +347,7 @@ export function SidebarInboxFooter() {
         </div>
         <SettingsIconButton />
         <InboxIconButton />
+        <ConnectionsIconButton />
       </div>
     </SidebarFooter>
   );

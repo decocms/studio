@@ -4,7 +4,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { track } from "@/web/lib/posthog-client";
 
 export interface ToggleButtonsProps {
@@ -12,12 +12,6 @@ export interface ToggleButtonsProps {
   toggleChat: () => void;
   onNewTask?: () => void;
 }
-
-const TOGGLE_BASE =
-  "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors";
-const TOGGLE_ACTIVE = "bg-sidebar-accent text-sidebar-foreground";
-const TOGGLE_INACTIVE =
-  "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground";
 
 export function ToggleButtons({
   chatOpen,
@@ -28,8 +22,7 @@ export function ToggleButtons({
     <>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
-          <button
-            type="button"
+          <ToolbarIconButton
             onClick={() => {
               track("agent_toolbar_toggled", {
                 button: "chat",
@@ -38,26 +31,20 @@ export function ToggleButtons({
               toggleChat();
             }}
             aria-pressed={chatOpen}
-            className={cn(
-              TOGGLE_BASE,
-              chatOpen ? TOGGLE_ACTIVE : TOGGLE_INACTIVE,
-            )}
+            aria-label="Chat"
+            active={chatOpen}
           >
             <MessageCircle01 size={16} />
-          </button>
+          </ToolbarIconButton>
         </TooltipTrigger>
         <TooltipContent side="bottom">Chat</TooltipContent>
       </Tooltip>
       {onNewTask && (
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onNewTask}
-              className={cn(TOGGLE_BASE, TOGGLE_INACTIVE)}
-            >
+            <ToolbarIconButton onClick={onNewTask} aria-label="New task">
               <Edit05 size={16} />
-            </button>
+            </ToolbarIconButton>
           </TooltipTrigger>
           <TooltipContent side="bottom">New task</TooltipContent>
         </Tooltip>
