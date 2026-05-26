@@ -18,7 +18,7 @@ describe("buildConnectionsBlock", () => {
     expect(buildConnectionsBlock([], titleMap([]))).toBeNull();
   });
 
-  test("groups tools by connection and emits short names", () => {
+  test("groups tools by connection and emits their safe names", () => {
     const result = buildConnectionsBlock(
       [
         tool("send_email", "send_email", "conn_gmail"),
@@ -38,7 +38,7 @@ describe("buildConnectionsBlock", () => {
     expect(result).toContain("enable_tool");
   });
 
-  test("strips the connection-id prefix from collision-suffixed safe names", () => {
+  test("emits collision-prefixed safe names verbatim", () => {
     const result = buildConnectionsBlock(
       [
         tool("send_email", "conn_gmail_send_email", "conn_gmail"),
@@ -49,8 +49,8 @@ describe("buildConnectionsBlock", () => {
         ["conn_outlook", "Outlook"],
       ]),
     );
-    expect(result).toContain(`Gmail,send_email`);
-    expect(result).toContain(`Outlook,send_email`);
+    expect(result).toContain(`Gmail,conn_gmail_send_email`);
+    expect(result).toContain(`Outlook,conn_outlook_send_email`);
   });
 
   test("falls back to the connection id when no title is mapped", () => {

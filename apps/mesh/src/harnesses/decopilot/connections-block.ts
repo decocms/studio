@@ -18,10 +18,11 @@ export interface ConnectionsBlockTool {
 }
 
 const USAGE = `<connections-usage>
-Tools live inside connections. Activate them with enable_tool before
-calling: enable_tool({ tools: ["send_email"] }). Pass short tool names —
-if a short name is ambiguous across connections, the call fails with a
-list of candidates; pass the fully-qualified id to disambiguate. Never
+Tools live inside connections. Before calling a tool, check your active
+tools list — if the tool is already there (or listed in
+<currently-enabled-tools>), call it directly. Otherwise activate it with
+enable_tool, passing the tool name exactly as listed in
+<available-connections>: enable_tool({ tools: ["send_email"] }). Never
 guess tool names or parameters — only call tools that appear above.
 
 Use sandbox to run JavaScript combining multiple enabled tools:
@@ -34,7 +35,8 @@ export default async function(tools) {
 
 On errors:
 - "Not connected" / "401" — the underlying service may need re-authentication
-- "Tool not found" — re-check <available-connections> and enable the tool
+- "Tool not found" — check the exact name in your active tools list. Only
+  call enable_tool again if the tool is not present there at all.
 - Schema validation — re-check the tool's input schema
 </connections-usage>`;
 
@@ -51,34 +53,33 @@ function csvField(s: string | null | undefined): string {
   return s;
 }
 
-function shortNameOf(safeName: string, connectionId: string): string {
-  const prefix = `${connectionId}_`;
-  return safeName.startsWith(prefix) ? safeName.slice(prefix.length) : safeName;
-}
-
 export function buildConnectionsBlock(
   tools: ConnectionsBlockTool[],
   connectionTitleMap: Map<string, string>,
 ): string | null {
   if (tools.length === 0) return null;
 
-  const groups = new Map<string, { title: string; shortNames: string[] }>();
+  const groups = new Map<string, { title: string; toolNames: string[] }>();
   for (const t of tools) {
     const title = connectionTitleMap.get(t.connectionId) ?? t.connectionId;
     let group = groups.get(t.connectionId);
     if (!group) {
-      group = { title, shortNames: [] };
+      group = { title, toolNames: [] };
       groups.set(t.connectionId, group);
     }
-    group.shortNames.push(shortNameOf(t.safeName, t.connectionId));
+    // Emit the safe name verbatim — this is the exact identifier the
+    // model will see in `activeTools` after enable_tool, so showing it
+    // here lets the model copy-paste without translating between a
+    // short name and a collision-prefixed safe name.
+    group.toolNames.push(t.safeName);
   }
 
   const sorted = [...groups.values()].sort((a, b) =>
     a.title.localeCompare(b.title),
   );
 
-  const rows = sorted.map(({ title, shortNames }) => {
-    const joined = shortNames.join("; ");
+  const rows = sorted.map(({ title, toolNames }) => {
+    const joined = toolNames.join("; ");
     return `${csvField(title)},${csvField(joined)}`;
   });
 
