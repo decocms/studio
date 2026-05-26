@@ -8,8 +8,8 @@
 
 import { randomUUID } from "node:crypto";
 
-/** 25 MB. Configurable per-config later if needed. */
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+/** 100 MB. Configurable per-config later if needed. */
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 /**
  * Allowed Content-Types. Mirrored from the picker dialog hint so user error

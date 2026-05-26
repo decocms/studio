@@ -65,6 +65,10 @@ export interface UploadResult {
  * per-bucket CORS configuration on every customer bucket (S3, GCS, R2),
  * which is too much friction for a CMS. The proxy streams through mesh
  * once and avoids the cross-origin problem entirely.
+ *
+ * The file is sent as the raw POST body (NOT multipart) so the server
+ * can stream it straight to S3 via `@aws-sdk/lib-storage` without ever
+ * buffering the full payload — necessary for the 100 MB cap.
  */
 export function useFilePickerUpload() {
   const { org } = useProjectContext();
@@ -74,12 +78,15 @@ export function useFilePickerUpload() {
       configId: string;
       file: File;
     }): Promise<UploadResult> => {
-      const form = new FormData();
-      form.append("file", input.file);
+      const contentType = input.file.type || "application/octet-stream";
 
       const response = await fetch(
-        `/api/${encodeURIComponent(org.slug)}/file-configs/${encodeURIComponent(input.configId)}/upload`,
-        { method: "POST", body: form },
+        `/api/${encodeURIComponent(org.slug)}/file-configs/${encodeURIComponent(input.configId)}/upload?filename=${encodeURIComponent(input.file.name)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          body: input.file,
+        },
       );
 
       if (!response.ok) {

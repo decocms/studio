@@ -1,18 +1,27 @@
 /**
  * File upload proxy
  *
- * `POST /api/:org/file-configs/:id/upload` accepts a multipart/form-data
- * body and streams the file to the configured S3 bucket using the
- * server-side decrypted credentials. This bypasses the browser→S3 CORS
- * requirement that presigned PUTs hit on non-AWS providers (GCS, R2,
- * MinIO). Trade-off: every upload streams through mesh — capped at 25MB
- * per the existing upload policy.
+ * `POST /api/:org/file-configs/:id/upload?filename=<encoded>` accepts the
+ * file bytes as the raw request body (NOT multipart) and streams them
+ * through `@aws-sdk/lib-storage` `Upload` to the configured bucket using
+ * the server-side decrypted credentials.
+ *
+ * Why raw body and not multipart? Hono's `c.req.formData()` materializes
+ * the entire multipart body before yielding the file, which defeats the
+ * point of streaming for the 100 MB cap. Accepting the file directly as
+ * the POST body keeps memory bounded.
+ *
+ * Why `Upload` (lib-storage) and not a single `PutObjectCommand`? Upload
+ * automatically switches to multipart for large files, uploads parts in
+ * parallel, and survives transient part failures — none of which a
+ * single-shot PutObject offers when the SDK can't replay a stream.
  *
  * The presigned-PUT path (`FILE_PRESIGN_UPLOAD` MCP tool) remains
  * available for non-browser callers that can ignore CORS.
  */
 
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { MeshContext } from "@/core/mesh-context";
@@ -46,39 +55,39 @@ export const createFileUploadRoutes = () => {
       throw new HTTPException(400, { message: "Missing config id" });
     }
 
-    const contentLength = Number(c.req.header("content-length") ?? "0");
-    if (contentLength > MAX_UPLOAD_BYTES * 1.1) {
-      // Hard cap on the wire — leave 10% headroom for multipart overhead;
-      // the per-file check below enforces the real limit.
-      throw new HTTPException(413, { message: "Payload too large" });
-    }
-
-    let formData: FormData;
-    try {
-      formData = await c.req.formData();
-    } catch (err) {
+    const filename = c.req.query("filename");
+    if (!filename) {
       throw new HTTPException(400, {
-        message: `Invalid multipart body: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        message: "Missing `filename` query parameter",
       });
     }
 
-    const file = formData.get("file");
-    if (!(file instanceof File)) {
-      throw new HTTPException(400, {
-        message: "Missing `file` field in multipart body",
+    const contentType =
+      c.req.header("content-type") || "application/octet-stream";
+    const contentLengthHeader = c.req.header("content-length");
+    const contentLength = contentLengthHeader
+      ? Number(contentLengthHeader)
+      : NaN;
+    if (!Number.isFinite(contentLength) || contentLength <= 0) {
+      throw new HTTPException(411, {
+        message: "Content-Length required and must be a positive number",
       });
     }
 
-    const contentType = file.type || "application/octet-stream";
     try {
-      assertAllowed(contentType, file.size);
+      assertAllowed(contentType, contentLength);
     } catch (err) {
       if (err instanceof UploadRejected) {
-        throw new HTTPException(400, { message: err.message });
+        throw new HTTPException(contentLength > MAX_UPLOAD_BYTES ? 413 : 400, {
+          message: err.message,
+        });
       }
       throw err;
+    }
+
+    const body = c.req.raw.body;
+    if (!body) {
+      throw new HTTPException(400, { message: "Empty request body" });
     }
 
     const fileCfg = await ctx.storage.orgFileConfigs.resolveById(
@@ -88,7 +97,7 @@ export const createFileUploadRoutes = () => {
 
     const key = buildObjectKey({
       prefix: fileCfg.info.prefix,
-      filename: file.name,
+      filename,
     });
 
     const client = new S3Client({
@@ -103,23 +112,35 @@ export const createFileUploadRoutes = () => {
       responseChecksumValidation: "WHEN_REQUIRED",
     });
 
-    // For 25MB files arrayBuffer is fine; if we ever raise the cap we'd
-    // want a streaming PutObject (or multipart upload) here.
-    const buffer = new Uint8Array(await file.arrayBuffer());
-    await client.send(
-      new PutObjectCommand({
-        Bucket: fileCfg.info.bucket,
-        Key: key,
-        Body: buffer,
-        ContentType: contentType,
-      }),
-    );
+    try {
+      const upload = new Upload({
+        client,
+        params: {
+          Bucket: fileCfg.info.bucket,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+          ContentLength: contentLength,
+        },
+        // 8 MB per part keeps part count reasonable for 100 MB uploads
+        // (~13 parts) while staying well above the 5 MB S3 minimum.
+        partSize: 8 * 1024 * 1024,
+        queueSize: 4,
+      });
+      await upload.done();
+    } catch (err) {
+      throw new HTTPException(502, {
+        message: `Upload to bucket failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
+    }
 
     return c.json({
       key,
       publicUrl: buildPublicUrl(fileCfg.info, key),
       contentType,
-      size: file.size,
+      size: contentLength,
     });
   });
 
