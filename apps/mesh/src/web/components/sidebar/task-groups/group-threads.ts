@@ -58,6 +58,10 @@ export function groupThreadsByVirtualMcp(
   const byId = new Map<string, TaskGroupData>();
 
   for (const thread of threads) {
+    // Defensive: existing orgs may have dangling pre-seeded welcome threads
+    // from the old studio-pack scaffolding. Those rows are harmless but
+    // would otherwise surface as empty rows under each studio-pack agent.
+    if (thread.id.startsWith("thrd_welcome_")) continue;
     const key = thread.virtual_mcp_id ?? TOOL_CALL_RUNS_GROUP_KEY;
     const existing = byId.get(key);
     if (existing) {

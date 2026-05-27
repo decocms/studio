@@ -124,3 +124,36 @@ describe("groupThreadsByVirtualMcp", () => {
     expect(result).toEqual([]);
   });
 });
+
+describe("groupThreadsByVirtualMcp - dangling welcome threads", () => {
+  it("filters out threads whose id starts with thrd_welcome_", () => {
+    const result = groupThreadsByVirtualMcp(
+      [
+        t({
+          id: "thrd_welcome_studio-brand-manager_org-1",
+          virtual_mcp_id: "studio-brand-manager_org-1",
+        }),
+        t({
+          id: "real-thread",
+          virtual_mcp_id: "studio-brand-manager_org-1",
+        }),
+      ],
+      null,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]?.threads.map((th) => th.id)).toEqual(["real-thread"]);
+  });
+
+  it("hides the group entirely when only welcome threads remain", () => {
+    const result = groupThreadsByVirtualMcp(
+      [
+        t({
+          id: "thrd_welcome_studio-store-manager_org-1",
+          virtual_mcp_id: "studio-store-manager_org-1",
+        }),
+      ],
+      null,
+    );
+    expect(result).toHaveLength(0);
+  });
+});
