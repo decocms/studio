@@ -78,6 +78,10 @@ export const KEYS = {
   studioPackChecklists: (orgSlug: string) =>
     ["studio-pack-checklists", orgSlug] as const,
 
+  // Home next-actions — prompts + dialog actions surfaced under Chat.Input.
+  homeNextActions: (orgSlug: string) =>
+    ["home-next-actions", orgSlug] as const,
+
   // Allowed models for current user (scoped by organization)
   allowedModels: (locator: ProjectLocator) =>
     [locator, "allowed-models"] as const,
