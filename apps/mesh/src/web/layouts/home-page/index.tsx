@@ -21,6 +21,7 @@ import {
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { NextActionsRow } from "@/web/components/home/next-actions-row";
 import { HomeBackground } from "./background";
 
 const DECO_BANNER_GRADIENT = [
@@ -144,6 +145,7 @@ export function HomePage() {
           </div>
           <div className="relative w-full flex flex-col gap-4 pb-8 px-4">
             <Chat.Input showConnectionsBanner />
+            <NextActionsRow />
             {isDecoUser && (
               <ImportDecoSiteBanner onClick={() => setImportOpen(true)} />
             )}
@@ -171,6 +173,7 @@ export function HomePage() {
                 <Capybara />
                 <Chat.Input showConnectionsBanner />
               </div>
+              <NextActionsRow />
             </div>
           </div>
         </div>
