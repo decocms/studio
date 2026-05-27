@@ -185,10 +185,7 @@ export function TaskGroupsList() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="shrink-0 pl-2 pr-1 h-10 md:h-7 flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
-          Tasks
-        </span>
+      <div className="shrink-0 px-1 h-10 md:h-7 flex items-center justify-between">
         <div className="flex items-center gap-0.5">
           <ToolbarIconButton
             aria-label="Search threads"
@@ -210,7 +207,7 @@ export function TaskGroupsList() {
               </ToolbarIconButton>
             </PopoverTrigger>
             <PopoverContent
-              align="end"
+              align="start"
               sideOffset={8}
               collisionPadding={16}
               className="w-72 p-3"
@@ -290,8 +287,8 @@ export function TaskGroupsList() {
               </div>
             </PopoverContent>
           </Popover>
-          <BrowseAgentsButton compact />
         </div>
+        <BrowseAgentsButton compact />
       </div>
       <div
         ref={scrollRef}
