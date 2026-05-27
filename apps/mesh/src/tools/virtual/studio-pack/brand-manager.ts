@@ -160,7 +160,7 @@ export const brandManagerAgent = {
       // No prompt — the agent's no-brand welcome message is already a
       // state-aware user_ask for the website URL (or "manual"). Autosending
       // a fake user message would only suppress that better ask.
-      action: { kind: "open-agent-thread" },
+      action: { kind: "open-agent-thread", promptName: "brand-manager-set-up" },
       isCompleted: async ({ orgId, ctx }) => {
         const brands = await ctx.storage.brandContext.list(orgId);
         return brands.length > 0;
@@ -171,6 +171,7 @@ export const brandManagerAgent = {
       activeForm: "Completing your brand profile",
       action: {
         kind: "open-agent-thread",
+        promptName: "brand-manager-complete-profile",
         prompt:
           "Help me fill in the rest of my brand profile — logo, colors, and fonts. Check what's already there and ask me about the missing pieces.",
       },
@@ -186,6 +187,7 @@ export const brandManagerAgent = {
       activeForm: "Creating a landing page",
       action: {
         kind: "open-agent-thread",
+        promptName: "brand-manager-create-landing-page",
         prompt:
           "Build me a landing page now using my brand. I'll iterate after I see it.",
       },

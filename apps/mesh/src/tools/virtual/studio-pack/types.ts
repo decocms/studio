@@ -48,7 +48,7 @@ export type ChecklistContext = {
  * recruit flow.
  */
 export type ChecklistItemAction =
-  | { kind: "open-agent-thread"; prompt?: string }
+  | { kind: "open-agent-thread"; promptName: string; prompt?: string }
   | { kind: "github-import" }
   | { kind: "install-github-mcp" }
   | { kind: "add-storefront" }
