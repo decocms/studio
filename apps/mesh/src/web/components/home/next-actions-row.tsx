@@ -38,13 +38,9 @@ function PromptCard({
     <button
       type="button"
       onClick={onClick}
-      className="group/row flex w-72 shrink-0 items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
+      className="group/row flex w-72 grow basis-72 items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <AgentAvatar
-        icon={entry.agentIcon}
-        name={entry.agentName}
-        size="sm+"
-      />
+      <AgentAvatar icon={entry.agentIcon} name={entry.agentName} size="sm+" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="w-full truncate text-xs text-muted-foreground">
           {entry.agentName}
@@ -68,13 +64,9 @@ function DialogCard({
     <button
       type="button"
       onClick={onClick}
-      className="group/row flex w-72 shrink-0 items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
+      className="group/row flex w-72 grow basis-72 items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <AgentAvatar
-        icon={entry.agentIcon}
-        name={entry.agentName}
-        size="sm+"
-      />
+      <AgentAvatar icon={entry.agentIcon} name={entry.agentName} size="sm+" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="w-full truncate text-xs text-muted-foreground">
           {entry.agentName}
@@ -131,11 +123,7 @@ function PromptCardRow({ entries }: { entries: HomePromptEntry[] }) {
   return (
     <>
       {Array.from(byAgent.entries()).map(([agentId, list]) => (
-        <AgentPromptCardGroup
-          key={agentId}
-          agentId={agentId}
-          entries={list}
-        />
+        <AgentPromptCardGroup key={agentId} agentId={agentId} entries={list} />
       ))}
     </>
   );
@@ -179,13 +167,13 @@ export function NextActionsRow() {
 
   return (
     <>
-      <div className="w-full max-w-[672px] mt-4">
-        <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
+      <div className="w-full max-w-5xl mt-4">
+        <div className="flex flex-wrap gap-3">
           {isLoading ? (
             Array.from({ length: 3 }, (_, i) => (
               <div
                 key={`skeleton-${i}`}
-                className="flex w-72 shrink-0 flex-col gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5"
+                className="flex w-72 grow basis-72 flex-col gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5"
               >
                 <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
                 <div className="h-2.5 w-full animate-pulse rounded bg-muted/70" />
