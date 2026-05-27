@@ -584,6 +584,7 @@ export function makeGlobHandler(deps: FsDeps) {
         cwd: searchPath,
         onlyFiles: true,
         followSymlinks: false,
+        dot: true,
       })) {
         if (rel.split("/").some((seg) => GLOB_EXCLUDE_DIRS.has(seg))) continue;
         const abs = path.join(searchPath, rel);

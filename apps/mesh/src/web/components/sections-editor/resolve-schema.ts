@@ -1,3 +1,5 @@
+import { parseSavedBlockSchemaTitle } from "./block-type-utils";
+
 /**
  * Schema resolution for /live/_meta JSON Schemas.
  *
@@ -258,7 +260,17 @@ export function resolveSchema(
           for (const branch of nonNull) {
             const def = resolveRef(branch.$ref as string);
             let rt: string | undefined;
-            if (Array.isArray(def.allOf)) {
+            let title: string | undefined;
+
+            if (typeof def.title === "string") {
+              const saved = parseSavedBlockSchemaTitle(def.title);
+              if (saved) {
+                rt = saved.blockId;
+                title = saved.blockId;
+              }
+            }
+
+            if (!rt && Array.isArray(def.allOf)) {
               for (const part of def.allOf as RawSchema[]) {
                 const props = (part.properties ?? {}) as RawSchema;
                 const rtProp = (props.__resolveType ?? {}) as RawSchema;
@@ -275,13 +287,14 @@ export function resolveSchema(
             anyOfRefs.push({
               resolveType: rt,
               title:
-                typeof def.title === "string"
+                title ??
+                (typeof def.title === "string" && !def.title.startsWith("#")
                   ? def.title
                   : (rt
                       .split("/")
                       .pop()
                       ?.replace(/\.tsx?$/, "")
-                      .replace(/[-_]/g, " ") ?? rt),
+                      .replace(/[-_]/g, " ") ?? rt)),
               description:
                 typeof def.description === "string"
                   ? def.description
@@ -398,5 +411,52 @@ export function resolveSchema(
     type: "object",
     title: typeof merged.title === "string" ? merged.title : undefined,
     properties,
+  };
+}
+
+export interface BlockSchemaMetadata {
+  title?: string;
+  description?: string;
+  icon?: string;
+}
+
+/**
+ * Read block schema metadata (title, description, icon) from live meta.
+ * Mirrors admin's getSchemaIcon / getSchemaTitle / getSchemaDescription.
+ */
+export function resolveBlockSchemaMetadata(
+  resolveType: string,
+  meta: LiveMeta,
+): BlockSchemaMetadata {
+  const globalSchema = meta.schema ?? {};
+  const allBlockTypes = meta.manifest?.blocks ?? {};
+
+  let blockSchema: RawSchema = {};
+  for (const blockTypeMap of Object.values(allBlockTypes)) {
+    if (blockTypeMap[resolveType]) {
+      blockSchema = blockTypeMap[resolveType] as RawSchema;
+      break;
+    }
+  }
+
+  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
+    string,
+    RawSchema
+  >;
+
+  const resolved =
+    typeof blockSchema.$ref === "string"
+      ? (defs[blockSchema.$ref.split("/").pop() ?? ""] ?? {})
+      : { ...globalSchema, ...blockSchema };
+
+  const icon = (resolved as { icon?: string }).icon;
+
+  return {
+    title: typeof resolved.title === "string" ? resolved.title : undefined,
+    description:
+      typeof resolved.description === "string"
+        ? resolved.description
+        : undefined,
+    icon: typeof icon === "string" ? icon : undefined,
   };
 }

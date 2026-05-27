@@ -1,4 +1,6 @@
-import { IFRAME_BOOTSTRAP_SCRIPT } from "../shared";
+import { IFRAME_BOOTSTRAP_SCRIPT, WELL_KNOWN_STARTERS } from "../shared";
+
+export { WELL_KNOWN_STARTERS };
 
 // Per-daemon SSE subscriber cap. Each browser tab opens one
 // /api/.../vm-events SSE upstream to the daemon's /_sandbox/events,
@@ -72,8 +74,6 @@ export const PACKAGE_MANAGER_DAEMON_CONFIG: Record<
     manifests: ["deno.json", "deno.jsonc", "package.json"],
   },
 };
-
-export const WELL_KNOWN_STARTERS = ["dev", "start"] as const;
 
 export function buildDevEnv(
   config: { application?: { port?: number } },

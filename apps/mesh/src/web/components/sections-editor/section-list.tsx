@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { cn } from "@deco/ui/lib/utils.js";
+import { Button } from "@deco/ui/components/button.tsx";
 import {
   Copy01,
   DotsGrid,
@@ -7,10 +8,10 @@ import {
   Eye,
   EyeOff,
   LayoutAlt01,
+  Plus,
   Trash01,
   Zap,
 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,16 +86,9 @@ interface RawSection {
   [key: string]: unknown;
 }
 
-// ─── parsing helpers ───────────────────────────────────────────────────────────
+import { isLazyResolveType } from "./section-lazy";
 
-const LAZY_SUFFIXES = [
-  "website/sections/Rendering/Lazy.tsx",
-  "website/sections/Rendering/SingleDeferred.tsx",
-];
-
-export function isLazyResolveType(rt: string): boolean {
-  return LAZY_SUFFIXES.some((suffix) => rt.endsWith(suffix));
-}
+export { isLazyResolveType } from "./section-lazy";
 
 function labelFromResolveType(rt: string): string {
   const parts = rt.split("/");
@@ -395,6 +389,7 @@ export function SectionList({
   onDelete,
   onDuplicate,
   onMakeReusable,
+  onAddSection,
 }: {
   listKey: string;
   sections: ParsedSection[];
@@ -404,6 +399,7 @@ export function SectionList({
   onDelete: (index: number) => void;
   onDuplicate: (index: number) => void;
   onMakeReusable: (index: number) => void;
+  onAddSection: () => void;
 }) {
   const [entries, setEntries] = useState<SectionEntry[]>(() =>
     createEntries(sections),
@@ -467,9 +463,21 @@ export function SectionList({
 
   if (entries.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground px-2 py-3">
-        No sections in this page.
-      </p>
+      <div className="space-y-2">
+        <p className="px-2 py-3 text-xs text-muted-foreground">
+          No sections in this page.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={onAddSection}
+        >
+          <Plus size={14} />
+          Add section
+        </Button>
+      </div>
     );
   }
 
@@ -515,6 +523,16 @@ export function SectionList({
           ) : null}
         </DragOverlay>
       </DndContext>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-2 w-full"
+        onClick={onAddSection}
+      >
+        <Plus size={14} />
+        Add section
+      </Button>
     </div>
   );
 }
