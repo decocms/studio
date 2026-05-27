@@ -1,17 +1,17 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { FilterLines, SearchSm } from "@untitledui/icons";
 import {
-  FilterLines,
-  LayoutAlt04,
-  MessageCircle01,
-  SearchSm,
-  User01,
-  Zap,
-} from "@untitledui/icons";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@deco/ui/components/popover.tsx";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
 import { useSidebar } from "@deco/ui/components/sidebar.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -45,21 +45,19 @@ type MemberFilter = "all" | "mine";
 type GroupBy = "agent" | "status";
 
 const TYPE_LABELS: Record<TypeFilter, string> = {
-  all: "All types",
-  manual: "Chats only",
-  automation: "Automation only",
+  all: "All tasks",
+  manual: "Chats",
+  automation: "Automation",
 };
 
-const TYPE_CYCLE: Record<TypeFilter, TypeFilter> = {
-  all: "manual",
-  manual: "automation",
-  automation: "all",
+const MEMBER_LABELS: Record<MemberFilter, string> = {
+  all: "All members",
+  mine: "Mine only",
 };
 
-const TYPE_ICONS: Record<TypeFilter, typeof FilterLines> = {
-  all: FilterLines,
-  manual: MessageCircle01,
-  automation: Zap,
+const GROUP_BY_LABELS: Record<GroupBy, string> = {
+  agent: "Agent",
+  status: "Status",
 };
 
 export function TaskGroupsList() {
@@ -189,91 +187,106 @@ export function TaskGroupsList() {
     <div className="flex flex-col h-full min-h-0">
       <div className="shrink-0 px-1 h-10 md:h-7 flex items-center justify-between">
         <div className="flex items-center gap-0.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
+          <ToolbarIconButton
+            aria-label="Search threads"
+            onClick={() => {
+              track("tasks_panel_search_opened");
+              setSearchEverOpened(true);
+              setSearchOpen(true);
+            }}
+          >
+            <SearchSm size={16} />
+          </ToolbarIconButton>
+          <Popover>
+            <PopoverTrigger asChild>
               <ToolbarIconButton
-                aria-label="Search threads"
-                onClick={() => {
-                  track("tasks_panel_search_opened");
-                  setSearchEverOpened(true);
-                  setSearchOpen(true);
-                }}
+                aria-label="Filter tasks"
+                active={filtersActive}
               >
-                <SearchSm size={16} />
+                <FilterLines size={16} />
               </ToolbarIconButton>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Search threads</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToolbarIconButton
-                aria-label={
-                  groupBy === "status" ? "Group by agent" : "Group by status"
-                }
-                aria-pressed={groupBy === "status"}
-                active={groupBy === "status"}
-                onClick={() => {
-                  const next: GroupBy =
-                    groupBy === "status" ? "agent" : "status";
-                  track("tasks_panel_group_by_changed", { to_value: next });
-                  setGroupBy(next);
-                }}
-              >
-                <LayoutAlt04 size={16} />
-              </ToolbarIconButton>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {groupBy === "status" ? "Grouped by status" : "Grouped by agent"}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToolbarIconButton
-                aria-label={
-                  memberFilter === "mine"
-                    ? "Show all members"
-                    : "Show mine only"
-                }
-                aria-pressed={memberFilter === "mine"}
-                active={memberFilter === "mine"}
-                onClick={() => {
-                  const next: MemberFilter =
-                    memberFilter === "mine" ? "all" : "mine";
-                  track("tasks_panel_member_filter_changed", {
-                    to_value: next,
-                  });
-                  setMemberFilter(next);
-                }}
-              >
-                <User01 size={16} />
-              </ToolbarIconButton>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {memberFilter === "mine" ? "Mine only" : "All members"}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToolbarIconButton
-                aria-label={`Type: ${TYPE_LABELS[typeFilter]}`}
-                aria-pressed={typeFilter !== "all"}
-                active={typeFilter !== "all"}
-                onClick={() => {
-                  const next = TYPE_CYCLE[typeFilter];
-                  track("tasks_panel_filter_changed", { to_value: next });
-                  setTypeFilter(next);
-                }}
-              >
-                {(() => {
-                  const Icon = TYPE_ICONS[typeFilter];
-                  return <Icon size={16} />;
-                })()}
-              </ToolbarIconButton>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {TYPE_LABELS[typeFilter]}
-            </TooltipContent>
-          </Tooltip>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              sideOffset={8}
+              collisionPadding={16}
+              className="w-72 p-3"
+            >
+              <div className="flex flex-col gap-2">
+                <FilterRow label="Group by">
+                  <Select
+                    value={groupBy}
+                    onValueChange={(v) => setGroupBy(v as GroupBy)}
+                  >
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map(
+                        (opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {GROUP_BY_LABELS[opt]}
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
+                </FilterRow>
+                <FilterRow label="Members">
+                  <Select
+                    value={memberFilter}
+                    onValueChange={(v) => {
+                      const next = v as MemberFilter;
+                      if (next !== memberFilter) {
+                        track("tasks_panel_member_filter_changed", {
+                          to_value: next,
+                        });
+                      }
+                      setMemberFilter(next);
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(MEMBER_LABELS) as MemberFilter[]).map(
+                        (opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {MEMBER_LABELS[opt]}
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
+                </FilterRow>
+                <FilterRow label="Type">
+                  <Select
+                    value={typeFilter}
+                    onValueChange={(v) => {
+                      const next = v as TypeFilter;
+                      if (next !== typeFilter) {
+                        track("tasks_panel_filter_changed", {
+                          to_value: next,
+                        });
+                      }
+                      setTypeFilter(next);
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(TYPE_LABELS) as TypeFilter[]).map((opt) => (
+                        <SelectItem key={opt} value={opt}>
+                          {TYPE_LABELS[opt]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FilterRow>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
         <BrowseAgentsButton compact />
       </div>
@@ -339,6 +352,21 @@ export function TaskGroupsList() {
       {searchEverOpened && (
         <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       )}
+    </div>
+  );
+}
+
+function FilterRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <div className="w-36 shrink-0">{children}</div>
     </div>
   );
 }
