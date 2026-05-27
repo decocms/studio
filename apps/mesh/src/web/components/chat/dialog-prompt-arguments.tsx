@@ -160,9 +160,7 @@ export function PromptArgsDialog({
               <Button
                 type="submit"
                 form={id}
-                disabled={
-                  !form.formState.isValid || form.formState.isSubmitting
-                }
+                disabled={form.formState.isSubmitting}
               >
                 {form.formState.isSubmitting ? (
                   <span className="flex items-center gap-2">
