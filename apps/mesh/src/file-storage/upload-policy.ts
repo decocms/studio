@@ -1,9 +1,17 @@
 /**
  * Server-side upload policy: object key generation + content-type allowlist
- * + size cap. Enforced at presign time so the signature itself constrains
- * what the browser can PUT — even if the client lies about content-type or
- * size after the signature is issued, S3 will reject the upload when the
- * signed parameters don't match the actual request.
+ * + size cap. The active enforcement point is the proxy upload route
+ * (`apps/mesh/src/api/routes/file-uploads.ts`), which:
+ *   - validates the `Content-Type` header against ALLOWED_CONTENT_TYPES
+ *     before reading the body;
+ *   - validates the `Content-Length` header against MAX_UPLOAD_BYTES;
+ *   - wraps the request stream in a counting transform that aborts the
+ *     S3 multipart upload if the actual byte count exceeds the cap (a
+ *     client lying about Content-Length still gets rejected mid-stream).
+ *
+ * The legacy presigned-PUT path (FILE_PRESIGN_UPLOAD) was removed —
+ * if/when it comes back, that handler would re-bake these constraints
+ * into the signed parameters so S3 rejects mismatched uploads itself.
  */
 
 import { randomUUID } from "node:crypto";

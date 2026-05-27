@@ -2,8 +2,10 @@
  * File picker hooks: list objects (via FILE_OBJECTS_LIST MCP tool) and
  * upload through the org-scoped proxy endpoint. Uploads do not use the
  * browser→S3 presigned PUT path because that would require CORS on every
- * customer bucket; instead we POST multipart to mesh and let it stream
- * to S3 server-side.
+ * customer bucket; instead the browser POSTs the raw File as the request
+ * body (NOT multipart — multipart parsing on the server would buffer
+ * the whole payload) and the server streams it through to S3 via
+ * `@aws-sdk/lib-storage`.
  */
 
 import {

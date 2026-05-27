@@ -93,6 +93,32 @@ export const createFileUploadRoutes = () => {
       throw new HTTPException(400, { message: "Empty request body" });
     }
 
+    // Counting transform: the Content-Length header check above is a
+    // client claim. `Upload` from lib-storage doesn't validate the
+    // stream against ContentLength, so a malicious client could lie in
+    // the header and stream past the cap. Pipe through a transform that
+    // tallies bytes and aborts mid-stream if we cross MAX_UPLOAD_BYTES,
+    // which propagates up through `upload.done()` as a thrown error.
+    let bytesRead = 0;
+    let oversizeAborted = false;
+    const guarded = body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          bytesRead += chunk.byteLength;
+          if (bytesRead > MAX_UPLOAD_BYTES) {
+            oversizeAborted = true;
+            controller.error(
+              new UploadRejected(
+                `File too large: stream exceeded ${MAX_UPLOAD_BYTES} bytes.`,
+              ),
+            );
+            return;
+          }
+          controller.enqueue(chunk);
+        },
+      }),
+    );
+
     const fileCfg = await ctx.storage.orgFileConfigs.resolveById(
       configId,
       orgId,
@@ -121,9 +147,12 @@ export const createFileUploadRoutes = () => {
         params: {
           Bucket: fileCfg.info.bucket,
           Key: key,
-          Body: body,
+          Body: guarded,
           ContentType: contentType,
-          ContentLength: contentLength,
+          // Intentionally omit ContentLength: when the client lies in
+          // the header, lib-storage doesn't enforce the stream against
+          // it; relying on the counting transform above is the only
+          // reliable check.
         },
         // 8 MB per part keeps part count reasonable for 100 MB uploads
         // (~13 parts) while staying well above the 5 MB S3 minimum.
@@ -132,6 +161,11 @@ export const createFileUploadRoutes = () => {
       });
       await upload.done();
     } catch (err) {
+      if (oversizeAborted) {
+        throw new HTTPException(413, {
+          message: `File too large: stream exceeded ${MAX_UPLOAD_BYTES} bytes.`,
+        });
+      }
       throw new HTTPException(502, {
         message: `Upload to bucket failed: ${
           err instanceof Error ? err.message : String(err)
@@ -143,7 +177,7 @@ export const createFileUploadRoutes = () => {
       key,
       publicUrl: buildPublicUrl(fileCfg.info, key),
       contentType,
-      size: contentLength,
+      size: bytesRead,
     });
   });
 

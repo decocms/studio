@@ -84,6 +84,20 @@ export function ImageField({
   const upload = useFilePickerUpload();
 
   /**
+   * Reset the load/error tracking when the underlying URL changes. Used
+   * by every code path that swaps the value — input, picker, drop, trash.
+   * Without this, a single failed load would conditionally unmount the
+   * <img> permanently and the field would be stuck on "Preview
+   * unavailable" forever (also why the <img> below has key={strValue}
+   * — belt-and-suspenders).
+   */
+  function setValue(next: string) {
+    setImageLoaded(false);
+    setImageErrored(false);
+    onChange(next);
+  }
+
+  /**
    * Pick which bucket a drop-on-field upload should target.
    *   - 1 config: that one
    *   - 2+ configs: the last-used (from localStorage), if it's still present
@@ -125,7 +139,7 @@ export function ImageField({
         configId: targetConfigId,
         file: list[0]!,
       });
-      onChange(result.publicUrl);
+      setValue(result.publicUrl);
       if (list.length > 1) {
         toast.info(
           `Uploaded ${list[0]!.name}; extra files were ignored (single-select field).`,
@@ -180,6 +194,10 @@ export function ImageField({
             <div className="relative h-40 w-full bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]">
               {!imageErrored && (
                 <img
+                  // Remount whenever the URL changes so onLoad/onError
+                  // wire up fresh for the new src — without this the
+                  // load/error tracking can stick to the prior value.
+                  key={strValue}
                   src={strValue}
                   alt={label}
                   className={cn(
@@ -243,11 +261,7 @@ export function ImageField({
           id={path}
           type="url"
           value={strValue}
-          onChange={(e) => {
-            onChange(e.target.value);
-            setImageLoaded(false);
-            setImageErrored(false);
-          }}
+          onChange={(e) => setValue(e.target.value)}
           placeholder="https://..."
           className="h-9 min-w-0 flex-1"
         />
@@ -266,11 +280,7 @@ export function ImageField({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => {
-              onChange("");
-              setImageLoaded(false);
-              setImageErrored(false);
-            }}
+            onClick={() => setValue("")}
             className="h-9 shrink-0"
             aria-label="Remove image"
           >
@@ -283,7 +293,7 @@ export function ImageField({
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         mode="image"
-        onSelect={(url) => onChange(url)}
+        onSelect={(url) => setValue(url)}
       />
     </div>
   );

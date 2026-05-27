@@ -157,23 +157,30 @@ export async function listObjects(params: {
     }
   }
 
-  // Fallback: walk the broad prefix to top up legacy objects (existing
-  // deco-CMS files that don't have the yyyy/mm shard).
-  let nextCursor: string | null = null;
-  if (seen.size < target) {
-    const res = await client.send(
-      new ListObjectsV2Command({
-        Bucket: params.ctx.info.bucket,
-        Prefix: bucketPrefix || undefined,
-        MaxKeys: target - seen.size,
-      }),
-    );
-    for (const obj of res.Contents ?? []) {
-      if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
-      seen.set(obj.Key, toListedObject(obj, params.ctx));
-    }
-    nextCursor = res.IsTruncated ? (res.NextContinuationToken ?? null) : null;
+  // Broad-prefix probe runs unconditionally — even when year shards
+  // already filled `target` — so we can capture nextCursor and let the
+  // user page into legacy objects that don't follow the yyyy/mm shard
+  // convention. Without this, an active bucket with ≥ target recent
+  // uploads would have its older objects unreachable from the picker.
+  const broadMaxKeys = Math.max(1, target - seen.size);
+  const broadRes = await client.send(
+    new ListObjectsV2Command({
+      Bucket: params.ctx.info.bucket,
+      Prefix: bucketPrefix || undefined,
+      MaxKeys: broadMaxKeys,
+    }),
+  );
+  for (const obj of broadRes.Contents ?? []) {
+    if (seen.size >= target) break;
+    if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
+    // Year-shard keys were already pulled via dedicated probes; skip
+    // them here so we don't dupe items inside the same page response.
+    if (yearShardPrefixes.some((p) => obj.Key!.startsWith(p))) continue;
+    seen.set(obj.Key, toListedObject(obj, params.ctx));
   }
+  const nextCursor = broadRes.IsTruncated
+    ? (broadRes.NextContinuationToken ?? null)
+    : null;
 
   const items = Array.from(seen.values()).sort(byLastModifiedDesc);
   return { items, nextCursor };
