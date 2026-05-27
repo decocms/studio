@@ -1,13 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { ChevronDown, FilterLines, SearchSm } from "@untitledui/icons";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+import { FilterLines, SearchSm } from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
@@ -37,23 +29,6 @@ import { usePanelActions } from "@/web/layouts/shell-layout";
 import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dialog";
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
-import { AgentAvatar } from "@/web/components/agent-icon";
-import { GitHubRepoPicker } from "@/web/components/github-repo-picker";
-import { InstallGitHubMcpDialog } from "@/web/components/install-github-mcp-dialog";
-import { AddStorefrontModal } from "@/web/components/add-storefront-modal";
-import { SetupSiteMonitoringModal } from "@/web/components/setup-site-monitoring-modal";
-import { writeStoredAutosend } from "@/web/lib/autosend";
-import { KEYS } from "@/web/lib/query-keys";
-import {
-  type SuggestedAction,
-  useSuggestedActions,
-} from "@/web/layouts/tasks-panel/use-suggested-actions";
-import {
-  type ChecklistItemAction,
-  type StudioPackChecklist,
-  type StudioPackChecklistItem,
-  useStudioPackChecklists,
-} from "@/web/layouts/tasks-panel/use-studio-pack-checklists";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { BrowseAgentsButton } from "../browse-agents-button";
@@ -67,7 +42,6 @@ import { TaskGroup, StatusGroup } from "./task-group";
 
 type TypeFilter = "all" | "manual" | "automation";
 type MemberFilter = "all" | "mine";
-type ViewMode = "suggestions" | "all";
 type GroupBy = "agent" | "status";
 
 const TYPE_LABELS: Record<TypeFilter, string> = {
@@ -81,11 +55,6 @@ const MEMBER_LABELS: Record<MemberFilter, string> = {
   mine: "Mine only",
 };
 
-const VIEW_MODE_LABELS: Record<ViewMode, string> = {
-  suggestions: "Up next",
-  all: "All",
-};
-
 const GROUP_BY_LABELS: Record<GroupBy, string> = {
   agent: "Agent",
   status: "Status",
@@ -94,7 +63,7 @@ const GROUP_BY_LABELS: Record<GroupBy, string> = {
 export function TaskGroupsList() {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
-  const { org, locator } = useProjectContext();
+  const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
 
   const {
@@ -120,26 +89,10 @@ export function TaskGroupsList() {
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
-  const [viewMode, setViewMode] = useState<ViewMode>("suggestions");
   const [groupBy, setGroupBy] = useState<GroupBy>("agent");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
-  const [githubPickerOpen, setGithubPickerOpen] = useState(false);
-  const [installGithubOpen, setInstallGithubOpen] = useState(false);
-  const [addStorefrontOpen, setAddStorefrontOpen] = useState(false);
-  const [siteMonitoringOpen, setSiteMonitoringOpen] = useState(false);
   const { state: sidebarState } = useSidebar();
-  const queryClient = useQueryClient();
-
-  const { isLoading: isLoadingSuggestions, suggestions } = useSuggestedActions(
-    org.slug,
-    { mine: memberFilter === "mine" },
-  );
-  const { isLoading: isLoadingChecklists, checklists } =
-    useStudioPackChecklists(org.slug);
-  const visibleChecklists = checklists.filter((c) =>
-    c.items.some((item) => !item.completed),
-  );
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastElementRef = useInfiniteScroll(
@@ -203,77 +156,6 @@ export function TaskGroupsList() {
     for (const t of group.threads) hide(t.id);
   };
 
-  function handleSuggestionClick(s: SuggestedAction) {
-    track("tasks_panel_suggestion_clicked", {
-      thread_id: s.thread.id,
-      virtual_mcp_id: s.thread.virtual_mcp_id,
-    });
-    setTaskId(s.thread.id, s.thread.virtual_mcp_id ?? undefined);
-  }
-
-  function handleChecklistItemClick(
-    checklist: StudioPackChecklist,
-    item: StudioPackChecklistItem,
-  ) {
-    track("tasks_panel_studio_pack_item_clicked", {
-      virtual_mcp_id: checklist.agent.id,
-      label: item.label,
-      action_kind: item.action.kind,
-    });
-    dispatchChecklistAction(item.action, checklist.agent.id);
-  }
-
-  function dispatchChecklistAction(
-    action: ChecklistItemAction,
-    agentId: string,
-  ) {
-    switch (action.kind) {
-      case "github-import":
-        setGithubPickerOpen(true);
-        return;
-      case "install-github-mcp":
-        setInstallGithubOpen(true);
-        return;
-      case "add-storefront":
-        setAddStorefrontOpen(true);
-        return;
-      case "configure-github-automations":
-        setAddStorefrontOpen(true);
-        return;
-      case "setup-site-monitoring":
-        setSiteMonitoringOpen(true);
-        return;
-      case "open-agent-thread": {
-        const taskId = `thrd_welcome_${agentId}`;
-        if (action.prompt) {
-          writeStoredAutosend(sessionStorage, locator, taskId, {
-            parts: [{ type: "text", text: action.prompt }],
-          });
-        }
-        navigate({
-          to: "/$org/$taskId",
-          params: { org: org.slug, taskId },
-          search: (prev: Record<string, unknown>) => ({
-            ...prev,
-            virtualmcpid: agentId,
-            ...(action.prompt ? { autosend: "true" } : {}),
-          }),
-        });
-        return;
-      }
-      default: {
-        const _exhaustive: never = action;
-        return _exhaustive;
-      }
-    }
-  }
-
-  function invalidateChecklists() {
-    queryClient.invalidateQueries({
-      queryKey: KEYS.studioPackChecklists(org.slug),
-    });
-  }
-
   const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
 
   const isCollapsed = sidebarState === "collapsed";
@@ -303,37 +185,7 @@ export function TaskGroupsList() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="shrink-0 pl-2 pr-1 h-10 md:h-7 flex items-center justify-between">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label="Switch view"
-              className="flex items-center gap-1 rounded-md px-2 h-10 md:h-7 -ml-1 text-sm md:text-xs font-medium text-muted-foreground outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
-            >
-              <span>{VIEW_MODE_LABELS[viewMode]}</span>
-              <ChevronDown size={12} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuRadioGroup
-              value={viewMode}
-              onValueChange={(v) => {
-                const next = v as ViewMode;
-                if (next !== viewMode) {
-                  track("sidebar_view_mode_changed", { to_value: next });
-                }
-                setViewMode(next);
-              }}
-            >
-              {(Object.keys(VIEW_MODE_LABELS) as ViewMode[]).map((opt) => (
-                <DropdownMenuRadioItem key={opt} value={opt}>
-                  {VIEW_MODE_LABELS[opt]}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <div className="shrink-0 pl-2 pr-1 h-10 md:h-7 flex items-center justify-end">
         <div className="flex items-center gap-0.5">
           <ToolbarIconButton
             aria-label="Search threads"
@@ -442,58 +294,7 @@ export function TaskGroupsList() {
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5 -mr-2 pr-2"
       >
-        {viewMode === "suggestions" ? (
-          <div className="flex flex-col gap-2 pt-1 px-1 pb-2">
-            {visibleChecklists.flatMap((c) =>
-              c.items
-                .filter((item) => !item.completed)
-                .map((item, idx) => (
-                  <ChecklistItemCard
-                    key={`${c.agent.id}-${idx}`}
-                    checklist={c}
-                    item={item}
-                    onClick={() => handleChecklistItemClick(c, item)}
-                  />
-                )),
-            )}
-            {isLoadingSuggestions || isLoadingChecklists
-              ? Array.from({ length: 3 }, (_, i) => (
-                  <div
-                    key={`suggestion-skeleton-${i}`}
-                    className="flex w-full flex-col gap-1.5 rounded-xl border border-border bg-background px-3 py-2.5"
-                  >
-                    <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
-                    <div className="h-2.5 w-full animate-pulse rounded bg-muted/70" />
-                  </div>
-                ))
-              : suggestions.map((s) => (
-                  <button
-                    key={s.thread.id}
-                    type="button"
-                    onClick={() => handleSuggestionClick(s)}
-                    className="group/row flex w-full items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <AgentAvatar
-                      icon={s.icon}
-                      name={s.agent?.name ?? s.thread.title ?? "?"}
-                      size="xs"
-                    />
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      {s.agent && (
-                        <div className="w-full truncate text-xs text-muted-foreground">
-                          {s.agent.name}
-                        </div>
-                      )}
-                      {s.description && (
-                        <div className="line-clamp-2 w-full text-sm font-medium text-foreground">
-                          {s.description}
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                ))}
-          </div>
-        ) : groupBy === "status" ? (
+        {groupBy === "status" ? (
           <>
             {groupThreadsByStatus(
               typeFiltered(memberFiltered(sortedThreads)),
@@ -551,34 +352,6 @@ export function TaskGroupsList() {
       {searchEverOpened && (
         <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       )}
-      <GitHubRepoPicker
-        open={githubPickerOpen}
-        onOpenChange={(open) => {
-          setGithubPickerOpen(open);
-          if (!open) invalidateChecklists();
-        }}
-      />
-      <InstallGitHubMcpDialog
-        open={installGithubOpen}
-        onOpenChange={(open) => {
-          setInstallGithubOpen(open);
-          if (!open) invalidateChecklists();
-        }}
-      />
-      <AddStorefrontModal
-        open={addStorefrontOpen}
-        onOpenChange={(open) => {
-          setAddStorefrontOpen(open);
-          if (!open) invalidateChecklists();
-        }}
-      />
-      <SetupSiteMonitoringModal
-        open={siteMonitoringOpen}
-        onOpenChange={(open) => {
-          setSiteMonitoringOpen(open);
-          if (!open) invalidateChecklists();
-        }}
-      />
     </div>
   );
 }
@@ -595,37 +368,5 @@ function FilterRow({
       <span className="text-sm text-muted-foreground">{label}</span>
       <div className="w-36 shrink-0">{children}</div>
     </div>
-  );
-}
-
-function ChecklistItemCard({
-  checklist,
-  item,
-  onClick,
-}: {
-  checklist: StudioPackChecklist;
-  item: StudioPackChecklistItem;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group/row flex w-full items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5 text-left outline-none transition-colors hover:border-border hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <AgentAvatar
-        icon={checklist.agent.icon}
-        name={checklist.agent.name}
-        size="sm+"
-      />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="w-full truncate text-xs text-muted-foreground">
-          {checklist.agent.name}
-        </div>
-        <div className="line-clamp-2 w-full text-sm font-medium text-foreground">
-          {item.label}
-        </div>
-      </div>
-    </button>
   );
 }
