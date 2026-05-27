@@ -1,11 +1,9 @@
 import { StudioPackAgentId } from "@decocms/mesh-sdk";
 import { hasAnyObject } from "./helpers";
 import type {
-  BuildWelcomeMessage,
   ResolveRuntime,
   StudioPackChecklistItem,
   StudioPackConnectionKey,
-  WelcomeContext,
 } from "./types";
 
 const INSTRUCTIONS_BOOTSTRAP = `<role>
@@ -95,29 +93,12 @@ export const brandManagerAgent = {
     "BRAND_CONTEXT_EXTRACT",
   ] as readonly string[] | null,
   selectedConnections: ["self"] as readonly StudioPackConnectionKey[],
+  selectedPrompts: [
+    "brand-manager-set-up",
+    "brand-manager-complete-profile",
+    "brand-manager-create-landing-page",
+  ] as readonly string[],
   instructions: INSTRUCTIONS_MANAGE,
-  welcomeMessage: (async (ctx: WelcomeContext) => {
-    if (ctx.hasBrandContext) {
-      return [
-        {
-          type: "text",
-          text: "Hi! I'm your Brand Manager. I can review or update your brand context — domain, colors, fonts, logo — and write brand-aligned HTML pages (landing pages, brand kits, one-pagers) that publish automatically with a live preview. What would you like to do?",
-        },
-      ];
-    }
-    return [
-      {
-        type: "tool-user_ask",
-        toolCallId: `call_welcome_brand_${ctx.orgId}`,
-        state: "input-available",
-        input: {
-          prompt:
-            "What's your website URL? I'll extract your logo, colors, fonts, and a brand overview from it. No public site yet? Type 'manual' and we'll set it up together.",
-          type: "text",
-        },
-      },
-    ];
-  }) satisfies BuildWelcomeMessage,
   resolveRuntime: (async ({ orgId, ctx }) => {
     const brands = await ctx.storage.brandContext.list(orgId);
     const active = brands.find((b) => b.isDefault) ?? brands[0];
@@ -160,7 +141,7 @@ export const brandManagerAgent = {
       // No prompt — the agent's no-brand welcome message is already a
       // state-aware user_ask for the website URL (or "manual"). Autosending
       // a fake user message would only suppress that better ask.
-      action: { kind: "open-agent-thread" },
+      action: { kind: "open-agent-thread", promptName: "brand-manager-set-up" },
       isCompleted: async ({ orgId, ctx }) => {
         const brands = await ctx.storage.brandContext.list(orgId);
         return brands.length > 0;
@@ -171,8 +152,7 @@ export const brandManagerAgent = {
       activeForm: "Completing your brand profile",
       action: {
         kind: "open-agent-thread",
-        prompt:
-          "Help me fill in the rest of my brand profile — logo, colors, and fonts. Check what's already there and ask me about the missing pieces.",
+        promptName: "brand-manager-complete-profile",
       },
       isCompleted: async ({ orgId, ctx }) => {
         const brands = await ctx.storage.brandContext.list(orgId);
@@ -186,8 +166,7 @@ export const brandManagerAgent = {
       activeForm: "Creating a landing page",
       action: {
         kind: "open-agent-thread",
-        prompt:
-          "Build me a landing page now using my brand. I'll iterate after I see it.",
+        promptName: "brand-manager-create-landing-page",
       },
       isCompleted: async ({ ctx }) => hasAnyObject(ctx, "pages/"),
     },

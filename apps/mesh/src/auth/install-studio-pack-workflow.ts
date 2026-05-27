@@ -1,6 +1,5 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { getDb } from "@/database";
-import { SqlThreadStorage } from "@/storage/threads";
 import { VirtualMCPStorage } from "@/storage/virtual";
 import {
   STUDIO_PACK_AGENTS,
@@ -21,32 +20,42 @@ async function installStudioPackStep(
 }
 
 /**
- * Create empty thread rows for each Studio Pack agent so the Tasks-panel
- * checklist can navigate to a stable `thrd_welcome_<agentId>` URL. We
- * intentionally do NOT persist a greeting message — welcomes are
- * state-dependent (Agent Manager / Brand Manager / Automation Manager
- * pivot copy based on org state) and a once-rendered snapshot drifts
- * from reality the moment the user creates an agent or sets brand
- * context. The chat renders the welcome from current state when the
- * thread is opened with no real messages.
+ * Backfill `selected_prompts` on previously-installed studio-pack agents.
+ * Pre-prompt-whitelist installs wrote `null` (all prompts allowed); we
+ * narrow each agent to its own checklist prompts (or `[]` for agents with
+ * no onboarding items).
  */
-async function createWelcomeThreadsStep(
+async function backfillSelectedPromptsStep(
   input: InstallStudioPackInput,
 ): Promise<void> {
   const database = getDb();
-  const threads = new SqlThreadStorage(database.db);
+  const virtualMcpStorage = new VirtualMCPStorage(database.db);
 
   for (const agent of STUDIO_PACK_AGENTS) {
     const agentId = agent.getId(input.orgId);
-    const threadId = `thrd_welcome_${agentId}`;
+    const existing = await virtualMcpStorage.findById(agentId, input.orgId);
+    if (!existing) continue;
 
-    await threads.create({
-      id: threadId,
-      organization_id: input.orgId,
-      title: agent.title,
-      status: "completed",
-      virtual_mcp_id: agentId,
-      created_by: input.createdBy,
+    // Empty array means "no prompts"; null means "all prompts allowed".
+    // We always want the explicit array post-whitelist.
+    const desired = agent.selectedPrompts ? [...agent.selectedPrompts] : null;
+
+    const sameAsDesired = existing.connections.every((c) => {
+      const current = c.selected_prompts;
+      if (desired === null) return current === null;
+      if (current === null) return false;
+      if (current.length !== desired.length) return false;
+      return current.every((p, i) => p === desired[i]);
+    });
+    if (sameAsDesired) continue;
+
+    await virtualMcpStorage.update(agentId, input.createdBy, {
+      connections: existing.connections.map((c) => ({
+        connection_id: c.connection_id,
+        selected_tools: c.selected_tools,
+        selected_resources: c.selected_resources,
+        selected_prompts: desired,
+      })),
     });
   }
 }
@@ -57,8 +66,8 @@ async function installStudioPackWorkflowFn(
   await DBOS.runStep(() => installStudioPackStep(input), {
     name: "installStudioPack",
   });
-  await DBOS.runStep(() => createWelcomeThreadsStep(input), {
-    name: "createWelcomeThreads",
+  await DBOS.runStep(() => backfillSelectedPromptsStep(input), {
+    name: "backfillSelectedPrompts",
   });
 }
 

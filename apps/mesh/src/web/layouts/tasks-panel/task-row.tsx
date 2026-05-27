@@ -1,12 +1,12 @@
 import { cn } from "@deco/ui/lib/utils.js";
-import { Archive } from "@untitledui/icons";
+import { Archive, Zap } from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
-import { McpAvatar } from "./mcp-avatar";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
@@ -20,25 +20,33 @@ export function TaskRow({
   onClick,
   onArchive,
   showAutomationBadge,
+  showAgentIcon,
+  hideStatusIdle,
 }: {
   task: Task;
   isActive: boolean;
   onClick: () => void;
   onArchive: () => void;
   showAutomationBadge?: boolean;
+  /** Render the originating agent's icon on the left of the row. */
+  showAgentIcon?: boolean;
+  /** When true, the row shows nothing at rest (group header already conveys
+   *  status); the archive button still appears on hover. When false/omitted,
+   *  the status icon shows at rest and swaps to archive on hover. */
+  hideStatusIdle?: boolean;
 }) {
   const config = getStatusConfig(task.status);
   const StatusIcon = config.icon;
-  const virtualMcp = useVirtualMCP(task.virtual_mcp_id);
+  const isToolCallRun = task.metadata?.kind === "tool_call_run";
+  const virtualMcp = useVirtualMCP(
+    isToolCallRun ? undefined : task.virtual_mcp_id,
+  );
   const githubRepo = getActiveGithubRepo(virtualMcp);
   // Subscribe to a 60s heartbeat so the relative timestamp re-renders even
   // when `task` is referentially stable.
   useClockTick(60_000);
 
-  // Scroll-into-view / focus for the active row is owned by the parent
-  // TasksSection (single effect keyed on activeTaskId). Doing it per-row
-  // re-fired scrollIntoView whenever fetchNextPage grew the list and forced
-  // the active row to leap back into view, fighting the user's scroll.
+  const isAutomation = showAutomationBadge || Boolean(task.trigger_id);
 
   return (
     <div
@@ -54,22 +62,40 @@ export function TaskRow({
         }
       }}
       className={cn(
-        "group/row flex items-center gap-3 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
+        "group/row flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
         "focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-ring/50",
-        isActive ? "bg-accent" : "hover:bg-accent/60",
+        isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
       )}
     >
-      <McpAvatar
-        virtualMcpId={task.virtual_mcp_id}
-        size="xs"
-        showAutomationBadge={showAutomationBadge}
-      />
+      {showAgentIcon && !isToolCallRun && (
+        <AgentAvatar
+          icon={virtualMcp?.icon ?? null}
+          name={virtualMcp?.title ?? "?"}
+          size="2xs"
+        />
+      )}
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-foreground truncate">
-          {task.title || "Untitled task"}
+        <div className="flex items-center gap-1.5 min-w-0">
+          {isAutomation && (
+            <Zap
+              size={12}
+              aria-label="Automation-triggered"
+              className="shrink-0 text-blue-500"
+            />
+          )}
+          <div className="text-sm text-foreground truncate">
+            {task.title || "Untitled task"}
+          </div>
         </div>
         {task.updated_at && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+          <div
+            className={cn(
+              "flex items-center gap-1 text-[11px] min-w-0",
+              isActive
+                ? "text-accent-foreground/70"
+                : "text-muted-foreground/60",
+            )}
+          >
             {task.branch && !isSyntheticBranch(task.branch) ? (
               <>
                 <span className="truncate font-mono">{task.branch}</span>
@@ -90,18 +116,20 @@ export function TaskRow({
         )}
       </div>
       <div className="shrink-0 grid [grid-template-areas:'slot'] items-center justify-items-center">
-        <span
-          className="[grid-area:slot] flex size-7 items-center justify-center group-hover/row:invisible"
-          aria-label={config.label}
-        >
-          <StatusIcon
-            size={14}
-            className={cn(
-              config.iconClassName,
-              task.status === "in_progress" && "animate-spin",
-            )}
-          />
-        </span>
+        {!hideStatusIdle && (
+          <span
+            className="[grid-area:slot] flex size-7 items-center justify-center pointer-events-none transition-opacity group-hover/row:opacity-0"
+            aria-label={config.label}
+          >
+            <StatusIcon
+              size={14}
+              className={cn(
+                config.iconClassName,
+                task.status === "in_progress" && "animate-spin",
+              )}
+            />
+          </span>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -111,7 +139,7 @@ export function TaskRow({
                 e.stopPropagation();
                 onArchive();
               }}
-              className="[grid-area:slot] invisible group-hover/row:visible flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+              className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <Archive size={14} />
             </button>

@@ -18,7 +18,6 @@ export {
   storefrontManagerAgent,
 } from "./storefront-manager";
 export type {
-  BuildWelcomeMessage,
   ChecklistContext,
   ChecklistItemAction,
   ResolvedChecklistItem,
@@ -26,7 +25,6 @@ export type {
   ResolveRuntime,
   RuntimeResolveContext,
   StudioPackChecklistItem,
-  WelcomeContext,
 } from "./types";
 
 export const STUDIO_PACK_AGENTS = [
@@ -117,7 +115,11 @@ export async function installStudioPack(
               ? [...agent.selectedTools]
               : null,
             selected_resources: null,
-            selected_prompts: null,
+            // An empty array means "no prompts" (correct for agents without
+            // onboarding items). `null` would mean "all prompts allowed".
+            selected_prompts: agent.selectedPrompts
+              ? [...agent.selectedPrompts]
+              : null,
           })),
         },
         { id: agentId },

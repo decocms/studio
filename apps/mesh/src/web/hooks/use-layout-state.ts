@@ -8,8 +8,6 @@
  *   ?main absent     default (open iff defaultMainView != null)
  *   ?chat=0|1        chat panel open state
  *   ?virtualmcpid    which MCP the chat + right panel are scoped to
- *
- * Tasks-panel state is owned by useTasksPanelState (separate hook).
  */
 
 import { useRef } from "react";
@@ -58,15 +56,6 @@ export interface ChatMainLayoutActions {
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
 
-export function resolveTasksOpen(
-  urlParam: number | undefined,
-  hasItems: boolean,
-): boolean {
-  if (urlParam === 1) return true;
-  if (urlParam === 0) return false;
-  return hasItems;
-}
-
 export function resolveDefaultPanelState(ctx: {
   entityMetadata: EntityLayoutMetadata | null;
   mainParamPresent: boolean;
@@ -107,7 +96,6 @@ export function computeChatMainSizes(
 // ---------------------------------------------------------------------------
 
 type PanelSearchParams = {
-  tasks?: number;
   chat?: number;
   main?: string;
   virtualmcpid?: string;
@@ -180,11 +168,10 @@ export function useChatMainPanelState(
     navigate({
       to: routeBase,
       params: makeParams(id),
-      search: (prev: Record<string, unknown>) => {
+      search: (_prev: Record<string, unknown>) => {
         const next: Record<string, unknown> = {};
         if (targetVirtualMcpId) next.virtualmcpid = targetVirtualMcpId;
         else if (isAgentRoute) next.virtualmcpid = virtualMcpId;
-        if (prev.tasks) next.tasks = prev.tasks;
         return next;
       },
     });
@@ -228,12 +215,11 @@ export function useChatMainPanelState(
     navigate({
       to: routeBase,
       params: makeParams(newTaskId),
-      search: (prev: Record<string, unknown>) => {
+      search: (_prev: Record<string, unknown>) => {
         const next: Record<string, unknown> = {
           ...preserveVirtualMcp,
           chat: 1,
         };
-        if (prev.tasks) next.tasks = prev.tasks;
         return next;
       },
     });

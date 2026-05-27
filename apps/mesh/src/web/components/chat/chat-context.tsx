@@ -44,7 +44,6 @@ import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
 import { AGENT_OPTION_PINS, type AgentOption } from "./pills/agent-options";
 import {
-  isStudioPackAgent,
   pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -875,10 +874,7 @@ export function ActiveTaskProvider({
         // can flip that state, so re-fetch on every finish — covers both
         // `mine=true` and `mine=false` variants via partial-key match.
         cb.queryClient.invalidateQueries({
-          queryKey: ["suggested-actions", org.slug],
-        });
-        cb.queryClient.invalidateQueries({
-          queryKey: KEYS.studioPackChecklists(org.slug),
+          queryKey: KEYS.homeNextActions(org.slug),
         });
 
         const serverThreadId = (message.metadata as Metadata | undefined)
@@ -1042,48 +1038,6 @@ export function ActiveTaskProvider({
     });
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage status, not function identity, gates duplicate sends
   }, [shouldAutosend, messages.length, locator, taskId, sendMessageInternal]);
-
-  // Studio Pack welcome materializer: when landing on a fresh
-  // `thrd_welcome_<agentId>` thread with no autosend queued, ask the server
-  // to insert the agent's state-aware welcome (text greeting or user_ask)
-  // and merge it into the local message stream. The route is idempotent;
-  // any later remount that finds messages already present is a no-op.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot fetch gated by empty messages + no autosend
-  useEffect(() => {
-    if (shouldAutosend) return;
-    if (messages.length > 0) return;
-    if (!virtualMcpId) return;
-    if (!isStudioPackAgent(virtualMcpId)) return;
-    if (taskId !== `thrd_welcome_${virtualMcpId}`) return;
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/${org.slug}/studio-pack-welcome/${encodeURIComponent(
-            virtualMcpId,
-          )}/${encodeURIComponent(taskId)}`,
-          { method: "POST", credentials: "include" },
-        );
-        if (cancelled || !res.ok) return;
-        const data = (await res.json()) as {
-          inserted: boolean;
-          message: ChatMessage | null;
-        };
-        if (!data.inserted || !data.message) return;
-        conn.messages.update((curr) =>
-          curr.some((m) => m.id === data.message?.id)
-            ? curr
-            : [...curr, data.message as ChatMessage],
-        );
-      } catch (err) {
-        console.warn("[chat] studio-pack-welcome failed", err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [shouldAutosend, messages.length, virtualMcpId, taskId, org.slug, conn]);
 
   const streamValue: ChatStreamContextValue = {
     messages,

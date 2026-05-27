@@ -1,10 +1,5 @@
 import { StudioPackAgentId, isStudioPackAgent } from "@decocms/mesh-sdk";
-import type {
-  BuildWelcomeMessage,
-  ResolveRuntime,
-  StudioPackConnectionKey,
-  WelcomeContext,
-} from "./types";
+import type { ResolveRuntime, StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS_BOOTSTRAP = `<role>
 You are the Agent Manager. This organization has not created any agents yet — your job is to help the user create their first one.
@@ -114,15 +109,8 @@ export const agentManagerAgent = {
     "COLLECTION_CONNECTIONS_GET",
   ] as readonly string[] | null,
   selectedConnections: null as readonly StudioPackConnectionKey[] | null,
+  selectedPrompts: [] as readonly string[],
   instructions: INSTRUCTIONS_MANAGE,
-  welcomeMessage: (async (ctx: WelcomeContext) => [
-    {
-      type: "text",
-      text: ctx.hasCustomAgents
-        ? "Hi! I'm your Agent Manager. I can review your existing agents, sharpen their instructions, flag overlap or stale config, and help you build new ones. What would you like to do?"
-        : "Hi! I'm your Agent Manager. You don't have any agents yet — let's create your first one. What problem do you want it to solve?",
-    },
-  ]) satisfies BuildWelcomeMessage,
   resolveRuntime: (async ({ orgId, ctx }) => {
     const all = await ctx.storage.virtualMcps.list(orgId);
     const hasCustomAgents = all.some((vm) => !isStudioPackAgent(vm.id));

@@ -1,9 +1,5 @@
 import { StudioPackAgentId } from "@decocms/mesh-sdk";
-import type {
-  BuildWelcomeMessage,
-  StudioPackConnectionKey,
-  WelcomeContext,
-} from "./types";
+import type { StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
 You are the Connection Manager. You create, configure, test, and manage MCP connections in this workspace.
@@ -58,12 +54,7 @@ export const connectionManagerAgent = {
     "CONNECTION_TEST",
   ] as readonly string[] | null,
   selectedConnections: null as readonly StudioPackConnectionKey[] | null,
+  selectedPrompts: [] as readonly string[],
   instructions: INSTRUCTIONS,
-  welcomeMessage: (async (_ctx: WelcomeContext) => [
-    {
-      type: "text",
-      text: "Hi! I'm your Connection Manager. I add, configure, and test MCP connections. What do you want to plug in?",
-    },
-  ]) satisfies BuildWelcomeMessage,
   getId: StudioPackAgentId.CONNECTION_MANAGER,
 } as const;

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   computeChatMainSizes,
   resolveDefaultPanelState,
-  resolveTasksOpen,
 } from "./use-layout-state";
 
 describe("resolveDefaultPanelState", () => {
@@ -105,22 +104,5 @@ describe("computeChatMainSizes", () => {
 
   test("neither → 0/0 (chat panel is collapsible to 0)", () => {
     expect(computeChatMainSizes(false, false)).toEqual({ chat: 0, main: 0 });
-  });
-});
-
-describe("resolveTasksOpen", () => {
-  test("?tasks=1 → open regardless of items", () => {
-    expect(resolveTasksOpen(1, false)).toBe(true);
-    expect(resolveTasksOpen(1, true)).toBe(true);
-  });
-
-  test("?tasks=0 → closed regardless of items", () => {
-    expect(resolveTasksOpen(0, false)).toBe(false);
-    expect(resolveTasksOpen(0, true)).toBe(false);
-  });
-
-  test("?tasks absent → defaults to hasItems", () => {
-    expect(resolveTasksOpen(undefined, false)).toBe(false);
-    expect(resolveTasksOpen(undefined, true)).toBe(true);
   });
 });

@@ -1,9 +1,5 @@
 import { StudioPackAgentId } from "@decocms/mesh-sdk";
-import type {
-  BuildWelcomeMessage,
-  StudioPackConnectionKey,
-  WelcomeContext,
-} from "./types";
+import type { StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
 You are the Automation Manager. You create, configure, and manage automations — background agents that run on triggers (cron schedules or events).
@@ -85,14 +81,7 @@ export const automationManagerAgent = {
     "COLLECTION_CONNECTIONS_GET",
   ] as readonly string[] | null,
   selectedConnections: null as readonly StudioPackConnectionKey[] | null,
+  selectedPrompts: [] as readonly string[],
   instructions: INSTRUCTIONS,
-  welcomeMessage: (async (ctx: WelcomeContext) => [
-    {
-      type: "text",
-      text: ctx.hasCustomAgents
-        ? "Hi! I'm your Automation Manager. Automations put your agents on autopilot — pick an agent, give it a schedule (cron) or a trigger (event/webhook), and it runs in the background. Want me to suggest a few automations based on the agents you've already got?"
-        : "Hi! I'm your Automation Manager. Automations run your agents on autopilot — on a schedule (cron) or when an event fires (webhook, inbound message). You'll need to create an agent first — once the Agent Manager has helped you set one up, come back and I'll put it on a trigger.",
-    },
-  ]) satisfies BuildWelcomeMessage,
   getId: StudioPackAgentId.AUTOMATION_MANAGER,
 } as const;

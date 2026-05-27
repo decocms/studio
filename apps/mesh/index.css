@@ -14,36 +14,26 @@
 }
 
 /* Window Controls Overlay (installed PWA on Chromium):
-   - lift the toolbar out of flow and pin it to the title-bar strip
-   - reserve matching space on the shell root for the now-floating bar
-   - make the strip background draggable; opt buttons back to clickable
-   - hide elements that duplicate browser chrome (e.g. app logo)
+   The toolbar header is already the top element of the flex shell, so all
+   we need to do is (1) make its background act as the OS drag region,
+   (2) inset its content to clear the OS title-bar controls on the left
+   and right, (3) hide elements that duplicate the chrome (e.g. app logo),
+   and (4) opt buttons back to clickable.
 
-   These rules live outside @layer base so they win against Tailwind's
-   utility classes (h-12, pl-1, pr-2, etc.) which would otherwise cascade
-   later and beat them. */
+   Lives outside @layer base so it wins against Tailwind utilities like
+   h-12, pl-1, pr-2 that would otherwise cascade later. */
 @media (display-mode: window-controls-overlay) {
-  /* The bar uses the OS title-bar height but never less than 2rem (32px) so
-     size-7 icon buttons and h-8 tab buttons keep their natural sizing without
-     overflowing. macOS's WCO strip is ~28-32px so this is usually a no-op on
-     Mac; the floor only matters on platforms with skinnier WCO strips. */
-  .app-shell-root {
-    padding-top: max(env(titlebar-area-height, 0), 2rem);
-  }
   .app-titlebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 50;
-    height: max(env(titlebar-area-height, 3rem), 2rem);
-    padding-top: 0;
-    padding-left: env(titlebar-area-x, 0px);
+    padding-left: env(titlebar-area-x, 0);
     padding-right: calc(
       100vw -
-      env(titlebar-area-x, 0px) -
+      env(titlebar-area-x, 0) -
       env(titlebar-area-width, 100vw)
     );
+    /* Match the OS title-bar strip height so close/min/max buttons line up
+       vertically with the header's icon buttons. Overrides Tailwind's h-12
+       (3rem) for the WCO case only. */
+    height: env(titlebar-area-height, 3rem);
   }
   .wco-drag {
     -webkit-app-region: drag;
