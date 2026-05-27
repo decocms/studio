@@ -48,10 +48,10 @@ export function useSaveBlock({
         queryClient.getQueryData<Record<string, unknown>>(queryKey);
       queryClient.setQueryData(
         queryKey,
-        (current: Record<string, unknown> | undefined) => {
-          if (!current) return current;
-          return { ...current, [blockKey]: data };
-        },
+        (current: Record<string, unknown> | undefined) => ({
+          ...(current ?? {}),
+          [blockKey]: data,
+        }),
       );
       return { previous, queryKey };
     },
@@ -64,10 +64,10 @@ export function useSaveBlock({
       const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       queryClient.setQueryData(
         KEYS.decofile(cacheKey),
-        (current: Record<string, unknown> | undefined) => {
-          if (!current) return current;
-          return { ...current, [blockKey]: data };
-        },
+        (current: Record<string, unknown> | undefined) => ({
+          ...(current ?? {}),
+          [blockKey]: data,
+        }),
       );
     },
   });

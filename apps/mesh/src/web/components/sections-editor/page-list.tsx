@@ -1,7 +1,16 @@
-interface PageEntry {
+import type { LiveMeta } from "./resolve-schema";
+import { listSavedSectionBlocks } from "./section-catalog";
+
+export interface PageEntry {
   key: string;
   name: string;
   path: string;
+}
+
+export interface GlobalSectionEntry {
+  key: string;
+  name: string;
+  resolveType: string;
 }
 
 function parsePageName(key: string): string {
@@ -49,4 +58,34 @@ export function extractPages(decofile: Record<string, unknown>): PageEntry[] {
     }
   }
   return pages;
+}
+
+export function globalSectionLabel(
+  blockId: string,
+  block: Record<string, unknown>,
+): string {
+  if (typeof block.name === "string") {
+    const trimmed = block.name.trim();
+    if (trimmed) return trimmed;
+  }
+  return blockId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Saved section blocks from the decofile (same filters as the section catalog). */
+export function extractGlobalSections(
+  decofile: Record<string, unknown>,
+  meta: LiveMeta,
+): GlobalSectionEntry[] {
+  return listSavedSectionBlocks(meta, decofile)
+    .map((entry) => {
+      const block = decofile[entry.resolveType] as Record<string, unknown>;
+      const resolveType =
+        typeof block.__resolveType === "string" ? block.__resolveType : "";
+      return {
+        key: entry.resolveType,
+        name: entry.description ?? globalSectionLabel(entry.resolveType, block),
+        resolveType,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

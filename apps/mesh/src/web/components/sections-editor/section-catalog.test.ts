@@ -5,6 +5,7 @@ import {
   findSiteThemeBlock,
 } from "./section-catalog";
 import {
+  buildGlobalSectionPreviewUrl,
   buildSectionPreviewUrl,
   encodePreviewProps,
 } from "./section-preview-url";
@@ -47,6 +48,25 @@ describe("section-preview-url", () => {
       block: "Header",
     });
     expect(decoded.sections[1]).toEqual(theme);
+  });
+
+  it("buildGlobalSectionPreviewUrl wraps a saved block in page preview props", () => {
+    const url = buildGlobalSectionPreviewUrl(
+      "https://abc.preview.example.com/",
+      "website/pages/Page.tsx",
+      "Header",
+    );
+    expect(url).toContain("/live/previews/website%2Fpages%2FPage.tsx");
+    expect(new URL(url).searchParams.get("path")).toBe("/");
+    const propsParam = new URL(url).searchParams.get("props");
+    expect(propsParam).toBeTruthy();
+    const decoded = JSON.parse(decodeURIComponent(atob(propsParam!))) as {
+      path: string;
+      sections: Array<{ __resolveType: string }>;
+    };
+    expect(decoded.path).toBe("/");
+    expect(decoded.sections).toEqual([{ __resolveType: "Header" }]);
+    expect(new URL(url).searchParams.has("__cb")).toBe(true);
   });
 });
 
