@@ -1,3 +1,16 @@
+/**
+ * Settings Shell Layout
+ *
+ * Wraps `/$org/settings/...` routes. Mirrors the org shell shape:
+ *   SidebarProvider
+ *   └── app-shell-root (flex-col, h-dvh)
+ *       ├── Toolbar.Header           — full-width, "← Settings" + trigger + back/forward
+ *       └── SidebarLayout            — body row
+ *           ├── SettingsSidebar      — desktop only
+ *           └── SidebarInset         — content card with routed children
+ *   + MobileSidebarSheet for the mobile sidebar
+ */
+
 import {
   Outlet,
   Link,
@@ -16,23 +29,18 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
-import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
 import { PageContentClassNameProvider } from "@/web/components/page";
 import {
   ArrowNarrowLeft,
   BarChart10,
   BookOpen01,
   Building02,
-  ChevronLeft,
-  ChevronRight,
   ZapSquare,
   CpuChip01,
   Loading01,
   Lock01,
   LogOut01,
-  Menu01,
   PackageCheck,
   Shield01,
   User01,
@@ -48,6 +56,11 @@ import { pluginSettingsSidebarItems } from "@/web/index";
 import { useStatusSounds } from "../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
+import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
+import {
+  MobileSidebarSheet,
+  SidebarTriggerButton,
+} from "@/web/layouts/shell-controls";
 
 interface SettingsNavItem {
   key: string;
@@ -206,26 +219,6 @@ export function SettingsSidebar() {
   return (
     <Sidebar variant="sidebar">
       <SidebarContent className="flex flex-col flex-1 mt-2 px-2 pb-2 gap-0 overflow-y-auto">
-        {/* Back to org */}
-        <SidebarGroup className="pt-0 pr-0 pb-3 md:pb-3 pl-0">
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-1.5">
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link
-                    to="/$org"
-                    params={{ org }}
-                    className="flex items-center gap-2 text-sm text-muted-foreground"
-                  >
-                    <ArrowNarrowLeft size={14} />
-                    <span>Settings</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
         {groups.map((group, i) => (
           <SidebarGroup
             key={`${group.label}-${i}`}
@@ -317,20 +310,6 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex flex-col h-full bg-sidebar">
-      {/* Header with back button */}
-      <div className="flex items-center h-14 px-4 shrink-0 border-b border-border/50">
-        <Link
-          to="/$org"
-          params={{ org }}
-          onClick={onClose}
-          className="flex items-center gap-2 text-sm font-semibold text-foreground"
-        >
-          <ArrowNarrowLeft size={16} className="shrink-0" />
-          <span>Settings</span>
-        </Link>
-      </div>
-
-      {/* Nav items */}
       <div className="flex flex-col flex-1 overflow-y-auto px-2 py-2 gap-0.5">
         {groups.map((group, i) => (
           <div key={`${group.label}-${i}`} className="flex flex-col gap-0.5">
@@ -391,51 +370,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Settings toolbar — back/forward navigation only (no panel toggles)
-// ---------------------------------------------------------------------------
-
-function SettingsToolbar() {
-  return (
-    <div className="shrink-0 flex items-center justify-between pl-1 pr-2 h-10">
-      <div className="flex items-center gap-0.5 min-w-0">
-        <button
-          type="button"
-          onClick={() => window.history.back()}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-          title="Go back"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => window.history.forward()}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-          title="Go forward"
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function MobileToolbar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
-  return (
-    <div className="shrink-0 flex items-center justify-between px-3 h-12 bg-background border-b border-border">
-      <button
-        type="button"
-        onClick={onOpenSidebar}
-        className="flex size-8 items-center justify-center rounded-md text-foreground/60 hover:bg-accent hover:text-foreground transition-colors"
-        aria-label="Open menu"
-      >
-        <Menu01 size={20} />
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Settings inset — lightweight content area (no Chat, no virtualMCP)
+// Settings inset — content card holding routed children
 // ---------------------------------------------------------------------------
 
 function SettingsInset() {
@@ -445,65 +380,44 @@ function SettingsInset() {
   // Org-wide SSE sound notifications
   useStatusSounds(org.slug);
 
-  const { setOpenMobile, openMobile: mobileSidebarOpen } = useSidebar();
+  const content = (
+    <Suspense
+      fallback={
+        <div className="flex-1 flex items-center justify-center">
+          <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <div className="flex flex-1 items-center overflow-hidden rounded-[inherit]">
+        <PageContentClassNameProvider value="p-0">
+          <div className="flex-1 min-w-0 overflow-hidden h-full">
+            <Outlet />
+          </div>
+        </PageContentClassNameProvider>
+      </div>
+    </Suspense>
+  );
 
   if (isMobile) {
     return (
-      <div className="flex flex-col flex-1 bg-background min-h-0">
-        <MobileToolbar onOpenSidebar={() => setOpenMobile(true)} />
-        <div className="flex-1 overflow-hidden">
-          <PageContentClassNameProvider value="p-0">
-            <div className="flex-1 min-w-0 overflow-hidden h-full">
-              <Outlet />
-            </div>
-          </PageContentClassNameProvider>
-        </div>
-        <Sheet open={mobileSidebarOpen} onOpenChange={setOpenMobile}>
-          <SheetContent
-            side="left"
-            hideCloseButton
-            className="w-[calc(100vw-3rem)] sm:max-w-md! p-0"
-          >
-            <SheetTitle className="sr-only">Navigation</SheetTitle>
-            <SettingsSidebarMobile onClose={() => setOpenMobile(false)} />
-          </SheetContent>
-        </Sheet>
+      <div className="flex flex-col flex-1 bg-background min-h-0 overflow-hidden">
+        {content}
       </div>
     );
   }
 
   return (
-    <>
-      <SettingsToolbar />
-      <div className="flex-1 min-h-0 p-1">
-        <div
-          className={cn(
-            "flex flex-col h-full min-h-0 bg-background overflow-hidden",
-            "card-shadow",
-            "rounded-[0.75rem]",
-          )}
-        >
-          <Suspense
-            fallback={
-              <div className="flex-1 flex items-center justify-center">
-                <Loading01
-                  size={20}
-                  className="animate-spin text-muted-foreground"
-                />
-              </div>
-            }
-          >
-            <div className="flex flex-1 items-center overflow-hidden rounded-[inherit]">
-              <PageContentClassNameProvider value="p-0">
-                <div className="flex-1 min-w-0 overflow-hidden h-full">
-                  <Outlet />
-                </div>
-              </PageContentClassNameProvider>
-            </div>
-          </Suspense>
-        </div>
+    <div className="flex-1 min-h-0 p-1">
+      <div
+        className={cn(
+          "flex flex-col h-full min-h-0 bg-background overflow-hidden",
+          "card-shadow",
+          "rounded-[0.75rem]",
+        )}
+      >
+        {content}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -512,18 +426,41 @@ function SettingsInset() {
 // ---------------------------------------------------------------------------
 
 export default function SettingsLayout() {
+  const isMobile = useIsMobile();
+  const { org } = useParams({ from: "/shell/$org" });
+
   return (
     <SidebarProvider defaultOpen={true}>
-      <div className="flex flex-col h-dvh overflow-hidden">
+      <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
+        <Toolbar.Header>
+          <Toolbar.LeftColumn>
+            <Link
+              to="/$org"
+              params={{ org }}
+              className="wco-no-drag flex items-center gap-1.5 px-2 h-7 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <ArrowNarrowLeft size={14} className="shrink-0" />
+              <span>Settings</span>
+            </Link>
+            <SidebarTriggerButton />
+            <span className="hidden md:contents">
+              <Toolbar.Nav />
+            </span>
+          </Toolbar.LeftColumn>
+          <Toolbar.CenterSlot />
+          <Toolbar.RightColumn>
+            <span />
+          </Toolbar.RightColumn>
+        </Toolbar.Header>
         <SidebarLayout
-          className="flex-1 bg-sidebar"
+          className="flex-1 bg-sidebar min-h-0"
           style={
             {
               "--sidebar-width-icon": "3.5rem",
             } as Record<string, string>
           }
         >
-          <SettingsSidebar />
+          {!isMobile && <SettingsSidebar />}
           <SidebarInset
             className="flex flex-col"
             style={{
@@ -534,6 +471,13 @@ export default function SettingsLayout() {
             <SettingsInset />
           </SidebarInset>
         </SidebarLayout>
+        {isMobile && (
+          <MobileSidebarSheet
+            renderSidebar={({ onClose }) => (
+              <SettingsSidebarMobile onClose={onClose} />
+            )}
+          />
+        )}
       </div>
     </SidebarProvider>
   );
