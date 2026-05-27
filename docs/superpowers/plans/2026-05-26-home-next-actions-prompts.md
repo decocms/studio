@@ -117,6 +117,107 @@ git commit -m "feat(studio-pack): register onboarding prompts on SELF connection
 
 ---
 
+### Task 1b: Add `promptName` to `open-agent-thread` checklist items
+
+**Files:**
+- Modify: `apps/mesh/src/tools/virtual/studio-pack/types.ts`
+- Modify: `apps/mesh/src/tools/virtual/studio-pack/brand-manager.ts`
+- Modify: `apps/mesh/src/tools/virtual/studio-pack/store-manager.ts`
+
+This avoids a fragile slug derivation in the new endpoint. Each `open-agent-thread` checklist item explicitly names the MCP prompt it maps to. Storefront-manager's dialog items are unaffected.
+
+- [ ] **Step 1: Widen the action type**
+
+In `apps/mesh/src/tools/virtual/studio-pack/types.ts`, change:
+
+```typescript
+export type ChecklistItemAction =
+  | { kind: "open-agent-thread"; prompt?: string }
+  | { kind: "github-import" }
+  | { kind: "install-github-mcp" }
+  | { kind: "add-storefront" }
+  | { kind: "configure-github-automations" }
+  | { kind: "setup-site-monitoring" };
+```
+
+to:
+
+```typescript
+export type ChecklistItemAction =
+  | { kind: "open-agent-thread"; promptName: string; prompt?: string }
+  | { kind: "github-import" }
+  | { kind: "install-github-mcp" }
+  | { kind: "add-storefront" }
+  | { kind: "configure-github-automations" }
+  | { kind: "setup-site-monitoring" };
+```
+
+(`prompt?` stays for now; Task 16 removes it.)
+
+- [ ] **Step 2: Add `promptName` to Brand Manager's checklist**
+
+In `apps/mesh/src/tools/virtual/studio-pack/brand-manager.ts`, update each checklist item's `action`:
+
+```typescript
+{
+  label: "Set up your brand",
+  activeForm: "Setting up your brand",
+  action: { kind: "open-agent-thread", promptName: "brand-manager-set-up" },
+  isCompleted: …,
+},
+{
+  label: "Complete your brand profile",
+  activeForm: "Completing your brand profile",
+  action: {
+    kind: "open-agent-thread",
+    promptName: "brand-manager-complete-profile",
+    prompt: "Help me fill in the rest of my brand profile — logo, colors, and fonts. Check what's already there and ask me about the missing pieces.",
+  },
+  isCompleted: …,
+},
+{
+  label: "Create a landing page",
+  activeForm: "Creating a landing page",
+  action: {
+    kind: "open-agent-thread",
+    promptName: "brand-manager-create-landing-page",
+    prompt: "Build me a landing page now using my brand. I'll iterate after I see it.",
+  },
+  isCompleted: …,
+},
+```
+
+- [ ] **Step 3: Add `promptName` to Store Manager's checklist**
+
+In `apps/mesh/src/tools/virtual/studio-pack/store-manager.ts`:
+
+```typescript
+{
+  label: "Browse the Deco Store",
+  activeForm: "Browsing the Deco Store",
+  action: {
+    kind: "open-agent-thread",
+    promptName: "store-manager-browse-store",
+    prompt: "Show me what's in the Deco Store and the Community Registry. Ask me what problem I'm trying to solve and recommend a few MCPs that fit.",
+  },
+  isCompleted: …,
+},
+```
+
+- [ ] **Step 4: Typecheck**
+
+Run: `bun run --cwd=apps/mesh check`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/mesh/src/tools/virtual/studio-pack/{types,brand-manager,store-manager}.ts
+git commit -m "feat(studio-pack): bind checklist items to MCP prompt names"
+```
+
+---
+
 ### Task 2: Declare `selectedPrompts` on each studio-pack agent
 
 **Files:**
@@ -415,16 +516,11 @@ export function createHomeNextActionsRoutes() {
       for (const item of items) {
         if (item.completed) continue;
         if (item.action.kind !== "open-agent-thread") continue;
-        // Each studio-pack checklist item must have a corresponding prompt
-        // name in studio-pack-onboarding.ts. Build the convention here.
-        const promptName = `${agent.id}-${item.label
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "")}`;
-        const meta = promptByName.get(promptName);
+        const meta = promptByName.get(item.action.promptName);
         if (!meta) {
-          // No prompt registered for this label yet — skip silently so the
-          // home doesn't show a broken card.
+          // No prompt registered for this name — skip silently so the home
+          // doesn't show a broken card. (Would indicate a bug in
+          // studio-pack-onboarding.ts.)
           continue;
         }
         prompts.push({
@@ -1632,7 +1728,7 @@ git commit -m "chore: final formatting after refactor" || true
 
 - **Type consistency:** `selectedPrompts` is `readonly string[]` on every agent. `HomePromptEntry.hasArguments` + `arguments?` mirror the server's `PromptEntry` shape. `DialogKind` union matches the server's enum.
 
-- **Open server question:** The slug convention in Task 5 (`agent.id + "-" + slugified label`) is a one-to-one mapping with the prompt names in Task 1. If you change one, change the other.
+- **Prompt name binding:** Task 1b binds each checklist item to its MCP prompt via an explicit `promptName: string` on the action. Task 1's registrations must use those exact names. Task 5's endpoint reads `item.action.promptName` directly — no slug derivation.
 
 - **Knip risk:** the old `BuildWelcomeMessage` / `WelcomeContext` types removal (Task 16) and the `ChecklistItemAction.prompt?` field removal cascade through several agent files. If `bun run knip` flags lingering unused exports after Task 17, hunt them and fix inline — do not silence knip per CLAUDE.md.
 
