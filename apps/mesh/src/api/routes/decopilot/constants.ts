@@ -10,7 +10,6 @@ export const DEFAULT_THREAD_TITLE = "New chat";
 
 export const PARENT_STEP_LIMIT = 30;
 export const SUBAGENT_STEP_LIMIT = 15;
-export const SUBAGENT_EXCLUDED_TOOLS = ["user_ask", "subtask"];
 
 /**
  * Base platform prompt — shared by all agents (decopilot and custom).
