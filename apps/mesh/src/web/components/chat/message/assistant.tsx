@@ -24,6 +24,7 @@ import {
   BrandContextGetPart,
   BrandContextListPart,
 } from "./parts/tool-call-part/index.ts";
+import { NextActionChip } from "./next-action-chip.tsx";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
 import { ThreadHtmlPreviews } from "./thread-html-previews.tsx";
 import { ThreadOutputs } from "./thread-outputs.tsx";
@@ -721,6 +722,7 @@ export function MessageAssistant({
             <>
               <ThreadHtmlPreviews />
               <ThreadOutputs threadId={taskId} />
+              {isTerminallyDone && <NextActionChip />}
             </>
           )}
         </div>
