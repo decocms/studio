@@ -386,8 +386,12 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         .where("parent_connection_id", "=", id)
         .where("dependency_mode", "=", "direct")
         .execute();
+      // child_connection_id is now nullable (slot rows have NULL); filter
+      // out nulls since slots don't have pinned views to clean up.
       const previousIds = new Set(
-        currentAggs.map((a) => a.child_connection_id),
+        currentAggs
+          .map((a) => a.child_connection_id)
+          .filter((cid): cid is string => cid !== null),
       );
 
       // Only delete 'direct' dependencies - preserve 'indirect' ones from virtual tools

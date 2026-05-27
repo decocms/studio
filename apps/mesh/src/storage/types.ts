@@ -207,6 +207,17 @@ export interface MCPConnectionTable {
   metadata: JsonObject<Record<string, unknown>> | null;
   bindings: JsonArray<string[]> | null; // Detected bindings (CHAT, EMAIL, etc.)
 
+  /**
+   * Visibility/ownership of this connection.
+   * - 'user': private to created_by. Only that user sees/uses it.
+   * - 'org': visible and usable by every member of the organization.
+   * Existing rows backfilled to 'org'; new rows default to 'user'.
+   */
+  access: ColumnType<
+    "user" | "org",
+    "user" | "org" | undefined,
+    "user" | "org"
+  >;
   status: "active" | "inactive" | "error";
   pinned: boolean;
   created_at: ColumnType<Date, Date | string, never>;
@@ -789,7 +800,17 @@ export type DependencyMode = "direct" | "indirect";
 export interface ConnectionAggregationTable {
   id: string;
   parent_connection_id: string; // The VIRTUAL connection (agent)
-  child_connection_id: string; // The connection being aggregated
+  /**
+   * Concrete child connection. NULL means this row is a slot
+   * (see slot_app_id). XOR enforced by DB CHECK.
+   */
+  child_connection_id: string | null;
+  /**
+   * Slot binding — resolved at runtime to the caller's connection of
+   * this app_id. NULL means this row uses a concrete child_connection_id.
+   * XOR enforced by DB CHECK.
+   */
+  slot_app_id: string | null;
   selected_tools: JsonArray<string[]> | null; // null = all tools
   selected_resources: JsonArray<string[]> | null; // null = all resources, supports URI patterns with * and **
   selected_prompts: JsonArray<string[]> | null; // null = all prompts
