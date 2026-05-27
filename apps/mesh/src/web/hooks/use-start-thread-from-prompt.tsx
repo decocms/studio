@@ -17,11 +17,7 @@ import {
   getGatewayClientId,
   stripToolNamespace,
 } from "@decocms/mcp-utils/aggregate";
-import {
-  getPrompt,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { getPrompt, useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -59,10 +55,7 @@ export function useStartThreadFromPrompt({
   const { setTaskId } = usePanelActions();
   const [dialogPrompt, setDialogPrompt] = useState<Prompt | null>(null);
 
-  const loadAndStart = async (
-    prompt: Prompt,
-    args?: PromptArgumentValues,
-  ) => {
+  const loadAndStart = async (prompt: Prompt, args?: PromptArgumentValues) => {
     if (!client) {
       toast.error("MCP client not available");
       return;
