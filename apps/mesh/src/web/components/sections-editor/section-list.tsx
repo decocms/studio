@@ -358,7 +358,7 @@ export function SectionList({
   }
 
   return (
-    <div className={activeEntry ? "cursor-grabbing" : undefined}>
+    <div className={cn(activeEntry && "cursor-grabbing")}>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

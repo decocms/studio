@@ -29,13 +29,6 @@ export interface SectionVariantEntry {
   label: string;
 }
 
-function variantRowClassName(selected: boolean) {
-  return cn(
-    "group flex select-none items-center gap-2 rounded-md px-2 py-2.5 transition-colors cursor-pointer",
-    selected ? VARIANT_SELECTED_ROW_CLASS : VARIANT_ROW_CLASS,
-  );
-}
-
 function VariantRow({
   variant,
   selected,
@@ -62,7 +55,10 @@ function VariantRow({
           onSelect();
         }
       }}
-      className={variantRowClassName(selected)}
+      className={cn(
+        "group flex select-none items-center gap-2 rounded-md px-2 py-2.5 transition-colors cursor-pointer",
+        selected ? VARIANT_SELECTED_ROW_CLASS : VARIANT_ROW_CLASS,
+      )}
     >
       <LayoutAlt01
         className="h-4 w-4 shrink-0"

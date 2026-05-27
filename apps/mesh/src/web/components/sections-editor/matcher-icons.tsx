@@ -1,4 +1,5 @@
 import { FilterLines } from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.js";
 import type { ComponentType, SVGProps } from "react";
 import { getIconComponent } from "../agent-icon";
 
@@ -90,7 +91,11 @@ export function MatcherIcon({
 
   return (
     <div
-      className={`flex ${boxClass} shrink-0 items-center justify-center rounded-full bg-muted ${className ?? ""}`}
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-muted",
+        boxClass,
+        className,
+      )}
     >
       <Icon size={iconSize} className="text-muted-foreground" />
     </div>
