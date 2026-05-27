@@ -279,4 +279,18 @@ describe("toModelOutput (new runAgentLoop-based contract)", () => {
       value: "Subtask completed (no output).",
     });
   });
+
+  test("returns step-limit notice when finishReason is 'length' and text is empty", () => {
+    const result = toModelOutput({
+      ...baseArgs,
+      output: {
+        text: "",
+        error: undefined,
+        finishReason: "length",
+      } as never,
+    }) as { type: string; value: string };
+    expect(result.type).toBe("text");
+    expect(result.value).toContain("step limit");
+    expect(result.value).toContain("ran out of steps");
+  });
 });

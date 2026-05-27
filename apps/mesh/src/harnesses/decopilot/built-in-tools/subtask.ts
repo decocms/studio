@@ -139,8 +139,17 @@ export function createSubtaskTool(
         // 5. Collect results from the resolved promises.
         const error = await handle.error;
         const finishReason = await handle.result.finishReason;
-        const text = await handle.result.text;
+        const steps = await handle.result.steps;
+        const aggregatedText = steps
+          .map((s) => s.text ?? "")
+          .filter((t) => t.trim().length > 0)
+          .join("\n\n")
+          .trim();
         const usage = await handle.result.usage;
+
+        console.log(
+          `[subtask:${agent_id}] completed: finishReason=${finishReason}, steps=${steps.length}, textLength=${aggregatedText.length}, error=${error ? "yes" : "no"}, usage=${JSON.stringify({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens })}`,
+        );
 
         // 6. Emit metadata chunks to the parent's writer.
         const latencyMs = performance.now() - startTime;
@@ -156,7 +165,7 @@ export function createSubtaskTool(
         });
 
         // 7. Return the tool output — flows into toModelOutput.
-        return { text, error, finishReason };
+        return { text: aggregatedText, error, finishReason };
       } finally {
         mcpClient.close().catch(() => {});
       }
@@ -172,12 +181,20 @@ export function createSubtaskTool(
         };
       }
       const text = o?.text?.trim();
+      const stepLimitHit = o?.finishReason === "length";
+
       if (text) {
-        const prefix =
-          o?.finishReason === "length"
-            ? "[Subtask hit step limit — partial result below; consider narrowing the task.]\n\n"
-            : "";
+        const prefix = stepLimitHit
+          ? "[Subtask hit step limit — partial result below; consider narrowing the task.]\n\n"
+          : "";
         return { type: "text" as const, value: prefix + text };
+      }
+      if (stepLimitHit) {
+        return {
+          type: "text" as const,
+          value:
+            "[Subtask hit step limit before producing a final report. The subagent did work but ran out of steps. Narrow the task or increase the budget.]",
+        };
       }
       return {
         type: "text" as const,
