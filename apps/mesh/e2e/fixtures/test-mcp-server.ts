@@ -1,19 +1,26 @@
 /**
  * In-process MCP server for Playwright tests.
  *
- * Spins up a tiny HTTP MCP server on a random port using `Bun.serve` so a
- * test can create a real mesh connection that points at something real but
- * controlled. The fixture re-uses mesh's transport
- * (`WebStandardStreamableHTTPServerTransport`) so the wire protocol matches
- * production exactly — no hand-rolled JSON-RPC framing.
+ * Spins up a tiny HTTP MCP server on a random port using `node:http` (NOT
+ * `Bun.serve` — Playwright runs specs under Node, not Bun) so a test can
+ * create a real mesh connection that points at something real but
+ * controlled. Uses the SDK's `StreamableHTTPServerTransport` (Node
+ * wrapper around the same Web-Standard transport mesh uses internally),
+ * so the wire protocol matches production exactly.
  *
  * Why not Docker (like tests/resilience/everything-server)? Per-test
- * lifecycle + parallel workers + zero startup overhead. Each test stands
+ * lifecycle, parallel workers, zero startup overhead. Each test stands
  * up its own server, configures it, and tears it down inline.
  */
 
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import { AddressInfo } from "node:net";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 
 type ToolHandler = (
@@ -73,6 +80,20 @@ const DEFAULT_TOOLS: TestMcpTool[] = [
   },
 ];
 
+/**
+ * Read the request body as a UTF-8 string. The SDK transport accepts a
+ * pre-parsed body via `handleRequest(req, res, parsedBody)`, which avoids
+ * the SDK having to re-buffer the IncomingMessage we already consumed.
+ */
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
 export async function startTestMcpServer(
   config: TestMcpServerConfig = {},
 ): Promise<TestMcpServer> {
@@ -82,7 +103,7 @@ export async function startTestMcpServer(
   const recorded: RecordedRequest[] = [];
 
   // Build a fresh server per request — the streamable transport is designed
-  // to be one-shot in JSON mode, mirroring how mesh's own /mcp/self mounts
+  // to be one-shot in stateless mode, mirroring how mesh's /mcp/self mounts
   // (see apps/mesh/src/api/routes/self.ts).
   const buildServer = (): McpServer => {
     const server = new McpServer({ name: "test-mcp", version: "1.0.0" });
@@ -110,60 +131,77 @@ export async function startTestMcpServer(
     return server;
   };
 
-  const httpServer = Bun.serve({
-    port: 0, // OS picks an unused port
-    fetch: async (req) => {
-      if (latencyMs > 0) {
-        await new Promise((r) => setTimeout(r, latencyMs));
-      }
+  const httpServer = createServer(
+    async (req: IncomingMessage, res: ServerResponse) => {
+      try {
+        if (latencyMs > 0) {
+          await new Promise((r) => setTimeout(r, latencyMs));
+        }
 
-      // Capture the JSON-RPC method name + body for later assertions, but
-      // don't fail the request if the body isn't JSON (e.g., a GET).
-      if (req.method === "POST") {
-        try {
-          const body = await req.clone().json();
-          if (body && typeof body === "object" && "method" in body) {
-            recorded.push({
-              method: String((body as { method: unknown }).method),
-              body,
-              timestamp: Date.now(),
-            });
+        let parsedBody: unknown = undefined;
+        if (req.method === "POST") {
+          const raw = await readBody(req);
+          try {
+            parsedBody = JSON.parse(raw);
+            if (
+              parsedBody &&
+              typeof parsedBody === "object" &&
+              "method" in parsedBody
+            ) {
+              recorded.push({
+                method: String((parsedBody as { method: unknown }).method),
+                body: parsedBody,
+                timestamp: Date.now(),
+              });
+            }
+          } catch {
+            // not JSON; pass through as undefined so transport reads raw
           }
-        } catch {
-          // not JSON; skip logging
+        }
+
+        if (failNext > 0) {
+          failNext--;
+          res.statusCode = 500;
+          res.end("test-mcp-server: injected failure");
+          return;
+        }
+
+        const server = buildServer();
+        // Stateless mode so each request stands alone — matches mesh's
+        // per-request server pattern in self.ts.
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined,
+          enableJsonResponse:
+            req.headers.accept?.includes("application/json") ?? false,
+        });
+        await server.connect(transport);
+        await transport.handleRequest(req, res, parsedBody);
+      } catch (err) {
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.end(`test-mcp-server: ${(err as Error).message}`);
+        } else {
+          res.end();
         }
       }
-
-      if (failNext > 0) {
-        failNext--;
-        return new Response("test-mcp-server: injected failure", {
-          status: 500,
-        });
-      }
-
-      const server = buildServer();
-      const transport = new WebStandardStreamableHTTPServerTransport({
-        enableJsonResponse:
-          req.headers.get("Accept")?.includes("application/json") ?? false,
-      });
-      await server.connect(transport);
-      return transport.handleRequest(req);
     },
-  });
+  );
 
-  const host =
-    httpServer.hostname === "::" || httpServer.hostname === "0.0.0.0"
-      ? "127.0.0.1"
-      : httpServer.hostname;
+  await new Promise<void>((resolve) =>
+    httpServer.listen(0, "127.0.0.1", resolve),
+  );
+  const port = (httpServer.address() as AddressInfo).port;
 
   return {
-    url: `http://${host}:${httpServer.port}/`,
+    url: `http://127.0.0.1:${port}/`,
     requests: recorded,
     setFailNext: (n) => {
       failNext = n;
     },
     stop: async () => {
-      httpServer.stop();
+      await new Promise<void>((resolve, reject) =>
+        httpServer.close((err) => (err ? reject(err) : resolve())),
+      );
     },
   };
 }
