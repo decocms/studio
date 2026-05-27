@@ -14,10 +14,11 @@
  * <Toolbar.Toggles> / <Toolbar.Right> (createPortal). Never suspends itself.
  */
 
-import { createContext, use, useState, type ReactNode } from "react";
+import { createContext, Suspense, use, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight } from "@untitledui/icons";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 
 type ToolbarCtx = {
   togglesEl: HTMLDivElement | null;
@@ -120,6 +121,35 @@ function ToolbarNav() {
   );
 }
 
+function ToolbarLogoInner() {
+  const config = usePublicConfig();
+  const logo = config.logo ?? DEFAULT_LOGO;
+  const lightSrc = typeof logo === "string" ? logo : logo.light;
+  const darkSrc = typeof logo === "string" ? logo : logo.dark;
+  return (
+    <span className="wco-hide flex items-center shrink-0 px-2">
+      <img
+        src={lightSrc}
+        alt="Logo"
+        className="size-6 object-contain dark:hidden"
+      />
+      <img
+        src={darkSrc}
+        alt="Logo"
+        className="size-6 object-contain hidden dark:block"
+      />
+    </span>
+  );
+}
+
+function ToolbarLogo() {
+  return (
+    <Suspense fallback={<span className="wco-hide shrink-0 size-6 mx-2" />}>
+      <ToolbarLogoInner />
+    </Suspense>
+  );
+}
+
 function ToolbarCenterSlot() {
   const { setCenterEl } = useToolbarCtx();
   return (
@@ -182,6 +212,7 @@ Toolbar.Header = ToolbarHeader;
 Toolbar.LeftColumn = ToolbarLeftColumn;
 Toolbar.RightColumn = ToolbarRightColumn;
 Toolbar.Nav = ToolbarNav;
+Toolbar.Logo = ToolbarLogo;
 Toolbar.CenterSlot = ToolbarCenterSlot;
 Toolbar.Center = ToolbarCenter;
 Toolbar.TabsSlot = ToolbarTabsSlot;
