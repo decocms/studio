@@ -18,7 +18,6 @@ import { track } from "@/web/lib/posthog-client";
 
 interface NavigationSidebarProps {
   sections: SidebarSection[];
-  header?: ReactNode;
   footer?: ReactNode;
   additionalContent?: ReactNode;
   variant?: "sidebar" | "floating" | "inset";
@@ -94,7 +93,6 @@ function SidebarSectionRenderer({ section }: { section: SidebarSection }) {
  */
 function NavigationSidebarInner({
   sections,
-  header,
   footer,
   additionalContent,
   variant = "sidebar",
@@ -102,7 +100,6 @@ function NavigationSidebarInner({
 }: NavigationSidebarProps) {
   return (
     <Sidebar variant={variant}>
-      {header}
       <SidebarContent
         className={cn(
           "flex flex-col flex-1 px-2 py-2 gap-0.5",
