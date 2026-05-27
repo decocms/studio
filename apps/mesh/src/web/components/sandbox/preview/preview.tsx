@@ -340,14 +340,15 @@ export function PreviewContent() {
       : null;
 
   // Reset navigation when the VM preview base URL changes (branch switch, etc.)
-  const prevIframeBaseRef = useRef<string | null>(null);
+  const [prevIframeBase, setPrevIframeBase] = useState<string | null>(null);
   if (
     previewState.kind === "iframe" &&
-    prevIframeBaseRef.current !== previewState.previewUrl
+    prevIframeBase !== previewState.previewUrl
   ) {
-    const hadPreviousBase = prevIframeBaseRef.current !== null;
-    prevIframeBaseRef.current = previewState.previewUrl;
+    const hadPreviousBase = prevIframeBase !== null;
+    setPrevIframeBase(previewState.previewUrl);
     if (hadPreviousBase) {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- clear stale navigation intent on branch switch
       intendedPathRef.current = null;
       setCurrentPath("/");
       setDirectPreviewUrl(null);

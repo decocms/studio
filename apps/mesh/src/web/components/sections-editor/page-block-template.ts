@@ -5,7 +5,7 @@ export const DEFAULT_PAGE_BLOCK = {
 } as const;
 
 export function generatePageBlockKey(name: string): string {
-  return `pages-${encodeURIComponent(name)}-${Math.floor(Math.random() * 1e6)}`;
+  return `pages-${encodeURIComponent(name)}-${crypto.randomUUID()}`;
 }
 
 export function createEmptyPageBlock(name: string, path: string) {

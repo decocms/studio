@@ -64,7 +64,10 @@ export function globalSectionLabel(
   blockId: string,
   block: Record<string, unknown>,
 ): string {
-  if (typeof block.name === "string" && block.name) return block.name;
+  if (typeof block.name === "string") {
+    const trimmed = block.name.trim();
+    if (trimmed) return trimmed;
+  }
   return blockId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
