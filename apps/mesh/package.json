@@ -41,9 +41,9 @@
     "@duckdb/node-api": "^1.5.0-r.1"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.77",
-    "@ai-sdk/google": "^3.0.73",
-    "@ai-sdk/openai": "^3.0.63",
+    "@ai-sdk/anthropic": "^3.0.80",
+    "@ai-sdk/google": "^3.0.80",
+    "@ai-sdk/openai": "^3.0.65",
     "@anthropic-ai/sdk": "^0.96.0",
     "@aws-sdk/client-s3": "^3.1013.0",
     "@aws-sdk/lib-storage": "^3.1013.0",
@@ -75,7 +75,7 @@
   },
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.10",
-    "@ai-sdk/react": "^3.0.184",
+    "@ai-sdk/react": "^3.0.193",
     "@better-auth/sso": "1.4.1",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@deco/ui": "workspace:*",
@@ -134,7 +134,7 @@
     "@untitledui/icons": "^0.0.19",
     "@vercel/nft": "^1.1.1",
     "@vitejs/plugin-react": "^5.1.0",
-    "ai": "^6.0.182",
+    "ai": "^6.0.191",
     "babel-plugin-react-compiler": "^1.0.0",
     "better-auth": "1.4.22",
     "class-variance-authority": "^0.7.1",
