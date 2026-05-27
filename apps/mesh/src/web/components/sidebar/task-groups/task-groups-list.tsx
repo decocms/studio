@@ -185,7 +185,7 @@ export function TaskGroupsList() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="shrink-0 pr-1 h-10 md:h-7 flex items-center justify-between">
+      <div className="shrink-0 pl-2 pr-1 h-10 md:h-7 flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
           Tasks
         </span>
