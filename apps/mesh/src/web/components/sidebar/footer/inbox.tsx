@@ -9,154 +9,28 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import {
-  ArrowLeft,
-  Coins04,
-  Inbox01,
-  Settings02,
-  ZapSquare,
-} from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Component, Suspense, useState } from "react";
-import type { ErrorInfo, ReactNode } from "react";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useMCPToolCallQuery,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
-import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
+import { ArrowLeft, Inbox01, Settings02, ZapSquare } from "@untitledui/icons";
+import { useState, type ReactNode } from "react";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { track } from "@/web/lib/posthog-client";
 import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
 import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
 import { ReleaseCard } from "@/web/components/release-channel/release-card";
 import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
-import { Button } from "@deco/ui/components/button.tsx";
 
-class SilentErrorBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(): { hasError: boolean } {
-    return { hasError: true };
-  }
-
-  override componentDidCatch(_error: Error, _info: ErrorInfo): void {
-    // Silently catch errors in the credit chip
-  }
-
-  override render(): ReactNode {
-    if (this.state.hasError) return null;
-    return this.props.children;
-  }
-}
-
-function creditColor(balanceDollars: number): string {
-  if (balanceDollars <= 1) return "text-destructive";
-  if (balanceDollars <= 5) return "text-amber-500 dark:text-amber-400";
-  return "text-foreground/70";
-}
-
-function CreditChip() {
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
-
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-
-  const { data, isPending, isError } = useMCPToolCallQuery<
-    { balanceCents: number } | undefined
-  >({
-    client,
-    toolName: "AI_PROVIDER_CREDITS",
-    toolArguments: { providerId: "deco" },
-    staleTime: 60_000,
-    select: (result) =>
-      (result as { structuredContent?: { balanceCents: number } })
-        .structuredContent,
-  });
-
-  const balanceDollars =
-    data?.balanceCents != null ? data.balanceCents / 100 : null;
-
-  const tooltipLabel =
-    isPending || isError || balanceDollars == null
-      ? "Credits"
-      : `Credits: $${balanceDollars.toFixed(2)}`;
-
-  return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          tooltip={tooltipLabel}
-          className={cn(balanceDollars != null && creditColor(balanceDollars))}
-          onClick={() =>
-            navigate({
-              to: "/$org/settings/ai-providers",
-              params: { org: org.slug },
-            })
-          }
-        >
-          <Coins04 size={24} />
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
-  );
-}
-
-function CreditChipConditional() {
-  const keys = useAiProviderKeys();
-  const hasDecoKey = keys.some((k) => k.providerId === "deco");
-
-  if (!hasDecoKey) return null;
-
-  return <CreditChip />;
-}
-
-function ConnectionsButton() {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Connections"
-            onClick={() => {
-              track("connections_dialog_opened", {
-                source: "sidebar_footer",
-                mode: "browse",
-              });
-              setOpen(true);
-            }}
-          >
-            <ZapSquare size={24} />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-      <AddConnectionDialog
-        mode="browse"
-        open={open}
-        onOpenChange={setOpen}
-        defaultTab="all"
-      />
-    </>
-  );
-}
-
-function InboxButton() {
-  const { items, redDotCount, markReleaseSeen } = useInboxFeed();
+function InboxPopover({ children }: { children: ReactNode }) {
+  const { items, markReleaseSeen } = useInboxFeed();
   const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(
     null,
   );
@@ -178,18 +52,7 @@ function InboxButton() {
         if (!open) setSelectedReleaseId(null);
       }}
     >
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <PopoverTrigger asChild>
-            <SidebarMenuButton tooltip="Inbox" className="relative">
-              <Inbox01 size={24} />
-              {redDotCount > 0 && (
-                <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
-              )}
-            </SidebarMenuButton>
-          </PopoverTrigger>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         side="right"
         align="start"
@@ -258,15 +121,130 @@ function InboxButton() {
   );
 }
 
-function SettingsButton() {
+function useHasUnreadInbox() {
+  const { redDotCount } = useInboxFeed();
+  return redDotCount > 0;
+}
+
+function InboxFullButton() {
+  const hasUnread = useHasUnreadInbox();
+  return (
+    <InboxPopover>
+      <SidebarMenuButton tooltip="Inbox" className="relative">
+        <Inbox01 />
+        <span>Inbox</span>
+        {hasUnread && (
+          <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
+        )}
+      </SidebarMenuButton>
+    </InboxPopover>
+  );
+}
+
+function InboxIconButton() {
+  const hasUnread = useHasUnreadInbox();
+  return (
+    <InboxPopover>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <ToolbarIconButton aria-label="Inbox">
+            <Inbox01 className="size-4" />
+            {hasUnread && (
+              <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 pointer-events-none" />
+            )}
+          </ToolbarIconButton>
+        </TooltipTrigger>
+        <TooltipContent side="top">Inbox</TooltipContent>
+      </Tooltip>
+    </InboxPopover>
+  );
+}
+
+function ConnectionsFullButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <SidebarMenuButton
+        tooltip="Connections"
+        onClick={() => {
+          track("connections_dialog_opened", {
+            source: "sidebar_footer",
+            mode: "browse",
+          });
+          setOpen(true);
+        }}
+      >
+        <ZapSquare />
+        <span>Connections</span>
+      </SidebarMenuButton>
+      <AddConnectionDialog
+        mode="browse"
+        open={open}
+        onOpenChange={setOpen}
+        defaultTab="all"
+      />
+    </>
+  );
+}
+
+function ConnectionsIconButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <ToolbarIconButton
+            aria-label="Connections"
+            onClick={() => {
+              track("connections_dialog_opened", {
+                source: "sidebar_footer",
+                mode: "browse",
+              });
+              setOpen(true);
+            }}
+          >
+            <ZapSquare className="size-4" />
+          </ToolbarIconButton>
+        </TooltipTrigger>
+        <TooltipContent side="top">Connections</TooltipContent>
+      </Tooltip>
+      <AddConnectionDialog
+        mode="browse"
+        open={open}
+        onOpenChange={setOpen}
+        defaultTab="all"
+      />
+    </>
+  );
+}
+
+function SettingsFullButton() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
-
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          tooltip="Settings"
+    <SidebarMenuButton
+      tooltip="Settings"
+      onClick={() =>
+        navigate({
+          to: "/$org/settings",
+          params: { org: org.slug },
+        })
+      }
+    >
+      <Settings02 />
+      <span>Settings</span>
+    </SidebarMenuButton>
+  );
+}
+
+function SettingsIconButton() {
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <ToolbarIconButton
+          aria-label="Settings"
           onClick={() =>
             navigate({
               to: "/$org/settings",
@@ -274,29 +252,53 @@ function SettingsButton() {
             })
           }
         >
-          <Settings02 size={24} />
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
+          <Settings02 className="size-4" />
+        </ToolbarIconButton>
+      </TooltipTrigger>
+      <TooltipContent side="top">Settings</TooltipContent>
+    </Tooltip>
   );
 }
 
 export function SidebarInboxFooter() {
+  const { state } = useSidebar();
+  const isCollapsed = state === "collapsed";
+
+  if (isCollapsed) {
+    return (
+      <SidebarFooter className="px-2 pb-3 gap-1">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <ConnectionsFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <InboxFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SettingsFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <AccountPopover />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    );
+  }
+
   return (
-    <SidebarFooter className="px-2 pb-3 gap-1">
-      <SilentErrorBoundary>
-        <Suspense fallback={null}>
-          <CreditChipConditional />
-        </Suspense>
-      </SilentErrorBoundary>
-      <ConnectionsButton />
-      <InboxButton />
-      <SettingsButton />
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <AccountPopover />
-        </SidebarMenuItem>
-      </SidebarMenu>
+    <SidebarFooter className="px-2 pb-3">
+      <div className="flex items-center gap-1">
+        <div className="flex-1 min-w-0">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <AccountPopover />
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </div>
+        <SettingsIconButton />
+        <InboxIconButton />
+        <ConnectionsIconButton />
+      </div>
     </SidebarFooter>
   );
 }

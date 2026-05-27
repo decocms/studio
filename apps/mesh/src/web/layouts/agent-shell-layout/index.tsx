@@ -6,21 +6,19 @@
  *   ├── Toolbar                            (outside Suspense)
  *   │   • Toolbar.Nav (back/forward)
  *   │   • Toolbar.TabsSlot    (portal target — main-panel tab bar)
- *   │   • Toolbar.TogglesSlot (portal target — tasks/chat)
- *   └── flex-row
- *       ├── TasksPanelColumn               (owned by org-shell-layout)
- *       └── Suspense
- *           └── AgentInsetProvider
- *               • useVirtualMCP (suspends here)
- *               • Toolbar.Toggles → portal into slot
- *               • Toolbar.Tabs → portal into slot
- *               • Chat.Provider
- *                 └── VmEventsBridge
- *                     └── Chat.ActiveTaskProvider
- *                         └── ChatMainPanelGroup
- *                             (the per-thread todo list is rendered
- *                              by TodosHighlight inside ChatHighlight,
- *                              not as a side column)
+ *   │   • Toolbar.TogglesSlot (portal target — chat / new-task)
+ *   └── Suspense
+ *       └── AgentInsetProvider
+ *           • useVirtualMCP (suspends here)
+ *           • Toolbar.Toggles → portal into slot
+ *           • Toolbar.Tabs → portal into slot
+ *           • Chat.Provider
+ *             └── VmEventsBridge
+ *                 └── Chat.ActiveTaskProvider
+ *                     └── ChatMainPanelGroup
+ *                         (the per-thread todo list is rendered
+ *                          by TodosHighlight inside ChatHighlight,
+ *                          not as a side column)
  *
  * Mobile layout:
  *   Chat.Provider
@@ -39,7 +37,6 @@ import {
 } from "react";
 import { Chat, useChatTask } from "@/web/components/chat/index";
 import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
-import { TasksPanel } from "@/web/layouts/tasks-panel";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { StudioSidebarMobile } from "@/web/components/sidebar";
@@ -71,7 +68,6 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "@/web/components/empty-state";
 import { useChatMainPanelState } from "@/web/hooks/use-layout-state";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
-import { useOptionalTasksPanelState } from "@/web/hooks/use-tasks-panel-state";
 import { Toolbar } from "./toolbar";
 import { ChatMainPanelGroup } from "./chat-main-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
@@ -288,7 +284,6 @@ function AgentInsetProvider() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const tasksOpen = useOptionalTasksPanelState()?.tasksOpen ?? false;
 
   useStatusSounds(org.slug);
 
@@ -422,15 +417,12 @@ function AgentInsetProvider() {
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-full">
             <div
-              className="w-14 shrink-0 bg-sidebar flex flex-col items-center border-r border-border overflow-y-auto group/sidebar"
-              data-state="collapsed"
+              className="w-full bg-sidebar flex flex-col overflow-y-auto group/sidebar"
+              data-state="expanded"
             >
               <StudioSidebarMobile
                 onClose={() => setMobileSidebarOpen(false)}
               />
-            </div>
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <TasksPanel />
             </div>
           </div>
         </SheetContent>
@@ -518,7 +510,7 @@ function AgentInsetProvider() {
           <ToggleButtons
             chatOpen={layout.chatOpen}
             toggleChat={layout.toggleChat}
-            onNewTask={tasksOpen ? undefined : layout.createNewTask}
+            onNewTask={layout.createNewTask}
           />
         </Toolbar.Toggles>
 
@@ -565,10 +557,9 @@ function AgentInsetProvider() {
 // ---------------------------------------------------------------------------
 // Default export — the per-task content for /$org/$taskId.
 //
-// Sidebar, toolbar shell, org-wide tasks panel, ChatPrefsProvider, and
-// TasksPanelStateProvider all live in `org-shell-layout` (the parent route).
-// This component just renders the per-task chrome inside the flex-row Outlet
-// on desktop, or directly inside SidebarInset on mobile.
+// Sidebar, toolbar shell, and ChatPrefsProvider live in `org-shell-layout`
+// (the parent route). This component just renders the per-task chrome inside
+// the flex-row Outlet on desktop, or directly inside SidebarInset on mobile.
 // ---------------------------------------------------------------------------
 
 export default function AgentShellLayout() {

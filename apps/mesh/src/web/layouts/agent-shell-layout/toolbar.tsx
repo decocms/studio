@@ -17,6 +17,7 @@
 import { createContext, use, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight } from "@untitledui/icons";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 
 type ToolbarCtx = {
   togglesEl: HTMLDivElement | null;
@@ -37,7 +38,7 @@ function useToolbarCtx(): ToolbarCtx {
   return ctx;
 }
 
-export function Toolbar({ children }: { children?: ReactNode }) {
+function ToolbarProviderImpl({ children }: { children?: ReactNode }) {
   const [togglesEl, setTogglesEl] = useState<HTMLDivElement | null>(null);
   const [tabsEl, setTabsEl] = useState<HTMLDivElement | null>(null);
   const [centerEl, setCenterEl] = useState<HTMLDivElement | null>(null);
@@ -55,8 +56,16 @@ export function Toolbar({ children }: { children?: ReactNode }) {
         setRightEl,
       }}
     >
-      <div className="flex flex-col h-full min-h-0">{children}</div>
+      {children}
     </ToolbarContext>
+  );
+}
+
+export function Toolbar({ children }: { children?: ReactNode }) {
+  return (
+    <ToolbarProviderImpl>
+      <div className="flex flex-col h-full min-h-0">{children}</div>
+    </ToolbarProviderImpl>
   );
 }
 
@@ -93,22 +102,20 @@ function ToolbarRightColumn({ children }: { children?: ReactNode }) {
 function ToolbarNav() {
   return (
     <>
-      <button
-        type="button"
+      <ToolbarIconButton
         onClick={() => window.history.back()}
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+        aria-label="Go back"
         title="Go back"
       >
         <ChevronLeft size={16} />
-      </button>
-      <button
-        type="button"
+      </ToolbarIconButton>
+      <ToolbarIconButton
         onClick={() => window.history.forward()}
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+        aria-label="Go forward"
         title="Go forward"
       >
         <ChevronRight size={16} />
-      </button>
+      </ToolbarIconButton>
     </>
   );
 }
@@ -170,6 +177,7 @@ function ToolbarRight({ children }: { children: ReactNode }) {
   return createPortal(children, rightEl);
 }
 
+Toolbar.Provider = ToolbarProviderImpl;
 Toolbar.Header = ToolbarHeader;
 Toolbar.LeftColumn = ToolbarLeftColumn;
 Toolbar.RightColumn = ToolbarRightColumn;

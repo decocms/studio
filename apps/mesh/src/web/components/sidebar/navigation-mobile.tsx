@@ -21,19 +21,17 @@ function MobileLogoHeader() {
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
   return (
-    <SidebarHeader className="flex items-center justify-center shrink-0 px-2 pb-0">
-      <div className="flex w-full aspect-square items-center justify-center">
-        <img
-          src={lightSrc}
-          alt="Logo"
-          className="size-6 object-contain dark:hidden"
-        />
-        <img
-          src={darkSrc}
-          alt="Logo"
-          className="size-6 object-contain hidden dark:block"
-        />
-      </div>
+    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0">
+      <img
+        src={lightSrc}
+        alt="Logo"
+        className="size-6 object-contain dark:hidden"
+      />
+      <img
+        src={darkSrc}
+        alt="Logo"
+        className="size-6 object-contain hidden dark:block"
+      />
     </SidebarHeader>
   );
 }
@@ -54,9 +52,10 @@ function MobileNavigationItem({
         }}
         isActive={item.isActive}
         tooltip={item.label}
-        className="bg-muted/75"
+        className="h-10! text-sm!"
       >
-        <span className="[&>svg]:size-8">{item.icon}</span>
+        <span className="[&>svg]:size-5 shrink-0">{item.icon}</span>
+        <span>{item.label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -105,6 +104,8 @@ function MobileSectionRenderer({
           </SidebarGroupContent>
         </SidebarGroup>
       );
+    case "custom":
+      return section.content;
   }
 }
 
@@ -142,7 +143,11 @@ export function MobileNavigationSidebar({
             onClose={onClose}
           />
         ))}
-        {additionalContent}
+        {additionalContent && (
+          <div className="mt-3 flex flex-col flex-1 min-h-0">
+            {additionalContent}
+          </div>
+        )}
       </SidebarContent>
       {footer}
     </div>

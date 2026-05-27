@@ -257,6 +257,12 @@ function hashString(input: string): number {
 // ---------------------------------------------------------------------------
 
 const SIZES = {
+  "2xs": {
+    container: "w-5 h-5",
+    icon: 12,
+    text: "text-[9px]",
+    radius: "rounded-md",
+  },
   xs: { container: "w-6 h-6", icon: 14, text: "text-xs", radius: "rounded-md" },
   sm: { container: "w-8 h-8", icon: 16, text: "text-sm", radius: "rounded-lg" },
   "sm+": {

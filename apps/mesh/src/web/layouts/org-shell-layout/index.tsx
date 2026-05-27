@@ -16,16 +16,31 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
-import { Loading01, Menu01 } from "@untitledui/icons";
+import { LayoutLeft, Loading01, Menu01 } from "@untitledui/icons";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { SidebarResizeHandle } from "@/web/components/sidebar/sidebar-resize-handle";
+import {
+  SIDEBAR_MAX_WIDTH,
+  useSidebarResize,
+} from "@/web/hooks/use-sidebar-resize";
 import { Outlet, useParams } from "@tanstack/react-router";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
 import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
-import { TasksPanelStateProvider } from "@/web/hooks/use-tasks-panel-state";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
-import { TasksWorkspaceLayout } from "@/web/layouts/agent-shell-layout/tasks-workspace-layout";
-import { TasksPanel } from "@/web/layouts/tasks-panel";
+import { useLocalStorage } from "@/web/hooks/use-local-storage";
+
+const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
+
+function SidebarToggleButton() {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <ToolbarIconButton onClick={toggleSidebar} aria-label="Toggle sidebar">
+      <LayoutLeft size={16} />
+    </ToolbarIconButton>
+  );
+}
 
 function RouteFallback() {
   return (
@@ -58,13 +73,10 @@ function MobileHomeToolbar() {
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-full">
             <div
-              className="w-14 shrink-0 bg-sidebar flex flex-col items-center border-r border-border overflow-y-auto group/sidebar"
-              data-state="collapsed"
+              className="w-full bg-sidebar flex flex-col overflow-y-auto group/sidebar"
+              data-state="expanded"
             >
               <StudioSidebarMobile onClose={() => setOpenMobile(false)} />
-            </div>
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <TasksPanel />
             </div>
           </div>
         </SheetContent>
@@ -73,33 +85,60 @@ function MobileHomeToolbar() {
   );
 }
 
+function SidebarNavControls() {
+  return (
+    <>
+      <Toolbar.Nav />
+      <SidebarToggleButton />
+      <Toolbar.TogglesSlot />
+      <LinkedDesktopIndicator />
+    </>
+  );
+}
+
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
   const params = useParams({ strict: false }) as { taskId?: string };
   const hasTaskRoute = Boolean(params.taskId);
+  const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
+    SIDEBAR_OPEN_STORAGE_KEY,
+    false,
+  );
+  const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
+  const effectiveWidth = hasTaskRoute ? width : SIDEBAR_MAX_WIDTH;
 
   return (
     <ThreadManagerProvider>
-      <SidebarProvider defaultOpen={false}>
-        <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-          <SidebarLayout
-            className="flex-1 bg-sidebar"
-            style={
-              {
-                "--sidebar-width-icon": "3.5rem",
-              } as Record<string, string>
-            }
-          >
-            <StudioSidebar />
-            <SidebarInset
-              className="flex flex-col"
-              style={{
-                background: "transparent",
-                containerType: "inline-size",
-              }}
+      <Toolbar.Provider>
+        <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
+          <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
+            <SidebarLayout
+              ref={wrapperRef}
+              className="flex-1 bg-sidebar relative"
+              style={
+                {
+                  "--sidebar-width": `${effectiveWidth}px`,
+                  "--sidebar-width-icon": "3.5rem",
+                } as Record<string, string>
+              }
             >
-              <ChatPrefsProvider>
-                <TasksPanelStateProvider>
+              <StudioSidebar
+                headerRight={sidebarOpen ? <SidebarNavControls /> : undefined}
+              />
+              {hasTaskRoute && (
+                <SidebarResizeHandle
+                  onPointerDown={onStartResize}
+                  onDoubleClick={resetWidth}
+                />
+              )}
+              <SidebarInset
+                className="flex flex-col"
+                style={{
+                  background: "transparent",
+                  containerType: "inline-size",
+                }}
+              >
+                <ChatPrefsProvider>
                   {isMobile ? (
                     <>
                       {!hasTaskRoute && <MobileHomeToolbar />}
@@ -108,12 +147,10 @@ export default function OrgShellLayout() {
                       </Suspense>
                     </>
                   ) : (
-                    <Toolbar>
+                    <div className="flex flex-col h-full min-h-0">
                       <Toolbar.Header>
                         <Toolbar.LeftColumn>
-                          <Toolbar.Nav />
-                          <Toolbar.TogglesSlot />
-                          <LinkedDesktopIndicator />
+                          {!sidebarOpen && <SidebarNavControls />}
                         </Toolbar.LeftColumn>
                         <Toolbar.CenterSlot />
                         <Toolbar.RightColumn>
@@ -124,20 +161,18 @@ export default function OrgShellLayout() {
                         </Toolbar.RightColumn>
                       </Toolbar.Header>
                       <div className="flex-1 min-h-0 flex flex-row">
-                        <TasksWorkspaceLayout>
-                          <Suspense fallback={<RouteFallback />}>
-                            <Outlet />
-                          </Suspense>
-                        </TasksWorkspaceLayout>
+                        <Suspense fallback={<RouteFallback />}>
+                          <Outlet />
+                        </Suspense>
                       </div>
-                    </Toolbar>
+                    </div>
                   )}
-                </TasksPanelStateProvider>
-              </ChatPrefsProvider>
-            </SidebarInset>
-          </SidebarLayout>
-        </div>
-      </SidebarProvider>
+                </ChatPrefsProvider>
+              </SidebarInset>
+            </SidebarLayout>
+          </div>
+        </SidebarProvider>
+      </Toolbar.Provider>
     </ThreadManagerProvider>
   );
 }
