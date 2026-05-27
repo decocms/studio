@@ -126,85 +126,108 @@ function extractPageSlugFromPath(path: string): string | null {
   return m?.[1] ?? null;
 }
 
+/**
+ * Iterate every tool-call part across the chat stream, with toolName,
+ * record, and state pre-extracted. Used by every chat-stream walker so
+ * the for-of body can focus on the consumer's logic rather than the
+ * boilerplate of digging into part shapes. Default state is
+ * "output-available" because some streams omit the field on completed
+ * parts.
+ */
+type WalkedPart = {
+  toolName: string | null;
+  record: Record<string, unknown>;
+  state: string;
+};
+function* walkParts(
+  messages: Array<{ parts?: unknown[] }>,
+): Iterable<WalkedPart> {
+  for (const message of messages) {
+    for (const part of message.parts ?? []) {
+      const record = part as Record<string, unknown>;
+      yield {
+        toolName: partToolName(part),
+        record,
+        state:
+          typeof record.state === "string" ? record.state : "output-available",
+      };
+    }
+  }
+}
+
 function deriveSessionItems(
   messages: Array<{ parts?: unknown[] }>,
 ): SessionItems {
   let designSystemSlug: string | null = null;
   let pageSlug: string | null = null;
   let pageActivated = false;
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      const toolName = partToolName(part);
-      if (!toolName) continue;
-      const record = part as Record<string, unknown>;
-      const state =
-        typeof record.state === "string" ? record.state : "output-available";
-      // Honor only *successful* tool results. `output-error` carries the
-      // same prefix but means the call failed — using its args would
-      // chase a slug that was never written to disk.
-      if (state !== "output-available") continue;
-      if (/write|edit/i.test(toolName)) {
-        const manualArtifacts = extractManualArtifacts(record);
-        if (manualArtifacts.designSystemSlug) {
-          designSystemSlug = manualArtifacts.designSystemSlug;
-        }
-        if (manualArtifacts.pageSlug) {
-          pageSlug = manualArtifacts.pageSlug;
-          pageActivated = true;
-        }
+  for (const { toolName, record, state } of walkParts(messages)) {
+    if (!toolName) continue;
+    // Honor only *successful* tool results. `output-error` carries the
+    // same prefix but means the call failed — using its args would
+    // chase a slug that was never written to disk.
+    if (state !== "output-available") continue;
+    if (/write|edit/i.test(toolName)) {
+      const manualArtifacts = extractManualArtifacts(record);
+      if (manualArtifacts.designSystemSlug) {
+        designSystemSlug = manualArtifacts.designSystemSlug;
       }
-      if (toolName === "PAGE_BOOTSTRAP") {
-        // Combined tool: sets both the page slug AND the derived DS slug
-        // (<slug>-ds) AND activates the page in one shot.
-        const slug = extractToolArgString(record, "slug");
-        if (slug) {
-          pageSlug = slug;
-          designSystemSlug = `${slug}-ds`;
-          pageActivated = true;
-        }
-      } else if (toolName === "DESIGN_SYSTEM_CREATE") {
-        const slug = extractToolArgString(record, "slug");
-        if (slug) designSystemSlug = slug;
-      } else if (toolName === "PAGE_PREVIEW_PAGE_CREATE") {
-        const slug = extractToolArgString(record, "slug");
-        if (slug) {
-          pageSlug = slug;
-          // CREATE activates the page (server-side activate is always true
-          // now — see tools/page-preview/index.ts: PAGE_PREVIEW_PAGE_CREATE).
-          // Pre-REPL the page would stay inactive until SET/REFRESH so the
-          // DS preview kept showing during the blank-page window, but with
-          // browser-as-REPL the iframe renders sections live the moment they
-          // arrive — no blank-page window exists. Activating here mirrors
-          // the server so the Studio intent ladder resolves to "page"
-          // (not "ds-demo") when the agent's turn ends, preventing the
-          // post-build host:show-design-system that wipes REPL-rendered
-          // blocks.
-          pageActivated = true;
-        }
-      } else if (toolName === "PAGE_RENDER_BLOCK") {
-        // The REPL path bypasses SET/REFRESH entirely. As soon as the
-        // agent ships a block, the page is the active artifact —
-        // regardless of which scaffold tool ran before. Defensive in case
-        // a future flow ships blocks without PAGE_CREATE (or for legacy
-        // pages already on disk).
-        const slug = extractToolArgString(record, "slug");
-        if (slug) {
-          pageSlug = slug;
-          pageActivated = true;
-        }
-      } else if (toolName === "PAGE_PREVIEW_SET") {
-        // SET to ANY slug counts. Studio side filters against the
-        // on-disk pages list, so a typo / stale slug still won't be
-        // shown — but a valid SET to an existing page will be honored.
-        const target = extractToolArgString(record, "path") ?? "";
-        const slugFromPath = extractPageSlugFromPath(target);
-        if (slugFromPath) {
-          pageSlug = slugFromPath;
-          pageActivated = true;
-        }
-      } else if (toolName === "PAGE_PREVIEW_REFRESH") {
-        if (pageSlug) pageActivated = true;
+      if (manualArtifacts.pageSlug) {
+        pageSlug = manualArtifacts.pageSlug;
+        pageActivated = true;
       }
+    }
+    if (toolName === "PAGE_BOOTSTRAP") {
+      // Combined tool: sets both the page slug AND the derived DS slug
+      // (<slug>-ds) AND activates the page in one shot.
+      const slug = extractToolArgString(record, "slug");
+      if (slug) {
+        pageSlug = slug;
+        designSystemSlug = `${slug}-ds`;
+        pageActivated = true;
+      }
+    } else if (toolName === "DESIGN_SYSTEM_CREATE") {
+      const slug = extractToolArgString(record, "slug");
+      if (slug) designSystemSlug = slug;
+    } else if (toolName === "PAGE_PREVIEW_PAGE_CREATE") {
+      const slug = extractToolArgString(record, "slug");
+      if (slug) {
+        pageSlug = slug;
+        // CREATE activates the page (server-side activate is always true
+        // now — see tools/page-preview/index.ts: PAGE_PREVIEW_PAGE_CREATE).
+        // Pre-REPL the page would stay inactive until SET/REFRESH so the
+        // DS preview kept showing during the blank-page window, but with
+        // browser-as-REPL the iframe renders sections live the moment they
+        // arrive — no blank-page window exists. Activating here mirrors
+        // the server so the Studio intent ladder resolves to "page"
+        // (not "ds-demo") when the agent's turn ends, preventing the
+        // post-build host:show-design-system that wipes REPL-rendered
+        // blocks.
+        pageActivated = true;
+      }
+    } else if (toolName === "PAGE_RENDER_BLOCK") {
+      // The REPL path bypasses SET/REFRESH entirely. As soon as the
+      // agent ships a block, the page is the active artifact —
+      // regardless of which scaffold tool ran before. Defensive in case
+      // a future flow ships blocks without PAGE_CREATE (or for legacy
+      // pages already on disk).
+      const slug = extractToolArgString(record, "slug");
+      if (slug) {
+        pageSlug = slug;
+        pageActivated = true;
+      }
+    } else if (toolName === "PAGE_PREVIEW_SET") {
+      // SET to ANY slug counts. Studio side filters against the
+      // on-disk pages list, so a typo / stale slug still won't be
+      // shown — but a valid SET to an existing page will be honored.
+      const target = extractToolArgString(record, "path") ?? "";
+      const slugFromPath = extractPageSlugFromPath(target);
+      if (slugFromPath) {
+        pageSlug = slugFromPath;
+        pageActivated = true;
+      }
+    } else if (toolName === "PAGE_PREVIEW_REFRESH") {
+      if (pageSlug) pageActivated = true;
     }
   }
   return { designSystemSlug, pageSlug, pageActivated };
@@ -268,16 +291,10 @@ function deriveLatestUserPrompt(
 function hasAnyPreviewToolFired(
   messages: Array<{ parts?: unknown[] }>,
 ): boolean {
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      const toolName = partToolName(part);
-      if (!toolName) continue;
-      if (!PREVIEW_STATE_TOOLS.has(toolName)) continue;
-      const record = part as Record<string, unknown>;
-      const state =
-        typeof record.state === "string" ? record.state : "output-available";
-      if (state === "output-available") return true;
-    }
+  for (const { toolName, state } of walkParts(messages)) {
+    if (!toolName) continue;
+    if (!PREVIEW_STATE_TOOLS.has(toolName)) continue;
+    if (state === "output-available") return true;
   }
   return false;
 }
@@ -296,21 +313,12 @@ function deriveLiveOutline(
   messages: Array<{ parts?: unknown[] }>,
 ): string[] | null {
   let outline: string[] | null = null;
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      const toolName = partToolName(part);
-      if (!toolName) continue;
-      const record = part as Record<string, unknown>;
-      const state =
-        typeof record.state === "string" ? record.state : "output-available";
-      if (state !== "output-available") continue;
-      if (
-        toolName === "PAGE_PREVIEW_PROGRESS" ||
-        toolName === "PAGE_BOOTSTRAP"
-      ) {
-        const candidate = extractToolArgArray(record, "outline");
-        if (candidate) outline = candidate;
-      }
+  for (const { toolName, record, state } of walkParts(messages)) {
+    if (!toolName) continue;
+    if (state !== "output-available") continue;
+    if (toolName === "PAGE_PREVIEW_PROGRESS" || toolName === "PAGE_BOOTSTRAP") {
+      const candidate = extractToolArgArray(record, "outline");
+      if (candidate) outline = candidate;
     }
   }
   return outline;
@@ -334,29 +342,23 @@ export type ReviewTip = {
 function deriveReviewTips(messages: Array<{ parts?: unknown[] }>): ReviewTip[] {
   const out: ReviewTip[] = [];
   let positional = 0;
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      const toolName = partToolName(part);
-      if (toolName !== "PAGE_REVIEW_SUGGEST") continue;
-      const record = part as Record<string, unknown>;
-      const state =
-        typeof record.state === "string" ? record.state : "output-available";
-      if (state === "output-error") continue;
-      const section = extractToolArgString(record, "section");
-      // Accept either `prompt` (current) or `suggestion` (older field
-      // the agent may still emit if it falls back to remembered tool
-      // shapes). Surfacing both prevents tooltips from silently going
-      // missing when the field name drifts.
-      const prompt =
-        extractToolArgString(record, "prompt") ??
-        extractToolArgString(record, "suggestion");
-      if (!section || !prompt) continue;
-      const id =
-        typeof record.toolCallId === "string"
-          ? `tip:${record.toolCallId}`
-          : `tip:#${positional++}`;
-      out.push({ id, section, prompt });
-    }
+  for (const { toolName, record, state } of walkParts(messages)) {
+    if (toolName !== "PAGE_REVIEW_SUGGEST") continue;
+    if (state === "output-error") continue;
+    const section = extractToolArgString(record, "section");
+    // Accept either `prompt` (current) or `suggestion` (older field the
+    // agent may still emit if it falls back to remembered tool shapes).
+    // Surfacing both prevents tooltips from silently going missing when
+    // the field name drifts.
+    const prompt =
+      extractToolArgString(record, "prompt") ??
+      extractToolArgString(record, "suggestion");
+    if (!section || !prompt) continue;
+    const id =
+      typeof record.toolCallId === "string"
+        ? `tip:${record.toolCallId}`
+        : `tip:#${positional++}`;
+    out.push({ id, section, prompt });
   }
   return out;
 }
@@ -439,68 +441,56 @@ function deriveLiveProgress(
   let outline: string[] | null = null;
   let completedRenderSections = 0;
   let reviewStarted = false;
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      const toolName = partToolName(part);
-      if (!toolName) continue;
-      const record = part as Record<string, unknown>;
-      const callState =
-        typeof record.state === "string" ? record.state : "output-available";
-      if (callState === "output-error") {
-        label = null;
-        continue;
-      }
-      // Side-channel: track outline + render completions for the
-      // "Reviewing" beat below.
-      if (
-        toolName === "PAGE_PREVIEW_PROGRESS" ||
-        toolName === "PAGE_BOOTSTRAP"
-      ) {
-        const candidate = extractToolArgArray(record, "outline");
-        if (candidate) outline = candidate;
-      }
-      if (
-        toolName === "PAGE_RENDER_BLOCK" &&
-        callState === "output-available"
-      ) {
-        completedRenderSections += 1;
-      }
-      if (toolName === "PAGE_REVIEW_SUGGEST") reviewStarted = true;
-      // PROGRESS sets a label even after completion (it's a hint, not an
-      // active operation). All other tools clear themselves once done.
-      if (toolName === "PAGE_PREVIEW_PROGRESS") {
-        const explicit =
-          extractToolArgString(record, "label") ??
-          extractToolArgString(record, "input.label");
-        if (explicit) label = explicit;
-        continue;
-      }
-      const isInFlight = callState !== "output-available";
-      if (!isInFlight) {
-        // Completed work — clear any stale "Adding X…" label that referred
-        // to this same tool call so the pill disappears once the section
-        // is visibly rendered.
-        label = null;
-        continue;
-      }
-      if (toolName === "PAGE_BOOTSTRAP") {
-        const tpl = extractToolArgString(record, "template");
-        label = tpl ? `Applying ${tpl}…` : "Bootstrapping the page…";
-      } else if (toolName === "DESIGN_SYSTEM_CREATE") {
-        const tpl = extractToolArgString(record, "template");
-        label = tpl ? `Applying ${tpl}…` : "Applying design system…";
-      } else if (toolName === "PAGE_PREVIEW_PAGE_CREATE") {
-        label = "Building the layout…";
-      } else if (toolName === "PAGE_RENDER_BLOCK") {
-        const section = extractToolArgString(record, "section");
-        label = section ? `Adding ${section}…` : "Adding section…";
-      } else if (toolName === "PAGE_UPDATE_BLOCK") {
-        label = "Polishing…";
-      } else if (toolName === "PAGE_REMOVE_BLOCK") {
-        label = "Removing section…";
-      } else if (toolName === "PAGE_REVIEW_SUGGEST") {
-        label = "Reviewing the page…";
-      }
+  for (const { toolName, record, state: callState } of walkParts(messages)) {
+    if (!toolName) continue;
+    if (callState === "output-error") {
+      label = null;
+      continue;
+    }
+    // Side-channel: track outline + render completions for the
+    // "Reviewing" beat below.
+    if (toolName === "PAGE_PREVIEW_PROGRESS" || toolName === "PAGE_BOOTSTRAP") {
+      const candidate = extractToolArgArray(record, "outline");
+      if (candidate) outline = candidate;
+    }
+    if (toolName === "PAGE_RENDER_BLOCK" && callState === "output-available") {
+      completedRenderSections += 1;
+    }
+    if (toolName === "PAGE_REVIEW_SUGGEST") reviewStarted = true;
+    // PROGRESS sets a label even after completion (it's a hint, not an
+    // active operation). All other tools clear themselves once done.
+    if (toolName === "PAGE_PREVIEW_PROGRESS") {
+      const explicit =
+        extractToolArgString(record, "label") ??
+        extractToolArgString(record, "input.label");
+      if (explicit) label = explicit;
+      continue;
+    }
+    const isInFlight = callState !== "output-available";
+    if (!isInFlight) {
+      // Completed work — clear any stale "Adding X…" label that referred
+      // to this same tool call so the pill disappears once the section
+      // is visibly rendered.
+      label = null;
+      continue;
+    }
+    if (toolName === "PAGE_BOOTSTRAP") {
+      const tpl = extractToolArgString(record, "template");
+      label = tpl ? `Applying ${tpl}…` : "Bootstrapping the page…";
+    } else if (toolName === "DESIGN_SYSTEM_CREATE") {
+      const tpl = extractToolArgString(record, "template");
+      label = tpl ? `Applying ${tpl}…` : "Applying design system…";
+    } else if (toolName === "PAGE_PREVIEW_PAGE_CREATE") {
+      label = "Building the layout…";
+    } else if (toolName === "PAGE_RENDER_BLOCK") {
+      const section = extractToolArgString(record, "section");
+      label = section ? `Adding ${section}…` : "Adding section…";
+    } else if (toolName === "PAGE_UPDATE_BLOCK") {
+      label = "Polishing…";
+    } else if (toolName === "PAGE_REMOVE_BLOCK") {
+      label = "Removing section…";
+    } else if (toolName === "PAGE_REVIEW_SUGGEST") {
+      label = "Reviewing the page…";
     }
   }
   // Special "Reviewing" beat: the first pass (all outline sections) is
@@ -595,56 +585,50 @@ function deriveBlockPatchCalls(
 ): BlockPatchCall[] {
   const out: BlockPatchCall[] = [];
   let positional = 0;
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      const toolName = partToolName(part);
-      if (!toolName || !BLOCK_PATCH_TOOLS.has(toolName)) continue;
-      const record = part as Record<string, unknown>;
-      const state =
-        typeof record.state === "string" ? record.state : "output-available";
-      // Honor only successful tool results — failed calls didn't mutate
-      // server state, so the iframe shouldn't try to apply them either.
-      if (state !== "output-available") continue;
-      const id =
-        typeof record.toolCallId === "string"
-          ? `${toolName}:${record.toolCallId}`
-          : `${toolName}:#${positional++}`;
-      const slug = extractToolArgString(record, "slug");
-      if (toolName === "PAGE_RENDER_BLOCK") {
-        const section = extractToolArgString(record, "section");
-        const props = extractToolArgAny(record, "props");
-        if (!section) continue;
-        out.push({
-          id,
-          kind: "render",
-          slug,
-          section,
-          props:
-            props && typeof props === "object"
-              ? (props as Record<string, unknown>)
-              : {},
-        });
-      } else if (toolName === "PAGE_UPDATE_BLOCK") {
-        const idx = extractToolArgAny(record, "index");
-        const props = extractToolArgAny(record, "props");
-        const replace = extractToolArgAny(record, "replace");
-        if (typeof idx !== "number") continue;
-        out.push({
-          id,
-          kind: "update",
-          slug,
-          index: idx,
-          props:
-            props && typeof props === "object"
-              ? (props as Record<string, unknown>)
-              : {},
-          replace: replace === true,
-        });
-      } else if (toolName === "PAGE_REMOVE_BLOCK") {
-        const idx = extractToolArgAny(record, "index");
-        if (typeof idx !== "number") continue;
-        out.push({ id, kind: "remove", slug, index: idx });
-      }
+  for (const { toolName, record, state } of walkParts(messages)) {
+    if (!toolName || !BLOCK_PATCH_TOOLS.has(toolName)) continue;
+    // Honor only successful tool results — failed calls didn't mutate
+    // server state, so the iframe shouldn't try to apply them either.
+    if (state !== "output-available") continue;
+    const id =
+      typeof record.toolCallId === "string"
+        ? `${toolName}:${record.toolCallId}`
+        : `${toolName}:#${positional++}`;
+    const slug = extractToolArgString(record, "slug");
+    if (toolName === "PAGE_RENDER_BLOCK") {
+      const section = extractToolArgString(record, "section");
+      const props = extractToolArgAny(record, "props");
+      if (!section) continue;
+      out.push({
+        id,
+        kind: "render",
+        slug,
+        section,
+        props:
+          props && typeof props === "object"
+            ? (props as Record<string, unknown>)
+            : {},
+      });
+    } else if (toolName === "PAGE_UPDATE_BLOCK") {
+      const idx = extractToolArgAny(record, "index");
+      const props = extractToolArgAny(record, "props");
+      const replace = extractToolArgAny(record, "replace");
+      if (typeof idx !== "number") continue;
+      out.push({
+        id,
+        kind: "update",
+        slug,
+        index: idx,
+        props:
+          props && typeof props === "object"
+            ? (props as Record<string, unknown>)
+            : {},
+        replace: replace === true,
+      });
+    } else if (toolName === "PAGE_REMOVE_BLOCK") {
+      const idx = extractToolArgAny(record, "index");
+      if (typeof idx !== "number") continue;
+      out.push({ id, kind: "remove", slug, index: idx });
     }
   }
   return out;
@@ -739,6 +723,135 @@ function extractManualArtifacts(
     designSystemSlug: designSystemMatch?.[1] ?? null,
     pageSlug: pageMatch?.[1] ?? null,
   };
+}
+
+type PendingErrorReport = { prompt: string; key: string; seq: number };
+
+/**
+ * One-stop iframe message listener. The handler dispatches across the
+ * full set of page-editor:* events the iframe runtime emits — host
+ * handshake, welcome-prompt, review-tip accept, design-system grid
+ * picks, error-card refresh request, and runtime-error capture.
+ *
+ * Lives in a hook so the cleanup is auditable in one place and the
+ * component body stays focused on intent dispatch + render. Empty
+ * deps array: React state setters are stable, so the handler closure
+ * never goes stale.
+ */
+function useIframePostMessageBridge(opts: {
+  iframeRef: React.RefObject<HTMLIFrameElement | null>;
+  lastDispatchRef: React.MutableRefObject<unknown>;
+  setHostReady: (ready: boolean) => void;
+  setThemeOverrideSlug: (slug: string) => void;
+  setGridOpen: (open: boolean) => void;
+  setPendingErrorReport: (r: PendingErrorReport | null) => void;
+  composeChatInput: (text: string) => void;
+  composeAndSubmitChatInput: (text: string) => void;
+}) {
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event listener; cleanup runs on unmount
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || typeof data !== "object") return;
+      const type = (data as { type?: unknown }).type;
+
+      // Host handshake. Until we see this, intent-dispatch effects buffer
+      // their messages (the host wouldn't have its listener installed yet).
+      if (type === HOST_READY_MESSAGE_TYPE) {
+        opts.setHostReady(true);
+        return;
+      }
+
+      // Welcome-quiz button posts a composed prompt to drop into the chat
+      // input.
+      if (type === PROMPT_MESSAGE_TYPE) {
+        const text = (data as { text?: unknown }).text;
+        if (typeof text !== "string" || !text.trim()) return;
+        opts.composeChatInput(text);
+        return;
+      }
+
+      // Review-tip Accept button (and Accept-all) posts a composed prompt
+      // that should fill the chat input AND submit immediately — the user
+      // clicks once and the agent is already on it.
+      if (type === PROMPT_AND_SEND_MESSAGE_TYPE) {
+        const text = (data as { text?: unknown }).text;
+        if (typeof text !== "string" || !text.trim()) return;
+        opts.composeAndSubmitChatInput(text);
+        return;
+      }
+
+      // User picked a card from the host's design-system grid view.
+      // Apply that DS to the current page (retheme), or open its demo
+      // when no page is active. Then close the grid.
+      if (type === HOST_SELECT_DS_MESSAGE_TYPE) {
+        const slug = (data as { slug?: unknown }).slug;
+        if (typeof slug === "string" && slug) {
+          opts.setThemeOverrideSlug(slug);
+          opts.setGridOpen(false);
+        }
+        return;
+      }
+
+      // User clicked Close in the host's design-system grid.
+      if (type === HOST_CLOSE_DS_GRID_MESSAGE_TYPE) {
+        opts.setGridOpen(false);
+        return;
+      }
+
+      // User clicked "Reload preview" on the host's error card. Force a
+      // real iframe reload — and clear host-ready so the next dispatch
+      // round happens only after the new host handshake.
+      if (type === HOST_REQUEST_REFRESH_MESSAGE_TYPE) {
+        opts.setHostReady(false);
+        opts.lastDispatchRef.current = null;
+        const f = opts.iframeRef.current;
+        if (f) {
+          // Re-assign src to force a fresh load without remounting the
+          // <iframe> element (so the React ref stays valid).
+          // eslint-disable-next-line no-self-assign
+          f.src = f.src;
+        }
+        return;
+      }
+
+      // Iframe runtime-error card. We capture into state and let a
+      // downstream effect decide whether to auto-bubble to the agent or
+      // fall back to composing into the chat input. The in-iframe error
+      // card stays mounted regardless — it's the visual signal that
+      // something broke.
+      if (type === RUNTIME_ERROR_MESSAGE_TYPE) {
+        const payload = (data as { payload?: unknown }).payload as
+          | { headline?: unknown; location?: unknown; message?: unknown }
+          | undefined;
+        if (!payload) return;
+        const location =
+          typeof payload.location === "string" && payload.location
+            ? payload.location
+            : "the preview";
+        const message =
+          typeof payload.message === "string"
+            ? payload.message.slice(0, 1200)
+            : "(no message)";
+        const headline =
+          typeof payload.headline === "string" ? payload.headline : "Error";
+        const prompt = [
+          `The preview is showing a runtime error: **${headline}** at \`${location}\`.`,
+          "",
+          "```",
+          message,
+          "```",
+          "",
+          "Please open the file referenced above, find and fix the bug, then call PAGE_PREVIEW_REFRESH so the preview reloads. Use one Edit, then refresh.",
+        ].join("\n");
+        const errKey = `${headline}\n${location}\n${message.slice(0, 240)}`;
+        opts.setPendingErrorReport({ prompt, key: errKey, seq: Date.now() });
+        return;
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
 }
 
 export function PagePreviewTab() {
@@ -852,116 +965,19 @@ export function PagePreviewTab() {
     retry: false,
   });
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event listener; cleanup runs on unmount
-  useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      const data = event.data;
-      if (!data || typeof data !== "object") return;
-      const type = (data as { type?: unknown }).type;
-
-      // Host handshake. Until we see this, intent-dispatch effects buffer
-      // their messages (the host wouldn't have its listener installed yet).
-      if (type === HOST_READY_MESSAGE_TYPE) {
-        setHostReady(true);
-        return;
-      }
-
-      // Welcome-quiz button posts a composed prompt to drop into the chat
-      // input.
-      if (type === PROMPT_MESSAGE_TYPE) {
-        const text = (data as { text?: unknown }).text;
-        if (typeof text !== "string" || !text.trim()) return;
-        composeChatInput(text);
-        return;
-      }
-
-      // Review-tip Accept button (and Accept-all) posts a composed prompt
-      // that should fill the chat input AND submit immediately — the user
-      // clicks once and the agent is already on it.
-      if (type === PROMPT_AND_SEND_MESSAGE_TYPE) {
-        const text = (data as { text?: unknown }).text;
-        if (typeof text !== "string" || !text.trim()) return;
-        composeAndSubmitChatInput(text);
-        return;
-      }
-
-      // User picked a card from the host's design-system grid view.
-      // Apply that DS to the current page (retheme), or open its demo
-      // when no page is active. Then close the grid.
-      if (type === HOST_SELECT_DS_MESSAGE_TYPE) {
-        const slug = (data as { slug?: unknown }).slug;
-        if (typeof slug === "string" && slug) {
-          setThemeOverrideSlug(slug);
-          setGridOpen(false);
-        }
-        return;
-      }
-
-      // User clicked Close in the host's design-system grid.
-      if (type === HOST_CLOSE_DS_GRID_MESSAGE_TYPE) {
-        setGridOpen(false);
-        return;
-      }
-
-      // User clicked "Reload preview" on the host's error card. Force a
-      // real iframe reload — and clear host-ready so the next dispatch
-      // round happens only after the new host handshake.
-      if (type === HOST_REQUEST_REFRESH_MESSAGE_TYPE) {
-        setHostReady(false);
-        lastDispatchRef.current = null;
-        const f = iframeRef.current;
-        if (f) {
-          // Re-assign src to force a fresh load without remounting the
-          // <iframe> element (so the React ref stays valid).
-          // eslint-disable-next-line no-self-assign
-          f.src = f.src;
-        }
-        return;
-      }
-
-      // Iframe runtime-error card. We capture into state and let a
-      // downstream effect decide whether to auto-bubble to the agent
-      // or fall back to composing into the chat input. Splitting it
-      // this way keeps live `stream`/`taskStatus` reads out of the
-      // message handler (which is registered once with stale refs).
-      // The in-iframe error card stays mounted regardless — it's the
-      // visual signal that something broke.
-      if (type === RUNTIME_ERROR_MESSAGE_TYPE) {
-        const payload = (data as { payload?: unknown }).payload as
-          | {
-              headline?: unknown;
-              location?: unknown;
-              message?: unknown;
-            }
-          | undefined;
-        if (!payload) return;
-        const location =
-          typeof payload.location === "string" && payload.location
-            ? payload.location
-            : "the preview";
-        const message =
-          typeof payload.message === "string"
-            ? payload.message.slice(0, 1200)
-            : "(no message)";
-        const headline =
-          typeof payload.headline === "string" ? payload.headline : "Error";
-        const prompt = [
-          `The preview is showing a runtime error: **${headline}** at \`${location}\`.`,
-          "",
-          "```",
-          message,
-          "```",
-          "",
-          "Please open the file referenced above, find and fix the bug, then call PAGE_PREVIEW_REFRESH so the preview reloads. Use one Edit, then refresh.",
-        ].join("\n");
-        const errKey = `${headline}\n${location}\n${message.slice(0, 240)}`;
-        setPendingErrorReport({ prompt, key: errKey, seq: Date.now() });
-        return;
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, []);
+  // Declared up here (not next to the dispatch effect that mostly uses
+  // it) so the message-bridge hook above can clear it on iframe reload.
+  const lastDispatchRef = useRef<Intent | null>(null);
+  useIframePostMessageBridge({
+    iframeRef,
+    lastDispatchRef,
+    setHostReady,
+    setThemeOverrideSlug,
+    setGridOpen,
+    setPendingErrorReport,
+    composeChatInput,
+    composeAndSubmitChatInput,
+  });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — reload when the agent calls preview-state tools
   useEffect(() => {
@@ -1287,7 +1303,6 @@ export function PagePreviewTab() {
   // page or mode actually changed" so a DS dropdown click triggers a
   // smooth retheme (CSS-variable transition only) instead of a full
   // crossfade + module reload.
-  const lastDispatchRef = useRef<Intent | null>(null);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — message bus to iframe; needs host readiness gate
   useEffect(() => {
     if (!hostReady) return;
