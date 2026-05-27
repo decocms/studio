@@ -248,9 +248,11 @@ export function StatusGroup({
           </span>
         </div>
         <span className="flex-1 truncate">{config.label}</span>
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          {threads.length}
-        </span>
+        <div className="size-5 shrink-0 flex items-center justify-center">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {threads.length}
+          </span>
+        </div>
       </div>
       {expanded && (
         <div className="flex flex-col gap-0.5 pb-1 pl-4">
