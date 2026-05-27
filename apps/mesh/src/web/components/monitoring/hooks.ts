@@ -1,9 +1,10 @@
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
-  useMCPToolCall,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { useQuery } from "@tanstack/react-query";
 
 /** Connection ID used for all LLM calls emitted by Decopilot. Must match server-side DECOPILOT_CONNECTION_ID. */
 const DECOPILOT_CONNECTION_ID = "decopilot";
@@ -26,6 +27,54 @@ interface MonitoringStatsParams extends MonitoringMetricFilters {
   endDate: string;
 }
 
+/**
+ * MCP tools can return a successful HTTP response with `isError: true` in the
+ * body. React Query treats that as success, so we promote it to a thrown error
+ * here — that way `isError`/`error` on the hook reflect tool failures.
+ */
+async function callMonitoringTool<TData>(
+  client: Client,
+  toolArguments: Record<string, unknown>,
+): Promise<TData> {
+  const result = (await client.callTool({
+    name: "MONITORING_STATS",
+    arguments: toolArguments,
+  })) as {
+    isError?: boolean;
+    structuredContent?: unknown;
+  };
+
+  if (result.isError) {
+    throw new Error("MONITORING_STATS tool returned an error");
+  }
+
+  return (result.structuredContent ?? result) as TData;
+}
+
+interface MonitoringStatsResult {
+  totalCalls: number;
+  totalErrors: number;
+  avgDurationMs: number;
+  p50DurationMs: number;
+  p95DurationMs: number;
+  connectionBreakdown: Array<{
+    connectionId: string;
+    calls: number;
+    errors: number;
+    errorRate: number;
+    avgDurationMs: number;
+  }>;
+  timeseries: Array<{
+    timestamp: string;
+    calls: number;
+    errors: number;
+    errorRate: number;
+    avg: number;
+    p50: number;
+    p95: number;
+  }>;
+}
+
 export function useMonitoringStats(
   params: MonitoringStatsParams,
   queryOptions?: MonitoringQueryOptions,
@@ -37,43 +86,26 @@ export function useMonitoringStats(
     orgSlug: org.slug,
   });
 
-  return useMCPToolCall<{
-    totalCalls: number;
-    totalErrors: number;
-    avgDurationMs: number;
-    p50DurationMs: number;
-    p95DurationMs: number;
-    connectionBreakdown: Array<{
-      connectionId: string;
-      calls: number;
-      errors: number;
-      errorRate: number;
-      avgDurationMs: number;
-    }>;
-    timeseries: Array<{
-      timestamp: string;
-      calls: number;
-      errors: number;
-      errorRate: number;
-      avg: number;
-      p50: number;
-      p95: number;
-    }>;
-  }>({
-    client,
-    toolName: "MONITORING_STATS",
-    toolArguments: {
-      ...params,
-      excludeConnectionIds: [
-        DECOPILOT_CONNECTION_ID,
-        ...(params.excludeConnectionIds ?? []),
-      ],
-    },
+  const toolArguments = {
+    ...params,
+    excludeConnectionIds: [
+      DECOPILOT_CONNECTION_ID,
+      ...(params.excludeConnectionIds ?? []),
+    ],
+  };
+
+  return useQuery<MonitoringStatsResult, Error>({
+    queryKey: [
+      "MONITORING_STATS",
+      org.id,
+      "tool-calls",
+      JSON.stringify(toolArguments),
+    ],
+    queryFn: () =>
+      callMonitoringTool<MonitoringStatsResult>(client, toolArguments),
     staleTime: 30_000,
+    retry: false,
     ...queryOptions,
-    select: (result) =>
-      ((result as { structuredContent?: unknown }).structuredContent ??
-        result) as any,
   });
 }
 
@@ -81,6 +113,14 @@ interface MonitoringLlmStatsParams {
   interval: string;
   startDate: string;
   endDate: string;
+}
+
+interface MonitoringLlmStatsResult extends MonitoringStatsResult {
+  topTools: Array<{
+    toolName: string;
+    connectionId: string | null;
+    calls: number;
+  }>;
 }
 
 /**
@@ -101,45 +141,23 @@ export function useMonitoringLlmStats(
     orgSlug: org.slug,
   });
 
-  return useMCPToolCall<{
-    totalCalls: number;
-    totalErrors: number;
-    avgDurationMs: number;
-    p50DurationMs: number;
-    p95DurationMs: number;
-    connectionBreakdown: Array<{
-      connectionId: string;
-      calls: number;
-      errors: number;
-      errorRate: number;
-      avgDurationMs: number;
-    }>;
-    topTools: Array<{
-      toolName: string;
-      connectionId: string | null;
-      calls: number;
-    }>;
-    timeseries: Array<{
-      timestamp: string;
-      calls: number;
-      errors: number;
-      errorRate: number;
-      avg: number;
-      p50: number;
-      p95: number;
-    }>;
-  }>({
-    client,
-    toolName: "MONITORING_STATS",
-    toolArguments: {
-      ...params,
-      connectionIds: [DECOPILOT_CONNECTION_ID],
-      topN: 5,
-    },
+  const toolArguments = {
+    ...params,
+    connectionIds: [DECOPILOT_CONNECTION_ID],
+    topN: 5,
+  };
+
+  return useQuery<MonitoringLlmStatsResult, Error>({
+    queryKey: [
+      "MONITORING_STATS",
+      org.id,
+      "llm",
+      JSON.stringify(toolArguments),
+    ],
+    queryFn: () =>
+      callMonitoringTool<MonitoringLlmStatsResult>(client, toolArguments),
     staleTime: 30_000,
+    retry: false,
     ...queryOptions,
-    select: (result) =>
-      ((result as { structuredContent?: unknown }).structuredContent ??
-        result) as any,
   });
 }

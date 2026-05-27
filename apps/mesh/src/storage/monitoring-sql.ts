@@ -982,7 +982,7 @@ LIMIT 1000`;
           continue;
         }
         console.error("queryMetricTimeseries failed:", err);
-        return emptyResult;
+        throw new Error("Monitoring stats unavailable", { cause: err });
       }
     }
 
@@ -1228,7 +1228,7 @@ ORDER BY bucket ASC, tool_name ASC`;
           continue;
         }
         console.error("queryMetricTopToolsTimeseries failed:", err);
-        return emptyResult;
+        throw new Error("Monitoring stats unavailable", { cause: err });
       }
     }
 
