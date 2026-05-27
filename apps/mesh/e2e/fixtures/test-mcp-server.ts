@@ -199,6 +199,10 @@ export async function startTestMcpServer(
       failNext = n;
     },
     stop: async () => {
+      // `close()` alone waits for in-flight connections to drain, which
+      // the MCP transport keeps alive (intended for SSE streams). Force
+      // them shut so the test's afterAll doesn't time out at 30s.
+      httpServer.closeAllConnections();
       await new Promise<void>((resolve, reject) =>
         httpServer.close((err) => (err ? reject(err) : resolve())),
       );
