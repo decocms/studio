@@ -158,8 +158,10 @@ export async function runAgentLoop(
 
   Promise.resolve(result.finishReason)
     .then(() => {
-      if (capturedError === undefined) resolveError(undefined);
-      span.setStatus({ code: SpanStatusCode.OK });
+      if (capturedError === undefined) {
+        resolveError(undefined);
+        span.setStatus({ code: SpanStatusCode.OK });
+      }
     })
     .finally(() => span.end());
 
