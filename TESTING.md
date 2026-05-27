@@ -15,6 +15,20 @@ We run two kinds of tests. Pick the right one — the choice is mechanical, not 
 
 If you reach for a mock, you are writing the wrong kind of test. Stop and write an e2e instead.
 
+#### Narrow exception: state-machine unit tests with one boundary mock
+
+Some modules are pure-ish state machines whose contract is *what error class do we throw and how fast*, not what HTTP status comes out the other end. Forcing those into Playwright loses precision (the proxy translates errors, the assertions weaken to "some 5xx") without buying realism.
+
+A unit test may mock **exactly one module function** at the boundary if all of these hold:
+
+- The SUT is internal logic (no HTTP route exists that exercises it cleanly).
+- The "downstream" used in the success path is real, just in-process (e.g. the MCP SDK's bridge transport — a real client and server connected without going over the network).
+- The assertion is on a JS class, timing, or in-memory state — not on a wire response.
+
+Example: `apps/mesh/src/mcp-clients/lazy-client.test.ts` mocks `./client.clientFromConnection` to inject failures, uses a real MCP server via in-process bridge transport for the success path, and asserts `CircuitOpenError` + fail-fast timing. Migrating it to Playwright would mean: hit `/api/:org/mcp/:connectionId` repeatedly while toggling a test MCP server's failure injection, observing the proxy's HTTP status code (no `CircuitOpenError` class), losing timing precision under workers-in-parallel, and risking cross-test pollution of the module-global circuit map.
+
+When in doubt, prefer e2e. This exception is for tests that already exist and are tightly justified — not a loophole for "I don't want to set up a real fixture."
+
 ### E2E (Playwright) — everything else
 
 - **Real Postgres, real NATS, real Better Auth, real HTTP.**
