@@ -252,7 +252,7 @@ function BucketPanel({
         <p className="text-xs text-muted-foreground">
           Up to 100 MB.{" "}
           {mode === "image"
-            ? "Images only (PNG, JPEG, WebP, GIF, AVIF)."
+            ? "Images only (PNG, JPEG, WebP, GIF, SVG, AVIF)."
             : "Common image, video, audio, and document types."}
         </p>
         <input
