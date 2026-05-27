@@ -73,6 +73,7 @@ export const storeManagerAgent = {
       activeForm: "Browsing the Deco Store",
       action: {
         kind: "open-agent-thread",
+        promptName: "store-manager-browse-store",
         prompt:
           "Show me what's in the Deco Store and the Community Registry. Ask me what problem I'm trying to solve and recommend a few MCPs that fit.",
       },
