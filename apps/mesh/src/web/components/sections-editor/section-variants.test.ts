@@ -171,7 +171,7 @@ describe("section-variants", () => {
 
   it("isDefaultVariantRule treats always matchers as default", () => {
     expect(isDefaultVariantRule(undefined)).toBe(false);
-    expect(isDefaultVariantRule({})).toBe(false);
+    expect(isDefaultVariantRule({})).toBe(true);
     expect(
       isDefaultVariantRule({ __resolveType: "website/matchers/always.ts" }),
     ).toBe(true);

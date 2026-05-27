@@ -11,6 +11,7 @@ import {
 } from "@deco/ui/components/command.tsx";
 import { resolveBlockSchemaMetadata, type LiveMeta } from "./resolve-schema";
 import { MatcherIcon, resolveMatcherIconName } from "./matcher-icons";
+import { labelFromResolveType } from "./section-types";
 
 export interface MatcherEntry {
   resolveType: string;
@@ -20,17 +21,6 @@ export interface MatcherEntry {
 }
 
 const ALWAYS_MATCHER_ICON = "Users03";
-
-function titleFromResolveType(resolveType: string): string {
-  const segments = resolveType.split("/");
-  const filename = segments[segments.length - 1] ?? resolveType;
-  return (
-    filename
-      .replace(/\.(tsx?|jsx?)$/, "")
-      .replace(/[-_]/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase()) || resolveType
-  );
-}
 
 /**
  * Extract the list of available matcher block types from live meta.
@@ -52,7 +42,7 @@ export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
 
       result.push({
         resolveType,
-        title: metadata.title ?? titleFromResolveType(resolveType),
+        title: metadata.title ?? labelFromResolveType(resolveType),
         description: metadata.description,
         iconName: resolveMatcherIconName(resolveType, metadata.icon),
       });

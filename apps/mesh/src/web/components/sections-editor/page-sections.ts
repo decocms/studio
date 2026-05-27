@@ -1,12 +1,4 @@
-interface RawSection {
-  __resolveType: string;
-  section?: { __resolveType?: string; [key: string]: unknown };
-  variants?: Array<{
-    value?: Record<string, unknown>;
-    rule?: Record<string, unknown>;
-  }>;
-  [key: string]: unknown;
-}
+import type { RawSection } from "./section-types";
 
 interface PageVariant {
   label: string;

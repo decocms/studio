@@ -38,8 +38,15 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { canMakeSectionReusable } from "./page-sections";
+import {
+  GLOBAL_SECTION_ICON_COLOR,
+  sectionsDisplayKey,
+  type RawSection,
+} from "./section-types";
+import { parseSections, type ParsedSection } from "./parse-sections";
 
-const GLOBAL_SECTION_ICON_COLOR = "oklch(0.7278 0.151 289)";
+export { parseSections, type ParsedSection, type RawSection };
+
 const GLOBAL_SECTION_ROW_CLASS =
   "text-[oklch(0.45_0.15_289)] hover:bg-[oklch(0.7278_0.151_289/0.12)] dark:text-[oklch(0.78_0.15_289)] dark:hover:bg-[oklch(0.7278_0.151_289/0.15)]";
 const GLOBAL_SECTION_MENU_ITEM_CLASS =
@@ -62,158 +69,6 @@ function remapEntryIndices(entries: SectionEntry[]): SectionEntry[] {
     ...entry,
     section: { ...entry.section, index },
   }));
-}
-
-// ─── types ─────────────────────────────────────────────────────────────────────
-
-export interface ParsedSection {
-  index: number;
-  resolveType: string;
-  label: string;
-  isLazy?: boolean;
-  isHidden?: boolean;
-  isSavedBlock?: boolean;
-  isMultivariate?: boolean;
-}
-
-interface RawSection {
-  __resolveType: string;
-  section?: { __resolveType?: string };
-  variants?: Array<{
-    value?: Record<string, unknown>;
-    rule?: Record<string, unknown>;
-  }>;
-  [key: string]: unknown;
-}
-
-import { isLazyResolveType } from "./section-lazy";
-
-export { isLazyResolveType } from "./section-lazy";
-
-function labelFromResolveType(rt: string): string {
-  const parts = rt.split("/");
-  const filename = parts[parts.length - 1] ?? rt;
-  return filename.replace(/\.(tsx|ts|jsx|js)$/, "") || rt;
-}
-
-/**
- * Parse raw decofile sections into display-ready entries with
- * isLazy / isHidden / isSavedBlock / isMultivariate flags.
- * Mirrors admin-mcp's `parseSectionsFromArray()`.
- */
-export function parseSections(
-  rawSections: RawSection[],
-  decofile: Record<string, unknown>,
-): ParsedSection[] {
-  return rawSections.map((s, idx) => {
-    const rt = s.__resolveType ?? "";
-    const isLazy = isLazyResolveType(rt);
-
-    // ── Saved block (named block ref — no "/" in resolveType) ────────
-    if (!isLazy && rt !== "" && !rt.includes("/") && rt in decofile) {
-      const resolvedBlock = decofile[rt] as Record<string, unknown> | undefined;
-      const label =
-        (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
-        rt.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) ||
-        `Section ${idx + 1}`;
-      return {
-        index: idx,
-        resolveType: rt,
-        label,
-        isLazy: false,
-        isSavedBlock: true,
-      };
-    }
-
-    // ── Multivariate detection ──────────────────────────────────────
-    const innerSection = isLazy
-      ? (s.section as RawSection | undefined)
-      : undefined;
-    const mvRt = isLazy ? (innerSection?.__resolveType ?? "") : rt;
-
-    if (mvRt.includes("flags/multivariate")) {
-      const mvObj = (isLazy ? innerSection : s) as RawSection;
-      const rawVariants = Array.isArray(mvObj?.variants) ? mvObj.variants : [];
-
-      // ── Hidden: single variant with "never" matcher ───────────────
-      const NEVER_TYPES = ["website/matchers/never.ts"];
-      if (
-        rawVariants.length === 1 &&
-        NEVER_TYPES.includes(
-          (rawVariants[0]?.rule?.__resolveType as string) ?? "",
-        )
-      ) {
-        const innerValue = (rawVariants[0]?.value ?? {}) as Record<
-          string,
-          unknown
-        >;
-        let innerRt = (innerValue.__resolveType as string) ?? "";
-        const innerIsLazy = isLazyResolveType(innerRt);
-        if (innerIsLazy) {
-          const nested = innerValue.section as
-            | Record<string, unknown>
-            | undefined;
-          innerRt = (nested?.__resolveType as string) ?? innerRt;
-        }
-        return {
-          index: idx,
-          resolveType: rt,
-          label: labelFromResolveType(innerRt) || `Section ${idx + 1}`,
-          isHidden: true,
-          isLazy: innerIsLazy,
-        };
-      }
-
-      // Regular multivariate
-      const firstValueRt = (
-        rawVariants[0]?.value as Record<string, unknown> | undefined
-      )?.__resolveType as string | undefined;
-      const sectionLabel = firstValueRt
-        ? labelFromResolveType(firstValueRt)
-        : "Section";
-      return {
-        index: idx,
-        resolveType: rt,
-        label: `Variants of ${sectionLabel}`,
-        isMultivariate: true,
-        isLazy,
-      };
-    }
-
-    // ── Lazy-wrapped saved block (e.g. Lazy → Header) ──────────────
-    const effectiveRt = isLazy ? (s.section?.__resolveType ?? rt) : rt;
-    if (
-      isLazy &&
-      effectiveRt !== "" &&
-      !effectiveRt.includes("/") &&
-      effectiveRt in decofile
-    ) {
-      const resolvedBlock = decofile[effectiveRt] as
-        | Record<string, unknown>
-        | undefined;
-      const label =
-        (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
-        effectiveRt
-          .replace(/[-_]/g, " ")
-          .replace(/\b\w/g, (c) => c.toUpperCase()) ||
-        `Section ${idx + 1}`;
-      return {
-        index: idx,
-        resolveType: rt,
-        label,
-        isLazy: true,
-        isSavedBlock: true,
-      };
-    }
-
-    // ── Normal section (possibly lazy-wrapped) ──────────────────────
-    return {
-      index: idx,
-      resolveType: rt,
-      label: labelFromResolveType(effectiveRt) || `Section ${idx + 1}`,
-      isLazy,
-    };
-  });
 }
 
 function SectionRowContent({ section }: { section: ParsedSection }) {
@@ -390,6 +245,7 @@ export function SectionList({
   onDuplicate,
   onMakeReusable,
   onAddSection,
+  canAddSection = true,
 }: {
   listKey: string;
   sections: ParsedSection[];
@@ -400,6 +256,7 @@ export function SectionList({
   onDuplicate: (index: number) => void;
   onMakeReusable: (index: number) => void;
   onAddSection: () => void;
+  canAddSection?: boolean;
 }) {
   const [entries, setEntries] = useState<SectionEntry[]>(() =>
     createEntries(sections),
@@ -407,15 +264,33 @@ export function SectionList({
   const [activeEntry, setActiveEntry] = useState<SectionEntry | null>(null);
   const [prevListKey, setPrevListKey] = useState(listKey);
   const [prevSectionCount, setPrevSectionCount] = useState(sections.length);
+  const [prevDisplayKey, setPrevDisplayKey] = useState(() =>
+    sectionsDisplayKey(sections),
+  );
   const suppressClickRef = useRef(false);
+
+  const displayKey = sectionsDisplayKey(sections);
 
   if (prevListKey !== listKey) {
     setPrevListKey(listKey);
     setPrevSectionCount(sections.length);
+    setPrevDisplayKey(displayKey);
     setEntries(createEntries(sections));
   } else if (prevSectionCount !== sections.length) {
     setPrevSectionCount(sections.length);
+    setPrevDisplayKey(displayKey);
     setEntries(createEntries(sections));
+  } else if (prevDisplayKey !== displayKey) {
+    setPrevDisplayKey(displayKey);
+    setEntries((current) =>
+      sections.map((section, index) => {
+        const prior = current[index];
+        return {
+          id: prior?.id ?? crypto.randomUUID(),
+          section: { ...section, index },
+        };
+      }),
+    );
   }
 
   const sensors = useSensors(
@@ -472,6 +347,7 @@ export function SectionList({
           variant="outline"
           size="sm"
           className="w-full"
+          disabled={!canAddSection}
           onClick={onAddSection}
         >
           <Plus size={14} />
@@ -528,6 +404,7 @@ export function SectionList({
         variant="outline"
         size="sm"
         className="mt-2 w-full"
+        disabled={!canAddSection}
         onClick={onAddSection}
       >
         <Plus size={14} />

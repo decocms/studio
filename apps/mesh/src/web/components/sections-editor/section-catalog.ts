@@ -10,6 +10,7 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
+import { labelFromResolveType } from "./section-types";
 
 export interface SectionCatalogEntry {
   resolveType: string;
@@ -30,17 +31,6 @@ const PAGE_BLOCK_RESOLVE_TYPES = new Set<string>(LIVE_PAGE_RESOLVE_TYPES);
 const EXCLUDED_SECTION_RESOLVE_TYPES = new Set([
   "site/sections/Theme/Theme.tsx",
 ]);
-
-function labelFromResolveType(rt: string): string {
-  const segments = rt.split("/");
-  const filename = segments[segments.length - 1] ?? rt;
-  return (
-    filename
-      .replace(/\.(tsx?|jsx?)$/, "")
-      .replace(/[-_]/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
-  );
-}
 
 function shouldSkipSectionResolveType(resolveType: string): boolean {
   if (EXCLUDED_SECTION_RESOLVE_TYPES.has(resolveType)) return true;

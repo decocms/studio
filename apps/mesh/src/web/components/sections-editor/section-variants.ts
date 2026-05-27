@@ -1,14 +1,7 @@
 import { isLazyResolveType } from "./section-lazy";
+import type { RawSection } from "./section-types";
 
-interface RawSection {
-  __resolveType: string;
-  section?: { __resolveType?: string; [key: string]: unknown };
-  variants?: Array<{
-    value?: Record<string, unknown>;
-    rule?: Record<string, unknown>;
-  }>;
-  [key: string]: unknown;
-}
+export type { RawSection };
 
 export interface SectionFlagVariant {
   label: string;
@@ -24,7 +17,7 @@ const DEFAULT_MATCHER_TYPES = [
 export function isDefaultVariantRule(rule?: Record<string, unknown>): boolean {
   if (!rule) return false;
   const rt = (rule.__resolveType as string) ?? "";
-  if (rt === "") return false;
+  if (rt === "") return Object.keys(rule).length === 0;
   return DEFAULT_MATCHER_TYPES.includes(rt) || rt.includes("always");
 }
 

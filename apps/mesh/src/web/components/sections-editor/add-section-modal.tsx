@@ -8,14 +8,25 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
-import type { SectionCatalogEntry } from "./section-catalog";
+import {
+  extractSectionCatalog,
+  findLivePageResolveType,
+  findSiteThemeBlock,
+} from "./section-catalog";
+import type { LiveMeta } from "./resolve-schema";
 import { buildSectionPreviewUrl } from "./section-preview-url";
+import {
+  releasePreviewIframeSlot,
+  tryAcquirePreviewIframeSlot,
+} from "./preview-iframe-pool";
+import { GLOBAL_SECTION_ICON_COLOR } from "./section-types";
 
-const GLOBAL_SECTION_ICON_COLOR = "oklch(0.7278 0.151 289)";
-
-function useLazyPreviewVisible(scrollRootRef: RefObject<HTMLElement | null>) {
-  const loadedRef = useRef(false);
-  const [loaded, setLoaded] = useState(false);
+function useLazyPreviewVisible(
+  scrollRootRef: RefObject<HTMLElement | null>,
+  slotId: string,
+) {
+  const slotHeldRef = useRef(false);
+  const [iframeActive, setIframeActive] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const desiredNodeRef = useRef<HTMLDivElement | null>(null);
   const scrollRootRefMirror = useRef(scrollRootRef);
@@ -31,18 +42,34 @@ function useLazyPreviewVisible(scrollRootRef: RefObject<HTMLElement | null>) {
         observerRef.current = null;
       }
 
-      if (!node || loadedRef.current) return;
+      if (!node) {
+        if (slotHeldRef.current) {
+          releasePreviewIframeSlot(slotId);
+          slotHeldRef.current = false;
+          setIframeActive(false);
+        }
+        return;
+      }
 
       queueMicrotask(() => {
-        if (desiredNodeRef.current !== node || loadedRef.current) return;
+        if (desiredNodeRef.current !== node) return;
 
         const observer = new IntersectionObserver(
           (entries) => {
-            if (!entries[0]?.isIntersecting || loadedRef.current) return;
-            loadedRef.current = true;
-            setLoaded(true);
-            observer.disconnect();
-            observerRef.current = null;
+            const intersecting = entries[0]?.isIntersecting ?? false;
+            if (intersecting) {
+              if (!slotHeldRef.current && tryAcquirePreviewIframeSlot(slotId)) {
+                slotHeldRef.current = true;
+                setIframeActive(true);
+              }
+              return;
+            }
+
+            if (slotHeldRef.current) {
+              releasePreviewIframeSlot(slotId);
+              slotHeldRef.current = false;
+              setIframeActive(false);
+            }
           },
           {
             root: scrollRootRefMirror.current.current,
@@ -56,19 +83,21 @@ function useLazyPreviewVisible(scrollRootRef: RefObject<HTMLElement | null>) {
     };
   });
 
-  return { ref, loaded };
+  return { ref, iframeActive };
 }
 
 function LazySectionPreview({
   previewUrl,
   title,
   scrollRootRef,
+  slotId,
 }: {
   previewUrl: string;
   title: string;
   scrollRootRef: RefObject<HTMLElement | null>;
+  slotId: string;
 }) {
-  const { ref, loaded } = useLazyPreviewVisible(scrollRootRef);
+  const { ref, iframeActive } = useLazyPreviewVisible(scrollRootRef, slotId);
   const [iframeLoaded, setIframeLoaded] = useState(false);
 
   return (
@@ -76,7 +105,7 @@ function LazySectionPreview({
       ref={ref}
       className="relative aspect-[16/10] w-full overflow-hidden bg-muted/40"
     >
-      {!loaded ? (
+      {!iframeActive ? (
         <div className="flex h-full items-center justify-center">
           <LayoutAlt01 className="h-8 w-8 text-muted-foreground/30" />
         </div>
@@ -90,6 +119,8 @@ function LazySectionPreview({
           <iframe
             src={previewUrl}
             title={`Preview ${title}`}
+            sandbox="allow-scripts allow-same-origin"
+            referrerPolicy="no-referrer"
             className="pointer-events-none h-[200%] w-[200%] origin-top-left scale-50 border-0 bg-white"
             tabIndex={-1}
             onLoad={() => setIframeLoaded(true)}
@@ -106,7 +137,7 @@ function SectionGalleryCard({
   scrollRootRef,
   onSelect,
 }: {
-  entry: SectionCatalogEntry;
+  entry: ReturnType<typeof extractSectionCatalog>[number];
   previewUrl: string;
   scrollRootRef: RefObject<HTMLElement | null>;
   onSelect: () => void;
@@ -126,6 +157,7 @@ function SectionGalleryCard({
         previewUrl={previewUrl}
         title={entry.title}
         scrollRootRef={scrollRootRef}
+        slotId={entry.resolveType}
       />
       <div className="flex items-center gap-2 border-t px-3 py-2.5">
         <LayoutAlt01
@@ -152,19 +184,17 @@ function SectionGalleryCard({
 export function AddSectionModal({
   open,
   onOpenChange,
-  sections,
+  meta,
+  decofile,
   previewBaseUrl,
-  livePageResolveType,
-  siteTheme,
   onSelect,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  sections: SectionCatalogEntry[];
+  meta: LiveMeta | null | undefined;
+  decofile: Record<string, unknown> | null | undefined;
   previewBaseUrl: string;
-  livePageResolveType: string;
-  siteTheme?: Record<string, unknown>;
-  onSelect: (entry: SectionCatalogEntry) => void;
+  onSelect: (entry: ReturnType<typeof extractSectionCatalog>[number]) => void;
 }) {
   const [search, setSearch] = useState("");
   const [prevOpen, setPrevOpen] = useState(open);
@@ -173,6 +203,26 @@ export function AddSectionModal({
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) setSearch("");
+  }
+
+  const sections =
+    open && meta && decofile ? extractSectionCatalog(meta, decofile) : [];
+  const livePageResolveType = meta ? findLivePageResolveType(meta) : "";
+  const siteTheme = decofile ? findSiteThemeBlock(decofile) : undefined;
+
+  const previewUrls = new Map<string, string>();
+  if (open && livePageResolveType) {
+    for (const entry of sections) {
+      previewUrls.set(
+        entry.resolveType,
+        buildSectionPreviewUrl(
+          previewBaseUrl,
+          livePageResolveType,
+          entry.previewBlock,
+          siteTheme,
+        ),
+      );
+    }
   }
 
   const query = search.trim().toLowerCase();
@@ -220,12 +270,15 @@ export function AddSectionModal({
                     key={entry.resolveType}
                     entry={entry}
                     scrollRootRef={scrollRef}
-                    previewUrl={buildSectionPreviewUrl(
-                      previewBaseUrl,
-                      livePageResolveType,
-                      entry.previewBlock,
-                      siteTheme,
-                    )}
+                    previewUrl={
+                      previewUrls.get(entry.resolveType) ??
+                      buildSectionPreviewUrl(
+                        previewBaseUrl,
+                        livePageResolveType,
+                        entry.previewBlock,
+                        siteTheme,
+                      )
+                    }
                     onSelect={() => onSelect(entry)}
                   />
                 ))}

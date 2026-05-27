@@ -16,13 +16,9 @@ import { resolveSchema } from "./resolve-schema";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
-import {
-  extractSectionCatalog,
-  findLivePageResolveType,
-  findSiteThemeBlock,
-  type SectionCatalogEntry,
-} from "./section-catalog";
+import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
+import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
 import {
   buildPageDataWithSections,
   cloneSection,
@@ -40,16 +36,6 @@ import {
   updateMultivariateSectionVariantRule,
   updateMultivariateSectionVariantValue,
 } from "./section-variants";
-
-interface RawSection {
-  __resolveType: string;
-  section?: { __resolveType?: string; [key: string]: unknown };
-  variants?: Array<{
-    value?: Record<string, unknown>;
-    rule?: Record<string, unknown>;
-  }>;
-  [key: string]: unknown;
-}
 
 const AUTOSAVE_DELAY = 700;
 
@@ -853,6 +839,9 @@ export function SectionsEditor({
     if (!section) return;
     const updatedSections = [...rawSections];
     updatedSections.splice(index + 1, 0, cloneSection(section));
+    if (selectedSectionIndex !== null && selectedSectionIndex > index) {
+      setSelectedSectionIndex(selectedSectionIndex + 1);
+    }
     savePageSections(updatedSections);
   };
 
@@ -1096,10 +1085,7 @@ export function SectionsEditor({
   }
 
   const availableMatchers = meta ? extractMatchers(meta) : [];
-  const sectionCatalog =
-    meta && decofile ? extractSectionCatalog(meta, decofile) : [];
-  const livePageResolveType = meta ? findLivePageResolveType(meta) : "";
-  const siteTheme = decofile ? findSiteThemeBlock(decofile) : undefined;
+  const canAddSection = !!(previewUrl && meta && decofile);
 
   const ruleSchema =
     ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
@@ -1145,7 +1131,7 @@ export function SectionsEditor({
     setRuleResolveType(newRt);
     const newRule: Record<string, unknown> = newRt
       ? { __resolveType: newRt }
-      : {};
+      : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
     setRuleFormValue({});
     scheduleRuleSave(newRule);
   };
@@ -1213,7 +1199,11 @@ export function SectionsEditor({
   const handleSectionMatcherTypeChange = (newRt: string) => {
     setSectionRuleResolveType(newRt);
     setSectionRuleFormValue({});
-    scheduleSectionRuleSave(newRt ? { __resolveType: newRt } : {});
+    scheduleSectionRuleSave(
+      newRt
+        ? { __resolveType: newRt }
+        : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE },
+    );
   };
 
   const handleSectionRuleFormChange = (val: unknown) => {
@@ -1479,6 +1469,7 @@ export function SectionsEditor({
               onDuplicate={handleDuplicateSection}
               onMakeReusable={setMakeReusableIndex}
               onAddSection={() => setAddSectionOpen(true)}
+              canAddSection={canAddSection}
             />
           </div>
         </ScrollArea>
@@ -1498,14 +1489,13 @@ export function SectionsEditor({
         onSubmit={handleMakeReusableSubmit}
       />
 
-      {previewUrl && livePageResolveType && (
+      {previewUrl && (
         <AddSectionModal
           open={addSectionOpen}
           onOpenChange={setAddSectionOpen}
-          sections={sectionCatalog}
+          meta={meta}
+          decofile={decofile}
           previewBaseUrl={previewUrl}
-          livePageResolveType={livePageResolveType}
-          siteTheme={siteTheme}
           onSelect={handleAddSection}
         />
       )}
