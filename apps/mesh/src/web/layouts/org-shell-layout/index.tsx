@@ -2,9 +2,8 @@
  * Org Shell Layout
  *
  * Shared parent for `/$org/` (home) and `/$org/$taskId` (chat). Owns the
- * full-width toolbar header, the sidebar row beneath it, ChatPrefsProvider,
- * and the org-wide tasks panel. The tasks panel lives here, outside child-
- * route Suspense, so it stays mounted while the active task/chat switches.
+ * full-width toolbar header, the sidebar row beneath it, and
+ * ChatPrefsProvider.
  *
  * Shell shape:
  *   SidebarProvider
