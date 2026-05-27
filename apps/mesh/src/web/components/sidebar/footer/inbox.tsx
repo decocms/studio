@@ -52,7 +52,7 @@ function InboxPopover({ children }: { children: ReactNode }) {
         if (!open) setSelectedReleaseId(null);
       }}
     >
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      {children}
       <PopoverContent
         side="right"
         align="start"
@@ -130,13 +130,15 @@ function InboxFullButton() {
   const hasUnread = useHasUnreadInbox();
   return (
     <InboxPopover>
-      <SidebarMenuButton tooltip="Inbox" className="relative">
-        <Inbox01 />
-        <span>Inbox</span>
-        {hasUnread && (
-          <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
-        )}
-      </SidebarMenuButton>
+      <PopoverTrigger asChild>
+        <SidebarMenuButton tooltip="Inbox" className="relative">
+          <Inbox01 />
+          <span>Inbox</span>
+          {hasUnread && (
+            <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
+          )}
+        </SidebarMenuButton>
+      </PopoverTrigger>
     </InboxPopover>
   );
 }
@@ -146,14 +148,16 @@ function InboxIconButton() {
   return (
     <InboxPopover>
       <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <ToolbarIconButton aria-label="Inbox">
-            <Inbox01 className="size-4" />
-            {hasUnread && (
-              <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 pointer-events-none" />
-            )}
-          </ToolbarIconButton>
-        </TooltipTrigger>
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton aria-label="Inbox">
+              <Inbox01 className="size-4" />
+              {hasUnread && (
+                <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 pointer-events-none" />
+              )}
+            </ToolbarIconButton>
+          </TooltipTrigger>
+        </PopoverTrigger>
         <TooltipContent side="top">Inbox</TooltipContent>
       </Tooltip>
     </InboxPopover>

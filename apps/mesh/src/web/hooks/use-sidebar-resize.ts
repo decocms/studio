@@ -6,7 +6,7 @@ import {
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 
 const SIDEBAR_MIN_WIDTH = 240;
-export const SIDEBAR_MAX_WIDTH = 400;
+const SIDEBAR_MAX_WIDTH = 400;
 const STORAGE_KEY = "sidebar.width";
 
 function clamp(w: number) {
