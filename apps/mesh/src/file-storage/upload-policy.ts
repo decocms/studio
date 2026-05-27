@@ -17,7 +17,11 @@ export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
  *
  * `text/html` is intentionally excluded — if the bucket is served from a
  * domain the org also uses for user content, an HTML upload is an XSS
- * vector.
+ * vector. `image/svg+xml` is excluded for the same reason: SVG can carry
+ * inline `<script>` and `onload` handlers and is fetched by the browser
+ * with full script execution when rendered via `<img src>` from a same-
+ * eTLD+1 host or when the CDN serves it under a domain that shares
+ * cookies with the app. Re-add only with server-side sanitization.
  */
 const ALLOWED_CONTENT_TYPES = new Set([
   // Images
@@ -25,7 +29,6 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "image/jpeg",
   "image/gif",
   "image/webp",
-  "image/svg+xml",
   "image/avif",
   // Video
   "video/mp4",

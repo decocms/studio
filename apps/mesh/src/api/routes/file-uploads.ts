@@ -45,10 +45,13 @@ export const createFileUploadRoutes = () => {
     if (!orgId) {
       throw new HTTPException(400, { message: "Organization required" });
     }
-    // Gate behind the same permission that grants access to the FILE_*
-    // MCP tools (file-configs:manage in registry-metadata.ts). HTTP routes
-    // don't auto-bind a tool name, so the resource has to be explicit.
-    await ctx.access.check("FILE_OBJECTS_LIST");
+    // Gate behind a write-tier file-config permission. We pick
+    // FILE_CONFIG_UPDATE specifically so that if the `file-configs:manage`
+    // group ever splits into read/write capabilities, this upload route
+    // lands on the write side. Using a read-only tool here (e.g.
+    // FILE_OBJECTS_LIST) would silently expose write access to read-only
+    // principals after such a split.
+    await ctx.access.check("FILE_CONFIG_UPDATE");
 
     const configId = c.req.param("id");
     if (!configId) {

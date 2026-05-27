@@ -61,7 +61,6 @@ const ACCEPTED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/gif",
   "image/webp",
-  "image/svg+xml",
   "image/avif",
 ]);
 
@@ -224,7 +223,7 @@ export function ImageField({
                 : "Drop an image or click to browse"}
             </span>
             <span className="text-xs text-muted-foreground">
-              PNG, JPEG, WebP, GIF, SVG, AVIF — up to 100 MB
+              PNG, JPEG, WebP, GIF, AVIF — up to 100 MB
             </span>
           </button>
         )}

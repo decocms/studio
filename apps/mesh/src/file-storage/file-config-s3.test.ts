@@ -44,12 +44,26 @@ describe("buildPublicUrl", () => {
     );
   });
 
-  test("custom endpoint falls back to path-style", () => {
+  test("custom endpoint always uses path-style (forcePathStyle: true)", () => {
     expect(
       buildPublicUrl(
         info({
           endpoint: "https://account.r2.cloudflarestorage.com",
           forcePathStyle: true,
+        }),
+        "x.png",
+      ),
+    ).toBe("https://account.r2.cloudflarestorage.com/my-bucket/x.png");
+  });
+
+  test("custom endpoint always uses path-style (forcePathStyle: false)", () => {
+    // Virtual-host style isn't derivable from endpoint+bucket on
+    // non-AWS providers — callers should set publicUrlBase to override.
+    expect(
+      buildPublicUrl(
+        info({
+          endpoint: "https://account.r2.cloudflarestorage.com",
+          forcePathStyle: false,
         }),
         "x.png",
       ),

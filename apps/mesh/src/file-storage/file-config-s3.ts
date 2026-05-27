@@ -48,12 +48,12 @@ export function buildPublicUrl(info: FileConfigInfo, key: string): string {
     return `${info.publicUrlBase}/${encodeKey(key)}`;
   }
   if (info.endpoint) {
+    // Always path-style for custom endpoints. Virtual-host style is
+    // provider-specific (e.g. R2 dev domains, MinIO subdomain mode) and
+    // not derivable from `endpoint + bucket`. Callers that want a
+    // virtual-host or CDN URL should set `publicUrlBase` explicitly.
     const base = info.endpoint.replace(/\/+$/, "");
-    return info.forcePathStyle
-      ? `${base}/${info.bucket}/${encodeKey(key)}`
-      : // virtual-host style with custom endpoint is unusual; fall back to
-        // path-style so the URL at least *resolves* even if not public.
-        `${base}/${info.bucket}/${encodeKey(key)}`;
+    return `${base}/${info.bucket}/${encodeKey(key)}`;
   }
   return info.forcePathStyle
     ? `https://s3.${info.region}.amazonaws.com/${info.bucket}/${encodeKey(key)}`
@@ -114,8 +114,19 @@ export async function listObjects(params: {
   const target = Math.min(params.maxKeys ?? 50, 200);
   const bucketPrefix = params.ctx.info.prefix ?? "";
 
+  const now = new Date();
+  const currentYear = String(now.getUTCFullYear());
+  const prevYear = String(now.getUTCFullYear() - 1);
+
+  const yearShardPrefixes = [
+    `${bucketPrefix}${currentYear}/`,
+    `${bucketPrefix}${prevYear}/`,
+  ];
+
   // Subsequent pages walk the broad namespace via continuation token —
-  // skip the date-shard probes since the cursor doesn't apply to them.
+  // skip the date-shard probes (already returned on page 1) and filter
+  // any keys under those prefixes out of the response so we don't
+  // duplicate what page 1 already showed.
   if (params.cursor) {
     const response = await client.send(
       new ListObjectsV2Command({
@@ -125,17 +136,10 @@ export async function listObjects(params: {
         ContinuationToken: params.cursor,
       }),
     );
-    return finalize(response, params.ctx, target, false);
+    return finalize(response, params.ctx, target, false, yearShardPrefixes);
   }
 
-  const now = new Date();
-  const currentYear = String(now.getUTCFullYear());
-  const prevYear = String(now.getUTCFullYear() - 1);
-
-  const probes = [
-    `${bucketPrefix}${currentYear}/`,
-    `${bucketPrefix}${prevYear}/`,
-  ];
+  const probes = yearShardPrefixes;
 
   const seen = new Map<string, ListedObject>();
   for (const prefix of probes) {
@@ -204,9 +208,15 @@ function finalize(
   ctx: FileConfigContext,
   target: number,
   sort: boolean,
+  skipPrefixes: readonly string[] = [],
 ): ListObjectsResult {
   const items = (response.Contents ?? [])
-    .filter((obj) => obj.Key && !obj.Key.endsWith("/"))
+    .filter(
+      (obj) =>
+        obj.Key &&
+        !obj.Key.endsWith("/") &&
+        !skipPrefixes.some((p) => obj.Key!.startsWith(p)),
+    )
     .slice(0, target)
     .map((obj) => toListedObject(obj, ctx));
   if (sort) items.sort(byLastModifiedDesc);
