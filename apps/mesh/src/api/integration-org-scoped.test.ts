@@ -182,31 +182,11 @@ describe("org-scoped API coexistence", () => {
     expect(deprecationCalls.length).toBeGreaterThan(0);
   });
 
-  it("new path returns 404 for unknown slug", async () => {
-    const res = await app.fetch(
-      new Request(
-        "http://test/api/non-existent-slug/connections/conn_1/oauth-token/status",
-        { headers: { Authorization: "Bearer test-key" } },
-      ),
-    );
-
-    expect(res.status).toBe(404);
-  });
-
-  it("new path returns 403 for non-member principal", async () => {
-    // Swap the API key mock so the request is authenticated as user_outsider,
-    // who has no membership row in org_1.
-    mockApiKey("user_outsider", "org_1", "org_1");
-
-    const res = await app.fetch(
-      new Request(
-        "http://test/api/org_1/connections/conn_1/oauth-token/status",
-        { headers: { Authorization: "Bearer test-key" } },
-      ),
-    );
-
-    expect(res.status).toBe(403);
-  });
+  // Routing assertions for unknown-slug (404) and non-member-principal
+  // (403) migrated to apps/mesh/e2e/tests/org-scoped-routing.spec.ts —
+  // they're exercised through real Better Auth sessions there.
+  // Deprecation-log assertions remain above (Playwright can't capture
+  // dev-server stdout).
 
   it("well-known prefix discovery for org-scoped MCP resolves the right org", async () => {
     // The MCP SDK probes /.well-known/oauth-protected-resource{resource-path}
