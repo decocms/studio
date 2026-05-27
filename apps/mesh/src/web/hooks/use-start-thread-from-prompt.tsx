@@ -88,7 +88,7 @@ export function useStartThreadFromPrompt({
       const newId = crypto.randomUUID();
       writeStoredAutosend(sessionStorage, locator, newId, { parts });
       await create({ id: newId, virtual_mcp_id: agentId });
-      setTaskId(newId, agentId);
+      setTaskId(newId, agentId, { autosend: true });
     } catch (error) {
       console.error("[start-thread-from-prompt] failed", error);
       toast.error("Failed to start thread. Please try again.");

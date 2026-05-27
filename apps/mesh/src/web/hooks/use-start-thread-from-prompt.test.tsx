@@ -101,7 +101,9 @@ describe("useStartThreadFromPrompt", () => {
       virtual_mcp_id: string;
     };
     expect(createArgs.virtual_mcp_id).toBe("vm-brand");
-    expect(mockSetTaskId).toHaveBeenCalledWith(createArgs.id, "vm-brand");
+    expect(mockSetTaskId).toHaveBeenCalledWith(createArgs.id, "vm-brand", {
+      autosend: true,
+    });
   });
 
   it("for prompts with arguments, opens the args dialog and does NOT autosend until submitted", async () => {

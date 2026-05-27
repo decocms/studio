@@ -6,6 +6,7 @@ import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dia
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
+import { AUTOSEND_QUERY_VALUE } from "@/web/lib/autosend";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { PostHogGroupSync } from "@/web/providers/posthog-group-sync";
 import {
@@ -103,7 +104,11 @@ export function usePanelActions() {
   const setChatOpen = (open: boolean) =>
     nav((prev) => ({ ...prev, chat: open ? 1 : 0 }));
 
-  const setTaskId = (id: string, virtualMcpId?: string) =>
+  const setTaskId = (
+    id: string,
+    virtualMcpId?: string,
+    opts?: { autosend?: boolean },
+  ) =>
     navWith(
       id,
       (prev) => {
@@ -113,6 +118,7 @@ export function usePanelActions() {
         // Preserve the main panel tab (git / preview / env / …) so that
         // switching tasks keeps the user's current view.
         if (prev.main) next.main = prev.main;
+        if (opts?.autosend) next.autosend = AUTOSEND_QUERY_VALUE;
         return next;
       },
       false,
