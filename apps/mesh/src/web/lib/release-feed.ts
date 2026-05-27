@@ -1,4 +1,11 @@
-import { FilterLines, Inbox01, Stars02 } from "@untitledui/icons";
+import {
+  CheckCircle,
+  FilterLines,
+  Inbox01,
+  Stars02,
+  Users03,
+  Zap,
+} from "@untitledui/icons";
 import type { ComponentType } from "react";
 
 export interface ReleaseBullet {
@@ -22,6 +29,29 @@ export interface Release {
  * The latest entry is the floating-card candidate; older entries live only in the inbox.
  */
 export const RELEASES: Release[] = [
+  {
+    id: "smarter-task-delegation",
+    date: "2026-05-27",
+    eyebrow: "Now Available",
+    title: "Smarter task delegation",
+    bullets: [
+      {
+        icon: Users03,
+        title: "Real results from delegated agents",
+        body: "When one agent hands work to another, you'll see the full report inline — no more empty replies hiding the work that was done.",
+      },
+      {
+        icon: Zap,
+        title: "Same powers, top to bottom",
+        body: "Delegated agents now work with the same tools, context, and memory as the agent that called them, so complex multi-agent investigations finish on the first try.",
+      },
+      {
+        icon: CheckCircle,
+        title: "Clearer progress signals",
+        body: "When a delegated task hits its limit or runs into a problem, you get a plain-language message instead of a silent stall.",
+      },
+    ],
+  },
   {
     id: "sidebar-task-groups",
     date: "2026-05-27",
