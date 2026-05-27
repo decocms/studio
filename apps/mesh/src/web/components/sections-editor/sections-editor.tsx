@@ -13,6 +13,13 @@ import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema } from "./resolve-schema";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
+import { MakeReusableModal } from "./make-reusable-modal";
+import {
+  buildPageDataWithSections,
+  cloneSection,
+  suggestBlockId,
+  validateBlockId,
+} from "./page-sections";
 
 interface RawSection {
   __resolveType: string;
@@ -388,6 +395,9 @@ export function SectionsEditor({
   const [ruleResolveType, setRuleResolveType] = useState<string | null>(null);
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
   const [formResetKey, setFormResetKey] = useState(0);
+  const [makeReusableIndex, setMakeReusableIndex] = useState<number | null>(
+    null,
+  );
 
   // Reset form state when the active page changes
   const [prevPath, setPrevPath] = useState(currentPath);
@@ -499,6 +509,35 @@ export function SectionsEditor({
 
   const activeSchema =
     activeResolveType && meta ? resolveSchema(activeResolveType, meta) : null;
+
+  const savePageSections = (
+    updatedSections: RawSection[],
+    options?: { onSuccess?: () => void },
+  ) => {
+    if (!activePageKey) return;
+    const fullPageData = buildPageDataWithSections(
+      decofile,
+      activePageKey,
+      updatedSections,
+      safeVariantIndex,
+      pageVariants,
+    );
+    saveBlock.mutate(
+      { blockKey: activePageKey, data: fullPageData },
+      {
+        onSuccess: () => options?.onSuccess?.() ?? onSaved?.(),
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  };
+
+  const clearSectionEditing = () => {
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+  };
 
   const scheduleAutoSave = (
     nextValue: Record<string, unknown>,
@@ -659,32 +698,99 @@ export function SectionsEditor({
   const handleReorder = (fromIndex: number, toIndex: number) => {
     if (!activePageKey) return;
     const reordered = arrayMove([...rawSections], fromIndex, toIndex);
-    const fullPageData = {
-      ...(decofile[activePageKey] as Record<string, unknown>),
-    };
-    if (hasMultipleVariants) {
-      const currentSections = fullPageData.sections as Record<string, unknown>;
-      const variants = [
-        ...((currentSections?.variants as Array<Record<string, unknown>>) ??
-          []),
-      ];
-      if (variants[safeVariantIndex]) {
-        variants[safeVariantIndex] = {
-          ...variants[safeVariantIndex],
-          value: reordered,
-        };
+
+    if (selectedSectionIndex !== null) {
+      if (selectedSectionIndex === fromIndex) {
+        setSelectedSectionIndex(toIndex);
+      } else if (
+        fromIndex < selectedSectionIndex &&
+        toIndex >= selectedSectionIndex
+      ) {
+        setSelectedSectionIndex(selectedSectionIndex - 1);
+      } else if (
+        fromIndex > selectedSectionIndex &&
+        toIndex <= selectedSectionIndex
+      ) {
+        setSelectedSectionIndex(selectedSectionIndex + 1);
       }
-      fullPageData.sections = { ...currentSections, variants };
-    } else {
-      fullPageData.sections = reordered;
     }
-    saveBlock.mutate(
-      { blockKey: activePageKey, data: fullPageData },
-      {
-        onSuccess: () => onSaved?.(),
-        onError: (err) => toast.error(`Reorder failed: ${err.message}`),
-      },
-    );
+
+    savePageSections(reordered);
+  };
+
+  const handleDeleteSection = (index: number) => {
+    if (!activePageKey) return;
+    const updatedSections = rawSections.filter((_, i) => i !== index);
+    if (selectedSectionIndex === index) {
+      clearSectionEditing();
+    } else if (selectedSectionIndex !== null && selectedSectionIndex > index) {
+      setSelectedSectionIndex(selectedSectionIndex - 1);
+    }
+    savePageSections(updatedSections);
+  };
+
+  const handleDuplicateSection = (index: number) => {
+    if (!activePageKey) return;
+    const section = rawSections[index];
+    if (!section) return;
+    const updatedSections = [...rawSections];
+    updatedSections.splice(index + 1, 0, cloneSection(section));
+    savePageSections(updatedSections);
+  };
+
+  const handleMakeReusableSubmit = async (blockId: string) => {
+    if (makeReusableIndex === null || !activePageKey) return;
+
+    const validationError = validateBlockId(blockId, decofile);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const rawSection = rawSections[makeReusableIndex];
+    const parsed = parsedSections[makeReusableIndex];
+    if (!rawSection || !parsed) return;
+
+    const unwrapped = unwrapSection(rawSection, parsed, decofile);
+    if (!unwrapped) {
+      toast.error("This section cannot be saved as global.");
+      return;
+    }
+
+    const blockData = {
+      ...unwrapped.data,
+      name: blockId,
+    };
+
+    try {
+      await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
+
+      const updatedSections = [...rawSections];
+      updatedSections[makeReusableIndex] = { __resolveType: blockId };
+
+      await saveBlock.mutateAsync({
+        blockKey: activePageKey,
+        data: buildPageDataWithSections(
+          decofile,
+          activePageKey,
+          updatedSections,
+          safeVariantIndex,
+          pageVariants,
+        ),
+      });
+
+      if (selectedSectionIndex === makeReusableIndex) {
+        clearSectionEditing();
+      }
+
+      setMakeReusableIndex(null);
+      toast.success(`Saved global block "${blockId}"`);
+      onSaved?.();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save global block",
+      );
+    }
   };
 
   // Sync rule form state when variant changes
@@ -780,11 +886,7 @@ export function SectionsEditor({
     ? [activePage.name, selectedParsed.label, ...fieldBreadcrumbs]
     : [];
   const exitSectionEditing = () => {
-    setSelectedSectionIndex(null);
-    setFormValue(null);
-    setActiveResolveType(null);
-    setFieldBreadcrumbs([]);
-    setFormResetKey((key) => key + 1);
+    clearSectionEditing();
   };
   const handleBreadcrumbClick = (index: number) => {
     if (index === 0) {
@@ -934,14 +1036,32 @@ export function SectionsEditor({
           )}
           <div className="p-2">
             <SectionList
+              listKey={`${activePageKey ?? ""}-${safeVariantIndex}`}
               sections={parsedSections}
               selectedIndex={selectedSectionIndex}
               onSelect={handleSelectSection}
               onReorder={handleReorder}
+              onDelete={handleDeleteSection}
+              onDuplicate={handleDuplicateSection}
+              onMakeReusable={setMakeReusableIndex}
             />
           </div>
         </ScrollArea>
       )}
+
+      <MakeReusableModal
+        open={makeReusableIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setMakeReusableIndex(null);
+        }}
+        defaultBlockId={
+          makeReusableIndex !== null
+            ? suggestBlockId(parsedSections[makeReusableIndex]?.label ?? "")
+            : ""
+        }
+        isPending={saveBlock.isPending}
+        onSubmit={handleMakeReusableSubmit}
+      />
     </div>
   );
 }
