@@ -30,7 +30,10 @@
       env(titlebar-area-x, 0) -
       env(titlebar-area-width, 100vw)
     );
-    min-height: env(titlebar-area-height, 3rem);
+    /* Match the OS title-bar strip height so close/min/max buttons line up
+       vertically with the header's icon buttons. Overrides Tailwind's h-12
+       (3rem) for the WCO case only. */
+    height: env(titlebar-area-height, 3rem);
   }
   .wco-drag {
     -webkit-app-region: drag;
