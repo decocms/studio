@@ -439,18 +439,27 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
   }
 
   async delete(id: string): Promise<void> {
-    // First delete aggregations (no cascade since it's a different relationship)
-    await this.db
-      .deleteFrom("connection_aggregations")
-      .where("parent_connection_id", "=", id)
-      .execute();
+    await this.db.transaction().execute(async (trx) => {
+      // Delete threads initiated with this agent. virtual_mcp_id has no DB FK,
+      // so there's no automatic cascade; thread_messages cascade via threads.id.
+      await trx
+        .deleteFrom("threads")
+        .where("virtual_mcp_id", "=", id)
+        .execute();
 
-    // Then delete the connection
-    await this.db
-      .deleteFrom("connections")
-      .where("id", "=", id)
-      .where("connection_type", "=", "VIRTUAL")
-      .execute();
+      // Delete aggregations (no cascade since it's a different relationship)
+      await trx
+        .deleteFrom("connection_aggregations")
+        .where("parent_connection_id", "=", id)
+        .execute();
+
+      // Then delete the connection
+      await trx
+        .deleteFrom("connections")
+        .where("id", "=", id)
+        .where("connection_type", "=", "VIRTUAL")
+        .execute();
+    });
   }
 
   async removeConnectionReferences(connectionId: string): Promise<void> {
