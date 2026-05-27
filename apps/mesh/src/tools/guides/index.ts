@@ -7,11 +7,20 @@ import * as store from "./store";
 import * as studioPackOnboarding from "./studio-pack-onboarding";
 import * as virtualTools from "./virtual-tools";
 
+export interface GuidePromptArgument {
+  name: string;
+  description?: string;
+  required?: boolean;
+}
+
+export type GuidePromptArgs = Record<string, string | undefined>;
+
 export interface GuidePrompt {
   name: string;
   title: string;
   description: string;
-  text: string;
+  arguments?: GuidePromptArgument[];
+  text: string | ((args: GuidePromptArgs) => string);
 }
 
 export interface GuideResource {

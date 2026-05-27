@@ -19,7 +19,19 @@ export const prompts: GuidePrompt[] = [
     title: "Set up your brand",
     description:
       "Create your brand context — extract from a domain or set up manually.",
-    text: "Help me set up my brand context. Start by asking for my website URL so you can extract logo, colors, fonts, and overview automatically — or guide me through manual setup if I don't have a public site.",
+    arguments: [
+      {
+        name: "website_url",
+        description: "Your website (optional — leave blank to set up manually)",
+        required: false,
+      },
+    ],
+    text: ({ website_url }) => {
+      const url = website_url?.trim();
+      return url
+        ? `Set up my brand context from ${url} — use BRAND_CONTEXT_EXTRACT to pull logo, colors, fonts, and overview from that domain, then show me the result.`
+        : "Help me set up my brand context manually with BRAND_CONTEXT_CREATE. Ask me for a brand name, domain, and short overview, then create it.";
+    },
   },
   {
     name: "brand-manager-complete-profile",

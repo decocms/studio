@@ -92,6 +92,11 @@ export function createHomeNextActionsRoutes() {
         if (item.action.kind !== "open-agent-thread") continue;
         const meta = promptByName.get(item.action.promptName);
         if (!meta) continue;
+        const args = meta.arguments?.map((a) => ({
+          name: a.name,
+          description: a.description,
+          required: a.required,
+        }));
         prompts.push({
           agentId: agent.getId(orgId),
           agentName: agent.title,
@@ -99,8 +104,8 @@ export function createHomeNextActionsRoutes() {
           promptName: meta.name,
           title: meta.title,
           description: meta.description,
-          hasArguments: false,
-          arguments: undefined,
+          hasArguments: (args?.length ?? 0) > 0,
+          arguments: args,
         });
       }
     }

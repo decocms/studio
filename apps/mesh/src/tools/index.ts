@@ -299,17 +299,36 @@ export const managementMCP = async (ctx: MeshContext) => {
   // Register action prompts
   const prompts = getPrompts();
   for (const prompt of prompts) {
+    const argsSchema = prompt.arguments?.length
+      ? Object.fromEntries(
+          prompt.arguments.map((a) => [
+            a.name,
+            a.required ? z.string() : z.string().optional(),
+          ]),
+        )
+      : undefined;
+
     server.registerPrompt(
       prompt.name,
-      { title: prompt.title, description: prompt.description },
-      () => ({
-        messages: [
-          {
-            role: "user" as const,
-            content: { type: "text" as const, text: prompt.text },
-          },
-        ],
-      }),
+      {
+        title: prompt.title,
+        description: prompt.description,
+        ...(argsSchema ? { argsSchema } : {}),
+      },
+      (args) => {
+        const text =
+          typeof prompt.text === "function"
+            ? prompt.text((args ?? {}) as Record<string, string | undefined>)
+            : prompt.text;
+        return {
+          messages: [
+            {
+              role: "user" as const,
+              content: { type: "text" as const, text },
+            },
+          ],
+        };
+      },
     );
   }
 
