@@ -95,4 +95,71 @@ describe("buildAgentSystemPrompt", () => {
     expect(Array.isArray(out)).toBe(true);
     expect(out.length).toBeGreaterThan(0);
   });
+
+  test("kind: 'subagent' includes connections block when connectionsData is provided", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "subagent",
+      planMode: false,
+      connectionsData: {
+        tools: [
+          {
+            safeName: "test_tool",
+            rawName: "test_tool",
+            connectionId: "conn_1",
+          } as never,
+        ],
+        connectionTitleMap: new Map([["conn_1", "Test Connection"]]),
+      },
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).toContain("available-connections");
+    expect(joined).toContain("Test Connection");
+    expect(joined).toContain("test_tool");
+  });
+
+  test("kind: 'subagent' omits connections block when connectionsData is not provided", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "subagent",
+      planMode: false,
+      // no connectionsData
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).not.toContain("available-connections");
+  });
+
+  test("kind: 'subagent' includes prompts block when passthroughClient is provided", async () => {
+    const mockClient = {
+      listPrompts: async () => ({
+        prompts: [
+          {
+            name: "my-prompt",
+            description: "A test prompt",
+            arguments: [{ name: "topic", required: true }],
+          },
+        ],
+      }),
+    } as never;
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "subagent",
+      planMode: false,
+      passthroughClient: mockClient,
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).toContain("available-prompts");
+    expect(joined).toContain("my-prompt");
+  });
+
+  test("kind: 'subagent' omits prompts block when passthroughClient is not provided", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "subagent",
+      planMode: false,
+      // no passthroughClient
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).not.toContain("available-prompts");
+  });
 });

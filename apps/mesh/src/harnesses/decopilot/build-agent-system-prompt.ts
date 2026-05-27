@@ -21,12 +21,14 @@ import {
   buildRepoEnvironmentPrompt,
 } from "../../api/routes/decopilot/constants";
 import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { buildSystemMessages, type SystemMessage } from "./system-prompt";
 import {
   listPromptsBlock,
   listAgentsBlock,
   listConnectionsBlock,
 } from "./prompt";
+import type { ConnectionsBlockTool } from "./connections-block";
 
 const SUBAGENT_IDENTITY_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
 
@@ -70,6 +72,17 @@ export interface BuildAgentSystemPromptOptions {
   planMode: boolean;
   agentInstructions?: string;
   date?: Date;
+
+  // ── Optional runtime data ──────────────────────────────────────────
+  // When provided, the prompts and connections blocks get included.
+  // When absent (e.g., unit tests with no live MCP), the blocks are
+  // omitted gracefully — the caller is responsible for supplying these
+  // when they want subagents/agents to see the full context.
+  passthroughClient?: Client;
+  connectionsData?: {
+    tools: ConnectionsBlockTool[];
+    connectionTitleMap: Map<string, string>;
+  };
 }
 
 export async function buildAgentSystemPrompt(
@@ -100,7 +113,11 @@ export async function buildAgentSystemPrompt(
     prompts.push(SUBAGENT_IDENTITY_PROMPT);
   }
 
-  const promptsBlock = await listPromptsBlock(opts.ctx, opts.organization);
+  const promptsBlock = await listPromptsBlock(
+    opts.ctx,
+    opts.organization,
+    opts.passthroughClient,
+  );
   if (promptsBlock) prompts.push(promptsBlock);
 
   if (opts.kind === "agent") {
@@ -115,6 +132,7 @@ export async function buildAgentSystemPrompt(
   const connectionsBlock = await listConnectionsBlock(
     opts.ctx,
     opts.organization,
+    opts.connectionsData,
   );
   if (connectionsBlock) prompts.push(connectionsBlock);
 

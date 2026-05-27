@@ -27,6 +27,7 @@
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
@@ -35,8 +36,11 @@ import {
 } from "../../api/routes/decopilot/constants";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
 import { buildAgentsBlock } from "./agents-block";
-import { buildPromptsBlock } from "./prompts-block";
-import { buildConnectionsBlock } from "./connections-block";
+import { buildPromptsBlock, type PromptsBlockEntry } from "./prompts-block";
+import {
+  buildConnectionsBlock,
+  type ConnectionsBlockTool,
+} from "./connections-block";
 import { buildSystemMessages, type SystemMessage } from "./system-prompt";
 import type { HarnessStreamInput } from "../types";
 import type { AssembledTools } from "./tools";
@@ -64,29 +68,50 @@ export async function listAgentsBlock(
 }
 
 /**
- * listPromptsBlock — stub for Stage 2.1. Returns null until Stage 2.3
- * wires in the passthrough MCP client. The parent assembler (prompt.ts)
- * keeps building the block via its own inline `tools.passthroughClient`.
+ * listPromptsBlock — fetches the MCP's prompt catalog via the passthrough
+ * client and builds the `<available-prompts>` block. Returns null when no
+ * client is provided (e.g., unit tests) or when the catalog is empty.
  */
-// biome-ignore lint/correctness/noUnusedFunctionParameters: stub for Stage 2.3
 export async function listPromptsBlock(
   _ctx: MeshContext,
   _org: OrganizationScope,
+  passthroughClient?: Client,
 ): Promise<string | null> {
-  return null;
+  if (!passthroughClient) return null;
+  try {
+    const { prompts } = await passthroughClient.listPrompts();
+    if (!prompts?.length) return null;
+    return buildPromptsBlock(
+      prompts.map((p) => ({
+        name: p.name,
+        description: p.description ?? null,
+        arguments: (p.arguments ?? []).map((a) => ({
+          name: a.name,
+          required: a.required,
+        })),
+      })) satisfies PromptsBlockEntry[],
+    );
+  } catch (err) {
+    console.warn("[listPromptsBlock] Failed to list prompts:", err);
+    return null;
+  }
 }
 
 /**
- * listConnectionsBlock — stub for Stage 2.1. Returns null until Stage 2.3
- * wires in the assembled tools data. The parent assembler (prompt.ts)
- * keeps building the block via its own inline `tools.connectionsBlockTools`.
+ * listConnectionsBlock — builds the `<available-connections>` block from
+ * pre-assembled tools data. Returns null when no data is provided or when
+ * there are no tools to expose.
  */
-// biome-ignore lint/correctness/noUnusedFunctionParameters: stub for Stage 2.3
 export async function listConnectionsBlock(
   _ctx: MeshContext,
   _org: OrganizationScope,
+  data?: {
+    tools: ConnectionsBlockTool[];
+    connectionTitleMap: Map<string, string>;
+  },
 ): Promise<string | null> {
-  return null;
+  if (!data || data.tools.length === 0) return null;
+  return buildConnectionsBlock(data.tools, data.connectionTitleMap);
 }
 
 export interface AssembledPrompt {
