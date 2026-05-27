@@ -534,11 +534,10 @@ export class AgentSandboxProvider implements SandboxProvider {
       // A 401 means the cached record is stale — the pool pod was recreated
       // and no longer holds our token. Drop it and re-resolve; rehydrate
       // re-bootstraps the fresh daemon. Then retry once. Retry only when the
-      // body is re-sendable — a streamed body was consumed by the first fetch.
-      if (
-        resp.status === 401 &&
-        (init.body == null || typeof init.body === "string")
-      ) {
+      // body is re-sendable: of the BodyInit variants only a ReadableStream is
+      // one-shot (consumed by the first fetch); strings, buffers,
+      // URLSearchParams, FormData and Blobs are re-read from memory on retry.
+      if (resp.status === 401 && !(init.body instanceof ReadableStream)) {
         this.invalidateRecord(handle);
         const fresh = await this.getRecord(handle).catch(() => null);
         if (fresh) {
