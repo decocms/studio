@@ -128,6 +128,10 @@ atomic and gives a pointer to the right install command.
 */}}
 {{- define "sandbox-env.validatePreviewGateway" -}}
 {{- if .Values.previewGateway.enabled }}
+{{- $tlsTermination := default "gateway" .Values.previewGateway.tlsTermination }}
+{{- if not (or (eq $tlsTermination "gateway") (eq $tlsTermination "loadBalancer")) }}
+{{- fail (printf "sandbox-env: previewGateway.tlsTermination must be \"gateway\" or \"loadBalancer\" (got %q)" $tlsTermination) -}}
+{{- end }}
 {{- if not (.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1") }}
 {{- fail "sandbox-env: previewGateway.enabled=true requires the Gateway API CRDs (gateway.networking.k8s.io/v1). Install: kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml — and a Gateway controller (Istio, Envoy Gateway, Cilium, ...) implementing the chosen gatewayClassName." -}}
 {{- end }}

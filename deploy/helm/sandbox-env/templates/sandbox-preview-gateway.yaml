@@ -1,6 +1,8 @@
 {{- if .Values.previewGateway.enabled }}
 {{- $domain := required "previewGateway.domain is required when previewGateway.enabled=true" .Values.previewGateway.domain }}
-{{- $lbTermination := eq .Values.previewGateway.tlsTermination "loadBalancer" }}
+{{/* tlsTermination is validated against its enum in
+     sandbox-env.validatePreviewGateway (templates/validations.yaml). */}}
+{{- $lbTermination := eq (default "gateway" .Values.previewGateway.tlsTermination) "loadBalancer" }}
 {{- $issuer := "" }}
 {{- if not $lbTermination }}
 {{- $issuer = required "previewGateway.clusterIssuer is required when previewGateway.enabled=true and tlsTermination=gateway" .Values.previewGateway.clusterIssuer }}
