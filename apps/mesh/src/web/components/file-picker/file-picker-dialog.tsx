@@ -192,21 +192,36 @@ function BucketPanel({
     if (!files) return;
     const list = Array.from(files);
     if (list.length === 0) return;
-    try {
-      let firstUrl: string | null = null;
-      for (const f of list) {
+
+    // Upload each file independently so a single mid-batch failure
+    // doesn't discard the work already done — we still refetch the
+    // listing and select the first successful upload, then surface
+    // the failed names in a toast.
+    let firstUrl: string | null = null;
+    const failures: string[] = [];
+    for (const f of list) {
+      try {
         const result = await upload.mutateAsync({
           configId: config.id,
           file: f,
         });
         firstUrl ??= result.publicUrl;
+      } catch (err) {
+        failures.push(
+          `${f.name} (${err instanceof Error ? err.message : "upload failed"})`,
+        );
       }
-      await objectsQuery.refetch();
-      if (firstUrl) {
-        onSelect(firstUrl);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+    }
+    await objectsQuery.refetch();
+    if (failures.length > 0) {
+      toast.error(
+        failures.length === list.length
+          ? `Upload failed: ${failures.join("; ")}`
+          : `Some files failed: ${failures.join("; ")}`,
+      );
+    }
+    if (firstUrl) {
+      onSelect(firstUrl);
     }
   }
 
@@ -261,7 +276,15 @@ function BucketPanel({
           accept={accept}
           multiple
           className="hidden"
-          onChange={(e) => handleFiles(e.target.files)}
+          onChange={(e) => {
+            // Snapshot the selection and reset the input synchronously
+            // so the user can re-select the same file later — a native
+            // <input type="file"> won't fire onChange if the value
+            // hasn't changed since the previous selection.
+            const files = e.target.files;
+            e.target.value = "";
+            handleFiles(files);
+          }}
         />
       </button>
 

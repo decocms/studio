@@ -342,6 +342,17 @@ export function resolveSchema(
       return typeof fromUnion === "string" ? (fromUnion as T) : undefined;
     };
 
+    // First source that has the `default` key present wins, even when
+    // the value is explicitly `null`. Using `??` here would collapse
+    // `default: null` (which deco emits for nullable fields) into "no
+    // default", losing meaningful information about the initial value.
+    const pickDefault = (): unknown => {
+      if ("default" in v) return v.default;
+      if ("default" in resolved) return resolved.default;
+      if (unionLeaf && "default" in unionLeaf) return unionLeaf.default;
+      return undefined;
+    };
+
     return {
       type: type ?? "string",
       title:
@@ -356,7 +367,7 @@ export function resolveSchema(
           : typeof resolved.description === "string"
             ? resolved.description
             : fromLeaf<string>("description"),
-      default: v.default ?? resolved.default ?? unionLeaf?.default,
+      default: pickDefault(),
       enum: Array.isArray(resolved.enum)
         ? resolved.enum
         : (enumFromConsts ?? undefined),
