@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import {
+  FilterLines,
   LayoutAlt04,
   MessageCircle01,
   SearchSm,
@@ -39,13 +40,26 @@ import {
 import { stabilizeGroupOrder } from "./stable-order";
 import { TaskGroup, StatusGroup } from "./task-group";
 
-type TypeFilter = "manual" | "automation";
+type TypeFilter = "all" | "manual" | "automation";
 type MemberFilter = "all" | "mine";
 type GroupBy = "agent" | "status";
 
 const TYPE_LABELS: Record<TypeFilter, string> = {
+  all: "All types",
   manual: "Chats only",
   automation: "Automation only",
+};
+
+const TYPE_CYCLE: Record<TypeFilter, TypeFilter> = {
+  all: "manual",
+  manual: "automation",
+  automation: "all",
+};
+
+const TYPE_ICONS: Record<TypeFilter, typeof FilterLines> = {
+  all: FilterLines,
+  manual: MessageCircle01,
+  automation: Zap,
 };
 
 export function TaskGroupsList() {
@@ -75,7 +89,7 @@ export function TaskGroupsList() {
     (b.updated_at ?? "").localeCompare(a.updated_at ?? ""),
   );
 
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("manual");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
   const [groupBy, setGroupBy] = useState<GroupBy>("agent");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -101,10 +115,15 @@ export function TaskGroupsList() {
       ? threads.filter((t) => t.created_by === currentUserId)
       : threads;
 
-  const typeFiltered = (threads: Task[]) =>
-    typeFilter === "automation"
-      ? threads.filter((t) => Boolean(t.trigger_id))
-      : threads.filter((t) => !t.trigger_id);
+  const typeFiltered = (threads: Task[]) => {
+    if (typeFilter === "automation") {
+      return threads.filter((t) => Boolean(t.trigger_id));
+    }
+    if (typeFilter === "manual") {
+      return threads.filter((t) => !t.trigger_id);
+    }
+    return threads;
+  };
 
   const handleArchive = (task: Task) => {
     const wasActive = task.id === activeTaskId;
@@ -139,7 +158,7 @@ export function TaskGroupsList() {
     for (const t of group.threads) hide(t.id);
   };
 
-  const filtersActive = typeFilter !== "manual" || memberFilter !== "mine";
+  const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
 
   const isCollapsed = sidebarState === "collapsed";
 
@@ -236,25 +255,19 @@ export function TaskGroupsList() {
           <Tooltip>
             <TooltipTrigger asChild>
               <ToolbarIconButton
-                aria-label={
-                  typeFilter === "automation"
-                    ? "Show chats only"
-                    : "Show automation only"
-                }
-                aria-pressed={typeFilter === "automation"}
-                active={typeFilter === "automation"}
+                aria-label={`Type: ${TYPE_LABELS[typeFilter]}`}
+                aria-pressed={typeFilter !== "all"}
+                active={typeFilter !== "all"}
                 onClick={() => {
-                  const next: TypeFilter =
-                    typeFilter === "automation" ? "manual" : "automation";
+                  const next = TYPE_CYCLE[typeFilter];
                   track("tasks_panel_filter_changed", { to_value: next });
                   setTypeFilter(next);
                 }}
               >
-                {typeFilter === "automation" ? (
-                  <Zap size={16} />
-                ) : (
-                  <MessageCircle01 size={16} />
-                )}
+                {(() => {
+                  const Icon = TYPE_ICONS[typeFilter];
+                  return <Icon size={16} />;
+                })()}
               </ToolbarIconButton>
             </TooltipTrigger>
             <TooltipContent side="bottom">
