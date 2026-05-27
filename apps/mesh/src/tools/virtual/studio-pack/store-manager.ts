@@ -1,9 +1,7 @@
 import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type {
-  BuildWelcomeMessage,
   StudioPackChecklistItem,
   StudioPackConnectionKey,
-  WelcomeContext,
 } from "./types";
 
 const INSTRUCTIONS = `<role>
@@ -62,12 +60,6 @@ export const storeManagerAgent = {
   ] as readonly StudioPackConnectionKey[],
   selectedPrompts: ["store-manager-browse-store"] as readonly string[],
   instructions: INSTRUCTIONS,
-  welcomeMessage: (async (_ctx: WelcomeContext) => [
-    {
-      type: "text",
-      text: "Hey — I browse the Deco Store and Community Registry for installable MCPs. What problem are you trying to solve?",
-    },
-  ]) satisfies BuildWelcomeMessage,
   checklist: [
     {
       label: "Browse the Deco Store",
@@ -75,8 +67,6 @@ export const storeManagerAgent = {
       action: {
         kind: "open-agent-thread",
         promptName: "store-manager-browse-store",
-        prompt:
-          "Show me what's in the Deco Store and the Community Registry. Ask me what problem I'm trying to solve and recommend a few MCPs that fit.",
       },
       isCompleted: async ({ orgId, ctx }) => {
         // Push "any non-seeded connection?" down to SQL with LIMIT 1, so we
