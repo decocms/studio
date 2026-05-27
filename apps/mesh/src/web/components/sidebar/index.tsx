@@ -1,6 +1,6 @@
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { useProjectSidebarItems } from "@/web/hooks/use-project-sidebar-items";
-import { Suspense, type ReactNode } from "react";
+import { Suspense } from "react";
 import { NavigationSidebar } from "./navigation";
 import { MobileNavigationSidebar } from "./navigation-mobile";
 import { SidebarInboxFooter } from "./footer/inbox";
@@ -15,13 +15,12 @@ export type {
   Invitation,
 } from "./types";
 
-export function StudioSidebar({ headerRight }: { headerRight?: ReactNode }) {
+export function StudioSidebar() {
   const sections = useProjectSidebarItems();
 
   return (
     <NavigationSidebar
       sections={sections}
-      headerRight={headerRight}
       footer={<SidebarInboxFooter />}
       additionalContent={
         <ErrorBoundary>
