@@ -1,5 +1,11 @@
-import { expect, test } from "@playwright/test";
 import { signUp } from "../fixtures/auth";
+import { SettingsMembersPage } from "../pages/settings-members";
+import {
+  expect,
+  extractOrgSlugFromUrl,
+  test,
+  waitForPostSignupRedirect,
+} from "../fixtures/test";
 
 /**
  * Regression for the "infinite loading" shell when visiting /:org you don't
@@ -15,16 +21,8 @@ test.describe("Org access gate", () => {
     page,
   }) => {
     await signUp(page);
-    // Wait for the post-signup redirect off /login so we know auth is established.
-    await page.waitForURL(
-      (url) => {
-        const slug = url.pathname.split("/")[1];
-        return !!slug && slug !== "login" && slug !== "api";
-      },
-      { timeout: 15_000 },
-    );
+    await waitForPostSignupRedirect(page);
 
-    // Pick a slug that almost certainly doesn't exist.
     const fakeSlug = `definitely-not-a-real-org-${Date.now()}`;
     await page.goto(`/${fakeSlug}/`);
 
@@ -46,27 +44,15 @@ test.describe("Org access gate", () => {
   }) => {
     // User A — creates their own org (auto-created at signup).
     await signUp(page);
-    await page.waitForURL(
-      (url) => {
-        const slug = url.pathname.split("/")[1];
-        return !!slug && slug !== "login" && slug !== "api";
-      },
-      { timeout: 15_000 },
-    );
-    const orgASlug = new URL(page.url()).pathname.split("/")[1];
+    await waitForPostSignupRedirect(page);
+    const orgASlug = extractOrgSlugFromUrl(page);
 
     // Sign out by clearing the session cookie so we can sign up as a second user.
     await context.clearCookies();
 
     // User B — fresh signup, no membership in org A.
     await signUp(page);
-    await page.waitForURL(
-      (url) => {
-        const slug = url.pathname.split("/")[1];
-        return !!slug && slug !== "login" && slug !== "api";
-      },
-      { timeout: 15_000 },
-    );
+    await waitForPostSignupRedirect(page);
 
     // Navigate to org A — user B has no invite, no auto-join, so should see
     // the no-access screen rather than hang on the splash.
@@ -86,42 +72,21 @@ test.describe("Org access gate", () => {
   }) => {
     // User A — creates org A.
     await signUp(page);
-    await page.waitForURL(
-      (url) => {
-        const slug = url.pathname.split("/")[1];
-        return !!slug && slug !== "login" && slug !== "api";
-      },
-      { timeout: 15_000 },
-    );
-    const orgASlug = new URL(page.url()).pathname.split("/")[1];
+    await waitForPostSignupRedirect(page);
+    const orgASlug = extractOrgSlugFromUrl(page);
 
     // Pre-mint the address we'll invite + sign up B with, so they match.
     const bEmail = `invitee-${Date.now()}@playwright.local`;
 
-    // Invite B via the members settings page.
-    await page.goto(`/${orgASlug}/settings/members`);
-    await page.getByRole("button", { name: "Invite Member" }).click();
-    await expect(
-      page.getByRole("heading", { name: "Invite members" }),
-    ).toBeVisible();
-    await page.getByPlaceholder(/Enter email addresses/i).fill(bEmail);
-    // Default role ("user") is already selected; submit.
-    await page.getByRole("button", { name: /^Invite \d+ Member/ }).click();
-    // Wait for the dialog to close (success path).
-    await expect(
-      page.getByRole("heading", { name: "Invite members" }),
-    ).not.toBeVisible({ timeout: 10_000 });
+    const members = new SettingsMembersPage(page);
+    await members.goto(orgASlug);
+    await members.openInviteDialog();
+    await members.inviteByEmail(bEmail);
 
     // Swap principals: clear cookies and sign up B with the invited email.
     await context.clearCookies();
     await signUp(page, { email: bEmail });
-    await page.waitForURL(
-      (url) => {
-        const slug = url.pathname.split("/")[1];
-        return !!slug && slug !== "login" && slug !== "api";
-      },
-      { timeout: 15_000 },
-    );
+    await waitForPostSignupRedirect(page);
 
     // B navigates to org A — should see the pending-invite screen, not hang.
     await page.goto(`/${orgASlug}/`);

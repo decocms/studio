@@ -314,14 +314,15 @@ Located in `plugins/`:
 - Use Zod for runtime validation and schema definitions
 - TypeScript 5.9+ with strict mode enabled
 
-## Testing Guidelines
+## Testing
 
-- **Bun test runner** for all tests
-- Co-locate test files: `*.test.ts` or `*.test.tsx` next to source
-- Run `bun test` before submitting PRs
-- Add integration tests for API endpoints and database operations
-- Test files use Bun's built-in test framework
-- Document any intentional coverage gaps in PR descriptions
+See [`TESTING.md`](./TESTING.md) for the testing philosophy and rules.
+
+**Short version:** two tiers, no third.
+- **Unit (`bun test`)** — pure logic only. No mocks, no DB, no network. Co-located `*.test.ts` next to source.
+- **E2E (Playwright)** — everything else. Real Postgres + NATS + Better Auth. Lives in `apps/mesh/e2e/tests/`.
+
+If a test needs `vi.mock`, `mock.module`, a stubbed `MeshContext`, or a fake `fetch` — it's not a unit test. Move it to e2e.
 
 ## Working with Tools
 
