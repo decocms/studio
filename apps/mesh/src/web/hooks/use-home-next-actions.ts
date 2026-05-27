@@ -18,6 +18,7 @@ export interface HomePromptEntry {
   description: string;
   hasArguments: boolean;
   arguments?: Prompt["arguments"];
+  _meta?: Prompt["_meta"];
 }
 
 export interface HomeDialogEntry {

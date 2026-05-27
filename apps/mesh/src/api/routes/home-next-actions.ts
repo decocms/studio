@@ -15,6 +15,8 @@
  */
 
 import { Hono } from "hono";
+import { slugify } from "@decocms/mcp-utils/aggregate";
+import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import type { MeshContext } from "@/core/mesh-context";
 import { getPrompts } from "@/tools/guides";
@@ -40,11 +42,17 @@ interface PromptEntry {
   agentId: string;
   agentName: string;
   agentIcon: string | null;
+  /**
+   * Gateway-namespaced prompt name — matches what `prompts/list` returns for
+   * this agent's MCP client so the resulting mention chip's id lines up with
+   * the slash-command flow (enables click-to-edit on the chip).
+   */
   promptName: string;
   title: string;
   description: string;
   hasArguments: boolean;
   arguments: Prompt["arguments"];
+  _meta: Prompt["_meta"];
 }
 
 interface DialogEntry {
@@ -85,6 +93,13 @@ export function createHomeNextActionsRoutes() {
       ),
     ]);
 
+    // Studio Pack guide prompts are registered on the org's "self" MCP and
+    // surfaced via the agent's passthrough gateway. We mirror the gateway's
+    // namespacing here so the client sees the same `name` + `_meta` it would
+    // get from `prompts/list` on the agent.
+    const selfClientId = WellKnownOrgMCPId.SELF(orgId);
+    const namespacePrefix = `${slugify(selfClientId)}_`;
+
     const prompts: PromptEntry[] = [];
     for (const { agent, items } of perAgent) {
       for (const item of items) {
@@ -101,11 +116,12 @@ export function createHomeNextActionsRoutes() {
           agentId: agent.getId(orgId),
           agentName: agent.title,
           agentIcon: agent.icon,
-          promptName: meta.name,
+          promptName: `${namespacePrefix}${meta.name}`,
           title: meta.title,
           description: meta.description,
           hasArguments: (args?.length ?? 0) > 0,
           arguments: args,
+          _meta: { gatewayClientId: selfClientId },
         });
       }
     }

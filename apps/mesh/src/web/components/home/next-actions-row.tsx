@@ -94,6 +94,7 @@ function AgentPromptCardGroup({
       title: entry.title,
       description: entry.description,
       arguments: entry.arguments,
+      _meta: entry._meta,
     };
     void start(prompt);
   };

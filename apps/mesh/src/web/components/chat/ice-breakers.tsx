@@ -42,7 +42,6 @@ import {
   type PromptArgumentValues,
 } from "./dialog-prompt-arguments";
 import { createMentionDoc } from "./tiptap/mention/node";
-import { appendToTiptapDoc } from "./tiptap/utils";
 
 // ---------- Types ----------
 
@@ -356,7 +355,6 @@ function iceBreakerReducer(
 
 function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
   const { sendMessage } = useChatStream();
-  const { tiptapDocRef } = useChatPrefs();
   const { org } = useProjectContext();
 
   // Fetch prompts from the aggregated virtual MCP
@@ -385,22 +383,35 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
 
       dispatch({ type: "RESET" });
 
-      const newTiptapDoc = appendToTiptapDoc(tiptapDocRef.current, {
-        type: "paragraph",
+      // Build the tiptap doc the EXACT same way the slash-mention plugin
+      // does in the editor (`insertMention` in `tiptap/mention/node.tsx`):
+      // a single paragraph containing the mention atom followed by a
+      // trailing " " text node — no extra empty paragraphs around it. This
+      // keeps the icebreaker's `sendMessage` payload byte-identical to
+      // typing `/<prompt>` + Enter so the sent user message renders with
+      // the same chip styling.
+      const newTiptapDoc = {
+        type: "doc" as const,
         content: [
-          createMentionDoc({
-            id: prompt.name,
-            name: stripToolNamespace(
-              prompt.name,
-              getGatewayClientId(prompt._meta),
-            ),
-            metadata: result.messages,
-            char: "/",
-            kind: "prompt",
-            args,
-          }),
+          {
+            type: "paragraph",
+            content: [
+              createMentionDoc({
+                id: prompt.name,
+                name: stripToolNamespace(
+                  prompt.name,
+                  getGatewayClientId(prompt._meta),
+                ),
+                metadata: result.messages,
+                char: "/",
+                kind: "prompt",
+                args,
+              }),
+              { type: "text" as const, text: " " },
+            ],
+          },
         ],
-      });
+      };
 
       await sendMessage(newTiptapDoc);
     } catch (error) {

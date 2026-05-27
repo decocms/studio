@@ -301,10 +301,13 @@ export const managementMCP = async (ctx: MeshContext) => {
   for (const prompt of prompts) {
     const argsSchema = prompt.arguments?.length
       ? Object.fromEntries(
-          prompt.arguments.map((a) => [
-            a.name,
-            a.required ? z.string() : z.string().optional(),
-          ]),
+          prompt.arguments.map((a) => {
+            const base = a.required ? z.string() : z.string().optional();
+            return [
+              a.name,
+              a.description ? base.describe(a.description) : base,
+            ];
+          }),
         )
       : undefined;
 

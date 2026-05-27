@@ -25,7 +25,6 @@ import {
   PromptArgsDialog,
   type PromptArgumentValues,
 } from "@/web/components/chat/dialog-prompt-arguments";
-import { derivePartsFromTiptapDoc } from "@/web/components/chat/derive-parts";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { createMentionDoc } from "@/web/components/chat/tiptap/mention/node";
 import { usePanelActions } from "@/web/layouts/shell-layout";
@@ -62,6 +61,12 @@ export function useStartThreadFromPrompt({
     }
     try {
       const result = await getPrompt(client, prompt.name, args);
+      // Mirror the editor's `/`-mention insertion shape (mention atom +
+      // trailing " " text node — see `tiptap/mention/node.tsx`'s
+      // `insertMention`). Storing this on autosend (and re-deriving parts
+      // at send time) routes the message through the rich renderer so the
+      // sent user message shows the chip styling, matching the slash and
+      // in-thread icebreaker flows.
       const tiptapDoc = {
         type: "doc" as const,
         content: [
@@ -79,14 +84,14 @@ export function useStartThreadFromPrompt({
                 kind: "prompt",
                 args,
               }),
+              { type: "text" as const, text: " " },
             ],
           },
         ],
       };
-      const parts = derivePartsFromTiptapDoc(tiptapDoc);
 
       const newId = crypto.randomUUID();
-      writeStoredAutosend(sessionStorage, locator, newId, { parts });
+      writeStoredAutosend(sessionStorage, locator, newId, { tiptapDoc });
       await create({ id: newId, virtual_mcp_id: agentId });
       setTaskId(newId, agentId, { autosend: true });
     } catch (error) {
