@@ -35,6 +35,34 @@ import {
   useFileConfigs,
 } from "@/web/hooks/use-file-configs";
 
+/**
+ * MCP tool errors arrive as Error messages like
+ * `Invalid arguments for tool FILE_CONFIG_CREATE: [ {...zod issues...} ]`.
+ * Dumping that into a toast is unreadable, so try to pull the first Zod
+ * issue's `message` (or path-qualified message) out before falling back to
+ * the raw text.
+ */
+function formatToolError(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  const match = err.message.match(/\[\s*\{[\s\S]*\}\s*\]/);
+  if (match) {
+    try {
+      const issues = JSON.parse(match[0]) as Array<{
+        message?: string;
+        path?: Array<string | number>;
+      }>;
+      const first = issues[0];
+      if (first?.message) {
+        const path = first.path?.join(".");
+        return path ? `${path}: ${first.message}` : first.message;
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return err.message || fallback;
+}
+
 function ErrorFallback({ error }: { error: Error }) {
   return (
     <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
@@ -80,6 +108,11 @@ function FileConfigRow({
           {config.prefix ? (
             <p className="text-xs text-muted-foreground/80 mt-0.5 truncate font-mono">
               prefix: {config.prefix}
+            </p>
+          ) : null}
+          {config.publicUrlBase ? (
+            <p className="text-xs text-muted-foreground/80 mt-0.5 truncate font-mono">
+              public: {config.publicUrlBase}
             </p>
           ) : null}
         </div>
@@ -139,6 +172,7 @@ function CreateFileConfigDialog({
   const [endpoint, setEndpoint] = useState("");
   const [forcePathStyle, setForcePathStyle] = useState(false);
   const [prefix, setPrefix] = useState("");
+  const [publicUrlBase, setPublicUrlBase] = useState("");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const createConfig = useCreateFileConfig();
@@ -151,13 +185,9 @@ function CreateFileConfigDialog({
     setEndpoint("");
     setForcePathStyle(false);
     setPrefix("");
+    setPublicUrlBase("");
     setAccessKeyId("");
     setSecretAccessKey("");
-  }
-
-  function handleClose() {
-    reset();
-    onOpenChange(false);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -174,13 +204,15 @@ function CreateFileConfigDialog({
         endpoint: endpoint.trim() || undefined,
         forcePathStyle,
         prefix: prefix.trim() || undefined,
+        publicUrlBase: publicUrlBase.trim() || undefined,
         accessKeyId,
         secretAccessKey,
       });
       toast.success(`Bucket "${name.trim()}" added`);
-      handleClose();
+      reset();
+      onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to add bucket");
+      toast.error(formatToolError(err, "Failed to add bucket"));
     }
   }
 
@@ -193,13 +225,7 @@ function CreateFileConfigDialog({
     !secretAccessKey;
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) handleClose();
-        else onOpenChange(o);
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add S3 bucket</DialogTitle>
@@ -299,6 +325,25 @@ function CreateFileConfigDialog({
           </div>
 
           <div className="space-y-1.5">
+            <Label htmlFor="file-config-public-url-base">
+              Public URL base (optional)
+            </Label>
+            <Input
+              id="file-config-public-url-base"
+              type="url"
+              value={publicUrlBase}
+              onChange={(e) => setPublicUrlBase(e.target.value)}
+              placeholder="https://pub-xxxx.r2.dev or https://cdn.example.com"
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              Host used to build public URLs returned by the picker (R2 dev
+              domain, CDN, custom host). Leave blank to use the bucket's S3 host
+              (AWS default).
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="file-config-access-key">Access key ID</Label>
             <Input
               id="file-config-access-key"
@@ -338,7 +383,10 @@ function CreateFileConfigDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={handleClose}
+              onClick={() => {
+                reset();
+                onOpenChange(false);
+              }}
               disabled={createConfig.isPending}
             >
               Cancel

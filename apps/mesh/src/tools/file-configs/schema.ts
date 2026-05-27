@@ -15,6 +15,7 @@ export const fileConfigInfoSchema = z.object({
   endpoint: z.string().nullable(),
   forcePathStyle: z.boolean(),
   prefix: z.string().nullable(),
+  publicUrlBase: z.string().nullable(),
   createdBy: z.string(),
   createdAt: z.string(),
   updatedBy: z.string(),
@@ -44,4 +45,17 @@ export function normalizePrefix(
   const trimmed = input.trim().replace(/^\/+/, "");
   if (trimmed === "") return null;
   return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
+}
+
+/**
+ * Normalize a public URL base so callers can safely concatenate
+ * `publicUrlBase + key`: trim whitespace and strip trailing slashes. Returns
+ * null when the input is empty/undefined.
+ */
+export function normalizePublicUrlBase(
+  input: string | null | undefined,
+): string | null {
+  if (input == null) return null;
+  const trimmed = input.trim().replace(/\/+$/, "");
+  return trimmed === "" ? null : trimmed;
 }

@@ -158,14 +158,17 @@ export function resolveSchema(
       }
     }
 
-    // Determine type
+    // Determine type. When the schema is a nullable union
+    // (`anyOf: [T, null]`), `unionLeaf` holds the single non-null branch
+    // so downstream metadata (format, title, description) can be inherited
+    // from it — without this, `format: "image-uri"` on the inner branch
+    // would be silently dropped.
     let type: string | undefined;
+    let unionLeaf: RawSchema | undefined;
     if (resolved.type) {
       type = Array.isArray(resolved.type)
         ? String(resolved.type.find((t) => t !== "null") ?? resolved.type[0])
         : String(resolved.type);
-    } else if (typeof v.$ref === "string") {
-      type = "object";
     } else if (resolved.anyOf || resolved.allOf || resolved.oneOf) {
       const arr = (resolved.anyOf ??
         resolved.allOf ??
@@ -178,6 +181,7 @@ export function resolveSchema(
         type = "null";
       } else if (nonNull.length === 1) {
         const first = nonNull[0]!;
+        unionLeaf = first;
         type = first.type
           ? Array.isArray(first.type)
             ? String(first.type[0])
@@ -298,11 +302,17 @@ export function resolveSchema(
 
         type = "object";
       }
+    } else if (typeof v.$ref === "string") {
+      // Last-resort: ref points to a def with no type/union we recognize.
+      // Treat as object so nested-property recursion has a chance to fill in.
+      type = "object";
     }
 
-    // Nested properties for object types (depth < 3)
+    // Nested properties for object types. Bumped past depth 3 because real
+    // deco sections nest images at depth 4+ (`images[].desktop.src`); the
+    // old cap left those leaves un-resolved and stripped their `format`.
     let nestedProperties: Record<string, SchemaProperty> | undefined;
-    if (depth < 3) {
+    if (depth < 6) {
       const nestedRaw = collectProps(resolved);
       const nestedEntries = Object.entries(nestedRaw).filter(
         ([k]) => !k.startsWith("__") && k !== "@type",
@@ -317,7 +327,7 @@ export function resolveSchema(
 
     // Array items
     let itemsSchema: SchemaProperty | undefined;
-    if ((type === "array" || resolved.type === "array") && depth < 3) {
+    if ((type === "array" || resolved.type === "array") && depth < 6) {
       let rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
         if (typeof rawItems.$ref === "string") {
@@ -327,6 +337,22 @@ export function resolveSchema(
       }
     }
 
+    const fromLeaf = <T>(key: string): T | undefined => {
+      const fromUnion = unionLeaf?.[key];
+      return typeof fromUnion === "string" ? (fromUnion as T) : undefined;
+    };
+
+    // First source that has the `default` key present wins, even when
+    // the value is explicitly `null`. Using `??` here would collapse
+    // `default: null` (which deco emits for nullable fields) into "no
+    // default", losing meaningful information about the initial value.
+    const pickDefault = (): unknown => {
+      if ("default" in v) return v.default;
+      if ("default" in resolved) return resolved.default;
+      if (unionLeaf && "default" in unionLeaf) return unionLeaf.default;
+      return undefined;
+    };
+
     return {
       type: type ?? "string",
       title:
@@ -334,22 +360,27 @@ export function resolveSchema(
           ? v.title
           : typeof resolved.title === "string"
             ? resolved.title
-            : undefined,
+            : fromLeaf<string>("title"),
       description:
         typeof v.description === "string"
           ? v.description
           : typeof resolved.description === "string"
             ? resolved.description
-            : undefined,
-      default: v.default ?? resolved.default,
+            : fromLeaf<string>("description"),
+      default: pickDefault(),
       enum: Array.isArray(resolved.enum)
         ? resolved.enum
         : (enumFromConsts ?? undefined),
-      format: typeof resolved.format === "string" ? resolved.format : undefined,
+      format:
+        typeof resolved.format === "string"
+          ? resolved.format
+          : fromLeaf<string>("format"),
       properties: nestedProperties,
       items: itemsSchema,
       titleBy:
-        typeof resolved.titleBy === "string" ? resolved.titleBy : undefined,
+        typeof resolved.titleBy === "string"
+          ? resolved.titleBy
+          : fromLeaf<string>("titleBy"),
     };
   };
 

@@ -84,7 +84,7 @@ export function ArrayField({
       getItemLabel(item, selectedIndex),
     ];
     return (
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         {itemSchema?.type === "object" && itemSchema.properties ? (
           <SchemaForm
             schema={itemSchema}

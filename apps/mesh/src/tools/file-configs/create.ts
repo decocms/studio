@@ -5,6 +5,7 @@ import {
   fileConfigInfoSchema,
   fileConfigNameSchema,
   normalizePrefix,
+  normalizePublicUrlBase,
 } from "./schema";
 
 export const FILE_CONFIG_CREATE = defineTool({
@@ -19,6 +20,7 @@ export const FILE_CONFIG_CREATE = defineTool({
     endpoint: z.string().url().optional(),
     forcePathStyle: z.boolean().optional(),
     prefix: z.string().max(512).optional(),
+    publicUrlBase: z.string().url().optional(),
     accessKeyId: z.string().min(1),
     secretAccessKey: z.string().min(1),
   }),
@@ -37,6 +39,7 @@ export const FILE_CONFIG_CREATE = defineTool({
       endpoint: input.endpoint ?? null,
       forcePathStyle: input.forcePathStyle ?? false,
       prefix: normalizePrefix(input.prefix),
+      publicUrlBase: normalizePublicUrlBase(input.publicUrlBase),
       credentials: {
         accessKeyId: input.accessKeyId,
         secretAccessKey: input.secretAccessKey,

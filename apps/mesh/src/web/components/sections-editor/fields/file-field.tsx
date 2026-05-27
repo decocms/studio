@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Image01, Trash01, Upload01 } from "@untitledui/icons";
+import { File02, Trash01, Upload01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -29,16 +29,7 @@ function extension(filename: string): string {
   return filename.slice(dot + 1).toLowerCase();
 }
 
-const ACCEPTED_IMAGE_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "image/svg+xml",
-  "image/avif",
-]);
-
-export function ImageField({
+export function FileField({
   schema,
   value,
   onChange,
@@ -48,35 +39,12 @@ export function ImageField({
   const strValue = extractUrl(value);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageErrored, setImageErrored] = useState(false);
   const fileName = strValue ? basename(strValue) : "";
   const ext = fileName ? extension(fileName) : "";
 
   const configsQuery = useFileConfigsQuery();
   const upload = useFilePickerUpload();
 
-  /**
-   * Reset the load/error tracking when the underlying URL changes. Used
-   * by every code path that swaps the value — input, picker, drop, trash.
-   * Without this, a single failed load would conditionally unmount the
-   * <img> permanently and the field would be stuck on "Preview
-   * unavailable" forever (also why the <img> below has key={strValue}
-   * — belt-and-suspenders).
-   */
-  function setValue(next: string) {
-    setImageLoaded(false);
-    setImageErrored(false);
-    onChange(next);
-  }
-
-  /**
-   * Pick which bucket a drop-on-field upload should target.
-   *   - 1 config: that one
-   *   - 2+ configs: the last-used (from localStorage), if it's still present
-   *   - 0 configs, or 2+ without a prior selection: null → open the dialog
-   *     so the user can configure / pick a bucket explicitly
-   */
   function resolveTargetConfigId(): string | null {
     const configs = configsQuery.data?.configs ?? [];
     if (configs.length === 1) return configs[0]!.id;
@@ -90,19 +58,11 @@ export function ImageField({
 
   async function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
-    const list = Array.from(files).filter((f) =>
-      ACCEPTED_IMAGE_TYPES.has(f.type || ""),
-    );
-    if (list.length === 0) {
-      toast.error("Only image files are accepted here.");
-      return;
-    }
+    const list = Array.from(files);
+    if (list.length === 0) return;
 
     const targetConfigId = resolveTargetConfigId();
     if (!targetConfigId) {
-      // No deterministic target — defer to the dialog so the user can
-      // pick a bucket (or be guided to configure one). The dialog won't
-      // auto-upload; the user does it again inside.
       setPickerOpen(true);
       return;
     }
@@ -112,7 +72,7 @@ export function ImageField({
         configId: targetConfigId,
         file: list[0]!,
       });
-      setValue(result.publicUrl);
+      onChange(result.publicUrl);
       if (list.length > 1) {
         toast.info(
           `Uploaded ${list[0]!.name}; extra files were ignored (single-select field).`,
@@ -128,7 +88,6 @@ export function ImageField({
     if (e.dataTransfer.types.includes("Files")) setIsDragging(true);
   }
   function onDragLeave(e: React.DragEvent) {
-    // Only clear when leaving the wrapper, not when dragging over a child.
     if (e.currentTarget === e.target) setIsDragging(false);
   }
   function onDrop(e: React.DragEvent) {
@@ -138,10 +97,8 @@ export function ImageField({
   }
 
   return (
-    // grid-cols-[minmax(0,1fr)] forces every child to be at most 100% of
-    // the grid, no matter what intrinsic-content sizing tries to do —
-    // the only reliable way to bulletproof a deeply-nested form field
-    // against a misbehaving min-w-0 chain.
+    // See ImageField for the grid-cols-[minmax(0,1fr)] rationale —
+    // bulletproofs against any broken min-w-0 chain above.
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
       <div className="min-w-0 space-y-0.5">
         <Label htmlFor={path}>{label}</Label>
@@ -163,60 +120,35 @@ export function ImageField({
         )}
       >
         {strValue ? (
-          <>
-            <div className="relative h-40 w-full bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]">
-              {!imageErrored && (
-                <img
-                  // Remount whenever the URL changes so onLoad/onError
-                  // wire up fresh for the new src — without this the
-                  // load/error tracking can stick to the prior value.
-                  key={strValue}
-                  src={strValue}
-                  alt={label}
-                  className={cn(
-                    "h-full w-full object-contain transition-opacity",
-                    !imageLoaded && "opacity-0",
-                  )}
-                  onLoad={() => setImageLoaded(true)}
-                  onError={() => setImageErrored(true)}
-                />
-              )}
-              {imageErrored && (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground">
-                  <Image01 size={20} />
-                  <p className="text-xs">Preview unavailable</p>
-                </div>
-              )}
-              {!imageLoaded && !imageErrored && (
-                <div className="absolute inset-0 animate-pulse bg-muted/60" />
-              )}
+          <div className="flex items-center gap-3 px-3 py-2.5">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-background">
+              <File02 size={18} className="text-muted-foreground" />
             </div>
-            <div className="flex items-center gap-2 border-t border-border/60 bg-background/50 px-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                {fileName}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{fileName}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {strValue}
+              </p>
+            </div>
+            {ext && (
+              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                {ext}
               </span>
-              {ext && (
-                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
-                  {ext}
-                </span>
-              )}
-            </div>
-          </>
+            )}
+          </div>
         ) : (
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
-            className="flex h-40 w-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            className="flex w-full flex-col items-center justify-center gap-2 py-8 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
           >
-            <Image01 size={20} />
+            <File02 size={20} />
             <span className="text-sm font-medium">
               {upload.isPending
                 ? "Uploading…"
-                : "Drop an image or click to browse"}
+                : "Drop a file or click to browse"}
             </span>
-            <span className="text-xs text-muted-foreground">
-              PNG, JPEG, WebP, GIF, SVG, AVIF — up to 100 MB
-            </span>
+            <span className="text-xs text-muted-foreground">Up to 100 MB</span>
           </button>
         )}
 
@@ -234,7 +166,7 @@ export function ImageField({
           id={path}
           type="url"
           value={strValue}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           placeholder="https://..."
           className="h-9 min-w-0 flex-1"
         />
@@ -253,9 +185,9 @@ export function ImageField({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => setValue("")}
+            onClick={() => onChange("")}
             className="h-9 shrink-0"
-            aria-label="Remove image"
+            aria-label="Remove file"
           >
             <Trash01 size={14} />
           </Button>
@@ -265,8 +197,8 @@ export function ImageField({
       <FilePickerDialog
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        mode="image"
-        onSelect={(url) => setValue(url)}
+        mode="any"
+        onSelect={(url) => onChange(url)}
       />
     </div>
   );

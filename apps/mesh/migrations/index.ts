@@ -94,6 +94,7 @@ import * as migration092sandboxnaminguniformization from "./092-sandbox-naming-u
 import * as migration093backfillglobalsearchbasicusage from "./093-backfill-global-search-basic-usage.ts";
 import * as migration094orgfileconfigs from "./094-org-file-configs.ts";
 import * as migration095removeautomationtoolcallkind from "./095-remove-automation-tool-call-kind.ts";
+import * as migration096orgfileconfigspublicurlbase from "./096-org-file-configs-public-url-base.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -208,6 +209,8 @@ const migrations: Record<string, Migration> = {
   "094-org-file-configs": migration094orgfileconfigs,
   "095-remove-automation-tool-call-kind":
     migration095removeautomationtoolcallkind,
+  "096-org-file-configs-public-url-base":
+    migration096orgfileconfigspublicurlbase,
 };
 
 export default migrations;

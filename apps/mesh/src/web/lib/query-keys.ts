@@ -300,6 +300,10 @@ export const KEYS = {
   // Org-scoped S3 bucket file configurations
   fileConfigs: (orgId: string) => ["file-configs", orgId] as const,
 
+  // File picker — objects listed from a configured bucket
+  filePickerObjects: (orgId: string, configId: string | null) =>
+    ["file-picker-objects", orgId, configId] as const,
+
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>
     ["ai-provider-credits", orgId, keyId] as const,

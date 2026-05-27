@@ -13,6 +13,7 @@ import { createAutomationWebhookRoutes } from "./automation-webhooks";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createDownstreamTokenRoutes } from "./downstream-token";
+import { createFileUploadRoutes } from "./file-uploads";
 import { createKVRoutes } from "./kv";
 import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
@@ -80,6 +81,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
+  app.route("/", createFileUploadRoutes()); // /api/:org/file-configs/:id/upload
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/", createSuggestedActionsRoutes());
   app.route("/", createStudioPackChecklistsRoutes());

@@ -5,6 +5,7 @@ import {
   fileConfigInfoSchema,
   fileConfigNameSchema,
   normalizePrefix,
+  normalizePublicUrlBase,
 } from "./schema";
 
 export const FILE_CONFIG_UPDATE = defineTool({
@@ -21,6 +22,7 @@ export const FILE_CONFIG_UPDATE = defineTool({
       endpoint: z.string().url().nullable().optional(),
       forcePathStyle: z.boolean().optional(),
       prefix: z.string().max(512).nullable().optional(),
+      publicUrlBase: z.string().url().nullable().optional(),
       accessKeyId: z.string().min(1).optional(),
       secretAccessKey: z.string().min(1).optional(),
     })
@@ -57,6 +59,10 @@ export const FILE_CONFIG_UPDATE = defineTool({
       forcePathStyle: input.forcePathStyle,
       prefix:
         input.prefix === undefined ? undefined : normalizePrefix(input.prefix),
+      publicUrlBase:
+        input.publicUrlBase === undefined
+          ? undefined
+          : normalizePublicUrlBase(input.publicUrlBase),
       credentials,
       updatedBy: ctx.auth.user!.id,
     });
