@@ -75,43 +75,16 @@ const DISK_MUTATING_TOOLS = new Set([
   "PAGE_BOOTSTRAP",
 ]);
 
-type PageEntry = {
-  slug: string;
-  name: string;
-  designSystem: string | null;
-  path: string;
-  relativePath: string;
-  url: string;
-  lastModified: string;
-};
-
-type DesignSystemEntry = {
-  slug: string;
-  name: string;
-  brand: Record<string, string>;
-  path: string;
-  relativePath: string;
-  url: string;
-  lastModified: string;
-};
-
-type PreviewKind = "page" | "design-system";
-
-type PagePreviewStatus = {
-  pagesDir: string;
-  activeKind: PreviewKind | null;
-  activePath: string | null;
-  activeRelativePath: string | null;
-  activeUrl: string | null;
-  activeDesignSystem: string | null;
-  refreshVersion: number;
-  pages: PageEntry[];
-  designSystems: DesignSystemEntry[];
-  progressLabel: string | null;
-  progressUpdatedAt: string | null;
-  outline: string[] | null;
-  outlineUpdatedAt: string | null;
-};
+// Re-use the runtime-validated shapes from the server side so any new
+// fields land here automatically instead of needing a hand-sync. The
+// service.ts type definitions are the contract; this tab is just a
+// consumer of /api/{org}/page-preview/state.
+import type {
+  DesignSystemEntry,
+  PagePreviewPage as PageEntry,
+  PagePreviewStatus,
+  PreviewKind,
+} from "@/page-preview/service";
 
 /**
  * Aggregate "what did the agent build in *this chat*?" by walking the
@@ -839,10 +812,28 @@ export function PagePreviewTab() {
     null,
   );
   // Browser-as-REPL: ids of block-patch tool calls already dispatched to
-  // the iframe. Prevents replaying the same patch on every render.
+  // the iframe. Prevents replaying the same patch on every render and on
+  // stream reconnect (the chat-stream provider re-emits the full message
+  // list, so without this set the iframe would receive 2× / 3× the same
+  // host:render-block message).
+  //
+  // Keyed by taskId so positional fallback ids ("#0", "#1") from a prior
+  // chat don't collide with the new chat's positions. toolCallId-based
+  // ids would dedupe correctly even without this reset, but we can't
+  // guarantee every stream message carries one.
   const [dispatchedBlockPatches, setDispatchedBlockPatches] = useState<
     ReadonlySet<string>
   >(() => new Set<string>());
+  const [dispatchedTaskId, setDispatchedTaskId] = useState<string | null>(
+    taskId ?? null,
+  );
+  if (taskId !== dispatchedTaskId) {
+    // Render-phase reset is safe because the value is derived from props
+    // (taskId) and only fires on transition. Replaces a useEffect dance
+    // that would otherwise be one render late.
+    setDispatchedTaskId(taskId ?? null);
+    setDispatchedBlockPatches(new Set<string>());
+  }
 
   const {
     data: status,

@@ -299,6 +299,45 @@ export function sanitizeBlockProps(
   return visit(input) as Record<string, unknown>;
 }
 
+/**
+ * Per-org serialization for state read-modify-write cycles. Two
+ * concurrent tool calls in the same chat turn (e.g. PAGE_BOOTSTRAP and
+ * PAGE_PREVIEW_PROGRESS) used to race on the singleton state.json:
+ * both would read the same baseline, modify independently, and the
+ * second writer would silently overwrite the first. We serialize all
+ * mutations through a per-org promise chain so the second writer
+ * always sees the first writer's result. This is in-process only —
+ * a multi-pod deployment still relies on object-storage put being
+ * atomic per key, which it is.
+ */
+const stateMutex = new Map<string, Promise<void>>();
+
+async function withStateLock<T>(
+  orgId: string,
+  body: () => Promise<T>,
+): Promise<T> {
+  const prev = stateMutex.get(orgId) ?? Promise.resolve();
+  let release!: () => void;
+  const next = new Promise<void>((r) => {
+    release = r;
+  });
+  stateMutex.set(
+    orgId,
+    prev.then(() => next),
+  );
+  await prev;
+  try {
+    return await body();
+  } finally {
+    release();
+    // If the chain we just released is the latest one, drop the entry so
+    // long-lived processes don't accumulate completed-promise references.
+    if (stateMutex.get(orgId) === prev.then(() => next)) {
+      stateMutex.delete(orgId);
+    }
+  }
+}
+
 async function readState(
   storage: BoundObjectStorage,
 ): Promise<PagePreviewState> {
@@ -688,18 +727,20 @@ export async function setPagePreviewActive(
   options: PagePreviewSetOptions,
 ): Promise<PagePreviewStatus> {
   const { objectStorage } = options;
-  const current = await readState(objectStorage);
   const page = await resolveExistingPagePath(options);
-  await writeState(objectStorage, {
-    activeKind: "page",
-    activePath: page.relativePath,
-    activeDesignSystem: current.activeDesignSystem,
-    refreshVersion: current.refreshVersion + 1,
-    updatedAt: new Date().toISOString(),
-    progressLabel: null,
-    progressUpdatedAt: null,
-    outline: current.outline,
-    outlineUpdatedAt: current.outlineUpdatedAt,
+  await withStateLock(options.orgId, async () => {
+    const current = await readState(objectStorage);
+    await writeState(objectStorage, {
+      activeKind: "page",
+      activePath: page.relativePath,
+      activeDesignSystem: current.activeDesignSystem,
+      refreshVersion: current.refreshVersion + 1,
+      updatedAt: new Date().toISOString(),
+      progressLabel: null,
+      progressUpdatedAt: null,
+      outline: current.outline,
+      outlineUpdatedAt: current.outlineUpdatedAt,
+    });
   });
   return getPagePreviewStatus(options);
 }
@@ -715,19 +756,22 @@ export async function setActiveDesignSystem(
   if (!demoHead) {
     throw new Error(`Design system "${options.slug}" not found`);
   }
-  const current = await readState(objectStorage);
-  await writeState(objectStorage, {
-    activeKind: "design-system",
-    activePath: current.activePath,
-    activeDesignSystem: options.slug,
-    refreshVersion: current.refreshVersion + 1,
-    updatedAt: new Date().toISOString(),
-    progressLabel: null,
-    progressUpdatedAt: null,
-    // Switching to the DS demo means we're between pages — drop the outline
-    // so a stale stepper from a previous build doesn't linger over the demo.
-    outline: null,
-    outlineUpdatedAt: null,
+  await withStateLock(options.orgId, async () => {
+    const current = await readState(objectStorage);
+    await writeState(objectStorage, {
+      activeKind: "design-system",
+      activePath: current.activePath,
+      activeDesignSystem: options.slug,
+      refreshVersion: current.refreshVersion + 1,
+      updatedAt: new Date().toISOString(),
+      progressLabel: null,
+      progressUpdatedAt: null,
+      // Switching to the DS demo means we're between pages — drop the
+      // outline so a stale stepper from a previous build doesn't linger
+      // over the demo.
+      outline: null,
+      outlineUpdatedAt: null,
+    });
   });
   return getPagePreviewStatus(options);
 }
@@ -736,15 +780,17 @@ export async function refreshPagePreview(
   options: PagePreviewOptions,
 ): Promise<PagePreviewStatus> {
   const { objectStorage } = options;
-  const current = await readState(objectStorage);
-  await writeState(objectStorage, {
-    ...current,
-    refreshVersion: current.refreshVersion + 1,
-    updatedAt: new Date().toISOString(),
-    progressLabel: null,
-    progressUpdatedAt: null,
-    // Refresh is an idempotent re-render of the current page — outline is
-    // still relevant; preserve it (the spread above carries it).
+  await withStateLock(options.orgId, async () => {
+    const current = await readState(objectStorage);
+    await writeState(objectStorage, {
+      ...current,
+      refreshVersion: current.refreshVersion + 1,
+      updatedAt: new Date().toISOString(),
+      progressLabel: null,
+      progressUpdatedAt: null,
+      // Refresh is an idempotent re-render of the current page — outline
+      // is still relevant; preserve it (the spread above carries it).
+    });
   });
   return getPagePreviewStatus(options);
 }
@@ -766,27 +812,30 @@ export async function setPageProgress(
   options: PagePreviewOptions & { label: string; outline?: string[] | null },
 ): Promise<PagePreviewStatus> {
   const { objectStorage } = options;
-  const current = await readState(objectStorage);
   const trimmed = options.label.trim().slice(0, 120);
-  // Normalize outline: trim each item, drop empties, cap to 12 entries so a
-  // runaway outline can't blow up the stepper layout. A `null` or `undefined`
-  // outline argument means "no change" — preserve the existing one.
-  let nextOutline = current.outline;
-  let nextOutlineUpdatedAt = current.outlineUpdatedAt;
-  if (Array.isArray(options.outline)) {
-    const cleaned = options.outline
-      .map((s) => (typeof s === "string" ? s.trim() : ""))
-      .filter((s) => s.length > 0)
-      .slice(0, 12);
-    nextOutline = cleaned.length > 0 ? cleaned : null;
-    nextOutlineUpdatedAt = new Date().toISOString();
-  }
-  await writeState(objectStorage, {
-    ...current,
-    progressLabel: trimmed || null,
-    progressUpdatedAt: new Date().toISOString(),
-    outline: nextOutline,
-    outlineUpdatedAt: nextOutlineUpdatedAt,
+  await withStateLock(options.orgId, async () => {
+    const current = await readState(objectStorage);
+    // Normalize outline: trim each item, drop empties, cap to 12 entries
+    // so a runaway outline can't blow up the stepper layout. A `null` or
+    // `undefined` outline argument means "no change" — preserve the
+    // existing one.
+    let nextOutline = current.outline;
+    let nextOutlineUpdatedAt = current.outlineUpdatedAt;
+    if (Array.isArray(options.outline)) {
+      const cleaned = options.outline
+        .map((s) => (typeof s === "string" ? s.trim() : ""))
+        .filter((s) => s.length > 0)
+        .slice(0, 12);
+      nextOutline = cleaned.length > 0 ? cleaned : null;
+      nextOutlineUpdatedAt = new Date().toISOString();
+    }
+    await writeState(objectStorage, {
+      ...current,
+      progressLabel: trimmed || null,
+      progressUpdatedAt: new Date().toISOString(),
+      outline: nextOutline,
+      outlineUpdatedAt: nextOutlineUpdatedAt,
+    });
   });
   return getPagePreviewStatus(options);
 }
@@ -835,27 +884,17 @@ function normalizeBrandContrast(brand: BrandTokens): BrandTokens {
   // (often legible when primary is the opposite end of the luminance
   // scale), then pure white/black as last resorts.
   const onCandidates = [fg, brand.bg, "#FFFFFF", "#0A0A0F"];
-  const onPrimary = pickReadableText(brand.primary, {
-    candidates: onCandidates,
-    minRatio: 4.5,
-  });
-  const onSecondary = pickReadableText(brand.secondary, {
-    candidates: onCandidates,
-    minRatio: 4.5,
-  });
-  const onAccent = pickReadableText(brand.accent, {
-    candidates: onCandidates,
-    minRatio: 4.5,
-  });
+  const pick = (background: string) =>
+    pickReadableText(background, { candidates: onCandidates, minRatio: 4.5 });
   return {
     ...brand,
     fg,
     muted,
     border,
     surface,
-    onPrimary,
-    onSecondary,
-    onAccent,
+    onPrimary: pick(brand.primary),
+    onSecondary: pick(brand.secondary),
+    onAccent: pick(brand.accent),
   };
 }
 
@@ -925,21 +964,24 @@ export async function createDesignSystem(
   ]);
 
   // Bump refresh + activate as design-system preview
-  const current = await readState(objectStorage);
-  await writeState(objectStorage, {
-    activeKind: "design-system",
-    activePath: current.activePath,
-    activeDesignSystem: slug,
-    refreshVersion: current.refreshVersion + 1,
-    updatedAt: now,
-    progressLabel: null,
-    progressUpdatedAt: null,
-    // Preserve outline: the agent typically declares it on the very first
-    // PROGRESS call (before DS create), and that plan applies to the page
-    // about to be built on top of this DS. Resetting here drops the
-    // stepper exactly when the user most needs to see "we're 1 of 7 done".
-    outline: current.outline,
-    outlineUpdatedAt: current.outlineUpdatedAt,
+  await withStateLock(options.orgId, async () => {
+    const current = await readState(objectStorage);
+    await writeState(objectStorage, {
+      activeKind: "design-system",
+      activePath: current.activePath,
+      activeDesignSystem: slug,
+      refreshVersion: current.refreshVersion + 1,
+      updatedAt: now,
+      progressLabel: null,
+      progressUpdatedAt: null,
+      // Preserve outline: the agent typically declares it on the very
+      // first PROGRESS call (before DS create), and that plan applies
+      // to the page about to be built on top of this DS. Resetting here
+      // drops the stepper exactly when the user most needs to see
+      // "we're 1 of 7 done".
+      outline: current.outline,
+      outlineUpdatedAt: current.outlineUpdatedAt,
+    });
   });
 
   const status = await getPagePreviewStatus(options);
@@ -1029,34 +1071,59 @@ export async function createPage(
     slug,
   });
 
-  const current = await readState(objectStorage);
-  // Default behavior: leave the design-system preview in place. Only flip
-  // the preview to the new page when the caller explicitly opts in (or
-  // there is no other preview to keep). Keeps the user staring at the
-  // beautiful DS demo while the agent assembles the first real section.
-  const shouldActivate =
-    options.activate === true ||
-    (current.activeKind !== "design-system" && current.activeKind !== "page");
-  await writeState(objectStorage, {
-    activeKind: shouldActivate ? "page" : current.activeKind,
-    activePath: shouldActivate
-      ? `pages/${slug}/index.html`
-      : current.activePath,
-    activeDesignSystem: shouldActivate ? dsSlug : current.activeDesignSystem,
-    refreshVersion: current.refreshVersion + 1,
-    updatedAt: now,
-    progressLabel: null,
-    progressUpdatedAt: null,
-    // Preserve outline — the agent declared its plan ONCE on the first
-    // PROGRESS call, and that plan is precisely for the page being created
-    // here. Wiping it would erase the stepper at the exact moment the
-    // user wants to follow along.
-    outline: current.outline,
-    outlineUpdatedAt: current.outlineUpdatedAt,
+  await withStateLock(options.orgId, async () => {
+    const current = await readState(objectStorage);
+    // Default behavior: leave the design-system preview in place. Only
+    // flip the preview to the new page when the caller explicitly opts
+    // in (or there is no other preview to keep). Keeps the user staring
+    // at the beautiful DS demo while the agent assembles the first real
+    // section.
+    const shouldActivate =
+      options.activate === true ||
+      (current.activeKind !== "design-system" && current.activeKind !== "page");
+    await writeState(objectStorage, {
+      activeKind: shouldActivate ? "page" : current.activeKind,
+      activePath: shouldActivate
+        ? `pages/${slug}/index.html`
+        : current.activePath,
+      activeDesignSystem: shouldActivate ? dsSlug : current.activeDesignSystem,
+      refreshVersion: current.refreshVersion + 1,
+      updatedAt: now,
+      progressLabel: null,
+      progressUpdatedAt: null,
+      // Preserve outline — the agent declared its plan ONCE on the first
+      // PROGRESS call, and that plan is precisely for the page being
+      // created here. Wiping it would erase the stepper at the exact
+      // moment the user wants to follow along.
+      outline: current.outline,
+      outlineUpdatedAt: current.outlineUpdatedAt,
+    });
   });
 
   const status = await getPagePreviewStatus(options);
   return { slug, status };
+}
+
+/* ---------------------------------------------------------------------------
+ * Cleanup — called when a Page Editor vMCP is deleted so the org's
+ * page-preview bucket prefix doesn't accumulate orphaned objects.
+ * ------------------------------------------------------------------------- */
+
+export async function cleanupPageEditorStorage(
+  storage: BoundObjectStorage,
+): Promise<void> {
+  let continuationToken: string | undefined;
+  do {
+    const result = await storage.list({
+      prefix: `${KEY_PREFIX}/`,
+      continuationToken,
+      maxKeys: 1000,
+    });
+    await Promise.all(result.objects.map((o) => storage.delete(o.key)));
+    continuationToken = result.isTruncated
+      ? result.nextContinuationToken
+      : undefined;
+  } while (continuationToken);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1167,44 +1234,33 @@ function extractSectionExports(source: string): string[] {
  * ------------------------------------------------------------------------- */
 
 /**
- * Parse the BRAND object out of a tokens.js source. The writer in
- * \`createDesignSystem\` produces \`export const BRAND = <JSON literal>;\` so
- * the value between \`=\` and the trailing \`;\` is round-trippable JSON.
- * Returns null when the source doesn't match (e.g. tokens.js is missing).
+ * Round-trip the JSON literal assigned to a top-level `export const <name>`
+ * back into a value. The writers in createDesignSystem (tokens.js) and
+ * writeBlocksToPageJs (page.js) both emit `export const FOO = <json>;` so
+ * a single regex unifies parsing. Returns null on no-match.
  */
-function parseTokensJsBrand(tokensJs: string): Partial<BrandTokens> | null {
-  if (!tokensJs) return null;
-  const match = tokensJs.match(
-    /export\s+const\s+BRAND\s*=\s*(\{[\s\S]*?\})\s*;?\s*$/m,
+function parseJsExport<T>(source: string, varName: string): T | null {
+  if (!source) return null;
+  const re = new RegExp(
+    `export\\s+const\\s+${varName}\\s*=\\s*([\\[{][\\s\\S]*?[\\]}])\\s*;?\\s*$`,
+    "m",
   );
-  const raw = match?.[1];
+  const raw = source.match(re)?.[1];
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as Partial<BrandTokens>;
+    return JSON.parse(raw) as T;
   } catch {
     return null;
   }
 }
 
-/**
- * Parse the PAGE blocks array out of a page.js source. The writer in
- * \`writeBlocksToPageJs\` produces \`export const PAGE = <JSON array>;\` so
- * the value between \`=\` and the trailing \`;\` is round-trippable JSON.
- * Returns [] on no-match so downstream emitters degrade gracefully.
- */
+function parseTokensJsBrand(tokensJs: string): Partial<BrandTokens> | null {
+  return parseJsExport<Partial<BrandTokens>>(tokensJs, "BRAND");
+}
+
 function parsePageJsBlocks(pageJs: string): PageBlock[] {
-  if (!pageJs) return [];
-  const match = pageJs.match(
-    /export\s+const\s+PAGE\s*=\s*(\[[\s\S]*?\])\s*;?\s*$/m,
-  );
-  const raw = match?.[1];
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as PageBlock[]) : [];
-  } catch {
-    return [];
-  }
+  const parsed = parseJsExport<unknown>(pageJs, "PAGE");
+  return Array.isArray(parsed) ? (parsed as PageBlock[]) : [];
 }
 
 function pickProp(block: PageBlock | undefined, key: string): unknown {
@@ -2000,9 +2056,10 @@ export function resetBlocks(
  * Set of valid section names — must match the exports in sections.js
  * (page-preview/templates.ts: SECTIONS_JS). Used to fail PAGE_RENDER_BLOCK
  * fast when the agent passes a typo or invented name, instead of letting
- * the iframe render "Unknown section: X" silently.
+ * the iframe render "Unknown section: X" silently. Exported so the agent's
+ * INSTRUCTIONS prompt can reference the live list instead of hand-syncing.
  */
-const KNOWN_SECTION_NAMES = new Set([
+export const KNOWN_SECTION_NAMES = new Set([
   // Landing-page sections
   "Nav",
   "Hero",
@@ -2225,11 +2282,13 @@ export async function removeBlock(
  */
 async function bumpRefreshVersion(options: PagePreviewOptions): Promise<void> {
   const { objectStorage } = options;
-  const current = await readState(objectStorage);
-  await writeState(objectStorage, {
-    ...current,
-    refreshVersion: current.refreshVersion + 1,
-    updatedAt: new Date().toISOString(),
+  await withStateLock(options.orgId, async () => {
+    const current = await readState(objectStorage);
+    await writeState(objectStorage, {
+      ...current,
+      refreshVersion: current.refreshVersion + 1,
+      updatedAt: new Date().toISOString(),
+    });
   });
 }
 

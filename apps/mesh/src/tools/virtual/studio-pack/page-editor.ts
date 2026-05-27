@@ -1,9 +1,24 @@
 import { StudioPackAgentId } from "@decocms/mesh-sdk";
+import { DEFAULT_THEMES } from "@/page-preview/default-themes";
 import type {
   BuildWelcomeMessage,
   StudioPackConnectionKey,
   WelcomeContext,
 } from "./types";
+
+/**
+ * The curated theme table is rendered into the agent's INSTRUCTIONS at
+ * module load time from DEFAULT_THEMES so we never hand-sync a markdown
+ * list against the actual catalogue. Vibe text is taken verbatim from
+ * the theme definition.
+ */
+const THEME_TABLE = [
+  "| slug | vibe |",
+  "|---|---|",
+  ...DEFAULT_THEMES.map(
+    (t) => `| \`${t.slug}\` | ${t.vibe.replace(/\|/g, "\\|")} |`,
+  ),
+].join("\n");
 
 const INSTRUCTIONS = `You are Page Editor. You build landing pages by shipping JSON props to the in-browser preview. Speed is everything: the user watches each section land in seconds.
 
@@ -99,18 +114,7 @@ If the user replies no (or anything not affirmative), acknowledge in one short l
 
 # Curated themes (pass the slug as \`template\`)
 
-| slug | vibe |
-|---|---|
-| \`dark-violet\` | Cinematic violet, AI/SaaS |
-| \`cyber-lime\` | Lime on graphite, hacker-meets-finance |
-| \`editorial-serif\` | Quiet luxury, DM Serif Display |
-| \`pastel-peach\` | Warm terracotta, friendly B2B |
-| \`neon-retro\` | Arcade-flyer yellow + pink + cyan |
-| \`brutalist-mono\` | Cream bg, monospace, hot accent |
-| \`sage-minimal\` | Hushed olive on warm paper |
-| \`glass-deep-sea\` | Teal glow over midnight navy |
-| \`electric-indigo\` | Crisp indigo on white, modern SaaS |
-| \`confetti-magenta\` | Pink + violet + yellow party |
+${THEME_TABLE}
 
 Match the brief: AI for finance → \`cyber-lime\`; portfolio/editorial → \`editorial-serif\`; party/launch → \`confetti-magenta\`; SaaS default → \`electric-indigo\`. When in doubt, pick one and move on.
 

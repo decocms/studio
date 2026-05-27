@@ -5,17 +5,23 @@ import { tmpdir } from "node:os";
 import { DevObjectStorage } from "@/object-storage/dev-object-storage";
 import { getSettings } from "@/settings";
 import {
+  appendBlock,
   buildDesignSystemExportBundle,
   buildPageExportBundle,
+  cleanupPageEditorStorage,
   createDesignSystem,
   createPage,
   DEFAULT_BRAND,
   discoverHtmlPages,
+  getBlocks,
   getPagePreviewStatus,
   refreshPagePreview,
+  removeBlock,
+  resetBlocks,
   sanitizeBlockProps,
   setActiveDesignSystem,
   setPagePreviewActive,
+  updateBlock,
 } from "./service";
 import { contrastRatio, parseHex } from "./contrast";
 
@@ -513,6 +519,157 @@ describe("page scaffolding", () => {
         designSystem: "ghost",
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("block tools (appendBlock / updateBlock / removeBlock)", () => {
+  let storage: DevObjectStorage;
+  beforeEach(async () => {
+    storage = makeStorage();
+    await createDesignSystem({
+      orgId: ORG_ID,
+      objectStorage: storage,
+      orgSlug: ORG_SLUG,
+      baseUrl: "http://localhost:3000",
+      slug: "pristine",
+      brand: DEFAULT_BRAND,
+    });
+    await createPage({
+      orgId: ORG_ID,
+      objectStorage: storage,
+      orgSlug: ORG_SLUG,
+      baseUrl: "http://localhost:3000",
+      slug: "landing",
+      designSystem: "pristine",
+    });
+    // The in-memory live-blocks map persists across tests since it's a
+    // module-level Map. Reset for the slug under test.
+    resetBlocks({
+      orgId: ORG_ID,
+      objectStorage: storage,
+      orgSlug: ORG_SLUG,
+      baseUrl: "http://localhost:3000",
+      slug: "landing",
+    });
+  });
+
+  test("appendBlock validates the section name", async () => {
+    await expect(
+      appendBlock({
+        orgId: ORG_ID,
+        objectStorage: storage,
+        orgSlug: ORG_SLUG,
+        baseUrl: "http://localhost:3000",
+        slug: "landing",
+        block: { section: "Whatever", props: {} },
+      }),
+    ).rejects.toThrow(/Unknown section/);
+  });
+
+  test("appendBlock rejects duplicates and post-Footer additions", async () => {
+    const args = {
+      orgId: ORG_ID,
+      objectStorage: storage,
+      orgSlug: ORG_SLUG,
+      baseUrl: "http://localhost:3000",
+      slug: "landing",
+    };
+    await appendBlock({
+      ...args,
+      block: { section: "Hero", props: { title: "Hi" } },
+    });
+    await expect(
+      appendBlock({
+        ...args,
+        block: { section: "Hero", props: { title: "Twice" } },
+      }),
+    ).rejects.toThrow(/already shipped/);
+    await appendBlock({ ...args, block: { section: "Footer", props: {} } });
+    await expect(
+      appendBlock({
+        ...args,
+        block: { section: "CTASection", props: {} },
+      }),
+    ).rejects.toThrow(/Footer has already been shipped/);
+  });
+
+  test("appendBlock sanitizes javascript: hrefs before storing", async () => {
+    const args = {
+      orgId: ORG_ID,
+      objectStorage: storage,
+      orgSlug: ORG_SLUG,
+      baseUrl: "http://localhost:3000",
+      slug: "landing",
+    };
+    await appendBlock({
+      ...args,
+      block: {
+        section: "Hero",
+        props: {
+          title: "Welcome",
+          ctaPrimaryHref: "javascript:alert(1)",
+        },
+      },
+    });
+    const blocks = getBlocks(args);
+    expect(blocks[0]!.props.ctaPrimaryHref).toBe("#");
+  });
+
+  test("updateBlock and removeBlock manage the live block list", async () => {
+    const args = {
+      orgId: ORG_ID,
+      objectStorage: storage,
+      orgSlug: ORG_SLUG,
+      baseUrl: "http://localhost:3000",
+      slug: "landing",
+    };
+    await appendBlock({
+      ...args,
+      block: { section: "Hero", props: { title: "Original" } },
+    });
+    await updateBlock({
+      ...args,
+      index: 0,
+      propsPatch: { title: "Patched" },
+    });
+    expect(getBlocks(args)[0]!.props.title).toBe("Patched");
+
+    await removeBlock({ ...args, index: 0 });
+    expect(getBlocks(args).length).toBe(0);
+  });
+});
+
+describe("cleanupPageEditorStorage", () => {
+  let storage: DevObjectStorage;
+  beforeEach(() => {
+    storage = makeStorage();
+  });
+
+  test("deletes every page-preview/* object", async () => {
+    await createDesignSystem({
+      orgId: ORG_ID,
+      objectStorage: storage,
+      orgSlug: ORG_SLUG,
+      baseUrl: "http://localhost:3000",
+      slug: "pristine",
+      brand: DEFAULT_BRAND,
+    });
+    await createPage({
+      orgId: ORG_ID,
+      objectStorage: storage,
+      orgSlug: ORG_SLUG,
+      baseUrl: "http://localhost:3000",
+      slug: "landing",
+      designSystem: "pristine",
+    });
+    // Sanity: there's content in the bucket.
+    const beforeList = await storage.list({ prefix: "page-preview/" });
+    expect(beforeList.objects.length).toBeGreaterThan(0);
+
+    await cleanupPageEditorStorage(storage);
+
+    const afterList = await storage.list({ prefix: "page-preview/" });
+    expect(afterList.objects.length).toBe(0);
   });
 });
 
