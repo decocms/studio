@@ -131,8 +131,13 @@ atomic and gives a pointer to the right install command.
 {{- if not (.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1") }}
 {{- fail "sandbox-env: previewGateway.enabled=true requires the Gateway API CRDs (gateway.networking.k8s.io/v1). Install: kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml — and a Gateway controller (Istio, Envoy Gateway, Cilium, ...) implementing the chosen gatewayClassName." -}}
 {{- end }}
+{{/* cert-manager is only needed when Envoy terminates TLS. With
+     tlsTermination=loadBalancer the cloud LB owns the cert, so cert-manager
+     is not a prerequisite. */}}
+{{- if ne .Values.previewGateway.tlsTermination "loadBalancer" }}
 {{- if not (.Capabilities.APIVersions.Has "cert-manager.io/v1") }}
-{{- fail "sandbox-env: previewGateway.enabled=true requires cert-manager (cert-manager.io/v1). Install: helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set crds.enabled=true" -}}
+{{- fail "sandbox-env: previewGateway.enabled=true with tlsTermination=gateway requires cert-manager (cert-manager.io/v1). Install: helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set crds.enabled=true — or set previewGateway.tlsTermination=loadBalancer to terminate TLS at the cloud LB instead." -}}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

@@ -1,25 +1,37 @@
 {{- if .Values.previewGateway.enabled }}
 {{- $domain := required "previewGateway.domain is required when previewGateway.enabled=true" .Values.previewGateway.domain }}
-{{- $issuer := required "previewGateway.clusterIssuer is required when previewGateway.enabled=true" .Values.previewGateway.clusterIssuer }}
+{{- $lbTermination := eq .Values.previewGateway.tlsTermination "loadBalancer" }}
+{{- $issuer := "" }}
+{{- if not $lbTermination }}
+{{- $issuer = required "previewGateway.clusterIssuer is required when previewGateway.enabled=true and tlsTermination=gateway" .Values.previewGateway.clusterIssuer }}
+{{- end }}
 {{- $gwNamespace := .Values.previewGateway.namespace }}
 {{- $tlsSecretName := include "sandbox-env.previewTlsSecretName" . }}
 {{- $hostname := printf "*.%s" $domain }}
 {{- $previewName := include "sandbox-env.previewName" . }}
-# Wildcard preview-URL ingress. The Gateway terminates TLS for
-# `*.<domain>`; per-claim HTTPRoutes are minted by the mesh runner against
-# this Gateway and route directly to each sandbox's headless Service at
-# port 9000 (daemon owns the public surface — routing straight at the dev
-# port 3000 would bypass CSP/HMR rewrites and break iframe embedding + SSE).
+{{- $infra := .Values.previewGateway.infrastructure | default dict }}
+# Wildcard preview-URL ingress. The Gateway fronts `*.<domain>`; per-claim
+# HTTPRoutes are minted by the mesh runner against this Gateway and route
+# directly to each sandbox's headless Service at port 9000 (daemon owns the
+# public surface — routing straight at the dev port 3000 would bypass CSP/HMR
+# rewrites and break iframe embedding + SSE).
 #
-# This chart creates ONLY the Gateway + Certificate. It deliberately does
-# NOT render a wildcard HTTPRoute backed by mesh — keeping mesh in the
+# TLS termination is controlled by previewGateway.tlsTermination:
+#   gateway      → HTTPS listener; Envoy terminates with a cert-manager Secret
+#                  (a Certificate is rendered in sandbox-preview-cert.yaml).
+#   loadBalancer → HTTP listener on 443; the load balancer in front terminates
+#                  TLS (cert wired via infrastructure.annotations) and forwards
+#                  plaintext to Envoy over a trusted hop. No Certificate.
+#
+# This chart creates ONLY the Gateway (+ optional Certificate). It deliberately
+# does NOT render a wildcard HTTPRoute backed by mesh — keeping mesh in the
 # request path was the previous design, and it's been replaced by per-claim
 # routing. Mesh now creates one HTTPRoute per SandboxClaim in
 # `agent-sandbox-system` (same namespace as the operator's Service, no
 # ReferenceGrant needed) and tears it down on claim delete. RBAC for that
 # lives in templates/sandbox-rbac.yaml.
 #
-# Browser → Gateway → HTTPRoute(handle) → Service(handle):9000 → pod.
+# Browser → (LB) → Gateway → HTTPRoute(handle) → Service(handle):9000 → pod.
 # Mesh is no longer the data-path proxy.
 #
 # AUTH MODEL — read before exposing this. The Host header carries the
@@ -44,15 +56,48 @@ metadata:
   namespace: {{ $gwNamespace }}
   labels:
     {{- include "sandbox-env.sandboxPreviewLabels" . | nindent 4 }}
+  {{- if not $lbTermination }}
   annotations:
     # cert-manager picks up the cert from the listener's TLS secret ref;
     # this annotation tells it which ClusterIssuer to use when minting
     # the wildcard. Required because Gateway listeners don't have a
     # built-in `issuerRef` field.
     cert-manager.io/cluster-issuer: {{ $issuer | quote }}
+  {{- end }}
 spec:
   gatewayClassName: {{ .Values.previewGateway.gatewayClassName | quote }}
+  {{- if or $infra.annotations $infra.labels }}
+  # Applied by the Gateway controller to the resources it generates for this
+  # Gateway. For Istio this reaches the generated Deployment AND the
+  # LoadBalancer Service — the place to pin a stable external-dns hostname
+  # and/or (with tlsTermination=loadBalancer) attach the LB's TLS cert.
+  infrastructure:
+    {{- with $infra.labels }}
+    labels:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with $infra.annotations }}
+    annotations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
   listeners:
+    {{- if $lbTermination }}
+    - name: http
+      protocol: HTTP
+      port: 443
+      hostname: {{ $hostname | quote }}
+      allowedRoutes:
+        namespaces:
+          # Per-claim HTTPRoutes live in `agent-sandbox-system` (same
+          # namespace as the operator-created Service they back) so mesh
+          # can write them with the same Role used for SandboxClaim
+          # CRUD. Without this selector the routes would silently drop.
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-sandbox-system
+    {{- else }}
     - name: https
       protocol: HTTPS
       port: 443
@@ -73,4 +118,5 @@ spec:
           selector:
             matchLabels:
               kubernetes.io/metadata.name: agent-sandbox-system
+    {{- end }}
 {{- end }}
