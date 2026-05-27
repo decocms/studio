@@ -114,6 +114,7 @@ export const agentManagerAgent = {
     "COLLECTION_CONNECTIONS_GET",
   ] as readonly string[] | null,
   selectedConnections: null as readonly StudioPackConnectionKey[] | null,
+  selectedPrompts: [] as readonly string[],
   instructions: INSTRUCTIONS_MANAGE,
   welcomeMessage: (async (ctx: WelcomeContext) => [
     {

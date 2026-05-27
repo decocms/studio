@@ -85,6 +85,7 @@ export const automationManagerAgent = {
     "COLLECTION_CONNECTIONS_GET",
   ] as readonly string[] | null,
   selectedConnections: null as readonly StudioPackConnectionKey[] | null,
+  selectedPrompts: [] as readonly string[],
   instructions: INSTRUCTIONS,
   welcomeMessage: (async (ctx: WelcomeContext) => [
     {

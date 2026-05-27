@@ -95,6 +95,11 @@ export const brandManagerAgent = {
     "BRAND_CONTEXT_EXTRACT",
   ] as readonly string[] | null,
   selectedConnections: ["self"] as readonly StudioPackConnectionKey[],
+  selectedPrompts: [
+    "brand-manager-set-up",
+    "brand-manager-complete-profile",
+    "brand-manager-create-landing-page",
+  ] as readonly string[],
   instructions: INSTRUCTIONS_MANAGE,
   welcomeMessage: (async (ctx: WelcomeContext) => {
     if (ctx.hasBrandContext) {
