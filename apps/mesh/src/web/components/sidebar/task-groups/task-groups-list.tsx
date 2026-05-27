@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { FilterLines, SearchSm } from "@untitledui/icons";
+import { Activity, FilterLines, SearchSm, Users01 } from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
@@ -197,6 +197,21 @@ export function TaskGroupsList() {
           >
             <SearchSm size={16} />
           </ToolbarIconButton>
+          <ToolbarIconButton
+            aria-label={`Group by ${GROUP_BY_LABELS[groupBy === "agent" ? "status" : "agent"].toLowerCase()}`}
+            title={`Grouped by ${GROUP_BY_LABELS[groupBy].toLowerCase()}`}
+            onClick={() => {
+              const next: GroupBy = groupBy === "agent" ? "status" : "agent";
+              track("tasks_panel_group_by_changed", { to_value: next });
+              setGroupBy(next);
+            }}
+          >
+            {groupBy === "agent" ? (
+              <Users01 size={16} />
+            ) : (
+              <Activity size={16} />
+            )}
+          </ToolbarIconButton>
           <Popover>
             <PopoverTrigger asChild>
               <ToolbarIconButton
@@ -213,25 +228,6 @@ export function TaskGroupsList() {
               className="w-72 p-3"
             >
               <div className="flex flex-col gap-2">
-                <FilterRow label="Group by">
-                  <Select
-                    value={groupBy}
-                    onValueChange={(v) => setGroupBy(v as GroupBy)}
-                  >
-                    <SelectTrigger size="sm" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map(
-                        (opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {GROUP_BY_LABELS[opt]}
-                          </SelectItem>
-                        ),
-                      )}
-                    </SelectContent>
-                  </Select>
-                </FilterRow>
                 <FilterRow label="Members">
                   <Select
                     value={memberFilter}
