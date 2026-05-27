@@ -1,4 +1,3 @@
-import type { JSONContent } from "@tiptap/react";
 import type { TiptapDoc } from "../types";
 
 /**
@@ -20,17 +19,4 @@ export function isTiptapDocEmpty(doc: TiptapDoc | null | undefined): boolean {
     }
     return false;
   });
-}
-
-/**
- * Append content to a Tiptap document
- */
-export function appendToTiptapDoc(
-  doc: TiptapDoc | null | undefined,
-  content: JSONContent,
-): TiptapDoc {
-  return {
-    type: "doc",
-    content: [...(doc?.content ?? []), content].filter(Boolean),
-  };
 }
