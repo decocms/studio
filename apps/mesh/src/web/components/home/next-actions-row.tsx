@@ -91,6 +91,7 @@ function AgentPromptCardGroup({
   const handleClick = (entry: HomePromptEntry) => {
     const prompt: Prompt = {
       name: entry.promptName,
+      title: entry.title,
       description: entry.description,
       arguments: entry.arguments,
     };
