@@ -18,7 +18,6 @@ export {
   storefrontManagerAgent,
 } from "./storefront-manager";
 export type {
-  BuildWelcomeMessage,
   ChecklistContext,
   ChecklistItemAction,
   ResolvedChecklistItem,
@@ -26,7 +25,6 @@ export type {
   ResolveRuntime,
   RuntimeResolveContext,
   StudioPackChecklistItem,
-  WelcomeContext,
 } from "./types";
 
 export const STUDIO_PACK_AGENTS = [
