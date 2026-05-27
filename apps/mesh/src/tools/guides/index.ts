@@ -4,6 +4,7 @@ import * as automations from "./automations";
 import * as connections from "./connections";
 import * as platform from "./platform";
 import * as store from "./store";
+import * as studioPackOnboarding from "./studio-pack-onboarding";
 import * as virtualTools from "./virtual-tools";
 
 export interface GuidePrompt {
@@ -29,6 +30,7 @@ export function getPrompts(): GuidePrompt[] {
     ...automations.prompts,
     ...aiProviders.prompts,
     ...virtualTools.prompts,
+    ...studioPackOnboarding.prompts,
   ];
 }
 
