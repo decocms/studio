@@ -213,6 +213,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
             onUsageAggregated: pl.onUsageAggregated,
             pendingImages: pl.pendingImages,
             onTitleUpdated: pl.onTitleUpdated,
+            writer: pl.writer,
           });
         } finally {
           await tools.close().catch(() => {});

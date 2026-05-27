@@ -25,10 +25,11 @@ import {
   type StreamTextResult,
   type ToolSet,
   type StreamTextOnStepFinishCallback,
+  type UIMessageStreamWriter,
 } from "ai";
 import type { ModelsConfig } from "../../api/routes/decopilot/types";
 import type { ToolApprovalLevel } from "../../api/routes/decopilot/helpers";
-import type { UsageStats } from "@decocms/mesh-sdk";
+import type { GithubRepo, UsageStats } from "@decocms/mesh-sdk";
 import { OPENROUTER_CACHE_PROVIDER_OPTIONS } from "../../api/routes/decopilot/cache-instrumentation";
 import { createLanguageModel } from "../../ai-providers/language-model";
 import {
@@ -36,11 +37,19 @@ import {
   PARENT_STEP_LIMIT,
   SUBAGENT_STEP_LIMIT,
 } from "../../api/routes/decopilot/constants";
+import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
+import { assembleAgentTools } from "./assemble-agent-tools";
+import type { SubtaskParams } from "./built-in-tools/subtask";
+import type { ConnectionsBlockTool } from "./connections-block";
 
 export interface RunAgentLoopOptions {
   ctx: MeshContext;
   organization: OrganizationScope;
-  virtualMcp: { id: string; instructions?: string };
+  virtualMcp: {
+    id: string;
+    instructions?: string;
+    repo?: GithubRepo;
+  };
   mcpClient: Client;
   provider: MeshProvider;
   models: ModelsConfig;
@@ -53,17 +62,38 @@ export interface RunAgentLoopOptions {
   temperature?: number;
   abortSignal: AbortSignal;
   tracer?: Tracer;
+  writer: UIMessageStreamWriter;
+  subtaskParams: SubtaskParams;
   onStepFinish?: StreamTextOnStepFinishCallback<ToolSet>;
   onUsageAggregated?: (usage: UsageStats) => void;
 
-  // ── Stage 1 shim — deleted in Stage 2 once runAgentLoop owns
-  //    tool + system assembly itself.
-  __tools?: ToolSet;
-  __system?: unknown;
-  __prepareStep?: unknown;
+  // ── Parent-supplied overrides ──────────────────────────────────────
+  /** Optional override for the streamText prepareStep callback.
+   *  Parent uses this for image injection + plan-mode filter + forced-
+   *  first-step tool. Subagent doesn't pass one. */
+  prepareStep?: unknown;
+  /** Passthrough MCP client — when present, the system prompt's
+   *  @-mention prompts block is populated via passthroughClient.listPrompts(). */
+  passthroughClient?: Client;
+  /** Connections data — when present, the system prompt's connections
+   *  block is populated. */
+  connectionsData?: {
+    tools: ConnectionsBlockTool[];
+    connectionTitleMap: Map<string, string>;
+  };
+  /** Extra tools to merge into the assembled toolset AFTER assembleAgentTools.
+   *  Parent uses this to inject `enable_tool` (which is state-dependent —
+   *  built from `enabledTools` reconstructed from message history). Subagents
+   *  don't pass this. Merged last so parent extras shadow assembled tools. */
+  extraTools?: ToolSet;
+  /** Additional per-request system messages appended AFTER the stable system
+   *  messages produced by buildAgentSystemPrompt. Parent uses this for
+   *  `processedSystemMessages` (inline <system> blocks from the user's
+   *  conversation that processConversation extracts). Subagents don't pass this. */
+  additionalSystemMessages?: import("ai").SystemModelMessage[];
 
-  // ── Testing shim — allows injecting a fake streamText in unit tests.
-  //    Stage 1 only; deleted together with the other shims in Stage 2.
+  // ── Stage 2: test-only shim (no production callers) ────────────────
+  /** Override `streamText` for unit tests. Production paths leave undefined. */
   // biome-ignore lint/suspicious/noExplicitAny: test injection shim
   __streamText?: (...args: any[]) => any;
 }
@@ -77,16 +107,12 @@ export interface RunAgentLoopHandle {
 export async function runAgentLoop(
   opts: RunAgentLoopOptions,
 ): Promise<RunAgentLoopHandle> {
-  if (opts.kind === "subagent") {
-    throw new Error(
-      "runAgentLoop: kind 'subagent' not yet implemented in Stage 1",
-    );
-  }
-
   const tracer = opts.tracer ?? trace.getTracer("decopilot");
   const stepLimit =
     opts.stepLimit ??
     (opts.kind === "agent" ? PARENT_STEP_LIMIT : SUBAGENT_STEP_LIMIT);
+  const planMode = opts.planMode ?? false;
+  const toolApprovalLevel = opts.toolApprovalLevel ?? "auto";
 
   // ── Error capture: a single promise resolved by onError/onAbort ──
   let capturedError: string | undefined;
@@ -109,23 +135,56 @@ export async function runAgentLoop(
     },
   });
 
-  // ── streamText ────────────────────────────────────────────────────
-  // Stage 1 shim: caller passes pre-assembled tools/system/prepareStep
-  // via __tools/__system/__prepareStep. Stage 2 deletes the shim by
-  // calling buildAgentSystemPrompt + assembleAgentTools here.
-  const streamTextFn = opts.__streamText ?? streamText;
+  // ── System prompt ─────────────────────────────────────────────────
+  const baseSystemMessages = await buildAgentSystemPrompt({
+    ctx: opts.ctx,
+    organization: opts.organization,
+    virtualMcp: opts.virtualMcp,
+    kind: opts.kind,
+    planMode,
+    agentInstructions: opts.systemAgentInstructions,
+    passthroughClient: opts.passthroughClient,
+    connectionsData: opts.connectionsData,
+  });
+  // Append any per-request system messages (e.g., processedSystemMessages
+  // from processConversation — inline <system> blocks in the conversation).
+  const systemMessages =
+    opts.additionalSystemMessages && opts.additionalSystemMessages.length > 0
+      ? [...baseSystemMessages, ...opts.additionalSystemMessages]
+      : baseSystemMessages;
+
+  // ── Tools ─────────────────────────────────────────────────────────
+  const { tools: assembledTools } = await assembleAgentTools({
+    kind: opts.kind,
+    ctx: opts.ctx,
+    mcpClient: opts.mcpClient,
+    writer: opts.writer,
+    planMode,
+    toolApprovalLevel,
+    subtaskParams: opts.subtaskParams,
+  });
+  // Merge extra tools (e.g., parent's state-dependent `enable_tool`) after
+  // the shared assembler. Parent extras shadow assembled tools intentionally.
+  const tools: ToolSet = opts.extraTools
+    ? { ...assembledTools, ...opts.extraTools }
+    : assembledTools;
+
+  // ── streamText (use shim if provided, else real) ──────────────────
+  const streamTextFn =
+    (opts as { __streamText?: unknown }).__streamText ?? streamText;
   // __streamText test shim bypasses real provider; model is only needed
   // for the real streamText path.
-  const model = opts.__streamText
+  const model = (opts as { __streamText?: unknown }).__streamText
     ? (undefined as never)
     : createLanguageModel(opts.provider, opts.models.thinking);
-  const result = streamTextFn({
+
+  const result = (streamTextFn as typeof streamText)({
     model,
-    system: (opts as { __system?: unknown }).__system as never,
+    system: systemMessages,
     messages: opts.messages,
-    tools: (opts as { __tools?: ToolSet }).__tools as ToolSet,
+    tools,
     providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
-    prepareStep: (opts as { __prepareStep?: unknown }).__prepareStep as never,
+    prepareStep: opts.prepareStep as never,
     temperature: opts.temperature,
     maxOutputTokens:
       opts.models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,

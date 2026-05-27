@@ -50,6 +50,7 @@ import {
   type SystemModelMessage,
   type ToolSet,
   type UIMessageChunk,
+  type UIMessageStreamWriter,
 } from "ai";
 import type { MeshProvider } from "@/ai-providers/types";
 
@@ -285,6 +286,17 @@ export interface RunDecopilotStreamExtras {
    * is available.
    */
   onTitleUpdated?: (title: string) => void | Promise<void>;
+
+  /**
+   * UIMessageStreamWriter forwarded from the outer createUIMessageStream.
+   * Required by `runAgentLoop` → `assembleAgentTools` for streaming tool
+   * output from built-in tools (subtask, generate_image, etc.).
+   *
+   * Source: the `writer` arg injected into the `createUIMessageStream`
+   * execute callback in dispatch-run.ts; forwarded here so runAgentLoop
+   * can own tool assembly internally.
+   */
+  writer: UIMessageStreamWriter;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -374,6 +386,7 @@ export async function* runDecopilotStream(
     registerPendingOp,
     isStreamFinished,
     onTitleUpdated,
+    writer,
   } = extras;
 
   const modeConfig = resolveModeConfig(input.mode, { isCliAgent: false });
@@ -618,28 +631,59 @@ export async function* runDecopilotStream(
       : null;
 
   // ── Call runAgentLoop ─────────────────────────────────────────────
-  // Stage 1 shim: mcpClient + virtualMcp.instructions are placeholders
-  // here because Stage 1 passes pre-assembled tools/system via the shim.
-  // Stage 2 will replace these with the real values once runAgentLoop
-  // owns tool + system assembly itself.
+  // Stage 2: runAgentLoop owns system-prompt + tool assembly internally.
+  // The parent still passes:
+  //   - `passthroughClient`  → for the prompts block in the system prompt
+  //   - `connectionsData`    → for the connections block in the system prompt
+  //   - `extraTools`         → enable_tool (state-dependent, built above)
+  //   - `prepareStep`        → image injection + plan-mode filter
+  //   - `additionalSystemMessages` → per-request inline <system> blocks
+  // The OLD `__tools`, `__system`, `__prepareStep` shims are gone.
+  const vmMetadata = input.virtualMcp.metadata as {
+    githubRepo?: import("@decocms/mesh-sdk").GithubRepo | null;
+  };
   const handle = await runAgentLoop({
     kind: "agent",
     ctx,
     organization: { id: input.organizationId } as OrganizationScope,
-    virtualMcp: { id: input.agent.id },
+    virtualMcp: {
+      id: input.agent.id,
+      repo: vmMetadata?.githubRepo ?? undefined,
+    },
     mcpClient: tools.passthroughClient as never,
     provider,
     models: input.models,
     messages: processedMessages,
     abortSignal: registrySignal,
     temperature: input.temperature,
-    __tools: streamTools,
-    __system: [
-      ...prompt.systemMessages,
+    planMode: modeConfig.isPlanMode,
+    systemAgentInstructions: tools.serverInstructions,
+    writer,
+    subtaskParams: {
+      provider,
+      organization: { id: input.organizationId } as OrganizationScope,
+      models: input.models,
+    },
+    prepareStep: parentPrepareStep,
+    passthroughClient: tools.passthroughClient as never,
+    connectionsData: {
+      tools: tools.connectionsBlockTools,
+      connectionTitleMap: tools.connectionTitleMap,
+    },
+    // Pass the full parent built-ins (heavy tools: VM, web_search, screenshot,
+    // etc.) as extraTools so runAgentLoop's assembleAgentTools (lightweight)
+    // gets overridden with the complete set. Also inject enable_tool, which
+    // is state-dependent (built from enabledTools reconstructed above).
+    extraTools: {
+      ...(tools.builtInTools as ToolSet),
+      ...(tools.connectionsBlockTools.length > 0 && streamTools.enable_tool
+        ? { enable_tool: streamTools.enable_tool }
+        : {}),
+    },
+    additionalSystemMessages: [
       ...processedSystemMessages,
       ...(enabledToolsSystemMessage ? [enabledToolsSystemMessage] : []),
     ],
-    __prepareStep: parentPrepareStep,
   });
 
   const result = handle.result;
