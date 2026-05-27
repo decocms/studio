@@ -16,7 +16,6 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { usePromptConnectionMap } from "@/web/components/chat/use-prompt-connection-map";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type {
   ListPromptsResult,
@@ -125,15 +124,6 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const promptToConnection = usePromptConnectionMap(
-    virtualMcpId,
-    org.id,
-    org.slug,
-  );
-  const promptToConnectionRef = useRef(promptToConnection);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  promptToConnectionRef.current = promptToConnection;
-
   const promptsQueryKey = KEYS.virtualMcpPrompts(virtualMcpId, org.id);
   const resourcesQueryKey = KEYS.virtualMcpResources(virtualMcpId, org.id);
   // Combined key for the suggestion dropdown
@@ -285,7 +275,6 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         name: p.name,
         title: p.title,
         description: p.description,
-        icon: promptToConnectionRef.current.get(p.name)?.icon ?? null,
         kind: "prompt" as const,
         arguments: p.arguments,
         _meta: p._meta,
@@ -317,8 +306,10 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
     activePrompt?.item.kind === "prompt"
       ? ({
           name: activePrompt.item.name,
+          title: activePrompt.item.title,
           arguments: activePrompt.item.arguments,
           description: activePrompt.item.description,
+          _meta: activePrompt.item._meta,
         } as Prompt)
       : null;
 

@@ -312,10 +312,6 @@ export const KEYS = {
   storeDiscovery: (orgId: string, registryId: string) =>
     ["store-discovery", orgId, registryId] as const,
 
-  // Prompt → connection map (scoped by org + connections)
-  promptConnectionMap: (orgId: string, connectionIds: string[]) =>
-    ["prompt-connection-map", orgId, ...connectionIds] as const,
-
   // Organization domain (scoped by organization)
   organizationDomain: (organizationId: string) =>
     ["organization-domain", organizationId] as const,
