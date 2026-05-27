@@ -14,7 +14,10 @@ import {
   Code02,
   CursorClick01,
   DotsHorizontal,
+  Globe02,
+  LayoutAlt01,
   LinkExternal01,
+  Plus,
   TextInput,
   Loading01,
   Monitor04,
@@ -38,9 +41,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
-import { extractPages } from "@/web/components/sections-editor/page-list";
+import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
+import {
+  extractGlobalSections,
+  extractPages,
+  type GlobalSectionEntry,
+} from "@/web/components/sections-editor/page-list";
+import { findLivePageResolveType } from "@/web/components/sections-editor/section-catalog";
+import { buildGlobalSectionPreviewUrl } from "@/web/components/sections-editor/section-preview-url";
+import { useCreatePage } from "@/web/components/sections-editor/use-create-page";
+import { CreatePageModal } from "@/web/components/sections-editor/create-page-modal";
+import { toast } from "sonner";
 import {
   VISUAL_EDITOR_SCRIPT,
   VisualEditorPayloadSchema,
@@ -136,6 +148,12 @@ export function PreviewContent() {
   const [pagesOpen, setPagesOpen] = useState(false);
   const [pagesSearch, setPagesSearch] = useState("");
   const pagesContainerRef = useRef<HTMLDivElement>(null);
+  const [createPageDialogOpen, setCreatePageDialogOpen] = useState(false);
+  const [createPageError, setCreatePageError] = useState<string | undefined>();
+  const [activeGlobalSection, setActiveGlobalSection] =
+    useState<GlobalSectionEntry | null>(null);
+  /** Overrides iframe src for global-section live previews (stable URL, not recomputed). */
+  const [directPreviewUrl, setDirectPreviewUrl] = useState<string | null>(null);
 
   // Current iframe path (for sections editor)
   const [currentPath, setCurrentPath] = useState("/");
@@ -170,19 +188,50 @@ export function PreviewContent() {
       ? { orgSlug: org.slug, virtualMcpId, branch }
       : null;
   const { data: decofile } = useDecofile(decofileParams);
+  const { data: meta } = useLiveMeta(decofileParams);
+  const createPage = useCreatePage(
+    virtualMcpId && branch
+      ? { orgSlug: org.slug, virtualMcpId, branch }
+      : { orgSlug: org.slug, virtualMcpId: "", branch: "" },
+  );
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
     : [];
-  const currentPageName = pages.find((p) => p.path === currentPath)?.name;
+  const globalSections =
+    decofile && meta ? extractGlobalSections(decofile, meta) : [];
+  const normPath = (path: string) => path.replace(/\/+$/, "") || "/";
+  const filteredPages = pages.filter((page) => {
+    if (!pagesSearch) return true;
+    const q = pagesSearch.toLowerCase();
+    return (
+      page.name.toLowerCase().includes(q) || page.path.toLowerCase().includes(q)
+    );
+  });
+  const filteredGlobalSections = globalSections.filter((section) => {
+    if (!pagesSearch) return true;
+    const q = pagesSearch.toLowerCase();
+    return (
+      section.name.toLowerCase().includes(q) ||
+      section.key.toLowerCase().includes(q) ||
+      section.resolveType.toLowerCase().includes(q)
+    );
+  });
+  const currentPageName = activeGlobalSection
+    ? activeGlobalSection.name
+    : pages.find((p) => normPath(p.path) === normPath(currentPath))?.name;
+
+  const iframeSrcRef = useRef<string | null>(null);
+  /** Path we navigated to programmatically; ignore stale iframe onLoad events. */
+  const intendedPathRef = useRef<string | null>(null);
 
   // "reload" fires on config edits framework HMR won't catch (.ts/.tsx use HMR).
   useSandboxReloadHandler(() => {
     const iframe = previewIframeRef.current;
-    if (!iframe) return;
-    // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
-    // oxlint-disable-next-line no-self-assign
-    iframe.src = iframe.src;
+    const src = iframeSrcRef.current;
+    if (!iframe || !src) return;
+    iframe.src = src;
   });
+
   // `running` lifecycle phase carries the live port + htmlSupport flag;
   // `crashed` means the dev server stopped responding after coming up.
   // Everything else maps to "booting" for the preview overlay.
@@ -282,6 +331,30 @@ export function PreviewContent() {
     notFound: vmEvents.notFound,
     userStopped,
   });
+
+  const iframeSrc =
+    previewState.kind === "iframe"
+      ? (directPreviewUrl ?? new URL(currentPath, previewState.previewUrl).href)
+      : null;
+
+  // Reset navigation when the VM preview base URL changes (branch switch, etc.)
+  const prevIframeBaseRef = useRef<string | null>(null);
+  if (
+    previewState.kind === "iframe" &&
+    prevIframeBaseRef.current !== previewState.previewUrl
+  ) {
+    const hadPreviousBase = prevIframeBaseRef.current !== null;
+    prevIframeBaseRef.current = previewState.previewUrl;
+    if (hadPreviousBase) {
+      intendedPathRef.current = null;
+      setCurrentPath("/");
+      setDirectPreviewUrl(null);
+      setActiveGlobalSection(null);
+    }
+  }
+
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref read in reload handler
+  iframeSrcRef.current = iframeSrc;
 
   // Daemon is reachable independent of the dev script: ready claim, handle
   // still present, not user-stopped/suspended. Gates surfaces (FileExplorer,
@@ -565,17 +638,17 @@ export function PreviewContent() {
   };
 
   const handleRefresh = () => {
-    if (!previewIframeRef.current) return;
+    if (!previewIframeRef.current || !iframeSrc) return;
     const iframe = previewIframeRef.current;
     // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
     // oxlint-disable-next-line no-self-assign
-    iframe.src = iframe.src;
+    iframe.src = iframeSrc;
   };
 
   const handleHardReload = () => {
-    if (!previewIframeRef.current || !previewUrl) return;
-    const sep = previewUrl.includes("?") ? "&" : "?";
-    previewIframeRef.current.src = `${previewUrl}${sep}_r=${Date.now()}`;
+    if (!previewIframeRef.current || !iframeSrc) return;
+    const sep = iframeSrc.includes("?") ? "&" : "?";
+    previewIframeRef.current.src = `${iframeSrc}${sep}_r=${Date.now()}`;
   };
 
   const handleCopyUrl = () => {
@@ -586,6 +659,7 @@ export function PreviewContent() {
 
   const previewLabel = (() => {
     if (!previewUrl) return "No server running";
+    if (activeGlobalSection) return activeGlobalSection.name;
     try {
       const url = new URL(previewUrl);
       const path = currentPath === "/" ? "" : currentPath;
@@ -594,6 +668,58 @@ export function PreviewContent() {
       return previewUrl;
     }
   })();
+
+  const navigatePreviewToPage = (path: string) => {
+    intendedPathRef.current = path;
+    setActiveGlobalSection(null);
+    setDirectPreviewUrl(null);
+    setCurrentPath(path);
+    setCmsSelectedSectionIndex(null);
+  };
+
+  const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
+    if (!previewUrl || !meta) return;
+    const livePageRt = findLivePageResolveType(meta);
+    const url = buildGlobalSectionPreviewUrl(
+      previewUrl,
+      livePageRt,
+      section.key,
+    );
+    setActiveGlobalSection(section);
+    setDirectPreviewUrl(url);
+    setCmsSelectedSectionIndex(null);
+  };
+
+  const handleCreatePage = async ({
+    name,
+    path,
+  }: {
+    name: string;
+    path: string;
+  }) => {
+    if (!virtualMcpId || !branch) return;
+    const trimmedPath = path.startsWith("/") ? path : `/${path}`;
+    if (pages.some((p) => normPath(p.path) === normPath(trimmedPath))) {
+      setCreatePageError(`A page with path "${trimmedPath}" already exists.`);
+      return;
+    }
+    setCreatePageError(undefined);
+    try {
+      const result = await createPage.mutateAsync({
+        name,
+        path: trimmedPath,
+      });
+      setCreatePageDialogOpen(false);
+      toast.success(`Page "${name}" created`);
+      await new Promise((resolve) => setTimeout(resolve, DEV_SERVER_SETTLE_MS));
+      navigatePreviewToPage(result.path);
+      handleViewModeChange("cms");
+    } catch (error) {
+      setCreatePageError(
+        error instanceof Error ? error.message : "Failed to create page",
+      );
+    }
+  };
 
   // visual + cms require a live iframe (they inject overlays into the dev
   // server); when the iframe isn't up we still offer preview + code so the
@@ -609,7 +735,8 @@ export function PreviewContent() {
           },
         ]
       : []),
-    ...(previewState.kind === "iframe" && pages.length > 0
+    ...(previewState.kind === "iframe" &&
+    (pages.length > 0 || globalSections.length > 0)
       ? [
           {
             value: "cms" as PreviewViewMode,
@@ -669,23 +796,21 @@ export function PreviewContent() {
                     <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
                       {previewLabel}
                     </span>
-                    {currentPageName && (
+                    {currentPageName && !activeGlobalSection && (
                       <span className="shrink-0 text-[12px] text-muted-foreground">
                         {currentPageName}
                       </span>
                     )}
-                    {pages.length > 0 && (
-                      <ChevronDown
-                        size={12}
-                        className={cn(
-                          "shrink-0 text-muted-foreground transition-transform",
-                          pagesOpen && "rotate-180",
-                        )}
-                      />
-                    )}
+                    <ChevronDown
+                      size={12}
+                      className={cn(
+                        "shrink-0 text-muted-foreground transition-transform",
+                        pagesOpen && "rotate-180",
+                      )}
+                    />
                   </button>
 
-                  {pagesOpen && pages.length > 0 && (
+                  {pagesOpen && (
                     <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
                       <div className="px-2 pt-2 pb-1">
                         <input
@@ -697,58 +822,105 @@ export function PreviewContent() {
                           autoFocus
                         />
                       </div>
-                      <ScrollArea className="max-h-[60vh]">
-                        <div className="p-1.5">
-                          {pages
-                            .filter((page) => {
-                              if (!pagesSearch) return true;
-                              const q = pagesSearch.toLowerCase();
-                              return (
-                                page.name.toLowerCase().includes(q) ||
-                                page.path.toLowerCase().includes(q)
-                              );
-                            })
-                            .map((page) => (
-                              <button
-                                key={page.key}
-                                type="button"
-                                className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                                onClick={() => {
-                                  setPagesOpen(false);
-                                  setPagesSearch("");
-                                  setCurrentPath(page.path);
-                                  // Navigate the iframe
-                                  const iframe = previewIframeRef.current;
-                                  if (iframe && previewUrl) {
-                                    iframe.src = new URL(
-                                      page.path,
-                                      previewUrl,
-                                    ).href;
-                                  }
-                                }}
-                              >
-                                <span className="min-w-0 flex-1 truncate font-medium">
-                                  {page.name}
-                                </span>
-                                <span className="shrink-0 text-xs text-muted-foreground">
-                                  {page.path}
-                                </span>
-                              </button>
-                            ))}
-                          {pagesSearch &&
-                            pages.every((page) => {
-                              const q = pagesSearch.toLowerCase();
-                              return (
-                                !page.name.toLowerCase().includes(q) &&
-                                !page.path.toLowerCase().includes(q)
-                              );
-                            }) && (
-                              <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                                No pages match "{pagesSearch}"
-                              </div>
-                            )}
+                      <div className="p-1.5 border-b">
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setPagesOpen(false);
+                            setPagesSearch("");
+                            setCreatePageError(undefined);
+                            setCreatePageDialogOpen(true);
+                          }}
+                        >
+                          <Plus
+                            size={16}
+                            className="shrink-0 text-muted-foreground"
+                          />
+                          <span className="flex-1 font-medium">
+                            Create new page
+                          </span>
+                        </button>
+                      </div>
+                      {filteredPages.length === 0 &&
+                      filteredGlobalSections.length === 0 ? (
+                        <div className="px-4 py-5 text-center text-xs text-muted-foreground">
+                          {pages.length === 0 && globalSections.length === 0
+                            ? "No pages found in this site."
+                            : "No results match your search."}
                         </div>
-                      </ScrollArea>
+                      ) : (
+                        <div className="max-h-80 overflow-y-auto overscroll-contain">
+                          {filteredPages.length > 0 && (
+                            <div className="p-1.5">
+                              {filteredPages.map((page) => (
+                                <button
+                                  key={page.key}
+                                  type="button"
+                                  className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    setPagesOpen(false);
+                                    setPagesSearch("");
+                                    navigatePreviewToPage(page.path);
+                                  }}
+                                >
+                                  <LayoutAlt01
+                                    size={16}
+                                    className="shrink-0 text-muted-foreground"
+                                  />
+                                  <span className="min-w-0 flex-1 truncate font-medium">
+                                    {page.name}
+                                  </span>
+                                  <span className="shrink-0 text-xs text-muted-foreground">
+                                    {page.path}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {filteredGlobalSections.length > 0 && (
+                            <div
+                              className={cn(
+                                "p-1.5",
+                                filteredPages.length > 0 && "border-t",
+                              )}
+                            >
+                              <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                                Global components
+                              </div>
+                              {filteredGlobalSections.map((section) => (
+                                <button
+                                  key={section.key}
+                                  type="button"
+                                  className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    setPagesOpen(false);
+                                    setPagesSearch("");
+                                    navigatePreviewToGlobalSection(section);
+                                  }}
+                                >
+                                  <Globe02
+                                    size={16}
+                                    className="shrink-0 text-muted-foreground"
+                                  />
+                                  <span className="min-w-0 flex-1 truncate font-medium">
+                                    {section.name}
+                                  </span>
+                                  <span className="shrink-0 text-xs text-muted-foreground">
+                                    {section.resolveType
+                                      .split("/")
+                                      .pop()
+                                      ?.replace(/\.tsx?$/, "")}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -832,7 +1004,10 @@ export function PreviewContent() {
                   previewReady={devServerReady}
                   previewUrl={previewUrl}
                   currentPath={currentPath}
-                  externalSelectedIndex={cmsSelectedSectionIndex}
+                  activeGlobalBlockKey={activeGlobalSection?.key ?? null}
+                  externalSelectedIndex={
+                    activeGlobalSection ? null : cmsSelectedSectionIndex
+                  }
                   onSaved={() => {
                     setTimeout(() => {
                       const iframe = previewIframeRef.current;
@@ -1018,13 +1193,13 @@ export function PreviewContent() {
             </div>
           )}
 
-          {previewState.kind === "iframe" && (
+          {previewState.kind === "iframe" && iframeSrc && (
             <iframe
-              // Key on previewUrl: `src` mutations don't reliably refetch in all
-              // browsers and leak in-frame state across branches.
+              // Key on previewUrl: remount when the VM base URL changes (branch
+              // switch). Path navigation is driven by `iframeSrc` state.
               key={previewState.previewUrl}
               ref={previewIframeRef}
-              src={previewState.previewUrl}
+              src={iframeSrc}
               className={cn(
                 "w-full h-full border-0",
                 viewMode === "code" && "invisible",
@@ -1040,14 +1215,26 @@ export function PreviewContent() {
                   // Intentionally excluding the full previewUrl — it can contain
                   // ephemeral tokens / user data in the query string.
                 });
-                // Sync currentPath with the iframe's actual location so the
-                // sections editor always reflects the displayed page.
-                try {
-                  const iframePath =
-                    previewIframeRef.current?.contentWindow?.location?.pathname;
-                  if (iframePath) setCurrentPath(iframePath);
-                } catch {
-                  // Cross-origin — can't read, keep current value
+                // Sync currentPath when the user navigates inside the iframe.
+                // Skip while a programmatic navigation is pending — stale
+                // onLoad events from the previous URL would reset us to "/".
+                if (!activeGlobalSection) {
+                  try {
+                    const iframePath =
+                      previewIframeRef.current?.contentWindow?.location
+                        ?.pathname;
+                    if (!iframePath) return;
+                    const intended = intendedPathRef.current;
+                    if (intended !== null) {
+                      if (normPath(iframePath) === normPath(intended)) {
+                        intendedPathRef.current = null;
+                      }
+                      return;
+                    }
+                    setCurrentPath(iframePath);
+                  } catch {
+                    // Cross-origin — can't read, keep current value
+                  }
                 }
                 if (viewMode === "visual") injectVisualEditor();
                 if (viewMode === "cms") injectCmsEditor();
@@ -1074,6 +1261,13 @@ export function PreviewContent() {
         onRestart={handleRestart}
         onResume={retryAutoStart}
         onRetry={retryAutoStart}
+      />
+      <CreatePageModal
+        open={createPageDialogOpen}
+        onOpenChange={setCreatePageDialogOpen}
+        isPending={createPage.isPending}
+        error={createPageError}
+        onSubmit={handleCreatePage}
       />
     </div>
   );

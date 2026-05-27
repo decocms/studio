@@ -1,7 +1,16 @@
-interface PageEntry {
+import type { LiveMeta } from "./resolve-schema";
+import { isManifestSectionResolveType } from "./block-type-utils";
+
+export interface PageEntry {
   key: string;
   name: string;
   path: string;
+}
+
+export interface GlobalSectionEntry {
+  key: string;
+  name: string;
+  resolveType: string;
 }
 
 function parsePageName(key: string): string {
@@ -49,4 +58,38 @@ export function extractPages(decofile: Record<string, unknown>): PageEntry[] {
     }
   }
   return pages;
+}
+
+function globalSectionLabel(
+  blockId: string,
+  block: Record<string, unknown>,
+): string {
+  if (typeof block.name === "string" && block.name) return block.name;
+  return blockId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Saved section blocks from the decofile (no `path`, manifest section type). */
+export function extractGlobalSections(
+  decofile: Record<string, unknown>,
+  meta: LiveMeta,
+): GlobalSectionEntry[] {
+  const sections: GlobalSectionEntry[] = [];
+
+  for (const [blockId, val] of Object.entries(decofile)) {
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+
+    const block = val as Record<string, unknown>;
+    const rt = block.__resolveType;
+    if (typeof rt !== "string") continue;
+    if (typeof block.path === "string") continue;
+    if (!isManifestSectionResolveType(meta, rt)) continue;
+
+    sections.push({
+      key: blockId,
+      name: globalSectionLabel(blockId, block),
+      resolveType: rt,
+    });
+  }
+
+  return sections.sort((a, b) => a.name.localeCompare(b.name));
 }

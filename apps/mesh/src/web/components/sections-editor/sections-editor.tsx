@@ -360,6 +360,7 @@ export function SectionsEditor({
   previewReady = true,
   previewUrl,
   currentPath,
+  activeGlobalBlockKey = null,
   externalSelectedIndex,
   onSaved,
 }: {
@@ -371,6 +372,8 @@ export function SectionsEditor({
   /** Sandbox preview base URL used for section gallery previews. */
   previewUrl?: string;
   currentPath: string;
+  /** When set, edits a saved global block instead of a page. */
+  activeGlobalBlockKey?: string | null;
   /** Section index selected via click-through from the preview iframe. */
   externalSelectedIndex?: number | null;
   /** Called after a successful auto-save so the parent can reload the preview. */
@@ -417,10 +420,13 @@ export function SectionsEditor({
     string | null
   >(null);
 
-  // Reset form state when the active page changes
+  // Reset form state when the active page or global block changes
   const [prevPath, setPrevPath] = useState(currentPath);
-  if (prevPath !== currentPath) {
+  const [prevGlobalBlockKey, setPrevGlobalBlockKey] =
+    useState(activeGlobalBlockKey);
+  if (prevPath !== currentPath || prevGlobalBlockKey !== activeGlobalBlockKey) {
     setPrevPath(currentPath);
+    setPrevGlobalBlockKey(activeGlobalBlockKey);
     setSelectedSectionIndex(null);
     setFormValue(null);
     setActiveResolveType(null);
@@ -484,14 +490,38 @@ export function SectionsEditor({
 
   const pages = extractPages(decofile);
   const norm = (s: string) => s.replace(/\/+$/, "") || "/";
-  const activePage = pages.find((p) => norm(p.path) === norm(currentPath));
-  const activePageKey = activePage?.key ?? null;
+  const isGlobalBlockMode = !!activeGlobalBlockKey;
+  const activePage = isGlobalBlockMode
+    ? null
+    : pages.find((p) => norm(p.path) === norm(currentPath));
+  const activePageKey = isGlobalBlockMode
+    ? activeGlobalBlockKey
+    : (activePage?.key ?? null);
+  const globalBlockData =
+    isGlobalBlockMode && activeGlobalBlockKey
+      ? (decofile[activeGlobalBlockKey] as Record<string, unknown> | undefined)
+      : undefined;
+  const globalBlockName =
+    isGlobalBlockMode && activeGlobalBlockKey
+      ? typeof globalBlockData?.name === "string" && globalBlockData.name
+        ? globalBlockData.name
+        : activeGlobalBlockKey
+            .replace(/[-_]/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase())
+      : "";
 
   const pageData =
-    activePageKey && decofile[activePageKey]
+    !isGlobalBlockMode && activePageKey && decofile[activePageKey]
       ? (decofile[activePageKey] as Record<string, unknown>)
       : null;
-  const pageVariants = parsePageVariants(pageData?.sections);
+  const pageVariants = isGlobalBlockMode
+    ? [
+        {
+          label: "Default",
+          sections: [{ __resolveType: activeGlobalBlockKey! } as RawSection],
+        },
+      ]
+    : parsePageVariants(pageData?.sections);
   const hasMultipleVariants = pageVariants.length > 1;
   const safeVariantIndex = Math.min(
     activeVariantIndex,
@@ -500,6 +530,35 @@ export function SectionsEditor({
   const activeVariant = pageVariants[safeVariantIndex];
   const rawSections: RawSection[] = activeVariant?.sections ?? [];
   const parsedSections = parseSections(rawSections, decofile);
+
+  // Global blocks open directly into the section form (single saved block).
+  const [prevAutoGlobalKey, setPrevAutoGlobalKey] = useState<string | null>(
+    null,
+  );
+  if (
+    isGlobalBlockMode &&
+    activeGlobalBlockKey &&
+    prevAutoGlobalKey !== activeGlobalBlockKey
+  ) {
+    setPrevAutoGlobalKey(activeGlobalBlockKey);
+    const rawSection = rawSections[0];
+    const parsed = parsedSections[0];
+    if (rawSection && parsed) {
+      setSelectedSectionIndex(0);
+      setActiveSectionVariantIndex(0);
+      setFieldBreadcrumbs([]);
+      const unwrapped = unwrapSection(rawSection, parsed, decofile);
+      if (unwrapped) {
+        setFormValue(unwrapped.data);
+        setActiveResolveType(unwrapped.resolveType);
+        setSectionRuleResolveType(null);
+        setSectionRuleFormValue(null);
+      }
+    }
+  }
+  if (!isGlobalBlockMode && prevAutoGlobalKey !== null) {
+    setPrevAutoGlobalKey(null);
+  }
 
   // Sync ref so debounced callbacks always see the latest values.
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref is only read in setTimeout callbacks, not during render
@@ -1085,7 +1144,8 @@ export function SectionsEditor({
   }
 
   const availableMatchers = meta ? extractMatchers(meta) : [];
-  const canAddSection = !!(previewUrl && meta && decofile);
+  const canAddSection =
+    !isGlobalBlockMode && !!(previewUrl && meta && decofile);
 
   const ruleSchema =
     ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
@@ -1222,10 +1282,18 @@ export function SectionsEditor({
     scheduleSectionRuleSave(newRule);
   };
 
-  if (!activePage) {
+  if (!isGlobalBlockMode && !activePage) {
     return (
       <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
         No page found for {currentPath}
+      </div>
+    );
+  }
+
+  if (isGlobalBlockMode && !globalBlockData) {
+    return (
+      <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
+        Global block not found
       </div>
     );
   }
@@ -1259,20 +1327,29 @@ export function SectionsEditor({
     sectionRuleResolveType && meta
       ? resolveSchema(sectionRuleResolveType, meta)
       : null;
-  const editingBreadcrumbs = isEditing
-    ? [
-        activePage.name,
-        selectedParsed.label,
-        ...(isEditingMultivariateSection && activeSectionFlagVariant
-          ? [activeSectionFlagVariant.label]
-          : []),
-        ...fieldBreadcrumbs,
-      ]
-    : [];
+  const editingBreadcrumbs =
+    isEditing && (!isGlobalBlockMode || fieldBreadcrumbs.length > 0)
+      ? isGlobalBlockMode
+        ? [globalBlockName, ...fieldBreadcrumbs]
+        : [
+            activePage!.name,
+            selectedParsed!.label,
+            ...(isEditingMultivariateSection && activeSectionFlagVariant
+              ? [activeSectionFlagVariant.label]
+              : []),
+            ...fieldBreadcrumbs,
+          ]
+      : [];
   const exitSectionEditing = () => {
     clearSectionEditing();
   };
   const handleBreadcrumbClick = (index: number) => {
+    if (isGlobalBlockMode) {
+      setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index));
+      setFormResetKey((key) => key + 1);
+      return;
+    }
+
     if (index === 0) {
       exitSectionEditing();
       return;
@@ -1298,7 +1375,7 @@ export function SectionsEditor({
     <div className="flex h-full min-w-0 w-full flex-col">
       {/* Page header */}
       <div className="px-3 py-2.5 border-b shrink-0">
-        {isEditing ? (
+        {isEditing && (!isGlobalBlockMode || fieldBreadcrumbs.length > 0) ? (
           <div className="flex min-w-0 items-center overflow-hidden">
             <nav
               aria-label="Editing breadcrumb"
@@ -1333,11 +1410,20 @@ export function SectionsEditor({
               })}
             </nav>
           </div>
+        ) : isGlobalBlockMode ? (
+          <div className="space-y-0.5">
+            <div className="text-sm font-medium truncate">
+              {globalBlockName}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Global component
+            </div>
+          </div>
         ) : (
           <PageHeaderInputs
             pageKey={activePageKey!}
-            initialName={activePage.name}
-            initialPath={activePage.path}
+            initialName={activePage!.name}
+            initialPath={activePage!.path}
             onFieldChange={savePageField}
           />
         )}
@@ -1435,6 +1521,26 @@ export function SectionsEditor({
             ) : (
               <div className="px-3 py-6 text-center text-xs text-muted-foreground">
                 No editable fields for this variant.
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      ) : isGlobalBlockMode ? (
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
+            {activeSchema && formValue ? (
+              <SchemaForm
+                key={formResetKey}
+                schema={activeSchema}
+                value={formValue}
+                onChange={handleFormChange}
+                basePath=""
+                breadcrumbPath={[]}
+                onBreadcrumbChange={setFieldBreadcrumbs}
+              />
+            ) : (
+              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                No editable fields for this global block.
               </div>
             )}
           </div>
