@@ -96,7 +96,10 @@ import {
 } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
-import { agentHasConnectedGithub } from "@/web/lib/agent-capabilities";
+import {
+  agentHasClonableSource,
+  agentHasConnectedGithub,
+} from "@/web/lib/agent-capabilities";
 import { FIXED_SYSTEM_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
 import { EnvVarsField } from "@/web/components/sandbox/runtime-card/env-vars-field";
@@ -857,20 +860,20 @@ function LayoutTabContent({
   const noInteractiveTools =
     connectionsWithTools && connectionsData.length === 0;
 
-  // Check if virtual MCP has a connected GitHub repo (requires real auth, enables preview/terminal)
-  const hasGithubRepo = agentHasConnectedGithub(virtualMcp);
+  // Preview is available whenever the agent has a clonable source —
+  // either a Start Website template or a connected GitHub repo — matching
+  // the gating in `use-main-panel-tabs.ts`.
+  const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
 
   // Build options for the default main view selector.
   // Order mirrors the right-panel tab order in the unified chat layout:
   // Chat (no main panel), then fixed system tabs, then pinned ext-apps.
-  // Terminal and Preview are gated behind a connected GitHub repo,
-  // matching the gating in main-panel-tabs/index.tsx.
   const defaultMainOptions: { value: string; label: string }[] = [
     { value: "chat", label: "Chat" },
     { value: "settings", label: "Settings" },
     { value: "automations", label: "Automations" },
   ];
-  if (hasGithubRepo) {
+  if (hasClonableSource) {
     defaultMainOptions.push({ value: "preview", label: "Preview" });
   }
   for (const pv of pinnedViews) {
