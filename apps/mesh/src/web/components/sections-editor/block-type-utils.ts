@@ -12,7 +12,7 @@ export function parseSavedBlockSchemaTitle(
   };
 }
 
-export function getManifestBlockType(
+function getManifestBlockType(
   meta: LiveMeta,
   resolveType: string,
 ): string | null {

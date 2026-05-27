@@ -71,7 +71,7 @@ export function resolveMatcherIconName(
   return "FilterLines";
 }
 
-export function getMatcherIconComponent(iconName: string): IconComponent {
+function getMatcherIconComponent(iconName: string): IconComponent {
   return getIconComponent(iconName) ?? FilterLines;
 }
 
