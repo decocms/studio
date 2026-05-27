@@ -81,7 +81,7 @@ test.describe("MCP proxy roundtrip", () => {
         method: "tools/call",
         params: { name: "ping", arguments: { from: "playwright" } },
       },
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json, text/event-stream" },
     });
     expect(res.ok()).toBe(true);
     const envelope = (await res.json()) as {

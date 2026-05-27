@@ -46,7 +46,11 @@ export async function callSelfMcpTool<T = unknown>(
       method: "tools/call",
       params: { name, arguments: args },
     },
-    headers: { Accept: "application/json" },
+    // MCP's Streamable HTTP transport requires advertising both response
+    // types per spec — the server picks JSON for self-contained calls,
+    // SSE for streams. Without both, the transport responds 406 Not
+    // Acceptable. (See mesh's self.ts enableJsonResponse check.)
+    headers: { Accept: "application/json, text/event-stream" },
   });
   if (!res.ok()) {
     const body = await res.text().catch(() => "<unreadable>");
