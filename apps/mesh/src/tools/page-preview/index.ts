@@ -18,6 +18,19 @@ import {
   updateBlock,
 } from "@/page-preview/service";
 
+/**
+ * Slug input for create/activate operations. A bare `z.string()` would
+ * accept "   " (whitespace) and let it slip through to slugify(), which
+ * returns ""; the callee then throws "Invalid slug". Reject at the
+ * boundary so the validation error is closer to the agent's intent.
+ */
+const SlugSchema = z
+  .string()
+  .min(1, "slug cannot be empty")
+  .refine((s) => /[a-zA-Z0-9]/.test(s), {
+    message: "slug must contain at least one letter or digit",
+  });
+
 const BrandTokensInputSchema = z.object({
   name: z.string().optional(),
   primary: z.string().optional(),
@@ -222,7 +235,7 @@ export const DESIGN_SYSTEM_CREATE = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    slug: z.string().describe("URL-safe slug (e.g. 'mise-violet')."),
+    slug: SlugSchema.describe("URL-safe slug (e.g. 'mise-violet')."),
     name: z.string().optional().describe("Display name."),
     template: z
       .string()
@@ -327,7 +340,7 @@ export const DESIGN_SYSTEM_SET = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    slug: z.string().describe("Design system slug to activate."),
+    slug: SlugSchema.describe("Design system slug to activate."),
   }),
   outputSchema: PagePreviewStatusOutputSchema,
   handler: async (input, ctx) => {
@@ -350,7 +363,7 @@ export const PAGE_PREVIEW_PAGE_CREATE = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    slug: z.string().describe("URL-safe page slug (e.g. 'pricing')."),
+    slug: SlugSchema.describe("URL-safe page slug (e.g. 'pricing')."),
     designSystem: z.string().describe("Design system slug to bind."),
     name: z.string().optional(),
     title: z.string().optional(),
@@ -419,11 +432,9 @@ export const PAGE_BOOTSTRAP = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    slug: z
-      .string()
-      .describe(
-        "URL-safe page slug (e.g. 'funnel-ai'). The DS slug is derived as '<slug>-ds'.",
-      ),
+    slug: SlugSchema.describe(
+      "URL-safe page slug (e.g. 'funnel-ai'). The DS slug is derived as '<slug>-ds'.",
+    ),
     template: z
       .string()
       .describe("Curated theme slug (see system prompt theme table)."),

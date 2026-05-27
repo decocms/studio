@@ -13,6 +13,7 @@ import {
   discoverHtmlPages,
   getPagePreviewStatus,
   refreshPagePreview,
+  sanitizeBlockProps,
   setActiveDesignSystem,
   setPagePreviewActive,
 } from "./service";
@@ -59,6 +60,62 @@ async function writePage(
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+describe("sanitizeBlockProps", () => {
+  test("collapses javascript: hrefs to '#'", () => {
+    const sanitized = sanitizeBlockProps({
+      ctaLabel: "Click",
+      ctaHref: "javascript:alert('xss')",
+      ctaPrimaryHref: " JAVASCRIPT:alert(1)",
+      links: [
+        { label: "Docs", href: "https://example.com" },
+        { label: "Bad", href: "javascript:void(0)" },
+      ],
+    });
+    expect(sanitized.ctaHref).toBe("#");
+    expect(sanitized.ctaPrimaryHref).toBe("#");
+    const links = sanitized.links as { href: string }[];
+    expect(links[0]!.href).toBe("https://example.com");
+    expect(links[1]!.href).toBe("#");
+  });
+
+  test("preserves http/https/mailto/tel and relative URLs", () => {
+    const ok = sanitizeBlockProps({
+      a: { href: "https://example.com" },
+      b: { href: "http://example.com" },
+      c: { href: "mailto:hi@example.com" },
+      d: { href: "tel:+15551234567" },
+      e: { href: "#anchor" },
+      f: { href: "/relative" },
+      g: { href: "without-scheme/path" },
+    });
+    expect((ok.a as { href: string }).href).toBe("https://example.com");
+    expect((ok.b as { href: string }).href).toBe("http://example.com");
+    expect((ok.c as { href: string }).href).toBe("mailto:hi@example.com");
+    expect((ok.d as { href: string }).href).toBe("tel:+15551234567");
+    expect((ok.e as { href: string }).href).toBe("#anchor");
+    expect((ok.f as { href: string }).href).toBe("/relative");
+    expect((ok.g as { href: string }).href).toBe("without-scheme/path");
+  });
+
+  test("rejects data:text/html and vbscript:", () => {
+    const sanitized = sanitizeBlockProps({
+      img: { src: "data:text/html;base64,PHNjcmlwdD4=" },
+      x: { src: "vbscript:msgbox(1)" },
+    });
+    expect((sanitized.img as { src: string }).src).toBe("#");
+    expect((sanitized.x as { src: string }).src).toBe("#");
+  });
+
+  test("leaves non-URL keys untouched", () => {
+    const sanitized = sanitizeBlockProps({
+      title: "javascript: this is not a URL",
+      body: "Some text",
+    });
+    expect(sanitized.title).toBe("javascript: this is not a URL");
+    expect(sanitized.body).toBe("Some text");
+  });
+});
 
 describe("page preview service — multi-tenant isolation", () => {
   test("org A's bindings cannot see org B's pages", async () => {

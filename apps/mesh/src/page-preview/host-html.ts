@@ -1102,6 +1102,40 @@ export const PAGE_PREVIEW_HOST_HTML = `<!doctype html>
 
     /* ---------------- Brand vars ---------------- */
 
+    // URL-scheme sanitizer for agent-supplied block props. Mirrors the
+    // server-side sanitizeBlockProps in service.ts so the live preview is
+    // safe even when the chat-stream watcher dispatches a host:render-block
+    // straight from the agent's tool call (which doesn't go through the
+    // server-side write path).
+    function _safeUrl(v) {
+      if (typeof v !== 'string') return v;
+      var t = v.trim();
+      if (!t) return v;
+      if (t[0] === '#' || t[0] === '/') return v;
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(t)) return v;
+      var l = t.toLowerCase();
+      if (l.startsWith('http://') || l.startsWith('https://') ||
+          l.startsWith('mailto:') || l.startsWith('tel:')) return v;
+      return '#';
+    }
+    var URL_PROP_RE = /^(?:href|src|.*Href|.*Src)$/i;
+    function sanitizeBlockProps(input) {
+      function visit(v) {
+        if (Array.isArray(v)) return v.map(visit);
+        if (v && typeof v === 'object') {
+          var out = {};
+          for (var k in v) {
+            if (Object.prototype.hasOwnProperty.call(v, k)) {
+              out[k] = URL_PROP_RE.test(k) ? _safeUrl(v[k]) : visit(v[k]);
+            }
+          }
+          return out;
+        }
+        return v;
+      }
+      return visit(input);
+    }
+
     function camelToKebab(s) {
       return s.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
     }
@@ -2378,7 +2412,10 @@ export const PAGE_PREVIEW_HOST_HTML = `<!doctype html>
            * visibly. */
           case 'host:render-block': {
             if (!Array.isArray(state.blocks)) state.blocks = [];
-            const block = { section: String(msg.section || ''), props: msg.props || {} };
+            const block = {
+              section: String(msg.section || ''),
+              props: sanitizeBlockProps(msg.props || {}),
+            };
             if (!block.section) break;
             // The REPL flow skips host:set-page entirely, so this iframe
             // never loaded sections.js for the page being built. Lazy-load
@@ -2443,7 +2480,7 @@ export const PAGE_PREVIEW_HOST_HTML = `<!doctype html>
             if (!Number.isInteger(idx) || idx < 0 || idx >= state.blocks.length) break;
             const current = state.blocks[idx];
             const replace = !!msg.replace;
-            const patch = msg.props || {};
+            const patch = sanitizeBlockProps(msg.props || {});
             const nextProps = replace ? patch : { ...current.props, ...patch };
             state.blocks[idx] = { section: current.section, props: nextProps };
             if (state.mode === 'page') rerender();

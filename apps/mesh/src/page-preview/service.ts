@@ -251,6 +251,54 @@ function slugify(input: string): string {
     .slice(0, 64);
 }
 
+/**
+ * Reject URL strings that could execute script. The agent supplies free-form
+ * href/src values in block props; without a scheme allow-list a malicious
+ * (or compromised) agent could land a `javascript:` URL that fires on click.
+ * Anything outside the safe set collapses to "#".
+ */
+function safeUrl(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (trimmed === "") return value;
+  // Relative URLs (no scheme) and hash anchors are always safe.
+  if (trimmed.startsWith("#") || trimmed.startsWith("/")) return value;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return value; // no scheme
+  const lowered = trimmed.toLowerCase();
+  if (
+    lowered.startsWith("http://") ||
+    lowered.startsWith("https://") ||
+    lowered.startsWith("mailto:") ||
+    lowered.startsWith("tel:")
+  ) {
+    return value;
+  }
+  return "#";
+}
+
+const URL_PROP_KEY = /^(?:href|src|.*Href|.*Src)$/i;
+
+/**
+ * Walk a block-props object and replace any href/src/-Href/-Src value that
+ * uses an unsafe URL scheme. Idempotent; structure preserved.
+ */
+export function sanitizeBlockProps(
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  const visit = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(visit);
+    if (value && typeof value === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k] = URL_PROP_KEY.test(k) ? safeUrl(v) : visit(v);
+      }
+      return out;
+    }
+    return value;
+  };
+  return visit(input) as Record<string, unknown>;
+}
+
 async function readState(
   storage: BoundObjectStorage,
 ): Promise<PagePreviewState> {
@@ -2082,7 +2130,10 @@ export async function appendBlock(
       `Footer has already been shipped (at index ${footerIdx}); the page is structurally complete. Do NOT call PAGE_RENDER_BLOCK again. If you want to add another section, you must first PAGE_REMOVE_BLOCK the Footer, ship your new section, then re-ship Footer last.`,
     );
   }
-  blocks.push(options.block);
+  blocks.push({
+    section: options.block.section,
+    props: sanitizeBlockProps(options.block.props ?? {}),
+  });
   // Bump the refresh counter — frontend observers may still use it as a
   // cache key for the legacy file-based flow. Cheap to write.
   await bumpRefreshVersion(options);
@@ -2127,9 +2178,8 @@ export async function updateBlock(
     );
   }
   const current = blocks[options.index]!;
-  const nextProps = options.replace
-    ? options.propsPatch
-    : { ...current.props, ...options.propsPatch };
+  const patch = sanitizeBlockProps(options.propsPatch ?? {});
+  const nextProps = options.replace ? patch : { ...current.props, ...patch };
   blocks[options.index] = { section: current.section, props: nextProps };
   await bumpRefreshVersion(options);
   void writeBlocksToPageJs(options.slug, blocks, options).catch((err) => {
