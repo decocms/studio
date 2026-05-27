@@ -133,10 +133,10 @@ function InboxFullButton() {
       <PopoverTrigger asChild>
         <SidebarMenuButton tooltip="Inbox" className="relative">
           <Inbox01 />
-          <span>Inbox</span>
           {hasUnread && (
             <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
           )}
+          <span>Inbox</span>
         </SidebarMenuButton>
       </PopoverTrigger>
     </InboxPopover>
