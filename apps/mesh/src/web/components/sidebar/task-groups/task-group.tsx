@@ -263,7 +263,7 @@ export function StatusGroup({
               onArchive={() => onArchiveTask(task)}
               showAutomationBadge={Boolean(task.trigger_id)}
               showAgentIcon
-              alwaysShowArchive
+              hideStatusIdle
             />
           ))}
         </div>

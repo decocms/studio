@@ -21,7 +21,7 @@ export function TaskRow({
   onArchive,
   showAutomationBadge,
   showAgentIcon,
-  alwaysShowArchive,
+  hideStatusIdle,
 }: {
   task: Task;
   isActive: boolean;
@@ -30,10 +30,10 @@ export function TaskRow({
   showAutomationBadge?: boolean;
   /** Render the originating agent's icon on the left of the row. */
   showAgentIcon?: boolean;
-  /** When true, render the archive button permanently and hide the status
-   *  icon (the parent group header already conveys status). Otherwise the
-   *  status icon shows by default and swaps to archive on hover. */
-  alwaysShowArchive?: boolean;
+  /** When true, the row shows nothing at rest (group header already conveys
+   *  status); the archive button still appears on hover. When false/omitted,
+   *  the status icon shows at rest and swaps to archive on hover. */
+  hideStatusIdle?: boolean;
 }) {
   const config = getStatusConfig(task.status);
   const StatusIcon = config.icon;
@@ -116,7 +116,7 @@ export function TaskRow({
         )}
       </div>
       <div className="shrink-0 grid [grid-template-areas:'slot'] items-center justify-items-center">
-        {!alwaysShowArchive && (
+        {!hideStatusIdle && (
           <span
             className="[grid-area:slot] flex size-7 items-center justify-center pointer-events-none transition-opacity group-hover/row:opacity-0"
             aria-label={config.label}
@@ -139,12 +139,7 @@ export function TaskRow({
                 e.stopPropagation();
                 onArchive();
               }}
-              className={cn(
-                "[grid-area:slot] flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-opacity",
-                alwaysShowArchive
-                  ? "opacity-100"
-                  : "opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
-              )}
+              className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <Archive size={14} />
             </button>
