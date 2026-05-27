@@ -6,23 +6,20 @@
  * stored on the client — most multi-pod scenarios share one auth context
  * across multiple pod targets, so the client itself stays auth-agnostic.
  *
- * Origin header: mesh's Better Auth requires it to match BETTER_AUTH_URL
- * (http://localhost:3000 in compose). We send that origin regardless of
- * which host port we hit — all pods share the same BETTER_AUTH_URL.
+ * Header building (Origin, Bearer, Cookie) lives in
+ * `tests/shared/lib/fetch.ts` so this stack and resilience can't drift
+ * on what Better Auth expects.
  */
 
+import {
+  type AuthOpts as Auth,
+  fetchWithAuth,
+  type FetchWithAuthOpts,
+} from "../../shared/lib/fetch";
 import type { PodInfo } from "./pods";
 
-const ORIGIN = "http://localhost:3000";
-
-export interface Auth {
-  apiKey?: string;
-  cookie?: string;
-}
-
-export interface FetchOpts extends RequestInit {
-  auth?: Auth;
-}
+export type { Auth };
+export type FetchOpts = FetchWithAuthOpts;
 
 /** Low-level: `fetch` against a specific pod, auth applied. */
 export async function fetchOn(
@@ -30,14 +27,7 @@ export async function fetchOn(
   path: string,
   opts?: FetchOpts,
 ): Promise<Response> {
-  const { auth, headers: extraHeaders, ...init } = opts ?? {};
-
-  const headers = new Headers(extraHeaders);
-  if (!headers.has("Origin")) headers.set("Origin", ORIGIN);
-  if (auth?.apiKey) headers.set("Authorization", `Bearer ${auth.apiKey}`);
-  if (auth?.cookie) headers.set("Cookie", auth.cookie);
-
-  return fetch(`${pod.baseUrl}${path}`, { ...init, headers });
+  return fetchWithAuth(pod.baseUrl, path, opts);
 }
 
 /** POST + JSON body convenience. Throws on non-2xx so tests fail loudly. */

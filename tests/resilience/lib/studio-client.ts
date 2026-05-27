@@ -1,7 +1,7 @@
+import { fetchWithAuth } from "../../shared/lib/fetch";
 import { pollUntil } from "./poll-until";
 
 const STUDIO_URL = "http://127.0.0.1:13000";
-const STUDIO_ORIGIN = "http://localhost:3000"; // Must match BETTER_AUTH_URL for CSRF
 const SUBSCRIBER_MOCK_URL = "http://127.0.0.1:13003";
 
 // ---------------------------------------------------------------------------
@@ -11,27 +11,19 @@ const SUBSCRIBER_MOCK_URL = "http://127.0.0.1:13003";
 /**
  * Fetch from Studio server. Prepends `STUDIO_URL` to the given path and
  * optionally attaches an `Authorization: Bearer` header when `apiKey` is
- * supplied, or a `Cookie` header when `cookie` is supplied.
+ * supplied, or a `Cookie` header when `cookie` is supplied. Origin and
+ * header-shaping live in `tests/shared/lib/fetch.ts` so this stack and
+ * multi-pod can't drift on what Better Auth expects.
  */
 export async function fetchStudio(
   path: string,
   opts?: RequestInit & { apiKey?: string; cookie?: string },
 ): Promise<Response> {
-  const { apiKey, cookie, headers: extraHeaders, ...init } = opts ?? {};
-
-  const headers = new Headers(extraHeaders);
-  // Better Auth requires Origin header matching BETTER_AUTH_URL for CSRF
-  if (!headers.has("Origin")) {
-    headers.set("Origin", STUDIO_ORIGIN);
-  }
-  if (apiKey) {
-    headers.set("Authorization", `Bearer ${apiKey}`);
-  }
-  if (cookie) {
-    headers.set("Cookie", cookie);
-  }
-
-  return fetch(`${STUDIO_URL}${path}`, { ...init, headers });
+  const { apiKey, cookie, ...init } = opts ?? {};
+  return fetchWithAuth(STUDIO_URL, path, {
+    ...init,
+    auth: { apiKey, cookie },
+  });
 }
 
 // ---------------------------------------------------------------------------
