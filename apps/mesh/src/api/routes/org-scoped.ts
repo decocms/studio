@@ -20,8 +20,6 @@ import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
 import { createHomeNextActionsRoutes } from "./home-next-actions";
-import { createStudioPackChecklistsRoutes } from "./studio-pack-checklists";
-import { createSuggestedActionsRoutes } from "./suggested-actions";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
@@ -83,8 +81,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
   app.route("/", createFileUploadRoutes()); // /api/:org/file-configs/:id/upload
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
-  app.route("/", createSuggestedActionsRoutes());
-  app.route("/", createStudioPackChecklistsRoutes());
   app.route("/", createHomeNextActionsRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)

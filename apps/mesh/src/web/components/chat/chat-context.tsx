@@ -874,10 +874,7 @@ export function ActiveTaskProvider({
         // can flip that state, so re-fetch on every finish — covers both
         // `mine=true` and `mine=false` variants via partial-key match.
         cb.queryClient.invalidateQueries({
-          queryKey: ["suggested-actions", org.slug],
-        });
-        cb.queryClient.invalidateQueries({
-          queryKey: KEYS.studioPackChecklists(org.slug),
+          queryKey: KEYS.homeNextActions(org.slug),
         });
 
         const serverThreadId = (message.metadata as Metadata | undefined)
