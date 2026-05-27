@@ -20,7 +20,6 @@ import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
 import { createHomeNextActionsRoutes } from "./home-next-actions";
 import { createStudioPackChecklistsRoutes } from "./studio-pack-checklists";
-import { createStudioPackWelcomeRoutes } from "./studio-pack-welcome";
 import { createSuggestedActionsRoutes } from "./suggested-actions";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
@@ -84,7 +83,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/", createSuggestedActionsRoutes());
   app.route("/", createStudioPackChecklistsRoutes());
-  app.route("/", createStudioPackWelcomeRoutes());
   app.route("/", createHomeNextActionsRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
