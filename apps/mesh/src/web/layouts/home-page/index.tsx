@@ -173,8 +173,8 @@ export function HomePage() {
                 <Capybara />
                 <Chat.Input showConnectionsBanner />
               </div>
-              <NextActionsRow />
             </div>
+            <NextActionsRow />
           </div>
         </div>
         {isDecoUser && (
