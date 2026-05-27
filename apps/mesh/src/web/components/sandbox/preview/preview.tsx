@@ -830,6 +830,7 @@ export function PreviewContent() {
                   virtualMcpId={virtualMcpId}
                   branch={branch}
                   previewReady={devServerReady}
+                  previewUrl={previewUrl}
                   currentPath={currentPath}
                   externalSelectedIndex={cmsSelectedSectionIndex}
                   onSaved={() => {

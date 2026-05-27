@@ -7,22 +7,35 @@ import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useSaveBlock } from "./use-save-block";
 import { extractPages } from "./page-list";
-import { SectionList, parseSections, isLazyResolveType } from "./section-list";
+import { SectionList, parseSections } from "./section-list";
+import { isLazyResolveType } from "./section-lazy";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema } from "./resolve-schema";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
-
-interface RawSection {
-  __resolveType: string;
-  section?: { __resolveType?: string; [key: string]: unknown };
-  variants?: Array<{
-    value?: Record<string, unknown>;
-    rule?: Record<string, unknown>;
-  }>;
-  [key: string]: unknown;
-}
+import { MakeReusableModal } from "./make-reusable-modal";
+import { AddSectionModal } from "./add-section-modal";
+import type { SectionCatalogEntry } from "./section-catalog";
+import { SectionVariantList } from "./section-variant-list";
+import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
+import {
+  buildPageDataWithSections,
+  cloneSection,
+  suggestBlockId,
+  validateBlockId,
+} from "./page-sections";
+import {
+  deleteMultivariateSectionVariant,
+  duplicateMultivariateSectionVariant,
+  flattenMultivariateSection,
+  getMultivariateSectionObject,
+  parseSectionFlagVariants,
+  rebuildSectionWithMultivariate,
+  unwrapVariantSectionValue,
+  updateMultivariateSectionVariantRule,
+  updateMultivariateSectionVariantValue,
+} from "./section-variants";
 
 const AUTOSAVE_DELAY = 700;
 
@@ -345,6 +358,7 @@ export function SectionsEditor({
   virtualMcpId,
   branch,
   previewReady = true,
+  previewUrl,
   currentPath,
   externalSelectedIndex,
   onSaved,
@@ -354,6 +368,8 @@ export function SectionsEditor({
   branch: string;
   /** When false, waits for the sandbox dev server before preview-fetch. */
   previewReady?: boolean;
+  /** Sandbox preview base URL used for section gallery previews. */
+  previewUrl?: string;
   currentPath: string;
   /** Section index selected via click-through from the preview iframe. */
   externalSelectedIndex?: number | null;
@@ -388,6 +404,18 @@ export function SectionsEditor({
   const [ruleResolveType, setRuleResolveType] = useState<string | null>(null);
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
   const [formResetKey, setFormResetKey] = useState(0);
+  const [makeReusableIndex, setMakeReusableIndex] = useState<number | null>(
+    null,
+  );
+  const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [activeSectionVariantIndex, setActiveSectionVariantIndex] = useState(0);
+  const [sectionRuleFormValue, setSectionRuleFormValue] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [sectionRuleResolveType, setSectionRuleResolveType] = useState<
+    string | null
+  >(null);
 
   // Reset form state when the active page changes
   const [prevPath, setPrevPath] = useState(currentPath);
@@ -399,6 +427,9 @@ export function SectionsEditor({
     setActiveVariantIndex(0);
     setRuleFormValue(null);
     setRuleResolveType(null);
+    setActiveSectionVariantIndex(0);
+    setSectionRuleFormValue(null);
+    setSectionRuleResolveType(null);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
   }
@@ -407,6 +438,9 @@ export function SectionsEditor({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   // Accumulates pending page header field changes to avoid losing edits
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
 
@@ -419,6 +453,8 @@ export function SectionsEditor({
     activePageKey: string | null;
     pageVariants: PageVariant[];
     variantIndex: number;
+    sectionVariantIndex: number;
+    selectedSectionIndex: number | null;
   }>({
     rawSections: [],
     parsedSections: [],
@@ -426,6 +462,8 @@ export function SectionsEditor({
     activePageKey: null,
     pageVariants: [],
     variantIndex: 0,
+    sectionVariantIndex: 0,
+    selectedSectionIndex: null,
   });
 
   if (!previewReady || decofileLoading || metaLoading) {
@@ -472,6 +510,46 @@ export function SectionsEditor({
     activePageKey,
     pageVariants,
     variantIndex: safeVariantIndex,
+    sectionVariantIndex: activeSectionVariantIndex,
+    selectedSectionIndex,
+  };
+
+  const applySectionVariant = (
+    rawSection: RawSection,
+    parsed: ParsedSection,
+    variantIndex: number,
+  ) => {
+    const mvObj = getMultivariateSectionObject(rawSection, parsed);
+    if (!mvObj) {
+      setFormValue(null);
+      setActiveResolveType(null);
+      setSectionRuleResolveType(null);
+      setSectionRuleFormValue(null);
+      return;
+    }
+
+    const variants = parseSectionFlagVariants(mvObj, formatMatcher);
+    const variant = variants[variantIndex];
+    if (!variant) {
+      setFormValue(null);
+      setActiveResolveType(null);
+      setSectionRuleResolveType(null);
+      setSectionRuleFormValue(null);
+      return;
+    }
+
+    const unwrapped = unwrapVariantSectionValue(variant.value, decofile);
+    setFormValue(unwrapped?.data ?? null);
+    setActiveResolveType(unwrapped?.resolveType ?? null);
+
+    const ruleRt = (variant.rule?.__resolveType as string) ?? "";
+    setSectionRuleResolveType(ruleRt);
+    if (variant.rule) {
+      const { __resolveType: _, ...ruleData } = variant.rule;
+      setSectionRuleFormValue(ruleData);
+    } else {
+      setSectionRuleFormValue(null);
+    }
   };
 
   // Auto-select section when parent signals a click-through from the preview.
@@ -484,14 +562,23 @@ export function SectionsEditor({
       const rawSection = rawSections[externalSelectedIndex];
       const parsed = parsedSections[externalSelectedIndex];
       if (rawSection && parsed) {
-        const unwrapped = unwrapSection(rawSection, parsed, decofile);
         setSelectedSectionIndex(externalSelectedIndex);
-        if (!unwrapped) {
-          setFormValue(null);
-          setActiveResolveType(null);
+        setActiveSectionVariantIndex(0);
+        setFieldBreadcrumbs([]);
+        setFormResetKey((key) => key + 1);
+        if (parsed.isMultivariate) {
+          applySectionVariant(rawSection, parsed, 0);
         } else {
-          setFormValue(unwrapped.data);
-          setActiveResolveType(unwrapped.resolveType);
+          const unwrapped = unwrapSection(rawSection, parsed, decofile);
+          if (!unwrapped) {
+            setFormValue(null);
+            setActiveResolveType(null);
+          } else {
+            setFormValue(unwrapped.data);
+            setActiveResolveType(unwrapped.resolveType);
+          }
+          setSectionRuleResolveType(null);
+          setSectionRuleFormValue(null);
         }
       }
     }
@@ -500,11 +587,44 @@ export function SectionsEditor({
   const activeSchema =
     activeResolveType && meta ? resolveSchema(activeResolveType, meta) : null;
 
+  const savePageSections = (
+    updatedSections: RawSection[],
+    options?: { onSuccess?: () => void },
+  ) => {
+    if (!activePageKey) return;
+    const fullPageData = buildPageDataWithSections(
+      decofile,
+      activePageKey,
+      updatedSections,
+      safeVariantIndex,
+      pageVariants,
+    );
+    saveBlock.mutate(
+      { blockKey: activePageKey, data: fullPageData },
+      {
+        onSuccess: () => options?.onSuccess?.() ?? onSaved?.(),
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  };
+
+  const clearSectionEditing = () => {
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+    setActiveSectionVariantIndex(0);
+    setSectionRuleFormValue(null);
+    setSectionRuleResolveType(null);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+  };
+
   const scheduleAutoSave = (
     nextValue: Record<string, unknown>,
     sectionIndex: number,
   ) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const targetSectionVariantIndex = latestRef.current.sectionVariantIndex;
 
     debounceRef.current = setTimeout(() => {
       const {
@@ -543,7 +663,21 @@ export function SectionsEditor({
       };
       const updatedSections = [...latestRawSections];
 
-      if (parsed.isHidden) {
+      if (parsed.isMultivariate) {
+        const mvObj = getMultivariateSectionObject(rawSection, parsed);
+        if (!mvObj || !latestPageKey) return;
+
+        const updatedMvObj = updateMultivariateSectionVariantValue(
+          mvObj,
+          targetSectionVariantIndex,
+          nextValue,
+        );
+        updatedSections[sectionIndex] = rebuildSectionWithMultivariate(
+          rawSection,
+          parsed,
+          updatedMvObj,
+        );
+      } else if (parsed.isHidden) {
         // Re-wrap into multivariate+never structure
         const isLazy = isLazyResolveType(rawSection.__resolveType);
         const mvObj = isLazy
@@ -607,22 +741,31 @@ export function SectionsEditor({
 
   const handleSelectSection = (index: number) => {
     setSelectedSectionIndex(index);
+    setActiveSectionVariantIndex(0);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
     const rawSection = rawSections[index];
     const parsed = parsedSections[index];
     if (!rawSection || !parsed) return;
 
+    if (parsed.isMultivariate) {
+      applySectionVariant(rawSection, parsed, 0);
+      return;
+    }
+
     const unwrapped = unwrapSection(rawSection, parsed, decofile);
     if (!unwrapped) {
-      // Multivariate — no form editing for now
       setFormValue(null);
       setActiveResolveType(null);
+      setSectionRuleResolveType(null);
+      setSectionRuleFormValue(null);
       return;
     }
 
     setFormValue(unwrapped.data);
     setActiveResolveType(unwrapped.resolveType);
+    setSectionRuleResolveType(null);
+    setSectionRuleFormValue(null);
   };
 
   const handleFormChange = (val: unknown) => {
@@ -659,32 +802,271 @@ export function SectionsEditor({
   const handleReorder = (fromIndex: number, toIndex: number) => {
     if (!activePageKey) return;
     const reordered = arrayMove([...rawSections], fromIndex, toIndex);
-    const fullPageData = {
-      ...(decofile[activePageKey] as Record<string, unknown>),
-    };
-    if (hasMultipleVariants) {
-      const currentSections = fullPageData.sections as Record<string, unknown>;
-      const variants = [
-        ...((currentSections?.variants as Array<Record<string, unknown>>) ??
-          []),
-      ];
-      if (variants[safeVariantIndex]) {
-        variants[safeVariantIndex] = {
-          ...variants[safeVariantIndex],
-          value: reordered,
-        };
+
+    if (selectedSectionIndex !== null) {
+      if (selectedSectionIndex === fromIndex) {
+        setSelectedSectionIndex(toIndex);
+      } else if (
+        fromIndex < selectedSectionIndex &&
+        toIndex >= selectedSectionIndex
+      ) {
+        setSelectedSectionIndex(selectedSectionIndex - 1);
+      } else if (
+        fromIndex > selectedSectionIndex &&
+        toIndex <= selectedSectionIndex
+      ) {
+        setSelectedSectionIndex(selectedSectionIndex + 1);
       }
-      fullPageData.sections = { ...currentSections, variants };
-    } else {
-      fullPageData.sections = reordered;
     }
-    saveBlock.mutate(
-      { blockKey: activePageKey, data: fullPageData },
-      {
-        onSuccess: () => onSaved?.(),
-        onError: (err) => toast.error(`Reorder failed: ${err.message}`),
+
+    savePageSections(reordered);
+  };
+
+  const handleDeleteSection = (index: number) => {
+    if (!activePageKey) return;
+    const updatedSections = rawSections.filter((_, i) => i !== index);
+    if (selectedSectionIndex === index) {
+      clearSectionEditing();
+    } else if (selectedSectionIndex !== null && selectedSectionIndex > index) {
+      setSelectedSectionIndex(selectedSectionIndex - 1);
+    }
+    savePageSections(updatedSections);
+  };
+
+  const handleDuplicateSection = (index: number) => {
+    if (!activePageKey) return;
+    const section = rawSections[index];
+    if (!section) return;
+    const updatedSections = [...rawSections];
+    updatedSections.splice(index + 1, 0, cloneSection(section));
+    if (selectedSectionIndex !== null && selectedSectionIndex > index) {
+      setSelectedSectionIndex(selectedSectionIndex + 1);
+    }
+    savePageSections(updatedSections);
+  };
+
+  const handleAddSection = (entry: SectionCatalogEntry) => {
+    if (!activePageKey) return;
+
+    const updatedSections = [
+      ...rawSections,
+      { __resolveType: entry.resolveType } as RawSection,
+    ];
+    const newIndex = updatedSections.length - 1;
+
+    savePageSections(updatedSections, {
+      onSuccess: () => {
+        setAddSectionOpen(false);
+        setSelectedSectionIndex(newIndex);
+        setActiveSectionVariantIndex(0);
+        setFieldBreadcrumbs([]);
+        setFormResetKey((key) => key + 1);
+
+        const rawSection = updatedSections[newIndex];
+        const parsed = parseSections(updatedSections, decofile)[newIndex];
+        if (!rawSection || !parsed) return;
+
+        if (parsed.isMultivariate) {
+          applySectionVariant(rawSection, parsed, 0);
+          return;
+        }
+
+        const unwrapped = unwrapSection(rawSection, parsed, decofile);
+        if (!unwrapped) {
+          setFormValue(null);
+          setActiveResolveType(null);
+          setSectionRuleResolveType(null);
+          setSectionRuleFormValue(null);
+          return;
+        }
+
+        setFormValue(unwrapped.data);
+        setActiveResolveType(unwrapped.resolveType);
+        setSectionRuleResolveType(null);
+        setSectionRuleFormValue(null);
       },
+    });
+  };
+
+  const handleSelectSectionVariant = (variantIndex: number) => {
+    if (selectedSectionIndex === null) return;
+    const rawSection = rawSections[selectedSectionIndex];
+    const parsed = parsedSections[selectedSectionIndex];
+    if (!rawSection || !parsed?.isMultivariate) return;
+
+    setActiveSectionVariantIndex(variantIndex);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+    applySectionVariant(rawSection, parsed, variantIndex);
+  };
+
+  const handleDeleteSectionVariant = (variantIndex: number) => {
+    if (selectedSectionIndex === null || !activePageKey) return;
+    const rawSection = rawSections[selectedSectionIndex];
+    const parsed = parsedSections[selectedSectionIndex];
+    if (!rawSection || !parsed?.isMultivariate) return;
+
+    const mvObj = getMultivariateSectionObject(rawSection, parsed);
+    if (!mvObj) return;
+
+    const updatedMvObj = deleteMultivariateSectionVariant(mvObj, variantIndex);
+    if (!updatedMvObj) {
+      toast.error("Cannot delete the only variant.");
+      return;
+    }
+
+    const updatedSections = [...rawSections];
+    updatedSections[selectedSectionIndex] = rebuildSectionWithMultivariate(
+      rawSection,
+      parsed,
+      updatedMvObj,
     );
+
+    const variants = updatedMvObj.variants as unknown[];
+    let nextIndex = activeSectionVariantIndex;
+    if (variantIndex === activeSectionVariantIndex) {
+      nextIndex = Math.min(variantIndex, variants.length - 1);
+    } else if (variantIndex < activeSectionVariantIndex) {
+      nextIndex = activeSectionVariantIndex - 1;
+    }
+
+    setActiveSectionVariantIndex(nextIndex);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+    applySectionVariant(
+      updatedSections[selectedSectionIndex],
+      parsed,
+      nextIndex,
+    );
+    savePageSections(updatedSections);
+  };
+
+  const handleDuplicateSectionVariant = (variantIndex: number) => {
+    if (selectedSectionIndex === null || !activePageKey) return;
+    const rawSection = rawSections[selectedSectionIndex];
+    const parsed = parsedSections[selectedSectionIndex];
+    if (!rawSection || !parsed?.isMultivariate) return;
+
+    const mvObj = getMultivariateSectionObject(rawSection, parsed);
+    if (!mvObj) return;
+
+    const updatedMvObj = duplicateMultivariateSectionVariant(
+      mvObj,
+      variantIndex,
+    );
+    const updatedSections = [...rawSections];
+    updatedSections[selectedSectionIndex] = rebuildSectionWithMultivariate(
+      rawSection,
+      parsed,
+      updatedMvObj,
+    );
+
+    const nextIndex = variantIndex + 1;
+    setActiveSectionVariantIndex(nextIndex);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+    applySectionVariant(
+      updatedSections[selectedSectionIndex],
+      parsed,
+      nextIndex,
+    );
+    savePageSections(updatedSections);
+  };
+
+  const handleRemoveAllSectionVariants = () => {
+    if (selectedSectionIndex === null || !activePageKey) return;
+    const rawSection = rawSections[selectedSectionIndex];
+    const parsed = parsedSections[selectedSectionIndex];
+    if (!rawSection || !parsed?.isMultivariate) return;
+
+    const mvObj = getMultivariateSectionObject(rawSection, parsed);
+    if (!mvObj) return;
+
+    const flattened = flattenMultivariateSection(rawSection, parsed, mvObj);
+    if (!flattened) {
+      toast.error("Could not remove variants.");
+      return;
+    }
+
+    const updatedSections = [...rawSections];
+    updatedSections[selectedSectionIndex] = flattened;
+
+    const nextParsed = parseSections(updatedSections, decofile)[
+      selectedSectionIndex
+    ];
+    if (!nextParsed) return;
+
+    setActiveSectionVariantIndex(0);
+    setSectionRuleResolveType(null);
+    setSectionRuleFormValue(null);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+
+    const unwrapped = unwrapSection(flattened, nextParsed, decofile);
+    if (!unwrapped) {
+      setFormValue(null);
+      setActiveResolveType(null);
+    } else {
+      setFormValue(unwrapped.data);
+      setActiveResolveType(unwrapped.resolveType);
+    }
+
+    savePageSections(updatedSections);
+  };
+
+  const handleMakeReusableSubmit = async (blockId: string) => {
+    if (makeReusableIndex === null || !activePageKey) return;
+
+    const validationError = validateBlockId(blockId, decofile);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const rawSection = rawSections[makeReusableIndex];
+    const parsed = parsedSections[makeReusableIndex];
+    if (!rawSection || !parsed) return;
+
+    const unwrapped = unwrapSection(rawSection, parsed, decofile);
+    if (!unwrapped) {
+      toast.error("This section cannot be saved as global.");
+      return;
+    }
+
+    const blockData = {
+      ...unwrapped.data,
+      name: blockId,
+    };
+
+    try {
+      await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
+
+      const updatedSections = [...rawSections];
+      updatedSections[makeReusableIndex] = { __resolveType: blockId };
+
+      await saveBlock.mutateAsync({
+        blockKey: activePageKey,
+        data: buildPageDataWithSections(
+          decofile,
+          activePageKey,
+          updatedSections,
+          safeVariantIndex,
+          pageVariants,
+        ),
+      });
+
+      if (selectedSectionIndex === makeReusableIndex) {
+        clearSectionEditing();
+      }
+
+      setMakeReusableIndex(null);
+      toast.success(`Saved global block "${blockId}"`);
+      onSaved?.();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save global block",
+      );
+    }
   };
 
   // Sync rule form state when variant changes
@@ -703,6 +1085,7 @@ export function SectionsEditor({
   }
 
   const availableMatchers = meta ? extractMatchers(meta) : [];
+  const canAddSection = !!(previewUrl && meta && decofile);
 
   const ruleSchema =
     ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
@@ -748,7 +1131,7 @@ export function SectionsEditor({
     setRuleResolveType(newRt);
     const newRule: Record<string, unknown> = newRt
       ? { __resolveType: newRt }
-      : {};
+      : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
     setRuleFormValue({});
     scheduleRuleSave(newRule);
   };
@@ -760,6 +1143,83 @@ export function SectionsEditor({
       ? { __resolveType: ruleResolveType, ...next }
       : { ...next };
     scheduleRuleSave(newRule);
+  };
+
+  const scheduleSectionRuleSave = (newRule: Record<string, unknown>) => {
+    if (sectionRuleDebounceRef.current) {
+      clearTimeout(sectionRuleDebounceRef.current);
+    }
+    const {
+      selectedSectionIndex: targetSectionIndex,
+      sectionVariantIndex: targetSectionVariantIndex,
+    } = latestRef.current;
+    if (targetSectionIndex === null) return;
+
+    sectionRuleDebounceRef.current = setTimeout(() => {
+      const {
+        rawSections: latestRawSections,
+        parsedSections: latestParsedSections,
+        decofile: latestDecofile,
+        activePageKey: latestPageKey,
+        pageVariants: latestVariants,
+        variantIndex: latestVariantIndex,
+      } = latestRef.current;
+      if (!latestPageKey) return;
+
+      const rawSection = latestRawSections[targetSectionIndex];
+      const parsed = latestParsedSections[targetSectionIndex];
+      if (!rawSection || !parsed?.isMultivariate) return;
+
+      const mvObj = getMultivariateSectionObject(rawSection, parsed);
+      if (!mvObj) return;
+
+      const updatedMvObj = updateMultivariateSectionVariantRule(
+        mvObj,
+        targetSectionVariantIndex,
+        newRule,
+      );
+      const updatedSections = [...latestRawSections];
+      updatedSections[targetSectionIndex] = rebuildSectionWithMultivariate(
+        rawSection,
+        parsed,
+        updatedMvObj,
+      );
+
+      const fullPageData = buildPageDataWithSections(
+        latestDecofile,
+        latestPageKey,
+        updatedSections,
+        latestVariantIndex,
+        latestVariants,
+      );
+
+      saveBlock.mutate(
+        { blockKey: latestPageKey, data: fullPageData },
+        {
+          onSuccess: () => onSaved?.(),
+          onError: (err) => toast.error(`Save failed: ${err.message}`),
+        },
+      );
+    }, AUTOSAVE_DELAY);
+  };
+
+  const handleSectionMatcherTypeChange = (newRt: string) => {
+    setSectionRuleResolveType(newRt);
+    setSectionRuleFormValue({});
+    scheduleSectionRuleSave(
+      newRt
+        ? { __resolveType: newRt }
+        : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE },
+    );
+  };
+
+  const handleSectionRuleFormChange = (val: unknown) => {
+    const next = val as Record<string, unknown>;
+    setSectionRuleFormValue(next);
+    const newRule: Record<string, unknown> = sectionRuleResolveType
+      ? { __resolveType: sectionRuleResolveType, ...next }
+      : { ...next };
+    scheduleSectionRuleSave(newRule);
   };
 
   if (!activePage) {
@@ -774,17 +1234,43 @@ export function SectionsEditor({
     selectedSectionIndex !== null
       ? (parsedSections[selectedSectionIndex] ?? null)
       : null;
-
-  const isEditing = activeSchema && formValue && selectedParsed;
+  const selectedRawSection =
+    selectedSectionIndex !== null ? rawSections[selectedSectionIndex] : null;
+  const sectionMvObj =
+    selectedRawSection && selectedParsed?.isMultivariate
+      ? getMultivariateSectionObject(selectedRawSection, selectedParsed)
+      : null;
+  const sectionFlagVariants = sectionMvObj
+    ? parseSectionFlagVariants(sectionMvObj, formatMatcher)
+    : [];
+  const safeSectionVariantIndex = Math.min(
+    activeSectionVariantIndex,
+    Math.max(sectionFlagVariants.length - 1, 0),
+  );
+  const activeSectionFlagVariant =
+    sectionFlagVariants[safeSectionVariantIndex] ?? null;
+  const isEditingMultivariateSection = selectedParsed?.isMultivariate === true;
+  const isEditingSection =
+    selectedSectionIndex !== null && selectedParsed !== null;
+  const isEditing =
+    isEditingSection &&
+    (isEditingMultivariateSection || !!(activeSchema && formValue));
+  const sectionRuleSchema =
+    sectionRuleResolveType && meta
+      ? resolveSchema(sectionRuleResolveType, meta)
+      : null;
   const editingBreadcrumbs = isEditing
-    ? [activePage.name, selectedParsed.label, ...fieldBreadcrumbs]
+    ? [
+        activePage.name,
+        selectedParsed.label,
+        ...(isEditingMultivariateSection && activeSectionFlagVariant
+          ? [activeSectionFlagVariant.label]
+          : []),
+        ...fieldBreadcrumbs,
+      ]
     : [];
   const exitSectionEditing = () => {
-    setSelectedSectionIndex(null);
-    setFormValue(null);
-    setActiveResolveType(null);
-    setFieldBreadcrumbs([]);
-    setFormResetKey((key) => key + 1);
+    clearSectionEditing();
   };
   const handleBreadcrumbClick = (index: number) => {
     if (index === 0) {
@@ -798,7 +1284,14 @@ export function SectionsEditor({
       return;
     }
 
-    setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index - 1));
+    if (isEditingMultivariateSection && index === 2) {
+      setFieldBreadcrumbs([]);
+      setFormResetKey((key) => key + 1);
+      return;
+    }
+
+    const fieldBase = isEditingMultivariateSection ? 2 : 1;
+    setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index - fieldBase));
   };
 
   return (
@@ -890,20 +1383,60 @@ export function SectionsEditor({
       {/* Drill-down: section list OR section form */}
       {isEditing ? (
         <ScrollArea className="flex-1 min-h-0">
-          {/* overflow-x-hidden + max-w-full forces internal content to
-              fit the panel width, no matter what nested field misbehaves.
-              ScrollArea's viewport otherwise creates a horizontal
-              scrollbar the moment anything overflows. */}
+          {isEditingMultivariateSection && sectionFlagVariants.length > 0 && (
+            <>
+              <SectionVariantList
+                variants={sectionFlagVariants.map((variant, index) => ({
+                  index,
+                  label: variant.label,
+                }))}
+                selectedIndex={safeSectionVariantIndex}
+                onSelect={handleSelectSectionVariant}
+                onDuplicate={handleDuplicateSectionVariant}
+                onDelete={handleDeleteSectionVariant}
+                onRemoveAll={handleRemoveAllSectionVariants}
+              />
+              {isEditingMultivariateSection && (
+                <div className="px-3 py-3 border-b space-y-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Variant rule
+                  </span>
+                  <MatcherPicker
+                    currentRt={sectionRuleResolveType ?? ""}
+                    currentLabel={formatMatcher(activeSectionFlagVariant?.rule)}
+                    matchers={availableMatchers}
+                    onSelect={handleSectionMatcherTypeChange}
+                  />
+                  {sectionRuleSchema && sectionRuleFormValue && (
+                    <div className="pt-1">
+                      <SchemaForm
+                        schema={sectionRuleSchema}
+                        value={sectionRuleFormValue}
+                        onChange={handleSectionRuleFormChange}
+                        basePath=""
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
           <div className="min-w-0 max-w-full overflow-x-hidden p-4">
-            <SchemaForm
-              key={formResetKey}
-              schema={activeSchema}
-              value={formValue}
-              onChange={handleFormChange}
-              basePath=""
-              breadcrumbPath={[]}
-              onBreadcrumbChange={setFieldBreadcrumbs}
-            />
+            {activeSchema && formValue ? (
+              <SchemaForm
+                key={formResetKey}
+                schema={activeSchema}
+                value={formValue}
+                onChange={handleFormChange}
+                basePath=""
+                breadcrumbPath={[]}
+                onBreadcrumbChange={setFieldBreadcrumbs}
+              />
+            ) : (
+              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                No editable fields for this variant.
+              </div>
+            )}
           </div>
         </ScrollArea>
       ) : (
@@ -934,13 +1467,44 @@ export function SectionsEditor({
           )}
           <div className="p-2">
             <SectionList
+              listKey={`${activePageKey ?? ""}-${safeVariantIndex}`}
               sections={parsedSections}
               selectedIndex={selectedSectionIndex}
               onSelect={handleSelectSection}
               onReorder={handleReorder}
+              onDelete={handleDeleteSection}
+              onDuplicate={handleDuplicateSection}
+              onMakeReusable={setMakeReusableIndex}
+              onAddSection={() => setAddSectionOpen(true)}
+              canAddSection={canAddSection}
             />
           </div>
         </ScrollArea>
+      )}
+
+      <MakeReusableModal
+        open={makeReusableIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setMakeReusableIndex(null);
+        }}
+        defaultBlockId={
+          makeReusableIndex !== null
+            ? suggestBlockId(parsedSections[makeReusableIndex]?.label ?? "")
+            : ""
+        }
+        isPending={saveBlock.isPending}
+        onSubmit={handleMakeReusableSubmit}
+      />
+
+      {previewUrl && (
+        <AddSectionModal
+          open={addSectionOpen}
+          onOpenChange={setAddSectionOpen}
+          meta={meta}
+          decofile={decofile}
+          previewBaseUrl={previewUrl}
+          onSelect={handleAddSection}
+        />
       )}
     </div>
   );

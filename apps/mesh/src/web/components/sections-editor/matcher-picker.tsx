@@ -9,13 +9,18 @@ import {
   CommandItem,
   CommandEmpty,
 } from "@deco/ui/components/command.tsx";
-import type { LiveMeta } from "./resolve-schema";
+import { resolveBlockSchemaMetadata, type LiveMeta } from "./resolve-schema";
+import { MatcherIcon, resolveMatcherIconName } from "./matcher-icons";
+import { labelFromResolveType } from "./section-types";
 
 export interface MatcherEntry {
   resolveType: string;
   title: string;
   description?: string;
+  iconName: string;
 }
+
+const ALWAYS_MATCHER_ICON = "Users03";
 
 /**
  * Extract the list of available matcher block types from live meta.
@@ -25,21 +30,38 @@ export interface MatcherEntry {
 export function extractMatchers(meta: LiveMeta): MatcherEntry[] {
   const blocks = meta.manifest?.blocks ?? {};
   const result: MatcherEntry[] = [];
+
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("matchers")) continue;
+
     for (const resolveType of Object.keys(blockMap)) {
       // Skip "always" — it's hardcoded as the first option in the picker
       if (resolveType.includes("always")) continue;
-      const segments = resolveType.split("/");
-      const filename = segments[segments.length - 1] ?? resolveType;
-      const title = filename
-        .replace(/\.(tsx?|jsx?)$/, "")
-        .replace(/[-_]/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-      result.push({ resolveType, title });
+
+      const metadata = resolveBlockSchemaMetadata(resolveType, meta);
+
+      result.push({
+        resolveType,
+        title: metadata.title ?? labelFromResolveType(resolveType),
+        description: metadata.description,
+        iconName: resolveMatcherIconName(resolveType, metadata.icon),
+      });
     }
   }
+
   return result;
+}
+
+function resolveCurrentMatcherIcon(
+  currentRt: string,
+  matchers: MatcherEntry[],
+): string {
+  if (!currentRt) return ALWAYS_MATCHER_ICON;
+
+  const match = matchers.find((matcher) => matcher.resolveType === currentRt);
+  if (match) return match.iconName;
+
+  return resolveMatcherIconName(currentRt);
 }
 
 /**
@@ -57,6 +79,7 @@ export function MatcherPicker({
   onSelect: (resolveType: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const currentIconName = resolveCurrentMatcherIcon(currentRt, matchers);
 
   const handleSelect = (rt: string) => {
     onSelect(rt);
@@ -70,6 +93,7 @@ export function MatcherPicker({
         onClick={() => setOpen(true)}
         className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-left text-sm shadow-xs transition-colors hover:bg-accent/40"
       >
+        <MatcherIcon iconName={currentIconName} size="sm" />
         <span className="flex-1 truncate">{currentLabel}</span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       </button>
@@ -90,6 +114,7 @@ export function MatcherPicker({
               onSelect={() => handleSelect("")}
               className={cn("gap-2.5", !currentRt && "bg-accent/60")}
             >
+              <MatcherIcon iconName={ALWAYS_MATCHER_ICON} size="sm" />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="text-sm">Always</span>
                 <span className="text-xs text-muted-foreground">
@@ -97,21 +122,22 @@ export function MatcherPicker({
                 </span>
               </div>
             </CommandItem>
-            {matchers.map((m) => (
+            {matchers.map((matcher) => (
               <CommandItem
-                key={m.resolveType}
-                value={`${m.title} ${m.resolveType} ${m.description ?? ""}`}
-                onSelect={() => handleSelect(m.resolveType)}
+                key={matcher.resolveType}
+                value={`${matcher.title} ${matcher.resolveType} ${matcher.description ?? ""}`}
+                onSelect={() => handleSelect(matcher.resolveType)}
                 className={cn(
                   "gap-2.5",
-                  currentRt === m.resolveType && "bg-accent/60",
+                  currentRt === matcher.resolveType && "bg-accent/60",
                 )}
               >
+                <MatcherIcon iconName={matcher.iconName} size="sm" />
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm">{m.title}</span>
-                  {m.description && (
+                  <span className="text-sm">{matcher.title}</span>
+                  {matcher.description && (
                     <span className="truncate text-xs text-muted-foreground">
-                      {m.description}
+                      {matcher.description}
                     </span>
                   )}
                 </div>

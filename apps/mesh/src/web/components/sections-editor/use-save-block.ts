@@ -40,11 +40,35 @@ export function useSaveBlock({
       }
       return res.json();
     },
-    onSuccess: () => {
+    onMutate: async ({ blockKey, data }) => {
       const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
-      queryClient.invalidateQueries({
-        queryKey: KEYS.decofile(cacheKey),
-      });
+      const queryKey = KEYS.decofile(cacheKey);
+      await queryClient.cancelQueries({ queryKey });
+      const previous =
+        queryClient.getQueryData<Record<string, unknown>>(queryKey);
+      queryClient.setQueryData(
+        queryKey,
+        (current: Record<string, unknown> | undefined) => {
+          if (!current) return current;
+          return { ...current, [blockKey]: data };
+        },
+      );
+      return { previous, queryKey };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previous);
+      }
+    },
+    onSuccess: (_result, { blockKey, data }) => {
+      const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
+      queryClient.setQueryData(
+        KEYS.decofile(cacheKey),
+        (current: Record<string, unknown> | undefined) => {
+          if (!current) return current;
+          return { ...current, [blockKey]: data };
+        },
+      );
     },
   });
 }

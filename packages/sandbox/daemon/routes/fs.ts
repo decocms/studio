@@ -556,8 +556,20 @@ const GLOB_EXCLUDE_DIRS = new Set([
   "build",
   ".turbo",
   ".cache",
+  ".ssh",
+  ".aws",
+  ".gnupg",
 ]);
 const GLOB_RESULT_LIMIT = 1000;
+
+function isGlobPathAllowed(rel: string): boolean {
+  for (const seg of rel.split("/")) {
+    if (GLOB_EXCLUDE_DIRS.has(seg)) return false;
+    // Surface `.deco/**` without exposing other dotfiles (`.env`, `.npmrc`, …).
+    if (seg.startsWith(".") && seg !== ".deco") return false;
+  }
+  return true;
+}
 
 export function makeGlobHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
@@ -584,8 +596,9 @@ export function makeGlobHandler(deps: FsDeps) {
         cwd: searchPath,
         onlyFiles: true,
         followSymlinks: false,
+        dot: true,
       })) {
-        if (rel.split("/").some((seg) => GLOB_EXCLUDE_DIRS.has(seg))) continue;
+        if (!isGlobPathAllowed(rel)) continue;
         const abs = path.join(searchPath, rel);
         files.push(
           abs.startsWith(`${deps.repoDir}/`)

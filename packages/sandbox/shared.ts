@@ -15,6 +15,9 @@ export const PLUGIN_DESCRIPTION =
 export const DAEMON_PORT = 9000;
 export const DEFAULT_IMAGE = "studio-sandbox:local";
 
+/** Auto-start script priority — first match in the manifest wins. */
+export const WELL_KNOWN_STARTERS = ["dev", "start"] as const;
+
 /** Shell-quote a value for safe inclusion in a `bash -lc` script. */
 export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;

@@ -1,11 +1,10 @@
+import { WELL_KNOWN_STARTERS } from "@decocms/sandbox/shared";
 import { useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useSandboxEvents } from "../../hooks/use-sandbox-events";
 import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
 import { SandboxTerminal } from "./terminal";
-
-const WELL_KNOWN_STARTERS = ["dev", "start"];
 
 export interface PreviewDrawerProps {
   vmId: string | null;
