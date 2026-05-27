@@ -58,6 +58,7 @@ export const connectionManagerAgent = {
     "CONNECTION_TEST",
   ] as readonly string[] | null,
   selectedConnections: null as readonly StudioPackConnectionKey[] | null,
+  selectedPrompts: [] as readonly string[],
   instructions: INSTRUCTIONS,
   welcomeMessage: (async (_ctx: WelcomeContext) => [
     {

@@ -60,6 +60,7 @@ export const storeManagerAgent = {
     "registry",
     "community-registry",
   ] as readonly StudioPackConnectionKey[],
+  selectedPrompts: ["store-manager-browse-store"] as readonly string[],
   instructions: INSTRUCTIONS,
   welcomeMessage: (async (_ctx: WelcomeContext) => [
     {
