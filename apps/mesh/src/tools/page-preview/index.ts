@@ -6,7 +6,7 @@ import {
   appendBlock,
   createDesignSystem,
   createPage,
-  defaultBrand,
+  DEFAULT_BRAND,
   getBlocks,
   getPagePreviewStatus,
   listDesignSystems,
@@ -117,8 +117,14 @@ function pageSlugFromStatus(
 
 function orgArgs(ctx: Parameters<typeof requireOrganization>[0]) {
   const org = requireOrganization(ctx);
+  if (!ctx.objectStorage) {
+    throw new Error(
+      "Page Editor requires object storage — none was provisioned for this request.",
+    );
+  }
   return {
     orgId: org.id,
+    objectStorage: ctx.objectStorage,
     orgSlug: org.slug ?? org.id,
     baseUrl: ctx.baseUrl,
   };
@@ -231,7 +237,7 @@ export const DESIGN_SYSTEM_CREATE = defineTool({
     requireAuth(ctx);
     const args = orgArgs(ctx);
     await ctx.access.check();
-    const brand = { ...defaultBrand(), ...input.brand };
+    const brand = { ...DEFAULT_BRAND, ...input.brand };
     if (input.name) brand.name = input.name;
     const result = await createDesignSystem({
       ...args,
@@ -484,7 +490,7 @@ export const PAGE_BOOTSTRAP = defineTool({
       );
     }
     const dsSlug = `${input.slug}-ds`;
-    const brand = { ...defaultBrand(), ...(input.brand ?? {}) };
+    const brand = { ...DEFAULT_BRAND, ...(input.brand ?? {}) };
     if (input.name) brand.name = input.name;
     // 1. Design system. Seeded from the template, with any brand overrides
     //    layered on top.

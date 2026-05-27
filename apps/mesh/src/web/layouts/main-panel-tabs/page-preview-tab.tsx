@@ -804,7 +804,10 @@ export function PagePreviewTab() {
   const [hostReady, setHostReady] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const hostUrl = `/api/${encodeURIComponent(org.slug)}/page-preview/host`;
-  const filesBase = `/api/${encodeURIComponent(org.slug)}/page-preview`;
+  // Iframe dynamic-imports use this base for `/files/<key>` lookups. After
+  // the storage migration, page-preview assets live under Studio's
+  // canonical /api/{org}/files/{key} redirect (page-preview/...).
+  const filesBase = `/api/${encodeURIComponent(org.slug)}/files/page-preview`;
   const taskStatus =
     activeTask?.id === taskId ? (activeTask?.status ?? null) : null;
   const [lastTaskStatus, setLastTaskStatus] = useState<string | null>(

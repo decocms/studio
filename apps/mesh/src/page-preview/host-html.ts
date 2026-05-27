@@ -854,16 +854,14 @@ export const PAGE_PREVIEW_HOST_HTML = `<!doctype html>
      * }} */
     // Derive filesBase from the host's own URL so we don't have to wait
     // for the Studio-side handshake before dispatching imports. The host
-    // is mounted at /api/<org>/page-preview/host, so /files/... lives at
-    // the parent prefix.
+    // is mounted at /api/<org>/page-preview/host. Page-preview assets
+    // live under Studio's canonical /api/<org>/files/page-preview/...
+    // redirect, so we strip the page-preview/host tail and re-attach the
+    // files prefix.
     function deriveFilesBaseFromLocation() {
       try {
-        var p = location.pathname.replace(/\\/host\\/?$/, '');
-        // If the path didn't end in /host, just strip the last segment.
-        if (p === location.pathname) {
-          p = p.replace(/\\/[^/]*$/, '');
-        }
-        return p || '';
+        var p = location.pathname.replace(/\\/page-preview\\/host\\/?$/, '');
+        return p + '/files/page-preview';
       } catch (_e) {
         return '';
       }
@@ -1157,7 +1155,7 @@ export const PAGE_PREVIEW_HOST_HTML = `<!doctype html>
 
     async function loadDesignSystem(slug) {
       const v = Date.now();
-      const url = state.filesBase + '/files/design-systems/' + encodeURIComponent(slug) + '/tokens.js?v=' + v;
+      const url = state.filesBase + '/design-systems/' + encodeURIComponent(slug) + '/tokens.js?v=' + v;
       const mod = await import(url);
       return mod.BRAND;
     }
@@ -1169,12 +1167,12 @@ export const PAGE_PREVIEW_HOST_HTML = `<!doctype html>
       // typo from the agent), we degrade gracefully and keep the current
       // brand variables instead of blowing up the host.
       const [sectionsMod, pageMod] = await Promise.all([
-        import(state.filesBase + '/files/pages/' + encodeURIComponent(slug) + '/sections.js?v=' + v),
-        import(state.filesBase + '/files/pages/' + encodeURIComponent(slug) + '/page.js?v=' + v),
+        import(state.filesBase + '/pages/' + encodeURIComponent(slug) + '/sections.js?v=' + v),
+        import(state.filesBase + '/pages/' + encodeURIComponent(slug) + '/page.js?v=' + v),
       ]);
       let brand = null;
       try {
-        const tokensMod = await import(state.filesBase + '/files/design-systems/' + encodeURIComponent(dsSlug) + '/tokens.js?v=' + v);
+        const tokensMod = await import(state.filesBase + '/design-systems/' + encodeURIComponent(dsSlug) + '/tokens.js?v=' + v);
         brand = tokensMod.BRAND;
       } catch (err) {
         console.warn('[host] design system "' + dsSlug + '" not found — using current brand', err);

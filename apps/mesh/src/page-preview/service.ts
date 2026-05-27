@@ -1,15 +1,4 @@
-import { getSettings } from "@/settings";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import {
-  dirname,
-  extname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import type { BoundObjectStorage } from "@/object-storage/bound-object-storage";
 import {
   DESIGN_SYSTEM_DEMO_HTML,
   DESIGN_SYSTEM_DEMO_JS,
@@ -29,12 +18,29 @@ import {
 } from "./contrast";
 import { getDefaultTheme } from "./default-themes";
 
-const STATE_FILE = "state.json";
-const PAGE_EDITOR_DIR = "page-editor";
-const PAGES_DIR = "pages";
-const DESIGN_SYSTEMS_DIR = "design-systems";
+/* ---------------------------------------------------------------------------
+ * Object-storage key layout (per-org bucket, prefix-scoped).
+ *
+ * The BoundObjectStorage passed in by callers is org-bound at construction,
+ * so we never carry orgId in keys here — it's baked into the binding.
+ *
+ *   page-preview/state.json
+ *   page-preview/pages/<slug>/{index.html, app.js, sections.js, page.js, meta.json}
+ *   page-preview/design-systems/<slug>/{demo.html, demo.js, tokens.css, tokens.js, meta.json}
+ * ------------------------------------------------------------------------- */
+const KEY_PREFIX = "page-preview";
+const STATE_KEY = `${KEY_PREFIX}/state.json`;
+const PAGES_PREFIX = `${KEY_PREFIX}/pages`;
+const DESIGN_SYSTEMS_PREFIX = `${KEY_PREFIX}/design-systems`;
 const PAGE_META_FILE = "meta.json";
 const DESIGN_SYSTEM_META_FILE = "meta.json";
+
+function pageObjKey(slug: string, file: string): string {
+  return `${PAGES_PREFIX}/${slug}/${file}`;
+}
+function dsObjKey(slug: string, file: string): string {
+  return `${DESIGN_SYSTEMS_PREFIX}/${slug}/${file}`;
+}
 
 export type PreviewKind = "page" | "design-system";
 
@@ -97,10 +103,12 @@ interface PagePreviewState {
 }
 
 export interface PagePreviewOptions {
+  /** Identifier used for in-memory keying (live block store, etc.). */
   orgId: string;
+  /** Org-bound storage binding — the orgId is baked into this. */
+  objectStorage: BoundObjectStorage;
   orgSlug?: string | null;
   baseUrl?: string | null;
-  dataDir?: string;
 }
 
 export interface PagePreviewSetOptions extends PagePreviewOptions {
@@ -134,69 +142,104 @@ export interface PageCreateOptions extends PagePreviewOptions {
   activate?: boolean;
 }
 
-function dataDirOf(dataDir?: string): string {
-  return dataDir ?? getSettings().dataDir;
-}
+/* ---------------------------------------------------------------------------
+ * Object-storage I/O primitives. All page-preview persistence flows through
+ * these — never raw fs. The binding is org-scoped at construction.
+ * ------------------------------------------------------------------------- */
 
-function uniquePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const path of paths) {
-    const resolved = resolve(path);
-    if (seen.has(resolved)) continue;
-    seen.add(resolved);
-    out.push(path);
+async function readJsonObject<T>(
+  storage: BoundObjectStorage,
+  key: string,
+): Promise<T | null> {
+  try {
+    const res = await storage.get(key);
+    if ("error" in res) return null;
+    return JSON.parse(res.content) as T;
+  } catch {
+    return null;
   }
-  return out;
 }
 
-export function getPagePreviewPaths(options: {
-  orgId?: string;
-  dataDir?: string;
-}) {
-  const orgDir = join(dataDirOf(options.dataDir), PAGE_EDITOR_DIR);
-  const pagesDir = join(orgDir, PAGES_DIR);
-  return {
-    orgDir,
-    pagesDir,
-    designSystemsDir: join(orgDir, DESIGN_SYSTEMS_DIR),
-    statePath: join(orgDir, STATE_FILE),
-  };
+async function writeJsonObject(
+  storage: BoundObjectStorage,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  await storage.put(key, `${JSON.stringify(value, null, 2)}\n`, {
+    contentType: "application/json",
+  });
 }
 
-function getServingRoots(options: { orgId?: string; dataDir?: string }) {
-  const { orgDir } = getPagePreviewPaths(options);
-  return uniquePaths([orgDir, join(homedir(), "deco", PAGE_EDITOR_DIR)]);
-}
-
-function toRelativePath(baseDir: string, absolutePath: string): string | null {
-  const rel = relative(resolve(baseDir), resolve(absolutePath));
-  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
-  return rel.split(sep).join("/");
-}
-
-function insideAnyRoot(
-  roots: string[],
-  absolutePath: string,
-): { root: string; relativePath: string } | null {
-  for (const root of roots) {
-    const relativePath = toRelativePath(root, absolutePath);
-    if (relativePath) return { root, relativePath };
+async function readTextObject(
+  storage: BoundObjectStorage,
+  key: string,
+): Promise<string | null> {
+  try {
+    const res = await storage.get(key);
+    if ("error" in res) return null;
+    return res.content;
+  } catch {
+    return null;
   }
-  return null;
 }
 
-function assertInside(baseDir: string, absolutePath: string): string {
-  const rel = toRelativePath(baseDir, absolutePath);
-  if (!rel) {
-    throw new Error("Path must stay inside the Page Editor pages directory");
+async function writeTextObject(
+  storage: BoundObjectStorage,
+  key: string,
+  content: string,
+  contentType: string,
+): Promise<void> {
+  await storage.put(key, content, { contentType });
+}
+
+interface ObjectHead {
+  size: number;
+  lastModified?: Date;
+}
+
+async function statObject(
+  storage: BoundObjectStorage,
+  key: string,
+): Promise<ObjectHead | null> {
+  try {
+    return await storage.head(key);
+  } catch {
+    return null;
   }
-  return rel;
 }
 
-function isHtmlPath(path: string): boolean {
-  const ext = extname(path).toLowerCase();
-  return ext === ".html" || ext === ".htm";
+/**
+ * List immediate sub-slugs under a prefix using `delimiter: "/"`. Returns
+ * the slug names (the directory-like commonPrefixes with the trailing slash
+ * stripped). Mirrors what `readdir({withFileTypes}).filter(isDirectory)`
+ * gave us in the disk era.
+ */
+async function listSlugs(
+  storage: BoundObjectStorage,
+  prefix: string,
+): Promise<string[]> {
+  const normalized = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  const result = await storage.list({
+    prefix: normalized,
+    delimiter: "/",
+    maxKeys: 1000,
+  });
+  // S3 and DevObjectStorage agree on the format mostly, but DevObjectStorage
+  // emits `prefix//slug/` (double slash) when prefix already ends with "/".
+  // Normalize: strip the matching prefix (with or without trailing slash),
+  // drop the trailing slash, then drop any leftover leading slash.
+  const base = normalized.replace(/\/$/, "");
+  return (result.commonPrefixes ?? [])
+    .map((p) => {
+      let slug = p.startsWith(normalized)
+        ? p.slice(normalized.length)
+        : p.startsWith(base)
+          ? p.slice(base.length)
+          : p;
+      slug = slug.replace(/^\/+/, "").replace(/\/+$/, "");
+      return slug;
+    })
+    .filter((s) => s.length > 0 && !s.includes("/"));
 }
 
 function slugify(input: string): string {
@@ -208,68 +251,67 @@ function slugify(input: string): string {
     .slice(0, 64);
 }
 
-async function readState(statePath: string): Promise<PagePreviewState> {
-  try {
-    const raw = await readFile(statePath, "utf8");
-    const parsed = JSON.parse(raw) as Partial<PagePreviewState>;
-    const kind =
-      parsed.activeKind === "page" || parsed.activeKind === "design-system"
-        ? parsed.activeKind
-        : null;
-    return {
-      activeKind: kind,
-      activePath:
-        typeof parsed.activePath === "string" ? parsed.activePath : null,
-      activeDesignSystem:
-        typeof parsed.activeDesignSystem === "string"
-          ? parsed.activeDesignSystem
-          : null,
-      refreshVersion:
-        typeof parsed.refreshVersion === "number" &&
-        Number.isFinite(parsed.refreshVersion)
-          ? parsed.refreshVersion
-          : 0,
-      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : null,
-      progressLabel:
-        typeof parsed.progressLabel === "string" ? parsed.progressLabel : null,
-      progressUpdatedAt:
-        typeof parsed.progressUpdatedAt === "string"
-          ? parsed.progressUpdatedAt
-          : null,
-      outline:
-        Array.isArray(parsed.outline) &&
-        parsed.outline.every((s) => typeof s === "string")
-          ? (parsed.outline as string[])
-          : null,
-      outlineUpdatedAt:
-        typeof parsed.outlineUpdatedAt === "string"
-          ? parsed.outlineUpdatedAt
-          : null,
-    };
-  } catch {
-    return {
-      activeKind: null,
-      activePath: null,
-      activeDesignSystem: null,
-      refreshVersion: 0,
-      updatedAt: null,
-      progressLabel: null,
-      progressUpdatedAt: null,
-      outline: null,
-      outlineUpdatedAt: null,
-    };
-  }
+async function readState(
+  storage: BoundObjectStorage,
+): Promise<PagePreviewState> {
+  const parsed =
+    (await readJsonObject<Partial<PagePreviewState>>(storage, STATE_KEY)) ?? {};
+  const kind =
+    parsed.activeKind === "page" || parsed.activeKind === "design-system"
+      ? parsed.activeKind
+      : null;
+  return {
+    activeKind: kind,
+    activePath:
+      typeof parsed.activePath === "string" ? parsed.activePath : null,
+    activeDesignSystem:
+      typeof parsed.activeDesignSystem === "string"
+        ? parsed.activeDesignSystem
+        : null,
+    refreshVersion:
+      typeof parsed.refreshVersion === "number" &&
+      Number.isFinite(parsed.refreshVersion)
+        ? parsed.refreshVersion
+        : 0,
+    updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : null,
+    progressLabel:
+      typeof parsed.progressLabel === "string" ? parsed.progressLabel : null,
+    progressUpdatedAt:
+      typeof parsed.progressUpdatedAt === "string"
+        ? parsed.progressUpdatedAt
+        : null,
+    outline:
+      Array.isArray(parsed.outline) &&
+      parsed.outline.every((s) => typeof s === "string")
+        ? (parsed.outline as string[])
+        : null,
+    outlineUpdatedAt:
+      typeof parsed.outlineUpdatedAt === "string"
+        ? parsed.outlineUpdatedAt
+        : null,
+  };
 }
 
-async function writeState(statePath: string, state: PagePreviewState) {
-  await mkdir(dirname(statePath), { recursive: true });
-  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+async function writeState(
+  storage: BoundObjectStorage,
+  state: PagePreviewState,
+) {
+  await writeJsonObject(storage, STATE_KEY, state);
 }
 
 function encodePath(relativePath: string): string {
   return relativePath.split("/").map(encodeURIComponent).join("/");
 }
 
+/**
+ * Build a public URL for a page-preview asset via Studio's canonical
+ * `/api/{org}/files/{key}` redirect — which already presigns and serves
+ * the object via the same code path the rest of Studio uses.
+ *
+ * `relativePath` is the page-preview-scoped path, e.g.
+ * "pages/<slug>/index.html". We prepend the `page-preview/` prefix so it
+ * resolves to the actual storage key.
+ */
 function buildFileUrl(options: {
   baseUrl?: string | null;
   orgSlug?: string | null;
@@ -277,26 +319,12 @@ function buildFileUrl(options: {
   refreshVersion: number;
 }): string {
   const orgSlug = options.orgSlug ?? "";
-  const path = `/api/${encodeURIComponent(orgSlug)}/page-preview/files/${encodePath(options.relativePath)}`;
+  const path = `/api/${encodeURIComponent(orgSlug)}/files/${KEY_PREFIX}/${encodePath(options.relativePath)}`;
   const url = options.baseUrl
     ? new URL(path, options.baseUrl)
     : new URL(path, "http://localhost");
   url.searchParams.set("v", String(options.refreshVersion));
   return options.baseUrl ? url.toString() : `${url.pathname}${url.search}`;
-}
-
-async function readJsonSafe<T>(path: string): Promise<T | null> {
-  try {
-    const raw = await readFile(path, "utf8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
-
-async function writeJson(path: string, value: unknown) {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 /* ---------------------------------------------------------------------------
@@ -310,62 +338,55 @@ interface PageMeta {
   updatedAt?: string;
 }
 
-async function loadPageMeta(pageDir: string): Promise<PageMeta> {
-  return (await readJsonSafe<PageMeta>(join(pageDir, PAGE_META_FILE))) ?? {};
-}
-
-async function discoverPagesInternal(
-  pagesRoot: string,
-  options: PagePreviewOptions,
-  refreshVersion: number,
-  out: PagePreviewPage[],
-) {
-  const entries = await readdir(pagesRoot, { withFileTypes: true }).catch(
-    () => null,
+async function loadPageMeta(
+  storage: BoundObjectStorage,
+  slug: string,
+): Promise<PageMeta> {
+  return (
+    (await readJsonObject<PageMeta>(
+      storage,
+      pageObjKey(slug, PAGE_META_FILE),
+    )) ?? {}
   );
-  if (!entries) return;
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const slug = String(entry.name);
-    const pageDir = join(pagesRoot, slug);
-    const candidates = ["index.html", "index.htm"];
-    for (const file of candidates) {
-      const absolutePath = join(pageDir, file);
-      const fileStat = await stat(absolutePath).catch(() => null);
-      if (!fileStat?.isFile()) continue;
-      const meta = await loadPageMeta(pageDir);
-      const relativePath = `${PAGES_DIR}/${slug}/${file}`;
-      out.push({
-        slug,
-        name: meta.name ?? slug,
-        designSystem: meta.designSystem ?? null,
-        path: absolutePath,
-        relativePath,
-        url: buildFileUrl({
-          baseUrl: options.baseUrl,
-          orgSlug: options.orgSlug,
-          relativePath,
-          refreshVersion,
-        }),
-        lastModified: fileStat.mtime.toISOString(),
-      });
-      break;
-    }
-  }
-
-  // Recurse one level: legacy pages may be at pagesRoot/<slug>/index.html
-  // or nested deeper; only follow if no index.html at top-level slug dir.
 }
 
 export async function discoverHtmlPages(
   options: PagePreviewOptions,
 ): Promise<PagePreviewPage[]> {
-  const { pagesDir, statePath } = getPagePreviewPaths(options);
-  await mkdir(pagesDir, { recursive: true });
-  const state = await readState(statePath);
+  const { objectStorage } = options;
+  const state = await readState(objectStorage);
+  const slugs = await listSlugs(objectStorage, PAGES_PREFIX);
   const pages: PagePreviewPage[] = [];
-  await discoverPagesInternal(pagesDir, options, state.refreshVersion, pages);
+
+  await Promise.all(
+    slugs.map(async (slug) => {
+      // Discover the first existing index.{html,htm} for this slug. Most
+      // pages ship index.html; the .htm fallback is for legacy data.
+      const candidates = ["index.html", "index.htm"];
+      for (const file of candidates) {
+        const head = await statObject(objectStorage, pageObjKey(slug, file));
+        if (!head) continue;
+        const meta = await loadPageMeta(objectStorage, slug);
+        const relativePath = `pages/${slug}/${file}`;
+        pages.push({
+          slug,
+          name: meta.name ?? slug,
+          designSystem: meta.designSystem ?? null,
+          path: pageObjKey(slug, file),
+          relativePath,
+          url: buildFileUrl({
+            baseUrl: options.baseUrl,
+            orgSlug: options.orgSlug,
+            relativePath,
+            refreshVersion: state.refreshVersion,
+          }),
+          lastModified: (head.lastModified ?? new Date()).toISOString(),
+        });
+        return;
+      }
+    }),
+  );
+
   pages.sort(
     (a, b) =>
       new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime(),
@@ -384,66 +405,49 @@ interface DesignSystemMeta {
   updatedAt?: string;
 }
 
-async function discoverDesignSystemsInternal(
-  designSystemsRoot: string,
-  options: PagePreviewOptions,
-  refreshVersion: number,
-  out: DesignSystemEntry[],
-) {
-  const entries = await readdir(designSystemsRoot, {
-    withFileTypes: true,
-  }).catch(() => null);
-  if (!entries) return;
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const slug = String(entry.name);
-    const dsDir = join(designSystemsRoot, slug);
-    const demoPath = join(dsDir, "demo.html");
-    const fileStat = await stat(demoPath).catch(() => null);
-    if (!fileStat?.isFile()) continue;
-    const meta =
-      (await readJsonSafe<DesignSystemMeta>(
-        join(dsDir, DESIGN_SYSTEM_META_FILE),
-      )) ?? {};
-    const relativePath = `${DESIGN_SYSTEMS_DIR}/${slug}/demo.html`;
-    // DS on disk may have been created before the `onPrimary`/`onSecondary`/
-    // `onAccent` tokens were added to BrandTokens. Backfill them here so
-    // every tool response that includes the discovered DS passes output
-    // validation. normalizeBrandContrast is idempotent for already-complete
-    // brands, so this is safe for fresh DS too.
-    const sourceBrand = meta.brand ?? defaultBrand();
-    const brand = normalizeBrandContrast({ ...defaultBrand(), ...sourceBrand });
-    out.push({
-      slug,
-      name: meta.name ?? slug,
-      brand,
-      path: demoPath,
-      relativePath,
-      url: buildFileUrl({
-        baseUrl: options.baseUrl,
-        orgSlug: options.orgSlug,
-        relativePath,
-        refreshVersion,
-      }),
-      lastModified: fileStat.mtime.toISOString(),
-    });
-  }
-}
-
 async function discoverDesignSystems(
   options: PagePreviewOptions,
 ): Promise<DesignSystemEntry[]> {
-  const { designSystemsDir, statePath } = getPagePreviewPaths(options);
-  await mkdir(designSystemsDir, { recursive: true });
-  const state = await readState(statePath);
+  const { objectStorage } = options;
+  const state = await readState(objectStorage);
+  const slugs = await listSlugs(objectStorage, DESIGN_SYSTEMS_PREFIX);
   const out: DesignSystemEntry[] = [];
-  await discoverDesignSystemsInternal(
-    designSystemsDir,
-    options,
-    state.refreshVersion,
-    out,
+
+  await Promise.all(
+    slugs.map(async (slug) => {
+      const head = await statObject(objectStorage, dsObjKey(slug, "demo.html"));
+      if (!head) return;
+      const meta =
+        (await readJsonObject<DesignSystemMeta>(
+          objectStorage,
+          dsObjKey(slug, DESIGN_SYSTEM_META_FILE),
+        )) ?? {};
+      const relativePath = `design-systems/${slug}/demo.html`;
+      // DS stored before the `onPrimary`/`onSecondary`/`onAccent` tokens
+      // were added may be missing them. Backfill via normalizeBrandContrast
+      // (idempotent for already-complete brands).
+      const sourceBrand = meta.brand ?? DEFAULT_BRAND;
+      const brand = normalizeBrandContrast({
+        ...DEFAULT_BRAND,
+        ...sourceBrand,
+      });
+      out.push({
+        slug,
+        name: meta.name ?? slug,
+        brand,
+        path: dsObjKey(slug, "demo.html"),
+        relativePath,
+        url: buildFileUrl({
+          baseUrl: options.baseUrl,
+          orgSlug: options.orgSlug,
+          relativePath,
+          refreshVersion: state.refreshVersion,
+        }),
+        lastModified: (head.lastModified ?? new Date()).toISOString(),
+      });
+    }),
   );
+
   out.sort(
     (a, b) =>
       new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime(),
@@ -451,86 +455,85 @@ async function discoverDesignSystems(
   return out;
 }
 
-export function defaultBrand(): BrandTokens {
-  return {
-    name: "Untitled",
-    primary: "#6366F1",
-    secondary: "#22D3EE",
-    accent: "#F472B6",
-    bg: "#0B0B12",
-    surface: "#15151F",
-    fg: "#F6F6F8",
-    muted: "#A0A0B0",
-    border: "#262633",
-    // Defaults computed against the default primary/secondary/accent above.
-    // These get overwritten anyway by normalizeBrandContrast on every
-    // createDesignSystem call — provided here so the BrandTokens type stays
-    // sound for callers that build a brand without the contrast pass.
-    onPrimary: "#FFFFFF",
-    onSecondary: "#0A0A0F",
-    onAccent: "#0A0A0F",
-    headingFont: "Instrument Serif",
-    bodyFont: "Inter",
-    radius: "12px",
-  };
-}
+/**
+ * Default brand floor — fully populated so createDesignSystem can rely on
+ * a complete shape before merging template + caller overrides. The
+ * `onPrimary` / `onSecondary` / `onAccent` defaults are overwritten by
+ * `normalizeBrandContrast` on every real DS create; they exist here only
+ * so the BrandTokens type stays sound for callers that build a brand
+ * without the contrast pass.
+ */
+export const DEFAULT_BRAND: BrandTokens = {
+  name: "Untitled",
+  primary: "#6366F1",
+  secondary: "#22D3EE",
+  accent: "#F472B6",
+  bg: "#0B0B12",
+  surface: "#15151F",
+  fg: "#F6F6F8",
+  muted: "#A0A0B0",
+  border: "#262633",
+  onPrimary: "#FFFFFF",
+  onSecondary: "#0A0A0F",
+  onAccent: "#0A0A0F",
+  headingFont: "Instrument Serif",
+  bodyFont: "Inter",
+  radius: "12px",
+};
 
 /* ---------------------------------------------------------------------------
- * Path resolution helpers
+ * Page path resolution
  * ------------------------------------------------------------------------- */
 
 async function resolveExistingPagePath(
   options: PagePreviewSetOptions,
-): Promise<{ absolutePath: string; relativePath: string }> {
-  const { orgDir, pagesDir } = getPagePreviewPaths(options);
-  const roots = getServingRoots(options);
-  await mkdir(pagesDir, { recursive: true });
-
+): Promise<{ key: string; relativePath: string }> {
+  const { objectStorage } = options;
   const rawPath = options.path.trim();
   if (!rawPath) throw new Error("Missing page path");
 
-  // Slug shortcut: "pricing" -> pages/pricing/index.html
-  const looksLikeSlug =
-    !isAbsolute(rawPath) && !rawPath.includes("/") && !rawPath.includes(".");
+  // Build a list of candidate object-storage keys to probe, in priority
+  // order. The caller may pass:
+  //   - "pricing"                              → slug shortcut
+  //   - "pages/pricing/index.html"             → already a relative path
+  //   - "pricing/index.html"                   → relative under pages/
+  const candidates: string[] = [];
+  const looksLikeSlug = !rawPath.includes("/") && !rawPath.includes(".");
   if (looksLikeSlug) {
-    const guess = join(pagesDir, rawPath, "index.html");
-    const guessStat = await stat(guess).catch(() => null);
-    if (guessStat?.isFile()) {
-      return {
-        absolutePath: guess,
-        relativePath: `pages/${rawPath}/index.html`,
-      };
+    candidates.push(pageObjKey(rawPath, "index.html"));
+  }
+  // Strip leading "page-preview/" if the caller pre-prefixed it.
+  let cleaned = rawPath.replace(/^\/+/, "");
+  if (cleaned.startsWith(`${KEY_PREFIX}/`)) {
+    cleaned = cleaned.slice(KEY_PREFIX.length + 1);
+  }
+  if (cleaned.startsWith("pages/")) {
+    // Already includes the pages/ prefix.
+    candidates.push(`${KEY_PREFIX}/${cleaned}`);
+    // Allow "pages/<slug>" without index.html.
+    if (!/\.html?$/i.test(cleaned)) {
+      candidates.push(`${KEY_PREFIX}/${cleaned}/index.html`);
+    }
+  } else if (!looksLikeSlug) {
+    // Bare relative path under pages/ — e.g. "pricing/index.html".
+    candidates.push(`${PAGES_PREFIX}/${cleaned}`);
+    if (!/\.html?$/i.test(cleaned)) {
+      candidates.push(`${PAGES_PREFIX}/${cleaned}/index.html`);
     }
   }
 
-  // Path with leading "pages/" or relative -> resolve under orgDir
-  // Absolute paths must stay inside an allowed root.
-  let candidate: string;
-  if (isAbsolute(rawPath)) {
-    candidate = resolve(rawPath);
-  } else {
-    // Try "pages/<rest>" first, then fallback to bare rest under pagesDir
-    candidate = resolve(orgDir, rawPath);
-    const candidateStat = await stat(candidate).catch(() => null);
-    if (!candidateStat) {
-      candidate = resolve(pagesDir, rawPath);
+  for (const key of candidates) {
+    const head = await statObject(objectStorage, key);
+    if (!head) continue;
+    if (!/\.html?$/i.test(key)) {
+      throw new Error("Page preview path must point to an HTML file");
     }
+    const relativePath = key.startsWith(`${KEY_PREFIX}/`)
+      ? key.slice(KEY_PREFIX.length + 1)
+      : key;
+    return { key, relativePath };
   }
-
-  let candidateStat = await stat(candidate).catch(() => null);
-  if (candidateStat?.isDirectory()) {
-    candidate = join(candidate, "index.html");
-    candidateStat = await stat(candidate).catch(() => null);
-  }
-  if (!candidateStat?.isFile()) throw new Error("Page file not found");
-  if (!isHtmlPath(candidate)) {
-    throw new Error("Page preview path must point to an HTML file");
-  }
-  const inside = insideAnyRoot(roots, candidate);
-  if (!inside) {
-    throw new Error("Path must stay inside the Page Editor pages directory");
-  }
-  return { absolutePath: candidate, relativePath: inside.relativePath };
+  throw new Error("Page file not found");
 }
 
 /* ---------------------------------------------------------------------------
@@ -538,7 +541,6 @@ async function resolveExistingPagePath(
  * ------------------------------------------------------------------------- */
 
 function activePageFromState(args: {
-  pagesDir: string;
   state: PagePreviewState;
   pages: PagePreviewPage[];
 }): PagePreviewPage | null {
@@ -584,16 +586,13 @@ function activeDesignSystemFromState(args: {
 export async function getPagePreviewStatus(
   options: PagePreviewOptions,
 ): Promise<PagePreviewStatus> {
-  const { orgDir, pagesDir, designSystemsDir, statePath } =
-    getPagePreviewPaths(options);
-  await mkdir(pagesDir, { recursive: true });
-  await mkdir(designSystemsDir, { recursive: true });
-  const state = await readState(statePath);
+  const { objectStorage } = options;
+  const state = await readState(objectStorage);
   const [pages, designSystems] = await Promise.all([
     discoverHtmlPages(options),
     discoverDesignSystems(options),
   ]);
-  const activePage = activePageFromState({ pagesDir, state, pages });
+  const activePage = activePageFromState({ state, pages });
   const activeDs = activeDesignSystemFromState({ state, designSystems });
 
   // Determine the effective active item for the iframe
@@ -614,7 +613,11 @@ export async function getPagePreviewStatus(
   }
 
   return {
-    pagesDir: orgDir,
+    // `pagesDir` is a legacy field name from the disk era; we keep the
+    // key for response-shape stability but populate it with the storage
+    // key prefix so callers that log/display it still get something
+    // useful.
+    pagesDir: KEY_PREFIX,
     activeKind,
     activePath: activeEntry?.path ?? null,
     activeRelativePath: activeEntry?.relativePath ?? null,
@@ -636,10 +639,10 @@ export async function getPagePreviewStatus(
 export async function setPagePreviewActive(
   options: PagePreviewSetOptions,
 ): Promise<PagePreviewStatus> {
-  const { statePath } = getPagePreviewPaths(options);
-  const current = await readState(statePath);
+  const { objectStorage } = options;
+  const current = await readState(objectStorage);
   const page = await resolveExistingPagePath(options);
-  await writeState(statePath, {
+  await writeState(objectStorage, {
     activeKind: "page",
     activePath: page.relativePath,
     activeDesignSystem: current.activeDesignSystem,
@@ -656,14 +659,16 @@ export async function setPagePreviewActive(
 export async function setActiveDesignSystem(
   options: PagePreviewOptions & { slug: string },
 ): Promise<PagePreviewStatus> {
-  const { statePath, designSystemsDir } = getPagePreviewPaths(options);
-  const demoPath = join(designSystemsDir, options.slug, "demo.html");
-  const demoStat = await stat(demoPath).catch(() => null);
-  if (!demoStat?.isFile()) {
+  const { objectStorage } = options;
+  const demoHead = await statObject(
+    objectStorage,
+    dsObjKey(options.slug, "demo.html"),
+  );
+  if (!demoHead) {
     throw new Error(`Design system "${options.slug}" not found`);
   }
-  const current = await readState(statePath);
-  await writeState(statePath, {
+  const current = await readState(objectStorage);
+  await writeState(objectStorage, {
     activeKind: "design-system",
     activePath: current.activePath,
     activeDesignSystem: options.slug,
@@ -682,9 +687,9 @@ export async function setActiveDesignSystem(
 export async function refreshPagePreview(
   options: PagePreviewOptions,
 ): Promise<PagePreviewStatus> {
-  const { statePath } = getPagePreviewPaths(options);
-  const current = await readState(statePath);
-  await writeState(statePath, {
+  const { objectStorage } = options;
+  const current = await readState(objectStorage);
+  await writeState(objectStorage, {
     ...current,
     refreshVersion: current.refreshVersion + 1,
     updatedAt: new Date().toISOString(),
@@ -712,8 +717,8 @@ export async function refreshPagePreview(
 export async function setPageProgress(
   options: PagePreviewOptions & { label: string; outline?: string[] | null },
 ): Promise<PagePreviewStatus> {
-  const { statePath } = getPagePreviewPaths(options);
-  const current = await readState(statePath);
+  const { objectStorage } = options;
+  const current = await readState(objectStorage);
   const trimmed = options.label.trim().slice(0, 120);
   // Normalize outline: trim each item, drop empties, cap to 12 entries so a
   // runaway outline can't blow up the stepper layout. A `null` or `undefined`
@@ -728,7 +733,7 @@ export async function setPageProgress(
     nextOutline = cleaned.length > 0 ? cleaned : null;
     nextOutlineUpdatedAt = new Date().toISOString();
   }
-  await writeState(statePath, {
+  await writeState(objectStorage, {
     ...current,
     progressLabel: trimmed || null,
     progressUpdatedAt: new Date().toISOString(),
@@ -811,12 +816,10 @@ export async function createDesignSystem(
 ): Promise<{ slug: string; status: PagePreviewStatus }> {
   const slug = slugify(options.slug);
   if (!slug) throw new Error("Invalid design system slug");
-  const { designSystemsDir, statePath } = getPagePreviewPaths(options);
-  const dsDir = join(designSystemsDir, slug);
-  await mkdir(dsDir, { recursive: true });
+  const { objectStorage } = options;
 
   // Seed order (lowest → highest precedence):
-  //   1. defaultBrand() — fallback floor
+  //   1. DEFAULT_BRAND — fallback floor
   //   2. DEFAULT_THEMES[template] — if the agent named a curated theme
   //   3. options.brand — caller's explicit overrides (typically just primary
   //      + name when riffing on a template, or full palette when freestyle)
@@ -827,7 +830,7 @@ export async function createDesignSystem(
     ? (getDefaultTheme(options.template)?.brand ?? null)
     : null;
   const brand = normalizeBrandContrast({
-    ...defaultBrand(),
+    ...DEFAULT_BRAND,
     ...(templateBrand ?? {}),
     ...options.brand,
   });
@@ -839,25 +842,33 @@ export async function createDesignSystem(
   // SyntaxErrors that left the preview as a blank styled body.
   const tokensJsSource = `export const BRAND = ${JSON.stringify(brand, null, 2)};\n`;
   await Promise.all([
-    writeFile(
-      join(dsDir, "tokens.css"),
+    writeTextObject(
+      objectStorage,
+      dsObjKey(slug, "tokens.css"),
       renderTemplate(DESIGN_SYSTEM_TOKENS_CSS, brand),
-      "utf8",
+      "text/css; charset=utf-8",
     ),
-    writeFile(join(dsDir, "tokens.js"), tokensJsSource, "utf8"),
-    writeFile(
-      join(dsDir, "demo.html"),
+    writeTextObject(
+      objectStorage,
+      dsObjKey(slug, "tokens.js"),
+      tokensJsSource,
+      "application/javascript; charset=utf-8",
+    ),
+    writeTextObject(
+      objectStorage,
+      dsObjKey(slug, "demo.html"),
       renderTemplate(DESIGN_SYSTEM_DEMO_HTML, brand, {
         DESIGN_SYSTEM_NAME: options.name ?? slug,
       }),
-      "utf8",
+      "text/html; charset=utf-8",
     ),
-    writeFile(
-      join(dsDir, "demo.js"),
+    writeTextObject(
+      objectStorage,
+      dsObjKey(slug, "demo.js"),
       renderTemplate(DESIGN_SYSTEM_DEMO_JS, brand),
-      "utf8",
+      "application/javascript; charset=utf-8",
     ),
-    writeJson(join(dsDir, DESIGN_SYSTEM_META_FILE), {
+    writeJsonObject(objectStorage, dsObjKey(slug, DESIGN_SYSTEM_META_FILE), {
       name: options.name ?? slug,
       brand,
       createdAt: now,
@@ -866,8 +877,8 @@ export async function createDesignSystem(
   ]);
 
   // Bump refresh + activate as design-system preview
-  const current = await readState(statePath);
-  await writeState(statePath, {
+  const current = await readState(objectStorage);
+  await writeState(objectStorage, {
     activeKind: "design-system",
     activePath: current.activePath,
     activeDesignSystem: slug,
@@ -895,22 +906,21 @@ export async function createPage(
   const dsSlug = slugify(options.designSystem);
   if (!dsSlug) throw new Error("Invalid design system slug");
 
-  const { pagesDir, designSystemsDir, statePath } =
-    getPagePreviewPaths(options);
-  const dsDir = join(designSystemsDir, dsSlug);
-  const dsExists = await stat(join(dsDir, "demo.html")).catch(() => null);
-  if (!dsExists?.isFile()) {
+  const { objectStorage } = options;
+  const dsExists = await statObject(
+    objectStorage,
+    dsObjKey(dsSlug, "demo.html"),
+  );
+  if (!dsExists) {
     throw new Error(`Design system "${dsSlug}" not found — create it first.`);
   }
 
   const dsMeta =
-    (await readJsonSafe<DesignSystemMeta>(
-      join(dsDir, DESIGN_SYSTEM_META_FILE),
+    (await readJsonObject<DesignSystemMeta>(
+      objectStorage,
+      dsObjKey(dsSlug, DESIGN_SYSTEM_META_FILE),
     )) ?? {};
-  const brand = { ...defaultBrand(), ...(dsMeta.brand ?? {}) };
-
-  const pageDir = join(pagesDir, slug);
-  await mkdir(pageDir, { recursive: true });
+  const brand = { ...DEFAULT_BRAND, ...(dsMeta.brand ?? {}) };
 
   const title = options.title ?? options.name ?? slug;
   const description =
@@ -929,27 +939,31 @@ export async function createPage(
 
   const now = new Date().toISOString();
   await Promise.all([
-    writeFile(
-      join(pageDir, "index.html"),
+    writeTextObject(
+      objectStorage,
+      pageObjKey(slug, "index.html"),
       renderTemplate(PAGE_TEMPLATE_INDEX_HTML, brand, vars),
-      "utf8",
+      "text/html; charset=utf-8",
     ),
-    writeFile(
-      join(pageDir, "app.js"),
+    writeTextObject(
+      objectStorage,
+      pageObjKey(slug, "app.js"),
       renderTemplate(PAGE_TEMPLATE_APP_JS, brand, vars),
-      "utf8",
+      "application/javascript; charset=utf-8",
     ),
-    writeFile(
-      join(pageDir, "sections.js"),
+    writeTextObject(
+      objectStorage,
+      pageObjKey(slug, "sections.js"),
       renderTemplate(PAGE_TEMPLATE_SECTIONS_JS, brand, vars),
-      "utf8",
+      "application/javascript; charset=utf-8",
     ),
-    writeFile(
-      join(pageDir, "page.js"),
+    writeTextObject(
+      objectStorage,
+      pageObjKey(slug, "page.js"),
       renderTemplate(PAGE_TEMPLATE_PAGE_JS, brand, vars),
-      "utf8",
+      "application/javascript; charset=utf-8",
     ),
-    writeJson(join(pageDir, PAGE_META_FILE), {
+    writeJsonObject(objectStorage, pageObjKey(slug, PAGE_META_FILE), {
       name: options.name ?? title,
       designSystem: dsSlug,
       createdAt: now,
@@ -961,13 +975,13 @@ export async function createPage(
   // blocks from a previous build with the same slug.
   resetBlocks({
     orgId: options.orgId,
+    objectStorage: options.objectStorage,
     orgSlug: options.orgSlug,
     baseUrl: options.baseUrl,
-    dataDir: options.dataDir,
     slug,
   });
 
-  const current = await readState(statePath);
+  const current = await readState(objectStorage);
   // Default behavior: leave the design-system preview in place. Only flip
   // the preview to the new page when the caller explicitly opts in (or
   // there is no other preview to keep). Keeps the user staring at the
@@ -975,7 +989,7 @@ export async function createPage(
   const shouldActivate =
     options.activate === true ||
     (current.activeKind !== "design-system" && current.activeKind !== "page");
-  await writeState(statePath, {
+  await writeState(objectStorage, {
     activeKind: shouldActivate ? "page" : current.activeKind,
     activePath: shouldActivate
       ? `pages/${slug}/index.html`
@@ -995,47 +1009,6 @@ export async function createPage(
 
   const status = await getPagePreviewStatus(options);
   return { slug, status };
-}
-
-/* ---------------------------------------------------------------------------
- * Asset serving (used by the /files/* route)
- * ------------------------------------------------------------------------- */
-
-export async function resolvePagePreviewAsset(options: PagePreviewSetOptions) {
-  const { orgDir, pagesDir } = getPagePreviewPaths(options);
-  const roots = getServingRoots(options);
-  const rawPath = options.path.trim();
-  if (!rawPath) throw new Error("Missing file path");
-  if (!isAbsolute(rawPath)) {
-    assertInside(orgDir, resolve(orgDir, rawPath));
-  }
-
-  // Try orgDir first (new layout: pages/..., design-systems/...) then fall
-  // back to the legacy pages/-only layout for paths that don't carry the
-  // pages/ prefix yet.
-  const candidates: string[] = [];
-  if (isAbsolute(rawPath)) {
-    candidates.push(resolve(rawPath));
-  } else {
-    candidates.push(resolve(orgDir, rawPath));
-    candidates.push(resolve(pagesDir, rawPath));
-    for (const root of roots) {
-      candidates.push(resolve(root, rawPath));
-    }
-  }
-
-  for (const candidate of candidates) {
-    const inside = insideAnyRoot(roots, candidate);
-    if (!inside) continue;
-    const fileStat = await stat(candidate).catch(() => null);
-    if (!fileStat?.isFile()) continue;
-    return { absolutePath: candidate, relativePath: inside.relativePath };
-  }
-
-  if (isAbsolute(rawPath)) {
-    assertInside(orgDir, resolve(rawPath));
-  }
-  throw new Error("File not found");
 }
 
 /* ---------------------------------------------------------------------------
@@ -1069,10 +1042,6 @@ export async function listDesignSystems(
  * CDN imports (`preact`, `htm`) still load over HTTPS and work fine from
  * file://. The result is a single, self-contained HTML file.
  * ------------------------------------------------------------------------- */
-
-async function readUtf8(path: string): Promise<string> {
-  return readFile(path, "utf8");
-}
 
 /**
  * Strip every top-level ESM `import` statement from a chunk so the chunks
@@ -1674,31 +1643,43 @@ export async function buildPageExportBundle(
 }> {
   const slug = slugify(options.slug);
   if (!slug) throw new Error("Invalid slug");
-  const { pagesDir, designSystemsDir } = getPagePreviewPaths(options);
-  const pageDir = join(pagesDir, slug);
+  const { objectStorage } = options;
 
-  const pageDirStat = await stat(pageDir).catch(() => null);
-  if (!pageDirStat?.isDirectory()) {
+  const indexHtml = await readTextObject(
+    objectStorage,
+    pageObjKey(slug, "index.html"),
+  );
+  if (indexHtml == null) {
     throw new Error(`page "${slug}" not found`);
   }
-
   const pageMeta =
-    (await readJsonSafe<PageMeta>(join(pageDir, PAGE_META_FILE))) ?? {};
+    (await readJsonObject<PageMeta>(
+      objectStorage,
+      pageObjKey(slug, PAGE_META_FILE),
+    )) ?? {};
   const dsSlug = pageMeta.designSystem ?? null;
 
-  const [indexHtml, appJs, sectionsJs, pageJs] = await Promise.all([
-    readUtf8(join(pageDir, "index.html")),
-    readUtf8(join(pageDir, "app.js")),
-    readUtf8(join(pageDir, "sections.js")).catch(() => ""),
-    readUtf8(join(pageDir, "page.js")).catch(() => ""),
+  const [appJs, sectionsJs, pageJs] = await Promise.all([
+    readTextObject(objectStorage, pageObjKey(slug, "app.js")).then(
+      (s) => s ?? "",
+    ),
+    readTextObject(objectStorage, pageObjKey(slug, "sections.js")).then(
+      (s) => s ?? "",
+    ),
+    readTextObject(objectStorage, pageObjKey(slug, "page.js")).then(
+      (s) => s ?? "",
+    ),
   ]);
 
   let tokensCss = "";
   let tokensJs = "";
   if (dsSlug) {
-    const dsDir = join(designSystemsDir, dsSlug);
-    tokensCss = await readUtf8(join(dsDir, "tokens.css")).catch(() => "");
-    tokensJs = await readUtf8(join(dsDir, "tokens.js")).catch(() => "");
+    tokensCss =
+      (await readTextObject(objectStorage, dsObjKey(dsSlug, "tokens.css"))) ??
+      "";
+    tokensJs =
+      (await readTextObject(objectStorage, dsObjKey(dsSlug, "tokens.js"))) ??
+      "";
   }
 
   // Strip `export ` so the inline module sees `BRAND`, `Nav`, etc. as
@@ -1815,7 +1796,9 @@ export async function buildPageExportBundle(
   if (pageJs) await includeRaw("page.js", pageJs);
   if (tokensCss) await includeRaw("tokens.css", tokensCss);
   if (tokensJs) await includeRaw("tokens.js", tokensJs);
-  const metaSrc = await readUtf8(join(pageDir, PAGE_META_FILE)).catch(() => "");
+  const metaSrc =
+    (await readTextObject(objectStorage, pageObjKey(slug, PAGE_META_FILE))) ??
+    "";
   if (metaSrc) await includeRaw("meta.json", metaSrc);
 
   return { bundleName: `page-${slug}`, files };
@@ -1835,18 +1818,24 @@ export async function buildDesignSystemExportBundle(
 }> {
   const slug = slugify(options.slug);
   if (!slug) throw new Error("Invalid slug");
-  const { designSystemsDir } = getPagePreviewPaths(options);
-  const dsDir = join(designSystemsDir, slug);
-  const dsStat = await stat(dsDir).catch(() => null);
-  if (!dsStat?.isDirectory()) {
+  const { objectStorage } = options;
+  const demoHtml = await readTextObject(
+    objectStorage,
+    dsObjKey(slug, "demo.html"),
+  );
+  if (demoHtml == null) {
     throw new Error(`design system "${slug}" not found`);
   }
-
-  const [demoHtml, demoJs, tokensJs, tokensCss] = await Promise.all([
-    readUtf8(join(dsDir, "demo.html")),
-    readUtf8(join(dsDir, "demo.js")).catch(() => ""),
-    readUtf8(join(dsDir, "tokens.js")).catch(() => ""),
-    readUtf8(join(dsDir, "tokens.css")).catch(() => ""),
+  const [demoJs, tokensJs, tokensCss] = await Promise.all([
+    readTextObject(objectStorage, dsObjKey(slug, "demo.js")).then(
+      (s) => s ?? "",
+    ),
+    readTextObject(objectStorage, dsObjKey(slug, "tokens.js")).then(
+      (s) => s ?? "",
+    ),
+    readTextObject(objectStorage, dsObjKey(slug, "tokens.css")).then(
+      (s) => s ?? "",
+    ),
   ]);
 
   const stripExports = (src: string) =>
@@ -1870,9 +1859,11 @@ export async function buildDesignSystemExportBundle(
     `<script type="module">\n${inlineModule}\n</script>`,
   );
 
-  const metaSrc = await readUtf8(join(dsDir, DESIGN_SYSTEM_META_FILE)).catch(
-    () => "",
-  );
+  const metaSrc =
+    (await readTextObject(
+      objectStorage,
+      dsObjKey(slug, DESIGN_SYSTEM_META_FILE),
+    )) ?? "";
 
   const enc = new TextEncoder();
   const files: Array<{ relativePath: string; data: Uint8Array }> = [
@@ -2051,10 +2042,12 @@ export async function appendBlock(
   // claim "Done — your page is live" while the user saw nothing rendered.
   // Now we throw with the exact remediation: literally the tool call the
   // agent needs to make instead.
-  const { pagesDir } = getPagePreviewPaths(options);
-  const pageDir = join(pagesDir, slugify(options.slug));
-  const pageStat = await stat(pageDir).catch(() => null);
-  if (!pageStat?.isDirectory()) {
+  const slug = slugify(options.slug);
+  const pageExists = await statObject(
+    options.objectStorage,
+    pageObjKey(slug, "index.html"),
+  );
+  if (!pageExists) {
     throw new Error(
       `Page "${options.slug}" does not exist. You must call PAGE_PREVIEW_PAGE_CREATE first. Required next call: PAGE_PREVIEW_PAGE_CREATE({ slug: "${options.slug}", designSystem: "<your-ds-slug>" }) — then retry this PAGE_RENDER_BLOCK call.`,
     );
@@ -2104,8 +2097,7 @@ export async function appendBlock(
   // Read outline so the tool layer can build an LLM-friendly nextStep
   // naming the *remaining* sections. Don't trust the agent to track its
   // own outline — surface it from server state.
-  const { statePath } = getPagePreviewPaths(options);
-  const state = await readState(statePath);
+  const state = await readState(options.objectStorage);
   return {
     index: blocks.length - 1,
     blockCount: blocks.length,
@@ -2182,9 +2174,9 @@ export async function removeBlock(
  * still see the change. Cheap to write.
  */
 async function bumpRefreshVersion(options: PagePreviewOptions): Promise<void> {
-  const { statePath } = getPagePreviewPaths(options);
-  const current = await readState(statePath);
-  await writeState(statePath, {
+  const { objectStorage } = options;
+  const current = await readState(objectStorage);
+  await writeState(objectStorage, {
     ...current,
     refreshVersion: current.refreshVersion + 1,
     updatedAt: new Date().toISOString(),
@@ -2201,8 +2193,6 @@ async function writeBlocksToPageJs(
   blocks: readonly PageBlock[],
   options: PagePreviewOptions,
 ): Promise<void> {
-  const { pagesDir } = getPagePreviewPaths(options);
-  const pageDir = join(pagesDir, slug);
   const source =
     "/**\n" +
     " * Ordered list of section blocks rendered by app.js.\n" +
@@ -2212,5 +2202,10 @@ async function writeBlocksToPageJs(
     " * authoring; this file is the durable export-target snapshot.\n" +
     " */\n" +
     `export const PAGE = ${JSON.stringify(blocks, null, 2)};\n`;
-  await writeFile(join(pageDir, "page.js"), source, "utf8");
+  await writeTextObject(
+    options.objectStorage,
+    pageObjKey(slug, "page.js"),
+    source,
+    "application/javascript; charset=utf-8",
+  );
 }

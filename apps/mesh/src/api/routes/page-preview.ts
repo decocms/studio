@@ -6,35 +6,10 @@ import {
   buildDesignSystemExportBundle,
   buildPageExportBundle,
   getPagePreviewStatus,
-  resolvePagePreviewAsset,
 } from "@/page-preview/service";
 import { PAGE_PREVIEW_HOST_HTML } from "@/page-preview/host-html";
 
 type Variables = { meshContext: MeshContext };
-
-function getContentType(path: string): string {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  const types: Record<string, string> = {
-    html: "text/html; charset=utf-8",
-    htm: "text/html; charset=utf-8",
-    js: "application/javascript; charset=utf-8",
-    mjs: "application/javascript; charset=utf-8",
-    css: "text/css; charset=utf-8",
-    json: "application/json; charset=utf-8",
-    svg: "image/svg+xml",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    webp: "image/webp",
-    ico: "image/x-icon",
-    woff: "font/woff",
-    woff2: "font/woff2",
-    ttf: "font/ttf",
-    otf: "font/otf",
-  };
-  return types[ext] ?? "application/octet-stream";
-}
 
 function routeBaseUrl(reqUrl: string): string {
   const url = new URL(reqUrl);
@@ -59,7 +34,7 @@ export function createPagePreviewRoutes() {
   app.get("/state", async (c) => {
     const ctx = c.get("meshContext");
     const org = ctx.organization;
-    if (!org?.id) {
+    if (!org?.id || !ctx.objectStorage) {
       throw new HTTPException(401, {
         message: "Organization context required",
       });
@@ -68,52 +43,21 @@ export function createPagePreviewRoutes() {
     return c.json(
       await getPagePreviewStatus({
         orgId: org.id,
+        objectStorage: ctx.objectStorage,
         orgSlug: org.slug ?? c.req.param("org"),
         baseUrl: routeBaseUrl(c.req.url),
       }),
     );
   });
 
-  app.get("/files/*", async (c) => {
-    const ctx = c.get("meshContext");
-    const org = ctx.organization;
-    if (!org?.id) {
-      throw new HTTPException(401, {
-        message: "Organization context required",
-      });
-    }
-
-    const prefix = `/api/${c.req.param("org") ?? ""}/page-preview/files/`;
-    const rawPath = c.req.path.replace(prefix, "");
-    let filePath: string;
-    try {
-      filePath = decodeURIComponent(rawPath);
-    } catch {
-      throw new HTTPException(400, { message: "Invalid file path" });
-    }
-
-    try {
-      const resolved = await resolvePagePreviewAsset({
-        orgId: org.id,
-        path: filePath,
-      });
-      const file = Bun.file(resolved.absolutePath);
-      return new Response(file.stream(), {
-        headers: {
-          "Content-Type": getContentType(resolved.absolutePath),
-          "Content-Length": file.size.toString(),
-          "Cache-Control": "no-store",
-        },
-      });
-    } catch {
-      throw new HTTPException(404, { message: "File not found" });
-    }
-  });
+  // NB: there is no /files/* route — page-preview assets are served via
+  // Studio's canonical /api/{org}/files/{key} redirect on object storage.
+  // Persistence and serving share the same key namespace (page-preview/...).
 
   app.get("/export", async (c) => {
     const ctx = c.get("meshContext");
     const org = ctx.organization;
-    if (!org?.id) {
+    if (!org?.id || !ctx.objectStorage) {
       throw new HTTPException(401, {
         message: "Organization context required",
       });
@@ -132,10 +76,15 @@ export function createPagePreviewRoutes() {
 
     let bundle: Awaited<ReturnType<typeof buildPageExportBundle>>;
     try {
+      const args = {
+        orgId: org.id,
+        objectStorage: ctx.objectStorage,
+        slug,
+      };
       bundle =
         kind === "page"
-          ? await buildPageExportBundle({ orgId: org.id, slug })
-          : await buildDesignSystemExportBundle({ orgId: org.id, slug });
+          ? await buildPageExportBundle(args)
+          : await buildDesignSystemExportBundle(args);
     } catch (err) {
       throw new HTTPException(404, { message: (err as Error).message });
     }

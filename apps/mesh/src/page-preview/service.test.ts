@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { DevObjectStorage } from "@/object-storage/dev-object-storage";
+import { getSettings } from "@/settings";
 import {
   buildDesignSystemExportBundle,
   buildPageExportBundle,
   createDesignSystem,
   createPage,
-  defaultBrand,
+  DEFAULT_BRAND,
   discoverHtmlPages,
-  getPagePreviewPaths,
   getPagePreviewStatus,
   refreshPagePreview,
   setActiveDesignSystem,
@@ -17,112 +18,156 @@ import {
 } from "./service";
 import { contrastRatio, parseHex } from "./contrast";
 
-const ORG_ID = "org/test";
+const ORG_ID = "org-test";
 const ORG_SLUG = "acme";
 
-let dataDir: string;
+// DevObjectStorage writes under ./data/assets/<orgId>/ relative to cwd. We
+// can't redirect it via a constructor arg (the path is baked in), so we cd
+// into a temp dir per test to isolate the on-disk footprint. The encryption
+// key isn't relevant for the methods we exercise.
+let originalCwd: string;
+let cwdDir: string;
 
 beforeEach(async () => {
-  dataDir = await mkdtemp(join(tmpdir(), "page-preview-"));
+  originalCwd = process.cwd();
+  cwdDir = await mkdtemp(join(tmpdir(), "page-preview-"));
+  process.chdir(cwdDir);
+  // DevObjectStorage signs presigned URLs against settings.encryptionKey; we
+  // don't generate any URLs in these tests so the default is fine.
+  void getSettings();
 });
 
 afterEach(async () => {
-  await rm(dataDir, { recursive: true, force: true });
+  process.chdir(originalCwd);
+  await rm(cwdDir, { recursive: true, force: true });
 });
 
-async function writePage(relativePath: string, body = "<!doctype html>") {
-  const { pagesDir } = getPagePreviewPaths({ orgId: ORG_ID, dataDir });
-  const absolutePath = join(pagesDir, relativePath);
-  await mkdir(dirname(absolutePath), { recursive: true });
-  await writeFile(absolutePath, body, "utf8");
-  return absolutePath;
+function makeStorage(orgId = ORG_ID): DevObjectStorage {
+  return new DevObjectStorage(orgId);
+}
+
+async function writePage(
+  storage: DevObjectStorage,
+  slug: string,
+  body = "<!doctype html>",
+) {
+  await storage.put(`page-preview/pages/${slug}/index.html`, body, {
+    contentType: "text/html; charset=utf-8",
+  });
 }
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-describe("page preview service", () => {
-  test("uses one well-known local pages directory for every org", () => {
-    const first = getPagePreviewPaths({ orgId: "org-one", dataDir });
-    const second = getPagePreviewPaths({ orgId: "org-two", dataDir });
+describe("page preview service — multi-tenant isolation", () => {
+  test("org A's bindings cannot see org B's pages", async () => {
+    const storageA = makeStorage("org-A");
+    const storageB = makeStorage("org-B");
 
-    expect(first.pagesDir).toBe(join(dataDir, "page-editor", "pages"));
-    expect(second.pagesDir).toBe(first.pagesDir);
-    expect(second.statePath).toBe(first.statePath);
-    expect(first.designSystemsDir).toBe(
-      join(dataDir, "page-editor", "design-systems"),
-    );
+    await writePage(storageA, "alpha", "<html>org A page</html>");
+    await writePage(storageB, "beta", "<html>org B page</html>");
+
+    const pagesA = await discoverHtmlPages({
+      orgId: "org-A",
+      objectStorage: storageA,
+      orgSlug: "org-a",
+      baseUrl: "http://localhost:3000",
+    });
+    const pagesB = await discoverHtmlPages({
+      orgId: "org-B",
+      objectStorage: storageB,
+      orgSlug: "org-b",
+      baseUrl: "http://localhost:3000",
+    });
+
+    expect(pagesA.map((p) => p.slug).sort()).toEqual(["alpha"]);
+    expect(pagesB.map((p) => p.slug).sort()).toEqual(["beta"]);
+  });
+});
+
+describe("page preview service", () => {
+  let storage: DevObjectStorage;
+  beforeEach(() => {
+    storage = makeStorage();
   });
 
   test("normalizes page slug to index.html and sets active preview", async () => {
-    const absolutePath = await writePage("pricing/index.html");
+    await writePage(storage, "pricing");
 
     const status = await setPagePreviewActive({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       path: "pricing",
     });
 
-    expect(status.activePath).toBe(absolutePath);
     expect(status.activeRelativePath).toBe("pages/pricing/index.html");
     expect(status.activeKind).toBe("page");
     expect(status.refreshVersion).toBe(1);
     expect(status.activeUrl).toBe(
-      "http://localhost:3000/api/acme/page-preview/files/pages/pricing/index.html?v=1",
+      "http://localhost:3000/api/acme/files/page-preview/pages/pricing/index.html?v=1",
     );
   });
 
-  test("accepts absolute HTML paths inside the pages directory", async () => {
-    const absolutePath = await writePage("absolute/index.html");
+  test("accepts relative paths under pages/", async () => {
+    await writePage(storage, "relative");
 
     const status = await setPagePreviewActive({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
-      path: absolutePath,
+      path: "pages/relative/index.html",
     });
 
-    expect(status.activePath).toBe(absolutePath);
-    expect(status.activeRelativePath).toBe("pages/absolute/index.html");
+    expect(status.activeRelativePath).toBe("pages/relative/index.html");
   });
 
-  test("rejects relative traversal outside the pages directory", async () => {
+  test("rejects paths that don't resolve to a stored page", async () => {
     await expect(
       setPagePreviewActive({
         orgId: ORG_ID,
-        dataDir,
-        path: "../escape/index.html",
+        objectStorage: storage,
+        orgSlug: ORG_SLUG,
+        baseUrl: "http://localhost:3000",
+        path: "nope/index.html",
       }),
     ).rejects.toThrow();
   });
 
-  test("rejects absolute paths outside the pages directory", async () => {
-    const outsidePath = join(dataDir, "outside.html");
-    await writeFile(outsidePath, "<!doctype html>", "utf8");
+  test("rejects non-HTML paths", async () => {
+    await storage.put("page-preview/pages/img/logo.png", "fake-png", {
+      contentType: "image/png",
+    });
 
     await expect(
       setPagePreviewActive({
         orgId: ORG_ID,
-        dataDir,
-        path: outsidePath,
+        objectStorage: storage,
+        orgSlug: ORG_SLUG,
+        baseUrl: "http://localhost:3000",
+        path: "pages/img/logo.png",
       }),
     ).rejects.toThrow();
   });
 
-  test("discovers HTML pages under the local pages directory", async () => {
-    await writePage("landing/index.html");
-    await writePage("pricing/index.html");
-    await writePage("pricing/app.js", "console.log('ignored')");
+  test("discovers HTML pages under the pages prefix", async () => {
+    await writePage(storage, "landing");
+    await writePage(storage, "pricing");
+    // Sibling non-index file should be ignored by discovery.
+    await storage.put(
+      "page-preview/pages/pricing/app.js",
+      "console.log('ignored')",
+      { contentType: "application/javascript" },
+    );
 
     const pages = await discoverHtmlPages({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
     });
 
     expect(pages.map((p) => p.slug).sort()).toEqual(["landing", "pricing"]);
@@ -132,20 +177,20 @@ describe("page preview service", () => {
   });
 
   test("refresh increments version and preserves the active page", async () => {
-    await writePage("launch/index.html");
+    await writePage(storage, "launch");
     await setPagePreviewActive({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
-      path: "launch/index.html",
+      path: "launch",
     });
 
     const refreshed = await refreshPagePreview({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
     });
 
     expect(refreshed.activeRelativePath).toBe("pages/launch/index.html");
@@ -154,13 +199,13 @@ describe("page preview service", () => {
   });
 
   test("status falls back to the newest discovered page when no active page is set", async () => {
-    await writePage("fallback/index.html");
+    await writePage(storage, "fallback");
 
     const status = await getPagePreviewStatus({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
     });
 
     expect(status.activeRelativePath).toBe("pages/fallback/index.html");
@@ -169,23 +214,23 @@ describe("page preview service", () => {
   });
 
   test("status switches to a newer page written after the active page was set", async () => {
-    await writePage("first/index.html");
+    await writePage(storage, "first");
     await setPagePreviewActive({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
-      path: "first/index.html",
+      path: "first",
     });
 
     await sleep(10);
-    await writePage("second/index.html");
+    await writePage(storage, "second");
 
     const status = await getPagePreviewStatus({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
     });
 
     expect(status.activeRelativePath).toBe("pages/second/index.html");
@@ -193,13 +238,18 @@ describe("page preview service", () => {
 });
 
 describe("design system scaffolding", () => {
+  let storage: DevObjectStorage;
+  beforeEach(() => {
+    storage = makeStorage();
+  });
+
   test("creates a design system with tokens, demo and meta", async () => {
-    const brand = { ...defaultBrand(), primary: "#FF00AA" };
+    const brand = { ...DEFAULT_BRAND, primary: "#FF00AA" };
     const { slug, status } = await createDesignSystem({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "Pristine!",
       name: "Pristine",
       brand,
@@ -211,10 +261,17 @@ describe("design system scaffolding", () => {
     expect(status.designSystems).toHaveLength(1);
     expect(status.designSystems[0]?.brand.primary).toBe("#FF00AA");
 
-    const root = join(dataDir, "page-editor", "design-systems", "pristine");
-    const tokensCss = await readFile(join(root, "tokens.css"), "utf8");
-    expect(tokensCss).toContain("--brand-primary: #FF00AA");
-    const meta = JSON.parse(await readFile(join(root, "meta.json"), "utf8"));
+    const tokensCssRes = await storage.get(
+      "page-preview/design-systems/pristine/tokens.css",
+    );
+    if ("error" in tokensCssRes) throw new Error("tokens.css too large");
+    expect(tokensCssRes.content).toContain("--brand-primary: #FF00AA");
+
+    const metaRes = await storage.get(
+      "page-preview/design-systems/pristine/meta.json",
+    );
+    if ("error" in metaRes) throw new Error("meta.json too large");
+    const meta = JSON.parse(metaRes.content);
     expect(meta.brand.primary).toBe("#FF00AA");
   });
 
@@ -222,7 +279,9 @@ describe("design system scaffolding", () => {
     await expect(
       setActiveDesignSystem({
         orgId: ORG_ID,
-        dataDir,
+        objectStorage: storage,
+        orgSlug: ORG_SLUG,
+        baseUrl: "http://localhost:3000",
         slug: "ghost",
       }),
     ).rejects.toThrow();
@@ -232,37 +291,37 @@ describe("design system scaffolding", () => {
     const { setPageProgress } = await import("./service");
     const set = await setPageProgress({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       label: "Picking a design system…",
     });
     expect(set.progressLabel).toBe("Picking a design system…");
 
     const created = await createDesignSystem({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "pristine",
-      brand: defaultBrand(),
+      brand: DEFAULT_BRAND,
     });
     expect(created.status.progressLabel).toBeNull();
 
     const set2 = await setPageProgress({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       label: "Building the hero",
     });
     expect(set2.progressLabel).toBe("Building the hero");
 
     const refreshed = await refreshPagePreview({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
     });
     expect(refreshed.progressLabel).toBeNull();
   });
@@ -270,17 +329,15 @@ describe("design system scaffolding", () => {
   test("auto-corrects illegible muted/border on a light bg", async () => {
     const { status } = await createDesignSystem({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "lavender",
       brand: {
-        ...defaultBrand(),
+        ...DEFAULT_BRAND,
         bg: "#F3EBFF",
         surface: "#FFFFFF",
         fg: "#1A1A1A",
-        // Agent supplied an illegible pastel for muted and a vivid yellow
-        // for border — exactly the kind of mistake we want to correct.
         muted: "#E5DDF3",
         border: "#FFE600",
       },
@@ -289,10 +346,8 @@ describe("design system scaffolding", () => {
     const bg = parseHex(ds.brand.bg)!;
     const muted = parseHex(ds.brand.muted)!;
     expect(contrastRatio(muted, bg)).toBeGreaterThanOrEqual(5.5);
-    // border has a softer threshold but must still be visible.
     const border = parseHex(ds.brand.border)!;
     expect(contrastRatio(border, bg)).toBeGreaterThanOrEqual(1.5);
-    // fg must hit AAA.
     const fg = parseHex(ds.brand.fg)!;
     expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(7);
   });
@@ -300,16 +355,16 @@ describe("design system scaffolding", () => {
   test("auto-corrects illegible muted on a dark bg", async () => {
     const { status } = await createDesignSystem({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "deepnight",
       brand: {
-        ...defaultBrand(),
+        ...DEFAULT_BRAND,
         bg: "#0B0B12",
         surface: "#15151F",
         fg: "#F6F6F8",
-        muted: "#1A1A22", // way too dark on dark bg
+        muted: "#1A1A22",
         border: "#181820",
       },
     });
@@ -321,21 +376,26 @@ describe("design system scaffolding", () => {
 });
 
 describe("page scaffolding", () => {
+  let storage: DevObjectStorage;
+  beforeEach(() => {
+    storage = makeStorage();
+  });
+
   test("creates a page bound to an existing design system", async () => {
     await createDesignSystem({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "pristine",
-      brand: defaultBrand(),
+      brand: DEFAULT_BRAND,
     });
 
     const { slug, status } = await createPage({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "Landing!",
       designSystem: "pristine",
       title: "Landing",
@@ -343,37 +403,40 @@ describe("page scaffolding", () => {
     });
 
     expect(slug).toBe("landing");
-    // Default: do NOT switch preview to the new (empty) page; keep design
-    // system visible until the agent edits page.js + calls PAGE_PREVIEW_SET.
     expect(status.activeKind).toBe("design-system");
     expect(status.activeDesignSystem).toBe("pristine");
 
-    const pageDir = join(dataDir, "page-editor", "pages", "landing");
-    const index = await readFile(join(pageDir, "index.html"), "utf8");
-    expect(index).toContain("<title>Landing</title>");
-    expect(index).toContain("../../design-systems/pristine/tokens.css");
-    const meta = JSON.parse(await readFile(join(pageDir, "meta.json"), "utf8"));
+    const indexRes = await storage.get("page-preview/pages/landing/index.html");
+    if ("error" in indexRes) throw new Error("index.html too large");
+    expect(indexRes.content).toContain("<title>Landing</title>");
+    expect(indexRes.content).toContain(
+      "../../design-systems/pristine/tokens.css",
+    );
+
+    const metaRes = await storage.get("page-preview/pages/landing/meta.json");
+    if ("error" in metaRes) throw new Error("meta.json too large");
+    const meta = JSON.parse(metaRes.content);
     expect(meta.designSystem).toBe("pristine");
-    // page.js ships empty so the page renders the EmptyPageState until the
-    // agent populates it.
-    const pageJs = await readFile(join(pageDir, "page.js"), "utf8");
-    expect(pageJs).toMatch(/export const PAGE = \[\];?\s*$/);
+
+    const pageJsRes = await storage.get("page-preview/pages/landing/page.js");
+    if ("error" in pageJsRes) throw new Error("page.js too large");
+    expect(pageJsRes.content).toMatch(/export const PAGE = \[\];?\s*$/);
   });
 
   test("createPage with activate=true switches the preview immediately", async () => {
     await createDesignSystem({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "pristine",
-      brand: defaultBrand(),
+      brand: DEFAULT_BRAND,
     });
     const { status } = await createPage({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "landing",
       designSystem: "pristine",
       activate: true,
@@ -386,7 +449,9 @@ describe("page scaffolding", () => {
     await expect(
       createPage({
         orgId: ORG_ID,
-        dataDir,
+        objectStorage: storage,
+        orgSlug: ORG_SLUG,
+        baseUrl: "http://localhost:3000",
         slug: "landing",
         designSystem: "ghost",
       }),
@@ -395,27 +460,32 @@ describe("page scaffolding", () => {
 });
 
 describe("export", () => {
+  let storage: DevObjectStorage;
+  beforeEach(() => {
+    storage = makeStorage();
+  });
+
   test("page export bundles a self-contained index.html plus raw src/", async () => {
     await createDesignSystem({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "pristine",
-      brand: defaultBrand(),
+      brand: DEFAULT_BRAND,
     });
     await createPage({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "landing",
       designSystem: "pristine",
     });
 
     const { bundleName, files } = await buildPageExportBundle({
       orgId: ORG_ID,
-      dataDir,
+      objectStorage: storage,
       slug: "landing",
     });
     expect(bundleName).toBe("page-landing");
@@ -432,38 +502,25 @@ describe("export", () => {
     const indexHtml = dec.decode(
       files.find((f) => f.relativePath === "index.html")!.data,
     );
-    // Stylesheet must be inlined; no remaining ../../design-systems ref.
     expect(indexHtml).not.toContain("../../design-systems");
     expect(indexHtml).toContain("<style>");
     expect(indexHtml).toContain("--brand-primary");
-    // app.js script-src is replaced with an inline module that no longer
-    // imports from same-folder relatives.
     expect(indexHtml).toContain('<script type="module">');
     expect(indexHtml).not.toMatch(/src=["']\.\/app\.js["']/);
     expect(indexHtml).not.toMatch(/from\s+['"]\.\/sections\.js['"]/);
     expect(indexHtml).not.toMatch(/from\s+['"]\.\/page\.js['"]/);
-    // BRAND must be defined inline (no longer imported).
     expect(indexHtml).toMatch(/(?:^|\n)\s*const BRAND\s*=/);
-    // Each chunk used to redeclare `const html = htm.bind(h)` — concatenation
-    // produced a SyntaxError. After hoisting the binding once at the top of
-    // the consolidated module, exactly one declaration should remain.
     const htmlBindCount = (
       indexHtml.match(/const\s+html\s*=\s*htm\.bind\(h\)/g) ?? []
     ).length;
     expect(htmlBindCount).toBe(1);
-    // Same story for `import { h ... } from 'preact'` — one canonical import.
     const preactImportCount = (
       indexHtml.match(/import\s+\{[^}]*\}\s*from\s+['"]preact['"]/g) ?? []
     ).length;
     expect(preactImportCount).toBe(1);
-    // `app.js` does `Sections[block.section]` — after we strip the
-    // `import * as Sections` line, the inline bundle must reconstruct a
-    // `Sections` namespace from the section function names.
     expect(indexHtml).toMatch(
       /(?:^|\n)\s*const\s+Sections\s*=\s*\{\s*[A-Z][A-Za-z0-9_$]*/,
     );
-    // Spot-check a couple of well-known section names are inside the
-    // synthesized namespace.
     expect(indexHtml).toMatch(/const\s+Sections\s*=\s*\{[^}]*\bHero\b/);
     expect(indexHtml).toMatch(/const\s+Sections\s*=\s*\{[^}]*\bNav\b/);
   });
@@ -471,16 +528,16 @@ describe("export", () => {
   test("design-system export bundles a self-contained demo.html", async () => {
     await createDesignSystem({
       orgId: ORG_ID,
+      objectStorage: storage,
       orgSlug: ORG_SLUG,
       baseUrl: "http://localhost:3000",
-      dataDir,
       slug: "pristine",
-      brand: defaultBrand(),
+      brand: DEFAULT_BRAND,
     });
 
     const { bundleName, files } = await buildDesignSystemExportBundle({
       orgId: ORG_ID,
-      dataDir,
+      objectStorage: storage,
       slug: "pristine",
     });
     expect(bundleName).toBe("design-system-pristine");
@@ -492,7 +549,6 @@ describe("export", () => {
     const demoHtml = dec.decode(
       files.find((f) => f.relativePath === "demo.html")!.data,
     );
-    // demo.js external script is replaced with an inline module.
     expect(demoHtml).not.toMatch(/src=["']\.\/demo\.js["']/);
     expect(demoHtml).toContain('<script type="module">');
     expect(demoHtml).toMatch(/(?:^|\n)\s*const BRAND\s*=/);
