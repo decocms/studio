@@ -430,55 +430,57 @@ export default function SettingsLayout() {
   const { org } = useParams({ from: "/shell/$org" });
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-        <Toolbar.Header>
-          <Toolbar.LeftColumn>
-            <Link
-              to="/$org"
-              params={{ org }}
-              className="wco-no-drag flex items-center gap-1.5 px-2 h-7 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <ArrowNarrowLeft size={14} className="shrink-0" />
-              <span>Settings</span>
-            </Link>
-            <SidebarTriggerButton />
-            <span className="hidden md:contents">
-              <Toolbar.Nav />
-            </span>
-          </Toolbar.LeftColumn>
-          <Toolbar.CenterSlot />
-          <Toolbar.RightColumn>
-            <span />
-          </Toolbar.RightColumn>
-        </Toolbar.Header>
-        <SidebarLayout
-          className="flex-1 bg-sidebar min-h-0"
-          style={
-            {
-              "--sidebar-width-icon": "3.5rem",
-            } as Record<string, string>
-          }
-        >
-          {!isMobile && <SettingsSidebar />}
-          <SidebarInset
-            className="flex flex-col"
-            style={{
-              background: "transparent",
-              containerType: "inline-size",
-            }}
+    <Toolbar.Provider>
+      <SidebarProvider defaultOpen={true}>
+        <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
+          <Toolbar.Header>
+            <Toolbar.LeftColumn>
+              <Link
+                to="/$org"
+                params={{ org }}
+                className="wco-no-drag flex items-center gap-1.5 px-2 h-7 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <ArrowNarrowLeft size={14} className="shrink-0" />
+                <span>Settings</span>
+              </Link>
+              <SidebarTriggerButton />
+              <span className="hidden md:contents">
+                <Toolbar.Nav />
+              </span>
+            </Toolbar.LeftColumn>
+            <Toolbar.CenterSlot />
+            <Toolbar.RightColumn>
+              <span />
+            </Toolbar.RightColumn>
+          </Toolbar.Header>
+          <SidebarLayout
+            className="flex-1 bg-sidebar min-h-0"
+            style={
+              {
+                "--sidebar-width-icon": "3.5rem",
+              } as Record<string, string>
+            }
           >
-            <SettingsInset />
-          </SidebarInset>
-        </SidebarLayout>
-        {isMobile && (
-          <MobileSidebarSheet
-            renderSidebar={({ onClose }) => (
-              <SettingsSidebarMobile onClose={onClose} />
-            )}
-          />
-        )}
-      </div>
-    </SidebarProvider>
+            {!isMobile && <SettingsSidebar />}
+            <SidebarInset
+              className="flex flex-col"
+              style={{
+                background: "transparent",
+                containerType: "inline-size",
+              }}
+            >
+              <SettingsInset />
+            </SidebarInset>
+          </SidebarLayout>
+          {isMobile && (
+            <MobileSidebarSheet
+              renderSidebar={({ onClose }) => (
+                <SettingsSidebarMobile onClose={onClose} />
+              )}
+            />
+          )}
+        </div>
+      </SidebarProvider>
+    </Toolbar.Provider>
   );
 }
