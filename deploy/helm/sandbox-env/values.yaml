@@ -253,15 +253,36 @@ previewGateway:
   # Wildcard domain for previews — e.g. "preview.decocms.com" yields
   # `*.preview.decocms.com`. Required when enabled=true.
   domain: ""
-  # cert-manager ClusterIssuer that issues the wildcard cert. Required
-  # when enabled=true. The chart does NOT template the ClusterIssuer
-  # itself — that is per-cluster infrastructure (a Cloudflare DNS-01
-  # issuer, for example, needs your API token in a Secret).
+
+  # Where TLS for the wildcard listener terminates:
+  #   gateway      — (default) Envoy terminates TLS on the listener using a
+  #                  cert-manager-issued Secret. Renders an HTTPS listener + a
+  #                  Certificate; requires `clusterIssuer` and cert-manager.
+  #   loadBalancer — the load balancer in front of the Gateway terminates TLS.
+  #                  The listener is plain HTTP on 443 and NO Certificate is
+  #                  rendered; attach the LB-side cert via
+  #                  `infrastructure.annotations`. Keep the LB→Envoy hop on a
+  #                  trusted network (it carries plaintext).
+  tlsTermination: "gateway"
+
+  # cert-manager ClusterIssuer for the wildcard cert. Required when enabled=true
+  # AND tlsTermination=gateway; ignored for loadBalancer. The chart does not
+  # template the ClusterIssuer itself (per-cluster infra; a DNS-01 issuer is
+  # needed for a wildcard SAN).
   clusterIssuer: ""
-  # PEM-format secret name created by cert-manager. Defaults to
-  # `agent-sandbox-preview-<envName>-tls`. Override only if the cert
-  # lives under a name dictated by external tooling.
+  # cert-manager Secret name. Defaults to `agent-sandbox-preview-<envName>-tls`.
+  # Used only when tlsTermination=gateway.
   tlsSecretName: ""
+
+  # Passed through verbatim into the Gateway's `spec.infrastructure`, which the
+  # controller applies to the resources it generates (for Istio: the Deployment
+  # and the LoadBalancer Service). Use it to set provider-specific annotations/
+  # labels on the LB — e.g. to pin a stable DNS name or, with
+  # tlsTermination=loadBalancer, attach the LB's TLS cert. Keys are
+  # controller-specific and not interpreted by this chart.
+  infrastructure:
+    annotations: {}
+    labels: {}
 
 # ── mesh cross-references ──────────────────────────────────────────────
 # Tells this chart where the chart-deco-studio release for THIS
