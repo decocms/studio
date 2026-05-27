@@ -47,11 +47,6 @@ export function flattenMultivariateSection(
   if (!keptValue) return null;
 
   const nextValue = structuredClone(keptValue);
-  const keptRt = (nextValue.__resolveType as string) ?? "";
-
-  if (isLazyResolveType(keptRt)) {
-    return nextValue as RawSection;
-  }
 
   if (parsed.isLazy) {
     return {

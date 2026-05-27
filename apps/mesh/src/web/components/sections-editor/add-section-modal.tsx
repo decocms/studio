@@ -16,6 +16,7 @@ import {
 import type { LiveMeta } from "./resolve-schema";
 import { buildSectionPreviewUrl } from "./section-preview-url";
 import {
+  onPreviewIframeSlotAvailable,
   releasePreviewIframeSlot,
   tryAcquirePreviewIframeSlot,
 } from "./preview-iframe-pool";
@@ -29,11 +30,28 @@ function useLazyPreviewVisible(
   const [iframeActive, setIframeActive] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const desiredNodeRef = useRef<HTMLDivElement | null>(null);
+  const slotWaitUnsubRef = useRef<(() => void) | null>(null);
   const scrollRootRefMirror = useRef(scrollRootRef);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- mirror latest scroll root for stable observer callback
   scrollRootRefMirror.current = scrollRootRef;
 
   const [ref] = useState<(node: HTMLDivElement | null) => void>(() => {
+    const clearSlotWait = () => {
+      slotWaitUnsubRef.current?.();
+      slotWaitUnsubRef.current = null;
+    };
+
+    const tryActivateSlot = () => {
+      if (slotHeldRef.current) return true;
+      if (tryAcquirePreviewIframeSlot(slotId)) {
+        slotHeldRef.current = true;
+        setIframeActive(true);
+        clearSlotWait();
+        return true;
+      }
+      return false;
+    };
+
     return (node: HTMLDivElement | null) => {
       desiredNodeRef.current = node;
 
@@ -41,6 +59,7 @@ function useLazyPreviewVisible(
         observerRef.current.disconnect();
         observerRef.current = null;
       }
+      clearSlotWait();
 
       if (!node) {
         if (slotHeldRef.current) {
@@ -58,13 +77,17 @@ function useLazyPreviewVisible(
           (entries) => {
             const intersecting = entries[0]?.isIntersecting ?? false;
             if (intersecting) {
-              if (!slotHeldRef.current && tryAcquirePreviewIframeSlot(slotId)) {
-                slotHeldRef.current = true;
-                setIframeActive(true);
+              if (!tryActivateSlot() && !slotWaitUnsubRef.current) {
+                slotWaitUnsubRef.current = onPreviewIframeSlotAvailable(() => {
+                  if (desiredNodeRef.current === node) {
+                    tryActivateSlot();
+                  }
+                });
               }
               return;
             }
 
+            clearSlotWait();
             if (slotHeldRef.current) {
               releasePreviewIframeSlot(slotId);
               slotHeldRef.current = false;

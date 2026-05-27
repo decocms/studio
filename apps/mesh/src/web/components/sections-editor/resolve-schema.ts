@@ -439,7 +439,8 @@ export function resolveBlockSchemaMetadata(
     }
   }
 
-  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
+  const merged: RawSchema = { ...globalSchema, ...blockSchema };
+  const defs = (merged.$defs ?? merged.definitions ?? {}) as Record<
     string,
     RawSchema
   >;

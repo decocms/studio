@@ -624,6 +624,7 @@ export function SectionsEditor({
     sectionIndex: number,
   ) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const targetSectionVariantIndex = latestRef.current.sectionVariantIndex;
 
     debounceRef.current = setTimeout(() => {
       const {
@@ -633,7 +634,6 @@ export function SectionsEditor({
         activePageKey: latestPageKey,
         pageVariants: latestVariants,
         variantIndex: latestVariantIndex,
-        sectionVariantIndex: latestSectionVariantIndex,
       } = latestRef.current;
       const rawSection = latestRawSections[sectionIndex];
       if (!rawSection) return;
@@ -669,7 +669,7 @@ export function SectionsEditor({
 
         const updatedMvObj = updateMultivariateSectionVariantValue(
           mvObj,
-          latestSectionVariantIndex,
+          targetSectionVariantIndex,
           nextValue,
         );
         updatedSections[sectionIndex] = rebuildSectionWithMultivariate(
@@ -1149,6 +1149,12 @@ export function SectionsEditor({
     if (sectionRuleDebounceRef.current) {
       clearTimeout(sectionRuleDebounceRef.current);
     }
+    const {
+      selectedSectionIndex: targetSectionIndex,
+      sectionVariantIndex: targetSectionVariantIndex,
+    } = latestRef.current;
+    if (targetSectionIndex === null) return;
+
     sectionRuleDebounceRef.current = setTimeout(() => {
       const {
         rawSections: latestRawSections,
@@ -1157,13 +1163,11 @@ export function SectionsEditor({
         activePageKey: latestPageKey,
         pageVariants: latestVariants,
         variantIndex: latestVariantIndex,
-        sectionVariantIndex: latestSectionVariantIndex,
-        selectedSectionIndex: latestSelectedSectionIndex,
       } = latestRef.current;
-      if (!latestPageKey || latestSelectedSectionIndex === null) return;
+      if (!latestPageKey) return;
 
-      const rawSection = latestRawSections[latestSelectedSectionIndex];
-      const parsed = latestParsedSections[latestSelectedSectionIndex];
+      const rawSection = latestRawSections[targetSectionIndex];
+      const parsed = latestParsedSections[targetSectionIndex];
       if (!rawSection || !parsed?.isMultivariate) return;
 
       const mvObj = getMultivariateSectionObject(rawSection, parsed);
@@ -1171,12 +1175,15 @@ export function SectionsEditor({
 
       const updatedMvObj = updateMultivariateSectionVariantRule(
         mvObj,
-        latestSectionVariantIndex,
+        targetSectionVariantIndex,
         newRule,
       );
       const updatedSections = [...latestRawSections];
-      updatedSections[latestSelectedSectionIndex] =
-        rebuildSectionWithMultivariate(rawSection, parsed, updatedMvObj);
+      updatedSections[targetSectionIndex] = rebuildSectionWithMultivariate(
+        rawSection,
+        parsed,
+        updatedMvObj,
+      );
 
       const fullPageData = buildPageDataWithSections(
         latestDecofile,

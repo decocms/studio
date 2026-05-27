@@ -54,5 +54,6 @@ describe("block-type-utils", () => {
       true,
     );
     expect(isAutoPreviewBlockKey("Header")).toBe(false);
+    expect(isAutoPreviewBlockKey("%")).toBe(false);
   });
 });

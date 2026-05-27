@@ -58,10 +58,15 @@ function collectAnyOfRefsFromSchema(
   if (schema.anyOfRefs?.length) return schema.anyOfRefs;
   if (schema.items) return collectAnyOfRefsFromSchema(schema.items);
   if (schema.properties) {
+    const refs: Array<{
+      resolveType: string;
+      title: string;
+      description?: string;
+    }> = [];
     for (const child of Object.values(schema.properties)) {
-      const refs = collectAnyOfRefsFromSchema(child);
-      if (refs.length > 0) return refs;
+      refs.push(...collectAnyOfRefsFromSchema(child));
     }
+    return refs;
   }
   return [];
 }

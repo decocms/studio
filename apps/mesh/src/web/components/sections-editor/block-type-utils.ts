@@ -38,5 +38,9 @@ export function isSavedBlockResolveType(resolveType: string): boolean {
 
 /** Auto-generated preview stubs under `.deco/blocks/Preview …`. */
 export function isAutoPreviewBlockKey(blockKey: string): boolean {
-  return decodeURIComponent(blockKey).startsWith("Preview ");
+  try {
+    return decodeURIComponent(blockKey).startsWith("Preview ");
+  } catch {
+    return blockKey.startsWith("Preview ");
+  }
 }

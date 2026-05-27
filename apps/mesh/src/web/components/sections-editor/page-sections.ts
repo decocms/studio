@@ -63,7 +63,7 @@ export function validateBlockId(
   if (trimmed.includes("/")) {
     return "Block name cannot contain slashes.";
   }
-  if (trimmed in decofile) {
+  if (Object.hasOwn(decofile, trimmed)) {
     return "A block with this name already exists.";
   }
   if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(trimmed)) {
