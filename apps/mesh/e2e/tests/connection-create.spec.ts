@@ -1,45 +1,30 @@
-import { test, expect } from "@playwright/test";
 import { signUp } from "../fixtures/auth";
+import { SettingsConnectionsPage } from "../pages/settings-connections";
+import {
+  expect,
+  extractOrgSlugFromUrl,
+  test,
+  waitForPostSignupRedirect,
+} from "../fixtures/test";
 
 test.describe("Connection creation flow", () => {
   test("creates an HTTP connection and lands on the detail page", async ({
     page,
   }) => {
-    // 1. Sign up — org is auto-created, lands on home page
     await signUp(page);
+    await waitForPostSignupRedirect(page);
+    const orgSlug = extractOrgSlugFromUrl(page);
 
-    // 2. Wait for the auto-redirect to the org page and extract slug from URL
-    await page.waitForURL(
-      (url) => {
-        const slug = url.pathname.split("/")[1];
-        return !!slug && slug !== "login" && slug !== "api";
-      },
-      { timeout: 15_000 },
-    );
-    const orgSlug = new URL(page.url()).pathname.split("/")[1];
+    const connections = new SettingsConnectionsPage(page);
+    await connections.goto(orgSlug);
+    await connections.openCreateDialog();
+    await connections.fillHttpConnection({
+      name: "My Test MCP",
+      url: "https://example.com/mcp",
+    });
+    await connections.submit();
 
-    // 3. Navigate directly to the connections page
-    await page.goto(`/${orgSlug}/settings/connections`);
-
-    // 4. Open the create connection dialog
-    await page.getByRole("button", { name: "Custom Connection" }).click();
-    await expect(
-      page.getByRole("heading", { name: "Create Connection" }),
-    ).toBeVisible();
-
-    // 5. The form defaults to HTTP — fill in name and URL
-    await page.getByPlaceholder("My Connection").fill("My Test MCP");
-    await page
-      .getByPlaceholder("https://example.com/mcp")
-      .fill("https://example.com/mcp");
-
-    // 6. Submit
-    await page
-      .getByRole("button", { name: "Create Connection" })
-      .last()
-      .click();
-
-    // 7. Should navigate to the connection detail page (slug derived from URL)
+    // Slug derived server-side from the URL: example.com/mcp → examplecom-mcp.
     await page.waitForURL(/\/settings\/connections\/examplecom-mcp/, {
       timeout: 10_000,
     });

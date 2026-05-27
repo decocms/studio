@@ -18,9 +18,10 @@
  */
 
 import { type Client } from "pg";
-import { expect, test } from "@playwright/test";
 import { connectDevDb } from "../fixtures/db";
 import { signUp } from "../fixtures/auth";
+import { OnboardingPage } from "../pages/onboarding";
+import { expect, test } from "../fixtures/test";
 
 /** Unique per-spec-run domain. Avoids collisions across re-runs and
  *  across parallel test files (Playwright config pins workers: 1, but
@@ -138,32 +139,10 @@ test.describe("Onboarding: multi-org auto-join picker", () => {
     // After undoing the auto-created org, hitting "/" runs the home
     // route's beforeLoad → no active orgs → redirects to /onboarding.
     // Going there directly skips an intermediate hop.
-    await page.goto("/onboarding");
-
-    // The picker renders one row per matching org with a per-row Join
-    // button. The shared cluster headline differs from the single-org
-    // copy ("You have access to an organization") — this assertion
-    // protects the multi-org branch specifically.
-    await expect(
-      page.getByRole("heading", {
-        name: "You have access to multiple organizations",
-      }),
-    ).toBeVisible({ timeout: 15_000 });
-
-    await expect(page.getByText("Acme E2E A")).toBeVisible();
-    await expect(page.getByText("Acme E2E B")).toBeVisible();
-
-    // Two Join buttons — one per org row.
-    const joinButtons = page.getByRole("button", { name: /^Join$/ });
-    await expect(joinButtons).toHaveCount(2);
-
-    // Each org row is a .card-shadow container with the org name and
-    // its own Join button — filter the cards by visible text and click
-    // the Join inside the right one.
-    const orgACard = page
-      .locator(".card-shadow")
-      .filter({ hasText: "Acme E2E A" });
-    await orgACard.getByRole("button", { name: /^Join$/ }).click();
+    const onboarding = new OnboardingPage(page);
+    await onboarding.goto();
+    await onboarding.expectMultiOrgPicker(["Acme E2E A", "Acme E2E B"]);
+    await onboarding.joinOrg("Acme E2E A");
 
     // Successful join → redirect to /<slug>.
     await page.waitForURL(new RegExp(`/${ORG_A_SLUG}(/|$)`), {
