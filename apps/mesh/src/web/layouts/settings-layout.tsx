@@ -443,7 +443,7 @@ export default function SettingsLayout() {
                 <ArrowNarrowLeft size={14} className="shrink-0" />
                 <span>Settings</span>
               </Link>
-              <SidebarTriggerButton />
+              {isMobile && <SidebarTriggerButton />}
               <span className="hidden md:contents">
                 <Toolbar.Nav />
               </span>
