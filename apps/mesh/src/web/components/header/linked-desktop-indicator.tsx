@@ -10,6 +10,7 @@ import {
   ConnectDesktopDialog,
   visibleCapabilities,
 } from "@/web/components/chat/connect-desktop-dialog";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 
 export function LinkedDesktopIndicator() {
   const link = useCurrentLink();
@@ -35,17 +36,15 @@ export function LinkedDesktopIndicator() {
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
+          <ToolbarIconButton
             onClick={() => setDialogOpen(true)}
             aria-label={link.online ? "Desktop linked" : "Connect your desktop"}
-            className="relative flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
           >
             <Monitor01 size={16} />
             {link.online && (
               <span className="absolute top-1 right-1 size-2 rounded-full bg-success ring-2 ring-background animate-pulse" />
             )}
-          </button>
+          </ToolbarIconButton>
         </TooltipTrigger>
         <TooltipContent side="bottom">{tooltipContent}</TooltipContent>
       </Tooltip>

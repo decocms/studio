@@ -103,9 +103,6 @@ export function usePanelActions() {
   const setChatOpen = (open: boolean) =>
     nav((prev) => ({ ...prev, chat: open ? 1 : 0 }));
 
-  const setTasksOpen = (open: boolean) =>
-    nav((prev) => ({ ...prev, tasks: open ? 1 : 0 }));
-
   const setTaskId = (id: string, virtualMcpId?: string) =>
     navWith(
       id,
@@ -113,7 +110,6 @@ export function usePanelActions() {
         const next: Record<string, unknown> = { chat: 1 };
         if (virtualMcpId) next.virtualmcpid = virtualMcpId;
         else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
-        if (prev.tasks) next.tasks = prev.tasks;
         // Preserve the main panel tab (git / preview / env / …) so that
         // switching tasks keeps the user's current view.
         if (prev.main) next.main = prev.main;
@@ -127,14 +123,22 @@ export function usePanelActions() {
   // no branch is provided. Awaiting the create avoids the route loader's
   // create-on-404 fallback firing without a branch hint.
   //
-  // virtual_mcp_id is required by COLLECTION_THREADS_CREATE. Fall back to the
-  // well-known Decopilot agent when the URL doesn't carry ?virtualmcpid= —
-  // matches the same fallback in agent-shell-layout's createNewTask.
-  const createNewTask = async () => {
+  // `virtualMcpId` lets callers (e.g. the per-group "+" in the sidebar) pin
+  // the thread to a specific agent regardless of the current URL. When
+  // omitted, falls back to the URL's `virtualmcpid`, then to the well-known
+  // Decopilot agent. The current branch is only carried when we're staying
+  // on the same vMCP as the URL — switching agents would land on the wrong
+  // sandbox otherwise.
+  const createNewTask = async (virtualMcpId?: string) => {
     const newId = crypto.randomUUID();
-    const branch = readCachedTaskBranch(org.slug, locator, currentTaskId);
     const targetVmcp =
-      search.virtualmcpid ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+      virtualMcpId ??
+      search.virtualmcpid ??
+      getWellKnownDecopilotVirtualMCP(org.id).id;
+    const carryBranch = targetVmcp === search.virtualmcpid;
+    const branch = carryBranch
+      ? readCachedTaskBranch(org.slug, locator, currentTaskId)
+      : null;
     try {
       await create({
         id: newId,
@@ -145,7 +149,7 @@ export function usePanelActions() {
       // Toast already fired by useCollectionActions; navigate anyway so the
       // route loader's ensure-fallback can retry.
     }
-    setTaskId(newId);
+    setTaskId(newId, targetVmcp);
   };
 
   const openTab = (tabId: string) =>
@@ -167,7 +171,6 @@ export function usePanelActions() {
 
   return {
     setChatOpen,
-    setTasksOpen,
     setTaskId,
     createNewTask,
     openTab,

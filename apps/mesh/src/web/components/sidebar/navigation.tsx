@@ -18,15 +18,15 @@ import { SidebarCollapsibleGroup } from "./sidebar-group";
 import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 import { track } from "@/web/lib/posthog-client";
 
-function SidebarLogoHeader() {
+function SidebarLogoHeader({ rightContent }: { rightContent?: ReactNode }) {
   const config = usePublicConfig();
   const logo = config.logo ?? DEFAULT_LOGO;
   const lightSrc = typeof logo === "string" ? logo : logo.light;
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
 
   return (
-    <SidebarHeader className="wco-hide flex items-center justify-center shrink-0 px-2 pb-0">
-      <div className="flex w-full aspect-square items-center justify-center">
+    <SidebarHeader className="wco-hide flex flex-row items-center justify-between shrink-0 h-12 px-3 pb-0">
+      <div className="flex items-center shrink-0">
         <img
           src={lightSrc}
           alt="Logo"
@@ -38,6 +38,11 @@ function SidebarLogoHeader() {
           className="size-6 object-contain hidden dark:block"
         />
       </div>
+      {rightContent && (
+        <div className="flex items-center gap-0.5 group-data-[state=collapsed]/sidebar:hidden">
+          {rightContent}
+        </div>
+      )}
     </SidebarHeader>
   );
 }
@@ -45,6 +50,7 @@ function SidebarLogoHeader() {
 interface NavigationSidebarProps {
   sections: SidebarSection[];
   header?: ReactNode;
+  headerRight?: ReactNode;
   footer?: ReactNode;
   additionalContent?: ReactNode;
   variant?: "sidebar" | "floating" | "inset";
@@ -72,9 +78,9 @@ function SidebarNavigationItem({ item }: { item: NavigationSidebarItem }) {
         onClick={handleClick}
         isActive={item.isActive}
         tooltip={item.label}
-        className="bg-muted/75"
       >
         {item.icon}
+        <span>{item.label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -109,6 +115,8 @@ function SidebarSectionRenderer({ section }: { section: SidebarSection }) {
           </SidebarGroupContent>
         </SidebarGroup>
       );
+    case "custom":
+      return section.content;
   }
 }
 
@@ -119,6 +127,7 @@ function SidebarSectionRenderer({ section }: { section: SidebarSection }) {
 function NavigationSidebarInner({
   sections,
   header,
+  headerRight,
   footer,
   additionalContent,
   variant = "sidebar",
@@ -127,16 +136,23 @@ function NavigationSidebarInner({
   return (
     <Sidebar variant={variant}>
       <Suspense fallback={<div className="h-10 shrink-0" />}>
-        <SidebarLogoHeader />
+        <SidebarLogoHeader rightContent={headerRight} />
       </Suspense>
       {header}
       <SidebarContent
-        className={cn("flex flex-col flex-1 px-2 py-2 gap-0", contentClassName)}
+        className={cn(
+          "flex flex-col flex-1 px-2 py-2 gap-0.5",
+          contentClassName,
+        )}
       >
         {sections.map((section, index) => (
           <SidebarSectionRenderer key={index} section={section} />
         ))}
-        {additionalContent}
+        {additionalContent && (
+          <div className="flex flex-col flex-1 min-h-0 group-data-[state=collapsed]/sidebar:mt-1 group-data-[state=expanded]/sidebar:mt-2">
+            {additionalContent}
+          </div>
+        )}
       </SidebarContent>
       {footer}
     </Sidebar>
