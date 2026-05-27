@@ -42,30 +42,24 @@
  * guard.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
-import { SpanStatusCode } from "@opentelemetry/api";
 import {
   type ModelMessage,
   type SystemModelMessage,
   type ToolSet,
   type UIMessageChunk,
-  stepCountIs,
-  streamText,
+  type UIMessageStreamWriter,
 } from "ai";
-import { tracer } from "@/observability";
 import type { MeshProvider } from "@/ai-providers/types";
 
 import { createEnableToolTool } from "./built-in-tools/enable-tool";
 import type { PendingImage } from "./built-in-tools";
-import { OPENROUTER_CACHE_PROVIDER_OPTIONS } from "../../api/routes/decopilot/cache-instrumentation";
 import { createUsageAccumulator } from "../usage-accumulator";
 import {
-  DEFAULT_MAX_TOKENS,
   DEFAULT_THREAD_TITLE,
   generateMessageId,
-  PARENT_STEP_LIMIT,
 } from "../../api/routes/decopilot/constants";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
 import { genTitle } from "./title-generator";
@@ -76,6 +70,8 @@ import type { HarnessStreamInput } from "../types";
 import type { AssembledTools } from "./tools";
 import type { AssembledPrompt } from "./prompt";
 import { sanitizeStreamError, stringifyError } from "./stream-error";
+import { runAgentLoop } from "./run-agent-loop";
+import { isDecopilot } from "@decocms/mesh-sdk";
 
 // ─────────────────────────────────────────────────────────────────────
 // Helpers
@@ -291,6 +287,17 @@ export interface RunDecopilotStreamExtras {
    * is available.
    */
   onTitleUpdated?: (title: string) => void | Promise<void>;
+
+  /**
+   * UIMessageStreamWriter forwarded from the outer createUIMessageStream.
+   * Required by `runAgentLoop` → `assembleAgentTools` for streaming tool
+   * output from built-in tools (subtask, generate_image, etc.).
+   *
+   * Source: the `writer` arg injected into the `createUIMessageStream`
+   * execute callback in dispatch-run.ts; forwarded here so runAgentLoop
+   * can own tool assembly internally.
+   */
+  writer: UIMessageStreamWriter;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -380,11 +387,10 @@ export async function* runDecopilotStream(
     registerPendingOp,
     isStreamFinished,
     onTitleUpdated,
+    writer,
   } = extras;
 
   const modeConfig = resolveModeConfig(input.mode, { isCliAgent: false });
-  const maxOutputTokens =
-    input.models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS;
   let llmCallStartTime: number | undefined;
   let llmCallLogged = false;
 
@@ -505,18 +511,108 @@ export async function* runDecopilotStream(
       : {}),
   };
 
-  // ── Span: manually managed because it starts here but ends async
-  //    in onFinish / onError. ───────────────────────────────────────
-  const llmSpan = tracer.startSpan("decopilot.streamText", {
-    attributes: {
-      "decopilot.model.id": input.models.thinking.id,
-      "decopilot.credential.id": input.models.credentialId,
-      "decopilot.isCliAgent": false,
-      "decopilot.isCodex": false,
-    },
-  });
+  // ── Build the prepareStep callback (parent-only image injection +
+  //    plan-mode tool filtering). Stays here in Stage 1; moves into
+  //    runAgentLoop in Stage 2 once we have the shared assembler.
+  const parentPrepareStep = (() => {
+    const forcedFirstStepToolName =
+      modeConfig.forcedFirstStepTool &&
+      modeConfig.forcedFirstStepTool in streamTools
+        ? modeConfig.forcedFirstStepTool
+        : null;
+    let stepIndex = 0;
 
-  const languageModel = createLanguageModel(provider, input.models.thinking);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stepArgs: any) => {
+      const stepMessages = stepArgs.messages;
+      const isFirstStep = stepIndex === 0;
+      stepIndex++;
+
+      // Inject pending screenshot images as a user message.
+      // Images in tool result messages aren't supported by all
+      // providers (e.g. OpenRouter), so we append them as user
+      // content which is universally supported.
+      // biome-ignore lint: complex AI SDK generic types
+      let withImages: any = stepMessages;
+      const pendingImages = extras.pendingImages;
+      if (pendingImages.length > 0) {
+        const imageParts = pendingImages.splice(0, pendingImages.length);
+        const content: unknown[] = [];
+        for (const img of imageParts) {
+          content.push({
+            type: "text",
+            text:
+              img.label ??
+              (img.pageUrl ? `[Screenshot of ${img.pageUrl}]` : "[Image]"),
+          });
+          if (img.url.startsWith("data:")) {
+            // data URI → send as inline image
+            const match = img.url.match(/^data:([^;]+);base64,(.+)$/s);
+            if (match) {
+              content.push({
+                type: "image",
+                image: match[2],
+                mimeType: match[1],
+              });
+            }
+          } else {
+            // Presigned URL → send as image URL
+            content.push({
+              type: "image",
+              image: new URL(img.url),
+            });
+          }
+        }
+        withImages = [...stepMessages, { role: "user", content }];
+      }
+
+      // Intra-loop todo_write strip + inject has been removed. The
+      // agent sees its own todo_write tool calls live inside the
+      // agent loop. Cross-turn pruning to keep only the most recent
+      // todo_write call/result pair happens once at HTTP entry via
+      // `processConversation` → `keepLastTodoWrite`. The step
+      // messages here are the raw post-image-injection stream.
+      const messagesForStep = withImages;
+
+      const hasEnableTool = tools.connectionsBlockTools.length > 0;
+      let activeToolNames = [
+        ...builtInToolNames,
+        ...(hasEnableTool ? ["enable_tool"] : []),
+        ...enabledTools,
+      ];
+
+      // Layer 2: In plan mode, filter out any non-read-only tools that
+      // somehow got enabled (safety net for Layer 1 in enable_tool)
+      if (modeConfig.isPlanMode) {
+        activeToolNames = activeToolNames.filter((name) => {
+          // Built-in tools and enable_tool are always allowed
+          if (
+            builtInToolNames.includes(name) ||
+            (hasEnableTool && name === "enable_tool")
+          ) {
+            return true;
+          }
+          // Only allow passthrough tools with readOnlyHint
+          const annotations = tools.toolAnnotations.get(name);
+          return annotations?.readOnlyHint === true;
+        });
+      }
+
+      const forcedToolName =
+        forcedFirstStepToolName && isFirstStep ? forcedFirstStepToolName : null;
+
+      return {
+        activeTools: activeToolNames as (keyof typeof streamTools)[],
+        messages: messagesForStep,
+        ...(forcedToolName && {
+          toolChoice: {
+            type: "tool" as const,
+            toolName: forcedToolName as never,
+          },
+        }),
+      };
+    };
+  })();
 
   // Non-cached system tail telling the model exactly which tools it has
   // already enabled this thread. Lives outside the cached prefix so it
@@ -535,265 +631,172 @@ export async function* runDecopilotStream(
         }
       : null;
 
-  let result;
-  try {
-    result = streamText({
-      model: languageModel,
-      system: [
-        ...prompt.systemMessages,
-        ...processedSystemMessages,
-        ...(enabledToolsSystemMessage ? [enabledToolsSystemMessage] : []),
-      ],
-      messages: processedMessages,
-      tools: streamTools,
-      providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
-      prepareStep: (() => {
-        const forcedFirstStepToolName =
-          modeConfig.forcedFirstStepTool &&
-          modeConfig.forcedFirstStepTool in streamTools
-            ? modeConfig.forcedFirstStepTool
-            : null;
-        let stepIndex = 0;
+  // ── Call runAgentLoop ─────────────────────────────────────────────
+  // Stage 2: runAgentLoop owns system-prompt + tool assembly internally.
+  // The parent still passes:
+  //   - `passthroughClient`  → for the prompts block in the system prompt
+  //   - `connectionsData`    → for the connections block in the system prompt
+  //   - `extraTools`         → enable_tool (state-dependent, built above)
+  //   - `prepareStep`        → image injection + plan-mode filter
+  //   - `additionalSystemMessages` → per-request inline <system> blocks
+  // The OLD `__tools`, `__system`, `__prepareStep` shims are gone.
+  const vmMetadata = input.virtualMcp.metadata as {
+    githubRepo?: import("@decocms/mesh-sdk").GithubRepo | null;
+  };
+  const handle = await runAgentLoop({
+    kind: "agent",
+    ctx,
+    organization: { id: input.organizationId } as OrganizationScope,
+    virtualMcp: {
+      id: input.agent.id,
+      repo: vmMetadata?.githubRepo ?? undefined,
+    },
+    mcpClient: tools.passthroughClient as never,
+    provider,
+    models: input.models,
+    messages: processedMessages,
+    abortSignal: registrySignal,
+    temperature: input.temperature,
+    planMode: modeConfig.isPlanMode,
+    isDecopilot: isDecopilot(input.agent.id) !== null,
+    systemAgentInstructions: tools.serverInstructions,
+    writer,
+    subtaskParams: {
+      provider,
+      organization: { id: input.organizationId } as OrganizationScope,
+      models: input.models,
+    },
+    prepareStep: parentPrepareStep,
+    passthroughClient: tools.passthroughClient as never,
+    connectionsData: {
+      tools: tools.connectionsBlockTools,
+      connectionTitleMap: tools.connectionTitleMap,
+    },
+    // Pass the full parent built-ins (heavy tools: VM, web_search, screenshot,
+    // etc.) as extraTools so runAgentLoop's assembleAgentTools (lightweight)
+    // gets overridden with the complete set. Also inject enable_tool, which
+    // is state-dependent (built from enabledTools reconstructed above).
+    extraTools: {
+      ...(tools.builtInTools as ToolSet),
+      ...(tools.connectionsBlockTools.length > 0 && streamTools.enable_tool
+        ? { enable_tool: streamTools.enable_tool }
+        : {}),
+    },
+    additionalSystemMessages: [
+      ...processedSystemMessages,
+      ...(enabledToolsSystemMessage ? [enabledToolsSystemMessage] : []),
+    ],
+  });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (stepArgs: any) => {
-          const stepMessages = stepArgs.messages;
-          const isFirstStep = stepIndex === 0;
-          stepIndex++;
+  const result = handle.result;
 
-          // Inject pending screenshot images as a user message.
-          // Images in tool result messages aren't supported by all
-          // providers (e.g. OpenRouter), so we append them as user
-          // content which is universally supported.
-          // biome-ignore lint: complex AI SDK generic types
-          let withImages: any = stepMessages;
-          const pendingImages = extras.pendingImages;
-          if (pendingImages.length > 0) {
-            const imageParts = pendingImages.splice(0, pendingImages.length);
-            const content: unknown[] = [];
-            for (const img of imageParts) {
-              content.push({
-                type: "text",
-                text:
-                  img.label ??
-                  (img.pageUrl ? `[Screenshot of ${img.pageUrl}]` : "[Image]"),
-              });
-              if (img.url.startsWith("data:")) {
-                // data URI → send as inline image
-                const match = img.url.match(/^data:([^;]+);base64,(.+)$/s);
-                if (match) {
-                  content.push({
-                    type: "image",
-                    image: match[2],
-                    mimeType: match[1],
-                  });
-                }
-              } else {
-                // Presigned URL → send as image URL
-                content.push({
-                  type: "image",
-                  image: new URL(img.url),
-                });
-              }
-            }
-            withImages = [...stepMessages, { role: "user", content }];
-          }
+  // ── Parent's own metrics/monitoring around the result.
+  //    These were previously inline in the streamText({...}) callbacks.
+  //    Now they're Promise-based, attached to result.finishReason /
+  //    handle.error.
+  Promise.resolve(result.finishReason)
+    .then(async (finishReason) => {
+      const [totalUsage, usage, request, response] = await Promise.all([
+        result.totalUsage,
+        result.usage,
+        result.request,
+        result.response,
+      ]);
+      // If there was an error, the onError path below handles metrics.
+      // onFinish fires even on error in some SDK versions; guard with
+      // the error handle to avoid double-logging.
+      const capturedErr = await handle.error;
+      if (capturedErr !== undefined) return;
 
-          // Intra-loop todo_write strip + inject has been removed. The
-          // agent sees its own todo_write tool calls live inside the
-          // agent loop. Cross-turn pruning to keep only the most recent
-          // todo_write call/result pair happens once at HTTP entry via
-          // `processConversation` → `keepLastTodoWrite`. The step
-          // messages here are the raw post-image-injection stream.
-          const messagesForStep = withImages;
+      // OTel attrs on the runAgentLoop span (handle.span)
+      handle.span.setAttribute(
+        "decopilot.llm.inputTokens",
+        totalUsage.inputTokens ?? 0,
+      );
+      handle.span.setAttribute(
+        "decopilot.llm.outputTokens",
+        totalUsage.outputTokens ?? 0,
+      );
+      handle.span.setAttribute("decopilot.llm.finishReason", finishReason);
+      const cacheTotals = usageAcc.cacheTotals();
+      handle.span.setAttribute("decopilot.cache.read_tokens", cacheTotals.read);
+      handle.span.setAttribute(
+        "decopilot.cache.write_tokens",
+        cacheTotals.write,
+      );
+      const hitRatio =
+        cacheTotals.input > 0 ? cacheTotals.read / cacheTotals.input : 0;
+      handle.span.setAttribute("decopilot.cache.hit_ratio", hitRatio);
 
-          const hasEnableTool = tools.connectionsBlockTools.length > 0;
-          let activeToolNames = [
-            ...builtInToolNames,
-            ...(hasEnableTool ? ["enable_tool"] : []),
-            ...enabledTools,
-          ];
-
-          // Layer 2: In plan mode, filter out any non-read-only tools that
-          // somehow got enabled (safety net for Layer 1 in enable_tool)
-          if (modeConfig.isPlanMode) {
-            activeToolNames = activeToolNames.filter((name) => {
-              // Built-in tools and enable_tool are always allowed
-              if (
-                builtInToolNames.includes(name) ||
-                (hasEnableTool && name === "enable_tool")
-              ) {
-                return true;
-              }
-              // Only allow passthrough tools with readOnlyHint
-              const annotations = tools.toolAnnotations.get(name);
-              return annotations?.readOnlyHint === true;
-            });
-          }
-
-          const forcedToolName =
-            forcedFirstStepToolName && isFirstStep
-              ? forcedFirstStepToolName
-              : null;
-
-          return {
-            activeTools: activeToolNames as (keyof typeof streamTools)[],
-            messages: messagesForStep,
-            ...(forcedToolName && {
-              toolChoice: {
-                type: "tool" as const,
-                toolName: forcedToolName as never,
-              },
-            }),
-          };
-        };
-      })(),
-      temperature: input.temperature,
-      maxOutputTokens,
-      stopWhen: stepCountIs(PARENT_STEP_LIMIT),
-      abortSignal: registrySignal,
-      onFinish: async ({
-        usage,
-        totalUsage,
+      // Always record usage even on abort — tokens were already consumed.
+      const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
+      llmCallLogged = true;
+      recordLlmCallMetrics({
+        ctx,
+        organizationId: input.organizationId,
+        modelId: input.models.thinking.id,
+        durationMs,
+        isError: false,
+        inputTokens: totalUsage.inputTokens,
+        outputTokens: totalUsage.outputTokens,
+        cacheReadTokens: cacheTotals.read,
+        cacheWriteTokens: cacheTotals.write,
+      });
+      extras.onUsageAggregated({
+        inputTokens: totalUsage.inputTokens ?? 0,
+        outputTokens: totalUsage.outputTokens ?? 0,
+        totalTokens: totalUsage.totalTokens ?? 0,
+      });
+      monitorLlmCall({
+        ctx,
+        organizationId: input.organizationId,
+        agentId: input.agent.id,
+        modelId: input.models.thinking.id,
+        modelTitle: input.models.thinking.title ?? input.models.thinking.id,
+        credentialId: input.models.credentialId,
+        taskId: threadId,
+        durationMs,
+        isError: false,
         finishReason,
-        request,
-        response,
-      }) => {
-        llmSpan.setAttribute(
-          "decopilot.llm.inputTokens",
-          totalUsage.inputTokens ?? 0,
-        );
-        llmSpan.setAttribute(
-          "decopilot.llm.outputTokens",
-          totalUsage.outputTokens ?? 0,
-        );
-        llmSpan.setAttribute("decopilot.llm.finishReason", finishReason);
-        const cacheTotals = usageAcc.cacheTotals();
-        llmSpan.setAttribute("decopilot.cache.read_tokens", cacheTotals.read);
-        llmSpan.setAttribute("decopilot.cache.write_tokens", cacheTotals.write);
-        const hitRatio =
-          cacheTotals.input > 0 ? cacheTotals.read / cacheTotals.input : 0;
-        llmSpan.setAttribute("decopilot.cache.hit_ratio", hitRatio);
-        llmSpan.setStatus({ code: SpanStatusCode.OK });
-        llmSpan.end();
-
-        // Always record usage even on abort — tokens were already consumed.
-        const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
-        llmCallLogged = true;
-        recordLlmCallMetrics({
-          ctx,
-          organizationId: input.organizationId,
-          modelId: input.models.thinking.id,
-          durationMs,
-          isError: false,
-          inputTokens: totalUsage.inputTokens,
-          outputTokens: totalUsage.outputTokens,
-          cacheReadTokens: cacheTotals.read,
-          cacheWriteTokens: cacheTotals.write,
-        });
-        extras.onUsageAggregated({
+        usage: {
+          inputTokens: usage.inputTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+          totalTokens: usage.totalTokens ?? 0,
+        },
+        totalUsage: {
           inputTokens: totalUsage.inputTokens ?? 0,
           outputTokens: totalUsage.outputTokens ?? 0,
           totalTokens: totalUsage.totalTokens ?? 0,
-        });
-        monitorLlmCall({
-          ctx,
-          organizationId: input.organizationId,
-          agentId: input.agent.id,
-          modelId: input.models.thinking.id,
-          modelTitle: input.models.thinking.title ?? input.models.thinking.id,
-          credentialId: input.models.credentialId,
-          taskId: threadId,
-          durationMs,
-          isError: false,
-          finishReason,
-          usage: {
-            inputTokens: usage.inputTokens ?? 0,
-            outputTokens: usage.outputTokens ?? 0,
-            totalTokens: usage.totalTokens ?? 0,
-          },
-          totalUsage: {
-            inputTokens: totalUsage.inputTokens ?? 0,
-            outputTokens: totalUsage.outputTokens ?? 0,
-            totalTokens: totalUsage.totalTokens ?? 0,
-          },
-          request,
-          response,
-          userId: input.user.id,
-          requestId: ctx.metadata.requestId,
-          userAgent: ctx.metadata.userAgent ?? null,
-        });
+        },
+        request,
+        response,
+        userId: input.user.id,
+        requestId: ctx.metadata.requestId,
+        userAgent: ctx.metadata.userAgent ?? null,
+      });
 
-        if (registrySignal.aborted) return;
-      },
-      onError: async (error) => {
-        const err =
-          error instanceof Error ? error : new Error(stringifyError(error));
-        llmSpan.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: err.message,
-        });
-        llmSpan.recordException(err);
-        llmSpan.end();
-
-        console.error("[decopilot:stream] Error", error);
-        if (registrySignal.aborted) {
-          throw error;
-        }
-        if (!llmCallLogged) {
-          const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
-          llmCallLogged = true;
-          recordLlmCallMetrics({
-            ctx,
-            organizationId: input.organizationId,
-            modelId: input.models.thinking.id,
-            durationMs,
-            isError: true,
-            errorType: error instanceof Error ? error.name : "Error",
-          });
-          monitorLlmCall({
-            ctx,
-            organizationId: input.organizationId,
-            agentId: input.agent.id,
-            modelId: input.models.thinking.id,
-            modelTitle: input.models.thinking.title ?? input.models.thinking.id,
-            credentialId: input.models.credentialId,
-            taskId: threadId,
-            durationMs,
-            isError: true,
-            errorMessage:
-              error instanceof Error ? error.message : stringifyError(error),
-            userId: input.user.id,
-            requestId: ctx.metadata.requestId,
-            userAgent: ctx.metadata.userAgent ?? null,
-          });
-        }
-        throw error;
-      },
-      onAbort: async ({ steps }) => {
-        if (!steps.length || llmCallLogged) return;
-        llmCallLogged = true;
+      if (registrySignal.aborted) return;
+    })
+    .catch(async (error) => {
+      // error path — finishReason promise itself rejected OR we got here
+      // from a provider error. runAgentLoop's onError fires first and
+      // sets handle.error; we pick up the message from there.
+      const rawError =
+        error instanceof Error ? error : new Error(stringifyError(error));
+      console.error("[decopilot:stream] Error", rawError);
+      if (registrySignal.aborted) {
+        return;
+      }
+      if (!llmCallLogged) {
         const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
-        const abortTotalUsage = steps.reduce(
-          (acc, s) => ({
-            inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
-            outputTokens: acc.outputTokens + (s.usage.outputTokens ?? 0),
-            totalTokens: acc.totalTokens + (s.usage.totalTokens ?? 0),
-          }),
-          { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-        );
-        const lastStepUsage = steps[steps.length - 1]!.usage;
-        const cacheTotalsOnAbort = usageAcc.cacheTotals();
+        llmCallLogged = true;
         recordLlmCallMetrics({
           ctx,
           organizationId: input.organizationId,
           modelId: input.models.thinking.id,
           durationMs,
-          isError: false,
-          inputTokens: abortTotalUsage.inputTokens,
-          outputTokens: abortTotalUsage.outputTokens,
-          cacheReadTokens: cacheTotalsOnAbort.read,
-          cacheWriteTokens: cacheTotalsOnAbort.write,
+          isError: true,
+          errorType: rawError.name,
         });
         monitorLlmCall({
           ctx,
@@ -804,64 +807,108 @@ export async function* runDecopilotStream(
           credentialId: input.models.credentialId,
           taskId: threadId,
           durationMs,
-          isError: false,
-          finishReason: "abort",
-          usage: {
-            inputTokens: lastStepUsage.inputTokens ?? 0,
-            outputTokens: lastStepUsage.outputTokens ?? 0,
-            totalTokens: lastStepUsage.totalTokens ?? 0,
-          },
-          totalUsage: abortTotalUsage,
-          request: undefined,
-          response: undefined,
+          isError: true,
+          errorMessage: rawError.message,
           userId: input.user.id,
           requestId: ctx.metadata.requestId,
           userAgent: ctx.metadata.userAgent ?? null,
         });
+      }
+    });
 
-        // Re-push accumulated usage to the client. On abort the SDK
-        // resets message.metadata to its pre-stream state, so we
-        // explicitly emit it here before the stream closes.
-        if (abortTotalUsage.totalTokens > 0) {
-          const cost = usageAcc.cost();
-          chunkQueue.push({
-            type: "message-metadata",
-            messageMetadata: {
-              usage: {
-                inputTokens: abortTotalUsage.inputTokens,
-                outputTokens: abortTotalUsage.outputTokens,
-                totalTokens: abortTotalUsage.totalTokens,
-                cachedInputTokens: cacheTotalsOnAbort.read,
-                inputTokenDetails: {
-                  cacheReadTokens: cacheTotalsOnAbort.read,
-                  cacheWriteTokens: cacheTotalsOnAbort.write,
-                  noCacheTokens:
-                    abortTotalUsage.inputTokens -
-                    cacheTotalsOnAbort.read -
-                    cacheTotalsOnAbort.write,
-                },
-                ...(cost > 0 && {
-                  providerMetadata: {
-                    openrouter: {
-                      usage: { cost },
-                    },
-                  },
-                }),
-              },
-            },
-          });
-        }
+  // onAbort path: the old code's onAbort fires when steps.length > 0
+  // and llmCallLogged is false. We re-implement this by watching
+  // handle.error AND registrySignal.aborted.
+  // The SDK's onAbort fires synchronously before the stream drains, so
+  // we must register this watcher before we start draining the stream
+  // below. We do NOT await it here — we just attach the handler so it
+  // fires whenever the abort resolves.
+  handle.error.then(async (_errMsg) => {
+    // Only fire the abort metrics path if the signal was aborted AND
+    // we haven't already logged metrics via the onFinish path.
+    if (!registrySignal.aborted || llmCallLogged) return;
+    const steps = await result.steps;
+    if (!steps.length || llmCallLogged) return;
+    llmCallLogged = true;
+    const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
+    const abortTotalUsage = steps.reduce(
+      (acc, s) => ({
+        inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
+        outputTokens: acc.outputTokens + (s.usage.outputTokens ?? 0),
+        totalTokens: acc.totalTokens + (s.usage.totalTokens ?? 0),
+      }),
+      { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    );
+    const lastStepUsage = steps[steps.length - 1]!.usage;
+    const cacheTotalsOnAbort = usageAcc.cacheTotals();
+    recordLlmCallMetrics({
+      ctx,
+      organizationId: input.organizationId,
+      modelId: input.models.thinking.id,
+      durationMs,
+      isError: false,
+      inputTokens: abortTotalUsage.inputTokens,
+      outputTokens: abortTotalUsage.outputTokens,
+      cacheReadTokens: cacheTotalsOnAbort.read,
+      cacheWriteTokens: cacheTotalsOnAbort.write,
+    });
+    monitorLlmCall({
+      ctx,
+      organizationId: input.organizationId,
+      agentId: input.agent.id,
+      modelId: input.models.thinking.id,
+      modelTitle: input.models.thinking.title ?? input.models.thinking.id,
+      credentialId: input.models.credentialId,
+      taskId: threadId,
+      durationMs,
+      isError: false,
+      finishReason: "abort",
+      usage: {
+        inputTokens: lastStepUsage.inputTokens ?? 0,
+        outputTokens: lastStepUsage.outputTokens ?? 0,
+        totalTokens: lastStepUsage.totalTokens ?? 0,
       },
+      totalUsage: abortTotalUsage,
+      request: undefined,
+      response: undefined,
+      userId: input.user.id,
+      requestId: ctx.metadata.requestId,
+      userAgent: ctx.metadata.userAgent ?? null,
     });
-  } catch (err) {
-    llmSpan.setStatus({
-      code: SpanStatusCode.ERROR,
-      message: err instanceof Error ? err.message : stringifyError(err),
-    });
-    if (err instanceof Error) llmSpan.recordException(err);
-    llmSpan.end();
-    throw err;
-  }
+
+    // Re-push accumulated usage to the client. On abort the SDK
+    // resets message.metadata to its pre-stream state, so we
+    // explicitly emit it here before the stream closes.
+    if (abortTotalUsage.totalTokens > 0) {
+      const cost = usageAcc.cost();
+      chunkQueue.push({
+        type: "message-metadata",
+        messageMetadata: {
+          usage: {
+            inputTokens: abortTotalUsage.inputTokens,
+            outputTokens: abortTotalUsage.outputTokens,
+            totalTokens: abortTotalUsage.totalTokens,
+            cachedInputTokens: cacheTotalsOnAbort.read,
+            inputTokenDetails: {
+              cacheReadTokens: cacheTotalsOnAbort.read,
+              cacheWriteTokens: cacheTotalsOnAbort.write,
+              noCacheTokens:
+                abortTotalUsage.inputTokens -
+                cacheTotalsOnAbort.read -
+                cacheTotalsOnAbort.write,
+            },
+            ...(cost > 0 && {
+              providerMetadata: {
+                openrouter: {
+                  usage: { cost },
+                },
+              },
+            }),
+          },
+        },
+      });
+    }
+  });
 
   // Posthog: emit `chat_message_completed`/`chat_message_aborted`/
   // `chat_message_failed` is the caller's responsibility (it lives in

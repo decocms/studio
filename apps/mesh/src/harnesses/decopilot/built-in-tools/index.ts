@@ -415,3 +415,45 @@ export async function getBuiltInTools(
 
   return tools;
 }
+
+/**
+ * Lightweight built-in tool assembler for the shared agent-loop path.
+ *
+ * Returns the five core built-ins (subtask, user_ask, todo_write,
+ * read_tool_output, propose_plan) as a synchronous ToolSet. Unlike
+ * `getBuiltInTools`, this does NOT include VM/sandbox/web_search/
+ * screenshot/browser tools — those depend on heavy infrastructure
+ * (vmContext, pendingImages, htmlPageBuffer) that the subagent path
+ * doesn't carry. The caller is responsible for filtering out any of
+ * these tools that don't apply for the current agent kind.
+ */
+export interface BuildBuiltInToolsOptions {
+  ctx: MeshContext;
+  writer: UIMessageStreamWriter;
+  toolOutputMap: Map<string, string>;
+  subtaskParams: import("./subtask").SubtaskParams;
+  planMode: boolean;
+}
+
+export function buildBuiltInTools(
+  opts: BuildBuiltInToolsOptions,
+): Record<string, unknown> {
+  const {
+    ctx,
+    writer,
+    toolOutputMap,
+    subtaskParams,
+    planMode: _planMode,
+  } = opts;
+  const tools: Record<string, unknown> = {
+    user_ask: userAskTool,
+    todo_write: todoWriteTool,
+    propose_plan: proposePlanTool,
+    read_tool_output: createReadToolOutputTool({ toolOutputMap }),
+  };
+  // subtask requires a provider — skip when provider is null.
+  if (subtaskParams.provider) {
+    tools.subtask = createSubtaskTool(writer, subtaskParams, ctx);
+  }
+  return tools;
+}

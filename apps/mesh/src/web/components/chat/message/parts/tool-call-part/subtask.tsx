@@ -9,6 +9,46 @@ import { extractTextFromOutput, getToolPartErrorText } from "../utils.ts";
 import { ToolCallShell } from "./common.tsx";
 import { getEffectiveState } from "./utils.tsx";
 
+/**
+ * Subtask tool output contract (set by createSubtaskTool's execute generator):
+ *   { text: string; error?: string; finishReason?: FinishReason }
+ *
+ * Mirrors the server's toModelOutput so the UI shows the same content the
+ * parent model received. Falls back to the legacy UIMessage shape for
+ * historical tool calls predating the structured output.
+ */
+export function extractSubtaskResponse(output: unknown): string | null {
+  if (output && typeof output === "object" && !Array.isArray(output)) {
+    const o = output as {
+      text?: unknown;
+      error?: unknown;
+      finishReason?: unknown;
+    };
+    const hasNewShape =
+      typeof o.text === "string" ||
+      typeof o.error === "string" ||
+      typeof o.finishReason === "string";
+    if (hasNewShape) {
+      if (typeof o.error === "string" && o.error.length > 0) {
+        return `Subtask failed: ${o.error}`;
+      }
+      const text = typeof o.text === "string" ? o.text.trim() : "";
+      const stepLimitHit = o.finishReason === "length";
+      if (text) {
+        const prefix = stepLimitHit
+          ? "[Subtask hit step limit — partial result below; consider narrowing the task.]\n\n"
+          : "";
+        return prefix + text;
+      }
+      if (stepLimitHit) {
+        return "[Subtask hit step limit before producing a final report. The subagent did work but ran out of steps. Narrow the task or increase the budget.]";
+      }
+      return "Subtask completed (no output).";
+    }
+  }
+  return extractTextFromOutput(output);
+}
+
 interface SubtaskPartProps {
   part: SubtaskToolPart;
   /** Subtask metadata from data part */
@@ -63,7 +103,7 @@ function useSubtaskShellConfig({
 
   const response = isError
     ? getToolPartErrorText(part)
-    : (extractTextFromOutput(part.output) ?? "No output available");
+    : (extractSubtaskResponse(part.output) ?? "No output available");
   const detail = `# Task\n${part.input?.prompt ?? "No prompt provided"}\n\n# ${isError ? "Error" : "Result"}\n${response}`;
 
   return {

@@ -24,9 +24,10 @@
  * providers — they have their own harnesses.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
@@ -35,11 +36,83 @@ import {
 } from "../../api/routes/decopilot/constants";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
 import { buildAgentsBlock } from "./agents-block";
-import { buildPromptsBlock } from "./prompts-block";
-import { buildConnectionsBlock } from "./connections-block";
+import { buildPromptsBlock, type PromptsBlockEntry } from "./prompts-block";
+import {
+  buildConnectionsBlock,
+  type ConnectionsBlockTool,
+} from "./connections-block";
 import { buildSystemMessages, type SystemMessage } from "./system-prompt";
 import type { HarnessStreamInput } from "../types";
 import type { AssembledTools } from "./tools";
+
+/**
+ * listAgentsBlock — fetches the org's virtual MCPs and builds the
+ * `<available-agents>` block. Excludes the current virtualMcpId if
+ * provided. Returns null when no other active agents exist.
+ */
+export async function listAgentsBlock(
+  ctx: MeshContext,
+  org: OrganizationScope,
+  currentVirtualMcpId?: string,
+): Promise<string | null> {
+  const virtualMcpList = await ctx.storage.virtualMcps.list(org.id);
+  return buildAgentsBlock(
+    virtualMcpList.map((vm) => ({
+      id: vm.id,
+      name: vm.title,
+      description: vm.description,
+      status: vm.status,
+    })),
+    currentVirtualMcpId ?? "",
+  );
+}
+
+/**
+ * listPromptsBlock — fetches the MCP's prompt catalog via the passthrough
+ * client and builds the `<available-prompts>` block. Returns null when no
+ * client is provided (e.g., unit tests) or when the catalog is empty.
+ */
+export async function listPromptsBlock(
+  _ctx: MeshContext,
+  _org: OrganizationScope,
+  passthroughClient?: Client,
+): Promise<string | null> {
+  if (!passthroughClient) return null;
+  try {
+    const { prompts } = await passthroughClient.listPrompts();
+    if (!prompts?.length) return null;
+    return buildPromptsBlock(
+      prompts.map((p) => ({
+        name: p.name,
+        description: p.description ?? null,
+        arguments: (p.arguments ?? []).map((a) => ({
+          name: a.name,
+          required: a.required,
+        })),
+      })) satisfies PromptsBlockEntry[],
+    );
+  } catch (err) {
+    console.warn("[listPromptsBlock] Failed to list prompts:", err);
+    return null;
+  }
+}
+
+/**
+ * listConnectionsBlock — builds the `<available-connections>` block from
+ * pre-assembled tools data. Returns null when no data is provided or when
+ * there are no tools to expose.
+ */
+export async function listConnectionsBlock(
+  _ctx: MeshContext,
+  _org: OrganizationScope,
+  data?: {
+    tools: ConnectionsBlockTool[];
+    connectionTitleMap: Map<string, string>;
+  },
+): Promise<string | null> {
+  if (!data || data.tools.length === 0) return null;
+  return buildConnectionsBlock(data.tools, data.connectionTitleMap);
+}
 
 export interface AssembledPrompt {
   /** System messages ready to be merged with any per-request system
