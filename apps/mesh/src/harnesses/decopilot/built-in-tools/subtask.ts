@@ -4,16 +4,15 @@
  * The actual model invocation, tool assembly, system-prompt
  * assembly, and error handling all live in runAgentLoop. This file
  * owns only subtask-specific concerns: validating the target
- * agent, creating an MCP client for it, yielding UIMessages back
- * to the parent (so the AI SDK auto-wraps them as nested
- * tool-subtask parts), and emitting the subtask-metadata data
- * chunk.
+ * agent, creating an MCP client for it, draining the subagent's
+ * stream to completion, emitting the subtask-metadata data chunk,
+ * and yielding a single structured result for toModelOutput.
  */
 
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { UIMessageStreamWriter } from "ai";
-import { readUIMessageStream, tool, zodSchema } from "ai";
+import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { MeshProvider } from "@/ai-providers/types";
 import type { ModelsConfig } from "../../../api/routes/decopilot/types";
@@ -129,11 +128,26 @@ export function createSubtaskTool(
           passthroughClient: mcpClient,
         });
 
-        // 4. Yield UIMessages — AI SDK auto-wraps as tool-subtask parts.
-        for await (const message of readUIMessageStream({
-          stream: handle.result.toUIMessageStream(),
-        })) {
-          yield message;
+        // 4. Drain the UI stream so streamText runs to completion.
+        //    We intentionally don't yield each progressive UIMessage:
+        //      - AI SDK's executeTool helper reads only YIELDED values
+        //        (the generator's return value is discarded), so the
+        //        last yielded UIMessage would be what reaches
+        //        toModelOutput — losing our extracted text/error.
+        //      - Each progressive UIMessage from readUIMessageStream
+        //        carries the full accumulated state (incl. multi-MB
+        //        MCP tool outputs), causing per-chunk NATS payloads
+        //        to exceed the 1 MB default and be dropped silently.
+        //    Instead, we drain here and yield a single structured
+        //    object at the end (step 7).
+        const reader = handle.result.toUIMessageStream().getReader();
+        try {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        } finally {
+          reader.releaseLock();
         }
 
         // 5. Collect results from the resolved promises.
@@ -164,8 +178,13 @@ export function createSubtaskTool(
           data: { usage, agent: agent_id, models },
         });
 
-        // 7. Return the tool output — flows into toModelOutput.
-        return { text: aggregatedText, error, finishReason };
+        // 7. Yield the structured result as the ONLY (and therefore
+        //    final) value. The AI SDK's executeTool helper uses the
+        //    LAST YIELDED value as `output` for toModelOutput — the
+        //    generator's return value is discarded. Yielding here
+        //    keeps the parent's UI payload tiny and the model output
+        //    correct.
+        yield { text: aggregatedText, error, finishReason };
       } finally {
         mcpClient.close().catch(() => {});
       }
