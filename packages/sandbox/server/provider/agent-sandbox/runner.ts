@@ -419,8 +419,21 @@ export class AgentSandboxProvider implements SandboxProvider {
   }
 
   async exec(handle: string, input: ExecInput): Promise<ExecOutput> {
-    const rec = await this.requireRecord(handle);
-    return daemonBash(rec.daemonUrl, rec.token, input);
+    let rec = await this.requireRecord(handle);
+    try {
+      return await daemonBash(rec.daemonUrl, rec.token, input);
+    } catch (err) {
+      // A 401 means the cached record is stale — the pool pod was recreated
+      // and no longer holds our token (daemonBash encodes the status in its
+      // message). Drop it and re-resolve; rehydrate re-bootstraps the fresh
+      // daemon. Then retry once.
+      if (err instanceof Error && err.message.includes("returned 401")) {
+        this.invalidateRecord(handle);
+        rec = await this.requireRecord(handle);
+        return daemonBash(rec.daemonUrl, rec.token, input);
+      }
+      throw err;
+    }
   }
 
   async delete(handle: string): Promise<void> {
@@ -513,22 +526,38 @@ export class AgentSandboxProvider implements SandboxProvider {
         headers: { "content-type": "application/json" },
       });
     }
+    let activeRec = rec;
     const start = performance.now();
     let status = 0;
     try {
-      const resp = await proxyDaemonRequest(
-        rec.daemonUrl,
-        rec.token,
-        path,
-        init,
-      );
+      let resp = await proxyDaemonRequest(rec.daemonUrl, rec.token, path, init);
+      // A 401 means the cached record is stale — the pool pod was recreated
+      // and no longer holds our token. Drop it and re-resolve; rehydrate
+      // re-bootstraps the fresh daemon. Then retry once. Retry only when the
+      // body is re-sendable — a streamed body was consumed by the first fetch.
+      if (
+        resp.status === 401 &&
+        (init.body == null || typeof init.body === "string")
+      ) {
+        this.invalidateRecord(handle);
+        const fresh = await this.getRecord(handle).catch(() => null);
+        if (fresh) {
+          activeRec = fresh;
+          resp = await proxyDaemonRequest(
+            fresh.daemonUrl,
+            fresh.token,
+            path,
+            init,
+          );
+        }
+      }
       status = resp.status;
       return resp;
     } finally {
       this.recordProxyDuration(
         "daemon",
         status,
-        rec,
+        activeRec,
         performance.now() - start,
       );
     }
@@ -1080,19 +1109,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       handle,
     );
     const daemonUrl = `http://127.0.0.1:${daemonForward.localPort}`;
-    const configPayload = buildConfigPayload({
-      runtime: opts.workload?.runtime ?? "node",
-      packageManager: opts.workload?.packageManager
-        ? {
-            name: opts.workload.packageManager,
-            ...(opts.workload.packageManagerPath
-              ? { path: opts.workload.packageManagerPath }
-              : {}),
-          }
-        : null,
-      repo: opts.repo ?? null,
-      port: opts.workload?.devPort ?? DEFAULT_DEV_PORT,
-    });
+    const configPayload = this.workloadConfigPayload(opts);
     // Warm-pool path: pod boots with the SandboxTemplate's sentinel token;
     // mesh authenticates the first /config call with the sentinel and
     // rotates to `token` (per-claim) atomically with the workload patch.
@@ -1134,6 +1151,65 @@ export class AgentSandboxProvider implements SandboxProvider {
       tenant: opts.tenant ?? null,
       ensureOpts: stripEnsureOpts(opts),
     };
+  }
+
+  /**
+   * Daemon `/config` payload from ensure opts. Shared by fresh provision and
+   * warm-pool re-bootstrap so a recreated pool pod re-clones the same workload.
+   */
+  private workloadConfigPayload(opts: EnsureOptions | null) {
+    return buildConfigPayload({
+      runtime: opts?.workload?.runtime ?? "node",
+      packageManager: opts?.workload?.packageManager
+        ? {
+            name: opts.workload.packageManager,
+            ...(opts.workload.packageManagerPath
+              ? { path: opts.workload.packageManagerPath }
+              : {}),
+          }
+        : null,
+      repo: opts?.repo ?? null,
+      port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
+    });
+  }
+
+  /**
+   * Warm-pool re-bootstrap. A pool pod recreated under a live claim (operator
+   * rebind, node churn, idle-TTL reap) boots back on the SandboxTemplate
+   * sentinel and is "unclaimed": it rejects our persisted per-claim token and
+   * has none of the workload. Re-run the bootstrap handshake against the fresh
+   * daemon — authenticate with the sentinel, re-post the workload (triggers
+   * re-clone/install), and rotate back to our per-claim token.
+   *
+   * Only `rehydrate` calls this, after `openAndProbeDaemon` confirmed the
+   * daemon is reachable and resolved `daemonUrl` from the claim's *current*
+   * `status.sandbox.name` — so the pod is authoritatively the one bound to our
+   * claim (no stale-name cross-tenant risk). Self-validating: the sentinel
+   * handshake only succeeds when the daemon is genuinely sentinel-authenticated
+   * (recreated/unclaimed), so a daemon still holding our token is left
+   * untouched. Returns false when not in warm-pool mode or the handshake fails;
+   * caller purges and reprovisions.
+   */
+  private async rebootstrapDaemon(
+    daemonUrl: string,
+    token: string,
+    ensureOpts: EnsureOptions | null,
+  ): Promise<boolean> {
+    if (this.sentinelToken === null) return false;
+    try {
+      await postConfig(
+        daemonUrl,
+        this.sentinelToken,
+        this.workloadConfigPayload(ensureOpts) ?? {},
+        { rotateToken: token },
+      );
+      return true;
+    } catch (err) {
+      console.warn(
+        `[${LOG_LABEL}] re-bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
   }
 
   /**
@@ -1284,12 +1360,42 @@ export class AgentSandboxProvider implements SandboxProvider {
     const live = await this.openAndProbeDaemon(adoptedSandboxName, handle);
     if (!live) return null;
 
-    // Pod bounced but the daemon's orchestrator handles re-bootstrap itself
-    // on boot (resume-on-restart). Just refresh our copy of bootId.
+    // bootId change = the pod was recreated. In warm-pool mode the new pool pod
+    // booted back on the sentinel (unclaimed): it has neither our rotated token
+    // nor the workload, so re-run the bootstrap handshake against it. On
+    // failure, purge so the caller reprovisions. In cold mode the env-injected
+    // token is stable across restarts and the orchestrator resumes on its own,
+    // so a bootId change there is informational only.
     if (state.daemonBootId && state.daemonBootId !== live.bootId) {
-      console.warn(
-        `[${LOG_LABEL}] daemon restart detected (handle=${handle}): stored bootId=${state.daemonBootId} live bootId=${live.bootId}`,
-      );
+      if (this.sentinelToken !== null) {
+        const ok = await this.rebootstrapDaemon(
+          live.daemonUrl,
+          state.token,
+          state.ensureOpts ?? null,
+        );
+        if (!ok) {
+          this.closeForwarder(live.daemonForward);
+          return null;
+        }
+      } else {
+        console.warn(
+          `[${LOG_LABEL}] daemon restart detected (handle=${handle}): stored bootId=${state.daemonBootId} live bootId=${live.bootId}`,
+        );
+      }
+      // Track the live bootId so a later rehydrate doesn't see the same stale
+      // mismatch and re-fire against a pod we've already healed (the resume +
+      // reactive-401 paths don't persist via finish). Non-fatal on failure —
+      // worst case is a redundant re-bootstrap next time.
+      await this.stateStore
+        ?.put(id, RUNNER_KIND, {
+          handle,
+          state: { ...state, daemonBootId: live.bootId },
+        })
+        .catch((err) =>
+          console.warn(
+            `[${LOG_LABEL}] bootId persist failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
     }
 
     return {
