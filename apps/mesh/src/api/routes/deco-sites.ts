@@ -283,6 +283,125 @@ const requireAuth = async (
 };
 
 const ADMIN_MCP = "https://sites-admin-mcp.decocache.com/api/mcp";
+const ADMIN_API = "https://admin.deco.cx";
+
+/**
+ * Bucket layout that deco-sites/admin's provisionTenantS3Credentials
+ * sets up: a single `deco-assets` bucket on GCS (path-style S3 interop),
+ * one managed folder per site under `<siteName>/`, served through the
+ * `decoims.com` image CDN. Mirrors what the legacy admin's media widget
+ * already reads from — see `clients/gcsTenantCredentials.ts` in admin.
+ */
+const DECO_ASSETS_BUCKET = "deco-assets";
+const DECO_ASSETS_ENDPOINT = "https://storage.googleapis.com";
+const DECOIMS_CDN = "https://decoims.com";
+const FILE_CONFIG_NAME_PREFIX = "deco-assets-";
+
+interface TenantS3Credentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+}
+
+/**
+ * Calls `POST admin.deco.cx/api/<site>/s3-credentials` as the team's
+ * service account. The endpoint provisions (idempotently) a GCP service
+ * account, IAM-binds it to the site's managed folder, and mints a fresh
+ * HMAC key — see deco-sites/admin#3223 / #3235 for the auth contract.
+ * Returns null on any failure so callers can fall back to best-effort
+ * behaviour (the deco-sites import itself shouldn't fail just because
+ * storage couldn't be provisioned).
+ */
+export async function provisionDecoAssetsCredentials(
+  siteName: string,
+  serviceAccountApiKey: string,
+): Promise<TenantS3Credentials | null> {
+  try {
+    const res = await fetch(
+      `${ADMIN_API}/api/${encodeURIComponent(siteName)}/s3-credentials`,
+      {
+        method: "POST",
+        headers: { "x-api-key": serviceAccountApiKey },
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(
+        `[deco-sites] s3-credentials failed (${res.status}) for site=${siteName}: ${body.slice(0, 200)}`,
+      );
+      return null;
+    }
+    const data = (await res.json()) as {
+      accessKeyId?: string;
+      secretAccessKey?: string;
+    };
+    if (!data.accessKeyId || !data.secretAccessKey) {
+      console.error(
+        `[deco-sites] s3-credentials returned malformed response for site=${siteName}`,
+      );
+      return null;
+    }
+    return {
+      accessKeyId: data.accessKeyId,
+      secretAccessKey: data.secretAccessKey,
+    };
+  } catch (err) {
+    console.error(
+      `[deco-sites] s3-credentials request errored for site=${siteName}:`,
+      err,
+    );
+    return null;
+  }
+}
+
+/**
+ * Create a FILE_CONFIG row pointing at the per-site managed folder
+ * inside `gs://deco-assets`, served through `https://decoims.com`. If a
+ * config with the same name already exists in this org (re-import of
+ * the same site), no-op — credentials there may have been rotated by
+ * the user. Caller treats this as best-effort.
+ */
+export async function provisionDecoAssetsFileConfig(params: {
+  ctx: MeshContext;
+  orgId: string;
+  userId: string;
+  siteName: string;
+  serviceAccountApiKey: string;
+}): Promise<void> {
+  const { ctx, orgId, userId, siteName, serviceAccountApiKey } = params;
+  const configName = `${FILE_CONFIG_NAME_PREFIX}${siteName}`;
+
+  const existing = await ctx.storage.orgFileConfigs.list(orgId);
+  if (existing.some((c) => c.name.toLowerCase() === configName.toLowerCase())) {
+    console.log(
+      `[deco-sites] file-config "${configName}" already exists for org=${orgId}, skipping`,
+    );
+    return;
+  }
+
+  const creds = await provisionDecoAssetsCredentials(
+    siteName,
+    serviceAccountApiKey,
+  );
+  if (!creds) return;
+
+  await ctx.storage.orgFileConfigs.create({
+    organizationId: orgId,
+    name: configName,
+    description: `deco-assets storage for site "${siteName}". Provisioned during deco.cx import.`,
+    bucket: DECO_ASSETS_BUCKET,
+    region: "auto",
+    endpoint: DECO_ASSETS_ENDPOINT,
+    forcePathStyle: true,
+    prefix: `${siteName}/`,
+    publicUrlBase: DECOIMS_CDN,
+    credentials: creds,
+    createdBy: userId,
+  });
+  console.log(
+    `[deco-sites] file-config "${configName}" provisioned for org=${orgId}`,
+  );
+}
 
 async function fetchFaviconAsDataUrl(domain: string): Promise<string | null> {
   try {
@@ -531,6 +650,24 @@ export const createDecoSitesOrgRoutes = () => {
         app_id: null,
         tools,
         configuration_scopes,
+      });
+
+      // Best-effort: provision a FILE_CONFIG pointing at the site's
+      // deco-assets folder so the sections-editor file picker can list
+      // and upload images right after import. Any failure here is
+      // logged and swallowed — the deco.cx connection itself is
+      // already created and useful on its own.
+      await provisionDecoAssetsFileConfig({
+        ctx,
+        orgId,
+        userId,
+        siteName,
+        serviceAccountApiKey: apiKey,
+      }).catch((err) => {
+        console.error(
+          `[deco-sites] file-config provisioning failed for site=${siteName}:`,
+          err,
+        );
       });
 
       return c.json({ connId: connection.id, icon: faviconIcon });
