@@ -314,10 +314,16 @@ jobs:
   bump-deco-apps-cd:
     name: Bump image in deco-apps-cd
     needs: [prepare, merge-docker]
+    # Only bump when a VALID image for this version exists: either it was
+    # already published (image-exists == 'true', so merge-docker is skipped),
+    # or it was just built and merged successfully. A skipped merge-docker due
+    # to a failed build must NOT bump (no image was published).
     if: |
       always() &&
-      (needs.prepare.outputs.version-changed == 'true' || needs.prepare.outputs.image-exists == 'false') &&
-      (needs.merge-docker.result == 'success' || needs.merge-docker.result == 'skipped')
+      (
+        needs.prepare.outputs.image-exists == 'true' ||
+        needs.merge-docker.result == 'success'
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Generate token for deco-apps-cd
