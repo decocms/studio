@@ -5,8 +5,6 @@
 
 How we see Studio. The product, its primitives, how they work for the user.
 
-For the engineering view see [`system-design.md`](./system-design.md). For the strategy see [`product-vision.md`](./product-vision.md).
-
 ---
 
 ## What Studio is
@@ -211,7 +209,7 @@ agents/web-developer/
     src/
 ```
 
-Sharing happens through git: commit to your branch, open a PR to `main`. A human reviews and merges. `main` is the canonical published store. Full spec in [`org-filesystem-layout.md`](./org-filesystem-layout.md).
+Sharing happens through git: commit to your branch, open a PR to `main`. A human reviews and merges. `main` is the canonical published store.
 
 ---
 
@@ -271,14 +269,3 @@ Talking to Home talks to the org's pilot. It does one of three things per turn:
 - d. 1 GB cap per run; larger outputs must chunk or stream.
 - e. Secrets never on disk; passed as env vars at process start, scoped per tool.
 - f. External providers (Google Drive, S3 elsewhere) accessed via tool calls, not FS mounts.
-
----
-
-## Where this fits
-
-- [`design-docs.md`](./design-docs.md) — this file, the entry point.
-- [`product-vision.md`](./product-vision.md) — what we sell, to whom, where it's going.
-- [`primitives.md`](./primitives.md) — the building blocks in plain language and technical detail.
-- [`system-design.md`](./system-design.md) — engineering view.
-- [`org-filesystem-layout.md`](./org-filesystem-layout.md) — full filesystem spec.
-- [`open-questions.md`](./open-questions.md) — what's still being designed.
