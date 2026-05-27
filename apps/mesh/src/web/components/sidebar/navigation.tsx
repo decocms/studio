@@ -3,7 +3,6 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -12,45 +11,14 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Suspense, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { NavigationSidebarItem, SidebarSection } from "./types";
 import { SidebarCollapsibleGroup } from "./sidebar-group";
-import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 import { track } from "@/web/lib/posthog-client";
-
-function SidebarLogoHeader({ rightContent }: { rightContent?: ReactNode }) {
-  const config = usePublicConfig();
-  const logo = config.logo ?? DEFAULT_LOGO;
-  const lightSrc = typeof logo === "string" ? logo : logo.light;
-  const darkSrc = typeof logo === "string" ? logo : logo.dark;
-
-  return (
-    <SidebarHeader className="wco-hide flex flex-row items-center justify-between shrink-0 h-12 px-3 pb-0">
-      <div className="flex items-center shrink-0">
-        <img
-          src={lightSrc}
-          alt="Logo"
-          className="size-6 object-contain dark:hidden"
-        />
-        <img
-          src={darkSrc}
-          alt="Logo"
-          className="size-6 object-contain hidden dark:block"
-        />
-      </div>
-      {rightContent && (
-        <div className="flex items-center gap-0.5 group-data-[state=collapsed]/sidebar:hidden">
-          {rightContent}
-        </div>
-      )}
-    </SidebarHeader>
-  );
-}
 
 interface NavigationSidebarProps {
   sections: SidebarSection[];
   header?: ReactNode;
-  headerRight?: ReactNode;
   footer?: ReactNode;
   additionalContent?: ReactNode;
   variant?: "sidebar" | "floating" | "inset";
@@ -127,7 +95,6 @@ function SidebarSectionRenderer({ section }: { section: SidebarSection }) {
 function NavigationSidebarInner({
   sections,
   header,
-  headerRight,
   footer,
   additionalContent,
   variant = "sidebar",
@@ -135,9 +102,6 @@ function NavigationSidebarInner({
 }: NavigationSidebarProps) {
   return (
     <Sidebar variant={variant}>
-      <Suspense fallback={<div className="h-10 shrink-0" />}>
-        <SidebarLogoHeader rightContent={headerRight} />
-      </Suspense>
       {header}
       <SidebarContent
         className={cn(
