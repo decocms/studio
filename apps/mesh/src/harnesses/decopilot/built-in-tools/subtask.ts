@@ -1,36 +1,24 @@
 /**
- * subtask Built-in Tool
+ * subtask Built-in Tool — thin wrapper around runAgentLoop.
  *
- * Server-side tool that spawns a streaming subagent to delegate work to another
- * agent (Virtual MCP). Uses AI SDK v6 streaming generator pattern.
+ * The actual model invocation, tool assembly, system-prompt
+ * assembly, and error handling all live in runAgentLoop. This file
+ * owns only subtask-specific concerns: validating the target
+ * agent, creating an MCP client for it, yielding UIMessages back
+ * to the parent (so the AI SDK auto-wraps them as nested
+ * tool-subtask parts), and emitting the subtask-metadata data
+ * chunk.
  */
 
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
-import { addUsage, emptyUsageStats, type UsageStats } from "@decocms/mesh-sdk";
 import type { UIMessageStreamWriter } from "ai";
-import {
-  readUIMessageStream,
-  stepCountIs,
-  streamText,
-  tool,
-  zodSchema,
-} from "ai";
+import { readUIMessageStream, tool, zodSchema } from "ai";
 import { z } from "zod";
-import {
-  DEFAULT_MAX_TOKENS,
-  SUBAGENT_EXCLUDED_TOOLS,
-  SUBAGENT_STEP_LIMIT,
-} from "../../../api/routes/decopilot/constants";
-import { toolsFromMCP } from "../../../api/routes/decopilot/helpers";
+import type { MeshProvider } from "@/ai-providers/types";
 import type { ModelsConfig } from "../../../api/routes/decopilot/types";
-import { MeshProvider } from "@/ai-providers/types";
-import {
-  OPENROUTER_CACHE_PROVIDER_OPTIONS,
-  withCachedToolPrefix,
-} from "../../../api/routes/decopilot/cache-instrumentation";
-import { createLanguageModel } from "../../../ai-providers/language-model";
-import { buildSystemMessages } from "../system-prompt";
+import { runAgentLoop } from "../run-agent-loop";
+import { SUBAGENT_STEP_LIMIT } from "../../../api/routes/decopilot/constants";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -52,10 +40,6 @@ export const SubtaskInputSchema = z.object({
 });
 
 export type SubtaskInput = z.infer<typeof SubtaskInputSchema>;
-
-export interface SubtaskResultMeta {
-  usage: UsageStats;
-}
 
 const SUBTASK_DESCRIPTION =
   "Delegate a self-contained task to another agent. The subagent runs independently with its own tools " +
@@ -81,46 +65,6 @@ const SUBTASK_ANNOTATIONS = {
   openWorldHint: true,
 } as const;
 
-const SUBTASK_BASE_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
-
-## Rules (non-negotiable)
-
-1. Do NOT converse, ask questions, or suggest next steps to the user — you cannot interact with them.
-2. Do NOT delegate to other agents — execute directly.
-3. Stay strictly within your task's scope. If you discover related work outside your scope, mention it in one sentence at most.
-
-## Before Acting: Assess the Task
-
-Before making ANY tool calls, evaluate: do you understand what to do, how to do it, and when you're done?
-
-- **If unclear** → Respond IMMEDIATELY with what's missing. Make zero tool calls. The parent agent will reformulate with more context.
-- **If clear** → Proceed autonomously. Be efficient, be thorough, don't second-guess. If you hit obstacles mid-execution, make reasonable judgment calls and note them.
-
-## Execution
-
-- Use your tools directly. Do not emit text between tool calls — use tools, then report once at the end.
-- Keep your report under 500 words unless the task requires more detail. Be factual and concise.
-- Do not use emojis.
-
-## When Done: Report
-
-End with a structured summary:
-- **Result**: What you did, what you found or produced
-- **Key files**: Relevant file paths (always absolute, never relative) — include only for research tasks
-- **Issues**: Anything to flag — include only if there are issues
-
-This report is all the parent agent sees.`;
-
-export function buildSubagentSystemPrompt(
-  agentInstructions?: string,
-): string[] {
-  const prompts = [SUBTASK_BASE_PROMPT];
-  if (agentInstructions?.trim()) {
-    prompts.push(agentInstructions);
-  }
-  return prompts;
-}
-
 export function createSubtaskTool(
   writer: UIMessageStreamWriter,
   params: SubtaskParams,
@@ -138,114 +82,106 @@ export function createSubtaskTool(
     ) {
       const startTime = performance.now();
 
-      // ── 1. Load and validate target agent ──────────────────────────
+      // 1. Validate the target agent.
       const virtualMcp = await ctx.storage.virtualMcps.findById(
         agent_id,
         organization.id,
       );
-
       if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
         throw new Error("Agent not found");
       }
-
       if (virtualMcp.status !== "active") {
         throw new Error("Agent is not active");
       }
 
-      // ── 2. Create MCP client for the target agent ──────────────────
+      // 2. Create MCP client for the target.
       const mcpClient = await createVirtualClientFrom(
         virtualMcp,
         ctx,
         "passthrough",
       );
 
-      // ── 3. Load tools, excluding ones that shouldn't nest ──────────
-      const { tools: mcpTools } = await toolsFromMCP(
-        mcpClient,
-        new Map(),
-        writer,
-        "auto",
-        { disableOutputTruncation: true },
-      );
-      // Tools are filtered first, then sorted-and-cache-marked via the
-      // shared helper. Anthropic's tool-cache layer is separate from
-      // the system/messages layer, so this doesn't consume any system
-      // cache breakpoints.
-      const filteredTools = Object.fromEntries(
-        Object.entries(mcpTools).filter(
-          ([name]) => !SUBAGENT_EXCLUDED_TOOLS.includes(name),
-        ),
-      );
-      const subagentTools = withCachedToolPrefix(filteredTools);
-
-      // ── 4. Build subagent system prompt ────────────────────────────
-      const serverInstructions = mcpClient.getInstructions();
-      const systemPrompts = buildSubagentSystemPrompt(serverInstructions);
-      const systemPromptMessages = buildSystemMessages(
-        systemPrompts,
-        new Date(),
-      );
-
-      // ── 5. Run streamText as subagent ──────────────────────────────
-      let accumulatedUsage: UsageStats = emptyUsageStats();
-
-      const result = streamText({
-        model: createLanguageModel(provider, models.thinking),
-        system: systemPromptMessages,
-        prompt,
-        tools: subagentTools,
-        providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
-        abortSignal,
-        stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
-        maxOutputTokens:
-          models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
-        onStepFinish: ({ usage, providerMetadata }) => {
-          accumulatedUsage = addUsage(accumulatedUsage, {
-            ...usage,
-            providerMetadata,
-          });
-        },
-        onAbort: () => {
-          console.error(`[subtask:${agent_id}] Aborted`);
-          mcpClient.close().catch(() => {});
-        },
-        onError: (error) => {
-          console.error(`[subtask:${agent_id}] Error`, error);
-        },
-      });
-
-      // ── 6. Stream results via readUIMessageStream ──────────────────
-      for await (const message of readUIMessageStream({
-        stream: result.toUIMessageStream(),
-      })) {
-        yield message;
-      }
-
-      // Emit tool metadata (annotations + latency) and subtask metadata
-      const latencyMs = performance.now() - startTime;
-      writer.write({
-        type: "data-tool-metadata",
-        id: toolCallId,
-        data: { annotations: SUBTASK_ANNOTATIONS, latencyMs },
-      });
-      writer.write({
-        type: "data-tool-subtask-metadata",
-        id: toolCallId,
-        data: {
-          usage: accumulatedUsage,
-          agent: agent_id,
+      try {
+        // 3. Call runAgentLoop with subagent kind.
+        const handle = await runAgentLoop({
+          kind: "subagent",
+          ctx,
+          organization,
+          virtualMcp: {
+            id: virtualMcp.id,
+            instructions: mcpClient.getInstructions(),
+            repo: virtualMcp.metadata?.githubRepo ?? undefined,
+          },
+          mcpClient,
+          provider,
           models,
-        },
-      });
-    },
-    toModelOutput: ({ output: message }) => {
-      const lastTextPart = message?.parts?.findLast(
-        (p) => "type" in p && p.type === "text" && "text" in p,
-      );
+          messages: [{ role: "user", content: prompt }],
+          abortSignal: abortSignal ?? new AbortController().signal,
+          stepLimit: SUBAGENT_STEP_LIMIT,
+          toolApprovalLevel: "auto",
+          planMode: false,
+          writer,
+          subtaskParams: { provider, organization, models, needsApproval },
+          // Subagent inherits the parent's writer for nested chunk routing.
+          // Subagent gets prompts/connections blocks via the MCP client
+          // (which is both the tool source AND the prompts source for the
+          // target agent). This passes through to buildAgentSystemPrompt.
+          passthroughClient: mcpClient,
+        });
 
+        // 4. Yield UIMessages — AI SDK auto-wraps as tool-subtask parts.
+        for await (const message of readUIMessageStream({
+          stream: handle.result.toUIMessageStream(),
+        })) {
+          yield message;
+        }
+
+        // 5. Collect results from the resolved promises.
+        const error = await handle.error;
+        const finishReason = await handle.result.finishReason;
+        const text = await handle.result.text;
+        const usage = await handle.result.usage;
+
+        // 6. Emit metadata chunks to the parent's writer.
+        const latencyMs = performance.now() - startTime;
+        writer.write({
+          type: "data-tool-metadata",
+          id: toolCallId,
+          data: { annotations: SUBTASK_ANNOTATIONS, latencyMs },
+        });
+        writer.write({
+          type: "data-tool-subtask-metadata",
+          id: toolCallId,
+          data: { usage, agent: agent_id, models },
+        });
+
+        // 7. Return the tool output — flows into toModelOutput.
+        return { text, error, finishReason };
+      } finally {
+        mcpClient.close().catch(() => {});
+      }
+    },
+    toModelOutput: ({ output }) => {
+      const o = output as
+        | { text?: string; error?: string; finishReason?: string }
+        | undefined;
+      if (o?.error) {
+        return {
+          type: "error-text" as const,
+          value: `Subtask failed: ${o.error}`,
+        };
+      }
+      const text = o?.text?.trim();
+      if (text) {
+        const prefix =
+          o?.finishReason === "length"
+            ? "[Subtask hit step limit — partial result below; consider narrowing the task.]\n\n"
+            : "";
+        return { type: "text" as const, value: prefix + text };
+      }
       return {
         type: "text" as const,
-        value: lastTextPart?.text ?? "Subtask completed (no output).",
+        value: "Subtask completed (no output).",
       };
     },
   });
