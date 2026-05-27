@@ -1,5 +1,5 @@
 import { FilterLines } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@deco/ui/lib/utils.ts";
 import type { ComponentType, SVGProps } from "react";
 import { getIconComponent } from "../agent-icon";
 
