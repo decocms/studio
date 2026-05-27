@@ -302,15 +302,17 @@ jobs:
           echo "Triggered ArgoCD deployment with image tag \`${{ needs.prepare.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
 
   # ---------------------------------------------------------------------------
-  # GitOps: commit the new mesh version into deco-apps-cd so ArgoCD rolls it
-  # out. Only STAGING (deco-studio-stg) is bumped automatically — it is
-  # auto-sync. Prod (deco-studio) is manual-sync and promoted deliberately,
-  # so it is never bumped here.
+  # GitOps: commit the new mesh version into deco-apps-cd so ArgoCD picks it up.
+  # Both staging (deco-studio-stg) and prod (deco-studio) image tags are bumped.
+  # IMPORTANT: this only updates the desired version in git — it does NOT deploy
+  # prod. deco-studio-stg is auto-sync (rolls out immediately); deco-studio is
+  # manual-sync, so prod just shows OutOfSync until someone Syncs it deliberately
+  # (the promotion gate is preserved).
   # Requires the GH_APP_ID / GH_APP_PRIVATE_KEY app (write to deco-apps-cd) —
   # the same GitHub App the admin CI uses.
   # ---------------------------------------------------------------------------
-  bump-staging:
-    name: Bump staging in deco-apps-cd
+  bump-deco-apps-cd:
+    name: Bump image in deco-apps-cd
     needs: [prepare, merge-docker]
     if: |
       always() &&
@@ -326,7 +328,7 @@ jobs:
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           owner: decocms
           repositories: deco-apps-cd
-      - name: Bump studio-stg mesh image
+      - name: Bump mesh image (stg + prod)
         env:
           GH_TOKEN: ${{ steps.cd-token.outputs.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -335,13 +337,14 @@ jobs:
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/decocms/deco-apps-cd.git" cd-repo
           cd cd-repo
           yq -i ".studio.image.tag = \"${VERSION}\"" apps/deco-studio-stg/values.yaml
+          yq -i ".studio.image.tag = \"${VERSION}\"" apps/deco-studio/values.yaml
           if git diff --quiet; then
-            echo "studio-stg already at ${VERSION}, nothing to commit"
+            echo "already at ${VERSION}, nothing to commit"
             exit 0
           fi
           git config user.name "deco-studio-ci[bot]"
           git config user.email "deco-studio-ci[bot]@users.noreply.github.com"
-          git commit -am "chore(studio-stg): bump mesh image to ${VERSION}"
+          git commit -am "chore(studio): bump mesh image to ${VERSION} (stg + prod)"
           git push
-          echo "### Staging bump" >> $GITHUB_STEP_SUMMARY
-          echo "Committed \`studio.image.tag=${VERSION}\` to deco-apps-cd (deco-studio-stg)" >> $GITHUB_STEP_SUMMARY
+          echo "### deco-apps-cd bump" >> $GITHUB_STEP_SUMMARY
+          echo "Committed \`studio.image.tag=${VERSION}\` (stg rolls out; prod awaits manual Sync)" >> $GITHUB_STEP_SUMMARY
