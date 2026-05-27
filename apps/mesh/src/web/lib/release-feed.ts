@@ -26,7 +26,7 @@ export const RELEASES: Release[] = [
     id: "sidebar-task-groups",
     date: "2026-05-27",
     eyebrow: "Now Available",
-    title: "Group tasks your way",
+    title: "Redesigned sidebar",
     bullets: [
       {
         icon: Stars02,
