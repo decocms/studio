@@ -362,29 +362,28 @@ function deriveReviewTips(messages: Array<{ parts?: unknown[] }>): ReviewTip[] {
 }
 
 /**
- * Pull an array-of-strings argument from a tool-call record. Same probing
- * strategy as `extractToolArgString` but for array values.
+ * Tool-call args from the Claude Code streaming protocol show up in any
+ * of three sibling shapes. Walking them in priority order is needed
+ * everywhere we read a tool argument; this helper isolates that probing.
  */
-function extractToolArgArray(
-  record: Record<string, unknown>,
-  key: string,
-): string[] | null {
-  const buckets: unknown[] = [
+function readToolArgBuckets(record: Record<string, unknown>): unknown[] {
+  return [
     record.input,
     record.args,
     (record.params as Record<string, unknown> | undefined)?.arguments,
   ];
-  for (const bucket of buckets) {
-    if (!bucket || typeof bucket !== "object") continue;
-    const value = (bucket as Record<string, unknown>)[key];
-    if (Array.isArray(value)) {
-      const cleaned = value
-        .filter((v): v is string => typeof v === "string" && v.trim() !== "")
-        .map((s) => s.trim());
-      if (cleaned.length > 0) return cleaned;
-    }
-  }
-  return null;
+}
+
+function extractToolArgArray(
+  record: Record<string, unknown>,
+  key: string,
+): string[] | null {
+  const v = extractToolArgAny(record, key);
+  if (!Array.isArray(v)) return null;
+  const cleaned = v
+    .filter((x): x is string => typeof x === "string" && x.trim() !== "")
+    .map((s) => s.trim());
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 /**
@@ -525,21 +524,17 @@ function deriveLiveProgress(
   return label;
 }
 
+/**
+ * Read a string-valued tool argument by dot-path (`"foo"` or
+ * `"nested.path"`) from any of the three sibling arg buckets. Returns
+ * the trimmed string or null if missing.
+ */
 function extractToolArgString(
   record: Record<string, unknown>,
   path: string,
 ): string | null {
   const parts = path.split(".");
-  // Common shapes from the Claude Code streaming protocol:
-  //   { input: { label: "…" } }
-  //   { args:  { label: "…" } }
-  //   { params:{ arguments: { label: "…" } } }
-  const buckets: unknown[] = [
-    record.input,
-    record.args,
-    (record.params as Record<string, unknown> | undefined)?.arguments,
-  ];
-  for (const bucket of buckets) {
+  for (const bucket of readToolArgBuckets(record)) {
     let cur: unknown = bucket;
     for (const key of parts) {
       if (!cur || typeof cur !== "object") {
@@ -554,21 +549,16 @@ function extractToolArgString(
 }
 
 /**
- * Probe the same arg-shape buckets as extractToolArgString, but return the
- * raw value (any type). Used to lift block props / position / index off
- * BLOCK_PATCH_TOOLS calls in the chat stream so we can postMessage them
- * to the iframe without going through the server's response payload.
+ * Read a tool argument as a raw value (any type) from the first bucket
+ * that defines it. Used to lift block props / position / index off
+ * BLOCK_PATCH_TOOLS calls without going through the server's response
+ * payload.
  */
 function extractToolArgAny(
   record: Record<string, unknown>,
   key: string,
 ): unknown {
-  const buckets: unknown[] = [
-    record.input,
-    record.args,
-    (record.params as Record<string, unknown> | undefined)?.arguments,
-  ];
-  for (const bucket of buckets) {
+  for (const bucket of readToolArgBuckets(record)) {
     if (!bucket || typeof bucket !== "object") continue;
     const value = (bucket as Record<string, unknown>)[key];
     if (value !== undefined) return value;
