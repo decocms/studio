@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useSaveBlock } from "./use-save-block";
-import { extractPages } from "./page-list";
+import { extractPages, globalSectionLabel } from "./page-list";
+import { normalizePagePath } from "./page-path-utils";
 import { SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
 import { arrayMove } from "@dnd-kit/sortable";
@@ -419,6 +420,9 @@ export function SectionsEditor({
   const [sectionRuleResolveType, setSectionRuleResolveType] = useState<
     string | null
   >(null);
+  const [prevAutoGlobalKey, setPrevAutoGlobalKey] = useState<string | null>(
+    null,
+  );
 
   // Reset form state when the active page or global block changes
   const [prevPath, setPrevPath] = useState(currentPath);
@@ -489,7 +493,7 @@ export function SectionsEditor({
   }
 
   const pages = extractPages(decofile);
-  const norm = (s: string) => s.replace(/\/+$/, "") || "/";
+  const norm = normalizePagePath;
   const isGlobalBlockMode = !!activeGlobalBlockKey;
   const activePage = isGlobalBlockMode
     ? null
@@ -502,13 +506,11 @@ export function SectionsEditor({
       ? (decofile[activeGlobalBlockKey] as Record<string, unknown> | undefined)
       : undefined;
   const globalBlockName =
-    isGlobalBlockMode && activeGlobalBlockKey
-      ? typeof globalBlockData?.name === "string" && globalBlockData.name
-        ? globalBlockData.name
-        : activeGlobalBlockKey
-            .replace(/[-_]/g, " ")
-            .replace(/\b\w/g, (c) => c.toUpperCase())
-      : "";
+    isGlobalBlockMode && activeGlobalBlockKey && globalBlockData
+      ? globalSectionLabel(activeGlobalBlockKey, globalBlockData)
+      : isGlobalBlockMode && activeGlobalBlockKey
+        ? activeGlobalBlockKey
+        : "";
 
   const pageData =
     !isGlobalBlockMode && activePageKey && decofile[activePageKey]
@@ -532,9 +534,6 @@ export function SectionsEditor({
   const parsedSections = parseSections(rawSections, decofile);
 
   // Global blocks open directly into the section form (single saved block).
-  const [prevAutoGlobalKey, setPrevAutoGlobalKey] = useState<string | null>(
-    null,
-  );
   if (
     isGlobalBlockMode &&
     activeGlobalBlockKey &&

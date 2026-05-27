@@ -48,6 +48,10 @@ import {
   extractPages,
   type GlobalSectionEntry,
 } from "@/web/components/sections-editor/page-list";
+import {
+  normalizePagePath,
+  validatePagePath,
+} from "@/web/components/sections-editor/page-path-utils";
 import { findLivePageResolveType } from "@/web/components/sections-editor/section-catalog";
 import { buildGlobalSectionPreviewUrl } from "@/web/components/sections-editor/section-preview-url";
 import { useCreatePage } from "@/web/components/sections-editor/use-create-page";
@@ -189,17 +193,15 @@ export function PreviewContent() {
       : null;
   const { data: decofile } = useDecofile(decofileParams);
   const { data: meta } = useLiveMeta(decofileParams);
-  const createPage = useCreatePage(
-    virtualMcpId && branch
-      ? { orgSlug: org.slug, virtualMcpId, branch }
-      : { orgSlug: org.slug, virtualMcpId: "", branch: "" },
-  );
+  const createPageParams =
+    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+  const createPage = useCreatePage(createPageParams);
   const pages = decofile
     ? extractPages(decofile).sort((a, b) => a.name.localeCompare(b.name))
     : [];
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
-  const normPath = (path: string) => path.replace(/\/+$/, "") || "/";
+  const normPath = normalizePagePath;
   const filteredPages = pages.filter((page) => {
     if (!pagesSearch) return true;
     const q = pagesSearch.toLowerCase();
@@ -653,7 +655,9 @@ export function PreviewContent() {
 
   const handleCopyUrl = () => {
     const url =
-      previewIframeRef.current?.contentWindow?.location?.href ?? previewUrl;
+      previewIframeRef.current?.contentWindow?.location?.href ??
+      iframeSrc ??
+      previewUrl;
     if (url) navigator.clipboard.writeText(url);
   };
 
@@ -678,7 +682,11 @@ export function PreviewContent() {
   };
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
-    if (!previewUrl || !meta) return;
+    if (!previewUrl || !meta) {
+      toast.error("Preview metadata not ready yet");
+      return;
+    }
+    intendedPathRef.current = null;
     const livePageRt = findLivePageResolveType(meta);
     const url = buildGlobalSectionPreviewUrl(
       previewUrl,
@@ -698,7 +706,14 @@ export function PreviewContent() {
     path: string;
   }) => {
     if (!virtualMcpId || !branch) return;
-    const trimmedPath = path.startsWith("/") ? path : `/${path}`;
+    const pathError = validatePagePath(path);
+    if (pathError) {
+      setCreatePageError(pathError);
+      return;
+    }
+    const trimmedPath = path.trim().startsWith("/")
+      ? path.trim()
+      : `/${path.trim()}`;
     if (pages.some((p) => normPath(p.path) === normPath(trimmedPath))) {
       setCreatePageError(`A page with path "${trimmedPath}" already exists.`);
       return;
@@ -817,7 +832,7 @@ export function PreviewContent() {
                           type="text"
                           value={pagesSearch}
                           onChange={(e) => setPagesSearch(e.target.value)}
-                          placeholder="Search pages..."
+                          placeholder="Search pages and components..."
                           className="w-full rounded-md border border-input bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
                           autoFocus
                         />
@@ -939,17 +954,8 @@ export function PreviewContent() {
                       variant="ghost"
                       size="icon"
                       onClick={() => {
-                        let url = previewState.previewUrl;
-                        if (url && currentPath && currentPath !== "/") {
-                          try {
-                            const parsed = new URL(url);
-                            parsed.pathname = currentPath;
-                            url = parsed.href;
-                          } catch {
-                            // keep original url
-                          }
-                        }
-                        window.open(url, "_blank", "noopener");
+                        const url = iframeSrc ?? previewState.previewUrl;
+                        if (url) window.open(url, "_blank", "noopener");
                       }}
                     >
                       <LinkExternal01 size={14} />
@@ -1022,10 +1028,8 @@ export function PreviewContent() {
                       try {
                         iframe.contentWindow?.location.reload();
                       } catch {
-                        // Cross-origin fallback
-                        // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
-                        // oxlint-disable-next-line no-self-assign
-                        iframe.src = iframe.src;
+                        const src = iframeSrcRef.current;
+                        if (src) iframe.src = src;
                       }
                       const restore = () => {
                         iframe.tabIndex = prevTabIndex;
@@ -1226,8 +1230,9 @@ export function PreviewContent() {
                     if (!iframePath) return;
                     const intended = intendedPathRef.current;
                     if (intended !== null) {
+                      intendedPathRef.current = null;
                       if (normPath(iframePath) === normPath(intended)) {
-                        intendedPathRef.current = null;
+                        setCurrentPath(iframePath);
                       }
                       return;
                     }

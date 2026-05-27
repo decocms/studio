@@ -95,7 +95,7 @@ function listManifestSections(meta: LiveMeta): SectionCatalogEntry[] {
   return entries;
 }
 
-function listSavedSectionBlocks(
+export function listSavedSectionBlocks(
   meta: LiveMeta,
   decofile: Record<string, unknown>,
 ): SectionCatalogEntry[] {

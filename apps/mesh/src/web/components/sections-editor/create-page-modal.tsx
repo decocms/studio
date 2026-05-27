@@ -9,6 +9,7 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Loading01 } from "@untitledui/icons";
+import { validatePagePath } from "./page-path-utils";
 
 export function CreatePageModal({
   open,
@@ -25,6 +26,7 @@ export function CreatePageModal({
 }) {
   const [name, setName] = useState("My New Page");
   const [path, setPath] = useState("/example-path");
+  const [localError, setLocalError] = useState<string | null>(null);
   const [prevOpen, setPrevOpen] = useState(open);
 
   if (open !== prevOpen) {
@@ -32,11 +34,15 @@ export function CreatePageModal({
     if (open) {
       setName("My New Page");
       setPath("/example-path");
+      setLocalError(null);
     }
   }
 
   const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && !isPending) onOpenChange(false);
+    if (!nextOpen && !isPending) {
+      setLocalError(null);
+      onOpenChange(false);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -44,8 +50,16 @@ export function CreatePageModal({
     const trimmedName = name.trim();
     const trimmedPath = path.trim();
     if (!trimmedName || !trimmedPath || isPending) return;
+    const pathError = validatePagePath(trimmedPath);
+    if (pathError) {
+      setLocalError(pathError);
+      return;
+    }
+    setLocalError(null);
     await onSubmit({ name: trimmedName, path: trimmedPath });
   };
+
+  const displayError = localError ?? error;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -87,7 +101,9 @@ export function CreatePageModal({
                 disabled={isPending}
               />
             </div>
-            {error && <p className="text-xs text-destructive">{error}</p>}
+            {displayError && (
+              <p className="text-xs text-destructive">{displayError}</p>
+            )}
           </div>
 
           <DialogFooter>
