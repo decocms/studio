@@ -18,6 +18,7 @@ import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
+import { createHomeNextActionsRoutes } from "./home-next-actions";
 import { createStudioPackChecklistsRoutes } from "./studio-pack-checklists";
 import { createStudioPackWelcomeRoutes } from "./studio-pack-welcome";
 import { createSuggestedActionsRoutes } from "./suggested-actions";
@@ -84,6 +85,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createSuggestedActionsRoutes());
   app.route("/", createStudioPackChecklistsRoutes());
   app.route("/", createStudioPackWelcomeRoutes());
+  app.route("/", createHomeNextActionsRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(
