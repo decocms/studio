@@ -24,7 +24,7 @@
  * providers — they have their own harnesses.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import {
@@ -40,6 +40,54 @@ import { buildConnectionsBlock } from "./connections-block";
 import { buildSystemMessages, type SystemMessage } from "./system-prompt";
 import type { HarnessStreamInput } from "../types";
 import type { AssembledTools } from "./tools";
+
+/**
+ * listAgentsBlock — fetches the org's virtual MCPs and builds the
+ * `<available-agents>` block. Excludes the current virtualMcpId if
+ * provided. Returns null when no other active agents exist.
+ */
+export async function listAgentsBlock(
+  ctx: MeshContext,
+  org: OrganizationScope,
+  currentVirtualMcpId?: string,
+): Promise<string | null> {
+  const virtualMcpList = await ctx.storage.virtualMcps.list(org.id);
+  return buildAgentsBlock(
+    virtualMcpList.map((vm) => ({
+      id: vm.id,
+      name: vm.title,
+      description: vm.description,
+      status: vm.status,
+    })),
+    currentVirtualMcpId ?? "",
+  );
+}
+
+/**
+ * listPromptsBlock — stub for Stage 2.1. Returns null until Stage 2.3
+ * wires in the passthrough MCP client. The parent assembler (prompt.ts)
+ * keeps building the block via its own inline `tools.passthroughClient`.
+ */
+// biome-ignore lint/correctness/noUnusedFunctionParameters: stub for Stage 2.3
+export async function listPromptsBlock(
+  _ctx: MeshContext,
+  _org: OrganizationScope,
+): Promise<string | null> {
+  return null;
+}
+
+/**
+ * listConnectionsBlock — stub for Stage 2.1. Returns null until Stage 2.3
+ * wires in the assembled tools data. The parent assembler (prompt.ts)
+ * keeps building the block via its own inline `tools.connectionsBlockTools`.
+ */
+// biome-ignore lint/correctness/noUnusedFunctionParameters: stub for Stage 2.3
+export async function listConnectionsBlock(
+  _ctx: MeshContext,
+  _org: OrganizationScope,
+): Promise<string | null> {
+  return null;
+}
 
 export interface AssembledPrompt {
   /** System messages ready to be merged with any per-request system
