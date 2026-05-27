@@ -325,9 +325,19 @@ jobs:
         needs.merge-docker.result == 'success'
       )
     runs-on: ubuntu-latest
+    # Surface the App id as an env so steps can detect whether the GitHub App
+    # is configured. When the secrets aren't present (e.g. a fork, or before
+    # the App is installed on this repo) every step below no-ops and the job
+    # passes — the bump is a convenience and must never red the release.
+    env:
+      GH_APP_ID: ${{ secrets.GH_APP_ID }}
     steps:
+      - name: Skip notice (App not configured)
+        if: env.GH_APP_ID == ''
+        run: echo "::notice::GH_APP_ID/GH_APP_PRIVATE_KEY not set — skipping the deco-apps-cd bump. Configure the GitHub App secrets to enable it."
       - name: Generate token for deco-apps-cd
         id: cd-token
+        if: env.GH_APP_ID != ''
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.GH_APP_ID }}
@@ -335,6 +345,7 @@ jobs:
           owner: decocms
           repositories: deco-apps-cd
       - name: Bump mesh image (stg + prod)
+        if: env.GH_APP_ID != ''
         env:
           GH_TOKEN: ${{ steps.cd-token.outputs.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
