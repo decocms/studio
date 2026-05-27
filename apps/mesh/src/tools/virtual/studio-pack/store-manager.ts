@@ -1,8 +1,5 @@
 import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
-import type {
-  StudioPackChecklistItem,
-  StudioPackConnectionKey,
-} from "./types";
+import type { StudioPackChecklistItem, StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
 You are the Store Manager. You browse the Deco Store and the Community
