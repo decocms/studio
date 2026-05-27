@@ -62,14 +62,22 @@ export async function waitForPostSignupRedirect(page: Page): Promise<void> {
  * a second user in the same test) — Playwright's default `request` fixture
  * shares cookies with `page`, which is the wrong scope for multi-user flows.
  *
- * `playwright.request.newContext()` does NOT inherit the project's baseURL,
- * so relative paths like `/api/...` would 404 without this wrapper.
+ * Two non-obvious things this wrapper handles:
+ *  1. `playwright.request.newContext()` does NOT inherit the project's
+ *     baseURL, so relative paths like `/api/...` would 404 without it.
+ *  2. Better Auth's CSRF guard rejects POSTs without an `Origin` matching
+ *     `trustedOrigins` (returns 403 `MISSING_OR_NULL_ORIGIN`). Browsers
+ *     set this automatically — Playwright's API context does not.
+ *     `trustedOrigins` is keyed off `baseUrl`, so Origin = baseURL works.
  */
 export async function newApiContext(
   playwright: PlaywrightWorkerArgs["playwright"],
 ): Promise<APIRequestContext> {
   const baseURL = `http://localhost:${process.env.PORT ?? "3000"}`;
-  return playwright.request.newContext({ baseURL });
+  return playwright.request.newContext({
+    baseURL,
+    extraHTTPHeaders: { Origin: baseURL },
+  });
 }
 
 /**

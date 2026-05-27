@@ -82,17 +82,6 @@ test.describe("GET /api/auth/custom/org-access-status/:slug", () => {
     const userBCtx = await newApiContext(playwright);
     const userB = await signUpViaApi(userBCtx);
 
-    // ── DEBUG: verify userA actually has the expected role in org A ──
-    // (instrumentation while diagnosing why the invite endpoint 403s)
-    const memberRow = await db.query<{ role: string; userId: string }>(
-      `SELECT role, "userId" FROM "member" WHERE "userId" = $1 AND "organizationId" = $2`,
-      [userA.userId, orgAId],
-    );
-    console.log(
-      "[debug] userA member rows:",
-      JSON.stringify(memberRow.rows, null, 2),
-    );
-
     // A invites B by email.
     const inviteRes = await userACtx.post(
       "/api/auth/organization/invite-member",
@@ -100,12 +89,6 @@ test.describe("GET /api/auth/custom/org-access-status/:slug", () => {
         data: { organizationId: orgAId, email: userB.email, role: "member" },
       },
     );
-    if (!inviteRes.ok()) {
-      const body = await inviteRes.text().catch(() => "<unreadable>");
-      console.log(
-        `[debug] invite failed: status=${inviteRes.status()} body=${body}`,
-      );
-    }
     expect(inviteRes.ok()).toBe(true);
     const invite = (await inviteRes.json()) as {
       id?: string;
