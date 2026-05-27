@@ -58,9 +58,21 @@ describe("buildAgentSystemPrompt", () => {
       ...baseOpts,
       kind: "agent",
       planMode: false,
+      isDecopilot: true,
     });
     const joined = JSON.stringify(out);
     expect(joined).toContain("Decopilot");
+  });
+
+  test("kind: 'agent' with isDecopilot: false omits decopilot identity prompt", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      planMode: false,
+      isDecopilot: false,
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).not.toContain("Decopilot");
   });
 
   test("planMode is ignored for kind: 'subagent'", async () => {

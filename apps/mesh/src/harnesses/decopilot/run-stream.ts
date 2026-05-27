@@ -71,6 +71,7 @@ import type { AssembledTools } from "./tools";
 import type { AssembledPrompt } from "./prompt";
 import { sanitizeStreamError, stringifyError } from "./stream-error";
 import { runAgentLoop } from "./run-agent-loop";
+import { isDecopilot } from "@decocms/mesh-sdk";
 
 // ─────────────────────────────────────────────────────────────────────
 // Helpers
@@ -657,6 +658,7 @@ export async function* runDecopilotStream(
     abortSignal: registrySignal,
     temperature: input.temperature,
     planMode: modeConfig.isPlanMode,
+    isDecopilot: isDecopilot(input.agent.id) !== null,
     systemAgentInstructions: tools.serverInstructions,
     writer,
     subtaskParams: {

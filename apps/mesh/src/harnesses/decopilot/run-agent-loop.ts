@@ -92,6 +92,12 @@ export interface RunAgentLoopOptions {
    *  conversation that processConversation extracts). Subagents don't pass this. */
   additionalSystemMessages?: import("ai").SystemModelMessage[];
 
+  /** When kind === "agent", controls which identity prompt is emitted:
+   *  - true  → `buildDecopilotAgentPrompt()` (the decopilot identity)
+   *  - false → no identity prompt; the agent's own instructions serve as identity
+   *  Ignored when kind === "subagent". Defaults to false when absent. */
+  isDecopilot?: boolean;
+
   // ── Stage 2: test-only shim (no production callers) ────────────────
   /** Override `streamText` for unit tests. Production paths leave undefined. */
   // biome-ignore lint/suspicious/noExplicitAny: test injection shim
@@ -142,6 +148,7 @@ export async function runAgentLoop(
     virtualMcp: opts.virtualMcp,
     kind: opts.kind,
     planMode,
+    isDecopilot: opts.isDecopilot,
     agentInstructions: opts.systemAgentInstructions,
     passthroughClient: opts.passthroughClient,
     connectionsData: opts.connectionsData,

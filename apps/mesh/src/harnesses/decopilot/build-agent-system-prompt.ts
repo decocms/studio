@@ -70,6 +70,15 @@ export interface BuildAgentSystemPromptOptions {
   };
   kind: "agent" | "subagent";
   planMode: boolean;
+  /**
+   * When `kind === "agent"`, controls which identity prompt is emitted:
+   * - true  → `buildDecopilotAgentPrompt()` (the decopilot identity)
+   * - false → no identity prompt; the agent's own `agentInstructions` serve as identity
+   *
+   * Ignored when `kind === "subagent"` (always uses `SUBAGENT_IDENTITY_PROMPT`).
+   * Defaults to false when absent.
+   */
+  isDecopilot?: boolean;
   agentInstructions?: string;
   date?: Date;
 
@@ -108,7 +117,12 @@ export async function buildAgentSystemPrompt(
   }
 
   if (opts.kind === "agent") {
-    prompts.push(buildDecopilotAgentPrompt());
+    if (opts.isDecopilot) {
+      prompts.push(buildDecopilotAgentPrompt());
+    }
+    // For custom agents (kind: "agent" && !isDecopilot), no identity
+    // prompt — the agent's own instructions (via agentInstructions
+    // param) serve as identity.
   } else {
     prompts.push(SUBAGENT_IDENTITY_PROMPT);
   }
