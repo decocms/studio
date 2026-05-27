@@ -185,7 +185,7 @@ export function TaskGroupsList() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="shrink-0 px-1 h-10 md:h-7 flex items-center justify-between">
+      <div className="shrink-0 px-1 h-10 md:h-7 mb-2 flex items-center justify-between">
         <div className="flex items-center gap-0.5">
           <ToolbarIconButton
             aria-label="Search threads"
