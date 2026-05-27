@@ -1,4 +1,4 @@
-import { Inbox01, Stars02 } from "@untitledui/icons";
+import { FilterLines, Inbox01, Stars02 } from "@untitledui/icons";
 import type { ComponentType } from "react";
 
 export interface ReleaseBullet {
@@ -22,6 +22,24 @@ export interface Release {
  * The latest entry is the floating-card candidate; older entries live only in the inbox.
  */
 export const RELEASES: Release[] = [
+  {
+    id: "sidebar-task-groups",
+    date: "2026-05-27",
+    eyebrow: "Now Available",
+    title: "Group tasks your way",
+    bullets: [
+      {
+        icon: Stars02,
+        title: "Group by agent or status",
+        body: "Switch the task list between grouping by agent or by status — pick whichever matches how you're working right now.",
+      },
+      {
+        icon: FilterLines,
+        title: "Sharper filters",
+        body: "Narrow the list to your tasks, manual chats, or automations from a compact filter row above the groups.",
+      },
+    ],
+  },
   {
     id: "release-channel",
     date: "2026-05-26",
