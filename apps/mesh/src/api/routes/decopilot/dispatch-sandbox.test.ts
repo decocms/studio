@@ -37,7 +37,7 @@ const ensureSandboxCalls: Array<{
 }> = [];
 
 const nextEnsureSandboxReturn: { previewUrl: string | null } = {
-  previewUrl: "https://sleek-flint-0000000000000000.deco.host",
+  previewUrl: "http://sleek-flint-0000000000000000.localhost:5174",
 };
 
 const { resolveRemoteCliSandboxUrl } = await import("./dispatch-run");
@@ -58,7 +58,7 @@ describe("resolveRemoteCliSandboxUrl", () => {
       },
     ]);
     expect(sandboxApiUrl).toBe(
-      "https://sleek-flint-0000000000000000.deco.host",
+      "http://sleek-flint-0000000000000000.localhost:5174",
     );
   });
 

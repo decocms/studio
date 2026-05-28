@@ -287,35 +287,6 @@ if (settings.localMode) {
       try {
         const seeded = await seedLocalMode();
         void seeded;
-        // When the cluster is in dev mode (MESH_ALLOW_LOCALHOST_LINKS=1
-        // set by `bun run dev`), bootstrap an API-key-backed session for
-        // the desktop-side link binary that `bun run dev` auto-spawns.
-        // The link reads it from `<DATA_DIR>/dev-link/session.json` and
-        // presents the API key as a Bearer token to POST /api/links.
-        if (process.env.MESH_ALLOW_LOCALHOST_LINKS === "1") {
-          try {
-            const { bootstrapDevLinkSession } = await import(
-              "./auth/dev-link-session"
-            );
-            const clusterBaseUrl =
-              settings.baseUrl ?? `http://localhost:${settings.port}`;
-            const result = await bootstrapDevLinkSession(
-              settings.dataDir,
-              clusterBaseUrl,
-            );
-            if (result) {
-              console.log(
-                `[dev-link] session ready at ${result.path} (userSub=${result.userSub})`,
-              );
-            } else {
-              console.warn(
-                "[dev-link] no admin user yet — skipping session bootstrap. The auto-spawned link will refuse to start until an admin exists.",
-              );
-            }
-          } catch (err) {
-            console.error("[dev-link] bootstrap failed:", err);
-          }
-        }
       } catch (error) {
         console.error("Failed to seed local mode:", error);
       } finally {

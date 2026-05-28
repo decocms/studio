@@ -192,8 +192,7 @@ function lookupResumeSessionRef(
  *   - `"cluster"` — `getInternalUrl()` (loopback; the harness runs inside
  *     the cluster pod alongside the API).
  *   - `"user-desktop"` — `getPublicUrl()` (the harness runs on the user's
- *     desktop and dials the cluster back over the public network — or, in
- *     dev mode, localhost via `MESH_ALLOW_LOCALHOST_LINKS=1`).
+ *     desktop and dials the cluster back over the public network).
  */
 const MCP_KEY_TTL_SECONDS = 3600;
 

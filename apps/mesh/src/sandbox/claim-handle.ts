@@ -7,10 +7,10 @@ import {
 /**
  * Compute the claim handle for a sandbox using the correct hashLen for the
  * current runner kind. agent-sandbox and desktop both expose preview
- * URLs as public hostnames (`<handle>.cluster.host` and `<handle>.deco.host`
- * respectively), so both use hashLen=16 — shorter hashes are brute-forceable
- * at an unrate-limited gateway. Other runners (docker) keep their
- * handles local, so the default hashLen=5 is fine there.
+ * URLs as public hostnames (`<handle>.cluster.host` and
+ * `<handle>.localhost` respectively), so both use hashLen=16 — shorter
+ * hashes are brute-forceable at an unrate-limited gateway. Other runners
+ * (docker) keep their handles local, so the default hashLen=5 is fine there.
  *
  * Single source of truth — import this everywhere a claimName must match
  * what a runner stored (vm-events, vm-exec, etc.). The matching
