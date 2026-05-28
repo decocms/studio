@@ -79,7 +79,7 @@ jobs:
           echo "major_version=$NEW_MAJOR_VERSION" >> $GITHUB_OUTPUT
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Auto-suggest version bump from PR title
+      - name: Auto-suggest version bump from PR title 
         id: suggest_bump
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -322,7 +322,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add apps/mesh/package.json
-          git commit -m "[release]: bump to ${{ steps.determine_version.outputs.new_version }}"
+          git commit -m "[release]: bump to ${{ steps.determine_version.outputs.new_version }} [skip ci]"
           git push origin main
 
       - name: Trigger Release Workflow
