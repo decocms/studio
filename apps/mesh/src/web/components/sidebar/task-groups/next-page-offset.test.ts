@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "@/web/components/chat/task/types";
-import { nextPageOffset, type SidebarFilters } from "./next-page-offset";
+import {
+  buildShowMoreArgs,
+  nextPageOffset,
+  type SidebarFilters,
+} from "./next-page-offset";
 
 const t = (overrides: Partial<Task>): Task => ({
   id: overrides.id ?? "x",
@@ -70,5 +74,93 @@ describe("nextPageOffset", () => {
         currentUserId: null,
       }),
     ).toBe(1);
+  });
+});
+
+describe("buildShowMoreArgs", () => {
+  it("places virtual_mcp_id inside where for agent mode", () => {
+    const args = buildShowMoreArgs("agent", "vm-a", 0, noFilters, 10);
+    expect(args.where.virtual_mcp_id).toBe("vm-a");
+    expect(args.status).toBeUndefined();
+  });
+
+  it("places status at the top level for status mode (not inside where)", () => {
+    const args = buildShowMoreArgs("status", "in_progress", 0, noFilters, 10);
+    expect(args.status).toBe("in_progress");
+    expect(args.where.virtual_mcp_id).toBeUndefined();
+    expect((args.where as { status?: unknown }).status).toBeUndefined();
+  });
+
+  it("adds created_by to where when member=mine and currentUserId is set", () => {
+    const args = buildShowMoreArgs(
+      "agent",
+      "vm-a",
+      0,
+      {
+        type: "all",
+        member: "mine",
+        currentUserId: "u-1",
+      },
+      10,
+    );
+    expect(args.where.created_by).toBe("u-1");
+  });
+
+  it("omits created_by when member=mine but currentUserId is null", () => {
+    const args = buildShowMoreArgs(
+      "agent",
+      "vm-a",
+      0,
+      {
+        type: "all",
+        member: "mine",
+        currentUserId: null,
+      },
+      10,
+    );
+    expect(args.where.created_by).toBeUndefined();
+  });
+
+  it("sets has_trigger=true for automation type filter", () => {
+    const args = buildShowMoreArgs(
+      "agent",
+      "vm-a",
+      0,
+      {
+        type: "automation",
+        member: "all",
+        currentUserId: null,
+      },
+      10,
+    );
+    expect(args.where.has_trigger).toBe(true);
+  });
+
+  it("sets has_trigger=false for manual type filter", () => {
+    const args = buildShowMoreArgs(
+      "agent",
+      "vm-a",
+      0,
+      {
+        type: "manual",
+        member: "all",
+        currentUserId: null,
+      },
+      10,
+    );
+    expect(args.where.has_trigger).toBe(false);
+  });
+
+  it("uses the provided limit and offset", () => {
+    const args = buildShowMoreArgs("agent", "vm-a", 25, noFilters, 7);
+    expect(args.limit).toBe(7);
+    expect(args.offset).toBe(25);
+  });
+
+  it("always orders by updated_at desc", () => {
+    const args = buildShowMoreArgs("agent", "vm-a", 0, noFilters, 10);
+    expect(args.orderBy).toEqual([
+      { field: ["updated_at"], direction: "desc" },
+    ]);
   });
 });

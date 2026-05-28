@@ -12,6 +12,7 @@ import {
 import type { Task } from "@/web/components/chat/task/types";
 import { extractToolErrorMessage } from "@/web/components/chat/store/mcp-utils";
 import {
+  buildShowMoreArgs,
   nextPageOffset,
   type GroupKind,
   type SidebarFilters,
@@ -80,25 +81,12 @@ export function useGroupShowMore(
       s.identity === capturedIdentity ? { ...s, isFetching: true } : s,
     );
     try {
-      const where: Record<string, unknown> = {
-        [kind === "agent" ? "virtual_mcp_id" : "status"]: key,
-      };
-      if (filters.member === "mine" && filters.currentUserId) {
-        where.created_by = filters.currentUserId;
-      }
-      if (filters.type === "automation") where.has_trigger = true;
-      if (filters.type === "manual") where.has_trigger = false;
-
       const offset = nextPageOffset(threads, kind, key, filters);
+      const args = buildShowMoreArgs(kind, key, offset, filters, PAGE_SIZE);
 
       const result = await client.callTool({
         name: "COLLECTION_THREADS_LIST",
-        arguments: {
-          where,
-          limit: PAGE_SIZE,
-          offset,
-          orderBy: [{ field: ["updated_at"], direction: "desc" }],
-        },
+        arguments: args as unknown as Record<string, unknown>,
       });
 
       if ((result as { isError?: boolean }).isError) {
