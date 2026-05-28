@@ -1,6 +1,9 @@
 # GSD workflow state
 .planning/
 
+# Conductor / Claude workspace state
+.agents/
+
 # Logs
 logs
 *.log
