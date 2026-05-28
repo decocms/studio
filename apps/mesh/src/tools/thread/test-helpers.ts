@@ -6,14 +6,12 @@
 
 import { vi } from "bun:test";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../../database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
 import { CredentialVault } from "../../encryption/credential-vault";
 import {
   SqlThreadStorage,
@@ -26,7 +24,7 @@ const ORG_ID = "org_test";
 const USER_ID = "user_test";
 
 export interface ThreadTestEnv {
-  database: TestDatabase;
+  database: MeshDatabase;
   ctx: MeshContext;
   orgId: string;
   userId: string;
@@ -56,9 +54,9 @@ const createMockBoundAuth = (): BoundAuthClient =>
   }) as unknown as BoundAuthClient;
 
 export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
-  const database = await createTestDatabase();
-  await createTestSchema(database.db);
-  await seedCommonTestFixtures(database.db);
+  const database = await connectTestPgDatabase();
+  await resetTestPgDatabase(database);
+  await seedCommonTestPgFixtures(database);
 
   const vault = new CredentialVault(CredentialVault.generateKey());
   const sqlThreads = new SqlThreadStorage(database.db);
@@ -141,6 +139,6 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
     ctx,
     orgId: ORG_ID,
     userId: USER_ID,
-    close: () => closeTestDatabase(database),
+    close: () => closeTestPgDatabase(database),
   };
 }
