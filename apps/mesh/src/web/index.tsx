@@ -280,7 +280,9 @@ const connectionsRoute = createRoute({
   validateSearch: z.lazy(() =>
     z.object({
       action: z.enum(["create"]).optional(),
-      tab: z.enum(["all", "connected"]).optional(),
+      // Any value; the page coerces via coerceConnectionAccessTab (handles
+      // new "shared"/"personal" tabs and the legacy "connected" value).
+      tab: z.string().optional(),
     }),
   ),
 });
