@@ -1,3 +1,8 @@
+import {
+  type ConnectionAccessTab,
+  accessTabWhereValue,
+  coerceConnectionAccessTab,
+} from "@/shared/utils/connection-access-tab";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { groupConnections } from "@/shared/utils/group-connections";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
@@ -70,7 +75,7 @@ type AttachMode = "existing" | "clone" | "new" | "custom";
 type ConnectionDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  defaultTab?: "all" | "connected";
+  defaultTab?: ConnectionAccessTab;
   initialSearch?: string;
 } & (
   | {
@@ -92,8 +97,6 @@ type ConnectionDialogProps = {
 // Dialog content (needs Suspense boundary above it)
 // ---------------------------------------------------------------------------
 
-type ConnectionTab = "all" | "connected";
-
 function ConnectionDialogContent({
   mode = "add",
   agentId,
@@ -105,7 +108,7 @@ function ConnectionDialogContent({
   search,
   onCreateConnection,
   onBrowseNavigate,
-  defaultTab = "connected",
+  defaultTab = "all",
 }: {
   mode?: ConnectionDialogMode;
   agentId?: string;
@@ -117,20 +120,22 @@ function ConnectionDialogContent({
   search: string;
   onCreateConnection: () => void;
   onBrowseNavigate?: (slug: string) => void;
-  defaultTab?: "all" | "connected";
+  defaultTab?: ConnectionAccessTab;
 }) {
   const { org } = useProjectContext();
   const deferredSearch = useDeferredValue(search);
   const isSearchStale = search !== deferredSearch;
   const searchLower = deferredSearch.trim().toLowerCase();
 
-  const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
+  // Key on `mode` (browse = home sidebar, add = agent) rather than defaultTab,
+  // which now defaults to "all" for both. Legacy "connected" values coerce away.
+  const [activeTab, setActiveTab] = useLocalStorage<ConnectionAccessTab>(
     LOCALSTORAGE_KEYS.connectionsTab(org.slug) +
-      (defaultTab === "all" ? ":home-modal" : ":agent-modal"),
-    (existing) => existing ?? defaultTab,
+      (mode === "browse" ? ":home-modal" : ":agent-modal"),
+    (existing) => coerceConnectionAccessTab(existing ?? defaultTab),
   );
 
-  const handleTabChange = (nextTab: ConnectionTab) => {
+  const handleTabChange = (nextTab: ConnectionAccessTab) => {
     if (nextTab !== activeTab) {
       track("connections_dialog_tab_changed", { to_tab: nextTab });
     }
@@ -145,7 +150,7 @@ function ConnectionDialogContent({
     orgSlug: org.slug,
   });
 
-  const where = deferredSearch?.trim()
+  const searchWhere = deferredSearch?.trim()
     ? {
         operator: "or" as const,
         conditions: [
@@ -162,6 +167,22 @@ function ConnectionDialogContent({
         ],
       }
     : undefined;
+
+  // Tabs are hidden while searching, so search spans every access bucket;
+  // otherwise filter by the active tab server-side to keep pagination correct.
+  const accessValue = searchLower ? null : accessTabWhereValue(activeTab);
+  const accessWhere = accessValue
+    ? {
+        field: ["access"],
+        operator: "eq" as const,
+        value: accessValue,
+      }
+    : undefined;
+
+  const where =
+    searchWhere && accessWhere
+      ? { operator: "and" as const, conditions: [searchWhere, accessWhere] }
+      : (searchWhere ?? accessWhere);
 
   const toolArguments = {
     ...(where && { where }),
@@ -494,10 +515,11 @@ function ConnectionDialogContent({
           <CollectionTabs
             tabs={[
               { id: "all", label: "All" },
-              { id: "connected", label: "Connected" },
+              { id: "shared", label: "Shared" },
+              { id: "personal", label: "Personal" },
             ]}
             activeTab={activeTab}
-            onTabChange={(id) => handleTabChange(id as ConnectionTab)}
+            onTabChange={(id) => handleTabChange(id as ConnectionAccessTab)}
           />
           <Button
             variant="outline"
@@ -601,9 +623,9 @@ function ConnectionDialogContent({
             <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
               {search
                 ? `No connections match "${search}"`
-                : activeTab === "connected"
-                  ? "No connections yet"
-                  : "No connections available"}
+                : activeTab === "all"
+                  ? "No connections available"
+                  : "No connections yet"}
             </div>
           )}
       </div>
