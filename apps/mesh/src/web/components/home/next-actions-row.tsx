@@ -49,9 +49,13 @@ function AgentPromptCardGroup({
   agentId: string;
   entries: HomePromptEntry[];
 }) {
-  const { start, dialog } = useStartThreadFromPrompt({ agentId });
+  const { start, startBlank, dialog } = useStartThreadFromPrompt({ agentId });
 
   const handleClick = (entry: HomePromptEntry) => {
+    if (!entry.promptName) {
+      void startBlank();
+      return;
+    }
     const prompt: Prompt = {
       name: entry.promptName,
       title: entry.title,
@@ -66,7 +70,7 @@ function AgentPromptCardGroup({
     <>
       {entries.map((entry) => (
         <PromptCard
-          key={entry.promptName}
+          key={entry.promptName || `${entry.agentId}:blank`}
           entry={entry}
           onClick={() => handleClick(entry)}
         />

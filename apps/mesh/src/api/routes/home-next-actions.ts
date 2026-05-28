@@ -40,14 +40,16 @@ interface PromptEntry {
   /**
    * Gateway-namespaced prompt name — matches what `prompts/list` returns for
    * this agent's MCP client so the resulting mention chip's id lines up with
-   * the slash-command flow (enables click-to-edit on the chip).
+   * the slash-command flow (enables click-to-edit on the chip). Empty string
+   * marks an agent-only fallback card (no prompt to autosend — click just
+   * opens a fresh thread with the agent).
    */
   promptName: string;
   title: string;
   description: string;
   hasArguments: boolean;
-  arguments: Prompt["arguments"];
-  _meta: Prompt["_meta"];
+  arguments?: Prompt["arguments"];
+  _meta?: Prompt["_meta"];
 }
 
 function indexPromptsByName() {
@@ -62,8 +64,9 @@ function indexPromptsByName() {
  * Unlike Studio Pack prompts — which are static guide prompts on the org "self"
  * MCP — these are listed live from each agent's gateway, so their `name`/`_meta`
  * already carry the namespacing the mention chip needs. Studio Pack agent ids
- * are skipped (surfaced via the static path); a slow or broken agent is logged
- * and dropped rather than failing the whole row.
+ * are skipped (surfaced via the static path). Agents with no prompts (or an
+ * unreachable gateway) still get one fallback card so every configured default
+ * home agent shows up on the home row.
  */
 async function defaultHomeAgentPrompts(
   orgId: string,
@@ -78,6 +81,15 @@ async function defaultHomeAgentPrompts(
     uniqueIds.map(async (id): Promise<PromptEntry[]> => {
       const virtualMcp = await ctx.storage.virtualMcps.findById(id);
       if (!virtualMcp) return [];
+      const fallback = (): PromptEntry => ({
+        agentId: id,
+        agentName: virtualMcp.title,
+        agentIcon: virtualMcp.icon,
+        promptName: "",
+        title: virtualMcp.description || "Start a new chat",
+        description: "",
+        hasArguments: false,
+      });
       try {
         const client = await createVirtualClientFrom(
           virtualMcp,
@@ -88,17 +100,20 @@ async function defaultHomeAgentPrompts(
         );
         try {
           const { prompts } = await client.listPrompts();
-          return prompts.slice(0, MAX_PROMPTS_PER_AGENT).map((prompt) => ({
-            agentId: id,
-            agentName: virtualMcp.title,
-            agentIcon: virtualMcp.icon,
-            promptName: prompt.name,
-            title: prompt.title ?? prompt.name,
-            description: prompt.description ?? "",
-            hasArguments: (prompt.arguments?.length ?? 0) > 0,
-            arguments: prompt.arguments,
-            _meta: prompt._meta,
-          }));
+          const entries = prompts
+            .slice(0, MAX_PROMPTS_PER_AGENT)
+            .map((prompt) => ({
+              agentId: id,
+              agentName: virtualMcp.title,
+              agentIcon: virtualMcp.icon,
+              promptName: prompt.name,
+              title: prompt.title ?? prompt.name,
+              description: prompt.description ?? "",
+              hasArguments: (prompt.arguments?.length ?? 0) > 0,
+              arguments: prompt.arguments,
+              _meta: prompt._meta,
+            }));
+          return entries.length > 0 ? entries : [fallback()];
         } finally {
           await client.close();
         }
@@ -107,7 +122,7 @@ async function defaultHomeAgentPrompts(
           agentId: id,
           error,
         });
-        return [];
+        return [fallback()];
       }
     }),
   );
