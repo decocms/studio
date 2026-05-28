@@ -138,7 +138,11 @@ jobs:
             > **Note**: If multiple reactions exist, the smallest bump wins. If no reactions, the suggested bump is used (default: patch).
 
   determine-tag:
-    if: github.event_name == 'push'
+    # Skip release-bump commits so the bot's own push (made with the GitHub App
+    # token, which — unlike GITHUB_TOKEN — re-triggers workflows) does not loop.
+    if: >-
+      github.event_name == 'push' &&
+      !startsWith(github.event.head_commit.message, '[release]:')
     runs-on: ubuntu-latest
     outputs:
       new_version: ${{ steps.determine_version.outputs.new_version }}
