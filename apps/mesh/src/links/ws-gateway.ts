@@ -23,6 +23,9 @@ export const WS_CLOSE_SUPERSEDED = 4001;
 export const WS_CLOSE_POLICY = 1008;
 export const WS_CLOSE_INTERNAL = 1011;
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
 export interface GatewayNatsAdapter {
   subscribe(
     subject: string,
@@ -120,44 +123,71 @@ async function onHello(
     previewPort: hello.previewPort,
     connectedAt: Date.now(),
   };
-  await deps.registry.put(userSub, claim);
 
-  let initial = true;
-  const stopWatch = deps.registry.watch(userSub, (current) => {
-    if (initial) {
-      initial = false;
-      return;
-    }
-    if (!current || current.podId !== deps.podId) {
-      try {
-        ws.close(WS_CLOSE_SUPERSEDED, "superseded");
-      } catch {
-        /* ignore */
-      }
-    }
-  });
-
-  const unsubscribeDispatch = deps.nats.subscribe(
-    `links.dispatch.${userSub}`,
-    (data, reply) => onDispatchFromNats(ws, data, reply),
-  );
-  const unsubscribeCancel = deps.nats.subscribe(
-    `links.cancel.${userSub}`,
-    (data) => onCancelFromNats(ws, data),
-  );
-
-  const refreshTimer = setInterval(() => {
-    void deps.registry.put(userSub, { ...claim, connectedAt: Date.now() });
-  }, refreshIntervalMs);
-
-  ws.data.state = {
+  // Assign state with placeholders first so the message handler routes to
+  // onAfterHello for any frame that arrives between now and the end of setup.
+  const state: ConnectionState = {
     userSub,
     hello,
-    refreshTimer,
-    stopWatch,
-    unsubscribeDispatch,
-    unsubscribeCancel,
+    refreshTimer: setInterval(() => {
+      void deps.registry.put(userSub, { ...claim, connectedAt: Date.now() });
+    }, refreshIntervalMs),
+    stopWatch: () => {},
+    unsubscribeDispatch: () => {},
+    unsubscribeCancel: () => {},
   };
+  ws.data.state = state;
+
+  try {
+    await deps.registry.put(userSub, claim);
+
+    let initial = true;
+    state.stopWatch = deps.registry.watch(userSub, (current) => {
+      if (initial) {
+        initial = false;
+        return;
+      }
+      if (!current || current.podId !== deps.podId) {
+        try {
+          ws.close(WS_CLOSE_SUPERSEDED, "superseded");
+        } catch {
+          /* */
+        }
+      }
+    });
+
+    state.unsubscribeDispatch = deps.nats.subscribe(
+      `links.dispatch.${userSub}`,
+      (data, reply) => onDispatchFromNats(ws, data, reply),
+    );
+    state.unsubscribeCancel = deps.nats.subscribe(
+      `links.cancel.${userSub}`,
+      (data) => onCancelFromNats(ws, data),
+    );
+  } catch (err) {
+    // Setup failed — tear down anything we did manage to acquire and close.
+    clearInterval(state.refreshTimer);
+    try {
+      state.stopWatch();
+    } catch {
+      /* */
+    }
+    try {
+      state.unsubscribeDispatch();
+    } catch {
+      /* */
+    }
+    try {
+      state.unsubscribeCancel();
+    } catch {
+      /* */
+    }
+    ws.data.state = undefined;
+    ws.close(
+      WS_CLOSE_INTERNAL,
+      `init failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 function onDispatchFromNats(
@@ -168,7 +198,7 @@ function onDispatchFromNats(
   if (!reply) return;
   let frame: DispatchFrame;
   try {
-    frame = decodeFrame(new TextDecoder().decode(data));
+    frame = decodeFrame(decoder.decode(data));
   } catch {
     return;
   }
@@ -183,7 +213,7 @@ function onCancelFromNats(
 ): void {
   let frame: DispatchFrame;
   try {
-    frame = decodeFrame(new TextDecoder().decode(data));
+    frame = decodeFrame(decoder.decode(data));
   } catch {
     return;
   }
@@ -206,7 +236,6 @@ async function onAfterHello(
   const entry = inflight.get(frame.reqId);
   if (!entry) return;
 
-  const encoder = new TextEncoder();
   ws.data.deps.nats.publish(entry.reply, encoder.encode(encodeFrame(frame)));
 
   if (frame.type === "end" || frame.type === "error") {
@@ -222,7 +251,7 @@ export const gatewayWsHandlers = {
   },
 
   async message(ws: ServerWebSocket<WsAttachData>, raw: string | Uint8Array) {
-    const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
+    const text = typeof raw === "string" ? raw : decoder.decode(raw);
     let frame: DispatchFrame;
     try {
       frame = decodeFrame(text);

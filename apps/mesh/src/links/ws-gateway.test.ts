@@ -77,8 +77,8 @@ describe("ws-gateway auth + handshake", () => {
     const code = await new Promise<number>((resolve) => {
       ws.addEventListener("close", (e) => resolve(e.code));
     });
-    // Bun maps an HTTP rejection to close code 1006 on the client.
-    expect(code).not.toBe(1000);
+    // Bun maps an HTTP 401 rejection to close code 1002 on the client side.
+    expect(code).toBe(1002);
   });
 
   test("rejects invalid bearer", async () => {
@@ -89,7 +89,8 @@ describe("ws-gateway auth + handshake", () => {
     const code = await new Promise<number>((resolve) => {
       ws.addEventListener("close", (e) => resolve(e.code));
     });
-    expect(code).not.toBe(1000);
+    // Bun maps an HTTP 401 rejection to close code 1002 on the client side.
+    expect(code).toBe(1002);
   });
 
   test("accepts valid bearer and waits for hello", async () => {
