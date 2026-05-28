@@ -96,9 +96,12 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
         const rest = sm[2] ?? "/";
         const port = deps.provider.proxyPort(handle);
         if (port == null) return { status: 404, body: "unknown handle" };
+        const token = deps.provider.getDaemonToken(handle);
+        const headers: Record<string, string> = { ...req.headers };
+        if (token) headers.authorization = `Bearer ${token}`;
         const res = await fetcher(`http://127.0.0.1:${port}/_sandbox${rest}`, {
           method: req.method,
-          headers: req.headers,
+          headers,
           ...(req.body !== undefined ? { body: req.body } : {}),
           redirect: "manual",
         });
@@ -121,6 +124,9 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
       const rest = sm[2] ?? "/";
       const port = deps.provider.proxyPort(handle);
       if (port == null) return (async function* () {})();
+      const token = deps.provider.getDaemonToken(handle);
+      const streamHeaders: Record<string, string> = { ...req.headers };
+      if (token) streamHeaders.authorization = `Bearer ${token}`;
       const release = deps.provider.acquireDispatch(handle);
       return (async function* () {
         try {
@@ -128,7 +134,7 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
             `http://127.0.0.1:${port}/_sandbox${rest}`,
             {
               method: req.method,
-              headers: req.headers,
+              headers: streamHeaders,
               ...(req.body !== undefined ? { body: req.body } : {}),
             },
           );

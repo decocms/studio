@@ -60,6 +60,7 @@ export async function startLinkDaemon(
         DAEMON_BOOT_ID: randomUUID(),
         APP_ROOT: args.workdir,
         PROXY_PORT: String(args.port),
+        DAEMON_TOKEN: args.daemonToken,
       };
       return innerSpawn({
         workdir: args.workdir,
@@ -71,7 +72,7 @@ export async function startLinkDaemon(
         exited: proc.exited.then(() => undefined),
       }));
     },
-    postConfig: async (port, devPort, config) => {
+    postConfig: async (port, devPort, config, daemonToken) => {
       // Daemon's TenantConfig wire shape is `{ git, application }`.
       const payload: Record<string, unknown> = {
         application: { port: devPort },
@@ -92,7 +93,7 @@ export async function startLinkDaemon(
             : {}),
         };
       }
-      await daemonPostConfig(`http://127.0.0.1:${port}`, "", payload);
+      await daemonPostConfig(`http://127.0.0.1:${port}`, daemonToken, payload);
     },
     waitForHealth: async (port) => {
       await waitForDaemonReady(`http://127.0.0.1:${port}`);

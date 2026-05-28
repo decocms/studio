@@ -15,6 +15,9 @@ function fakeProvider(
     proxyPort() {
       return 9000;
     },
+    getDaemonToken() {
+      return "test-token";
+    },
     recordHit() {},
     acquireDispatch() {
       return () => {};

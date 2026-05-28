@@ -17,6 +17,7 @@
  * stay lightweight.
  */
 
+import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
@@ -52,6 +53,8 @@ export interface SandboxState {
   sandboxApiUrl: string;
   lastUsedAt: number;
   activeDispatchCount: number;
+  /** Bearer token generated at spawn time; used to authenticate proxied requests. */
+  daemonToken: string;
 }
 
 export interface DesktopSandboxProvider {
@@ -59,6 +62,8 @@ export interface DesktopSandboxProvider {
     input: EnsureSandboxInput,
   ): Promise<{ sandboxApiUrl: string; port: number }>;
   proxyPort(handle: string): number | null;
+  /** Returns the bearer token for the spawned sandbox daemon, or null if unknown. */
+  getDaemonToken(handle: string): string | null;
   recordHit(handle: string): void;
   acquireDispatch(handle: string): () => void;
   listSandboxes(): SandboxState[];
@@ -72,11 +77,13 @@ export interface DesktopSandboxProviderDeps {
     workdir: string;
     handle: string;
     port: number;
+    daemonToken: string;
   }) => SpawnResult | Promise<SpawnResult>;
   postConfig: (
     port: number,
     devPort: number,
     config: { repo?: RepoRef },
+    daemonToken: string,
   ) => Promise<void>;
   waitForHealth: (port: number) => Promise<void>;
   /** Override port allocation (tests provide a deterministic value). */
@@ -166,13 +173,14 @@ export function createDesktopSandboxProvider(
     // (port) and one for the dev script the orchestrator will spawn
     // (devPort). Without a dedicated devPort, every framework's
     // default 3000 collides with the cluster (and with other sandboxes).
+    const daemonToken = randomBytes(24).toString("hex");
     const [port, devPort] = await Promise.all([pickPort(), pickPort()]);
     const spawned = await Promise.resolve(
-      deps.spawnDaemon({ workdir, handle: input.handle, port }),
+      deps.spawnDaemon({ workdir, handle: input.handle, port, daemonToken }),
     );
     try {
       await deps.waitForHealth(port);
-      await deps.postConfig(port, devPort, { repo: input.repo });
+      await deps.postConfig(port, devPort, { repo: input.repo }, daemonToken);
     } catch (err) {
       try {
         spawned.kill("SIGKILL");
@@ -189,6 +197,7 @@ export function createDesktopSandboxProvider(
       sandboxApiUrl,
       lastUsedAt: Date.now(),
       activeDispatchCount: 0,
+      daemonToken,
     };
     sandboxes.set(input.handle, state);
 
@@ -234,6 +243,9 @@ export function createDesktopSandboxProvider(
       const s = sandboxes.get(handle);
       if (s) s.lastUsedAt = Date.now();
       return s?.port ?? null;
+    },
+    getDaemonToken(handle) {
+      return sandboxes.get(handle)?.daemonToken ?? null;
     },
     recordHit(handle) {
       const s = sandboxes.get(handle);
