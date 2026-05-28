@@ -223,10 +223,9 @@ export function SessionStats({
       <TooltipContent side="top" className="font-mono text-[11px]">
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <span className="text-muted">context</span>
-          <span className="text-right tabular-nums">{pct.toFixed(1)}%</span>
-          <span className="text-muted">tokens</span>
           <span className="text-right tabular-nums">
-            {totalTokens.toLocaleString()}
+            {totalTokens.toLocaleString()} / {contextWindow.toLocaleString()} (
+            {pct.toFixed(1)}%)
           </span>
           {cost > 0 && (
             <>

@@ -277,8 +277,9 @@ export function ChatContextPanel({
     lastAssistantMessage?.metadata?.modelLimits?.contextWindow ??
     selectedModel?.limits?.contextWindow ??
     null;
-  const contextFillTokens =
-    lastAssistantUsage?.contextTokens ?? lastAssistantUsage?.totalTokens ?? 0;
+  // Per-turn context size only — cumulative `totalTokens` would read as
+  // if the model's window is far fuller than it actually is.
+  const contextFillTokens = lastAssistantUsage?.contextTokens ?? 0;
 
   const usagePct =
     contextWindow && contextWindow > 0

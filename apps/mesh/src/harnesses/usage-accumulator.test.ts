@@ -107,6 +107,7 @@ describe("createUsageAccumulator", () => {
       inputTokens: 10_000,
       outputTokens: 100,
       totalTokens: 10_100,
+      contextTokens: 10_000,
       cachedInputTokens: 9_000,
       inputTokenDetails: {
         cacheReadTokens: 9_000,
