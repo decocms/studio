@@ -144,10 +144,17 @@ jobs:
       new_version: ${{ steps.determine_version.outputs.new_version }}
       deploy_to_production: ${{ steps.determine_version.outputs.deploy_to_production }}
     steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.RELEASE_BOT_PAT }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Find the Merged Pull Request
         id: find_pr
@@ -317,10 +324,10 @@ jobs:
       - name: Trigger Release Workflow
         if: steps.determine_version.outputs.new_version != ''
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_BOT_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           curl -X POST \
-            -H "Authorization: token ${{ secrets.RELEASE_BOT_PAT }}" \
+            -H "Authorization: token ${{ steps.app-token.outputs.token }}" \
             -H "Accept: application/vnd.github.everest-preview+json" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/release-mesh.yaml/dispatches" \
             -d '{"ref":"main", "inputs":{"deploy_to_production":"${{ steps.determine_version.outputs.deploy_to_production }}"}}'
