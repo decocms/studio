@@ -9,20 +9,21 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import { ConnectionStorage } from "./connection";
 import { INTERNAL_VIEWER } from "./ports";
-import { createTestSchema, seedCommonTestFixtures } from "./test-helpers";
 import { CredentialVault } from "../encryption/credential-vault";
 
 const USER_A = "user_test";
 const USER_B = "user_1";
 const ORG = "org_test";
 
-async function seed(database: TestDatabase): Promise<void> {
+async function seed(database: MeshDatabase): Promise<void> {
   const now = new Date().toISOString();
   for (const [id, createdBy, access] of [
     ["conn_a_private", USER_A, "user"],
@@ -43,20 +44,20 @@ async function seed(database: TestDatabase): Promise<void> {
 }
 
 describe("ConnectionStorage — access filtering", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let storage: ConnectionStorage;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
     await seed(database);
     const vault = new CredentialVault(CredentialVault.generateKey());
     storage = new ConnectionStorage(database.db, vault);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   it("list as USER_A: returns own private + org-shared, not USER_B's private", async () => {

@@ -25,14 +25,12 @@ import { ConnectionStorage } from "../../storage/connection";
 import { CredentialVault } from "../../encryption/credential-vault";
 import { VirtualMCPStorage } from "../../storage/virtual";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../../database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
 import { SlotUnresolvedError } from "../../core/slot-resolver";
 import type { MeshContext } from "../../core/mesh-context";
 import { createVirtualClientFrom } from "./index";
@@ -42,7 +40,7 @@ const USER_B = "user_1";
 const ORG = "org_test";
 
 async function insertConn(
-  database: TestDatabase,
+  database: MeshDatabase,
   id: string,
   opts: {
     appId: string;
@@ -70,7 +68,7 @@ async function insertConn(
  * the entire mesh runtime.
  */
 function buildContext(
-  database: TestDatabase,
+  database: MeshDatabase,
   invokerUserId: string | null,
   connectionStorage: ConnectionStorage,
 ): MeshContext {
@@ -87,21 +85,21 @@ function buildContext(
 }
 
 describe("slot resolution at virtual MCP client construction", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let connectionStorage: ConnectionStorage;
   let virtualMcps: VirtualMCPStorage;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
     const vault = new CredentialVault(CredentialVault.generateKey());
     connectionStorage = new ConnectionStorage(database.db, vault);
     virtualMcps = new VirtualMCPStorage(database.db);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   it("resolves slot to caller's user-private connection", async () => {

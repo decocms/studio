@@ -9,18 +9,19 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
-import { createTestSchema, seedCommonTestFixtures } from "./test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import { VirtualMCPStorage } from "./virtual";
 
 const USER = "user_test";
 const ORG = "org_test";
 
 async function insertChildConnection(
-  database: TestDatabase,
+  database: MeshDatabase,
   id: string,
   appId: string,
 ): Promise<void> {
@@ -38,18 +39,18 @@ async function insertChildConnection(
 }
 
 describe("VirtualMCPStorage — slots", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let storage: VirtualMCPStorage;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
     storage = new VirtualMCPStorage(database.db);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   it("creates an agent with a concrete child and a slot, round-trips both", async () => {
