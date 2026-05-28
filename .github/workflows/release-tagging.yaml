@@ -79,7 +79,7 @@ jobs:
           echo "major_version=$NEW_MAJOR_VERSION" >> $GITHUB_OUTPUT
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Auto-suggest version bump from PR title
+      - name: Auto-suggest version bump from PR title 
         id: suggest_bump
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
