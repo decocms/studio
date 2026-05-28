@@ -77,8 +77,8 @@ export interface ModelsConfig {
   thinking: ModelInfo;
   coding?: ModelInfo;
   fast?: ModelInfo;
-  image?: ModelInfo;
-  deepResearch?: ModelInfo;
+  image?: ModelInfo & { credentialId: string };
+  deepResearch?: ModelInfo & { credentialId: string };
 }
 
 // ============================================================================

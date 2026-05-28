@@ -31,8 +31,8 @@ type ModelShape = {
 export interface ResolvedAutomationModel {
   credentialId: string;
   thinking: ModelShape;
-  image?: ModelShape;
-  deepResearch?: ModelShape;
+  image?: ModelShape & { credentialId: string };
+  deepResearch?: ModelShape & { credentialId: string };
 }
 
 export function buildStreamRequest(

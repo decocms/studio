@@ -213,8 +213,17 @@ async function prepareFireStep(
   const resolvedModel: ResolvedAutomationModel = {
     credentialId: resolved.credentialId,
     thinking: toModel(resolved),
-    ...(image ? { image: toModel(image) } : {}),
-    ...(webResearch ? { deepResearch: toModel(webResearch) } : {}),
+    ...(image
+      ? { image: { ...toModel(image), credentialId: image.credentialId } }
+      : {}),
+    ...(webResearch
+      ? {
+          deepResearch: {
+            ...toModel(webResearch),
+            credentialId: webResearch.credentialId,
+          },
+        }
+      : {}),
   };
 
   return { automation, resolvedModel };

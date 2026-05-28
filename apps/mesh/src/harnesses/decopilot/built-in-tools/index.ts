@@ -74,6 +74,16 @@ export type VmContext = {
 export interface BuiltinToolParams {
   /** Provider — null for Claude Code (subtask tool is omitted when null) */
   provider: MeshProvider | null;
+  /** Provider used to instantiate `generate_image`. Caller passes the
+   *  chat provider when the org's `image` tier shares the chat credential
+   *  (or no tier is configured) — otherwise a separately-activated
+   *  provider matching the image-tier credential. */
+  imageProvider: MeshProvider | null;
+  /** Provider used to instantiate `web_search`'s deep-research path.
+   *  Same aliasing rule as `imageProvider`. Decoupling from the chat
+   *  provider lets web_search keep using a Gemini deep-research model
+   *  even when the chat is routed via LiteLLM/OpenRouter. */
+  deepResearchProvider: MeshProvider | null;
   organization: OrganizationScope;
   models: ModelsConfig;
   toolApprovalLevel?: ToolApprovalLevel;
@@ -123,6 +133,8 @@ async function buildAllTools(
 ) {
   const {
     provider,
+    imageProvider,
+    deepResearchProvider,
     organization,
     models,
     toolApprovalLevel = "auto",
@@ -264,18 +276,24 @@ async function buildAllTools(
       ctx,
     );
   }
-  // generate_image requires a provider and an image model selection
-  if (provider && models.image) {
+  // generate_image requires a provider and an image model selection.
+  // The provider is picked from `imageProvider` so the org can pair the
+  // image tier with a different credential than the chat tier (caller
+  // aliases it to `provider` when they share a credential).
+  if (imageProvider && models.image) {
     tools.generate_image = createGenerateImageTool(writer, {
-      provider,
+      provider: imageProvider,
       imageModelInfo: models.image,
       ctx,
     });
   }
-  // web_search requires a provider and a deep-research model
-  if (provider && models.deepResearch) {
+  // web_search requires a provider and a deep-research model.
+  // The provider is picked from `deepResearchProvider` so the deep
+  // research tier can use Gemini's async research API even when the
+  // chat model is served by another provider (e.g. LiteLLM).
+  if (deepResearchProvider && models.deepResearch) {
     tools.web_search = createWebSearchTool(writer, {
-      provider,
+      provider: deepResearchProvider,
       deepResearchModelInfo: models.deepResearch,
       ctx,
       toolOutputMap,

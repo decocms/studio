@@ -97,6 +97,13 @@ export interface AssembleDecopilotToolsExtras {
    *  activates this in advance — `null` is rejected by `getBuiltInTools`
    *  for tools that require it, but we forward whatever the caller has. */
   provider: MeshProvider | null;
+  /** Provider for `generate_image`. Caller passes the chat provider when
+   *  the org's `image` tier shares the chat credential. */
+  imageProvider: MeshProvider | null;
+  /** Provider for `web_search`'s deep-research path. Caller passes the
+   *  chat provider when the org's `web_research` tier shares the chat
+   *  credential. */
+  deepResearchProvider: MeshProvider | null;
   /** Per-turn HTML-page coalescing buffer. Created in dispatch-run.ts
    *  alongside `pendingOps` so the dispatch layer can also schedule a
    *  flush at step-end. */
@@ -191,6 +198,8 @@ export async function assembleDecopilotTools(
       extras.writer,
       {
         provider: extras.provider,
+        imageProvider: extras.imageProvider,
+        deepResearchProvider: extras.deepResearchProvider,
         organization,
         models: input.models,
         toolApprovalLevel: input.toolApprovalLevel,

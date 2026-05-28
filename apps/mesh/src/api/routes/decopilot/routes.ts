@@ -36,6 +36,7 @@ import type { RunRegistry } from "./run-registry";
 import {
   checkModelPermission,
   fetchModelPermissions,
+  filterToolTiersByPermission,
   parseModelsToMap,
 } from "./model-permissions";
 import { StreamRequestSchema } from "./schemas";
@@ -201,8 +202,17 @@ async function resolvePerRequestModels(
   return {
     credentialId: chat.credentialId,
     thinking: toModelInfo(chat),
-    ...(image ? { image: toModelInfo(image) } : {}),
-    ...(webResearch ? { deepResearch: toModelInfo(webResearch) } : {}),
+    ...(image
+      ? { image: { ...toModelInfo(image), credentialId: image.credentialId } }
+      : {}),
+    ...(webResearch
+      ? {
+          deepResearch: {
+            ...toModelInfo(webResearch),
+            credentialId: webResearch.credentialId,
+          },
+        }
+      : {}),
   };
 }
 
@@ -263,7 +273,7 @@ async function validate(
     throw new HTTPException(401, { message: "User ID is required" });
   }
 
-  const models = await resolvePerRequestModels(ctx, tier, harnessId);
+  const resolvedModels = await resolvePerRequestModels(ctx, tier, harnessId);
 
   const allowedModels = await fetchModelPermissions(
     ctx.db,
@@ -274,14 +284,19 @@ async function validate(
     allowedModels !== undefined &&
     !checkModelPermission(
       allowedModels,
-      models.credentialId,
-      models.thinking.id,
+      resolvedModels.credentialId,
+      resolvedModels.thinking.id,
     )
   ) {
     throw new HTTPException(403, {
       message: "Model not allowed for your role",
     });
   }
+  // Silently drop tool tiers (image, deepResearch) that resolve to a key
+  // the user's role can't access — otherwise an admin-set tier slot would
+  // grant restricted users implicit access to the underlying credential
+  // via generate_image / web_search.
+  const models = filterToolTiersByPermission(allowedModels, resolvedModels);
 
   return {
     messages: [...systemMessages, requestMessage],

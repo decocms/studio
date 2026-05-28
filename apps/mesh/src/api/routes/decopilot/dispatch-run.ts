@@ -53,6 +53,7 @@ import { buildOnTitleUpdated } from "./on-title-updated";
 import {
   checkModelPermission,
   fetchModelPermissions,
+  filterToolTiersByPermission,
 } from "./model-permissions";
 import type { RunRegistry } from "./run-registry";
 import { resolveThreadStatus } from "./status";
@@ -472,6 +473,10 @@ async function prepareRun(
     // 1. Check model permissions (decopilot-only; CLI harnesses run with
     //    the user's own provider credential / local CLI binary, which is
     //    already vetted at credential-creation time).
+    //    Also filters image/deepResearch tier slots: routes.ts already
+    //    strips disallowed tiers at HTTP entry, but resume + automation
+    //    paths re-enter through dispatch-run without that gate, so this
+    //    second pass keeps the policy consistent across entry points.
     if (harnessId === "decopilot") {
       const allowedModels = await fetchModelPermissions(
         ctx.db,
@@ -488,6 +493,10 @@ async function prepareRun(
       ) {
         throw new Error("Model not allowed for your role");
       }
+      input = {
+        ...input,
+        models: filterToolTiersByPermission(allowedModels, input.models),
+      };
     }
 
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
@@ -496,22 +505,39 @@ async function prepareRun(
       throw new Error("dispatchRunAndWait: taskId is required");
     }
 
-    // 2. Load entities and create/load memory in parallel
-    const [virtualMcp, provider, mem] = await Promise.all([
-      ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
-      harnessId === "decopilot"
-        ? ctx.aiProviders.activate(
-            input.models.credentialId,
-            input.organizationId,
-          )
-        : Promise.resolve(null),
-      createMemory(ctx.storage.threads, {
-        organization_id: input.organizationId,
-        thread_id: input.taskId,
-        userId: input.userId,
-        defaultWindowSize: windowSize,
-      }),
-    ]);
+    // 2. Load entities and create/load memory in parallel.
+    // Activate per-tool providers when their tier resolves to a different
+    // credential than the chat tier (image, deep research). Skip the extra
+    // activation when the credential matches — the chat provider is reused.
+    const chatCredId = input.models.credentialId;
+    const imageCredId = input.models.image?.credentialId;
+    const deepResearchCredId = input.models.deepResearch?.credentialId;
+    const needsImageProvider =
+      harnessId === "decopilot" && !!imageCredId && imageCredId !== chatCredId;
+    const needsDeepResearchProvider =
+      harnessId === "decopilot" &&
+      !!deepResearchCredId &&
+      deepResearchCredId !== chatCredId;
+
+    const [virtualMcp, provider, imageProvider, deepResearchProvider, mem] =
+      await Promise.all([
+        ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
+        harnessId === "decopilot"
+          ? ctx.aiProviders.activate(chatCredId, input.organizationId)
+          : Promise.resolve(null),
+        needsImageProvider
+          ? ctx.aiProviders.activate(imageCredId, input.organizationId)
+          : Promise.resolve(null),
+        needsDeepResearchProvider
+          ? ctx.aiProviders.activate(deepResearchCredId, input.organizationId)
+          : Promise.resolve(null),
+        createMemory(ctx.storage.threads, {
+          organization_id: input.organizationId,
+          thread_id: input.taskId,
+          userId: input.userId,
+          defaultWindowSize: windowSize,
+        }),
+      ]);
 
     // Diagnostic (resume only): record whether the provider activated and
     // whether the optional model slots are present. Paired with the log in
@@ -523,6 +549,8 @@ async function prepareRun(
         taskId: input.taskId,
         harnessId,
         providerActivated: !!provider,
+        imageProviderActivated: !!imageProvider,
+        deepResearchProviderActivated: !!deepResearchProvider,
         thinkingModelId: input.models.thinking.id,
         hasImage: !!input.models.image,
         hasDeepResearch: !!input.models.deepResearch,
@@ -757,6 +785,8 @@ async function prepareRun(
           registrySignal,
           runRegistry,
           provider,
+          imageProvider: imageProvider ?? provider,
+          deepResearchProvider: deepResearchProvider ?? provider,
           htmlPageBuffer,
           registerPendingOp: (op) => {
             pendingOps.push(op);

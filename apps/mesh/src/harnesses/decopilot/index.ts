@@ -63,6 +63,15 @@ interface ClusterProcessLocal {
   registrySignal: AbortSignal;
   runRegistry: RunRegistry;
   provider: MeshProvider | null;
+  /** Provider used for `generate_image`. Aliases `provider` when the org
+   *  `image` tier shares the chat credential (or no tier is configured). */
+  imageProvider: MeshProvider | null;
+  /** Provider used for `web_search`'s deep research path. Aliases
+   *  `provider` when the org `web_research` tier shares the chat
+   *  credential (or no tier is configured). Decoupling lets web_search
+   *  keep working when the chat model is routed via LiteLLM/OpenRouter
+   *  but the deep research tier is still Gemini. */
+  deepResearchProvider: MeshProvider | null;
   registerPendingOp: (op: Promise<void>) => void;
   isStreamFinished: () => boolean;
   onUsageAggregated: (totalUsage: {
@@ -161,6 +170,8 @@ export const decopilotHarnessFactory: HarnessFactory = {
           pendingImages: pl.pendingImages,
           threadId: pl.threadId,
           provider: pl.provider,
+          imageProvider: pl.imageProvider ?? pl.provider,
+          deepResearchProvider: pl.deepResearchProvider ?? pl.provider,
           htmlPageBuffer: pl.htmlPageBuffer,
         });
 
