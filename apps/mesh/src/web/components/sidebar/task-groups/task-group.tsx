@@ -23,6 +23,8 @@ import {
 import { useGroupExpanded } from "./use-group-expanded";
 import type { Task } from "@/web/components/chat/task/types";
 import { STATUS_CONFIG } from "@/web/lib/task-status";
+import { ShowMoreButton } from "./show-more-button";
+import type { SidebarFilters } from "./next-page-offset";
 
 export interface TaskGroupProps {
   virtualMcpId: string;
@@ -38,6 +40,7 @@ export interface TaskGroupProps {
   onHideGroup: (virtualMcpId: string) => void;
   /** When true, the group renders dimmed (used when filters wipe out the body). */
   dimmed: boolean;
+  filters: SidebarFilters;
 }
 
 export function TaskGroup({
@@ -52,6 +55,7 @@ export function TaskGroup({
   onShowSettings,
   onHideGroup,
   dimmed,
+  filters,
 }: TaskGroupProps) {
   const defaultExpanded = isDecopilot || hasActiveTask;
   const [expanded, setExpanded] = useGroupExpanded(
@@ -158,6 +162,13 @@ export function TaskGroup({
               />
             ))
           )}
+          {!isToolCallRuns && (
+            <ShowMoreButton
+              kind="agent"
+              groupKey={virtualMcpId}
+              filters={filters}
+            />
+          )}
         </div>
       )}
     </div>
@@ -207,12 +218,14 @@ export function StatusGroup({
   activeTaskId,
   onSelectTask,
   onArchiveTask,
+  filters,
 }: {
   status: StatusGroupData["status"];
   threads: Task[];
   activeTaskId: string | null;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
+  filters: SidebarFilters;
 }) {
   const config = STATUS_CONFIG[status];
   const StatusIcon = config.icon;
@@ -268,6 +281,7 @@ export function StatusGroup({
               hideStatusIdle
             />
           ))}
+          <ShowMoreButton kind="status" groupKey={status} filters={filters} />
         </div>
       )}
     </div>
