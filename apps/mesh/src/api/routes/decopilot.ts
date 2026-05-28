@@ -1,7 +1,7 @@
 /**
  * Decopilot Route
  *
- * Re-exports from the decopilot module for backwards compatibility.
+ * Re-exports from the decopilot module for backwards compatibility
  * The actual implementation lives in ./decopilot/routes.ts
  */
 
