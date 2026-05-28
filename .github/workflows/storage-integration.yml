@@ -44,7 +44,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.5"
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: bun install
@@ -55,12 +55,15 @@ jobs:
       # Convention: every `*.integration.test.ts` file is picked up here.
       # Adding a new integration test = create a `something.integration.test.ts`
       # and it auto-routes to this workflow. See TESTING.md.
-      # Per-file bun process gives the same Bun 1.3.5 signal-crash
-      # tolerance as the unit job — if bun exits >128 but tests passed
-      # (saw a (pass) marker), accept it as a teardown bug, not a fail.
+      #
+      # `--isolate` runs each file in a fresh global within the same bun
+      # process (drained microtasks, closed sockets, killed subprocs).
+      # Replaces the per-file process spawn + signal-tolerance loop we
+      # needed on Bun 1.3.5 — fixed in 1.3.13.
       - name: Run storage integration tests
         run: |
-          files=$(find apps/mesh -name '*.integration.test.ts' | sort)
+          find apps/mesh -name '*.integration.test.ts' -print0 \
+            | xargs -0 bun test --isolate
           failed_files=""
           crashed_files=""
           for f in $files; do
