@@ -12,6 +12,7 @@ import {
   DownstreamTokenStorage,
   type DownstreamTokenData,
 } from "../../storage/downstream-token";
+import type { ConnectionViewer } from "../../storage/ports";
 
 // Define Hono variables type
 type Variables = {
@@ -42,10 +43,14 @@ export const createDownstreamTokenRoutes = () => {
       return c.json({ error: "Organization context required" }, 403);
     }
 
-    // Verify connection exists and user has access
+    // Verify connection exists and user has access. The viewer is the
+    // authenticated principal so user-private connections owned by other
+    // members are hidden — preventing a cross-user OAuth token overwrite.
+    const viewer: ConnectionViewer = userId;
     const connection = await ctx.storage.connections.findById(
       connectionId,
       organizationId,
+      viewer,
     );
     if (!connection) {
       return c.json({ error: "Connection not found" }, 404);
@@ -154,10 +159,14 @@ export const createDownstreamTokenRoutes = () => {
       return c.json({ error: "Organization context required" }, 403);
     }
 
-    // Verify connection exists and belongs to the user's organization
+    // Verify connection exists and belongs to the user's organization.
+    // viewer = userId so a member can't delete another user's OAuth token
+    // for a user-private connection they shouldn't see.
+    const viewer: ConnectionViewer = userId;
     const connection = await ctx.storage.connections.findById(
       connectionId,
       organizationId,
+      viewer,
     );
     if (!connection) {
       return c.json({ error: "Connection not found" }, 404);
@@ -188,10 +197,14 @@ export const createDownstreamTokenRoutes = () => {
       return c.json({ error: "Organization context required" }, 403);
     }
 
-    // Verify connection exists and belongs to the user's organization
+    // Verify connection exists and belongs to the user's organization.
+    // viewer = userId so a member can't probe whether another user has an
+    // active token on a user-private connection.
+    const viewer: ConnectionViewer = userId;
     const connection = await ctx.storage.connections.findById(
       connectionId,
       organizationId,
+      viewer,
     );
     if (!connection) {
       return c.json({ error: "Connection not found" }, 404);

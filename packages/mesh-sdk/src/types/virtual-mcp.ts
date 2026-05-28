@@ -8,10 +8,11 @@
 import { z } from "zod";
 
 /**
- * Virtual MCP connection schema - defines which connection and tools/resources/prompts are included
+ * Selection filter fields shared by connection rows and typed slots.
+ * `null` means "include everything"; an array narrows to the listed items.
+ * Wildcards (`*`, `**`) are honored by the resource matcher.
  */
-const VirtualMCPConnectionSchema = z.object({
-  connection_id: z.string().describe("Connection ID"),
+const SelectionFilterFieldsShape = {
   selected_tools: z
     .array(z.string())
     .nullable()
@@ -30,6 +31,25 @@ const VirtualMCPConnectionSchema = z.object({
     .describe(
       "Selected prompt names. null = all prompts included, array = only these prompts included",
     ),
+} as const;
+
+/**
+ * Same fields as `SelectionFilterFieldsShape` but marked optional. Used by
+ * Create/Update input schemas where the client may omit any filter and have
+ * the server default it to `null` (include everything).
+ */
+const SelectionFilterInputFieldsShape = {
+  selected_tools: SelectionFilterFieldsShape.selected_tools.optional(),
+  selected_resources: SelectionFilterFieldsShape.selected_resources.optional(),
+  selected_prompts: SelectionFilterFieldsShape.selected_prompts.optional(),
+} as const;
+
+/**
+ * Virtual MCP connection schema - defines which connection and tools/resources/prompts are included
+ */
+const VirtualMCPConnectionSchema = z.object({
+  connection_id: z.string().describe("Connection ID"),
+  ...SelectionFilterFieldsShape,
 });
 
 export type VirtualMCPConnection = z.infer<typeof VirtualMCPConnectionSchema>;
@@ -37,13 +57,9 @@ export type VirtualMCPConnection = z.infer<typeof VirtualMCPConnectionSchema>;
 /**
  * Virtual MCP connection schema for input (Create/Update) - fields can be optional
  */
-const VirtualMCPConnectionInputSchema = VirtualMCPConnectionSchema.extend({
-  selected_tools: VirtualMCPConnectionSchema.shape.selected_tools.optional(),
-  selected_resources:
-    VirtualMCPConnectionSchema.shape.selected_resources.optional(),
-  selected_prompts:
-    VirtualMCPConnectionSchema.shape.selected_prompts.optional(),
-});
+const VirtualMCPConnectionInputSchema = VirtualMCPConnectionSchema.extend(
+  SelectionFilterInputFieldsShape,
+);
 
 /**
  * Virtual MCP slot schema — a typed dependency declared without binding to a
@@ -57,33 +73,14 @@ const VirtualMCPSlotSchema = z.object({
   slot_app_id: z
     .string()
     .describe("app_id this slot is typed by (e.g. 'mcp-github')"),
-  selected_tools: z
-    .array(z.string())
-    .nullable()
-    .describe(
-      "Selected tool names. null = all tools, array = only these tools",
-    ),
-  selected_resources: z
-    .array(z.string())
-    .nullable()
-    .describe(
-      "Selected resource URIs or patterns. null = all, array = only these",
-    ),
-  selected_prompts: z
-    .array(z.string())
-    .nullable()
-    .describe(
-      "Selected prompt names. null = all prompts, array = only these prompts",
-    ),
+  ...SelectionFilterFieldsShape,
 });
 
 export type VirtualMCPSlot = z.infer<typeof VirtualMCPSlotSchema>;
 
-const VirtualMCPSlotInputSchema = VirtualMCPSlotSchema.extend({
-  selected_tools: VirtualMCPSlotSchema.shape.selected_tools.optional(),
-  selected_resources: VirtualMCPSlotSchema.shape.selected_resources.optional(),
-  selected_prompts: VirtualMCPSlotSchema.shape.selected_prompts.optional(),
-});
+const VirtualMCPSlotInputSchema = VirtualMCPSlotSchema.extend(
+  SelectionFilterInputFieldsShape,
+);
 
 /**
  * Pinned view schema - a tool view pinned to a virtual MCP

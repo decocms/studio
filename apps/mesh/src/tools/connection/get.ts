@@ -71,6 +71,8 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
       organization.id,
       ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
     );
+    // ^ viewer is the authenticated principal — `null` hides every user-private
+    // row, matching the behaviour for an anonymous caller.
 
     // Verify connection exists and belongs to the current organization
     if (!connection || connection.organization_id !== organization.id) {

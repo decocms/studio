@@ -15,6 +15,7 @@ import {
   SlotResolutionCache,
   SlotUnresolvedError,
 } from "../../core/slot-resolver";
+import { INTERNAL_VIEWER } from "../../storage/ports";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type {
   VirtualMCPConnection,
@@ -99,7 +100,11 @@ export async function createVirtualClientFrom(
         // by the slot resolver (see slot resolution block below).
         const result = await Promise.all(
           connectionIds.map((connId) =>
-            ctx.storage.connections.findById(connId),
+            ctx.storage.connections.findById(
+              connId,
+              undefined,
+              INTERNAL_VIEWER,
+            ),
           ),
         );
         span.setStatus({ code: SpanStatusCode.OK });
@@ -165,9 +170,13 @@ export async function createVirtualClientFrom(
         throw new SlotUnresolvedError(slot.slot_app_id);
       }
 
+      // Slot resolver already enforces per-user access by looking up the
+      // invoker's own slot row; once resolved, the connection lookup itself
+      // is just an entity hydration step, so INTERNAL_VIEWER is appropriate.
       const resolvedEntity = await ctx.storage.connections.findById(
         resolved.connectionId,
         virtualMcp.organization_id,
+        INTERNAL_VIEWER,
       );
       if (!resolvedEntity) {
         // Defensive: resolver pointed at a row that disappeared (e.g.

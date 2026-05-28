@@ -31,7 +31,8 @@ import {
   isDecopilot,
 } from "@decocms/mesh-sdk";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
-import type { ConnectionStoragePort } from "./ports";
+import { INTERNAL_VIEWER } from "./ports";
+import type { ConnectionStoragePort, ConnectionViewer } from "./ports";
 import type { Database } from "./types";
 
 /** JSON fields that need serialization/deserialization */
@@ -194,7 +195,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
     const id = data.id ?? generatePrefixedId("conn");
     const now = new Date().toISOString();
 
-    const existing = await this.findById(id);
+    const existing = await this.findById(id, undefined, INTERNAL_VIEWER);
 
     if (existing) {
       // Only allow update if same organization - prevent cross-org hijacking
@@ -218,7 +219,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
       .values(serialized as Insertable<Database["connections"]>)
       .execute();
 
-    const connection = await this.findById(id);
+    const connection = await this.findById(id, undefined, INTERNAL_VIEWER);
     if (!connection) {
       throw new Error(`Failed to create connection with id: ${id}`);
     }
@@ -228,8 +229,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
 
   async findById(
     id: string,
-    organizationId?: string,
-    viewerUserId?: string | null,
+    organizationId: string | undefined,
+    viewer: ConnectionViewer,
   ): Promise<ConnectionEntity | null> {
     // Handle Decopilot ID - return Decopilot connection entity
     const decopilotOrgId = isDecopilot(id);
@@ -253,11 +254,12 @@ export class ConnectionStorage implements ConnectionStoragePort {
     const rawRow = row as RawConnectionRow;
 
     // Visibility filter: hide other users' user-private connections from the caller.
-    // When viewerUserId is null/undefined we only hide if access is 'user' AND
-    // no viewer is specified (so unauthenticated/system callers only see org rows).
-    if (viewerUserId !== undefined) {
+    // `viewer` is required and explicit — callers must opt into INTERNAL_VIEWER to
+    // bypass the per-user filter. A string viewer is the user's id; null is an
+    // unauthenticated/system caller and only sees org-shared rows.
+    if (viewer !== INTERNAL_VIEWER) {
       if (rawRow.access === "user") {
-        if (viewerUserId === null || rawRow.created_by !== viewerUserId) {
+        if (viewer === null || rawRow.created_by !== viewer) {
           return null;
         }
       }
@@ -268,14 +270,14 @@ export class ConnectionStorage implements ConnectionStoragePort {
 
   async list(
     organizationId: string,
-    options?: {
+    options: {
       includeVirtual?: boolean;
       slug?: string;
       where?: WhereExpression;
       orderBy?: OrderByExpression[];
       limit?: number;
       offset?: number;
-      viewerUserId?: string | null;
+      viewer: ConnectionViewer;
     },
   ): Promise<{ items: ConnectionEntity[]; totalCount: number }> {
     let query = this.db
@@ -284,22 +286,25 @@ export class ConnectionStorage implements ConnectionStoragePort {
       .where("organization_id", "=", organizationId);
 
     // Per-user visibility: hide other users' user-private connections.
-    // When viewerUserId is undefined the caller is internal infrastructure
-    // and sees every row regardless of access.
-    if (options?.viewerUserId !== undefined && options?.viewerUserId !== null) {
-      const viewerUserId = options.viewerUserId;
-      query = query.where((eb) =>
-        eb.or([
-          eb("access", "=", "org"),
-          eb.and([
-            eb("access", "=", "user"),
-            eb("created_by", "=", viewerUserId),
+    // `viewer` is required so callers must opt into INTERNAL_VIEWER to see
+    // every row. A string viewer is the user's id; null is an unauthenticated
+    // /system caller and only sees org-shared rows.
+    if (options.viewer !== INTERNAL_VIEWER) {
+      if (options.viewer === null) {
+        // Explicit null viewer (system / unauthenticated) → only org-shared rows.
+        query = query.where("access", "=", "org");
+      } else {
+        const viewerUserId = options.viewer;
+        query = query.where((eb) =>
+          eb.or([
+            eb("access", "=", "org"),
+            eb.and([
+              eb("access", "=", "user"),
+              eb("created_by", "=", viewerUserId),
+            ]),
           ]),
-        ]),
-      );
-    } else if (options?.viewerUserId === null) {
-      // Explicit null viewer (system / unauthenticated) → only org-shared rows.
-      query = query.where("access", "=", "org");
+        );
+      }
     }
 
     // By default, exclude VIRTUAL connections unless explicitly requested
@@ -357,7 +362,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
     data: Partial<ConnectionEntity>,
   ): Promise<ConnectionEntity> {
     if (Object.keys(data).length === 0) {
-      const connection = await this.findById(id);
+      const connection = await this.findById(id, undefined, INTERNAL_VIEWER);
       if (!connection) throw new Error("Connection not found");
       return connection;
     }
@@ -369,7 +374,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
       data.connection_url !== undefined ||
       data.title !== undefined
     ) {
-      const existing = await this.findById(id);
+      const existing = await this.findById(id, undefined, INTERNAL_VIEWER);
       if (existing) {
         slugData.slug = getConnectionSlug({
           app_name: data.app_name ?? existing.app_name,
@@ -391,7 +396,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
       .where("id", "=", id)
       .execute();
 
-    const connection = await this.findById(id);
+    const connection = await this.findById(id, undefined, INTERNAL_VIEWER);
     if (!connection) {
       throw new Error("Connection not found after update");
     }
@@ -407,7 +412,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
     id: string,
     headers?: Record<string, string>,
   ): Promise<{ healthy: boolean; latencyMs: number }> {
-    const connection = await this.findById(id);
+    const connection = await this.findById(id, undefined, INTERNAL_VIEWER);
     if (!connection) {
       throw new Error("Connection not found");
     }

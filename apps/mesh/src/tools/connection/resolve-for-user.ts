@@ -27,7 +27,7 @@ export const CONNECTION_RESOLVE_FOR_USER = defineTool({
   },
   _meta: { ui: { visibility: "app" } },
   inputSchema: z.object({
-    app_id: z.string().describe("app_id to resolve (e.g. 'mcp-github')"),
+    app_id: z.string().min(1).describe("app_id to resolve (e.g. 'mcp-github')"),
   }),
   outputSchema: z.object({
     connectionId: z.string().nullable(),

@@ -19,6 +19,8 @@ import {
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import type { MeshContext } from "../../core/mesh-context";
+import { INTERNAL_VIEWER } from "../../storage/ports";
+import type { ConnectionViewer } from "../../storage/ports";
 
 // ============================================================================
 // Types
@@ -62,12 +64,21 @@ async function createMCPProxyDoNotUseDirectly(
     throw new Error("Organization context is required");
   }
 
-  // Get connection details — scope the lookup to the caller's org when available
+  // Get connection details — scope the lookup to the caller's org when
+  // available. superUser callers are background workers crossing user/org
+  // boundaries (e.g. event-bus worker resolving a subscriber's connection),
+  // so they pass INTERNAL_VIEWER. User-facing callers thread the
+  // authenticated principal so user-private rows owned by other members are
+  // hidden.
+  const viewer: ConnectionViewer = superUser
+    ? INTERNAL_VIEWER
+    : (ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null);
   const connection =
     typeof connectionIdOrConnection === "string"
       ? await ctx.storage.connections.findById(
           connectionIdOrConnection,
           ctx.organization?.id,
+          viewer,
         )
       : connectionIdOrConnection;
   if (!connection) {

@@ -80,6 +80,10 @@ export const storeManagerAgent = {
             conditions: [{ field: ["id"], operator: "in", value: seededIds }],
           },
           limit: 1,
+          // Viewer is the authenticated principal so the "have any user-installed
+          // connection yet?" check matches what this user can actually browse —
+          // another member's user-private install doesn't count for this user.
+          viewer: ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
         });
         return totalCount > 0;
       },

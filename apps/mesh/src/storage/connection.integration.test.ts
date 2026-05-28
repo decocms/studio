@@ -7,6 +7,7 @@ import {
 } from "../database/test-db-pg";
 import type { MeshDatabase } from "../database";
 import { ConnectionStorage } from "./connection";
+import { INTERNAL_VIEWER } from "./ports";
 import { CredentialVault } from "../encryption/credential-vault";
 
 describe("ConnectionStorage", () => {
@@ -97,13 +98,21 @@ describe("ConnectionStorage", () => {
         connection_url: "https://test.com",
       });
 
-      const found = await storage.findById(created.id);
+      const found = await storage.findById(
+        created.id,
+        "org_123",
+        INTERNAL_VIEWER,
+      );
       expect(found).not.toBeNull();
       expect(found?.title).toBe("Find Me");
     });
 
     it("should return null for non-existent ID", async () => {
-      const found = await storage.findById("conn_nonexistent");
+      const found = await storage.findById(
+        "conn_nonexistent",
+        "org_123",
+        INTERNAL_VIEWER,
+      );
       expect(found).toBeNull();
     });
   });
@@ -126,7 +135,9 @@ describe("ConnectionStorage", () => {
         connection_url: "https://gmail.com",
       });
 
-      const { items: connections } = await storage.list("org_123");
+      const { items: connections } = await storage.list("org_123", {
+        viewer: INTERNAL_VIEWER,
+      });
       expect(connections.length).toBeGreaterThanOrEqual(2);
       expect(connections.every((c) => c.organization_id === "org_123")).toBe(
         true,
@@ -142,7 +153,9 @@ describe("ConnectionStorage", () => {
         connection_url: "https://other.com",
       });
 
-      const { items: connections } = await storage.list("org_123");
+      const { items: connections } = await storage.list("org_123", {
+        viewer: INTERNAL_VIEWER,
+      });
       expect(connections.every((c) => c.organization_id === "org_123")).toBe(
         true,
       );
@@ -181,27 +194,40 @@ describe("ConnectionStorage", () => {
     });
 
     it("should filter by slug (app_name present)", async () => {
-      const { items } = await storage.list("org_123", { slug: "alpha-app" });
+      const { items } = await storage.list("org_123", {
+        slug: "alpha-app",
+        viewer: INTERNAL_VIEWER,
+      });
       expect(items).toHaveLength(1);
       expect(items[0]!.title).toBe("Alpha");
     });
 
     it("should filter by slug (derived from connection_url)", async () => {
-      const { items: all } = await storage.list("org_123");
+      const { items: all } = await storage.list("org_123", {
+        viewer: INTERNAL_VIEWER,
+      });
       const beta = all.find((c) => c.title === "Beta")!;
       expect(beta.slug).toBeTruthy();
 
-      const { items } = await storage.list("org_123", { slug: beta.slug! });
+      const { items } = await storage.list("org_123", {
+        slug: beta.slug!,
+        viewer: INTERNAL_VIEWER,
+      });
       expect(items).toHaveLength(1);
       expect(items[0]!.title).toBe("Beta");
     });
 
     it("should filter by slug (derived from connection_url when no app_name)", async () => {
-      const { items: all } = await storage.list("org_123");
+      const { items: all } = await storage.list("org_123", {
+        viewer: INTERNAL_VIEWER,
+      });
       const gamma = all.find((c) => c.title === "Gamma")!;
       expect(gamma.slug).toBeTruthy();
 
-      const { items } = await storage.list("org_123", { slug: gamma.slug! });
+      const { items } = await storage.list("org_123", {
+        slug: gamma.slug!,
+        viewer: INTERNAL_VIEWER,
+      });
       expect(items).toHaveLength(1);
       expect(items[0]!.title).toBe("Gamma");
     });
@@ -209,6 +235,7 @@ describe("ConnectionStorage", () => {
     it("should filter with where eq expression", async () => {
       const { items } = await storage.list("org_123", {
         where: { field: ["connection_type"], operator: "eq", value: "SSE" },
+        viewer: INTERNAL_VIEWER,
       });
       expect(items.every((c) => c.connection_type === "SSE")).toBe(true);
       expect(items.some((c) => c.title === "Gamma")).toBe(true);
@@ -221,6 +248,7 @@ describe("ConnectionStorage", () => {
           operator: "like",
           value: "https://alpha%",
         },
+        viewer: INTERNAL_VIEWER,
       });
       expect(items).toHaveLength(1);
       expect(items[0]!.title).toBe("Alpha");
@@ -233,6 +261,7 @@ describe("ConnectionStorage", () => {
           operator: "contains",
           value: "bet",
         },
+        viewer: INTERNAL_VIEWER,
       });
       expect(items).toHaveLength(1);
       expect(items[0]!.title).toBe("Beta");
@@ -245,6 +274,7 @@ describe("ConnectionStorage", () => {
           operator: "in",
           value: ["SSE", "Websocket"],
         },
+        viewer: INTERNAL_VIEWER,
       });
       expect(items.every((c) => c.connection_type === "SSE")).toBe(true);
     });
@@ -258,6 +288,7 @@ describe("ConnectionStorage", () => {
             { field: ["title"], operator: "eq", value: "Gamma" },
           ],
         },
+        viewer: INTERNAL_VIEWER,
       });
       expect(items).toHaveLength(2);
       const titles = items.map((c) => c.title).sort();
@@ -267,20 +298,31 @@ describe("ConnectionStorage", () => {
     it("should apply orderBy", async () => {
       const { items } = await storage.list("org_123", {
         orderBy: [{ field: ["title"], direction: "desc", nulls: "last" }],
+        viewer: INTERNAL_VIEWER,
       });
       const titles = items.map((c) => c.title);
       expect(titles).toEqual([...titles].sort().reverse());
     });
 
     it("should apply pagination", async () => {
-      const { totalCount } = await storage.list("org_123");
+      const { totalCount } = await storage.list("org_123", {
+        viewer: INTERNAL_VIEWER,
+      });
       expect(totalCount).toBeGreaterThanOrEqual(3);
 
-      const page1 = await storage.list("org_123", { limit: 2, offset: 0 });
+      const page1 = await storage.list("org_123", {
+        limit: 2,
+        offset: 0,
+        viewer: INTERNAL_VIEWER,
+      });
       expect(page1.items).toHaveLength(2);
       expect(page1.totalCount).toBe(totalCount);
 
-      const page2 = await storage.list("org_123", { limit: 2, offset: 2 });
+      const page2 = await storage.list("org_123", {
+        limit: 2,
+        offset: 2,
+        viewer: INTERNAL_VIEWER,
+      });
       expect(page2.items.length).toBeGreaterThanOrEqual(1);
       expect(page2.totalCount).toBe(totalCount);
 
@@ -292,6 +334,7 @@ describe("ConnectionStorage", () => {
     it("should return correct totalCount with filters", async () => {
       const { totalCount } = await storage.list("org_123", {
         where: { field: ["connection_type"], operator: "eq", value: "HTTP" },
+        viewer: INTERNAL_VIEWER,
       });
       // At least Alpha and Beta are HTTP
       expect(totalCount).toBeGreaterThanOrEqual(2);
@@ -417,7 +460,11 @@ describe("ConnectionStorage", () => {
 
       await storage.delete(created.id);
 
-      const found = await storage.findById(created.id);
+      const found = await storage.findById(
+        created.id,
+        "org_123",
+        INTERNAL_VIEWER,
+      );
       expect(found).toBeNull();
     });
   });

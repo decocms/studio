@@ -9,6 +9,7 @@
 import type { MeshContext } from "@/core/mesh-context";
 import { clientFromConnection } from "@/mcp-clients";
 import { toServerClient } from "@/api/routes/proxy";
+import { INTERNAL_VIEWER } from "@/storage/ports";
 import type { AutomationTrigger } from "@/storage/types";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
 import { TriggerBinding } from "@decocms/bindings/trigger";
@@ -22,8 +23,14 @@ export async function configureTriggerOnMcp(
   if (trigger.type !== "event" || !trigger.connection_id)
     return { success: true };
 
+  // Trigger configuration is invoked by background workers (cron, event-bus
+  // dispatcher) where ctx.auth doesn't reflect a user session. Visibility was
+  // enforced when the trigger was added (TRIGGER_ADD passes the authoring
+  // user id and TRIGGER_UPDATE checks ownership), so INTERNAL_VIEWER is safe.
   const connection = await ctx.storage.connections.findById(
     trigger.connection_id,
+    undefined,
+    INTERNAL_VIEWER,
   );
   if (!connection) return { success: true }; // Connection may have been deleted
 

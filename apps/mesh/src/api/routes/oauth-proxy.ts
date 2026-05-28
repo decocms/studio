@@ -15,6 +15,7 @@
 import { Hono } from "hono";
 import { ContextFactory } from "../../core/context-factory";
 import type { MeshContext } from "../../core/mesh-context";
+import { INTERNAL_VIEWER } from "../../storage/ports";
 
 // Define Hono variables type
 type Variables = {
@@ -51,9 +52,15 @@ async function getConnectionUrl(
   ctx: MeshContext,
   organizationId?: string,
 ): Promise<string | null> {
+  // OAuth proxy is shared infrastructure — the URL lookup must succeed for
+  // any caller who legitimately reaches the proxy endpoint. Per-user access
+  // is enforced upstream by the route mounting (org membership) plus the
+  // OAuth flow itself, which requires the user to authenticate against the
+  // origin and bind the resulting token to their own session.
   const connection = await ctx.storage.connections.findById(
     connectionId,
     organizationId,
+    INTERNAL_VIEWER,
   );
   return connection?.connection_url ?? null;
 }
@@ -764,8 +771,13 @@ const authServerMetadataHandler = async (c: {
 
   // Fetch the connection (unscoped — connection IDs are globally unique) so we
   // can derive both the origin auth server and the owning org slug for
-  // org-scoped endpoint URLs.
-  const connection = await ctx.storage.connections.findById(connectionId);
+  // org-scoped endpoint URLs. INTERNAL_VIEWER because this is OAuth discovery
+  // metadata — the actual token exchange is bound to the caller's session.
+  const connection = await ctx.storage.connections.findById(
+    connectionId,
+    undefined,
+    INTERNAL_VIEWER,
+  );
   if (!connection?.connection_url) {
     return c.json({ error: "Connection not found or no auth server" }, 404);
   }

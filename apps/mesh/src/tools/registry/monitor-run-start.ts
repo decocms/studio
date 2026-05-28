@@ -16,6 +16,7 @@ import {
   PLUGIN_ID,
   PUBLISH_REQUEST_TARGET_PREFIX,
 } from "./shared";
+import { INTERNAL_VIEWER } from "@/storage/ports";
 import type {
   MonitorResultStatus,
   MonitorRunConfigSnapshot,
@@ -768,9 +769,13 @@ export async function ensureMonitorConnection(
     item.id,
   );
   if (existing) {
+    // Registry monitor is org-level infra running on background runs; the
+    // monitor connection is created and owned by the platform side, so the
+    // existence check uses INTERNAL_VIEWER.
     const found = await ctx.storage.connections.findById(
       existing.connection_id,
       organizationId,
+      INTERNAL_VIEWER,
     );
     if (found) {
       return existing.connection_id;

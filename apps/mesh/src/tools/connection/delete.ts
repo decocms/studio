@@ -59,7 +59,7 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     const connection = await ctx.storage.connections.findById(
       input.id,
       organization.id,
-      ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
+      getUserId(ctx) ?? null,
     );
     if (!connection) {
       throw new Error(`Connection not found: ${input.id}`);

@@ -2,8 +2,8 @@
  * Verifies that ConnectionStorage.list and findById honor the access column:
  *   - Org-shared rows are visible to everyone.
  *   - User-private rows are visible only to their creator.
- *   - When viewerUserId is undefined/null, only org-shared rows are returned
- *     (null) or every row is returned (undefined — internal infra path).
+ *   - When viewer is `null`, only org-shared rows are returned.
+ *   - When viewer is INTERNAL_VIEWER, every row is returned (trusted infra).
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -14,6 +14,7 @@ import {
   type TestDatabase,
 } from "../database/test-db";
 import { ConnectionStorage } from "./connection";
+import { INTERNAL_VIEWER } from "./ports";
 import { createTestSchema, seedCommonTestFixtures } from "./test-helpers";
 import { CredentialVault } from "../encryption/credential-vault";
 
@@ -59,24 +60,24 @@ describe("ConnectionStorage — access filtering", () => {
   });
 
   it("list as USER_A: returns own private + org-shared, not USER_B's private", async () => {
-    const { items } = await storage.list(ORG, { viewerUserId: USER_A });
+    const { items } = await storage.list(ORG, { viewer: USER_A });
     const ids = items.map((c) => c.id).sort();
     expect(ids).toEqual(["conn_a_org", "conn_a_private"]);
   });
 
   it("list as USER_B: returns own private + org-shared, not USER_A's private", async () => {
-    const { items } = await storage.list(ORG, { viewerUserId: USER_B });
+    const { items } = await storage.list(ORG, { viewer: USER_B });
     const ids = items.map((c) => c.id).sort();
     expect(ids).toEqual(["conn_a_org", "conn_b_private"]);
   });
 
-  it("list with viewerUserId=null returns only org-shared", async () => {
-    const { items } = await storage.list(ORG, { viewerUserId: null });
+  it("list with viewer=null returns only org-shared", async () => {
+    const { items } = await storage.list(ORG, { viewer: null });
     expect(items.map((c) => c.id)).toEqual(["conn_a_org"]);
   });
 
-  it("list with no viewerUserId (internal infra) returns every row", async () => {
-    const { items } = await storage.list(ORG);
+  it("list with INTERNAL_VIEWER returns every row", async () => {
+    const { items } = await storage.list(ORG, { viewer: INTERNAL_VIEWER });
     const ids = items.map((c) => c.id).sort();
     expect(ids).toEqual(["conn_a_org", "conn_a_private", "conn_b_private"]);
   });

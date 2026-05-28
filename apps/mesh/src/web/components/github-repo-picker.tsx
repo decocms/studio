@@ -31,6 +31,7 @@ import {
 } from "@untitledui/icons";
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
+import { useResolveConnectionForUser } from "@/web/hooks/use-resolve-connection-for-user";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import {
   STOREFRONT_GITHUB_AUTOMATIONS,
@@ -182,24 +183,11 @@ function PickerContent({
   // org-shared fallback). Avoids the cross-user leak that
   // useConnections({ slug: 'mcp-github' }) had: that query could surface a
   // teammate's connection and end up listing their personal installations.
-  const resolveQuery = useQuery({
-    queryKey: KEYS.connectionResolveForUser(org.id, "mcp-github"),
-    queryFn: async () => {
-      const result = await selfClient.callTool({
-        name: "CONNECTION_RESOLVE_FOR_USER",
-        arguments: { app_id: "mcp-github" },
-      });
-      const structured = (result as { structuredContent?: unknown })
-        .structuredContent;
-      const text = (result as { content?: Array<{ text?: string }> })
-        .content?.[0]?.text;
-      const payload = (structured ?? (text ? JSON.parse(text) : null)) as {
-        connectionId: string | null;
-        access: "user" | "org" | null;
-      } | null;
-      return payload ?? { connectionId: null, access: null };
-    },
-  });
+  const resolveQuery = useResolveConnectionForUser(
+    org.id,
+    org.slug,
+    "mcp-github",
+  );
 
   const resolvedConnectionId = resolveQuery.data?.connectionId ?? null;
 
@@ -422,7 +410,23 @@ function PickerContent({
     );
   }
 
-  if (resolvedConnectionId === null) {
+  if (resolveQuery.isError) {
+    return (
+      <AutoInstallGitHubUI
+        status="error"
+        error={
+          resolveQuery.error instanceof Error
+            ? resolveQuery.error.message
+            : "Failed to resolve GitHub connection."
+        }
+        retry={() => {
+          resolveQuery.refetch();
+        }}
+      />
+    );
+  }
+
+  if (resolveQuery.isLoading || resolvedConnectionId === null) {
     return (
       <AutoInstallGitHubUI
         status="installing"
@@ -476,24 +480,11 @@ function InstallationPicker({
 
   // Resolve the caller's own mcp-github connection. Each user gets only
   // their installations — the cross-user leak via useConnections() is gone.
-  const resolveQuery = useQuery({
-    queryKey: KEYS.connectionResolveForUser(orgId, "mcp-github"),
-    queryFn: async () => {
-      const result = await selfClient.callTool({
-        name: "CONNECTION_RESOLVE_FOR_USER",
-        arguments: { app_id: "mcp-github" },
-      });
-      const structured = (result as { structuredContent?: unknown })
-        .structuredContent;
-      const text = (result as { content?: Array<{ text?: string }> })
-        .content?.[0]?.text;
-      const payload = (structured ?? (text ? JSON.parse(text) : null)) as {
-        connectionId: string | null;
-        access: "user" | "org" | null;
-      } | null;
-      return payload ?? { connectionId: null, access: null };
-    },
-  });
+  const resolveQuery = useResolveConnectionForUser(
+    orgId,
+    orgSlug,
+    "mcp-github",
+  );
 
   const resolvedConnectionId = resolveQuery.data?.connectionId ?? null;
 
@@ -531,6 +522,22 @@ function InstallationPicker({
         }
         error={autoInstall.error}
         retry={autoInstall.retry}
+      />
+    );
+  }
+
+  if (resolveQuery.isError) {
+    return (
+      <AutoInstallGitHubUI
+        status="error"
+        error={
+          resolveQuery.error instanceof Error
+            ? resolveQuery.error.message
+            : "Failed to resolve GitHub connection."
+        }
+        retry={() => {
+          resolveQuery.refetch();
+        }}
       />
     );
   }

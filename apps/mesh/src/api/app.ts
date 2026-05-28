@@ -46,6 +46,7 @@ import {
   type DownstreamTokenData,
 } from "../storage/downstream-token";
 import { resolveOriginTokenEndpoint } from "../oauth/resolve-token-endpoint";
+import { INTERNAL_VIEWER } from "../storage/ports";
 import {
   createLogDeprecatedRoute,
   logDeprecatedRoute,
@@ -238,7 +239,11 @@ async function getDecoStoreProjectLocator(
   ctx: MeshContext,
   organizationId: string,
 ): Promise<string | null> {
-  // Find registry connection by URL within the organization
+  // Find registry connection by URL within the organization.
+  // INTERNAL_VIEWER: the deco-store registry is an org-shared resource that
+  // every member's OAuth flow needs to resolve. The lookup runs inside trusted
+  // infra (not directly from a user-facing handler returning raw rows to the
+  // caller) and only reads `configuration_state.project_locator`.
   const { items: connections } = await ctx.storage.connections.list(
     organizationId,
     {
@@ -248,6 +253,7 @@ async function getDecoStoreProjectLocator(
         value: `${DECO_STORE_URL}%`,
       },
       limit: 1,
+      viewer: INTERNAL_VIEWER,
     },
   );
   const registryConn = connections[0];
@@ -314,9 +320,15 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   }
 
   const orgScope = c.req.param("org") ? ctx.organization?.id : undefined;
+  // OAuth proxy entry point: org-scope is enforced above. The lookup is
+  // internal infra (we only need the connection_url to forward the OAuth
+  // call to origin) — INTERNAL_VIEWER so the proxy works for both org-shared
+  // and user-private connections owned by other members. The OAuth token that
+  // results from this flow is bound to the caller's session, not returned.
   const connection = await ctx.storage.connections.findById(
     connectionId,
     orgScope,
+    INTERNAL_VIEWER,
   );
   if (!connection?.connection_url) {
     return c.json({ error: "Connection not found" }, 404);

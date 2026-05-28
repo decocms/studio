@@ -437,31 +437,9 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
 
       // Partition the pre-delete snapshot into concrete connections and
       // slots so we can use them as the fallback when the caller omits a
-      // field. Mirrors the partition logic in deserializeVirtualMCPEntity.
-      const existingConnections: VirtualMCPConnection[] = [];
-      const existingSlots: VirtualMCPSlot[] = [];
-      for (const agg of currentAggs as RawAggregationRow[]) {
-        const selectedTools = this.parseJson<string[]>(agg.selected_tools);
-        const selectedResources = this.parseJson<string[]>(
-          agg.selected_resources,
-        );
-        const selectedPrompts = this.parseJson<string[]>(agg.selected_prompts);
-        if (agg.child_connection_id !== null) {
-          existingConnections.push({
-            connection_id: agg.child_connection_id,
-            selected_tools: selectedTools,
-            selected_resources: selectedResources,
-            selected_prompts: selectedPrompts,
-          });
-        } else if (agg.slot_app_id !== null) {
-          existingSlots.push({
-            slot_app_id: agg.slot_app_id,
-            selected_tools: selectedTools,
-            selected_resources: selectedResources,
-            selected_prompts: selectedPrompts,
-          });
-        }
-      }
+      // field.
+      const { connections: existingConnections, slots: existingSlots } =
+        this.partitionAggregations(currentAggs as RawAggregationRow[]);
 
       // Only delete 'direct' dependencies - preserve 'indirect' ones from virtual tools
       await this.db
@@ -680,31 +658,8 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         ? normalizeSandboxMap(rawSandboxMap)
         : undefined;
 
-    const connections: VirtualMCPConnection[] = [];
-    const slots: VirtualMCPSlot[] = [];
-    for (const agg of aggregationRows) {
-      const selectedTools = this.parseJson<string[]>(agg.selected_tools);
-      const selectedResources = this.parseJson<string[]>(
-        agg.selected_resources,
-      );
-      const selectedPrompts = this.parseJson<string[]>(agg.selected_prompts);
-      if (agg.child_connection_id !== null) {
-        connections.push({
-          connection_id: agg.child_connection_id,
-          selected_tools: selectedTools,
-          selected_resources: selectedResources,
-          selected_prompts: selectedPrompts,
-        });
-      } else if (agg.slot_app_id !== null) {
-        slots.push({
-          slot_app_id: agg.slot_app_id,
-          selected_tools: selectedTools,
-          selected_resources: selectedResources,
-          selected_prompts: selectedPrompts,
-        });
-      }
-      // XOR CHECK at DB level guarantees one branch always fires.
-    }
+    // XOR CHECK at DB level guarantees one branch always fires per row.
+    const { connections, slots } = this.partitionAggregations(aggregationRows);
 
     return {
       id: row.id,
@@ -728,6 +683,42 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       connections,
       slots,
     };
+  }
+
+  /**
+   * Partition raw aggregation rows into typed concrete connections and slots.
+   * Centralizes the JSON parsing and XOR branching used by both the read
+   * path (`deserializeVirtualMCPEntity`) and the update fallback path.
+   */
+  private partitionAggregations(rows: RawAggregationRow[]): {
+    connections: VirtualMCPConnection[];
+    slots: VirtualMCPSlot[];
+  } {
+    const connections: VirtualMCPConnection[] = [];
+    const slots: VirtualMCPSlot[] = [];
+    for (const agg of rows) {
+      const selectedTools = this.parseJson<string[]>(agg.selected_tools);
+      const selectedResources = this.parseJson<string[]>(
+        agg.selected_resources,
+      );
+      const selectedPrompts = this.parseJson<string[]>(agg.selected_prompts);
+      if (agg.child_connection_id !== null) {
+        connections.push({
+          connection_id: agg.child_connection_id,
+          selected_tools: selectedTools,
+          selected_resources: selectedResources,
+          selected_prompts: selectedPrompts,
+        });
+      } else if (agg.slot_app_id !== null) {
+        slots.push({
+          slot_app_id: agg.slot_app_id,
+          selected_tools: selectedTools,
+          selected_resources: selectedResources,
+          selected_prompts: selectedPrompts,
+        });
+      }
+    }
+    return { connections, slots };
   }
 
   /**

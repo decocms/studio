@@ -228,23 +228,47 @@ export interface AsyncResearchJobStoragePort {
 // Connection Storage Port
 // ============================================================================
 
+/**
+ * Sentinel value used by trusted internal infrastructure (background workers,
+ * virtual-MCP loaders, OAuth proxy plumbing) that needs to see every
+ * connection row in an organization regardless of the per-user `access`
+ * column. Callers from user-facing handlers must pass the actual user id
+ * (or `null` for an unauthenticated/system caller) so the storage layer
+ * hides other users' user-private connections.
+ *
+ * Using a Symbol guarantees the bypass cannot be triggered by accident —
+ * forgetting the parameter is a type error, and no user id can collide
+ * with this value.
+ */
+export const INTERNAL_VIEWER: unique symbol = Symbol("INTERNAL_VIEWER");
+
+/**
+ * The viewer identity supplied to `ConnectionStorage.findById` / `list`.
+ *  - `string`: a specific user id; user-private rows belonging to other
+ *    users are hidden.
+ *  - `null`: unauthenticated / system caller; only org-shared rows are
+ *    returned.
+ *  - `INTERNAL_VIEWER`: trusted internal infra; every row is returned.
+ */
+export type ConnectionViewer = string | null | typeof INTERNAL_VIEWER;
+
 export interface ConnectionStoragePort {
   create(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
   findById(
     id: string,
-    organizationId?: string,
-    viewerUserId?: string | null,
+    organizationId: string | undefined,
+    viewer: ConnectionViewer,
   ): Promise<ConnectionEntity | null>;
   list(
     organizationId: string,
-    options?: {
+    options: {
       includeVirtual?: boolean;
       slug?: string;
       where?: WhereExpression;
       orderBy?: OrderByExpression[];
       limit?: number;
       offset?: number;
-      viewerUserId?: string | null;
+      viewer: ConnectionViewer;
     },
   ): Promise<{ items: ConnectionEntity[]; totalCount: number }>;
   update(
