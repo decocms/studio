@@ -109,6 +109,11 @@ import {
   type GatewayNatsAdapter,
   type WsAttachData,
 } from "../links/ws-gateway";
+import {
+  createDispatcher,
+  type DispatcherNatsAdapter,
+  type DispatchFn,
+} from "../links/dispatcher";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
@@ -188,6 +193,25 @@ function rejectAfter(ms: number): Promise<never> {
   return new Promise((_, reject) =>
     setTimeout(() => reject(new Error("pg health-check timeout")), ms),
   );
+}
+
+// Module-level singleton for the NATS-backed dispatcher. Populated inside
+// `createApp` once `natsProvider` is wired; callers outside `createApp` (e.g.
+// `dispatch-run.ts`) reach it via `getDispatch()`.
+let sharedDispatch: DispatchFn | null = null;
+
+/**
+ * Return the shared NATS-backed `DispatchFn`. Throws if `createApp` hasn't
+ * been called yet (shouldn't happen in production; guard is for tests that
+ * bypass `createApp`).
+ */
+export function getDispatch(): DispatchFn {
+  if (!sharedDispatch) {
+    throw new Error(
+      "getDispatch() called before createApp() — dispatcher not yet initialized",
+    );
+  }
+  return sharedDispatch;
 }
 
 // Track current event bus instance for cleanup during HMR
@@ -1778,6 +1802,54 @@ export async function createApp(options: CreateAppOptions = {}) {
       return (session as { user?: { id?: string } } | null)?.user?.id ?? null;
     },
   });
+
+  // Build the NATS-backed dispatcher and expose it as a module-level singleton
+  // so `dispatch-run.ts` (and other call sites) can reach it via `getDispatch()`
+  // without needing it threaded through every function signature.
+  const dispatcherNatsAdapter: DispatcherNatsAdapter = {
+    publish(subject, data, opts) {
+      const nc = natsProvider?.getConnection();
+      if (!nc) return;
+      if (opts?.reply) {
+        nc.publish(subject, data, { reply: opts.reply });
+      } else {
+        nc.publish(subject, data);
+      }
+    },
+    subscribe(subject, cb) {
+      const nc = natsProvider?.getConnection();
+      if (!nc) return () => {};
+      const sub = nc.subscribe(subject);
+      void (async () => {
+        for await (const m of sub) {
+          try {
+            cb(m.data, m.reply);
+          } catch {
+            /* swallow — bad subscriber must not kill the loop */
+          }
+        }
+      })();
+      return () => {
+        try {
+          sub.unsubscribe();
+        } catch {
+          /* */
+        }
+      };
+    },
+    createInbox() {
+      const nc = natsProvider?.getConnection();
+      // `NatsConnection` from nats.ws / nats.deno exposes `createInbox()` at
+      // runtime even though the TypeScript types don't always declare it.
+      // Cast through `unknown` to suppress the conversion error.
+      const ncAny = nc as unknown as { createInbox?: () => string } | undefined;
+      if (ncAny && typeof ncAny.createInbox === "function") {
+        return ncAny.createInbox();
+      }
+      return `_INBOX.${crypto.randomUUID().replace(/-/g, "")}`;
+    },
+  };
+  sharedDispatch = createDispatcher({ nats: dispatcherNatsAdapter });
 
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs)
   app.route("/api", filesRoutes);

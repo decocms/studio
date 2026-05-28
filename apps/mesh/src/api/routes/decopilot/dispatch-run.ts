@@ -28,6 +28,7 @@ import { type UIMessageChunk, createUIMessageStream } from "ai";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
 import { ensureSandbox } from "@/tools/sandbox/start";
+import { getDispatch } from "@/api/app";
 import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
@@ -843,15 +844,16 @@ async function prepareRun(
           // through to a blank sandbox for ephemeral threads. See
           // `resolveRemoteCliSandboxUrl` below for why the helper
           // exists.
-          const sandboxApiUrl = await resolveRemoteCliSandboxUrl(
+          const { sandboxHandle } = await resolveRemoteCliSandboxHandle(
             { agent: input.agent, branch: mem.thread.branch ?? input.branch },
             ctx,
           );
           harnessChunks = remoteDispatch(
             harnessId,
             harnessInput,
-            target.link,
-            sandboxApiUrl,
+            input.userId,
+            sandboxHandle,
+            { dispatch: getDispatch() },
           );
         } else {
           harnessChunks = localDispatch(harnessId, harnessInput, ctx);
@@ -1069,6 +1071,23 @@ export async function resolveRemoteCliSandboxUrl(
   input: { agent: { id: string }; branch?: string | null },
   ctx: MeshContext,
 ): Promise<string> {
+  const { previewUrl } = await resolveRemoteCliSandboxHandle(input, ctx);
+  return previewUrl;
+}
+
+/**
+ * Resolve (or provision) the desktop sandbox for `agent`+`branch` and return
+ * both its `sandboxHandle` and `previewUrl`. The handle is the stable
+ * identifier used by `remoteDispatch` to route `/_sandbox/<handle>/dispatch`
+ * requests over NATS to the user's link daemon.
+ *
+ * Exported so the unification can be unit-tested without standing up
+ * the full `dispatchRunAndWait` machinery.
+ */
+export async function resolveRemoteCliSandboxHandle(
+  input: { agent: { id: string }; branch?: string | null },
+  ctx: MeshContext,
+): Promise<{ sandboxHandle: string; previewUrl: string }> {
   const entry = await ensureSandbox(
     {
       virtualMcpId: input.agent.id,
@@ -1082,5 +1101,5 @@ export async function resolveRemoteCliSandboxUrl(
       `Sandbox for agent ${input.agent.id} has no previewUrl — the desktop daemon may still be starting`,
     );
   }
-  return entry.previewUrl;
+  return { sandboxHandle: entry.sandboxHandle, previewUrl: entry.previewUrl };
 }

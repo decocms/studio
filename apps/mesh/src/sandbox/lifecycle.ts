@@ -192,14 +192,25 @@ async function instantiate(
  */
 export async function buildDesktopProvider(
   ctx: MeshContext,
-  link: NonNullable<MeshContext["linkForCurrentRun"]>,
+  // `link` is retained in the signature so callers (resolve-provider.ts) don't
+  // need to change — the NATS path no longer needs the link's tunnelUrl /
+  // linkSecret, but we still need the acting user's id to route dispatch.
+  _link: NonNullable<MeshContext["linkForCurrentRun"]>,
 ): Promise<SandboxProvider> {
   const { DesktopSandboxProvider } = await import(
     "@decocms/sandbox/provider/desktop"
   );
+  const { getDispatch } = await import("../api/app");
   const stateStore = new KyselySandboxProviderStateStore(ctx.db);
+  const userSub = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
+  if (!userSub) {
+    throw new Error(
+      "buildDesktopProvider: cannot determine acting userSub from MeshContext — auth.user.id and auth.apiKey.userId are both absent",
+    );
+  }
   return new DesktopSandboxProvider({
-    link: { tunnelUrl: link.tunnelUrl, linkSecret: link.linkSecret },
+    userSub,
+    dispatch: getDispatch(),
     stateStore,
   });
 }
