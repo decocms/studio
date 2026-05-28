@@ -23,6 +23,10 @@ test.describe("Sidebar per-group Show more", () => {
   test("shows 10 tasks initially and loads all 15 after clicking Show more", async ({
     authedPage,
   }) => {
+    // Default Playwright budget is 30s, but this test does ~17 sequential
+    // self-MCP HTTP calls (1 vmcp + 15 threads + 1 list) plus a full SPA
+    // boot before the first assertion — on slow CI that easily exceeds 30s.
+    test.setTimeout(120_000);
     const { page, user, orgSlug } = authedPage;
     const request = page.context().request;
 
@@ -49,14 +53,19 @@ test.describe("Sidebar per-group Show more", () => {
     //    display 10 rows and show the "Show more" button.
     // -------------------------------------------------------------------------
     const TOTAL_THREADS = 15;
-    for (let i = 1; i <= TOTAL_THREADS; i++) {
-      await callSelfMcpTool(request, orgSlug, "COLLECTION_THREADS_CREATE", {
-        data: {
-          title: `Show-more test task ${i}`,
-          virtual_mcp_id: agentId,
-        },
-      });
-    }
+    // Parallelize to keep setup well under the test budget on CI. The
+    // ordering of threads in the sidebar comes from `updated_at desc` on
+    // the server, not the creation sequence here.
+    await Promise.all(
+      Array.from({ length: TOTAL_THREADS }, (_, i) =>
+        callSelfMcpTool(request, orgSlug, "COLLECTION_THREADS_CREATE", {
+          data: {
+            title: `Show-more test task ${i + 1}`,
+            virtual_mcp_id: agentId,
+          },
+        }),
+      ),
+    );
 
     // -------------------------------------------------------------------------
     // 3. Navigate to the org home page — the sidebar loads here.
