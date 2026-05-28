@@ -54,7 +54,10 @@ jobs:
 
       # The list grows as we migrate more storage tests off PGlite. Each
       # file runs in its own bun process so a teardown crash in one
-      # doesn't poison the next — same protection as the unit job.
+      # doesn't poison the next — same protection as the unit job, plus
+      # the same Bun 1.3.5 signal-crash tolerance: if bun exits with a
+      # signal-induced code (>128) but tests passed (saw a (pass) marker
+      # in stdout), accept it as a teardown bug, not a test failure.
       - name: Run storage integration tests
         run: |
           files="apps/mesh/src/storage/virtual.test.ts \
@@ -75,9 +78,43 @@ jobs:
                  apps/mesh/src/api/integration-org-scoped.test.ts \
                  apps/mesh/src/api/access-control.integration.test.ts \
                  apps/mesh/src/api/routes/decopilot/memory.test.ts \
+                 apps/mesh/src/tools/search/global-search.test.ts \
+                 apps/mesh/src/tools/thread/create.test.ts \
+                 apps/mesh/src/tools/thread/update.test.ts \
+                 apps/mesh/src/tools/thread/list.test.ts \
+                 apps/mesh/src/tools/thread/list-messages.test.ts \
                  apps/mesh/src/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts"
+          failed_files=""
+          crashed_files=""
           for f in $files; do
             echo "::group::$f"
-            bun test "$f"
+            set +e
+            out=$(bun test "$f" 2>&1)
+            code=$?
+            set -e
+            echo "$out"
             echo "::endgroup::"
+            if echo "$out" | grep -qE '^\(fail\)|[1-9][0-9]* fail'; then
+              failed_files="$failed_files $f"
+              continue
+            fi
+            if [ "$code" -eq 0 ]; then
+              continue
+            fi
+            # Signal-induced exit AND we saw a (pass) marker → known Bun
+            # 1.3.5 teardown crash, accept. Mirrors the unit-shard logic.
+            if [ "$code" -gt 128 ] && echo "$out" | grep -qE '^\(pass\)|[1-9][0-9]* pass'; then
+              echo "⚠️  $f: bun crashed at teardown (exit $code) after tests passed — accepting"
+              continue
+            fi
+            crashed_files="$crashed_files $f"
           done
+          if [ -n "$failed_files" ]; then
+            echo "❌ Test failures in:$failed_files"
+            exit 1
+          fi
+          if [ -n "$crashed_files" ]; then
+            echo "❌ Bun crashed before tests ran in:$crashed_files"
+            exit 1
+          fi
+          echo "✅ All storage integration files passed"
