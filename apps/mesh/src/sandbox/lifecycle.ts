@@ -164,7 +164,7 @@ async function instantiate(
     }
     case "user-desktop": {
       // user-desktop is never the cluster-wide default — there is no
-      // ambient `LinkEntry` to bind to here. It is constructed per-run by
+      // ambient link claim to bind to here. It is constructed per-run by
       // `resolveSandboxProvider` (sandbox/resolve-provider.ts) from
       // either the per-run ctx hint or the recorded sandboxMap kind, both of
       // which carry the user's link. Hitting this branch means SANDBOX_DELETE
@@ -172,7 +172,7 @@ async function instantiate(
       // which today should not happen (the user-desktop provider doesn't
       // write to `sandbox_runner_state`).
       throw new Error(
-        "user-desktop runner cannot be instantiated without a per-run LinkEntry — call resolveSandboxProvider, which binds the link before constructing the provider.",
+        "user-desktop runner cannot be instantiated without a per-run link claim — call resolveSandboxProvider, which binds the link before constructing the provider.",
       );
     }
     default: {
@@ -183,23 +183,28 @@ async function instantiate(
 }
 
 /**
- * Construct a `DesktopSandboxProvider` bound to the given link entry.
- * Exported so the unified resolver in `resolve-provider.ts` can build one
- * without going through `getSharedSandboxProvider` (which requires
- * pre-populating `ctx.sandboxPreference` / `ctx.linkForCurrentRun` as a
- * side-effect — the resolver decides the kind from sandboxMap, not from those
- * ctx fields, so the side-effect would be misleading).
+ * Construct a `DesktopSandboxProvider` bound to a specific user's link.
+ * The caller (`resolve-provider.ts`) passes the target sandbox owner's
+ * userSub — that's the user whose daemon should execute the dispatch,
+ * which is not always the same as the acting principal (system-driven
+ * paths like cron, webhooks, and vm-events run sandboxes on behalf of
+ * a different user).
  */
 export async function buildDesktopProvider(
-  ctx: MeshContext,
-  link: NonNullable<MeshContext["linkForCurrentRun"]>,
+  _ctx: MeshContext,
+  userSub: string,
 ): Promise<SandboxProvider> {
   const { DesktopSandboxProvider } = await import(
     "@decocms/sandbox/provider/desktop"
   );
-  const stateStore = new KyselySandboxProviderStateStore(ctx.db);
+  const { getDispatch } = await import("../api/app");
+  const stateStore = new KyselySandboxProviderStateStore(_ctx.db);
+  if (!userSub) {
+    throw new Error("buildDesktopProvider: userSub must be a non-empty string");
+  }
   return new DesktopSandboxProvider({
-    link: { tunnelUrl: link.tunnelUrl, linkSecret: link.linkSecret },
+    userSub,
+    dispatch: getDispatch(),
     stateStore,
   });
 }

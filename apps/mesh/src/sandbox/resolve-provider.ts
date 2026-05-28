@@ -76,7 +76,7 @@ export async function resolveSandboxProvider(
   //    without touching sandboxMap. `user-desktop` carries its link inline;
   //    `cluster-default` means "use the cluster runner the env points to".
   if (ctx.sandboxPreference === "user-desktop" && ctx.linkForCurrentRun) {
-    const provider = await buildDesktopProvider(ctx, ctx.linkForCurrentRun);
+    const provider = await buildDesktopProvider(ctx, userId);
     return { provider, kind: "user-desktop" };
   }
   if (ctx.sandboxPreference === "cluster-default") {
@@ -156,9 +156,9 @@ async function resolveDefaultKind(
   ctx: MeshContext,
   userId: string,
 ): Promise<SandboxProviderKind> {
-  if (!ctx.linkRegistry) return resolveSandboxProviderKindFromEnv();
+  if (!ctx.linkClaimRegistry) return resolveSandboxProviderKindFromEnv();
   return resolveDefaultSandboxProviderKind(userId, {
-    linkRegistry: ctx.linkRegistry,
+    linkClaimRegistry: ctx.linkClaimRegistry,
     resolveEnvKind: resolveSandboxProviderKindFromEnv,
   });
 }
@@ -170,16 +170,16 @@ async function bindProviderForKind(
 ): Promise<SandboxProvider> {
   if (kind !== "user-desktop") return getSandboxProviderByKind(ctx, kind);
 
-  if (!ctx.linkRegistry) {
+  if (!ctx.linkClaimRegistry) {
     throw new Error(
-      "user-desktop sandbox provider requires ctx.linkRegistry to be wired (set on MeshContextConfig).",
+      "user-desktop sandbox provider requires ctx.linkClaimRegistry to be wired (set on MeshContextConfig).",
     );
   }
-  const link = await ctx.linkRegistry.get(userId);
+  const link = await ctx.linkClaimRegistry.get(userId);
   if (!link) {
     throw new Error(
       `No link daemon registered for user "${userId}". Start one with \`deco link\` (or run \`bun run dev --local-sandbox-provider\` for dev).`,
     );
   }
-  return buildDesktopProvider(ctx, link);
+  return buildDesktopProvider(ctx, userId);
 }

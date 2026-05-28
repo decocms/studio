@@ -1,25 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { resolveDefaultSandboxProviderKind } from "./resolve-default-provider-kind";
-import type { LinkRegistry } from "@/links/link-registry";
-import type { LinkEntry } from "../links/protocol";
+import type { LinkClaimRegistry } from "@/links/link-claim-registry";
+import type { LinkClaim } from "../links/link-claim-registry";
 
 const linkOnline = (
   caps: string[] = ["claude-code", "codex", "decopilot-sandbox"],
-): LinkEntry =>
+): LinkClaim =>
   ({
-    tunnelUrl: "https://t.example",
-    linkSecret: "s",
+    podId: "pod_1",
+    machineId: "m1",
+    cliVersion: "1.0.0",
+    previewPort: 5174,
+    connectedAt: Date.now(),
     capabilities: caps,
-  }) as LinkEntry;
+  }) as LinkClaim;
 
-function stubRegistry(link: LinkEntry | null): LinkRegistry {
-  return { get: async () => link } as unknown as LinkRegistry;
+function stubRegistry(link: LinkClaim | null): LinkClaimRegistry {
+  return { get: async () => link } as unknown as LinkClaimRegistry;
 }
 
 describe("resolveDefaultSandboxProviderKind", () => {
   test("returns user-desktop when the user's link is online", async () => {
     const kind = await resolveDefaultSandboxProviderKind("u-1", {
-      linkRegistry: stubRegistry(linkOnline()),
+      linkClaimRegistry: stubRegistry(linkOnline()),
       resolveEnvKind: () => "local-docker",
     });
     expect(kind).toBe("user-desktop");
@@ -27,7 +30,7 @@ describe("resolveDefaultSandboxProviderKind", () => {
 
   test("falls back to env kind when no link is registered", async () => {
     const kind = await resolveDefaultSandboxProviderKind("u-1", {
-      linkRegistry: stubRegistry(null),
+      linkClaimRegistry: stubRegistry(null),
       resolveEnvKind: () => "local-docker",
     });
     expect(kind).toBe("local-docker");

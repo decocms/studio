@@ -1,4 +1,4 @@
-import type { DispatchSSEEvent, HarnessStreamInputWire } from "./schemas";
+import type { HarnessStreamInputWire } from "./schemas";
 
 /**
  * Shared by cluster `remoteDispatch` tests AND daemon dispatch tests.
@@ -28,27 +28,3 @@ export const FIXTURE_MINIMAL_INPUT: HarnessStreamInputWire = {
   virtualMcp: { id: "agent-fixture" },
   agent: { id: "agent-fixture" },
 };
-
-export const FIXTURE_SSE_HAPPY_PATH: readonly DispatchSSEEvent[] = [
-  { type: "ui-message-chunk", chunk: { type: "start", id: "msg-1" } },
-  {
-    type: "ui-message-chunk",
-    chunk: { type: "text-delta", id: "msg-1", delta: "Hello" },
-  },
-  {
-    type: "ui-message-chunk",
-    chunk: { type: "finish-step", usage: { inputTokens: 1, outputTokens: 1 } },
-  },
-  { type: "ui-message-chunk", chunk: { type: "finish", finishReason: "stop" } },
-  { type: "done" },
-] as const;
-
-export const FIXTURE_SSE_HARNESS_CRASH: readonly DispatchSSEEvent[] = [
-  { type: "ui-message-chunk", chunk: { type: "start", id: "msg-1" } },
-  {
-    type: "error",
-    code: "harness_crashed",
-    message: "claude exited with code 137",
-  },
-  { type: "done" },
-] as const;

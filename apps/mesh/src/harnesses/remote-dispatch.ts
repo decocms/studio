@@ -1,224 +1,87 @@
 /**
- * Remote Dispatch.
+ * Remote dispatch — cluster → daemon over the WS+NATS link path.
  *
- * The cluster-side counterpart to `localDispatch` for runs that resolve
- * to a `remote-cli` target — the entire harness stream is delegated to
- * the user's link daemon over the registered tunnel URL. The cluster
- * keeps producing UI chunks back to the chat client by tailing the
- * daemon's SSE response and re-emitting `UIMessageChunk`s.
- *
- * Wire shape (per `harnessStreamInputSchema.strip()`): non-serializable
- * fields (`signal`, `processLocal`) are stripped before signing. The
- * body is `{ harnessId, input: wireInput }` JSON; HMAC headers
- * authenticate (no Bearer header — sending the signing key plaintext in
- * a header would defeat the point of HMAC, see Task 5.1).
- *
- * URL: `<sandboxApiUrl>/_sandbox/dispatch` — the per-daemon tunnel URL
- * (`https://<handle>.deco.host` in prod, `http://127.0.0.1:<port>` in dev
- * `--no-tunnel`) returned by the link's `POST /api/sandboxes`. The cluster
- * talks to the daemon directly; the link no longer reverse-proxies
- * `/_sandbox/<handle>/*` (that route was deleted with the per-daemon-tunnel
- * migration).
- *
- * Handle vs runId: remote-cli dispatch and SANDBOX_START now share the same
- * sandbox — `dispatch-run` resolves the URL via `ensureSandbox`, so the
- * handle is `computeHandle(sandboxId, branch)` in both paths. Per-run
- * state stays keyed by `runId` inside the daemon (the cancel route
- * `/_sandbox/runs/<runId>` matches on runId directly), so multiple
- * concurrent runs on the same branch share a workdir but each has its
- * own run-registry entry.
- *
- * Cancellation: on consumer abort, fires a DELETE to the runs endpoint
- * independent of SSE close so the desktop can abort its CLI subprocess
- * promptly even if the response stream is still draining.
+ * The daemon's control handler reverse-proxies `/_sandbox/<handle>/dispatch`
+ * to the spawned sandbox daemon, which emits an SSE response. The bytes
+ * arrive at us as raw chunk-frame payloads; we reassemble SSE events and
+ * decode each event's JSON via `dispatchSSEEventSchema`.
  */
 import type { UIMessageChunk } from "ai";
-import {
-  signRequest,
-  dispatchSSEEventSchema,
-  type LinkEntry,
-} from "../links/protocol";
+import { dispatchSSEEventSchema } from "../links/protocol";
+import type { DispatchFn } from "../links/dispatcher";
 import type { HarnessId, HarnessStreamInput } from "./types";
 
-/**
- * Parse the daemon's SSE response into a stream of UIMessageChunks.
- *
- * Buffers incoming bytes, splits on the `\n\n` event boundary, and
- * decodes each event from one or more `data: …` lines (joined by
- * `\n`). Events are validated through `dispatchSSEEventSchema`:
- *
- *   - `ui-message-chunk` → yields the chunk
- *   - `error`            → throws (carrying code + message)
- *   - `done`             → returns
- *   - anything else      → silently skipped (forward-compat)
- *
- * Unparseable JSON or schema-mismatched events are also skipped — the
- * parser is permissive on purpose. The daemon controls both ends of the
- * wire, so the failure mode that matters is a future protocol bump
- * adding a new event type; we don't want old clients to crash.
- */
-export async function* parseSSEStream(
-  body: ReadableStream<Uint8Array>,
-): AsyncIterable<UIMessageChunk> {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const reader = body.getReader();
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) {
-        // Flush any trailing bytes that didn't include the final \n\n.
-        // Standards-compliant SSE producers always end with the
-        // separator, but we'd rather be lenient than drop a final event
-        // on a chunk boundary.
-        buffer += decoder.decode();
-        const trailing = buffer.trim();
-        if (trailing.length > 0) {
-          for (const ev of extractEvents(trailing + "\n\n")) {
-            yield* handleEvent(ev);
-          }
-        }
-        return;
-      }
-      buffer += decoder.decode(value, { stream: true });
-
-      let separatorIndex = buffer.indexOf("\n\n");
-      while (separatorIndex !== -1) {
-        const eventBlock = buffer.slice(0, separatorIndex);
-        buffer = buffer.slice(separatorIndex + 2);
-        separatorIndex = buffer.indexOf("\n\n");
-
-        for (const ev of extractEvents(eventBlock + "\n\n")) {
-          yield* handleEvent(ev);
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-/**
- * Split a single SSE event block into `data:`-only payloads. One event
- * may carry multiple `data:` lines — per the SSE spec they get joined
- * with `\n` to form the final payload. Other line types (`event:`,
- * `id:`, comments starting with `:`) are ignored because the daemon
- * doesn't emit them today.
- */
-function extractEvents(block: string): string[] {
-  const events: string[] = [];
-  const dataLines = block
-    .split("\n")
-    .filter((l) => l.startsWith("data: "))
-    .map((l) => l.slice("data: ".length));
-  if (dataLines.length > 0) {
-    events.push(dataLines.join("\n"));
-  }
-  return events;
-}
-
-async function* handleEvent(dataJson: string): AsyncIterable<UIMessageChunk> {
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(dataJson);
-  } catch {
-    return; // ignore garbage
-  }
-  const parsed = dispatchSSEEventSchema.safeParse(parsedJson);
-  if (!parsed.success) return; // ignore unknown event shapes (forward-compat)
-
-  if (parsed.data.type === "ui-message-chunk") {
-    yield parsed.data.chunk as UIMessageChunk;
-  } else if (parsed.data.type === "error") {
-    throw new Error(
-      `[remoteDispatch] ${parsed.data.code}: ${parsed.data.message}`,
-    );
-  } else if (parsed.data.type === "done") {
-    // Signal end of stream by returning. The caller's for-await loop
-    // breaks when the generator returns.
-    return;
-  }
-}
-
 export interface RemoteDispatchDeps {
-  fetchImpl?: typeof fetch;
+  dispatch: DispatchFn;
 }
-
-/**
- * Subset of `LinkEntry` actually needed by `remoteDispatch`. Accepting
- * the smaller shape makes test fakes cheaper to construct.
- */
-export type RemoteDispatchLink = Pick<LinkEntry, "tunnelUrl" | "linkSecret">;
 
 export function remoteDispatch(
   id: HarnessId,
   input: HarnessStreamInput,
-  link: RemoteDispatchLink,
-  sandboxApiUrl: string,
-  deps: RemoteDispatchDeps = {},
+  userSub: string,
+  sandboxHandle: string,
+  deps: RemoteDispatchDeps,
 ): AsyncIterable<UIMessageChunk> {
-  const fetcher = deps.fetchImpl ?? fetch;
-  // The cluster talks to the daemon directly via its per-handle tunnel
-  // URL — no more link reverse-proxy hop. `link.linkSecret` is still the
-  // HMAC signing key (the daemon shares it via DAEMON_LINK_SECRET, Task 1).
-  // HMAC signs against the URL's pathname only (not the full URL); the
-  // daemon verifies against `url.pathname` on its end.
-  const dispatchTarget = `${sandboxApiUrl}/_sandbox/dispatch`;
-  const cancelTarget = `${sandboxApiUrl}/_sandbox/runs/${input.runId}`;
-  const dispatchPath = new URL(dispatchTarget).pathname;
-  const cancelPath = new URL(cancelTarget).pathname;
-
-  // Strip the two non-serializable fields. `harnessStreamInputSchema`
-  // uses `.strip()` so the daemon-side parser would drop these anyway,
-  // but stripping client-side keeps the body deterministic for HMAC
-  // signing (otherwise an `AbortSignal` would crash JSON.stringify).
   const { signal, processLocal: _processLocal, ...wireInput } = input;
-
   return {
     async *[Symbol.asyncIterator]() {
-      const bodyString = JSON.stringify({ harnessId: id, input: wireInput });
-      const sigHeaders = signRequest({
-        secret: link.linkSecret,
-        method: "POST",
-        path: dispatchPath,
-        body: bodyString,
-      });
-      const res = await fetcher(dispatchTarget, {
-        method: "POST",
-        body: bodyString,
-        headers: {
-          ...sigHeaders,
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
+      const body = JSON.stringify({ harnessId: id, input: wireInput });
+      const iter = deps.dispatch(
+        userSub,
+        {
+          method: "POST",
+          path: `/_sandbox/${sandboxHandle}/dispatch`,
+          headers: {
+            "content-type": "application/json",
+            accept: "text/event-stream",
+          },
+          body,
         },
-        signal,
-      });
-      if (!res.ok || !res.body) {
-        throw new Error(
-          `remoteDispatch HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}`,
-        );
-      }
+        { signal },
+      );
 
-      try {
-        yield* parseSSEStream(res.body);
-      } finally {
-        // Fire a cancel RPC on consumer abort so the daemon can abort
-        // its CLI subprocess promptly (independent of SSE close).
-        // Best-effort: we don't await the response, and we swallow
-        // errors — by the time we're in `finally` the consumer has
-        // already moved on.
-        if (signal?.aborted) {
-          const cancelSig = signRequest({
-            secret: link.linkSecret,
-            method: "DELETE",
-            path: cancelPath,
-            body: "",
-          });
-          fetcher(cancelTarget, {
-            method: "DELETE",
-            headers: { ...cancelSig },
-          }).catch(() => {});
+      let buffer = "";
+      const emitEvent = function* (
+        eventText: string,
+      ): Generator<UIMessageChunk> {
+        // One SSE event block. Pull `data: ...` lines, join with \n, parse JSON.
+        const dataLines = eventText
+          .split("\n")
+          .filter((l) => l.startsWith("data: "))
+          .map((l) => l.slice("data: ".length));
+        if (dataLines.length === 0) return;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(dataLines.join("\n"));
+        } catch {
+          return;
         }
+        const ev = dispatchSSEEventSchema.safeParse(parsed);
+        if (!ev.success) return;
+        if (ev.data.type === "ui-message-chunk") {
+          yield ev.data.chunk as UIMessageChunk;
+        } else if (ev.data.type === "error") {
+          throw new Error(
+            `[remoteDispatch] ${ev.data.code}: ${ev.data.message}`,
+          );
+        }
+        // `done` returns no chunk — outer loop ends when the iterable closes.
+      };
+
+      for await (const raw of iter) {
+        if (raw.data == null) continue;
+        buffer += raw.data;
+        let sep = buffer.indexOf("\n\n");
+        while (sep !== -1) {
+          const eventBlock = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          for (const chunk of emitEvent(eventBlock)) yield chunk;
+          sep = buffer.indexOf("\n\n");
+        }
+      }
+      const tail = buffer.trim();
+      if (tail.length > 0) {
+        for (const chunk of emitEvent(tail)) yield chunk;
       }
     },
   };

@@ -7,8 +7,10 @@ import type {
 } from "@decocms/sandbox/provider";
 
 import type { MeshContext } from "../core/mesh-context";
-import type { LinkEntry } from "../links/protocol";
-import type { LinkRegistry } from "../links/link-registry";
+import type {
+  LinkClaim,
+  LinkClaimRegistry,
+} from "../links/link-claim-registry";
 
 // Pin env kind so resolver fallback is deterministic.
 process.env.STUDIO_SANDBOX_PROVIDER = "local-docker";
@@ -47,7 +49,7 @@ const byKindSpy = mock(
     throw new Error("unreachable — resolver builds user-desktop directly");
   },
 );
-const buildDesktopSpy = mock(async () => stubDesktop);
+const buildDesktopSpy = mock(async (_ctx: unknown) => stubDesktop);
 
 mock.module("./lifecycle", () => ({
   getSandboxProviderByKind: byKindSpy,
@@ -57,26 +59,29 @@ mock.module("./lifecycle", () => ({
 // Now import the resolver — its lifecycle import has been mocked.
 const { resolveSandboxProvider } = await import("./resolve-provider");
 
-function makeLink(): LinkEntry {
+function makeLink(): LinkClaim {
   return {
-    tunnelUrl: "https://tunnel.example",
-    linkSecret: "secret",
+    podId: "pod_1",
+    machineId: "m1",
+    cliVersion: "1.0.0",
+    previewPort: 5174,
+    connectedAt: Date.now(),
     capabilities: ["claude-code"],
-  } as LinkEntry;
+  } as LinkClaim;
 }
 
 function stubCtx(
-  link: LinkEntry | null,
+  link: LinkClaim | null,
   hints?: {
     sandboxPreference?: "cluster-default" | "user-desktop";
-    linkForCurrentRun?: LinkEntry;
+    linkForCurrentRun?: LinkClaim;
   },
 ): MeshContext {
-  const registry: LinkRegistry = {
+  const registry: LinkClaimRegistry = {
     get: async () => link,
-  } as unknown as LinkRegistry;
+  } as unknown as LinkClaimRegistry;
   return {
-    linkRegistry: registry,
+    linkClaimRegistry: registry,
     db: {} as never,
     sandboxPreference: hints?.sandboxPreference,
     linkForCurrentRun: hints?.linkForCurrentRun,
@@ -216,7 +221,7 @@ describe("resolveSandboxProvider", () => {
     // `sandboxPreference: "cluster-default"` from dispatch-run, but in local
     // dev env defaults to `user-desktop`. Before the fix this hit
     // `instantiate("user-desktop")` directly and threw the confusing
-    // "user-desktop runner cannot be instantiated without a per-run LinkEntry".
+    // "user-desktop runner cannot be instantiated without a per-run link claim".
     const prev = process.env.STUDIO_SANDBOX_PROVIDER;
     process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
     try {

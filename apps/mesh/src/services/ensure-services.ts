@@ -762,7 +762,6 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
       "--cwd=apps/mesh",
       "src/cli.ts",
       "link",
-      "--no-tunnel",
       "--port",
       String(port),
     ],
@@ -771,7 +770,6 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
       env: {
         ...process.env,
         MESH_CLUSTER_URL: inputs.clusterUrl,
-        MESH_ALLOW_LOCALHOST_LINKS: "1",
         DATA_DIR: inputs.linkDataDir,
         DECOCMS_HOME: inputs.linkDataDir,
       },

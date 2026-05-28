@@ -28,6 +28,11 @@ mock.module("@/tools/sandbox/start", () => ({
       startedWith: { packageManager: null, port: null, path: null },
     };
   },
+  // dispatch-run transitively imports `@/api/app`, which loads
+  // `tools/sandbox/index.ts` and re-exports `SANDBOX_START` from "./start".
+  // Without this stub the re-export resolves to `undefined` against the
+  // mock and Bun throws "export 'SANDBOX_START' not found in './start'".
+  SANDBOX_START: { name: "SANDBOX_START" },
 }));
 
 const ensureSandboxCalls: Array<{
@@ -37,7 +42,7 @@ const ensureSandboxCalls: Array<{
 }> = [];
 
 const nextEnsureSandboxReturn: { previewUrl: string | null } = {
-  previewUrl: "https://sleek-flint-0000000000000000.deco.host",
+  previewUrl: "http://sleek-flint-0000000000000000.localhost:5174",
 };
 
 const { resolveRemoteCliSandboxUrl } = await import("./dispatch-run");
@@ -58,7 +63,7 @@ describe("resolveRemoteCliSandboxUrl", () => {
       },
     ]);
     expect(sandboxApiUrl).toBe(
-      "https://sleek-flint-0000000000000000.deco.host",
+      "http://sleek-flint-0000000000000000.localhost:5174",
     );
   });
 

@@ -10,10 +10,10 @@
  * start (from the branch picker) and auto-start (from VmEventsBridge) agree.
  */
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { LinkRegistry } from "@/links/link-registry";
+import type { LinkClaimRegistry } from "@/links/link-claim-registry";
 
 export interface ResolveDefaultDeps {
-  linkRegistry: LinkRegistry;
+  linkClaimRegistry: LinkClaimRegistry;
   resolveEnvKind: () => SandboxProviderKind;
 }
 
@@ -21,7 +21,7 @@ export async function resolveDefaultSandboxProviderKind(
   userId: string,
   deps: ResolveDefaultDeps,
 ): Promise<SandboxProviderKind> {
-  const link = await deps.linkRegistry.get(userId);
+  const link = await deps.linkClaimRegistry.get(userId);
   if (link) return "user-desktop";
   return deps.resolveEnvKind();
 }

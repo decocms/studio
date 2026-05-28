@@ -11,10 +11,6 @@ function fakeDaemonSpawner() {
   };
 }
 
-function nullTunnelOpener() {
-  return async () => null;
-}
-
 function tmpDataDir(): string {
   return mkdtempSync(join(tmpdir(), "link-prov-"));
 }
@@ -29,18 +25,13 @@ describe("desktop sandbox provider", () => {
         spawnDaemon: () => fakeDaemonSpawner(),
         postConfig: async () => {},
         waitForHealth: async () => {},
-        openDaemonTunnel: async ({ subDomain }) => ({
-          publicUrl: `https://${subDomain}`,
-          closed: new Promise<void>(() => {}),
-          close: () => {},
-        }),
         pickPort: () => portCounter++,
       });
-      const { sandboxApiUrl } = await provider.ensureSandbox({
+      const { sandboxApiUrl, port } = await provider.ensureSandbox({
         handle: "abc",
         repo: undefined,
       });
-      expect(sandboxApiUrl).toBe("https://abc.deco.host");
+      expect(sandboxApiUrl).toBe(`http://127.0.0.1:${port}`);
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }
@@ -59,7 +50,6 @@ describe("desktop sandbox provider", () => {
         },
         postConfig: async () => {},
         waitForHealth: async () => {},
-        openDaemonTunnel: nullTunnelOpener(),
         pickPort: () => portCounter++,
         // Cache-hit path now probes /health; mock as alive so the second
         // ensureSandbox re-attaches instead of evicting + respawning.
@@ -92,7 +82,6 @@ describe("desktop sandbox provider", () => {
         },
         postConfig: async () => {},
         waitForHealth: async () => {},
-        openDaemonTunnel: nullTunnelOpener(),
         pickPort: () => portCounter++,
         fetchImpl: (async () =>
           new Response("", {
@@ -122,7 +111,6 @@ describe("desktop sandbox provider", () => {
         },
         postConfig: async () => {},
         waitForHealth: async () => {},
-        openDaemonTunnel: nullTunnelOpener(),
         pickPort: () => portCounter++,
         maxSandboxes: 2,
       });
@@ -144,81 +132,6 @@ describe("desktop sandbox provider", () => {
       rmSync(dataDir, { recursive: true, force: true });
     }
   });
-});
-
-describe("DesktopSandboxProvider tunnel lifecycle", () => {
-  it("opens a tunnel after postConfig and returns the public URL", async () => {
-    const tunnelHandles: Array<{ subDomain: string }> = [];
-
-    const provider = createDesktopSandboxProvider({
-      dataDir: "/tmp/test",
-      spawnDaemon: async ({ port }) => ({ port, kill: () => {} }),
-      postConfig: async () => {},
-      waitForHealth: async () => {},
-      openDaemonTunnel: async ({ subDomain }) => {
-        tunnelHandles.push({ subDomain });
-        return {
-          publicUrl: `https://${subDomain}`,
-          closed: new Promise<void>(() => {}),
-          close: () => {},
-        };
-      },
-      pickPort: (() => {
-        let n = 50_000;
-        return () => n++;
-      })(),
-    });
-
-    const { sandboxApiUrl, port } = await provider.ensureSandbox({
-      handle: "test-handle-abc",
-    });
-    expect(sandboxApiUrl).toBe("https://test-handle-abc.deco.host");
-    expect(port).toBe(50_000);
-    expect(tunnelHandles).toHaveLength(1);
-    expect(tunnelHandles[0]?.subDomain).toBe("test-handle-abc.deco.host");
-  });
-
-  it("falls back to 127.0.0.1 URL when openDaemonTunnel returns null", async () => {
-    const provider = createDesktopSandboxProvider({
-      dataDir: "/tmp/test",
-      spawnDaemon: async ({ port }) => ({ port, kill: () => {} }),
-      postConfig: async () => {},
-      waitForHealth: async () => {},
-      openDaemonTunnel: async () => null,
-      pickPort: (() => {
-        let n = 50_100;
-        return () => n++;
-      })(),
-    });
-
-    const { sandboxApiUrl } = await provider.ensureSandbox({
-      handle: "test-handle-xyz",
-    });
-    expect(sandboxApiUrl).toBe("http://127.0.0.1:50100");
-  });
-
-  it("closes the tunnel on deleteSandbox", async () => {
-    const closes: string[] = [];
-    const provider = createDesktopSandboxProvider({
-      dataDir: "/tmp/test",
-      spawnDaemon: async ({ port }) => ({ port, kill: () => {} }),
-      postConfig: async () => {},
-      waitForHealth: async () => {},
-      openDaemonTunnel: async ({ subDomain }) => ({
-        publicUrl: `https://${subDomain}`,
-        closed: new Promise<void>(() => {}),
-        close: () => closes.push(subDomain),
-      }),
-      pickPort: (() => {
-        let n = 50_200;
-        return () => n++;
-      })(),
-    });
-
-    await provider.ensureSandbox({ handle: "close-me" });
-    await provider.deleteSandbox("close-me");
-    expect(closes).toEqual(["close-me.deco.host"]);
-  });
 
   it("clears the map entry when the daemon process exits unexpectedly", async () => {
     let exitResolver: (() => void) | null = null;
@@ -235,11 +148,6 @@ describe("DesktopSandboxProvider tunnel lifecycle", () => {
       }),
       postConfig: async () => {},
       waitForHealth: async () => {},
-      openDaemonTunnel: async ({ subDomain }) => ({
-        publicUrl: `https://${subDomain}`,
-        closed: new Promise<void>(() => {}),
-        close: () => {},
-      }),
       pickPort: (() => {
         let n = 50_300;
         return () => n++;

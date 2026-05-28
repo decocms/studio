@@ -17,10 +17,10 @@
  * stay lightweight.
  */
 
+import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import type { TunnelHandle } from "./tunnel";
 
 export interface SpawnResult {
   port: number;
@@ -49,34 +49,40 @@ export interface SandboxState {
   handle: string;
   port: number;
   process: SpawnResult;
-  /** Warp tunnel handle, or null in --no-tunnel mode. */
-  tunnel: TunnelHandle | null;
-  /** Public URL the cluster + browser use to reach this daemon.
-   *  - prod: `https://<handle>.deco.host` (the tunnel above)
-   *  - dev (--no-tunnel): `http://127.0.0.1:<port>` */
+  /** Local URL for the spawned sandbox daemon. Always `http://127.0.0.1:<port>`. */
   sandboxApiUrl: string;
+  /**
+   * Public-facing URL the user's browser hits. Routed by the local ingress
+   * (`<handle>.localhost:<ingressPort>`) which the daemon spins up alongside
+   * the sandbox. Distinct from `sandboxApiUrl` so internal probes can skip
+   * the ingress hop.
+   */
+  previewUrl: string;
   lastUsedAt: number;
   activeDispatchCount: number;
+  /** Bearer token generated at spawn time; used to authenticate proxied requests. */
+  daemonToken: string;
 }
 
 export interface DesktopSandboxProvider {
   ensureSandbox(
     input: EnsureSandboxInput,
-  ): Promise<{ sandboxApiUrl: string; port: number }>;
+  ): Promise<{ sandboxApiUrl: string; previewUrl: string; port: number }>;
   proxyPort(handle: string): number | null;
+  /** Returns the bearer token for the spawned sandbox daemon, or null if unknown. */
+  getDaemonToken(handle: string): string | null;
+  /**
+   * True if the daemon either has a ready entry for `handle` or is currently
+   * spawning one. Used by the cluster's `alive()` probe so that vm-events
+   * doesn't emit `gone` during the (potentially multi-second) spawn window
+   * and tear down the sandbox the user is in the middle of starting.
+   */
+  hasHandle(handle: string): boolean;
   recordHit(handle: string): void;
   acquireDispatch(handle: string): () => void;
   listSandboxes(): SandboxState[];
   deleteSandbox(handle: string): Promise<void>;
   shutdown(): Promise<void>;
-}
-
-export interface OpenTunnelDeps {
-  /** Public hostname (subdomain) for the daemon's tunnel.
-   *  e.g. `mellow-slate-bb5b7.deco.host` */
-  subDomain: string;
-  /** Local target the tunnel forwards to. e.g. `http://127.0.0.1:63266` */
-  localAddr: string;
 }
 
 export interface DesktopSandboxProviderDeps {
@@ -85,20 +91,26 @@ export interface DesktopSandboxProviderDeps {
     workdir: string;
     handle: string;
     port: number;
+    daemonToken: string;
   }) => SpawnResult | Promise<SpawnResult>;
   postConfig: (
     port: number,
     devPort: number,
     config: { repo?: RepoRef },
+    daemonToken: string,
   ) => Promise<void>;
   waitForHealth: (port: number) => Promise<void>;
   /**
-   * Open a warp tunnel for a daemon. Called per-spawn; the returned
-   * TunnelHandle's `publicUrl` is what the cluster + browser see.
-   * Return `null` to skip tunnel opening (e.g. --no-tunnel dev mode);
-   * the provider will fall back to `http://127.0.0.1:<port>` as the URL.
+   * Returns the public-facing URL for `handle` — usually
+   * `http://<handle>.localhost:<ingressPort>` where `ingressPort` is the
+   * port the local ingress is listening on. Lazy so the provider can be
+   * constructed before the ingress finishes binding (the ingress's
+   * `lookupSandboxPort` calls back into the provider, so the two have a
+   * circular initialization). The default keeps the legacy
+   * `http://127.0.0.1:<port>` for compatibility with tests that don't
+   * stand up an ingress.
    */
-  openDaemonTunnel: (input: OpenTunnelDeps) => Promise<TunnelHandle | null>;
+  resolvePreviewUrl?: (handle: string, port: number) => string;
   /** Override port allocation (tests provide a deterministic value). */
   pickPort?: () => Promise<number> | number;
   maxSandboxes?: number;
@@ -116,6 +128,8 @@ export function createDesktopSandboxProvider(
   const sandboxes = new Map<string, SandboxState>();
   const pickPort = deps.pickPort ?? allocateEphemeralPort;
   const fetcher = deps.fetchImpl ?? fetch;
+  const resolvePreviewUrl =
+    deps.resolvePreviewUrl ?? ((_handle, port) => `http://127.0.0.1:${port}`);
 
   /**
    * Short-timeout GET to `<sandboxUrl>/health`. The cache-hit fast path
@@ -145,12 +159,13 @@ export function createDesktopSandboxProvider(
     } catch {
       // already gone
     }
-    try {
-      state.tunnel?.close();
-    } catch {
-      // no-op
+    // Compare-and-swap: under concurrent `ensureSandbox` calls, a second
+    // caller's `existing` closure can outlive the first caller's respawn.
+    // Without this check the second caller would delete the freshly
+    // registered replacement and leave the new daemon process orphaned.
+    if (sandboxes.get(state.handle) === state) {
+      sandboxes.delete(state.handle);
     }
-    sandboxes.delete(state.handle);
   };
 
   // In-flight ensureSandbox promises, keyed by handle. The cluster
@@ -163,7 +178,7 @@ export function createDesktopSandboxProvider(
   // Cleared on settle so a fresh ensure can take a clean swing.
   const inflight = new Map<
     string,
-    Promise<{ sandboxApiUrl: string; port: number }>
+    Promise<{ sandboxApiUrl: string; previewUrl: string; port: number }>
   >();
 
   function evictIfNeeded(): void {
@@ -178,17 +193,12 @@ export function createDesktopSandboxProvider(
     } catch {
       // already gone
     }
-    try {
-      victim.tunnel?.close();
-    } catch {
-      // warp-node Connected has no real close yet; ignore
-    }
     sandboxes.delete(victim.handle);
   }
 
   const buildEntry = async (
     input: EnsureSandboxInput,
-  ): Promise<{ sandboxApiUrl: string; port: number }> => {
+  ): Promise<{ sandboxApiUrl: string; previewUrl: string; port: number }> => {
     evictIfNeeded();
     const workdir = join(deps.dataDir, "sandboxes", input.handle);
     await mkdir(workdir, { recursive: true });
@@ -196,61 +206,49 @@ export function createDesktopSandboxProvider(
     // (port) and one for the dev script the orchestrator will spawn
     // (devPort). Without a dedicated devPort, every framework's
     // default 3000 collides with the cluster (and with other sandboxes).
+    const daemonToken = randomBytes(24).toString("hex");
     const [port, devPort] = await Promise.all([pickPort(), pickPort()]);
     const spawned = await Promise.resolve(
-      deps.spawnDaemon({ workdir, handle: input.handle, port }),
+      deps.spawnDaemon({ workdir, handle: input.handle, port, daemonToken }),
     );
-    let tunnel: TunnelHandle | null = null;
     try {
       await deps.waitForHealth(port);
-      await deps.postConfig(port, devPort, { repo: input.repo });
-      tunnel = await deps.openDaemonTunnel({
-        subDomain: `${input.handle}.deco.host`,
-        localAddr: `http://127.0.0.1:${port}`,
-      });
+      await deps.postConfig(port, devPort, { repo: input.repo }, daemonToken);
     } catch (err) {
       try {
         spawned.kill("SIGKILL");
       } catch {
         // already gone
       }
-      try {
-        tunnel?.close();
-      } catch {
-        // no-op
-      }
       throw err;
     }
-    const sandboxApiUrl = tunnel?.publicUrl ?? `http://127.0.0.1:${port}`;
+    const sandboxApiUrl = `http://127.0.0.1:${port}`;
+    const previewUrl = resolvePreviewUrl(input.handle, port);
     const state: SandboxState = {
       handle: input.handle,
       port,
       process: spawned,
-      tunnel,
       sandboxApiUrl,
+      previewUrl,
       lastUsedAt: Date.now(),
       activeDispatchCount: 0,
+      daemonToken,
     };
     sandboxes.set(input.handle, state);
 
     // Watchdog: clear the map entry if the daemon process exits unexpectedly.
     // Without this the cache returns a stale dead port and the cluster's
-    // alive() probe loops forever against a tunnel pointing at a dead upstream.
+    // alive() probe loops forever against a dead upstream.
     if (spawned.exited) {
       spawned.exited.then(() => {
         const current = sandboxes.get(input.handle);
         if (current === state) {
           sandboxes.delete(input.handle);
-          try {
-            tunnel?.close();
-          } catch {
-            // no-op
-          }
         }
       });
     }
 
-    return { sandboxApiUrl, port };
+    return { sandboxApiUrl, previewUrl, port };
   };
 
   return {
@@ -261,6 +259,7 @@ export function createDesktopSandboxProvider(
           existing.lastUsedAt = Date.now();
           return {
             sandboxApiUrl: existing.sandboxApiUrl,
+            previewUrl: existing.previewUrl,
             port: existing.port,
           };
         }
@@ -280,6 +279,12 @@ export function createDesktopSandboxProvider(
       const s = sandboxes.get(handle);
       if (s) s.lastUsedAt = Date.now();
       return s?.port ?? null;
+    },
+    getDaemonToken(handle) {
+      return sandboxes.get(handle)?.daemonToken ?? null;
+    },
+    hasHandle(handle) {
+      return sandboxes.has(handle) || inflight.has(handle);
     },
     recordHit(handle) {
       const s = sandboxes.get(handle);
@@ -309,11 +314,6 @@ export function createDesktopSandboxProvider(
       } catch {
         // already gone
       }
-      try {
-        s.tunnel?.close();
-      } catch {
-        // no-op
-      }
       sandboxes.delete(handle);
     },
     async shutdown() {
@@ -322,11 +322,6 @@ export function createDesktopSandboxProvider(
           s.process.kill("SIGTERM");
         } catch {
           // already gone
-        }
-        try {
-          s.tunnel?.close();
-        } catch {
-          // no-op
         }
       }
       sandboxes.clear();

@@ -28,6 +28,7 @@ import { type UIMessageChunk, createUIMessageStream } from "ai";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
 import { ensureSandbox } from "@/tools/sandbox/start";
+import { getDispatch } from "@/api/app";
 import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
@@ -191,8 +192,7 @@ function lookupResumeSessionRef(
  *   - `"cluster"` — `getInternalUrl()` (loopback; the harness runs inside
  *     the cluster pod alongside the API).
  *   - `"user-desktop"` — `getPublicUrl()` (the harness runs on the user's
- *     desktop and dials the cluster back over the public network — or, in
- *     dev mode, localhost via `MESH_ALLOW_LOCALHOST_LINKS=1`).
+ *     desktop and dials the cluster back over the public network).
  */
 const MCP_KEY_TTL_SECONDS = 3600;
 
@@ -827,11 +827,9 @@ async function prepareRun(
         //     calls `ensureSandbox` (handle == `computeHandle(sandboxId,
         //     branch)`) so the sandbox is the same one SANDBOX_START
         //     provisions — repo cloned, env pushed, dev server primed.
-        //     The cluster talks to the daemon directly at the returned
-        //     per-handle tunnel URL (`https://<handle>.deco.host` in
-        //     prod), no link reverse-proxy hop. Per-run state inside the
-        //     daemon stays keyed by `runId` (cancellation via DELETE
-        //     /_sandbox/runs/<runId>).
+        //     The cluster talks to the daemon over the NATS-backed dispatch
+        //     channel. Per-run state inside the daemon stays keyed by
+        //     `runId` (cancellation via DELETE /_sandbox/runs/<runId>).
         //   - `runsIn === "cluster"` — runs in-cluster. When `sandbox`
         //     is `"user-desktop"` the sandbox tool calls are forwarded
         //     to the user's link daemon; the harness still runs here.
@@ -843,15 +841,16 @@ async function prepareRun(
           // through to a blank sandbox for ephemeral threads. See
           // `resolveRemoteCliSandboxUrl` below for why the helper
           // exists.
-          const sandboxApiUrl = await resolveRemoteCliSandboxUrl(
+          const { sandboxHandle } = await resolveRemoteCliSandboxHandle(
             { agent: input.agent, branch: mem.thread.branch ?? input.branch },
             ctx,
           );
           harnessChunks = remoteDispatch(
             harnessId,
             harnessInput,
-            target.link,
-            sandboxApiUrl,
+            input.userId,
+            sandboxHandle,
+            { dispatch: getDispatch() },
           );
         } else {
           harnessChunks = localDispatch(harnessId, harnessInput, ctx);
@@ -1069,6 +1068,20 @@ export async function resolveRemoteCliSandboxUrl(
   input: { agent: { id: string }; branch?: string | null },
   ctx: MeshContext,
 ): Promise<string> {
+  const { previewUrl } = await resolveRemoteCliSandboxHandle(input, ctx);
+  return previewUrl;
+}
+
+/**
+ * Resolve (or provision) the desktop sandbox for `agent`+`branch` and return
+ * both its `sandboxHandle` and `previewUrl`. The handle is the stable
+ * identifier used by `remoteDispatch` to route `/_sandbox/<handle>/dispatch`
+ * requests over NATS to the user's link daemon.
+ */
+async function resolveRemoteCliSandboxHandle(
+  input: { agent: { id: string }; branch?: string | null },
+  ctx: MeshContext,
+): Promise<{ sandboxHandle: string; previewUrl: string }> {
   const entry = await ensureSandbox(
     {
       virtualMcpId: input.agent.id,
@@ -1082,5 +1095,5 @@ export async function resolveRemoteCliSandboxUrl(
       `Sandbox for agent ${input.agent.id} has no previewUrl — the desktop daemon may still be starting`,
     );
   }
-  return entry.previewUrl;
+  return { sandboxHandle: entry.sandboxHandle, previewUrl: entry.previewUrl };
 }

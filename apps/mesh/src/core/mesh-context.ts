@@ -13,8 +13,8 @@
 
 import type { Meter, Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
-import type { LinkEntry } from "../links/protocol";
-import type { LinkRegistry } from "@/links/link-registry";
+import type { LinkClaim } from "../links/link-claim-registry";
+import type { LinkClaimRegistry } from "@/links/link-claim-registry";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { Database, Permission } from "../storage/types";
 import type { AccessControl } from "./access-control";
@@ -415,23 +415,23 @@ export interface MeshContext extends HarnessContext {
   sandboxPreference?: "cluster-default" | "user-desktop";
 
   /**
-   * Link entry for the user this run is dispatched on behalf of, if any.
+   * Link claim for the user this run is dispatched on behalf of, if any.
    * Set by `prepareRun` when the resolved `DispatchTarget` references a
    * link (either `local/desktop` or `remote-cli`). The desktop sandbox
-   * provider reads this to know which daemon URL + secret to talk to
-   * without re-querying the registry. Unset for `local/default` runs.
+   * provider reads this to know which daemon is connected without re-querying
+   * the registry. Unset for `local/default` runs.
    */
-  linkForCurrentRun?: LinkEntry;
+  linkForCurrentRun?: LinkClaim;
 
   /**
-   * Cluster-wide LinkRegistry, injected by the context factory. Tools that
-   * touch the sandbox provider outside the decopilot dispatch path (e.g.
-   * `SANDBOX_START`, the always-on sandbox auto-provisioner) read this to resolve the
-   * acting user's link on demand — there is no `prepareRun` to pre-populate
-   * `linkForCurrentRun` for them. Undefined in test contexts that don't
-   * supply a registry.
+   * Cluster-wide LinkClaimRegistry, injected by the context factory. Tools
+   * that touch the sandbox provider outside the decopilot dispatch path (e.g.
+   * `SANDBOX_START`, the always-on sandbox auto-provisioner) read this to
+   * resolve the acting user's link on demand — there is no `prepareRun` to
+   * pre-populate `linkForCurrentRun` for them. Undefined in test contexts
+   * that don't supply a registry.
    */
-  linkRegistry?: LinkRegistry;
+  linkClaimRegistry?: LinkClaimRegistry;
 }
 
 // ============================================================================

@@ -1,13 +1,8 @@
 /**
- * `deco link` — the desktop-side link daemon command.
+ * `deco link` — start the desktop-side link daemon.
  *
- * Boots a local Bun.serve on `--port` (default 5174), opens a Warp
- * tunnel to deco.host so the cluster can reach it, registers with the
- * cluster's `/api/links` to receive a `linkSecret`, then exposes the
- * control-plane HMAC handler (sandbox lifecycle + reverse-proxy).
- *
- * `--no-tunnel` skips Warp and registers `tunnelUrl=http://localhost:<port>`
- * — only honored when the cluster has `MESH_ALLOW_LOCALHOST_LINKS=1`.
+ * Opens a WebSocket to `<MESH_CLUSTER_URL>/api/links/connect` and runs a
+ * local ingress on `--port` for `<handle>.localhost` sandbox previews.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +10,6 @@ import { startLinkDaemon } from "../../link-daemon";
 
 export interface LinkCommandOptions {
   port?: number;
-  noTunnel?: boolean;
   clusterBaseUrl?: string;
   dataDir?: string;
 }
@@ -24,10 +18,6 @@ export async function runLinkCommand(
   opts: LinkCommandOptions = {},
 ): Promise<number> {
   const port = opts.port ?? 5174;
-  const noTunnel = opts.noTunnel ?? false;
-  // Matches the dataDir convention the rest of the CLI uses (auth login
-  // writes session to ~/deco/...), so a fresh `deco link` after `deco
-  // auth login` finds the session without DATA_DIR being set explicitly.
   const dataDir =
     opts.dataDir ??
     process.env.DATA_DIR ??
@@ -39,12 +29,7 @@ export async function runLinkCommand(
     "https://studio.decocms.com";
 
   try {
-    const handle = await startLinkDaemon({
-      port,
-      noTunnel,
-      clusterBaseUrl,
-      dataDir,
-    });
+    const handle = await startLinkDaemon({ port, clusterBaseUrl, dataDir });
     return handle.stopped;
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));

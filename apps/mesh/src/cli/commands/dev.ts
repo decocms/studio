@@ -5,7 +5,6 @@
  * buildSettings(). Spawns dev servers and reports progress via the CLI
  * store so the Ink UI can update live.
  */
-import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "path";
 import type { Subprocess } from "bun";
@@ -121,14 +120,12 @@ export async function startDevServer(
   // import.meta.dir = apps/mesh/src/cli/commands → go up 5 levels to repo root
   const repoRoot = join(import.meta.dir, "..", "..", "..", "..", "..");
 
-  // Pre-compute the link's data dir so the cluster's `bootstrapDevLinkSession`
-  // can write `session.json` to the exact path the link will read. The dir
-  // lives in tmpdir — NOT under settings.dataDir, which is inside the
-  // mesh repo. Sandbox clones go into `<DATA_DIR>/sandboxes/<handle>/repo`;
-  // when that parent is itself a git repo (e.g. `~/code/mesh/...`)
-  // git's parent-walk hits the outer .git, refuses to clone, and the
-  // daemon crashes mid-bootstrap. Keying by workspace slug isolates
-  // concurrent worktrees.
+  // Pre-compute the link's data dir. The dir lives in tmpdir — NOT under
+  // settings.dataDir, which is inside the mesh repo. Sandbox clones go into
+  // `<DATA_DIR>/sandboxes/<handle>/repo`; when that parent is itself a git
+  // repo (e.g. `~/code/mesh/...`) git's parent-walk hits the outer .git,
+  // refuses to clone, and the daemon crashes mid-bootstrap. Keying by
+  // workspace slug isolates concurrent worktrees.
   const slug =
     process.env.WORKTREE_SLUG ??
     process.env.CONDUCTOR_WORKSPACE_NAME ??
@@ -151,13 +148,12 @@ export async function startDevServer(
       DECOCMS_HOME: settings.dataDir,
       DATA_DIR: settings.dataDir,
       DECO_CLI: "1",
-      // Auto-enable the link's localhost registration path. The cluster
-      // route honors `tunnelUrl: http://localhost:*` only when this flag
-      // is set. Production never sets it.
-      MESH_ALLOW_LOCALHOST_LINKS: "1",
-      // Tell the cluster where to write the dev-link session file so the
-      // auto-spawned link binary finds it at boot.
-      DEV_LINK_SESSION_PATH: join(linkDataDir, "session.json"),
+      // Tell the cluster where to write the dev-link session file when
+      // local-sandbox-provider is on, so the auto-spawned link daemon
+      // finds session.json under its DATA_DIR.
+      ...(options.localSandboxProvider
+        ? { DEV_LINK_SESSION_PATH: join(linkDataDir, "session.json") }
+        : {}),
       ...(settings.baseUrl ? { BASE_URL: settings.baseUrl } : {}),
     },
     stdio: [
@@ -176,12 +172,11 @@ export async function startDevServer(
   setServerUrl(serverUrl);
   updateService({ name: "Vite", status: "ready", port: Number(vitePort) });
 
-  // ── Auto-spawn `deco link --no-tunnel` (opt-in) ───────────────────
+  // ── Auto-spawn `deco link` (opt-in) ──────────────────────────────
   // Gated on --local-sandbox-provider. When set, once the cluster is up
   // on :PORT, spawn the link daemon so the dev session exercises the
-  // remote-cli + desktop code paths end-to-end. The link reads its
-  // session from <linkDataDir>/session.json (auto-minted by the cluster
-  // on first boot — see apps/mesh/src/auth/dev-link-session.ts).
+  // remote-cli + desktop code paths end-to-end. The link connects via
+  // WS using its persisted OAuth session.
   //
   // The link is tracked like postgres/nats: dynamic port, state file at
   // <home>/services/link/state.json, owned-process verification on
@@ -213,25 +208,21 @@ export async function startDevServer(
               pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
             },
             beforeSpawn: async () => {
+              // Wait for the cluster's HTTP port before spawning the link
+              // daemon so it can immediately reach the WS gateway.
               await waitForPort(Number(settings.port), { intervalMs: 500 });
-              // The cluster's port opens the instant `Bun.serve` listens,
-              // but `bootstrapDevLinkSession` (admin user seed + API key
-              // mint) runs async after that and is what writes
-              // `session.json`. On first boot it can take many seconds
-              // (embedded pg init + migrations + seed), and the link
-              // daemon throws "No session found" immediately on a missing
-              // file. Wait for the file before spawning so we don't lose
-              // the race and leave the Sandbox spinner pinned forever.
+              // Then wait for the cluster's `bootstrapDevLinkSession` to
+              // drop session.json into linkDataDir, since `readSession`
+              // throws "No session found" if it's missing.
               const sessionPath = join(linkDataDir, "session.json");
-              const sessionWaitDeadline = Date.now() + 60_000;
-              while (!existsSync(sessionPath)) {
-                if (Date.now() > sessionWaitDeadline) {
-                  throw new Error(
-                    `dev-link session not written to ${sessionPath} within 60s`,
-                  );
-                }
-                await new Promise((r) => setTimeout(r, 500));
+              const deadline = Date.now() + 30_000;
+              while (Date.now() < deadline) {
+                if (await Bun.file(sessionPath).exists()) return;
+                await new Promise((r) => setTimeout(r, 250));
               }
+              throw new Error(
+                `[dev-link] session.json not minted at ${sessionPath} after 30s — check cluster logs for [dev-link] errors`,
+              );
             },
           });
           // Mark Sandbox ready once the link binary's HTTP server accepts

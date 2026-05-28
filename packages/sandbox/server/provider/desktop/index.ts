@@ -1,2 +1,2 @@
 export { DesktopSandboxProvider, createDesktopProvider } from "./runner";
-export type { DesktopLinkRef, DesktopProviderOptions } from "./runner";
+export type { DesktopProviderOptions } from "./runner";

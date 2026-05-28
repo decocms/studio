@@ -98,11 +98,21 @@ import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
 import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import {
-  createInMemoryLinkRegistry,
-  type LinkRegistry,
-  NatsLinkRegistry,
-} from "../links/link-registry";
-import { registerLinksRoutes } from "../links/routes";
+  createInMemoryLinkClaimRegistry,
+  NatsLinkClaimRegistry,
+  type LinkClaimRegistry,
+} from "../links/link-claim-registry";
+import {
+  gatewayWsHandlers,
+  registerLinksGateway,
+  type GatewayNatsAdapter,
+  type WsAttachData,
+} from "../links/ws-gateway";
+import {
+  createDispatcher,
+  type DispatcherNatsAdapter,
+  type DispatchFn,
+} from "../links/dispatcher";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
@@ -182,6 +192,25 @@ function rejectAfter(ms: number): Promise<never> {
   return new Promise((_, reject) =>
     setTimeout(() => reject(new Error("pg health-check timeout")), ms),
   );
+}
+
+// Module-level singleton for the NATS-backed dispatcher. Populated inside
+// `createApp` once `natsProvider` is wired; callers outside `createApp` (e.g.
+// `dispatch-run.ts`) reach it via `getDispatch()`.
+let sharedDispatch: DispatchFn | null = null;
+
+/**
+ * Return the shared NATS-backed `DispatchFn`. Throws if `createApp` hasn't
+ * been called yet (shouldn't happen in production; guard is for tests that
+ * bypass `createApp`).
+ */
+export function getDispatch(): DispatchFn {
+  if (!sharedDispatch) {
+    throw new Error(
+      "getDispatch() called before createApp() — dispatcher not yet initialized",
+    );
+  }
+  return sharedDispatch;
 }
 
 // Track current event bus instance for cleanup during HMR
@@ -815,7 +844,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   let modelListCache: ModelListCache;
   let cancelBroadcast: CancelBroadcast;
   let streamBuffer: StreamBuffer;
-  let linkRegistry: LinkRegistry;
+  let linkClaimRegistry: LinkClaimRegistry;
   let natsProvider: NatsConnectionProvider | null = null;
 
   if (options.eventBus) {
@@ -838,11 +867,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       broadcast: () => {},
       stop: async () => {},
     };
-    // Test/no-NATS branch: an in-memory link registry keeps the link routes
+    // Test/no-NATS branch: an in-memory claim registry keeps the link routes
     // testable without a live NATS cluster.
-    linkRegistry = createInMemoryLinkRegistry({
-      nowSeconds: () => Math.floor(Date.now() / 1000),
-    });
+    linkClaimRegistry = createInMemoryLinkClaimRegistry();
     streamBuffer = {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
@@ -894,11 +921,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       getJetStream: () => natsProvider!.getJetStream(),
     });
 
-    const natsLinkRegistry = new NatsLinkRegistry({
+    const natsClaimRegistry = new NatsLinkClaimRegistry({
       getJetStream: () => natsProvider!.getJetStream(),
     });
-    natsLinkRegistry.init().catch(() => {});
-    linkRegistry = natsLinkRegistry;
+    natsClaimRegistry.init().catch(() => {});
+    linkClaimRegistry = natsClaimRegistry;
 
     eventBus = createEventBus(database, natsProvider);
 
@@ -916,9 +943,9 @@ export async function createApp(options: CreateAppOptions = {}) {
           err,
         );
       });
-      natsLinkRegistry.init().catch((err: unknown) => {
+      natsClaimRegistry.init().catch((err: unknown) => {
         console.warn(
-          "[LinkRegistry] Deferred init failed, link dispatch disabled:",
+          "[LinkClaimRegistry] Deferred init failed, link dispatch disabled:",
           err,
         );
       });
@@ -1272,7 +1299,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     eventBus,
     modelListCache,
     memberRoleCache,
-    linkRegistry,
+    linkClaimRegistry,
   });
   ContextFactory.set(factory);
 
@@ -1711,22 +1738,110 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast,
     streamBuffer,
     runRegistry,
-    linkRegistry,
+    linkClaimRegistry,
   });
   app.route("/api", decopilotRoutes);
 
-  // `/api/links/*` — link daemon registration, heartbeat, status.
-  // Session auth uses the same Better-Auth flow as every other authed
-  // route: `meshContext.auth.user.id` is the userSub. Bearer auth on
-  // heartbeat is the `linkSecret` (verified inside the route).
-  registerLinksRoutes(app, {
-    linkRegistry,
-    getAuthenticatedUserSub: (c) => {
-      const ctx = c.get("meshContext");
-      return ctx?.auth?.user?.id ?? null;
+  // `/api/links/connect` — WS gateway for link daemons.
+  // Validates bearer token via Better Auth, upgrades to WebSocket, and
+  // claims the user in the NATS JS KV bucket. Replaces registerLinksRoutes.
+  // `linkClaimRegistry` was constructed above in the NATS/test branch.
+
+  const gatewayNatsAdapter: GatewayNatsAdapter = {
+    subscribe(subject, onMessage) {
+      const nc = natsProvider?.getConnection();
+      if (!nc) return () => {};
+      const sub = nc.subscribe(subject);
+      void (async () => {
+        for await (const m of sub) {
+          try {
+            onMessage(m.data, m.reply);
+          } catch {
+            // swallow
+          }
+        }
+      })();
+      return () => {
+        try {
+          sub.unsubscribe();
+        } catch {
+          /* */
+        }
+      };
     },
-    allowLocalhostLinks: process.env.MESH_ALLOW_LOCALHOST_LINKS === "1",
+    publish(subject, data) {
+      natsProvider?.getConnection()?.publish(subject, data);
+    },
+    async request(subject, data, timeoutMs) {
+      const nc = natsProvider?.getConnection();
+      if (!nc) return null;
+      try {
+        const reply = await nc.request(subject, data, { timeout: timeoutMs });
+        return reply.data;
+      } catch {
+        return null;
+      }
+    },
+  };
+
+  registerLinksGateway(app, {
+    registry: linkClaimRegistry,
+    nats: gatewayNatsAdapter,
+    podId: POD_ID,
+    validateBearer: async (token) => {
+      const headers = new Headers({ authorization: `Bearer ${token}` });
+      const session = await auth.api.getSession({ headers });
+      return (session as { user?: { id?: string } } | null)?.user?.id ?? null;
+    },
   });
+
+  // Build the NATS-backed dispatcher and expose it as a module-level singleton
+  // so `dispatch-run.ts` (and other call sites) can reach it via `getDispatch()`
+  // without needing it threaded through every function signature.
+  const dispatcherNatsAdapter: DispatcherNatsAdapter = {
+    publish(subject, data, opts) {
+      const nc = natsProvider?.getConnection();
+      if (!nc) return;
+      if (opts?.reply) {
+        nc.publish(subject, data, { reply: opts.reply });
+      } else {
+        nc.publish(subject, data);
+      }
+    },
+    subscribe(subject, cb) {
+      const nc = natsProvider?.getConnection();
+      if (!nc) return () => {};
+      const sub = nc.subscribe(subject);
+      void (async () => {
+        for await (const m of sub) {
+          try {
+            cb(m.data, m.reply);
+          } catch {
+            /* swallow — bad subscriber must not kill the loop */
+          }
+        }
+      })();
+      return () => {
+        try {
+          sub.unsubscribe();
+        } catch {
+          /* */
+        }
+      };
+    },
+    createInbox() {
+      const nc = natsProvider?.getConnection();
+      // `NatsConnection` from nats.ws / nats.deno exposes `createInbox()` at
+      // runtime even though the TypeScript types don't always declare it.
+      // Cast through `unknown` to suppress the conversion error.
+      const ncAny = nc as unknown as { createInbox?: () => string } | undefined;
+      if (ncAny && typeof ncAny.createInbox === "function") {
+        return ncAny.createInbox();
+      }
+      return `_INBOX.${crypto.randomUUID().replace(/-/g, "")}`;
+    },
+  };
+  sharedDispatch = createDispatcher({ nats: dispatcherNatsAdapter });
 
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs)
   app.route("/api", filesRoutes);
@@ -2020,3 +2135,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   return Object.assign(app, { markShuttingDown, shutdown, initDbos });
 }
+
+export { gatewayWsHandlers };
+export type { WsAttachData };

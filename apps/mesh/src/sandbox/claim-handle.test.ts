@@ -26,7 +26,7 @@ describe("computeClaimHandle", () => {
 
   it("uses hashLen=16 when runner is user-desktop", () => {
     // Same brute-force argument as cluster: the runner's preview URL
-    // is a public hostname (`<handle>.deco.host`), so the hash must be long
+    // is a public hostname (`<handle>.localhost`), so the hash must be long
     // enough to resist guessing at an unrate-limited gateway. This also
     // keeps the cluster's claim-handle lookup in sync with what the
     // user-desktop runner stores (see desktop/runner.ts ensure()).

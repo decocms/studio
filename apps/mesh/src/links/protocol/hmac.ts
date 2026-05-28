@@ -6,8 +6,8 @@ import {
 } from "node:crypto";
 
 export const SIG_HEADER = "X-Mesh-Signature";
-export const TS_HEADER = "X-Mesh-Timestamp";
-export const NONCE_HEADER = "X-Mesh-Nonce";
+const TS_HEADER = "X-Mesh-Timestamp";
+const NONCE_HEADER = "X-Mesh-Nonce";
 
 const MAX_TIMESTAMP_DRIFT_SECONDS = 30;
 

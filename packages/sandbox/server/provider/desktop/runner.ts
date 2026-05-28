@@ -1,32 +1,21 @@
 /**
  * desktop sandbox provider — cluster-side stub that forwards every
- * `SandboxProvider` call to a per-user `link` binary running on the
- * developer's desktop. The link exposes:
+ * `SandboxProvider` call to a per-user link daemon running on the developer's
+ * desktop over the NATS-backed dispatch channel.
  *
- *   - `<tunnelUrl>/api/sandboxes`                 (POST: ensure, DELETE/<h>: tear down)
- *   - `<sandboxApiUrl>/_sandbox/*`              (exec + daemon proxy passthrough)
- *   - `<sandboxApiUrl>/health`                       (alive probe)
+ * All control requests (ensure, exec, delete, alive, proxyDaemonRequest) are
+ * encoded as `DispatchRequest` objects and sent via `dispatch(userSub, req)`.
+ * The daemon's in-process control handler (implemented in Task 11) receives
+ * them on `links.dispatch.<userSub>` and writes back the response as one or
+ * more text chunks followed by an `end` frame.
  *
- * The control plane is authenticated with the link-protocol HMAC scheme. The
- * per-daemon `sandboxApiUrl` (returned by the link's `POST /api/sandboxes`)
- * is itself a daemon-authenticated URL — the daemon accepts the same HMAC
- * against `DAEMON_LINK_SECRET` (set up by Task 1). HMAC requires symmetric
- * key material; v2 will encrypt at rest with a cluster KMS key.
- *
- * The cluster builds a fresh `DesktopSandboxProvider` per request, so the
- * in-memory `records` map is almost always empty. To remain functional across
- * cluster pod boundaries we mirror docker's pattern: take a `stateStore` in
- * the constructor, persist `{handle, sandboxApiUrl}` on ensure, hydrate on cache
- * miss. The `records` map becomes an advisory in-process cache; the state
- * store is the canonical lookup.
+ * `watchClaimLifecycle` emits a single synthetic `ready` phase — by the time
+ * `ensure` resolves the link has already brought the daemon up.
  *
  * `localWorkdir` returns null — the workdir lives on the desktop and is never
- * referenced by cluster code. `watchClaimLifecycle` emits a single synthetic
- * `ready` phase, matching docker semantics — by the time `ensure`
- * resolves the link has already brought the daemon up.
+ * referenced by cluster code.
  */
 
-import { signRequest } from "../../../../../apps/mesh/src/links/protocol/hmac";
 import { computeHandle } from "../shared";
 import type { ClaimPhase } from "../lifecycle-types";
 import type { RunnerStateStoreOps } from "../state-store";
@@ -39,30 +28,17 @@ import type {
   SandboxId,
   SandboxProvider,
 } from "../types";
+import type { DispatchFn } from "../../../../../apps/mesh/src/links/dispatcher";
 
 const RUNNER_KIND = "user-desktop" as const;
 
-/**
- * Subset of `LinkEntry` the provider actually needs. The dispatch path passes
- * the full `LinkEntry` it pulled from the registry; we accept anything
- * structurally compatible so tests can fake it without inventing a
- * `createdAt` timestamp.
- */
-export interface DesktopLinkRef {
-  tunnelUrl: string;
-  /**
-   * HMAC signing key — the raw bearer secret stored in `LinkEntry`. Both
-   * the cluster and the link sign with this same value (symmetric signing).
-   */
-  linkSecret: string;
-}
-
 export interface DesktopProviderOptions {
-  link: DesktopLinkRef;
-  /** @internal test seam */
-  fetchImpl?: typeof fetch;
+  /** Better Auth user id — used as the NATS routing key. */
+  userSub: string;
+  /** NATS-backed dispatch function from `createDispatcher()`. */
+  dispatch: DispatchFn;
   /**
-   * Persistent handle → URL store. Optional for compatibility with
+   * Persistent handle → state store. Optional for compatibility with
    * in-process tests that don't need cross-instance hydration; the
    * cluster MUST pass one (KyselySandboxProviderStateStore) so a
    * fresh provider per request can still find a previously-ensured
@@ -73,48 +49,52 @@ export interface DesktopProviderOptions {
 
 interface RemoteRecord {
   handle: string;
-  /** Daemon's public URL — `https://<handle>.deco.host` or `http://127.0.0.1:<port>`. */
+  /** Daemon's local sandbox API URL (e.g. `http://127.0.0.1:<port>`).
+   *  Used as the workdir-equivalent for the cluster's records and for
+   *  sandbox-state-store rehydration. */
   sandboxApiUrl: string;
+  /**
+   * Public-facing preview URL routed through the daemon's local ingress
+   * (`http://<handle>.localhost:<ingressPort>`) — what the user's browser
+   * actually hits. Distinct from `sandboxApiUrl` so internal probes can
+   * skip the ingress hop.
+   */
+  previewUrl: string;
 }
 
 export class DesktopSandboxProvider implements SandboxProvider {
   readonly kind = RUNNER_KIND;
 
-  private readonly link: DesktopLinkRef;
-  private readonly fetcher: typeof fetch;
+  private readonly userSub: string;
+  private readonly dispatch: DispatchFn;
   private readonly stateStore: RunnerStateStoreOps | null;
   private readonly records = new Map<string, RemoteRecord>();
 
   constructor(opts: DesktopProviderOptions) {
-    if (!opts.link?.tunnelUrl) {
-      throw new Error("DesktopSandboxProvider requires link.tunnelUrl");
+    if (!opts.userSub) {
+      throw new Error("DesktopSandboxProvider requires userSub");
     }
-    if (!opts.link?.linkSecret) {
-      throw new Error("DesktopSandboxProvider requires link.linkSecret");
+    if (!opts.dispatch) {
+      throw new Error("DesktopSandboxProvider requires dispatch");
     }
-    this.link = opts.link;
-    this.fetcher = opts.fetchImpl ?? fetch;
+    this.userSub = opts.userSub;
+    this.dispatch = opts.dispatch;
     this.stateStore = opts.stateStore ?? null;
   }
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
     // hashLen=16 mirrors agent-sandbox and the cluster's `computeClaimHandle`
-    // — `<handle>.deco.host` is a public hostname, so a short hash is
-    // brute-forceable at the deco.host gateway. If this changes, the
-    // matching constant in `apps/mesh/src/sandbox/claim-handle.ts` must
-    // change too or the cluster's state-store lookup will silently miss.
+    // — a 16-hex-char handle is used as a public subdomain prefix
+    // (e.g. `<handle>.localhost:<port>`) so a short hash keeps URLs readable.
+    // If this changes, the matching constant in
+    // `apps/mesh/src/sandbox/claim-handle.ts` must change too or the
+    // cluster's state-store lookup will silently miss.
     const handle = computeHandle(id, opts.repo?.branch, { hashLen: 16 });
 
-    // Neither the in-process cache nor the state-store row gets invalidated
-    // when a daemon dies asynchronously (laptop sleep, process killed,
-    // tunnel dropped). Without a liveness check here, ensure() happily
-    // returns a corpse URL and every retry replays it — breaking the
-    // harness's auto-restart loop. Probe before trusting; on a dead URL,
-    // drop the stale record and fall through to (re)spawn via the link.
+    // Probe before trusting cached records — a dead daemon leaves a stale URL.
     const cached = this.records.get(handle);
     if (cached) {
-      if (await this.probeHealth(cached.sandboxApiUrl))
-        return this.toSandbox(cached);
+      if (await this.probeHealth(handle)) return this.toSandbox(cached);
       this.records.delete(handle);
       if (this.stateStore) {
         await this.stateStore
@@ -123,12 +103,17 @@ export class DesktopSandboxProvider implements SandboxProvider {
       }
     } else if (this.stateStore) {
       const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
-      const sandboxApiUrl = (
-        row?.state as { sandboxApiUrl?: string } | undefined
-      )?.sandboxApiUrl;
+      const persisted = row?.state as
+        | { sandboxApiUrl?: string; previewUrl?: string }
+        | undefined;
+      const sandboxApiUrl = persisted?.sandboxApiUrl;
       if (sandboxApiUrl) {
-        if (await this.probeHealth(sandboxApiUrl)) {
-          const rec: RemoteRecord = { handle, sandboxApiUrl };
+        if (await this.probeHealth(handle)) {
+          const rec: RemoteRecord = {
+            handle,
+            sandboxApiUrl,
+            previewUrl: persisted?.previewUrl ?? sandboxApiUrl,
+          };
           this.records.set(handle, rec);
           return this.toSandbox(rec);
         }
@@ -138,61 +123,55 @@ export class DesktopSandboxProvider implements SandboxProvider {
       }
     }
 
-    const res = await this.signedFetch("POST", "/api/sandboxes", {
+    const body = JSON.stringify({
       handle,
       repo: opts.repo,
       branch: opts.repo?.branch,
     });
-    if (!res.ok) {
-      const detail = await safeReadText(res);
+    const responseText = await this.dispatchJson(
+      "POST",
+      "/api/sandboxes",
+      body,
+    );
+    const parsed = JSON.parse(responseText) as {
+      sandboxApiUrl?: unknown;
+      previewUrl?: unknown;
+    };
+    if (typeof parsed.sandboxApiUrl !== "string") {
       throw new Error(
-        `desktop ensure failed: ${res.status}${detail ? ` ${detail}` : ""}`,
+        "desktop ensure: daemon did not return a sandboxApiUrl string",
       );
     }
-    const body = (await res.json()) as { sandboxApiUrl?: unknown };
-    if (typeof body.sandboxApiUrl !== "string") {
-      throw new Error(
-        "desktop ensure: link did not return a sandboxApiUrl string",
-      );
-    }
-    const rec: RemoteRecord = { handle, sandboxApiUrl: body.sandboxApiUrl };
+    // Backwards-compat: a daemon running pre-previewUrl code returns only
+    // `sandboxApiUrl`. Fall back to it so the browser at least has SOMETHING
+    // to load (it just won't be routed through the local ingress).
+    const previewUrl =
+      typeof parsed.previewUrl === "string"
+        ? parsed.previewUrl
+        : parsed.sandboxApiUrl;
+    const rec: RemoteRecord = {
+      handle,
+      sandboxApiUrl: parsed.sandboxApiUrl,
+      previewUrl,
+    };
     this.records.set(handle, rec);
     if (this.stateStore) {
       await this.stateStore.put(id, RUNNER_KIND, {
         handle,
-        state: { handle, sandboxApiUrl: body.sandboxApiUrl },
+        state: { handle, sandboxApiUrl: parsed.sandboxApiUrl, previewUrl },
       });
     }
     return this.toSandbox(rec);
   }
 
   async exec(handle: string, input: ExecInput): Promise<ExecOutput> {
-    const rec = await this.resolveRecord(handle);
-    if (!rec) {
-      throw new Error(
-        `desktop provider: unknown handle "${handle}" — was ensure() called?`,
-      );
-    }
-    const bodyString = JSON.stringify(input);
-    const targetUrl = `${rec.sandboxApiUrl}/_sandbox/exec`;
-    const sig = signRequest({
-      secret: this.link.linkSecret,
-      method: "POST",
-      path: new URL(targetUrl).pathname,
-      body: bodyString,
-    });
-    const res = await this.fetcher(targetUrl, {
-      method: "POST",
-      headers: { ...sig, "content-type": "application/json" },
-      body: bodyString,
-    });
-    if (!res.ok) {
-      const detail = await safeReadText(res);
-      throw new Error(
-        `desktop exec failed: ${res.status}${detail ? ` ${detail}` : ""}`,
-      );
-    }
-    return (await res.json()) as ExecOutput;
+    const body = JSON.stringify(input);
+    const responseText = await this.dispatchJson(
+      "POST",
+      `/_sandbox/${encodeURIComponent(handle)}/exec`,
+      body,
+    );
+    return JSON.parse(responseText) as ExecOutput;
   }
 
   async proxyDaemonRequest(
@@ -200,19 +179,21 @@ export class DesktopSandboxProvider implements SandboxProvider {
     path: string,
     init: ProxyRequestInit,
   ): Promise<Response> {
-    const rec = await this.resolveRecord(handle);
-    if (!rec) {
-      return new Response(JSON.stringify({ error: "sandbox not found" }), {
-        status: 404,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    const fullPath = path.startsWith("/") ? path : `/${path}`;
-    const targetUrl = `${rec.sandboxApiUrl}${fullPath}`;
-    const body = await normalizeBodyForSigning(init.body);
+    // Callers pass full paths under the spawned daemon's `/_sandbox/*`
+    // namespace (e.g. `/_sandbox/events`, `/_sandbox/config`). The dispatch
+    // protocol uses the SAME `/_sandbox/<handle>/...` prefix for routing,
+    // and the daemon's `handleStream` proxies to `http://…:<port>/_sandbox`
+    // + the part AFTER the handle. So we strip the caller's `/_sandbox`
+    // prefix before composing the dispatch path — otherwise the daemon
+    // ends up fetching `http://…:<port>/_sandbox/_sandbox/<endpoint>` and
+    // the spawned sandbox returns 404.
+    const normalized = path.startsWith("/") ? path : `/${path}`;
+    const subPath = normalized.startsWith("/_sandbox/")
+      ? normalized.slice("/_sandbox".length)
+      : normalized;
+    const targetPath = `/_sandbox/${encodeURIComponent(handle)}${subPath}`;
     const headers = new Headers(init.headers);
-    // Strip hop-by-hop / cookie headers; HMAC headers replace any client-set
-    // signature header.
+    // Strip hop-by-hop / signing headers
     for (const h of [
       "host",
       "cookie",
@@ -227,44 +208,127 @@ export class DesktopSandboxProvider implements SandboxProvider {
     ]) {
       headers.delete(h);
     }
-    const sig = signRequest({
-      secret: this.link.linkSecret,
-      method: init.method,
-      path: new URL(targetUrl).pathname,
-      body,
+
+    const flatHeaders: Record<string, string> = {};
+    headers.forEach((v, k) => {
+      flatHeaders[k] = v;
     });
-    for (const [k, v] of Object.entries(sig)) headers.set(k, v);
-    return this.fetcher(targetUrl, {
-      method: init.method,
-      headers,
-      body: body.length > 0 ? body : null,
-      signal: init.signal,
+
+    // Normalize body to string for the dispatch layer
+    let bodyStr: string | undefined;
+    if (init.body != null) {
+      bodyStr = await normalizeBodyToString(init.body);
+    }
+
+    // Read the `headers` frame first (always emitted before any body chunks),
+    // then return a Response whose body is a ReadableStream that pulls from
+    // the dispatch iterator. Buffering the whole body before returning would
+    // break SSE consumers (the daemon's `/_sandbox/events` never sends an
+    // `end` frame), so vm-events would hang forever waiting for the buffered
+    // Response that never resolves.
+    const iter = this.dispatch(
+      this.userSub,
+      {
+        method: init.method,
+        path: targetPath,
+        headers: flatHeaders,
+        body: bodyStr,
+      },
+      { signal: init.signal },
+    );
+    const iterator = iter[Symbol.asyncIterator]();
+
+    let status = 200;
+    let respHeaders: Record<string, string> = {
+      "content-type": "application/octet-stream",
+    };
+    // Buffer for any body chunks that arrived in the same loop tick as the
+    // headers frame (the dispatcher can deliver several frames back-to-back).
+    const initialChunks: string[] = [];
+    try {
+      while (true) {
+        const next = await iterator.next();
+        if (next.done) break;
+        const chunk = next.value;
+        if (chunk.headers) {
+          status = chunk.headers.status;
+          respHeaders = chunk.headers.headers;
+          break;
+        }
+        if (chunk.data != null) initialChunks.push(chunk.data);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "dispatch error";
+      return new Response(JSON.stringify({ error: message }), {
+        status: 502,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    // Track cancellation so a chunk that arrives after the consumer aborts
+    // (in-flight `iterator.next()` resolves after `cancel()` fires) doesn't
+    // try to enqueue on an already-closed controller.
+    let canceled = false;
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        for (const data of initialChunks)
+          controller.enqueue(encoder.encode(data));
+      },
+      async pull(controller) {
+        try {
+          const next = await iterator.next();
+          if (canceled) return;
+          if (next.done) {
+            controller.close();
+            return;
+          }
+          const chunk = next.value;
+          if (chunk.data != null)
+            controller.enqueue(encoder.encode(chunk.data));
+        } catch (err) {
+          if (!canceled) controller.error(err);
+        }
+      },
+      cancel() {
+        canceled = true;
+        // Propagate client cancellation to the dispatch iterator so the
+        // daemon's `cancel` frame fires and frees server-side resources.
+        void iterator.return?.();
+      },
     });
+
+    return new Response(body, { status, headers: respHeaders });
   }
 
   async alive(handle: string): Promise<boolean> {
-    // The daemon's /health endpoint is unauthenticated; probe it directly.
-    // Hydrate the {handle → sandboxApiUrl} mapping from the state store on
-    // cache miss so a fresh provider in a different pod can still reach
-    // the daemon.
-    const rec = await this.resolveRecord(handle);
-    if (!rec) return false;
-    return this.probeHealth(rec.sandboxApiUrl);
+    return this.probeHealth(handle);
   }
 
   /**
-   * Short-timeout GET to `<sandboxUrl>/health`. Treats any throw (connection
-   * refused, DNS fail, abort) as dead. 1500ms cap so a slow tunnel doesn't
-   * block every `ensure` — the daemon's `/health` is a cheap in-memory check.
+   * Probe daemon liveness for `handle` via dispatch.
+   *
+   * Hits `GET /api/sandboxes/<handle>` on the daemon (in-process control
+   * handler), which returns 200 if the daemon either has a ready entry OR
+   * is currently spawning one. We deliberately do NOT proxy through to the
+   * spawned sub-daemon's `/_sandbox/health` — that 404s during the spawn
+   * window, and vm-events translates 404 into `event: gone` + state-store
+   * cleanup, which would tear down the sandbox the user is mid-start.
+   *
+   * 1500 ms cap (same as the old HMAC-HTTP path) so a slow NATS channel
+   * doesn't block every `ensure`.
    */
-  private async probeHealth(sandboxUrl: string): Promise<boolean> {
+  private async probeHealth(handle: string): Promise<boolean> {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 1500);
     try {
-      const res = await this.fetcher(`${sandboxUrl}/health`, {
-        signal: ac.signal,
-      });
-      return res.ok;
+      await this.dispatchJson(
+        "GET",
+        `/api/sandboxes/${encodeURIComponent(handle)}`,
+        undefined,
+        ac.signal,
+      );
+      return true;
     } catch {
       return false;
     } finally {
@@ -273,13 +337,11 @@ export class DesktopSandboxProvider implements SandboxProvider {
   }
 
   /**
-   * Drop our knowledge of `handle` without contacting the link. The cluster
+   * Drop our knowledge of `handle` without contacting the daemon. The cluster
    * builds a fresh provider per request, so this provider instance's cache
-   * is invisible to the next request — but within a single chat run, the
-   * harness captures one provider for proxy calls and a *different* one
-   * (built inside `ensureVm`) does the respawn. Without this method the
-   * captured instance keeps serving the corpse URL out of its in-process
-   * `records` map on the retry, defeating auto-restart.
+   * is invisible to the next request — but within a single chat run the
+   * harness can call `forgetHandle` to force re-resolution on the next proxy
+   * call (auto-restart loop).
    */
   async forgetHandle(handle: string): Promise<void> {
     this.records.delete(handle);
@@ -289,50 +351,38 @@ export class DesktopSandboxProvider implements SandboxProvider {
   }
 
   async delete(handle: string): Promise<void> {
-    const rec = this.records.get(handle);
     this.records.delete(handle);
     if (this.stateStore) {
       await this.stateStore.deleteByHandle(RUNNER_KIND, handle).catch(() => {
-        // best-effort — state-store row may already be gone
+        // best-effort
       });
     }
-    // Always tell the link to tear down, even if we lost our cached record —
-    // the link is authoritative for sandbox lifecycle and may still hold the
-    // daemon process.
-    const res = await this.signedFetch(
-      "DELETE",
-      `/api/sandboxes/${encodeURIComponent(handle)}`,
-    );
-    if (!res.ok && res.status !== 404) {
-      const detail = await safeReadText(res);
-      throw new Error(
-        `desktop delete failed: ${res.status}${detail ? ` ${detail}` : ""}`,
+    // Always tell the daemon to tear down.
+    try {
+      await this.dispatchJson(
+        "DELETE",
+        `/api/sandboxes/${encodeURIComponent(handle)}`,
       );
+    } catch (err) {
+      // 404 is fine — daemon may already have cleaned up.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("404")) throw err;
     }
-    // Hint to dead-code: rec read only for symmetry / future logging.
-    void rec;
   }
 
   async getPreviewUrl(handle: string): Promise<string | null> {
     const rec = await this.resolveRecord(handle);
-    return rec?.sandboxApiUrl ?? null;
+    return rec?.previewUrl ?? null;
   }
 
   /**
    * Workdir lives on the desktop; cluster code never references it. Returning
-   * null lets dispatch-run fall through to its default (`process.cwd()`),
-   * which is fine because cluster-side dispatch for `desktop` is the
-   * decopilot Code Sandbox tool path — the harness itself runs on the
-   * desktop, where `localWorkdir` IS meaningful (different provider).
+   * null lets dispatch-run fall through to its default.
    */
   async localWorkdir(_handle: string): Promise<string | null> {
     return null;
   }
 
-  // Same shape as host/docker/freestyle: a single synthetic `ready` is the
-  // only honest answer here. By the time `ensure` resolves the link has
-  // already brought the daemon up — there is no separately-observable
-  // pre-Ready window worth surfacing back to the UI.
   // eslint-disable-next-line require-yield
   async *watchClaimLifecycle(
     _handle: string,
@@ -346,62 +396,75 @@ export class DesktopSandboxProvider implements SandboxProvider {
   private toSandbox(rec: RemoteRecord): Sandbox {
     return {
       handle: rec.handle,
-      // workdir is opaque to the cluster — surface the sandboxApiUrl so debug
-      // logs that include `sandbox.workdir` show something meaningful, but
-      // anything that tries to fs.stat() this string will (correctly) fail.
       workdir: rec.sandboxApiUrl,
-      previewUrl: rec.sandboxApiUrl,
+      previewUrl: rec.previewUrl,
     };
   }
 
   /**
    * Cache → state-store hydration. The cluster builds a fresh provider per
-   * request, so the in-process `records` map is almost always empty even
-   * when the link previously ensured this handle. Falling back to the state
-   * store is what keeps alive/proxy/exec working across pod boundaries.
+   * request so the in-process map is almost always empty.
    */
   private async resolveRecord(handle: string): Promise<RemoteRecord | null> {
     const cached = this.records.get(handle);
     if (cached) return cached;
     if (!this.stateStore) return null;
     const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
-    const sandboxApiUrl = (row?.state as { sandboxApiUrl?: string } | undefined)
-      ?.sandboxApiUrl;
+    const persisted = row?.state as
+      | { sandboxApiUrl?: string; previewUrl?: string }
+      | undefined;
+    const sandboxApiUrl = persisted?.sandboxApiUrl;
     if (!sandboxApiUrl) return null;
-    const rec: RemoteRecord = { handle, sandboxApiUrl };
+    const rec: RemoteRecord = {
+      handle,
+      sandboxApiUrl,
+      previewUrl: persisted?.previewUrl ?? sandboxApiUrl,
+    };
     this.records.set(handle, rec);
     return rec;
   }
 
-  private async signedFetch(
+  /**
+   * Dispatch a control request and collect all response chunks into a single
+   * string. Throws on dispatch error (non-200, timeout, etc.).
+   */
+  private async dispatchJson(
     method: string,
     path: string,
-    body?: unknown,
-  ): Promise<Response> {
-    const bodyString = body === undefined ? "" : JSON.stringify(body);
-    const sig = signRequest({
-      secret: this.link.linkSecret,
-      method,
-      path,
-      body: bodyString,
-    });
+    body?: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
     const headers: Record<string, string> = {
-      ...sig,
+      accept: "application/json",
     };
-    if (bodyString.length > 0) headers["content-type"] = "application/json";
-    return this.fetcher(`${this.link.tunnelUrl}${path}`, {
-      method,
-      headers,
-      body: bodyString.length > 0 ? bodyString : undefined,
-    });
+    if (body !== undefined) {
+      headers["content-type"] = "application/json";
+    }
+
+    const iter = this.dispatch(
+      this.userSub,
+      { method, path, headers, body },
+      { signal },
+    );
+
+    let status: number | null = null;
+    let collected = "";
+    for await (const chunk of iter) {
+      if (chunk.headers) {
+        status = chunk.headers.status;
+      } else if (chunk.data != null) {
+        collected += chunk.data;
+      }
+    }
+    if (status != null && (status < 200 || status >= 300)) {
+      throw new Error(`daemon returned ${status}: ${collected}`);
+    }
+    return collected;
   }
 }
 
 /**
- * Backwards-compatible factory matching the shape Phase 5 was originally
- * sketched against in the plan. Construct via `new` is the canonical form;
- * this exists so callers don't have to update if they're already importing
- * `createDesktopProvider`.
+ * Backwards-compatible factory. Construct via `new` is the canonical form.
  */
 export function createDesktopProvider(
   opts: DesktopProviderOptions,
@@ -411,25 +474,12 @@ export function createDesktopProvider(
 
 // ---- Module-private helpers --------------------------------------------------
 
-async function safeReadText(res: Response): Promise<string> {
-  try {
-    const t = await res.text();
-    return t.length > 200 ? `${t.slice(0, 200)}…` : t;
-  } catch {
-    return "";
-  }
-}
-
 /**
- * Reduce a `ProxyRequestInit.body` (BodyInit | null) to the string form HMAC
- * signing expects. Buffers and ArrayBuffers are decoded as UTF-8 because the
- * daemon control plane uses JSON exclusively; streams aren't supported here
- * (decopilot doesn't proxy file uploads through the daemon today). If a
- * future caller needs binary body support we'll have to switch the signing
- * scheme to a content-hash header — punted to a follow-up.
+ * Reduce a `ProxyRequestInit.body` (BodyInit | null) to a string.
+ * Buffers and ArrayBuffers are decoded as UTF-8 because the daemon control
+ * plane uses JSON exclusively; streams aren't supported here.
  */
-async function normalizeBodyForSigning(body: BodyInit | null): Promise<string> {
-  if (body == null) return "";
+async function normalizeBodyToString(body: BodyInit): Promise<string> {
   if (typeof body === "string") return body;
   if (body instanceof ArrayBuffer) return Buffer.from(body).toString("utf8");
   if (ArrayBuffer.isView(body)) {
@@ -438,8 +488,5 @@ async function normalizeBodyForSigning(body: BodyInit | null): Promise<string> {
     );
   }
   if (body instanceof URLSearchParams) return body.toString();
-  // Fallback: drive it through Response.text() so Blob/FormData callers at
-  // least get a deterministic serialization. This is best-effort — callers
-  // sending FormData through proxyDaemonRequest are out-of-band.
   return await new Response(body).text();
 }

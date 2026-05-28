@@ -8,6 +8,7 @@
 
 import { getSettings } from "./settings";
 import { initObservability } from "./observability";
+import type { WsAttachData } from "./api/app";
 
 const settings = getSettings();
 
@@ -53,7 +54,7 @@ DBOS.setConfig({
   runAdminServer: false,
 });
 
-const { createApp } = await import("./api/app");
+const { createApp, gatewayWsHandlers } = await import("./api/app");
 const { isServerPath } = await import("./api/utils/paths");
 const { createAssetHandler, resolveClientDir } = await import(
   "@decocms/runtime/asset-server"
@@ -199,6 +200,14 @@ if (!settings.isCli) {
   }
 }
 
+function isGatewayWsData(data: unknown): data is WsAttachData {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    (data as { kind?: unknown }).kind === "gateway"
+  );
+}
+
 const server = Bun.serve({
   // This was necessary because MCP has SSE endpoints (like notification) that disconnects after 10 seconds (default bun idle timeout)
   idleTimeout: 0,
@@ -231,20 +240,39 @@ const server = Bun.serve({
     if (assetRes) return withSecurityHeaders(assetRes);
     return app.fetch(request, { server });
   },
-  // Multiplexed WebSocket handler. `ws.data.kind` discriminates which
-  // upgrader stashed the payload — preview is the only producer today; new
-  // upgraders should add a tagged `kind` and a branch here.
+  // Multiplexed WebSocket handler. `ws.data.kind` discriminates preview
+  // connections; `ws.data.userSub` discriminates gateway link connections.
+  // New upgraders should add a tagged field and a branch here.
   websocket: {
     open(ws) {
-      if (isPreviewWsData(ws.data)) previewWebSocketHandler.open(ws);
+      if (isPreviewWsData(ws.data)) {
+        previewWebSocketHandler.open(ws);
+      } else if (isGatewayWsData(ws.data)) {
+        gatewayWsHandlers.open(
+          ws as unknown as Parameters<typeof gatewayWsHandlers.open>[0],
+        );
+      }
     },
     message(ws, message) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.message(ws, message);
+      } else if (isGatewayWsData(ws.data)) {
+        void gatewayWsHandlers.message(
+          ws as unknown as Parameters<typeof gatewayWsHandlers.message>[0],
+          message,
+        );
       }
     },
-    close(ws) {
-      if (isPreviewWsData(ws.data)) previewWebSocketHandler.close(ws);
+    close(ws, code, reason) {
+      if (isPreviewWsData(ws.data)) {
+        previewWebSocketHandler.close(ws);
+      } else if (isGatewayWsData(ws.data)) {
+        gatewayWsHandlers.close(
+          ws as unknown as Parameters<typeof gatewayWsHandlers.close>[0],
+          code,
+          reason,
+        );
+      }
     },
   },
   development: false,
@@ -259,12 +287,10 @@ if (settings.localMode) {
       try {
         const seeded = await seedLocalMode();
         void seeded;
-        // When the cluster is in dev mode (MESH_ALLOW_LOCALHOST_LINKS=1
-        // set by `bun run dev`), bootstrap an API-key-backed session for
-        // the desktop-side link binary that `bun run dev` auto-spawns.
-        // The link reads it from `<DATA_DIR>/dev-link/session.json` and
-        // presents the API key as a Bearer token to POST /api/links.
-        if (process.env.MESH_ALLOW_LOCALHOST_LINKS === "1") {
+        // Dev-only: mint an API-key-backed session file for the
+        // auto-spawned `deco link` daemon when the dev CLI asked us to.
+        // Gated on DEV_LINK_SESSION_PATH so production never touches it.
+        if (process.env.DEV_LINK_SESSION_PATH) {
           try {
             const { bootstrapDevLinkSession } = await import(
               "./auth/dev-link-session"

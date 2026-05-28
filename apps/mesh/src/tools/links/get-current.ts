@@ -6,7 +6,7 @@ import { requireAuth } from "../../core/mesh-context";
 export const LINK_CURRENT_GET = defineTool({
   name: "LINK_CURRENT_GET",
   description:
-    "Return the calling user's currently registered desktop link, or `online: false` if no link is registered or the TTL has expired. The `linkSecret` is never returned.",
+    "Return the calling user's currently registered desktop link, or `online: false` if no link is registered or the TTL has expired.",
   inputSchema: z.object({}),
   outputSchema: z.object({
     online: z.boolean(),
@@ -19,18 +19,18 @@ export const LINK_CURRENT_GET = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
 
-    const registry = ctx.linkRegistry;
+    const registry = ctx.linkClaimRegistry;
     if (!registry) return { online: false, capabilities: [] };
 
-    const entry = await registry.get(ctx.auth.user!.id);
-    if (!entry) return { online: false, capabilities: [] };
+    const claim = await registry.get(ctx.auth.user!.id);
+    if (!claim) return { online: false, capabilities: [] };
 
     return {
       online: true,
-      machineId: entry.machineId,
-      hostname: entry.hostname,
-      cliVersion: entry.cliVersion,
-      capabilities: entry.capabilities,
+      machineId: claim.machineId,
+      hostname: claim.hostname,
+      cliVersion: claim.cliVersion,
+      capabilities: claim.capabilities,
     };
   },
 });
