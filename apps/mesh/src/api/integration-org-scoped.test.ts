@@ -85,7 +85,7 @@ function mockApiKey(userId: string, orgId: string, orgSlug: string) {
 describe("org-scoped API coexistence", () => {
   let database: TestDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
-  let logSpy: ReturnType<typeof spyOn>;
+  let logSpy: ReturnType<typeof spyOn> | undefined;
 
   beforeEach(async () => {
     database = await createTestDatabase();
@@ -141,7 +141,13 @@ describe("org-scoped API coexistence", () => {
   });
 
   afterEach(async () => {
-    logSpy.mockRestore();
+    // `logSpy` is the LAST thing beforeEach assigns. If anything before it
+    // throws (e.g. PGlite's WASM backend has intermittent migration crashes
+    // on Bun 1.3.5 — see the CI runner script), this hook would crash with
+    // `Cannot read property 'mockRestore' of undefined` and mask the real
+    // setup failure as a misleading test failure.
+    logSpy?.mockRestore();
+    logSpy = undefined;
     vi.restoreAllMocks();
     await closeTestDatabase(database);
   });
