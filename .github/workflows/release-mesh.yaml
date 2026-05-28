@@ -31,9 +31,11 @@ jobs:
   prepare:
     name: Prepare release metadata
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      !startsWith(github.event.head_commit.message, '[release]:')
+    # Releases are cut by the [release]: version-bump commit that release-tagging
+    # pushes to main (the bot push uses the App token, which re-triggers
+    # workflows). We run on EVERY push here — a non-bump push just reads an
+    # already-published version and short-circuits at the version-changed check.
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       packages: read
