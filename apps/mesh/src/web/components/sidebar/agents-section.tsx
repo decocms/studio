@@ -1,4 +1,5 @@
 import { Suspense, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import {
   Link,
@@ -47,6 +48,25 @@ import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.t
 import { GitHubRepoPicker } from "@/web/components/github-repo-picker.tsx";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
+import { authClient } from "@/web/lib/auth-client";
+import { KEYS } from "@/web/lib/query-keys";
+import { usePublicConfig } from "@/web/hooks/use-public-config";
+
+function useIsDecoUser() {
+  const { enableDecoImport } = usePublicConfig();
+  const { data: session } = authClient.useSession();
+  const { data } = useQuery({
+    queryKey: KEYS.decoProfile(session?.user?.email),
+    queryFn: async () => {
+      const res = await fetch("/api/deco-sites/profile");
+      if (!res.ok) return { isDecoUser: false };
+      return res.json() as Promise<{ isDecoUser: boolean }>;
+    },
+    enabled: Boolean(enableDecoImport) && Boolean(session?.user?.email),
+    staleTime: 5 * 60_000,
+  });
+  return data?.isDecoUser ?? false;
+}
 
 /**
  * Hook for "spawn task on this vMCP" buttons (used by the browse-agents
@@ -115,6 +135,7 @@ function AgentGridItem({
 
 function PinAgentPopoverContent({
   onClose,
+  onOpenImportDeco,
   onOpenGithubImport,
 }: {
   onClose: () => void;
@@ -132,6 +153,7 @@ function PinAgentPopoverContent({
   const { createFromTemplate, isCreating: isCreatingFromTemplate } =
     useCreateAgentFromTemplate();
   const [preferences] = usePreferences();
+  const isDecoUser = useIsDecoUser();
 
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
 
@@ -247,6 +269,29 @@ function PinAgentPopoverContent({
               </div>
               <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
                 Import GitHub
+              </span>
+            </button>
+          )}
+
+          {isDecoUser && (
+            <button
+              type="button"
+              onClick={() => {
+                track("agent_import_clicked", { source: "deco" });
+                onOpenImportDeco();
+                onClose();
+              }}
+              className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group"
+            >
+              <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
+                <img
+                  src="/logos/deco%20logo.svg"
+                  alt=""
+                  className="size-5 object-contain"
+                />
+              </div>
+              <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
+                Import deco.cx
               </span>
             </button>
           )}
