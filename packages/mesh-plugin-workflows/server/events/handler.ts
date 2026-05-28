@@ -111,20 +111,4 @@ function fireWorkflowEventHandlers(
   }
 }
 
-/**
- * Awaitable handler for testing.
- * Returns a promise that resolves after all handlers have settled.
- */
-export async function handleWorkflowEvents(
-  events: WorkflowEvent[],
-  ctx: OrchestratorContext,
-): Promise<void> {
-  const promises: Promise<void>[] = [];
-  for (const event of events) {
-    const p = routeEvent(event, ctx);
-    if (p) promises.push(p);
-  }
-  await Promise.allSettled(promises);
-}
-
 export { fireWorkflowEventHandlers as handleWorkflowEventsFireAndForget };

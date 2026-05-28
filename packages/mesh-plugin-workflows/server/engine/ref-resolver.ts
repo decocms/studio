@@ -44,7 +44,7 @@ function normalizePath(path: string): string {
 /**
  * Check if a value is an @ref string
  */
-export function isAtRef(value: unknown): value is `@${string}` {
+function isAtRef(value: unknown): value is `@${string}` {
   return typeof value === "string" && value.startsWith("@");
 }
 
@@ -96,7 +96,7 @@ export function parseAtRef(ref: `@${string}`): {
 /**
  * Get a value from an object by path
  */
-export function getValueByPath(obj: unknown, path: string): unknown {
+function getValueByPath(obj: unknown, path: string): unknown {
   if (!path) return obj;
 
   const keys = normalizePath(path).split(".");
