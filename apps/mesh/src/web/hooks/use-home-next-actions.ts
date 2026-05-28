@@ -2,13 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { KEYS } from "@/web/lib/query-keys";
 
-export type DialogKind =
-  | "install-github-mcp"
-  | "add-storefront"
-  | "configure-github-automations"
-  | "setup-site-monitoring"
-  | "github-import";
-
 export interface HomePromptEntry {
   agentId: string;
   agentName: string;
@@ -21,17 +14,8 @@ export interface HomePromptEntry {
   _meta?: Prompt["_meta"];
 }
 
-export interface HomeDialogEntry {
-  agentId: string;
-  agentName: string;
-  agentIcon: string | null;
-  label: string;
-  kind: DialogKind;
-}
-
 interface HomeNextActionsResponse {
   prompts: HomePromptEntry[];
-  dialogs: HomeDialogEntry[];
 }
 
 export function useHomeNextActions(orgSlug: string) {
@@ -49,6 +33,5 @@ export function useHomeNextActions(orgSlug: string) {
   return {
     isLoading: query.isLoading,
     prompts: query.data?.prompts ?? [],
-    dialogs: query.data?.dialogs ?? [],
   };
 }
