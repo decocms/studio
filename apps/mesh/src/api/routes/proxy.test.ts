@@ -79,17 +79,9 @@ describe("MCP Proxy null-org bypass", () => {
       VALUES (${attackerUserId}, 'attacker@example.com', false, 'Attacker', ${now}, ${now})
     `.execute(database.db);
 
-    await database.db
-      .insertInto("users")
-      .values({
-        id: attackerUserId,
-        email: "attacker@example.com",
-        name: "Attacker",
-        role: "user",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .execute();
+    // (No insert into "users" — that table only existed in the PGlite
+    // hand-rolled schema, not in real Postgres migrations. The Better Auth
+    // "user" row inserted above is sufficient.)
 
     // Create victim organization and a connection in it
     await database.db
