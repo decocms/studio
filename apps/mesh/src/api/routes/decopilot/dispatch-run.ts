@@ -1077,11 +1077,8 @@ export async function resolveRemoteCliSandboxUrl(
  * both its `sandboxHandle` and `previewUrl`. The handle is the stable
  * identifier used by `remoteDispatch` to route `/_sandbox/<handle>/dispatch`
  * requests over NATS to the user's link daemon.
- *
- * Exported so the unification can be unit-tested without standing up
- * the full `dispatchRunAndWait` machinery.
  */
-export async function resolveRemoteCliSandboxHandle(
+async function resolveRemoteCliSandboxHandle(
   input: { agent: { id: string }; branch?: string | null },
   ctx: MeshContext,
 ): Promise<{ sandboxHandle: string; previewUrl: string }> {

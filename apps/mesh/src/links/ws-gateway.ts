@@ -20,9 +20,9 @@ import {
 import type { LinkClaim, LinkClaimRegistry } from "./link-claim-registry";
 import type { Capability } from "./protocol";
 
-export const WS_CLOSE_SUPERSEDED = 4001;
-export const WS_CLOSE_POLICY = 1008;
-export const WS_CLOSE_INTERNAL = 1011;
+const WS_CLOSE_SUPERSEDED = 4001;
+const WS_CLOSE_POLICY = 1008;
+const WS_CLOSE_INTERNAL = 1011;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
