@@ -6,8 +6,11 @@ import { type Page } from "@playwright/test";
  */
 function generateTestUser(overrides?: { email?: string }) {
   const suffix = Date.now() + Math.floor(Math.random() * 1000);
+  // The unique suffix must lead the name: the signup hook derives the default
+  // org slug from the first name only, so a shared "Test" first name would
+  // collapse every test org into a tiny shared slug namespace and collide.
   return {
-    name: `Test User ${suffix}`,
+    name: `T${suffix} User`,
     email: overrides?.email ?? `test-${suffix}@playwright.local`,
     password: "Playwright123!",
   };

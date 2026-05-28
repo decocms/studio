@@ -487,10 +487,15 @@ export const auth = betterAuth({
             ? user.name.split(" ")[0]
             : user.email.split("@")[0];
 
-          const maxAttempts = 3;
+          const maxAttempts = 5;
           for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const orgName = `${firstName} ${getRandomSuffix()}`;
-            const orgSlug = slugify(orgName);
+            // After the first collision, append entropy so retries don't keep
+            // redrawing from the same small suffix pool and exhaust attempts.
+            const orgSlug =
+              attempt === 0
+                ? slugify(orgName)
+                : slugify(`${orgName} ${Math.floor(Math.random() * 1e6)}`);
 
             try {
               const created = await auth.api.createOrganization({
