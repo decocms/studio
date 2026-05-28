@@ -30,6 +30,29 @@ export interface Release {
  */
 export const RELEASES: Release[] = [
   {
+    id: "enhanced-sidebar",
+    date: "2026-05-28",
+    eyebrow: "Now Available",
+    title: "Enhanced sidebar",
+    bullets: [
+      {
+        icon: Stars02,
+        title: "A clearer view of what's running",
+        body: "See every task in your organization at a glance, with each agent and status group laid out so you can spot active work without hunting for it.",
+      },
+      {
+        icon: FilterLines,
+        title: "Browse one group at a time",
+        body: "Expand the groups you care about and pull in more results on demand — no more endless scrolling to find an older conversation.",
+      },
+      {
+        icon: CheckCircle,
+        title: "Polished and steadier",
+        body: "Several sidebar bugs are fixed, including empty agent groups showing the right action and status filters returning the right tasks.",
+      },
+    ],
+  },
+  {
     id: "smarter-task-delegation",
     date: "2026-05-27",
     eyebrow: "Now Available",
