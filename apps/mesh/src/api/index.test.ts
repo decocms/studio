@@ -4,10 +4,14 @@
 process.env.ENCRYPTION_KEY ??= Buffer.from("0".repeat(32)).toString("base64");
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { createTestDatabase, type TestDatabase } from "../database/test-db";
+import {
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import type { EventBus } from "../event-bus";
 import { setGlobalSettings, getSettings } from "../settings";
-import { createTestSchema } from "../storage/test-helpers";
 import { createApp } from "./app";
 
 // If settings were already frozen by a prior test file without
@@ -68,12 +72,12 @@ function createMockEventBus(): EventBus {
 }
 
 describe("Hono App", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
     app = await createApp({ database, eventBus: createMockEventBus() });
   });
 
@@ -86,12 +90,8 @@ describe("Hono App", () => {
     if (app) {
       await app.shutdown();
     }
-
-    // shutdown() already calls closeDatabase() which destroys the Kysely
-    // driver and ends the pool, but we still need to close the PGlite
-    // WASM instance which closeDatabase doesn't know about.
-    if (database?.pglite && !database.pglite.closed) {
-      await database.pglite.close();
+    if (database) {
+      await closeTestPgDatabase(database);
     }
   });
   describe("liveness check", () => {
@@ -119,9 +119,12 @@ describe("Hono App", () => {
     });
 
     it("should return 503 when postgres is unreachable", async () => {
-      // Close the PGlite instance so queries fail, simulating an outage
-      if (database.pglite && !database.pglite.closed) {
-        await database.pglite.close();
+      // Simulate an outage by ending the connection pool. createApp wires
+      // its own queries through this same pool, so subsequent queries
+      // fail with "pool ended" / connection-closed errors — exactly the
+      // failure mode the readiness probe is designed to catch.
+      if (!database.pool.ended) {
+        await database.pool.end();
       }
 
       const res = await app.request("/health/ready");

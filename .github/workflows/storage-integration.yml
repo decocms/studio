@@ -65,7 +65,14 @@ jobs:
                  apps/mesh/src/tools/virtual/studio-pack.test.ts \
                  apps/mesh/src/oauth/token-refresh.test.ts \
                  apps/mesh/src/tools/connection/connection-tools.test.ts \
-                 apps/mesh/src/core/context-factory.test.ts"
+                 apps/mesh/src/core/context-factory.test.ts \
+                 apps/mesh/src/api/routes/downstream-token.test.ts \
+                 apps/mesh/src/api/routes/proxy.test.ts \
+                 apps/mesh/src/api/index.test.ts \
+                 apps/mesh/src/api/middleware/resolve-org-from-path.test.ts \
+                 apps/mesh/src/api/routes/openai-compat.test.ts \
+                 apps/mesh/src/api/routes/oauth-proxy.e2e.test.ts \
+                 apps/mesh/src/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts"
           for f in $files; do
             echo "::group::$f"
             bun test "$f"

@@ -21,15 +21,13 @@ import {
 import { sql } from "kysely";
 import { auth } from "../auth";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import type { EventBus } from "../event-bus";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../storage/test-helpers";
 import { createApp } from "./app";
 
 /**
@@ -83,20 +81,21 @@ function mockApiKey(userId: string, orgId: string, orgSlug: string) {
 }
 
 describe("org-scoped API coexistence", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
   let logSpy: ReturnType<typeof spyOn> | undefined;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
 
     // Seed a second user (NOT a member of org_1) — used by the 403 test.
+    // `emailVerified` is BOOLEAN in real Postgres.
     const now = new Date().toISOString();
     await sql`
       INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
-      VALUES ('user_outsider', 'outsider@test.com', 0, 'Outsider', ${now}, ${now})
+      VALUES ('user_outsider', 'outsider@test.com', false, 'Outsider', ${now}, ${now})
       ON CONFLICT (id) DO NOTHING
     `.execute(database.db);
 
@@ -149,7 +148,7 @@ describe("org-scoped API coexistence", () => {
     logSpy?.mockRestore();
     logSpy = undefined;
     vi.restoreAllMocks();
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   it("new path serves the route AND does NOT log deprecation", async () => {
@@ -324,7 +323,7 @@ describe("org-scoped API coexistence", () => {
       .mockResolvedValue(new Response(null, { status: 200 }) as never);
 
     try {
-      // Cross-org: org_456 exists (seeded by seedCommonTestFixtures) but
+      // Cross-org: org_456 exists (seeded by seedCommonTestPgFixtures) but
       // conn_1 belongs to org_1.
       const crossOrg = await app.fetch(
         new Request(

@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Hono } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../../database/test-db";
-import { createTestSchema } from "../../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
 import { resolveOrgFromPath } from "./resolve-org-from-path";
 
 type Variables = { meshContext: MeshContext };
@@ -22,7 +22,7 @@ interface BuildAppOptions {
 }
 
 const buildApp = (
-  db: TestDatabase,
+  db: MeshDatabase,
   auth: FakeAuth,
   opts: BuildAppOptions = {},
 ) => {
@@ -83,47 +83,32 @@ const buildApp = (
 };
 
 describe("resolveOrgFromPath", () => {
-  let db: TestDatabase;
+  let db: MeshDatabase;
 
   beforeEach(async () => {
-    db = await createTestDatabase();
-    await createTestSchema(db.db);
+    db = await connectTestPgDatabase();
+    await resetTestPgDatabase(db);
 
-    // Seed an org "acme" with id "org-1" and a member "user-1".
-    await db.db
-      .insertInto("organization")
-      .values({
-        id: "org-1",
-        slug: "acme",
-        name: "Acme",
-        createdAt: new Date().toISOString(),
-      })
-      .execute();
-    await db.db
-      .insertInto("user")
-      .values({
-        id: "user-1",
-        email: "u@acme.test",
-        name: "U",
-        emailVerified: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .execute();
-    await db.db
-      .insertInto("member")
-      .values({
-        id: "mem-1",
-        userId: "user-1",
-        organizationId: "org-1",
-        role: "member",
-        createdAt: new Date().toISOString(),
-      })
-      .execute();
+    // Seed org/user/member via raw SQL — `emailVerified` is BOOLEAN in
+    // real Postgres but the Database schema type still says `number`.
+    const { sql } = await import("kysely");
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "organization" (id, slug, name, "createdAt")
+      VALUES ('org-1', 'acme', 'Acme', ${now})
+    `.execute(db.db);
+    await sql`
+      INSERT INTO "user" (id, email, name, "emailVerified", "createdAt", "updatedAt")
+      VALUES ('user-1', 'u@acme.test', 'U', false, ${now}, ${now})
+    `.execute(db.db);
+    await sql`
+      INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+      VALUES ('mem-1', 'user-1', 'org-1', 'member', ${now})
+    `.execute(db.db);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(db);
+    await closeTestPgDatabase(db);
   });
 
   it("returns 404 when slug does not exist", async () => {

@@ -27,15 +27,15 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "@/database/test-db";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "@/database/test-db-pg";
+import type { MeshDatabase } from "@/database";
 import {
   OrgScopedAsyncResearchJobStorage,
   SqlAsyncResearchJobStorage,
 } from "@/storage/async-research-jobs";
-import { createTestSchema } from "@/storage/test-helpers";
 import type { MeshContext } from "@/core/mesh-context";
 import { googleAdapter } from "@/ai-providers/adapters/google";
 import { AsyncResearchTerminalError } from "@/ai-providers/types";
@@ -194,38 +194,27 @@ function makeCtx(storage: OrgScopedAsyncResearchJobStorage): MeshContext {
 // ============================================================================
 
 describe("web_search async-research e2e", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let storage: OrgScopedAsyncResearchJobStorage;
   let mock: MockServer;
 
   beforeAll(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
 
-    // FK parents for async_research_jobs (organization_id, thread_id via
-    // the storage path; the storage doesn't actually constrain thread_id
-    // at the DB level but threads-test patterns set them up so we mirror).
+    // FK parents for async_research_jobs. Raw SQL for the user insert
+    // because `emailVerified` is BOOLEAN in real Postgres but the Database
+    // schema type still says `number`.
+    const { sql } = await import("kysely");
     const now = new Date().toISOString();
-    await database.db
-      .insertInto("organization")
-      .values({
-        id: ORG_ID,
-        name: "E2E Org",
-        slug: "e2e-async-research",
-        createdAt: now,
-      })
-      .execute();
-    await database.db
-      .insertInto("user")
-      .values({
-        id: USER_ID,
-        email: "e2e@async-research.test",
-        emailVerified: 0,
-        name: "E2E",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .execute();
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES (${ORG_ID}, 'E2E Org', 'e2e-async-research', ${now})
+    `.execute(database.db);
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${USER_ID}, 'e2e@async-research.test', false, 'E2E', ${now}, ${now})
+    `.execute(database.db);
     await database.db
       .insertInto("threads")
       .values({
@@ -249,7 +238,7 @@ describe("web_search async-research e2e", () => {
 
   afterAll(async () => {
     if (mock) await mock.stop();
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     delete process.env.GEMINI_INTERACTIONS_URL;
   });
 

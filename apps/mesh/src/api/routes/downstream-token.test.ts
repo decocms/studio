@@ -3,24 +3,22 @@ import { Hono } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
 import { CredentialVault } from "../../encryption/credential-vault";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../../database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
 import { createDownstreamTokenRoutes } from "./downstream-token";
 
 describe("Downstream Token Routes", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Hono<{ Variables: { meshContext: MeshContext } }>;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
 
     // Create test connection for FK constraint
     const { sql } = await import("kysely");
@@ -54,7 +52,7 @@ describe("Downstream Token Routes", () => {
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     mock.restore();
   });
 
