@@ -139,6 +139,12 @@ import {
   groupConnections,
   type ConnectionGroup,
 } from "@/shared/utils/group-connections";
+import {
+  type ConnectionAccessTab,
+  coerceConnectionAccessTab,
+  countConnectionsByAccess,
+  filterConnectionsByAccessTab,
+} from "@/shared/utils/connection-access-tab";
 
 // ---------------------------------------------------------------------------
 // Connection type / status filter types
@@ -502,7 +508,7 @@ import type { ListState } from "@/web/hooks/use-list-state";
 
 interface ConnectionResultsProps {
   listState: ListState<ConnectionEntity>;
-  activeTab: "connected" | "all";
+  activeTab: ConnectionAccessTab;
   typeFilter: ConnectionTypeFilter;
   statusFilter: ConnectionStatusFilter;
   registryFilter: string;
@@ -699,7 +705,13 @@ function ConnectionResults({
     return true;
   });
 
-  const grouped = groupConnections(filteredConnections);
+  // Narrow to the active access tab ("all" returns everything).
+  const accessFiltered = filterConnectionsByAccessTab(
+    filteredConnections,
+    activeTab,
+  );
+
+  const grouped = groupConnections(accessFiltered);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -760,10 +772,9 @@ function ConnectionResults({
         })
       : [];
 
-  // Connected items: show on "Connected" tab always, or on "All" tab when searching
-  // When both show, connected always appear first in the grid
-  const groupedForDisplay =
-    activeTab === "connected" || isSearching ? grouped : [];
+  // Connected cards: shown on Shared/Personal always, and on All when
+  // searching. On the All tab without a search the page stays catalog-first.
+  const groupedForDisplay = activeTab !== "all" || isSearching ? grouped : [];
 
   const handleInlineConnect = async (item: RegistryItem) => {
     if (!org || !session?.user?.id) return;
@@ -1039,10 +1050,10 @@ function ConnectionResults({
         <div>
           {(
             isSearching
-              ? catalogItems.length === 0 && filteredConnections.length === 0
+              ? catalogItems.length === 0 && accessFiltered.length === 0
               : activeTab === "all"
                 ? catalogItems.length === 0
-                : filteredConnections.length === 0
+                : accessFiltered.length === 0
           ) ? (
             <EmptyState
               image={
@@ -1227,9 +1238,9 @@ function ConnectionResults({
       {selectionMode && (
         <BulkActionBar
           count={selectedIds.size}
-          total={filteredConnections.length}
+          total={accessFiltered.length}
           onSelectAll={() => {
-            setSelectedIds(new Set(filteredConnections.map((c) => c.id)));
+            setSelectedIds(new Set(accessFiltered.map((c) => c.id)));
           }}
           onDeselectAll={() => setSelectedIds(new Set())}
           onDelete={() => setBulkDeleteOpen(true)}
@@ -1242,12 +1253,46 @@ function ConnectionResults({
   );
 }
 
+function ConnectionTabsBar({
+  activeTab,
+  onTabChange,
+  counts,
+}: {
+  activeTab: ConnectionAccessTab;
+  onTabChange: (tab: ConnectionAccessTab) => void;
+  counts?: { all: number; shared: number; personal: number };
+}) {
+  return (
+    <CollectionTabs
+      tabs={[
+        { id: "all", label: "All", count: counts?.all },
+        { id: "shared", label: "Shared", count: counts?.shared },
+        { id: "personal", label: "Personal", count: counts?.personal },
+      ]}
+      activeTab={activeTab}
+      onTabChange={(id) => onTabChange(id as ConnectionAccessTab)}
+    />
+  );
+}
+
+// Search-independent counts: a separate useConnections() query (no search term)
+// so the badges stay stable while the user types and the toolbar never
+// re-suspends on keystroke. Org connection lists are small (single page).
+function ConnectionTabsBarWithCounts(props: {
+  activeTab: ConnectionAccessTab;
+  onTabChange: (tab: ConnectionAccessTab) => void;
+}) {
+  const allConnections = useConnections({});
+  const counts = countConnectionsByAccess(allConnections);
+  return <ConnectionTabsBar {...props} counts={counts} />;
+}
+
 function OrgMcpsContent() {
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
     action?: "create";
-    tab?: "all" | "connected";
+    tab?: string;
   };
   const { data: session } = authClient.useSession();
   const { stdioEnabled } = useAuthConfig();
@@ -1261,15 +1306,18 @@ function OrgMcpsContent() {
 
   const actions = useConnectionActions();
 
-  // Tab state
-  type ConnectionTab = "connected" | "all";
-  const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
+  // Tab state — legacy "connected" values coerce to "all".
+  const [activeTab, setActiveTab] = useLocalStorage<ConnectionAccessTab>(
     LOCALSTORAGE_KEYS.connectionsTab(org.slug),
-    (existing) =>
-      search.tab === "all" || search.tab === "connected"
-        ? search.tab
-        : (existing ?? "all"),
+    (existing) => coerceConnectionAccessTab(search.tab ?? existing),
   );
+
+  const handleTabChange = (next: ConnectionAccessTab) => {
+    if (next !== activeTab) {
+      track("connections_page_tab_changed", { to_tab: next });
+    }
+    setActiveTab(next);
+  };
 
   // Type, status & registry filters
   const [typeFilter, setTypeFilter] = useState<ConnectionTypeFilter>("ALL");
@@ -1989,20 +2037,19 @@ function OrgMcpsContent() {
                 </div>
                 {ctaButton}
               </div>
-              <CollectionTabs
-                tabs={[
-                  { id: "all", label: "All" },
-                  { id: "connected", label: "Connected" },
-                ]}
-                activeTab={activeTab}
-                onTabChange={(id) => {
-                  const next = id as ConnectionTab;
-                  if (next !== activeTab) {
-                    track("connections_page_tab_changed", { to_tab: next });
-                  }
-                  setActiveTab(next);
-                }}
-              />
+              <Suspense
+                fallback={
+                  <ConnectionTabsBar
+                    activeTab={activeTab}
+                    onTabChange={handleTabChange}
+                  />
+                }
+              >
+                <ConnectionTabsBarWithCounts
+                  activeTab={activeTab}
+                  onTabChange={handleTabChange}
+                />
+              </Suspense>
               <Suspense
                 fallback={
                   <div className="flex h-full items-center justify-center">
