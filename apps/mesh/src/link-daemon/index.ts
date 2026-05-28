@@ -81,10 +81,24 @@ export async function startLinkDaemon(
       }));
     },
     postConfig: async (port, devPort, config, daemonToken) => {
-      // Daemon's TenantConfig wire shape is `{ git, application }`.
-      const payload: Record<string, unknown> = {
-        application: { port: devPort },
-      };
+      // Daemon's TenantConfig wire shape is `{ git, application }`. We
+      // always pin `application.port` to the link-allocated devPort so
+      // co-tenant sandboxes can't collide on the host network; the
+      // caller-supplied workload only drives runtime + packageManager
+      // (without these the orchestrator falls through to lockfile
+      // autodetect, which on a repo with `yarn.lock` picks yarn — a
+      // package manager the desktop daemon can't reliably PATH-shim).
+      const application: Record<string, unknown> = { port: devPort };
+      if (config.workload) {
+        application.runtime = config.workload.runtime;
+        application.packageManager = {
+          name: config.workload.packageManager,
+          ...(config.workload.packageManagerPath
+            ? { path: config.workload.packageManagerPath }
+            : {}),
+        };
+      }
+      const payload: Record<string, unknown> = { application };
       if (config.repo) {
         payload.git = {
           repository: {

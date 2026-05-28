@@ -40,9 +40,29 @@ export interface RepoRef {
   userEmail?: string;
 }
 
+/**
+ * Caller-selected runtime + package manager. Mirrors `Workload` from
+ * `@decocms/sandbox/provider`. Threaded through to the spawned sandbox
+ * daemon's `application` config so the orchestrator runs `bun install`
+ * (or pnpm/npm/yarn/deno) instead of falling through to autodetect — the
+ * desktop daemon process can't shim arbitrary corepack package managers
+ * into PATH the way the container image can, so explicit selection is
+ * the only reliable path on user-desktop.
+ */
+export interface Workload {
+  runtime: "node" | "bun" | "deno";
+  packageManager: "npm" | "pnpm" | "yarn" | "bun" | "deno";
+  /** User-pinned dev port; ignored on desktop (the provider allocates its
+   *  own ephemeral port to avoid host-network collisions). */
+  devPort?: number;
+  /** Subdirectory inside the repo where the package manifest lives. */
+  packageManagerPath?: string;
+}
+
 export interface EnsureSandboxInput {
   handle: string;
   repo?: RepoRef;
+  workload?: Workload;
 }
 
 export interface SandboxState {
@@ -96,7 +116,7 @@ export interface DesktopSandboxProviderDeps {
   postConfig: (
     port: number,
     devPort: number,
-    config: { repo?: RepoRef },
+    config: { repo?: RepoRef; workload?: Workload },
     daemonToken: string,
   ) => Promise<void>;
   waitForHealth: (port: number) => Promise<void>;
@@ -213,7 +233,12 @@ export function createDesktopSandboxProvider(
     );
     try {
       await deps.waitForHealth(port);
-      await deps.postConfig(port, devPort, { repo: input.repo }, daemonToken);
+      await deps.postConfig(
+        port,
+        devPort,
+        { repo: input.repo, workload: input.workload },
+        daemonToken,
+      );
     } catch (err) {
       try {
         spawned.kill("SIGKILL");
