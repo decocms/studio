@@ -56,77 +56,19 @@ jobs:
       # Adding a new integration test = create a `something.integration.test.ts`
       # and it auto-routes to this workflow. See TESTING.md.
       #
-      # Per-file bun process + signal tolerance: heavy-DB integration
-      # tests still hit Bun teardown crashes (SIGSEGV/SIGILL/SIGABRT)
-      # after all tests pass — not fully fixed even in 1.3.14. If exit
-      # code > 128 AND we saw a (pass) marker, accept it as a Bun
-      # teardown bug, not a real failure. The unit job doesn't need
-      # this because pure-logic tests don't trigger the crash class.
+      # One bun process per file: cleanest isolation between heavy-DB
+      # files. The previous signal-tolerance branch (exit > 128 +
+      # (pass) marker → accept) is gone because the Bun teardown crash
+      # it caught was DuckDB's N-API finalizer — neutralized in code by
+      # the `monitoringEngines` stub in the context-factory test. CI
+      # confirmed no other test trips a teardown crash. If a real one
+      # ever shows up, it should fail loudly so we diagnose it instead
+      # of silently swallowing it.
       - name: Run storage integration tests
         run: |
-          failed_files=""
-          crashed_files=""
+          set -e
           while IFS= read -r f; do
             echo "::group::$f"
-            set +e
-            out=$(bun test "$f" 2>&1)
-            code=$?
-            set -e
-            echo "$out"
+            bun test "$f"
             echo "::endgroup::"
-            if echo "$out" | grep -qE '^\(fail\)|[1-9][0-9]* fail'; then
-              failed_files="$failed_files $f"
-              continue
-            fi
-            if [ "$code" -eq 0 ]; then
-              continue
-            fi
-            if [ "$code" -gt 128 ] && echo "$out" | grep -qE '^\(pass\)|[1-9][0-9]* pass'; then
-              echo "⚠️  $f: bun crashed at teardown (exit $code) after tests passed — accepting"
-              continue
-            fi
-            crashed_files="$crashed_files $f"
           done < <(find apps/mesh -name '*.integration.test.ts' | sort)
-          if [ -n "$failed_files" ]; then
-            echo "❌ Test failures in:$failed_files"
-            exit 1
-          fi
-          if [ -n "$crashed_files" ]; then
-            echo "❌ Bun crashed before tests ran in:$crashed_files"
-            exit 1
-          fi
-          echo "✅ All integration test files passed"
-          failed_files=""
-          crashed_files=""
-          for f in $files; do
-            echo "::group::$f"
-            set +e
-            out=$(bun test "$f" 2>&1)
-            code=$?
-            set -e
-            echo "$out"
-            echo "::endgroup::"
-            if echo "$out" | grep -qE '^\(fail\)|[1-9][0-9]* fail'; then
-              failed_files="$failed_files $f"
-              continue
-            fi
-            if [ "$code" -eq 0 ]; then
-              continue
-            fi
-            # Signal-induced exit AND we saw a (pass) marker → known Bun
-            # 1.3.5 teardown crash, accept. Mirrors the unit-shard logic.
-            if [ "$code" -gt 128 ] && echo "$out" | grep -qE '^\(pass\)|[1-9][0-9]* pass'; then
-              echo "⚠️  $f: bun crashed at teardown (exit $code) after tests passed — accepting"
-              continue
-            fi
-            crashed_files="$crashed_files $f"
-          done
-          if [ -n "$failed_files" ]; then
-            echo "❌ Test failures in:$failed_files"
-            exit 1
-          fi
-          if [ -n "$crashed_files" ]; then
-            echo "❌ Bun crashed before tests ran in:$crashed_files"
-            exit 1
-          fi
-          echo "✅ All storage integration files passed"
