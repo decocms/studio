@@ -14,10 +14,6 @@ import type {
   StudioPackConnectionKey,
 } from "./types";
 
-export {
-  resolveStorefrontManagerChecklist,
-  storefrontManagerAgent,
-} from "./storefront-manager";
 export type {
   ChecklistContext,
   ChecklistItemAction,

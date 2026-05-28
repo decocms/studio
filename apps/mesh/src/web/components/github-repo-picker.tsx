@@ -482,7 +482,7 @@ function PickerContent({
   );
 }
 
-export function InstallationPicker({
+function InstallationPicker({
   connectionId,
   orgId,
   orgSlug,
@@ -607,7 +607,7 @@ export function InstallationPicker({
   );
 }
 
-export function RepoBrowser({
+function RepoBrowser({
   connectionId,
   orgId,
   orgSlug,
@@ -818,7 +818,7 @@ function RepoList({
   );
 }
 
-export function AutoInstallGitHubUI({
+function AutoInstallGitHubUI({
   status,
   error,
   retry,
