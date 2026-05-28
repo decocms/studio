@@ -7,11 +7,19 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
-import { SpanStatusCode } from "@opentelemetry/api";
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { getMcpListCache } from "../mcp-list-cache";
 import type { MeshContext } from "../../core/mesh-context";
+import {
+  resolveSlot,
+  SlotResolutionCache,
+  SlotUnresolvedError,
+} from "../../core/slot-resolver";
 import type { ConnectionEntity } from "../../tools/connection/schema";
-import type { VirtualMCPEntity } from "../../tools/virtual/schema";
+import type {
+  VirtualMCPConnection,
+  VirtualMCPEntity,
+} from "../../tools/virtual/schema";
 import { PassthroughClient } from "./passthrough-client";
 import type { VirtualClientOptions } from "./types";
 
@@ -113,10 +121,92 @@ export async function createVirtualClientFrom(
       !isSelfReferencingVirtual(conn, virtualMcp.id),
   );
 
-  // Build aggregator options
+  // ---------------------------------------------------------------------
+  // Slot resolution
+  // ---------------------------------------------------------------------
+  // For every typed slot declared on the agent, look up the caller's
+  // matching connection (user-private preferred, org-shared fallback) and
+  // augment both the loaded ConnectionEntity[] and the per-connection
+  // selection metadata that the PassthroughClient consumes. Resolved slots
+  // are indistinguishable from concrete child connections downstream — the
+  // PassthroughClient just sees one more connection_id with its
+  // selected_tools / selected_resources / selected_prompts.
+  // ---------------------------------------------------------------------
+  const resolvedConnections: ConnectionEntity[] = [...loadedConnections];
+  const resolvedVMCPConnections: VirtualMCPConnection[] = [
+    ...virtualMcp.connections,
+  ];
+
+  if (virtualMcp.slots.length > 0) {
+    const invokerUserId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null;
+    const slotCache = new SlotResolutionCache();
+    const activeSpan = trace.getActiveSpan();
+
+    for (const slot of virtualMcp.slots) {
+      if (!invokerUserId) {
+        throw new SlotUnresolvedError(slot.slot_app_id);
+      }
+
+      const resolved = await slotCache.resolve(
+        invokerUserId,
+        slot.slot_app_id,
+        () =>
+          resolveSlot(ctx.db, {
+            organizationId: virtualMcp.organization_id,
+            invokerUserId,
+            appId: slot.slot_app_id,
+          }),
+      );
+      if (!resolved) {
+        throw new SlotUnresolvedError(slot.slot_app_id);
+      }
+
+      const resolvedEntity = await ctx.storage.connections.findById(
+        resolved.connectionId,
+        virtualMcp.organization_id,
+      );
+      if (!resolvedEntity) {
+        // Defensive: resolver pointed at a row that disappeared (e.g.
+        // deleted between the resolveSlot SELECT and this findById). Treat
+        // as unresolved so the UI prompts the user to reconnect.
+        throw new SlotUnresolvedError(slot.slot_app_id);
+      }
+
+      resolvedConnections.push(resolvedEntity);
+      resolvedVMCPConnections.push({
+        connection_id: resolved.connectionId,
+        selected_tools: slot.selected_tools,
+        selected_resources: slot.selected_resources,
+        selected_prompts: slot.selected_prompts,
+      });
+
+      if (activeSpan) {
+        activeSpan.setAttribute(
+          `slot.${slot.slot_app_id}.app_id`,
+          slot.slot_app_id,
+        );
+        activeSpan.setAttribute(
+          `slot.${slot.slot_app_id}.connection_id`,
+          resolved.connectionId,
+        );
+        activeSpan.setAttribute(
+          `slot.${slot.slot_app_id}.access`,
+          resolved.access,
+        );
+      }
+    }
+  }
+
+  // Build aggregator options. Note: we pass an *augmented* VirtualMCPEntity
+  // whose `connections` array contains both the agent's concrete children
+  // and the resolved-slot connections, so PassthroughClient's vmcpConnMap
+  // sees a single uniform list keyed by connection_id.
   const clientOptions: VirtualClientOptions = {
-    connections: loadedConnections,
-    virtualMcp,
+    connections: resolvedConnections,
+    virtualMcp: {
+      ...virtualMcp,
+      connections: resolvedVMCPConnections,
+    },
     superUser,
     mcpListCache: getMcpListCache() ?? undefined,
     listTimeoutMs: options?.listTimeoutMs,
