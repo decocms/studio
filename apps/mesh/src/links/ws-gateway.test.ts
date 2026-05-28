@@ -180,6 +180,50 @@ describe("ws-gateway eviction", () => {
   });
 });
 
+describe("GET /api/links/me", () => {
+  test("returns null when no claim", async () => {
+    const app = new Hono();
+    registerLinksGateway(app, {
+      registry,
+      nats: makeFakeNatsAdapter(),
+      validateBearer: async () => "user-1",
+      podId: "pod",
+    });
+    const res = await app.request("/api/links/me", {
+      headers: { authorization: "Bearer t" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toBeNull();
+  });
+
+  test("returns claim fields when present", async () => {
+    const app = new Hono();
+    registerLinksGateway(app, {
+      registry,
+      nats: makeFakeNatsAdapter(),
+      validateBearer: async () => "user-1",
+      podId: "pod",
+    });
+    await registry.put("user-1", {
+      podId: "pod",
+      machineId: "m",
+      cliVersion: "1.0.0",
+      previewPort: 5174,
+      connectedAt: 1,
+    });
+    const res = await app.request("/api/links/me", {
+      headers: { authorization: "Bearer t" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      machineId: "m",
+      cliVersion: "1.0.0",
+      previewPort: 5174,
+      connectedAt: 1,
+    });
+  });
+});
+
 describe("ws-gateway dispatch demux", () => {
   test("forwards a request frame onto the WS and streams chunks back to a reply inbox", async () => {
     const nats = makeFakeNatsAdapter();

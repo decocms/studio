@@ -106,6 +106,31 @@ export function registerLinksGateway<E extends Env = Env>(
     }
     return new Response(null, { status: 101 });
   });
+
+  app.get("/api/links/me", async (c) => {
+    const auth = c.req.header("authorization") ?? "";
+    const match = /^Bearer\s+(.+)$/i.exec(auth);
+    let userSub: string | null = null;
+    if (match) {
+      userSub = await deps.validateBearer((match[1] ?? "").trim());
+    } else {
+      // Fall back to existing meshContext (session cookie).
+      const ctx = (c.get as (key: string) => unknown)("meshContext") as
+        | { auth?: { user?: { id?: string } } }
+        | undefined;
+      userSub = ctx?.auth?.user?.id ?? null;
+    }
+    if (!userSub) return c.json({ error: "unauthorized" }, 401);
+    const claim = await deps.registry.get(userSub);
+    if (!claim) return c.json(null);
+    return c.json({
+      machineId: claim.machineId,
+      hostname: claim.hostname,
+      cliVersion: claim.cliVersion,
+      previewPort: claim.previewPort,
+      connectedAt: claim.connectedAt,
+    });
+  });
 }
 
 function getInflight(
