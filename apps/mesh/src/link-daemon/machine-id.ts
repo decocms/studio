@@ -3,7 +3,7 @@
  * registration. It lives at `<dataDir>/machine-id` and is
  * generated once per desktop.
  *
- * The cluster keys its `LinkRegistry` by the OAuth userSub, NOT by this
+ * The cluster keys its `LinkClaimRegistry` by the OAuth userSub, NOT by this
  * machineId — but it stores the value so it can detect "another machine
  * is already claiming this account" (409) and surface a hint to the user.
  *

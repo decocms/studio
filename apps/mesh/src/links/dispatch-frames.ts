@@ -4,6 +4,7 @@
  * the only one without a reqId — it's the one-shot handshake.
  */
 import { z } from "zod";
+import { capabilitySchema } from "./protocol/schemas";
 
 const helloFrame = z.object({
   type: z.literal("hello"),
@@ -11,7 +12,7 @@ const helloFrame = z.object({
   machineId: z.string().min(1),
   hostname: z.string().optional(),
   cliVersion: z.string().min(1),
-  capabilities: z.array(z.string()),
+  capabilities: z.array(capabilitySchema).catch([]),
 });
 
 const requestFrame = z.object({

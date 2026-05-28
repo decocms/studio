@@ -16,6 +16,7 @@ import {
   type DispatchFrame,
 } from "../links/dispatch-frames";
 import type { ControlHandler } from "./control-handler";
+import type { Capability } from "../links/protocol/schemas";
 
 export interface ClusterConnectionInput {
   url: string;
@@ -25,7 +26,7 @@ export interface ClusterConnectionInput {
     machineId: string;
     hostname?: string;
     cliVersion: string;
-    capabilities: string[];
+    capabilities: Capability[];
   };
   controlHandler: ControlHandler;
   /** Cap on reconnect attempts. Default `Infinity` (retry forever). */

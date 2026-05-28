@@ -7,31 +7,6 @@ export const capabilitySchema = z.enum([
 ]);
 export type Capability = z.infer<typeof capabilitySchema>;
 
-export const linkEntrySchema = z.object({
-  machineId: z.string(),
-  /** Human-readable display label sent at registration. See registrationPayloadSchema. */
-  hostname: z.string().optional(),
-  tunnelUrl: z.string().url(),
-  /**
-   * The raw bearer secret. Both the cluster and the link sign HMACs
-   * with this value — symmetric signing requires identical key material.
-   *
-   * Security posture: this is treated as a working credential at rest in
-   * NATS KV. NATS operators within the cluster's trust boundary can see
-   * it; mitigations are (a) 30s TTL bounds leak windows, (b) rotation =
-   * re-register. A v2 hardening will encrypt at rest with a cluster KMS
-   * key. See spec §"linkSecret at rest" — the Path C symmetric
-   * construction it describes is impractical without shipping the cluster
-   * signing key to the link, so v1 ships with raw-at-rest.
-   */
-  linkSecret: z.string(),
-  cliVersion: z.string(),
-  protocolVersion: z.number().int().nonnegative(),
-  capabilities: z.array(capabilitySchema),
-  createdAt: z.string().datetime(),
-});
-export type LinkEntry = z.infer<typeof linkEntrySchema>;
-
 export const dispatchSSEEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("ui-message-chunk"),
@@ -90,17 +65,3 @@ export const harnessStreamInputSchema = z
   .strip();
 
 export type HarnessStreamInputWire = z.infer<typeof harnessStreamInputSchema>;
-
-/**
- * `hello` frame payload, sent by the daemon as the first message on the WS
- * after a successful upgrade. Carries the daemon's preview port so the
- * cluster can build `<handle>.localhost:<previewPort>` URLs.
- */
-export const helloPayloadSchema = z.object({
-  previewPort: z.number().int().min(1).max(65535),
-  machineId: z.string().min(1),
-  hostname: z.string().optional(),
-  cliVersion: z.string().min(1),
-  capabilities: z.array(capabilitySchema),
-});
-export type HelloPayload = z.infer<typeof helloPayloadSchema>;

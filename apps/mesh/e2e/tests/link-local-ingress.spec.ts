@@ -23,7 +23,7 @@ test("local ingress routes <handle>.localhost to sandbox", async () => {
   });
   const ingress = await startLocalIngress({
     port: 0,
-    lookupSandboxPort: (h) => (h === "abc" ? upstream.port : null),
+    lookupSandboxPort: (h) => (h === "abc" ? (upstream.port ?? 0) : null),
   });
   try {
     const res = await fetch(`http://127.0.0.1:${ingress.port}/`, {
