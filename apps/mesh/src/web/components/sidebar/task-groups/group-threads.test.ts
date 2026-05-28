@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "@/web/components/chat/task/types";
-import { groupThreadsByVirtualMcp } from "./group-threads";
+import {
+  groupThreadsByVirtualMcp,
+  groupThreadsByStatus,
+} from "./group-threads";
 
 const t = (overrides: Partial<Task>): Task => ({
   id: overrides.id ?? "x",
@@ -218,5 +221,69 @@ describe("groupThreadsByVirtualMcp — directory merging", () => {
       "vm-decopilot",
       "vm-other",
     ]);
+  });
+});
+
+describe("groupThreadsByStatus", () => {
+  it("always returns all 5 status groups regardless of input", () => {
+    const result = groupThreadsByStatus([]);
+    expect(result).toHaveLength(5);
+    expect(result.map((g) => g.status)).toEqual([
+      "requires_action",
+      "in_progress",
+      "failed",
+      "expired",
+      "completed",
+    ]);
+  });
+
+  it("returns empty thread arrays for statuses with no matching threads", () => {
+    const result = groupThreadsByStatus([]);
+    for (const group of result) {
+      expect(group.threads).toEqual([]);
+    }
+  });
+
+  it("buckets threads into the correct status group", () => {
+    const result = groupThreadsByStatus([
+      t({ id: "a", status: "in_progress" }),
+      t({ id: "b", status: "completed" }),
+      t({ id: "c", status: "in_progress" }),
+    ]);
+    expect(result).toHaveLength(5);
+    expect(
+      result
+        .find((g) => g.status === "in_progress")
+        ?.threads.map((th) => th.id),
+    ).toEqual(["a", "c"]);
+    expect(
+      result.find((g) => g.status === "completed")?.threads.map((th) => th.id),
+    ).toEqual(["b"]);
+    expect(result.find((g) => g.status === "requires_action")?.threads).toEqual(
+      [],
+    );
+    expect(result.find((g) => g.status === "failed")?.threads).toEqual([]);
+    expect(result.find((g) => g.status === "expired")?.threads).toEqual([]);
+  });
+
+  it("preserves the canonical status order: requires_action, in_progress, failed, expired, completed", () => {
+    const result = groupThreadsByStatus([
+      t({ id: "a", status: "completed" }),
+      t({ id: "b", status: "requires_action" }),
+    ]);
+    expect(result.map((g) => g.status)).toEqual([
+      "requires_action",
+      "in_progress",
+      "failed",
+      "expired",
+      "completed",
+    ]);
+  });
+
+  it("falls back threads with unknown status into 'completed'", () => {
+    const result = groupThreadsByStatus([t({ id: "a", status: undefined })]);
+    expect(
+      result.find((g) => g.status === "completed")?.threads.map((th) => th.id),
+    ).toEqual(["a"]);
   });
 });

@@ -38,7 +38,7 @@ export function groupThreadsByStatus(threads: Task[]): StatusGroupData[] {
   return STATUS_GROUP_ORDER.map((status) => ({
     status,
     threads: byStatus.get(status)!,
-  })).filter((g) => g.threads.length > 0);
+  }));
 }
 
 /**

@@ -30,9 +30,6 @@ import { useGroupShowMore } from "./use-group-show-more";
 export interface TaskGroupProps {
   virtualMcpId: string;
   threads: Task[];
-  isDecopilot: boolean;
-  /** Whether this group currently contains the active task — drives default expanded. */
-  hasActiveTask: boolean;
   activeTaskId: string | null;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
@@ -47,8 +44,6 @@ export interface TaskGroupProps {
 export function TaskGroup({
   virtualMcpId,
   threads,
-  isDecopilot,
-  hasActiveTask,
   activeTaskId,
   onSelectTask,
   onArchiveTask,
@@ -58,11 +53,7 @@ export function TaskGroup({
   dimmed,
   filters,
 }: TaskGroupProps) {
-  const defaultExpanded = isDecopilot || hasActiveTask;
-  const [expanded, setExpanded] = useGroupExpanded(
-    virtualMcpId,
-    defaultExpanded,
-  );
+  const [expanded, setExpanded] = useGroupExpanded(virtualMcpId, false);
   const isToolCallRuns = virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
   const showMore = useGroupShowMore("agent", virtualMcpId, filters);
 
@@ -285,25 +276,32 @@ function AgentExpandedBody({
 }
 
 function StatusExpandedBody({
-  status,
   threads,
   activeTaskId,
   onSelectTask,
   onArchiveTask,
-  filters,
+  showMore,
 }: {
-  status: StatusGroupData["status"];
   threads: Task[];
   activeTaskId: string | null;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
-  filters: SidebarFilters;
+  showMore: ReturnType<typeof useGroupShowMore>;
 }) {
-  const { hasMore, isFetching, loadMore } = useGroupShowMore(
-    "status",
-    status,
-    filters,
-  );
+  const { hasMore, isFetching, loadMore } = showMore;
+
+  if (threads.length === 0) {
+    if (hasMore) {
+      return (
+        <ShowMoreButton
+          onClick={() => void loadMore()}
+          isFetching={isFetching}
+        />
+      );
+    }
+    return null;
+  }
+
   return (
     <>
       {threads.map((task) => (
@@ -345,12 +343,21 @@ export function StatusGroup({
 }) {
   const config = STATUS_CONFIG[status];
   const StatusIcon = config.icon;
-  const defaultExpanded =
-    status === "requires_action" || status === "in_progress";
-  const [expanded, setExpanded] = useGroupExpanded(
-    `status-${status}`,
-    defaultExpanded,
-  );
+  const [expanded, setExpanded] = useGroupExpanded(`status-${status}`, false);
+  const showMore = useGroupShowMore("status", status, filters);
+
+  function handleToggleExpanded() {
+    const next = !expanded;
+    setExpanded(next);
+    if (
+      next &&
+      threads.length === 0 &&
+      showMore.hasMore &&
+      !showMore.isFetching
+    ) {
+      void showMore.loadMore();
+    }
+  }
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -358,12 +365,12 @@ export function StatusGroup({
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        onClick={() => setExpanded(!expanded)}
+        onClick={handleToggleExpanded}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setExpanded(!expanded);
+            handleToggleExpanded();
           }
         }}
         className="group/group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-medium text-foreground cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
@@ -386,12 +393,11 @@ export function StatusGroup({
       {expanded && (
         <div className="flex flex-col gap-0.5 pb-1 pl-4">
           <StatusExpandedBody
-            status={status}
             threads={threads}
             activeTaskId={activeTaskId}
             onSelectTask={onSelectTask}
             onArchiveTask={onArchiveTask}
-            filters={filters}
+            showMore={showMore}
           />
         </div>
       )}

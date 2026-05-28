@@ -302,17 +302,12 @@ export function TaskGroupsList() {
           <>
             {groups.map((group) => {
               const filtered = typeFiltered(memberFiltered(group.threads));
-              const hasActiveTask = group.threads.some(
-                (t) => t.id === activeTaskId,
-              );
               const dimmed = filtersActive && filtered.length === 0;
               return (
                 <TaskGroup
                   key={group.virtualMcpId}
                   virtualMcpId={group.virtualMcpId}
                   threads={filtered}
-                  isDecopilot={group.virtualMcpId === decopilotId}
-                  hasActiveTask={hasActiveTask}
                   activeTaskId={activeTaskId}
                   onSelectTask={(t) => setTaskId(t.id, t.virtual_mcp_id)}
                   onArchiveTask={handleArchive}
