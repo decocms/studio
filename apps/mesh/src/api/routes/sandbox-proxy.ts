@@ -117,6 +117,10 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     runner = null;
   }
 
+  if (!runner) {
+    return c.json({ error: "No sandbox runner found" }, 404);
+  }
+
   c.set("vmClaim", {
     claimName,
     runner,
