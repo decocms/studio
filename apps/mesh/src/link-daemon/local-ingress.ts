@@ -88,6 +88,16 @@ export async function startLocalIngress(
             /* */
           }
         });
+        // Without this, a failed upstream connect (sandbox died, port not yet
+        // bound) emits `error` and may never emit `close` — the client WS
+        // stays open with `pendingMessages` accumulating indefinitely.
+        upstream.addEventListener("error", () => {
+          try {
+            ws.close(1011, "upstream error");
+          } catch {
+            /* */
+          }
+        });
       },
       message(ws, raw) {
         const upstream = ws.data.upstream;

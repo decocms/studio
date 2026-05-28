@@ -56,7 +56,13 @@ interface ConnectionState {
   stopWatch: () => void;
   unsubscribeDispatch: () => void;
   unsubscribeCancel: () => void;
+  /** Set by the watch listener when another pod takes ownership, or by
+   *  `onHello` when a same-pod successor evicts this socket. Tells `close`
+   *  to leave the registry alone — someone else owns the claim now. */
+  lostOwnership: boolean;
 }
+
+export type LocalOwners = Map<string, ServerWebSocket<WsAttachData>>;
 
 export interface WsAttachData {
   kind: "gateway";
@@ -64,6 +70,10 @@ export interface WsAttachData {
   deps: GatewayDeps;
   helloTimeoutMs: number;
   refreshIntervalMs: number;
+  /** Pod-local map of userSub → currently-owning WS. Same reference across
+   *  all connections in this pod so `onHello` can supersede a prior daemon
+   *  for the same user before claiming. */
+  localOwners: LocalOwners;
   state?: ConnectionState;
   helloTimer?: ReturnType<typeof setTimeout>;
   _inflight?: Map<string, { reply: string }>;
@@ -75,6 +85,7 @@ export function registerLinksGateway<E extends Env = Env>(
 ): void {
   const helloTimeoutMs = deps.helloTimeoutMs ?? 5_000;
   const refreshIntervalMs = deps.refreshIntervalMs ?? 20_000;
+  const localOwners: LocalOwners = new Map();
 
   app.get("/api/links/connect", async (c) => {
     const auth = c.req.header("authorization") ?? "";
@@ -100,6 +111,7 @@ export function registerLinksGateway<E extends Env = Env>(
         deps,
         helloTimeoutMs,
         refreshIntervalMs,
+        localOwners,
       } satisfies WsAttachData,
     });
     if (!upgraded) {
@@ -145,7 +157,7 @@ async function onHello(
   ws: ServerWebSocket<WsAttachData>,
   hello: Extract<DispatchFrame, { type: "hello" }>,
 ): Promise<void> {
-  const { userSub, deps, refreshIntervalMs } = ws.data;
+  const { userSub, deps, refreshIntervalMs, localOwners } = ws.data;
   const claim: LinkClaim = {
     podId: deps.podId,
     machineId: hello.machineId,
@@ -156,38 +168,42 @@ async function onHello(
     capabilities: hello.capabilities as Capability[],
   };
 
+  // Same-pod eviction: if another daemon for this user already holds a WS
+  // on this pod, close it before claiming. Cross-pod eviction relies on
+  // `registry.watch` below; same-pod can't, because both connections would
+  // write the same `podId` and neither watch would fire.
+  const prior = localOwners.get(userSub);
+  if (prior && prior !== ws) {
+    if (prior.data.state) prior.data.state.lostOwnership = true;
+    try {
+      prior.close(WS_CLOSE_SUPERSEDED, "superseded");
+    } catch {
+      /* */
+    }
+  }
+  localOwners.set(userSub, ws);
+
   // Assign state with placeholders first so the message handler routes to
   // onAfterHello for any frame that arrives between now and the end of setup.
   const state: ConnectionState = {
     userSub,
     hello,
     refreshTimer: setInterval(() => {
-      void deps.registry.put(userSub, { ...claim, connectedAt: Date.now() });
+      void deps.registry
+        .put(userSub, { ...claim, connectedAt: Date.now() })
+        .catch(() => {});
     }, refreshIntervalMs),
     stopWatch: () => {},
     unsubscribeDispatch: () => {},
     unsubscribeCancel: () => {},
+    lostOwnership: false,
   };
   ws.data.state = state;
 
   try {
-    await deps.registry.put(userSub, claim);
-
-    let initial = true;
-    state.stopWatch = deps.registry.watch(userSub, (current) => {
-      if (initial) {
-        initial = false;
-        return;
-      }
-      if (!current || current.podId !== deps.podId) {
-        try {
-          ws.close(WS_CLOSE_SUPERSEDED, "superseded");
-        } catch {
-          /* */
-        }
-      }
-    });
-
+    // Subscribe to NATS dispatch/cancel *before* publishing the claim so
+    // any dispatcher that observes the claim immediately can't have its
+    // first message dropped on the floor (core NATS is fire-and-forget).
     state.unsubscribeDispatch = deps.nats.subscribe(
       `links.dispatch.${userSub}`,
       (data, reply) => onDispatchFromNats(ws, data, reply),
@@ -196,6 +212,27 @@ async function onHello(
       `links.cancel.${userSub}`,
       (data) => onCancelFromNats(ws, data),
     );
+
+    // Start the watcher before put. Our own `put` will then fire the
+    // listener with our own podId, which we no-op (`podId === deps.podId`).
+    // The first fire (whatever was there before us) is skipped via `initial`.
+    let initial = true;
+    state.stopWatch = deps.registry.watch(userSub, (current) => {
+      if (initial) {
+        initial = false;
+        return;
+      }
+      if (!current || current.podId !== deps.podId) {
+        state.lostOwnership = true;
+        try {
+          ws.close(WS_CLOSE_SUPERSEDED, "superseded");
+        } catch {
+          /* */
+        }
+      }
+    });
+
+    await deps.registry.put(userSub, claim);
   } catch (err) {
     // Setup failed — tear down anything we did manage to acquire and close.
     clearInterval(state.refreshTimer);
@@ -214,6 +251,7 @@ async function onHello(
     } catch {
       /* */
     }
+    if (localOwners.get(userSub) === ws) localOwners.delete(userSub);
     ws.data.state = undefined;
     ws.close(
       WS_CLOSE_INTERNAL,
@@ -309,6 +347,32 @@ export const gatewayWsHandlers = {
 
   close(ws: ServerWebSocket<WsAttachData>, _code: number, _reason: string) {
     clearTimeout(ws.data.helloTimer);
+
+    // Notify any cluster pods still awaiting replies for in-flight requests
+    // so their dispatchers throw promptly instead of hanging on the reply
+    // inbox (the dispatcher has no idle timeout after the first frame).
+    const inflight = ws.data._inflight;
+    if (inflight && inflight.size > 0) {
+      for (const [reqId, entry] of inflight) {
+        try {
+          ws.data.deps.nats.publish(
+            entry.reply,
+            encoder.encode(
+              encodeFrame({
+                type: "error",
+                reqId,
+                code: "ws_closed",
+                message: "daemon WebSocket closed before response completed",
+              }),
+            ),
+          );
+        } catch {
+          /* */
+        }
+      }
+      inflight.clear();
+    }
+
     const s = ws.data.state;
     if (!s) return;
     clearInterval(s.refreshTimer);
@@ -327,6 +391,15 @@ export const gatewayWsHandlers = {
     } catch {
       /* ignore */
     }
-    void ws.data.deps.registry.delete(s.userSub).catch(() => {});
+
+    // Only release the claim when we are still its owner — both locally
+    // (no same-pod successor took over) and per the watcher flag (no
+    // cross-pod takeover detected). Otherwise the delete would wipe a
+    // successor pod's freshly-published claim.
+    const stillLocalOwner = ws.data.localOwners.get(s.userSub) === ws;
+    if (stillLocalOwner) ws.data.localOwners.delete(s.userSub);
+    if (stillLocalOwner && !s.lostOwnership) {
+      void ws.data.deps.registry.delete(s.userSub).catch(() => {});
+    }
   },
 };

@@ -181,8 +181,13 @@ export class DesktopSandboxProvider implements SandboxProvider {
       bodyStr = await normalizeBodyToString(init.body);
     }
 
-    // Collect all chunks; build a synthetic 200 Response with the joined body.
-    // The daemon's control handler writes the response body as text chunks.
+    // Collect headers + body chunks. The daemon's control handler emits a
+    // `headers` frame (carrying the upstream status & content-type) followed
+    // by zero or more `chunk` frames; the dispatcher surfaces both.
+    let status = 200;
+    let respHeaders: Record<string, string> = {
+      "content-type": "application/octet-stream",
+    };
     let collected = "";
     try {
       const iter = this.dispatch(
@@ -196,7 +201,12 @@ export class DesktopSandboxProvider implements SandboxProvider {
         { signal: init.signal },
       );
       for await (const chunk of iter) {
-        collected += chunk.data;
+        if (chunk.headers) {
+          status = chunk.headers.status;
+          respHeaders = chunk.headers.headers;
+        } else if (chunk.data != null) {
+          collected += chunk.data;
+        }
       }
     } catch (err) {
       // Translate dispatch errors to a 502 Response so the caller's
@@ -208,10 +218,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
       });
     }
 
-    return new Response(collected, {
-      status: 200,
-      headers: { "content-type": "application/octet-stream" },
-    });
+    return new Response(collected, { status, headers: respHeaders });
   }
 
   async alive(handle: string): Promise<boolean> {
@@ -346,9 +353,17 @@ export class DesktopSandboxProvider implements SandboxProvider {
       { signal },
     );
 
+    let status: number | null = null;
     let collected = "";
     for await (const chunk of iter) {
-      collected += chunk.data;
+      if (chunk.headers) {
+        status = chunk.headers.status;
+      } else if (chunk.data != null) {
+        collected += chunk.data;
+      }
+    }
+    if (status != null && (status < 200 || status >= 300)) {
+      throw new Error(`daemon returned ${status}: ${collected}`);
     }
     return collected;
   }

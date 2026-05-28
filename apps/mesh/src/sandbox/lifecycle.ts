@@ -183,26 +183,24 @@ async function instantiate(
 }
 
 /**
- * Construct a `DesktopSandboxProvider` bound to the acting user's link.
- * Exported so the unified resolver in `resolve-provider.ts` can build one
- * without going through `getSharedSandboxProvider` (which requires
- * pre-populating `ctx.sandboxPreference` / `ctx.linkForCurrentRun` as a
- * side-effect — the resolver decides the kind from sandboxMap, not from those
- * ctx fields, so the side-effect would be misleading).
+ * Construct a `DesktopSandboxProvider` bound to a specific user's link.
+ * The caller (`resolve-provider.ts`) passes the target sandbox owner's
+ * userSub — that's the user whose daemon should execute the dispatch,
+ * which is not always the same as the acting principal (system-driven
+ * paths like cron, webhooks, and vm-events run sandboxes on behalf of
+ * a different user).
  */
 export async function buildDesktopProvider(
-  ctx: MeshContext,
+  _ctx: MeshContext,
+  userSub: string,
 ): Promise<SandboxProvider> {
   const { DesktopSandboxProvider } = await import(
     "@decocms/sandbox/provider/desktop"
   );
   const { getDispatch } = await import("../api/app");
-  const stateStore = new KyselySandboxProviderStateStore(ctx.db);
-  const userSub = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
+  const stateStore = new KyselySandboxProviderStateStore(_ctx.db);
   if (!userSub) {
-    throw new Error(
-      "buildDesktopProvider: cannot determine acting userSub from MeshContext — auth.user.id and auth.apiKey.userId are both absent",
-    );
+    throw new Error("buildDesktopProvider: userSub must be a non-empty string");
   }
   return new DesktopSandboxProvider({
     userSub,

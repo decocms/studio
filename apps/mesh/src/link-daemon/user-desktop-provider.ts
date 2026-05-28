@@ -132,7 +132,13 @@ export function createDesktopSandboxProvider(
     } catch {
       // already gone
     }
-    sandboxes.delete(state.handle);
+    // Compare-and-swap: under concurrent `ensureSandbox` calls, a second
+    // caller's `existing` closure can outlive the first caller's respawn.
+    // Without this check the second caller would delete the freshly
+    // registered replacement and leave the new daemon process orphaned.
+    if (sandboxes.get(state.handle) === state) {
+      sandboxes.delete(state.handle);
+    }
   };
 
   // In-flight ensureSandbox promises, keyed by handle. The cluster

@@ -143,6 +143,63 @@ describe("ws-gateway auth + handshake", () => {
 });
 
 describe("ws-gateway eviction", () => {
+  test("closes the prior WS with 4001 when a second daemon for the same user connects to the same pod", async () => {
+    const { url } = await startGateway({
+      validateBearer: async () => "user-1",
+    });
+    const wsA = new WebSocket(url, {
+      headers: { authorization: "Bearer a" },
+    } as unknown as string);
+    await new Promise<void>((r) => wsA.addEventListener("open", () => r()));
+    wsA.send(
+      encodeFrame({
+        type: "hello",
+        previewPort: 5174,
+        machineId: "m-A",
+        cliVersion: "1.0.0",
+        capabilities: [],
+      }),
+    );
+    for (let i = 0; i < 40; i++) {
+      const c = await registry.get("user-1");
+      if (c?.machineId === "m-A") break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+
+    const closeA = new Promise<number>((resolve) => {
+      wsA.addEventListener("close", (e) => resolve(e.code));
+    });
+
+    const wsB = new WebSocket(url, {
+      headers: { authorization: "Bearer b" },
+    } as unknown as string);
+    await new Promise<void>((r) => wsB.addEventListener("open", () => r()));
+    wsB.send(
+      encodeFrame({
+        type: "hello",
+        previewPort: 5175,
+        machineId: "m-B",
+        cliVersion: "1.0.0",
+        capabilities: [],
+      }),
+    );
+
+    const codeA = await closeA;
+    expect(codeA).toBe(4001);
+
+    // After eviction, B's claim should be the surviving entry.
+    for (let i = 0; i < 40; i++) {
+      const c = await registry.get("user-1");
+      if (c?.machineId === "m-B") {
+        expect(c.previewPort).toBe(5175);
+        wsB.close();
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error("B's claim never appeared after same-pod eviction");
+  });
+
   test("closes WS with 4001 when a different pod claims the user", async () => {
     const { url } = await startGateway({
       validateBearer: async () => "user-1",
@@ -301,5 +358,80 @@ describe("ws-gateway dispatch demux", () => {
     expect(decoded[0]?.type).toBe("chunk");
     expect(decoded[1]?.type).toBe("end");
     ws.close();
+  });
+
+  test("emits an error frame to every in-flight reply inbox on WS close", async () => {
+    const nats = makeFakeNatsAdapter();
+    const inboxA = "_INBOX.a";
+    const inboxB = "_INBOX.b";
+    const repliesA: Uint8Array[] = [];
+    const repliesB: Uint8Array[] = [];
+    nats.subs.set(inboxA, (data) => repliesA.push(data));
+    nats.subs.set(inboxB, (data) => repliesB.push(data));
+
+    const { url } = await startGateway({
+      validateBearer: async () => "user-1",
+      natsAdapter: nats,
+    });
+
+    const ws = new WebSocket(url, {
+      headers: { authorization: "Bearer x" },
+    } as unknown as string);
+    await new Promise<void>((r) => ws.addEventListener("open", () => r()));
+    ws.send(
+      encodeFrame({
+        type: "hello",
+        previewPort: 5174,
+        machineId: "m",
+        cliVersion: "1",
+        capabilities: [],
+      }),
+    );
+    for (let i = 0; i < 40; i++) {
+      if (nats.subs.has("links.dispatch.user-1")) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const dispatchHandler = nats.subs.get("links.dispatch.user-1")!;
+    const enc = new TextEncoder();
+    dispatchHandler(
+      enc.encode(
+        encodeFrame({
+          type: "request",
+          reqId: "r-A",
+          method: "GET",
+          path: "/_sandbox/x/dispatch",
+          headers: {},
+        }),
+      ),
+      inboxA,
+    );
+    dispatchHandler(
+      enc.encode(
+        encodeFrame({
+          type: "request",
+          reqId: "r-B",
+          method: "POST",
+          path: "/_sandbox/y/dispatch",
+          headers: {},
+        }),
+      ),
+      inboxB,
+    );
+
+    // Close the WS before any chunk/end arrives — the gateway should fan
+    // out a synthetic error frame to both reply inboxes so dispatchers
+    // don't hang.
+    ws.close();
+
+    for (let i = 0; i < 80; i++) {
+      if (repliesA.length > 0 && repliesB.length > 0) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(repliesA.length).toBeGreaterThanOrEqual(1);
+    expect(repliesB.length).toBeGreaterThanOrEqual(1);
+    const frameA = decodeFrame(new TextDecoder().decode(repliesA[0]!));
+    const frameB = decodeFrame(new TextDecoder().decode(repliesB[0]!));
+    expect(frameA.type).toBe("error");
+    expect(frameB.type).toBe("error");
   });
 });

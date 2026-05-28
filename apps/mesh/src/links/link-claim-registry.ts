@@ -164,23 +164,39 @@ export class NatsLinkClaimRegistry implements LinkClaimRegistry {
     }
     let stopped = false;
     let watcher: Awaited<ReturnType<KV["watch"]>> | null = null;
+
+    // Auto-reattach loop: if the JS KV watcher errors out (NATS reconnect,
+    // server restart, stream rebalance), the inner for-await ends and
+    // without reattachment the caller would never observe future eviction
+    // events. Back off briefly between attempts so a flapping server
+    // doesn't pin a CPU.
     void (async () => {
-      try {
-        watcher = await this.kv!.watch({ key: userSub });
-        for await (const entry of watcher) {
-          if (stopped) return;
-          const isDelete =
-            entry.operation === "DEL" || entry.operation === "PURGE";
-          const claim =
-            isDelete || !entry.value ? null : this.codec.decode(entry.value);
-          try {
-            listener(claim);
-          } catch {
-            // swallow
+      let backoffMs = 250;
+      while (!stopped) {
+        try {
+          watcher = await this.kv!.watch({ key: userSub });
+          backoffMs = 250; // reset after a successful attach
+          for await (const entry of watcher) {
+            if (stopped) return;
+            const isDelete =
+              entry.operation === "DEL" || entry.operation === "PURGE";
+            const claim =
+              isDelete || !entry.value ? null : this.codec.decode(entry.value);
+            try {
+              listener(claim);
+            } catch {
+              // swallow
+            }
           }
+          // Stream ended without throwing (server-driven). Reattach unless
+          // the caller has unsubscribed.
+          if (stopped) return;
+        } catch {
+          // attach or iteration failed — back off and retry.
         }
-      } catch {
-        // watch errored — silently stop. Caller will re-watch on reconnect.
+        if (stopped) return;
+        await new Promise<void>((r) => setTimeout(r, backoffMs));
+        backoffMs = Math.min(backoffMs * 2, 5_000);
       }
     })();
     return () => {

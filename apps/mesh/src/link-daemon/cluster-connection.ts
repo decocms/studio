@@ -63,62 +63,79 @@ export async function connectToCluster(
     const ac = new AbortController();
     cancellers.set(frame.reqId, () => ac.abort());
 
-    try {
-      // Streaming routes: any `/_sandbox/<handle>/<...>` path.
-      const isStreamingSandboxPath = /^\/_sandbox\/[^/]+\//.test(frame.path);
-      if (isStreamingSandboxPath) {
+    const sendErrorFrame = (err: unknown): void => {
+      try {
         ws.send(
           encodeFrame({
-            type: "headers",
+            type: "error",
             reqId: frame.reqId,
-            status: 200,
-            headers: { "content-type": "application/x-ndjson" },
+            code: "handler_error",
+            message: err instanceof Error ? err.message : String(err),
           }),
         );
+      } catch {
+        // WS already closed; nothing more to do.
+      }
+    };
+
+    try {
+      // Reverse-proxy routes (`/_sandbox/<handle>/<...>`) go through the
+      // streaming surface so the real upstream status reaches the cluster.
+      // The first yielded event is always `headers`; remaining events are
+      // body chunks.
+      if (/^\/_sandbox\/[^/]+\//.test(frame.path)) {
         try {
           for await (const ev of input.controlHandler.handleStream(frame)) {
             if (ac.signal.aborted) break;
-            ws.send(
-              encodeFrame({
-                type: "chunk",
-                reqId: frame.reqId,
-                data: ev.data,
-              }),
-            );
+            if (ev.type === "headers") {
+              ws.send(
+                encodeFrame({
+                  type: "headers",
+                  reqId: frame.reqId,
+                  status: ev.status,
+                  headers: ev.headers,
+                }),
+              );
+            } else {
+              ws.send(
+                encodeFrame({
+                  type: "chunk",
+                  reqId: frame.reqId,
+                  data: ev.data,
+                }),
+              );
+            }
           }
           ws.send(encodeFrame({ type: "end", reqId: frame.reqId }));
         } catch (err) {
-          ws.send(
-            encodeFrame({
-              type: "error",
-              reqId: frame.reqId,
-              code: "stream_error",
-              message: err instanceof Error ? err.message : String(err),
-            }),
-          );
+          sendErrorFrame(err);
         }
         return;
       }
 
-      const res = await input.controlHandler.handle(frame);
-      ws.send(
-        encodeFrame({
-          type: "headers",
-          reqId: frame.reqId,
-          status: res.status,
-          headers: res.headers ?? {},
-        }),
-      );
-      if (res.body !== undefined && res.body.length > 0) {
+      try {
+        const res = await input.controlHandler.handle(frame);
         ws.send(
           encodeFrame({
-            type: "chunk",
+            type: "headers",
             reqId: frame.reqId,
-            data: res.body,
+            status: res.status,
+            headers: res.headers ?? {},
           }),
         );
+        if (res.body !== undefined && res.body.length > 0) {
+          ws.send(
+            encodeFrame({
+              type: "chunk",
+              reqId: frame.reqId,
+              data: res.body,
+            }),
+          );
+        }
+        ws.send(encodeFrame({ type: "end", reqId: frame.reqId }));
+      } catch (err) {
+        sendErrorFrame(err);
       }
-      ws.send(encodeFrame({ type: "end", reqId: frame.reqId }));
     } finally {
       cancellers.delete(frame.reqId);
     }
@@ -133,6 +150,11 @@ export async function connectToCluster(
       activeWs = ws;
 
       ws.addEventListener("open", () => {
+        // Reset the reconnect counter so a long-lived session that survives
+        // a single blip doesn't immediately pay the maximum backoff on its
+        // next reconnect. Successive failures within one reconnect cycle
+        // still ramp up normally.
+        attempt = 0;
         ws.send(
           encodeFrame({
             type: "hello",

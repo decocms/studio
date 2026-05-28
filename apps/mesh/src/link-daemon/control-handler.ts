@@ -1,8 +1,10 @@
 /**
  * In-process control handler for the daemon. Replaces the previous HTTP+HMAC
  * `control-plane.ts`. The cluster-connection demuxer (task 12) calls
- * `handle(requestFrame)` for one-shot routes, and `handleStream(requestFrame)`
- * for `/_sandbox/<handle>/*` paths whose responses stream.
+ * `handle(requestFrame)` for one-shot lifecycle routes, and
+ * `handleStream(requestFrame)` for every `/_sandbox/<handle>/*` reverse-proxy
+ * path (those paths can be streaming or one-shot; either way the streaming
+ * surface yields real upstream status + headers).
  *
  * Routes:
  *   POST   /api/sandboxes                 → ensureSandbox (in-process)
@@ -30,17 +32,20 @@ interface EnsureSandboxBody {
   repo?: RepoRef;
 }
 
+export type StreamEvent =
+  | { type: "headers"; status: number; headers: Record<string, string> }
+  | { type: "raw-chunk"; data: string };
+
 export interface ControlHandler {
-  /** Single-response routes (sandbox lifecycle + non-streaming proxies). */
+  /** Single-response lifecycle routes (`/api/sandboxes` POST/DELETE). */
   handle(req: RequestFrame): Promise<ControlHandlerResponse>;
   /**
-   * Streaming routes (`/_sandbox/<handle>/<...>`). Yields `{type, data}`
-   * objects, where `data` is a raw body chunk text. The cluster-connection
-   * encodes each as a `chunk` frame.
+   * Reverse-proxy routes (`/_sandbox/<handle>/<...>`). Yields exactly one
+   * `headers` event (carrying the upstream status) followed by zero or more
+   * `raw-chunk` events with body text. Cluster-connection encodes each as
+   * the matching dispatch frame so the caller sees the real upstream status.
    */
-  handleStream(
-    req: RequestFrame,
-  ): AsyncIterable<{ type: "raw-chunk"; data: string }>;
+  handleStream(req: RequestFrame): AsyncIterable<StreamEvent>;
 }
 
 const SANDBOX_PATH = /^\/_sandbox\/([^/]+)(\/.*)?$/;
@@ -88,42 +93,34 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
         return { status: 204 };
       }
 
-      // Non-streaming reverse-proxy: `/_sandbox/<handle>/<...>` paths whose
-      // upstream returns a single body. Streaming paths use handleStream.
-      const sm = SANDBOX_PATH.exec(req.path);
-      if (sm) {
-        const handle = sm[1] ?? "";
-        const rest = sm[2] ?? "/";
-        const port = deps.provider.proxyPort(handle);
-        if (port == null) return { status: 404, body: "unknown handle" };
-        const token = deps.provider.getDaemonToken(handle);
-        const headers: Record<string, string> = { ...req.headers };
-        if (token) headers.authorization = `Bearer ${token}`;
-        const res = await fetcher(`http://127.0.0.1:${port}/_sandbox${rest}`, {
-          method: req.method,
-          headers,
-          ...(req.body !== undefined ? { body: req.body } : {}),
-          redirect: "manual",
-        });
-        const text = await res.text();
-        return {
-          status: res.status,
-          headers: Object.fromEntries(res.headers),
-          body: text,
-        };
-      }
       return { status: 404, body: "not found" };
     },
 
     handleStream(req) {
       const sm = SANDBOX_PATH.exec(req.path);
       if (!sm) {
-        return (async function* () {})();
+        return (async function* () {
+          yield {
+            type: "headers" as const,
+            status: 404,
+            headers: { "content-type": "text/plain" },
+          };
+          yield { type: "raw-chunk" as const, data: "not found" };
+        })();
       }
       const handle = sm[1] ?? "";
       const rest = sm[2] ?? "/";
       const port = deps.provider.proxyPort(handle);
-      if (port == null) return (async function* () {})();
+      if (port == null) {
+        return (async function* () {
+          yield {
+            type: "headers" as const,
+            status: 404,
+            headers: { "content-type": "text/plain" },
+          };
+          yield { type: "raw-chunk" as const, data: "unknown handle" };
+        })();
+      }
       const token = deps.provider.getDaemonToken(handle);
       const streamHeaders: Record<string, string> = { ...req.headers };
       if (token) streamHeaders.authorization = `Bearer ${token}`;
@@ -136,19 +133,32 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
               method: req.method,
               headers: streamHeaders,
               ...(req.body !== undefined ? { body: req.body } : {}),
+              redirect: "manual",
             },
           );
+          yield {
+            type: "headers" as const,
+            status: res.status,
+            headers: Object.fromEntries(res.headers),
+          };
           if (!res.body) return;
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
           try {
             while (true) {
               const { value, done } = await reader.read();
-              if (done) break;
+              if (done) {
+                // Flush any pending multi-byte sequence held by the decoder.
+                const tail = decoder.decode();
+                if (tail.length > 0) {
+                  yield { type: "raw-chunk" as const, data: tail };
+                }
+                break;
+              }
               if (value && value.length) {
                 yield {
                   type: "raw-chunk" as const,
-                  data: decoder.decode(value),
+                  data: decoder.decode(value, { stream: true }),
                 };
               }
             }

@@ -54,9 +54,45 @@ describe("dispatcher", () => {
       path: "/_sandbox/x",
       headers: {},
     })) {
-      out.push(chunk.data);
+      if (chunk.data != null) out.push(chunk.data);
     }
     expect(out).toEqual(["a", "b"]);
+  });
+
+  test("yields a headers event before chunks", async () => {
+    const nats = makeFakeNats();
+    nats.subscribe("links.dispatch.user-1", (data, reply) => {
+      const req = decodeFrame(new TextDecoder().decode(data));
+      const reqId = (req as Extract<DispatchFrame, { type: "request" }>).reqId;
+      const enc = new TextEncoder();
+      const headersFrame = encodeFrame({
+        type: "headers",
+        reqId,
+        status: 418,
+        headers: { "content-type": "text/plain" },
+      });
+      const chunk = encodeFrame({ type: "chunk", reqId, data: "tea" });
+      const end = encodeFrame({ type: "end", reqId });
+      setTimeout(() => {
+        const handler = nats.subs.get(reply!);
+        handler?.(enc.encode(headersFrame));
+        handler?.(enc.encode(chunk));
+        handler?.(enc.encode(end));
+      }, 0);
+    });
+    const dispatch = createDispatcher({ nats, requestTimeoutMs: 5_000 });
+    let status: number | null = null;
+    let body = "";
+    for await (const ev of dispatch("user-1", {
+      method: "GET",
+      path: "/x",
+      headers: {},
+    })) {
+      if (ev.headers) status = ev.headers.status;
+      else if (ev.data != null) body += ev.data;
+    }
+    expect(status).toBe(418);
+    expect(body).toBe("tea");
   });
 
   test("throws when an error frame arrives", async () => {

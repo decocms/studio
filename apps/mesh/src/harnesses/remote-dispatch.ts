@@ -69,6 +69,7 @@ export function remoteDispatch(
       };
 
       for await (const raw of iter) {
+        if (raw.data == null) continue;
         buffer += raw.data;
         let sep = buffer.indexOf("\n\n");
         while (sep !== -1) {

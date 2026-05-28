@@ -287,6 +287,33 @@ if (settings.localMode) {
       try {
         const seeded = await seedLocalMode();
         void seeded;
+        // Dev-only: mint an API-key-backed session file for the
+        // auto-spawned `deco link` daemon when the dev CLI asked us to.
+        // Gated on DEV_LINK_SESSION_PATH so production never touches it.
+        if (process.env.DEV_LINK_SESSION_PATH) {
+          try {
+            const { bootstrapDevLinkSession } = await import(
+              "./auth/dev-link-session"
+            );
+            const clusterBaseUrl =
+              settings.baseUrl ?? `http://localhost:${settings.port}`;
+            const result = await bootstrapDevLinkSession(
+              settings.dataDir,
+              clusterBaseUrl,
+            );
+            if (result) {
+              console.log(
+                `[dev-link] session ready at ${result.path} (userSub=${result.userSub})`,
+              );
+            } else {
+              console.warn(
+                "[dev-link] no admin user yet — skipping session bootstrap. The auto-spawned link will refuse to start until an admin exists.",
+              );
+            }
+          } catch (err) {
+            console.error("[dev-link] bootstrap failed:", err);
+          }
+        }
       } catch (error) {
         console.error("Failed to seed local mode:", error);
       } finally {

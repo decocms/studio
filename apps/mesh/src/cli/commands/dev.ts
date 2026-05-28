@@ -148,6 +148,12 @@ export async function startDevServer(
       DECOCMS_HOME: settings.dataDir,
       DATA_DIR: settings.dataDir,
       DECO_CLI: "1",
+      // Tell the cluster where to write the dev-link session file when
+      // local-sandbox-provider is on, so the auto-spawned link daemon
+      // finds session.json under its DATA_DIR.
+      ...(options.localSandboxProvider
+        ? { DEV_LINK_SESSION_PATH: join(linkDataDir, "session.json") }
+        : {}),
       ...(settings.baseUrl ? { BASE_URL: settings.baseUrl } : {}),
     },
     stdio: [
@@ -205,6 +211,18 @@ export async function startDevServer(
               // Wait for the cluster's HTTP port before spawning the link
               // daemon so it can immediately reach the WS gateway.
               await waitForPort(Number(settings.port), { intervalMs: 500 });
+              // Then wait for the cluster's `bootstrapDevLinkSession` to
+              // drop session.json into linkDataDir, since `readSession`
+              // throws "No session found" if it's missing.
+              const sessionPath = join(linkDataDir, "session.json");
+              const deadline = Date.now() + 30_000;
+              while (Date.now() < deadline) {
+                if (await Bun.file(sessionPath).exists()) return;
+                await new Promise((r) => setTimeout(r, 250));
+              }
+              throw new Error(
+                `[dev-link] session.json not minted at ${sessionPath} after 30s — check cluster logs for [dev-link] errors`,
+              );
             },
           });
           // Mark Sandbox ready once the link binary's HTTP server accepts

@@ -29,8 +29,19 @@ export interface DispatchRequest {
   body?: string;
 }
 
+export interface DispatchHeaders {
+  status: number;
+  headers: Record<string, string>;
+}
+
+/**
+ * Yielded events. The daemon's `headers` frame surfaces as `{ headers }` (once,
+ * before any body chunks); body chunks surface as `{ data }`. Consumers that
+ * need the upstream status must read `chunk.headers` rather than assuming 200.
+ */
 export interface DispatchChunk {
-  data: string;
+  data?: string;
+  headers?: DispatchHeaders;
 }
 
 export interface DispatchOptions {
@@ -58,14 +69,27 @@ export function createDispatcher(deps: CreateDispatcherDeps): DispatchFn {
   return function dispatch(userSub, req, opts) {
     return {
       async *[Symbol.asyncIterator]() {
+        // Fast-path: if the caller's signal is already aborted at entry,
+        // the `addEventListener("abort", ...)` below would never fire (the
+        // abort event has already been dispatched). Without this check the
+        // request would be published and the consumer would wait the full
+        // requestTimeoutMs for a reply that's never coming.
+        if (opts?.signal?.aborted) {
+          throw new Error("dispatch aborted");
+        }
         const reqId = crypto.randomUUID();
         const inbox = deps.nats.createInbox();
         const queue: DispatchFrame[] = [];
         let resolve: (() => void) | null = null;
         let done = false;
         let error: Error | null = null;
+        let firstReplyTimer: ReturnType<typeof setTimeout> | null = null;
 
         const wake = (): void => {
+          if (firstReplyTimer) {
+            clearTimeout(firstReplyTimer);
+            firstReplyTimer = null;
+          }
           const r = resolve;
           resolve = null;
           r?.();
@@ -122,6 +146,7 @@ export function createDispatcher(deps: CreateDispatcherDeps): DispatchFn {
 
         try {
           while (!done) {
+            if (error) throw error;
             if (queue.length === 0) {
               const remaining = firstReplyDeadline - Date.now();
               if (!receivedAny && remaining <= 0) {
@@ -130,7 +155,7 @@ export function createDispatcher(deps: CreateDispatcherDeps): DispatchFn {
               await new Promise<void>((res) => {
                 resolve = res;
                 if (!receivedAny) {
-                  setTimeout(wake, Math.max(0, remaining));
+                  firstReplyTimer = setTimeout(wake, Math.max(0, remaining));
                 }
               });
               if (error) throw error;
@@ -140,16 +165,23 @@ export function createDispatcher(deps: CreateDispatcherDeps): DispatchFn {
             receivedAny = true;
             if (frame.type === "chunk") {
               yield { data: frame.data };
+            } else if (frame.type === "headers") {
+              yield {
+                headers: { status: frame.status, headers: frame.headers },
+              };
             } else if (frame.type === "end") {
               return;
             } else if (frame.type === "error") {
               throw new Error(`${frame.code}: ${frame.message}`);
             }
-            // headers and other frame types are ignored for v1
           }
           if (error) throw error;
         } finally {
           opts?.signal?.removeEventListener("abort", onAbort);
+          if (firstReplyTimer) {
+            clearTimeout(firstReplyTimer);
+            firstReplyTimer = null;
+          }
           cleanup();
         }
       },
