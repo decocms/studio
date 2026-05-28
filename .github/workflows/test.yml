@@ -117,7 +117,11 @@ jobs:
             ! -path '*/tools/thread/update.test.ts' \
             ! -path '*/tools/thread/list.test.ts' \
             ! -path '*/tools/thread/list-messages.test.ts' \
-            ! -path '*/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts')
+            ! -path '*/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts' \
+            ! -path '*/migrations/087-fix-vm-map-rekey.test.ts' \
+            ! -path '*/migrations/088-purge-cli-activate-keys.test.ts' \
+            ! -path '*/migrations/089-rename-remote-user-to-desktop.test.ts' \
+            ! -path '*/migrations/092-sandbox-naming-uniformization.test.ts')
           file_count=$(echo "$files" | wc -l)
           echo "Running $file_count test files (one bun process per file)"
           echo "$files"

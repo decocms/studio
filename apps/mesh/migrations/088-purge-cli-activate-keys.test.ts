@@ -9,21 +9,19 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../src/database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../src/storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../src/database/test-db-pg";
+import type { MeshDatabase } from "../src/database";
 import { up as up088 } from "./088-purge-cli-activate-keys";
 
 const ORG = "org_test";
 const USER = "user_test";
 
 async function insertProviderKey(
-  database: TestDatabase,
+  database: MeshDatabase,
   id: string,
   providerId: string,
 ): Promise<void> {
@@ -38,7 +36,7 @@ async function insertProviderKey(
 }
 
 async function countByProvider(
-  database: TestDatabase,
+  database: MeshDatabase,
   providerId: string,
 ): Promise<number> {
   const result = await sql<{ n: number }>`
@@ -48,16 +46,16 @@ async function countByProvider(
 }
 
 describe("migration 083 — purge cli-activate sentinel keys", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   it("removes claude-code and codex rows", async () => {

@@ -11,14 +11,12 @@
 import { beforeEach, afterEach, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../src/database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../src/storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../src/database/test-db-pg";
+import type { MeshDatabase } from "../src/database";
 import { up as up087 } from "./087-fix-vm-map-rekey";
 
 const USER = "user_test";
@@ -29,7 +27,7 @@ interface ConnectionRow {
 }
 
 async function getMetadata(
-  database: TestDatabase,
+  database: MeshDatabase,
   id: string,
 ): Promise<Record<string, unknown>> {
   const row = (await sql<ConnectionRow>`
@@ -41,7 +39,7 @@ async function getMetadata(
 }
 
 async function insertVirtualConnection(
-  database: TestDatabase,
+  database: MeshDatabase,
   id: string,
   metadata: Record<string, unknown>,
 ): Promise<void> {
@@ -61,16 +59,16 @@ async function insertVirtualConnection(
 }
 
 describe("migration 082 — fix vmMap rekey", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   it("wraps a v1 bare entry under its sandboxProviderKind", async () => {

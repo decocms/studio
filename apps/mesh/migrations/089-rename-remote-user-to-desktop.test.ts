@@ -13,14 +13,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../src/database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../src/storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../src/database/test-db-pg";
+import type { MeshDatabase } from "../src/database";
 import { up as up089 } from "./089-rename-remote-user-to-desktop";
 
 const USER = "user_test";
@@ -31,7 +29,7 @@ interface ConnectionRow {
 }
 
 async function getMetadata(
-  database: TestDatabase,
+  database: MeshDatabase,
   id: string,
 ): Promise<Record<string, unknown>> {
   const row = (await sql<ConnectionRow>`
@@ -43,7 +41,7 @@ async function getMetadata(
 }
 
 async function insertVirtualConnection(
-  database: TestDatabase,
+  database: MeshDatabase,
   id: string,
   metadata: Record<string, unknown>,
 ): Promise<void> {
@@ -61,16 +59,16 @@ async function insertVirtualConnection(
 }
 
 describe("migration 089 — rename remote-user → desktop", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   it("renames the inner 'remote-user' kind key to 'desktop'", async () => {

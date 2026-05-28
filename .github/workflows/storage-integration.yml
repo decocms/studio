@@ -83,7 +83,11 @@ jobs:
                  apps/mesh/src/tools/thread/update.test.ts \
                  apps/mesh/src/tools/thread/list.test.ts \
                  apps/mesh/src/tools/thread/list-messages.test.ts \
-                 apps/mesh/src/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts"
+                 apps/mesh/src/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts \
+                 apps/mesh/migrations/087-fix-vm-map-rekey.test.ts \
+                 apps/mesh/migrations/088-purge-cli-activate-keys.test.ts \
+                 apps/mesh/migrations/089-rename-remote-user-to-desktop.test.ts \
+                 apps/mesh/migrations/092-sandbox-naming-uniformization.test.ts"
           failed_files=""
           crashed_files=""
           for f in $files; do
