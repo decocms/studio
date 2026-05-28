@@ -10,6 +10,19 @@ import type { MeshDatabase } from "../database";
 import { createMeshContextFactory } from "./context-factory";
 import type { BetterAuthInstance } from "./mesh-context";
 import type { EventBus } from "../event-bus/interface";
+import type { QueryEngine } from "../monitoring/query-engine";
+
+// Pass stub engines so the factory's default branch (which lazy-imports
+// `@duckdb/node-api`) never runs. DuckDB's native finalizer trips a
+// Bun teardown crash (SIGSEGV/SIGILL/SIGABRT) on process exit — same
+// behavior on 1.3.5, 1.3.14, and 1.4-canary. The factory doesn't use
+// `monitoringEngines` for any of the assertions in this file, so the
+// stubs just need to satisfy the interface.
+const noopEngine: QueryEngine = { query: async () => [] };
+const stubMonitoringEngines = () => ({
+  monitoringEngine: noopEngine,
+  metricEngine: noopEngine,
+});
 
 // Mock EventBus
 const createMockEventBus = (): EventBus => ({
@@ -94,6 +107,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       expect(typeof factory).toBe("function");
@@ -121,6 +135,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const request = createMockRequest({
@@ -149,6 +164,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const request = createMockRequest({
@@ -172,6 +188,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const request = createMockRequest({
@@ -202,6 +219,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const request = createMockRequest();
@@ -240,6 +258,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const request = createMockRequest();
@@ -261,6 +280,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const request = createMockRequest({
@@ -287,6 +307,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const request = createMockRequest({
@@ -338,6 +359,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const request = createMockRequest({
@@ -380,6 +402,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const request = createMockRequest({
@@ -422,6 +445,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const requestA = createMockRequest({
@@ -460,6 +484,7 @@ describe("createMeshContextFactory", () => {
           meter: {} as unknown as Meter,
         },
         eventBus: createMockEventBus(),
+        monitoringEngines: stubMonitoringEngines(),
       });
 
       const requestB = createMockRequest({

@@ -115,6 +115,19 @@ export interface MeshContextConfig {
   memberRoleCache?: MemberRoleCache;
   /** Required for desktop sandbox auto-resolution; tests may omit. */
   linkClaimRegistry?: LinkClaimRegistry;
+  /**
+   * Test-only escape hatch: pre-built monitoring + metric engines. When
+   * provided, skips the `@duckdb/node-api` import path that otherwise
+   * runs in dev/test (when no `clickhouseUrl` is set). DuckDB's native
+   * binding triggers a Bun teardown crash (SIGSEGV/SIGILL/SIGABRT) on
+   * process exit, even on 1.3.14 / 1.4-canary. Production never sets
+   * this — it either has a real `clickhouseUrl` or wants the real
+   * DuckDB engine.
+   */
+  monitoringEngines?: {
+    monitoringEngine: QueryEngine;
+    metricEngine: QueryEngine;
+  };
 }
 
 // ============================================================================
@@ -969,12 +982,22 @@ export async function createMeshContextFactory(
   // Create monitoring engines (shared across requests)
   const clickhouseUrl = getSettings().clickhouseUrl;
   const isClickHouse = !!clickhouseUrl;
-  const dialect: SqlDialect = isClickHouse ? "clickhouse" : "duckdb";
+  const dialect: SqlDialect = config.monitoringEngines
+    ? "duckdb"
+    : isClickHouse
+      ? "clickhouse"
+      : "duckdb";
 
   let monitoringEngine: QueryEngine;
   let metricEngine: QueryEngine;
 
-  if (isClickHouse) {
+  if (config.monitoringEngines) {
+    // Test-only path: caller supplied stubs to avoid loading
+    // `@duckdb/node-api` (whose native finalizer trips a Bun teardown
+    // crash). See MeshContextConfig.monitoringEngines for the why.
+    monitoringEngine = config.monitoringEngines.monitoringEngine;
+    metricEngine = config.monitoringEngines.metricEngine;
+  } else if (isClickHouse) {
     monitoringEngine = new ClickHouseClientEngine(clickhouseUrl!);
     metricEngine = new ClickHouseClientEngine(clickhouseUrl!);
   } else {
