@@ -28,9 +28,12 @@ describe("VirtualMCPStorage.findById (Decopilot)", () => {
       VALUES (${orgId}, ${orgId}, ${orgId}, ${now})
       ON CONFLICT (id) DO NOTHING
     `.execute(database.db);
+    // emailVerified is BOOLEAN in real Postgres (Better Auth's migration);
+    // PGlite test-helpers hand-rolled it as INTEGER, which is why the old
+    // version of this test inserted `0` and got away with it.
     await sql`
       INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
-      VALUES ('user_decopilot_test', 'user_decopilot_test@test.com', 0, 'Test Decopilot', ${now}, ${now})
+      VALUES ('user_decopilot_test', 'user_decopilot_test@test.com', false, 'Test Decopilot', ${now}, ${now})
       ON CONFLICT (id) DO NOTHING
     `.execute(database.db);
     await database.db
