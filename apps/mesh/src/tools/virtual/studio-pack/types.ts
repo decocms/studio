@@ -47,6 +47,12 @@ export type StudioPackChecklistItem = {
   activeForm: string;
   action: ChecklistItemAction;
   isCompleted: (c: ChecklistContext) => Promise<boolean>;
+  /**
+   * Keep offering this prompt as a chat icebreaker even after `isCompleted`.
+   * For repeatable actions (e.g. creating another landing page) that aren't
+   * one-time setup steps. Defaults to false (hide once complete).
+   */
+  alwaysSuggest?: boolean;
 };
 
 export type ResolvedChecklistItem = {
@@ -54,6 +60,7 @@ export type ResolvedChecklistItem = {
   activeForm: string;
   action: ChecklistItemAction;
   completed: boolean;
+  alwaysSuggest?: boolean;
 };
 
 export type StudioPackConnectionKey =

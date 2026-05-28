@@ -10,6 +10,7 @@ import type {
   ResolvedChecklistItem,
   ResolvedRuntime,
   RuntimeResolveContext,
+  StudioPackChecklistItem,
   StudioPackConnectionKey,
 } from "./types";
 
@@ -64,11 +65,12 @@ export async function resolveStudioPackChecklist(
 ): Promise<ResolvedChecklistItem[]> {
   if (!("checklist" in agent)) return [];
   return Promise.all(
-    agent.checklist.map(async (item) => ({
+    agent.checklist.map(async (item: StudioPackChecklistItem) => ({
       label: item.label,
       activeForm: item.activeForm,
       action: item.action,
       completed: await item.isCompleted(c),
+      alwaysSuggest: item.alwaysSuggest,
     })),
   );
 }

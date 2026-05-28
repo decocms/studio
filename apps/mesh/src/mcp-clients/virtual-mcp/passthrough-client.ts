@@ -110,7 +110,10 @@ export class PassthroughClient extends GatewayClient {
     const completed = new Set(
       items
         .filter(
-          (item) => item.completed && item.action.kind === "open-agent-thread",
+          (item) =>
+            item.completed &&
+            !item.alwaysSuggest &&
+            item.action.kind === "open-agent-thread",
         )
         .map((item) => (item.action as { promptName: string }).promptName),
     );
