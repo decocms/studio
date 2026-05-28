@@ -57,7 +57,11 @@ jobs:
       # doesn't poison the next — same protection as the unit job.
       - name: Run storage integration tests
         run: |
-          files="apps/mesh/src/storage/virtual.test.ts"
+          files="apps/mesh/src/storage/virtual.test.ts \
+                 apps/mesh/src/storage/downstream-token.test.ts \
+                 apps/mesh/src/storage/sandbox-runner-state.test.ts \
+                 apps/mesh/src/storage/threads.test.ts \
+                 apps/mesh/src/storage/connection.test.ts"
           for f in $files; do
             echo "::group::$f"
             bun test "$f"

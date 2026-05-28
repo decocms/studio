@@ -1,20 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { sql } from "kysely";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
-import { createTestSchema } from "./test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import { SqlThreadStorage } from "./threads";
 import type { ThreadMessage } from "./types";
 
 describe("SqlThreadStorage", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let storage: SqlThreadStorage;
 
   beforeAll(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
     // Insert org and user for thread FK constraints
     await database.db
       .insertInto("organization")
@@ -25,22 +26,20 @@ describe("SqlThreadStorage", () => {
         createdAt: new Date().toISOString(),
       })
       .execute();
-    await database.db
-      .insertInto("user")
-      .values({
-        id: "user_1",
-        email: "test@test.com",
-        emailVerified: 0,
-        name: "Test",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .execute();
+    // Use raw SQL: the Database schema type still has emailVerified as
+    // `number` (matching the old PGlite hand-rolled schema). Real Postgres
+    // has it as BOOLEAN per Better Auth's migration. Bypassing the typed
+    // builder until storage/types.ts gets regenerated against real PG.
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES ('user_1', 'test@test.com', false, 'Test', ${now}, ${now})
+    `.execute(database.db);
     storage = new SqlThreadStorage(database.db);
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   describe("saveMessages (upsert)", () => {
