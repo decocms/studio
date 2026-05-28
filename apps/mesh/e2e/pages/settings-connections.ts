@@ -49,11 +49,15 @@ export class SettingsConnectionsPage {
 
   /** Assert a connection card with the given title is visible. */
   async expectConnectionVisible(title: string): Promise<void> {
-    await expect(this.page.getByText(title, { exact: true })).toBeVisible();
+    await expect(
+      this.page.getByRole("heading", { name: title, exact: true }),
+    ).toBeVisible();
   }
 
   /** Assert no connection card with the given title is present. */
   async expectConnectionHidden(title: string): Promise<void> {
-    await expect(this.page.getByText(title, { exact: true })).toHaveCount(0);
+    await expect(
+      this.page.getByRole("heading", { name: title, exact: true }),
+    ).toHaveCount(0);
   }
 }
