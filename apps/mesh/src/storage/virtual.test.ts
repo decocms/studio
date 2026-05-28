@@ -1,23 +1,24 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "kysely";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
-import { createTestSchema, seedCommonTestFixtures } from "./test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import { VirtualMCPStorage } from "./virtual";
 import { getDecopilotId } from "@decocms/mesh-sdk";
 
 describe("VirtualMCPStorage.findById (Decopilot)", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let storage: VirtualMCPStorage;
   const orgId = "org_decopilot_test";
 
   beforeAll(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    // Wipe whatever the previous test file left behind. Migrations have
+    // already been run by the workflow before any test starts.
+    await resetTestPgDatabase(database);
 
     // Seed an org and an active connection for it so we can verify decopilot
     // does NOT aggregate connections (old code would return this connection).
@@ -65,7 +66,7 @@ describe("VirtualMCPStorage.findById (Decopilot)", () => {
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   test("returns the synthesized decopilot entity with NO aggregated connections", async () => {
