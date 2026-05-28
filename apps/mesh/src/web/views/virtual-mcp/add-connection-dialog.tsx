@@ -2,6 +2,7 @@ import {
   type ConnectionAccessTab,
   accessTabWhereValue,
   coerceConnectionAccessTab,
+  filterConnectionsByAccessTab,
 } from "@/shared/utils/connection-access-tab";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { groupConnections } from "@/shared/utils/group-connections";
@@ -236,7 +237,14 @@ function ConnectionDialogContent({
     connectionsData?.pages.flatMap(
       (p: CollectionListOutput<ConnectionEntity>) => p?.items ?? [],
     ) ?? [];
-  const grouped = groupConnections(allConnections);
+  // The server-side `where` filters real rows by access, but well-known
+  // connections (e.g. the dev-assets "Local Files") are injected after the SQL
+  // filter and would otherwise leak into Shared/Personal. Guard client-side
+  // too. While searching, tabs are hidden so the search spans every bucket.
+  const visibleConnections = searchLower
+    ? allConnections
+    : filterConnectionsByAccessTab(allConnections, activeTab);
+  const grouped = groupConnections(visibleConnections);
 
   // Build set of connected app names to deduplicate catalog items
   const connectedAppNames = new Set(
