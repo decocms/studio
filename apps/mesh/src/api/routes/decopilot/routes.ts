@@ -201,8 +201,17 @@ async function resolvePerRequestModels(
   return {
     credentialId: chat.credentialId,
     thinking: toModelInfo(chat),
-    ...(image ? { image: toModelInfo(image) } : {}),
-    ...(webResearch ? { deepResearch: toModelInfo(webResearch) } : {}),
+    ...(image
+      ? { image: { ...toModelInfo(image), credentialId: image.credentialId } }
+      : {}),
+    ...(webResearch
+      ? {
+          deepResearch: {
+            ...toModelInfo(webResearch),
+            credentialId: webResearch.credentialId,
+          },
+        }
+      : {}),
   };
 }
 

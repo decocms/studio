@@ -7,8 +7,11 @@
 import { describe, expect, test } from "bun:test";
 import { getBuiltInTools, type BuiltinToolParams } from "./index";
 
+const mockProvider = { thinkingModel: {} as never } as never;
 const mockParams: BuiltinToolParams = {
-  provider: { thinkingModel: {} as never } as never,
+  provider: mockProvider,
+  imageProvider: mockProvider,
+  deepResearchProvider: mockProvider,
   organization: { id: "org_test" } as never,
   models: {
     connectionId: "conn_test",

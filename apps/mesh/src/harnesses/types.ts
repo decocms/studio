@@ -43,8 +43,8 @@ export interface ModelsConfig {
   thinking: ModelSelection;
   coding?: ModelSelection;
   fast?: ModelSelection;
-  image?: ModelSelection;
-  deepResearch?: ModelSelection;
+  image?: ModelSelection & { credentialId: string };
+  deepResearch?: ModelSelection & { credentialId: string };
 }
 
 /** UI-shape message a harness receives. Structurally compatible with the
@@ -112,6 +112,20 @@ export interface HarnessProcessLocal {
    *  before invoking us. The decopilot harness rejects `null`; CLI
    *  harnesses don't read this field. Cluster-only type. */
   provider: unknown | null;
+
+  /** Already-activated MeshProvider for the `generate_image` tool. May
+   *  alias `provider` when the org's `image` tier uses the same credential
+   *  as the chat (or no image tier is configured). Distinct activation
+   *  when admin pairs image with a different key. Cluster-only type. */
+  imageProvider?: unknown | null;
+
+  /** Already-activated MeshProvider for the `web_search` tool's deep
+   *  research path. May alias `provider` when the org's `web_research`
+   *  tier uses the same credential as the chat (or no tier is
+   *  configured). Decoupling lets web_search keep using Gemini's async
+   *  research API even when the chat model is routed via LiteLLM/OpenRouter.
+   *  Cluster-only type. */
+  deepResearchProvider?: unknown | null;
 
   /** Push callback for title-generation work. The streamText loop
    *  registers `titleHandle.promise.then(...)` as a pending op so the

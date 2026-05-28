@@ -33,6 +33,16 @@ const PersistedModelInfoSchema = z.object({
   provider: z.string().nullish(),
 });
 
+/**
+ * Image and deepResearch tiers can resolve to a different credential than the
+ * chat tier. Pre-fix runs persisted without these per-tool credentialIds — on
+ * resume, the dispatch falls back to the chat credential, matching the
+ * legacy single-provider behavior.
+ */
+const PersistedToolModelInfoSchema = PersistedModelInfoSchema.extend({
+  credentialId: z.string().optional(),
+});
+
 /** Raw DB shape may include legacy `toolApprovalLevel: "plan"`. */
 const PersistedRunConfigRawSchema = z.object({
   models: z.object({
@@ -40,8 +50,8 @@ const PersistedRunConfigRawSchema = z.object({
     thinking: PersistedModelInfoSchema,
     coding: PersistedModelInfoSchema.optional(),
     fast: PersistedModelInfoSchema.optional(),
-    image: PersistedModelInfoSchema.optional(),
-    deepResearch: PersistedModelInfoSchema.optional(),
+    image: PersistedToolModelInfoSchema.optional(),
+    deepResearch: PersistedToolModelInfoSchema.optional(),
   }),
   agent: z.object({ id: z.string() }),
   temperature: z.number(),
@@ -95,14 +105,23 @@ function toModelInfo(m: PersistedModelInfo) {
  * have been omitted at persistence time.
  */
 export function toModelsConfig(models: PersistedRunConfig["models"]) {
+  const chatCred = models.credentialId;
   return {
-    credentialId: models.credentialId,
+    credentialId: chatCred,
     thinking: toModelInfo(models.thinking),
     ...(models.coding && { coding: toModelInfo(models.coding) }),
     ...(models.fast && { fast: toModelInfo(models.fast) }),
-    ...(models.image && { image: toModelInfo(models.image) }),
+    ...(models.image && {
+      image: {
+        ...toModelInfo(models.image),
+        credentialId: models.image.credentialId ?? chatCred,
+      },
+    }),
     ...(models.deepResearch && {
-      deepResearch: toModelInfo(models.deepResearch),
+      deepResearch: {
+        ...toModelInfo(models.deepResearch),
+        credentialId: models.deepResearch.credentialId ?? chatCred,
+      },
     }),
   };
 }
