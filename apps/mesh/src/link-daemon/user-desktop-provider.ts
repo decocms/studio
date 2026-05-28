@@ -20,7 +20,6 @@
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import type { TunnelHandle } from "./tunnel";
 
 export interface SpawnResult {
   port: number;
@@ -49,11 +48,7 @@ export interface SandboxState {
   handle: string;
   port: number;
   process: SpawnResult;
-  /** Warp tunnel handle, or null in --no-tunnel mode. */
-  tunnel: TunnelHandle | null;
-  /** Public URL the cluster + browser use to reach this daemon.
-   *  - prod: `https://<handle>.deco.host` (the tunnel above)
-   *  - dev (--no-tunnel): `http://127.0.0.1:<port>` */
+  /** Local URL for the spawned sandbox daemon. Always `http://127.0.0.1:<port>`. */
   sandboxApiUrl: string;
   lastUsedAt: number;
   activeDispatchCount: number;
@@ -71,14 +66,6 @@ export interface DesktopSandboxProvider {
   shutdown(): Promise<void>;
 }
 
-export interface OpenTunnelDeps {
-  /** Public hostname (subdomain) for the daemon's tunnel.
-   *  e.g. `mellow-slate-bb5b7.deco.host` */
-  subDomain: string;
-  /** Local target the tunnel forwards to. e.g. `http://127.0.0.1:63266` */
-  localAddr: string;
-}
-
 export interface DesktopSandboxProviderDeps {
   dataDir: string;
   spawnDaemon: (args: {
@@ -92,13 +79,6 @@ export interface DesktopSandboxProviderDeps {
     config: { repo?: RepoRef },
   ) => Promise<void>;
   waitForHealth: (port: number) => Promise<void>;
-  /**
-   * Open a warp tunnel for a daemon. Called per-spawn; the returned
-   * TunnelHandle's `publicUrl` is what the cluster + browser see.
-   * Return `null` to skip tunnel opening (e.g. --no-tunnel dev mode);
-   * the provider will fall back to `http://127.0.0.1:<port>` as the URL.
-   */
-  openDaemonTunnel: (input: OpenTunnelDeps) => Promise<TunnelHandle | null>;
   /** Override port allocation (tests provide a deterministic value). */
   pickPort?: () => Promise<number> | number;
   maxSandboxes?: number;
@@ -145,11 +125,6 @@ export function createDesktopSandboxProvider(
     } catch {
       // already gone
     }
-    try {
-      state.tunnel?.close();
-    } catch {
-      // no-op
-    }
     sandboxes.delete(state.handle);
   };
 
@@ -178,11 +153,6 @@ export function createDesktopSandboxProvider(
     } catch {
       // already gone
     }
-    try {
-      victim.tunnel?.close();
-    } catch {
-      // warp-node Connected has no real close yet; ignore
-    }
     sandboxes.delete(victim.handle);
   }
 
@@ -200,33 +170,22 @@ export function createDesktopSandboxProvider(
     const spawned = await Promise.resolve(
       deps.spawnDaemon({ workdir, handle: input.handle, port }),
     );
-    let tunnel: TunnelHandle | null = null;
     try {
       await deps.waitForHealth(port);
       await deps.postConfig(port, devPort, { repo: input.repo });
-      tunnel = await deps.openDaemonTunnel({
-        subDomain: `${input.handle}.deco.host`,
-        localAddr: `http://127.0.0.1:${port}`,
-      });
     } catch (err) {
       try {
         spawned.kill("SIGKILL");
       } catch {
         // already gone
       }
-      try {
-        tunnel?.close();
-      } catch {
-        // no-op
-      }
       throw err;
     }
-    const sandboxApiUrl = tunnel?.publicUrl ?? `http://127.0.0.1:${port}`;
+    const sandboxApiUrl = `http://127.0.0.1:${port}`;
     const state: SandboxState = {
       handle: input.handle,
       port,
       process: spawned,
-      tunnel,
       sandboxApiUrl,
       lastUsedAt: Date.now(),
       activeDispatchCount: 0,
@@ -235,17 +194,12 @@ export function createDesktopSandboxProvider(
 
     // Watchdog: clear the map entry if the daemon process exits unexpectedly.
     // Without this the cache returns a stale dead port and the cluster's
-    // alive() probe loops forever against a tunnel pointing at a dead upstream.
+    // alive() probe loops forever against a dead upstream.
     if (spawned.exited) {
       spawned.exited.then(() => {
         const current = sandboxes.get(input.handle);
         if (current === state) {
           sandboxes.delete(input.handle);
-          try {
-            tunnel?.close();
-          } catch {
-            // no-op
-          }
         }
       });
     }
@@ -309,11 +263,6 @@ export function createDesktopSandboxProvider(
       } catch {
         // already gone
       }
-      try {
-        s.tunnel?.close();
-      } catch {
-        // no-op
-      }
       sandboxes.delete(handle);
     },
     async shutdown() {
@@ -322,11 +271,6 @@ export function createDesktopSandboxProvider(
           s.process.kill("SIGTERM");
         } catch {
           // already gone
-        }
-        try {
-          s.tunnel?.close();
-        } catch {
-          // no-op
         }
       }
       sandboxes.clear();

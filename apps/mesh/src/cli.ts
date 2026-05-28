@@ -60,10 +60,6 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
-    "no-tunnel": {
-      type: "boolean",
-      default: false,
-    },
     vibe: {
       type: "boolean",
       default: false,
@@ -108,8 +104,6 @@ Auth Options:
 
 Link Options:
   --port <port>     Local port for the daemon (default: 5174)
-  --no-tunnel       Skip Warp tunnel (requires MESH_ALLOW_LOCALHOST_LINKS=1
-                    on the cluster)
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
@@ -249,7 +243,6 @@ if (command === "link") {
   );
   const code = await runLinkCommand({
     port: portExplicit ? Number(values.port) : undefined,
-    noTunnel: values["no-tunnel"] === true,
   });
   process.exit(code);
 }
