@@ -75,7 +75,18 @@ test.describe("Sidebar per-group Show more", () => {
     await page.waitForURL(new RegExp(`/${orgSlug}(/|$)`), { timeout: 15_000 });
 
     // -------------------------------------------------------------------------
-    // 4. Expand the agent group.
+    // 4. Open the sidebar.
+    //    Fresh users start with the sidebar collapsed (localStorage key
+    //    `sidebar.open` defaults to false). Collapsed mode renders
+    //    `CollapsedGroupPopover` rather than `[role=button][aria-expanded]`
+    //    group headers, so we toggle it open first.
+    // -------------------------------------------------------------------------
+    const toggleSidebar = page.getByRole("button", { name: "Toggle sidebar" });
+    await toggleSidebar.waitFor({ state: "visible", timeout: 15_000 });
+    await toggleSidebar.click();
+
+    // -------------------------------------------------------------------------
+    // 5. Expand the agent group.
     //    Group headers are `<div role="button" aria-expanded>` containers.
     //    Wait for any group header to appear first — that proves the sidebar
     //    Suspense (incl. COLLECTION_VIRTUAL_MCP_LIST) has resolved — then
