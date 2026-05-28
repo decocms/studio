@@ -1,30 +1,22 @@
 import { ChevronDown, Loading01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useGroupShowMore } from "./use-group-show-more";
-import type { SidebarFilters, GroupKind } from "./next-page-offset";
 
 interface ShowMoreButtonProps {
-  kind: GroupKind;
-  groupKey: string;
-  filters: SidebarFilters;
+  onClick: () => void;
+  isFetching: boolean;
 }
 
-export function ShowMoreButton({
-  kind,
-  groupKey,
-  filters,
-}: ShowMoreButtonProps) {
-  const { hasMore, isFetching, loadMore } = useGroupShowMore(
-    kind,
-    groupKey,
-    filters,
-  );
-  if (!hasMore) return null;
+/**
+ * Presentational "Show more" button. The caller is responsible for deciding
+ * whether to render this at all (i.e. whether `hasMore` is true) and for
+ * wiring it to a paginator (see `useGroupShowMore`).
+ */
+export function ShowMoreButton({ onClick, isFetching }: ShowMoreButtonProps) {
   return (
     <button
       type="button"
       aria-label="Show more tasks"
-      onClick={() => void loadMore()}
+      onClick={onClick}
       disabled={isFetching}
       className={cn(
         "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-muted-foreground",

@@ -25,6 +25,7 @@ import type { Task } from "@/web/components/chat/task/types";
 import { STATUS_CONFIG } from "@/web/lib/task-status";
 import { ShowMoreButton } from "./show-more-button";
 import type { SidebarFilters } from "./next-page-offset";
+import { useGroupShowMore } from "./use-group-show-more";
 
 export interface TaskGroupProps {
   virtualMcpId: string;
@@ -141,16 +142,7 @@ export function TaskGroup({
       )}
       {expanded && (
         <div className="flex flex-col gap-0.5 pb-1 pl-4">
-          {threads.length === 0 && !isToolCallRuns ? (
-            <button
-              type="button"
-              onClick={() => onNewTaskInGroup(virtualMcpId)}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
-            >
-              <Plus size={14} />
-              <span>New thread</span>
-            </button>
-          ) : (
+          {isToolCallRuns ? (
             threads.map((task) => (
               <TaskRow
                 key={task.id}
@@ -161,11 +153,14 @@ export function TaskGroup({
                 showAutomationBadge={Boolean(task.trigger_id)}
               />
             ))
-          )}
-          {!isToolCallRuns && (
-            <ShowMoreButton
-              kind="agent"
-              groupKey={virtualMcpId}
+          ) : (
+            <AgentExpandedBody
+              virtualMcpId={virtualMcpId}
+              threads={threads}
+              activeTaskId={activeTaskId}
+              onSelectTask={onSelectTask}
+              onArchiveTask={onArchiveTask}
+              onNewTaskInGroup={onNewTaskInGroup}
               filters={filters}
             />
           )}
@@ -210,6 +205,116 @@ function TaskGroupLabel({
 function TaskGroupLabelInner({ virtualMcpId }: { virtualMcpId: string }) {
   const entity = useVirtualMCP(virtualMcpId);
   return <>{entity?.title ?? "Agent"}</>;
+}
+
+function AgentExpandedBody({
+  virtualMcpId,
+  threads,
+  activeTaskId,
+  onSelectTask,
+  onArchiveTask,
+  onNewTaskInGroup,
+  filters,
+}: {
+  virtualMcpId: string;
+  threads: Task[];
+  activeTaskId: string | null;
+  onSelectTask: (task: Task) => void;
+  onArchiveTask: (task: Task) => void;
+  onNewTaskInGroup: (virtualMcpId: string) => void;
+  filters: SidebarFilters;
+}) {
+  const { hasMore, isFetching, loadMore } = useGroupShowMore(
+    "agent",
+    virtualMcpId,
+    filters,
+  );
+
+  if (threads.length === 0) {
+    if (hasMore) {
+      return (
+        <ShowMoreButton
+          onClick={() => void loadMore()}
+          isFetching={isFetching}
+        />
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => onNewTaskInGroup(virtualMcpId)}
+        className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
+      >
+        <Plus size={14} />
+        <span>New thread</span>
+      </button>
+    );
+  }
+
+  return (
+    <>
+      {threads.map((task) => (
+        <TaskRow
+          key={task.id}
+          task={task}
+          isActive={activeTaskId === task.id}
+          onClick={() => onSelectTask(task)}
+          onArchive={() => onArchiveTask(task)}
+          showAutomationBadge={Boolean(task.trigger_id)}
+        />
+      ))}
+      {hasMore && (
+        <ShowMoreButton
+          onClick={() => void loadMore()}
+          isFetching={isFetching}
+        />
+      )}
+    </>
+  );
+}
+
+function StatusExpandedBody({
+  status,
+  threads,
+  activeTaskId,
+  onSelectTask,
+  onArchiveTask,
+  filters,
+}: {
+  status: StatusGroupData["status"];
+  threads: Task[];
+  activeTaskId: string | null;
+  onSelectTask: (task: Task) => void;
+  onArchiveTask: (task: Task) => void;
+  filters: SidebarFilters;
+}) {
+  const { hasMore, isFetching, loadMore } = useGroupShowMore(
+    "status",
+    status,
+    filters,
+  );
+  return (
+    <>
+      {threads.map((task) => (
+        <TaskRow
+          key={task.id}
+          task={task}
+          isActive={activeTaskId === task.id}
+          onClick={() => onSelectTask(task)}
+          onArchive={() => onArchiveTask(task)}
+          showAutomationBadge={Boolean(task.trigger_id)}
+          showAgentIcon
+          hideStatusIdle
+        />
+      ))}
+      {hasMore && (
+        <ShowMoreButton
+          onClick={() => void loadMore()}
+          isFetching={isFetching}
+        />
+      )}
+    </>
+  );
 }
 
 export function StatusGroup({
@@ -269,19 +374,14 @@ export function StatusGroup({
       </div>
       {expanded && (
         <div className="flex flex-col gap-0.5 pb-1 pl-4">
-          {threads.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              isActive={activeTaskId === task.id}
-              onClick={() => onSelectTask(task)}
-              onArchive={() => onArchiveTask(task)}
-              showAutomationBadge={Boolean(task.trigger_id)}
-              showAgentIcon
-              hideStatusIdle
-            />
-          ))}
-          <ShowMoreButton kind="status" groupKey={status} filters={filters} />
+          <StatusExpandedBody
+            status={status}
+            threads={threads}
+            activeTaskId={activeTaskId}
+            onSelectTask={onSelectTask}
+            onArchiveTask={onArchiveTask}
+            filters={filters}
+          />
         </div>
       )}
     </div>
