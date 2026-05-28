@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import type { Session } from "./session";
 import { RefreshFailedError, refreshSession } from "./refresh-session";
 
