@@ -105,7 +105,8 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
       ...(args.branch ? { head: `${args.owner}:${args.branch}` } : {}),
       perPage: 1,
     },
-    enabled: !!args.branch,
+    enabled:
+      !!args.branch && !!args.connectionId && !!args.owner && !!args.repo,
     refetchInterval: POLL,
     refetchIntervalInBackground: false,
     staleTime: STALE,

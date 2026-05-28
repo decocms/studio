@@ -389,7 +389,10 @@ export const createSandboxRoutes = () => {
     proxyDaemon(c, "/_sandbox/git/status", { map404to410: true }),
   );
   app.post("/:virtualMcpId/:branch/git/diff", (c) =>
-    proxyDaemon(c, "/_sandbox/git/diff", { map404to410: true }),
+    proxyDaemon(c, "/_sandbox/git/diff", {
+      forwardJsonBody: true,
+      map404to410: true,
+    }),
   );
   app.post("/:virtualMcpId/:branch/git/publish", (c) =>
     proxyDaemon(c, "/_sandbox/git/publish", {

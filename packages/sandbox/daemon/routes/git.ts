@@ -68,6 +68,8 @@ export interface GitDiffEntry {
 
 export interface GitDiffResult {
   diffs: Record<string, GitDiffEntry>;
+  /** Present when diffing against a base branch (merge-base of base and head). */
+  mergeBaseSha?: string;
 }
 
 function computeStatus(repoDir: string): GitStatusResult {
@@ -144,10 +146,6 @@ function readWorkingFile(repoDir: string, filePath: string): string | null {
   }
 }
 
-function readHeadFile(repoDir: string, filePath: string): string | null {
-  return tryGit(repoDir, ["show", `HEAD:${filePath}`]);
-}
-
 function readRefFile(
   repoDir: string,
   ref: string,
@@ -172,10 +170,10 @@ function computeDiff(repoDir: string): GitDiffResult {
       (index === "?" && working === "?") ||
       index === "A" ||
       working === "A" ||
-      (!readHeadFile(repoDir, filePath) && !isDeleted);
+      (!readRefFile(repoDir, "HEAD", filePath) && !isDeleted);
 
     diffs[filePath] = {
-      from: isNew ? null : readHeadFile(repoDir, filePath),
+      from: isNew ? null : readRefFile(repoDir, "HEAD", filePath),
       to: isDeleted ? null : readWorkingFile(repoDir, filePath),
     };
   }
@@ -214,7 +212,10 @@ export function computeDiffAgainstBase(
 
   const remoteHead = `origin/${branch}`;
   let headRef = "HEAD";
-  if (headSha && tryGit(repoDir, ["cat-file", "-e", `${headSha}^{commit}`])) {
+  if (
+    headSha &&
+    tryGit(repoDir, ["rev-parse", "--verify", `${headSha}^{commit}`]) !== null
+  ) {
     headRef = headSha;
   } else if (tryGit(repoDir, ["rev-parse", "--verify", remoteHead])) {
     headRef = remoteHead;
@@ -242,7 +243,7 @@ export function computeDiffAgainstBase(
     };
   }
 
-  return { diffs };
+  return { diffs, mergeBaseSha: mergeBase.trim() };
 }
 
 function listThreeDotDiffPaths(
@@ -353,7 +354,7 @@ function discard(deps: GitDeps, filepaths: string[]): void {
     const isNew =
       status.not_added.includes(fp) ||
       status.created.includes(fp) ||
-      readHeadFile(repoDir, fp) === null;
+      readRefFile(repoDir, "HEAD", fp) === null;
     if (isNew) toDelete.push(fp);
     else toRestore.push(fp);
   }

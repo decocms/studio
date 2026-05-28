@@ -142,7 +142,7 @@ export function useMainPanelTabs(ctx: {
     connectionId: githubRepo?.connectionId ?? "",
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
-    branch: currentBranch,
+    branch: githubRepo ? currentBranch : null,
   });
   const hasOpenPr = prQuery.data?.state === "open";
 
@@ -187,9 +187,11 @@ export function useMainPanelTabs(ctx: {
         : null,
     });
 
-  const gitTabVisible = hasActiveGithubRepo && hasOpenPr;
+  const gitTabVisible =
+    hasActiveGithubRepo &&
+    (hasOpenPr || (prQuery.isPending && rawActiveTab === "git"));
   const activeTab =
-    rawActiveTab === "git" && !gitTabVisible
+    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? resolveDefaultTabId(
           entityLayout
             ? {
@@ -200,7 +202,9 @@ export function useMainPanelTabs(ctx: {
         )
       : rawActiveTab;
   const mainOpen =
-    rawActiveTab === "git" && !gitTabVisible ? false : rawMainOpen;
+    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+      ? false
+      : rawMainOpen;
 
   const automationTabParsed = parseAutomationTabId(activeTab);
 
@@ -212,7 +216,7 @@ export function useMainPanelTabs(ctx: {
   if (hasClonableSource) {
     systemTabs.push({ id: "preview", title: "Preview" });
   }
-  if (hasActiveGithubRepo && hasOpenPr) {
+  if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
   }
   systemTabs.push({ id: "settings", title: "Settings" });

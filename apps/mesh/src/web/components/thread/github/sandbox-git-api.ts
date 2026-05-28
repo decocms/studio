@@ -29,6 +29,7 @@ export interface GitDiffEntry {
 
 export interface GitDiffResult {
   diffs: Record<string, GitDiffEntry>;
+  mergeBaseSha?: string;
 }
 
 export interface CommitSuggestion {

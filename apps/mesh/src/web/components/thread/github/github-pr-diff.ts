@@ -9,7 +9,9 @@ type GithubMcpClient = {
   }) => Promise<unknown>;
 };
 
-function decodeGithubFileContent(result: unknown): string | null {
+const FILE_FETCH_CONCURRENCY = 10;
+
+export function decodeGithubFileContent(result: unknown): string | null {
   const typed = result as {
     isError?: boolean;
     content?: Array<{
@@ -77,9 +79,27 @@ function parsePrFiles(result: unknown): PrFile[] {
   });
 }
 
+async function mapWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return;
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      await fn(items[index]!);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  );
+}
+
 /**
  * Fallback when the sandbox shallow clone can't resolve merge-base: load full
- * file blobs from GitHub at the PR head and base branch refs.
+ * file blobs from GitHub at the PR head and merge-base (when known).
  */
 export async function fetchGithubPrDiff(
   client: GithubMcpClient,
@@ -89,6 +109,7 @@ export async function fetchGithubPrDiff(
     pullNumber: number;
     base: string;
     headSha: string;
+    mergeBaseSha?: string;
   },
 ): Promise<GitDiffResult> {
   const filesResult = await client.callTool({
@@ -104,48 +125,49 @@ export async function fetchGithubPrDiff(
 
   const files = parsePrFiles(filesResult).filter((f) => f.filename.length > 0);
   const diffs: GitDiffResult["diffs"] = {};
+  const fromRef = args.mergeBaseSha
+    ? { sha: args.mergeBaseSha }
+    : { ref: args.base };
 
-  await Promise.all(
-    files.map(async (file) => {
-      const path = file.filename;
-      if (file.status === "added") {
-        diffs[path] = {
-          from: null,
-          to: await getFileAtRef(
-            client,
-            { owner: args.owner, repo: args.repo, path },
-            { sha: args.headSha },
-          ),
-        };
-        return;
-      }
-      if (file.status === "removed") {
-        diffs[path] = {
-          from: await getFileAtRef(
-            client,
-            { owner: args.owner, repo: args.repo, path },
-            { ref: args.base },
-          ),
-          to: null,
-        };
-        return;
-      }
-
-      const [from, to] = await Promise.all([
-        getFileAtRef(
-          client,
-          { owner: args.owner, repo: args.repo, path },
-          { ref: args.base },
-        ),
-        getFileAtRef(
+  await mapWithConcurrency(files, FILE_FETCH_CONCURRENCY, async (file) => {
+    const path = file.filename;
+    if (file.status === "added") {
+      diffs[path] = {
+        from: null,
+        to: await getFileAtRef(
           client,
           { owner: args.owner, repo: args.repo, path },
           { sha: args.headSha },
         ),
-      ]);
-      diffs[path] = { from, to };
-    }),
-  );
+      };
+      return;
+    }
+    if (file.status === "removed") {
+      diffs[path] = {
+        from: await getFileAtRef(
+          client,
+          { owner: args.owner, repo: args.repo, path },
+          fromRef,
+        ),
+        to: null,
+      };
+      return;
+    }
+
+    const [from, to] = await Promise.all([
+      getFileAtRef(
+        client,
+        { owner: args.owner, repo: args.repo, path },
+        fromRef,
+      ),
+      getFileAtRef(
+        client,
+        { owner: args.owner, repo: args.repo, path },
+        { sha: args.headSha },
+      ),
+    ]);
+    diffs[path] = { from, to };
+  });
 
   return { diffs };
 }

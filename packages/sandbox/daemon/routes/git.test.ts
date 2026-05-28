@@ -97,6 +97,59 @@ describe("git routes", () => {
     expect(body.diffs["feature.txt"]?.to).toContain("on branch");
   });
 
+  it("diff against base honors headSha when set", async () => {
+    const { appRoot, repoDir } = initRepo();
+    gitSync(["checkout", "-b", "feature"], { cwd: repoDir, asUser: false });
+    writeFileSync(join(repoDir, "feature.txt"), "v1\n");
+    gitSync(["add", "feature.txt"], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "v1"], { cwd: repoDir, asUser: false });
+    const firstSha = gitSync(["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    }).trim();
+
+    writeFileSync(join(repoDir, "feature.txt"), "v2\n");
+    gitSync(["add", "feature.txt"], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "v2"], { cwd: repoDir, asUser: false });
+
+    const mainSha = gitSync(["rev-parse", "main"], {
+      cwd: repoDir,
+      asUser: false,
+    }).trim();
+    gitSync(["update-ref", "refs/remotes/origin/main", mainSha], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    const featureSha = gitSync(["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    }).trim();
+    gitSync(["update-ref", "refs/remotes/origin/feature", featureSha], {
+      cwd: repoDir,
+      asUser: false,
+    });
+
+    const pinned = computeDiffAgainstBase(repoDir, "main", firstSha);
+    expect(pinned.diffs["feature.txt"]?.to).toContain("v1");
+    expect(pinned.diffs["feature.txt"]?.to).not.toContain("v2");
+  });
+
+  it("diff POST rejects invalid base branch names", async () => {
+    const { appRoot, repoDir } = initRepo();
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/diff", {
+        method: "POST",
+        body: JSON.stringify({ base: "--upload-pack=evil" }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Invalid base branch name: --upload-pack=evil",
+    });
+  });
+
   it("publish commits staged changes", async () => {
     const { appRoot, repoDir } = initRepo();
     writeFileSync(join(repoDir, "README.md"), "updated\n");

@@ -90,10 +90,7 @@ export function PrSubTabs({
         onValueChange={(value) => setActiveValue(value as TabValue)}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <TabsList
-          className="h-8 w-fit max-w-[600px] shrink-0"
-          variant="pill"
-        >
+        <TabsList className="h-8 w-fit max-w-[600px] shrink-0" variant="pill">
           <TabsTrigger value="description" className="px-3 text-xs">
             Description
           </TabsTrigger>
@@ -115,16 +112,7 @@ export function PrSubTabs({
             />
           </TabsContent>
           <TabsContent value="changes" className="mt-0">
-            <ChangesTab
-              orgSlug={org.slug}
-              orgId={org.id}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              connectionId={connectionId}
-              owner={owner}
-              repo={repo}
-              pr={pr}
-            />
+            <ChangesTab diffQuery={diffQuery} />
           </TabsContent>
           <TabsContent value="checks" className="mt-0">
             <ChecksTab

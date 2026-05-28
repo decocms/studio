@@ -1,17 +1,10 @@
 import { Loading01 } from "@untitledui/icons";
-import { usePrDiff } from "@/web/components/sandbox/hooks/use-pr-diff.ts";
+import type { UseQueryResult } from "@tanstack/react-query";
+import type { GitDiffResult } from "./sandbox-git-api.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
-import type { PrSummary } from "./use-pr-data.ts";
 
 interface Props {
-  orgSlug: string;
-  orgId: string;
-  virtualMcpId: string;
-  branch: string;
-  connectionId: string;
-  owner: string;
-  repo: string;
-  pr: PrSummary;
+  diffQuery: UseQueryResult<GitDiffResult>;
 }
 
 /**
@@ -19,29 +12,7 @@ interface Props {
  * using the same UI as the publish modal. Loads from sandbox git first,
  * then falls back to GitHub blobs when shallow clones hide merge-base.
  */
-export function ChangesTab({
-  orgSlug,
-  orgId,
-  virtualMcpId,
-  branch,
-  connectionId,
-  owner,
-  repo,
-  pr,
-}: Props) {
-  const diffQuery = usePrDiff({
-    orgSlug,
-    orgId,
-    virtualMcpId,
-    branch,
-    base: pr.base,
-    headSha: pr.headSha,
-    pullNumber: pr.number,
-    connectionId,
-    owner,
-    repo,
-  });
-
+export function ChangesTab({ diffQuery }: Props) {
   if (diffQuery.isLoading) {
     return (
       <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">

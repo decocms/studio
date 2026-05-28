@@ -15,6 +15,7 @@ export function prDiffQueryKey(
   branch: string,
   base: string,
   headSha: string,
+  pullNumber: number,
   connectionId: string,
 ) {
   return [
@@ -24,6 +25,7 @@ export function prDiffQueryKey(
     branch,
     base,
     headSha,
+    pullNumber,
     connectionId,
   ] as const;
 }
@@ -68,22 +70,34 @@ export function usePrDiff(args: {
       branch,
       base,
       headSha,
+      pullNumber,
       connectionId,
     ),
     queryFn: async () => {
-      const sandboxDiff = await fetchGitDiff(orgSlug, virtualMcpId, branch, {
-        base,
-        headSha,
-      });
-      if (countGitDiffFiles(sandboxDiff) > 0) return sandboxDiff;
+      try {
+        const sandboxDiff = await fetchGitDiff(orgSlug, virtualMcpId, branch, {
+          base,
+          headSha,
+        });
+        if (countGitDiffFiles(sandboxDiff) > 0) return sandboxDiff;
 
-      return fetchGithubPrDiff(githubClient, {
-        owner,
-        repo,
-        pullNumber,
-        base,
-        headSha,
-      });
+        return fetchGithubPrDiff(githubClient, {
+          owner,
+          repo,
+          pullNumber,
+          base,
+          headSha,
+          mergeBaseSha: sandboxDiff.mergeBaseSha,
+        });
+      } catch {
+        return fetchGithubPrDiff(githubClient, {
+          owner,
+          repo,
+          pullNumber,
+          base,
+          headSha,
+        });
+      }
     },
     enabled: enabled && !!branch && !!headSha && !!connectionId,
     refetchInterval: 30_000,
