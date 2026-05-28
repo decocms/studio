@@ -231,7 +231,8 @@ export class DesktopSandboxProvider implements SandboxProvider {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       async start(controller) {
-        for (const data of initialChunks) controller.enqueue(encoder.encode(data));
+        for (const data of initialChunks)
+          controller.enqueue(encoder.encode(data));
       },
       async pull(controller) {
         try {
@@ -241,7 +242,8 @@ export class DesktopSandboxProvider implements SandboxProvider {
             return;
           }
           const chunk = next.value;
-          if (chunk.data != null) controller.enqueue(encoder.encode(chunk.data));
+          if (chunk.data != null)
+            controller.enqueue(encoder.encode(chunk.data));
         } catch (err) {
           controller.error(err);
         }
