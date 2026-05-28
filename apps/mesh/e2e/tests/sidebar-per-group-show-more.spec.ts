@@ -37,6 +37,7 @@ test.describe("Sidebar per-group Show more", () => {
       data: {
         title: agentTitle,
         description: "Agent seeded for sidebar show-more e2e test",
+        connections: [],
       },
     });
     const agentId = vmcpResult.item.id;
