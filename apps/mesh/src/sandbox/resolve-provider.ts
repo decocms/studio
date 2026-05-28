@@ -76,7 +76,7 @@ export async function resolveSandboxProvider(
   //    without touching sandboxMap. `user-desktop` carries its link inline;
   //    `cluster-default` means "use the cluster runner the env points to".
   if (ctx.sandboxPreference === "user-desktop" && ctx.linkForCurrentRun) {
-    const provider = await buildDesktopProvider(ctx, ctx.linkForCurrentRun);
+    const provider = await buildDesktopProvider(ctx);
     return { provider, kind: "user-desktop" };
   }
   if (ctx.sandboxPreference === "cluster-default") {
@@ -181,5 +181,5 @@ async function bindProviderForKind(
       `No link daemon registered for user "${userId}". Start one with \`deco link\` (or run \`bun run dev --local-sandbox-provider\` for dev).`,
     );
   }
-  return buildDesktopProvider(ctx, link);
+  return buildDesktopProvider(ctx);
 }

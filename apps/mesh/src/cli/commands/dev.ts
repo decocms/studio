@@ -176,7 +176,7 @@ export async function startDevServer(
   setServerUrl(serverUrl);
   updateService({ name: "Vite", status: "ready", port: Number(vitePort) });
 
-  // ── Auto-spawn `deco link --no-tunnel` (opt-in) ───────────────────
+  // ── Auto-spawn `deco link` (opt-in) ──────────────────────────────
   // Gated on --local-sandbox-provider. When set, once the cluster is up
   // on :PORT, spawn the link daemon so the dev session exercises the
   // remote-cli + desktop code paths end-to-end. The link reads its

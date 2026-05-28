@@ -828,11 +828,9 @@ async function prepareRun(
         //     calls `ensureSandbox` (handle == `computeHandle(sandboxId,
         //     branch)`) so the sandbox is the same one SANDBOX_START
         //     provisions — repo cloned, env pushed, dev server primed.
-        //     The cluster talks to the daemon directly at the returned
-        //     per-handle tunnel URL (`https://<handle>.deco.host` in
-        //     prod), no link reverse-proxy hop. Per-run state inside the
-        //     daemon stays keyed by `runId` (cancellation via DELETE
-        //     /_sandbox/runs/<runId>).
+        //     The cluster talks to the daemon over the NATS-backed dispatch
+        //     channel. Per-run state inside the daemon stays keyed by
+        //     `runId` (cancellation via DELETE /_sandbox/runs/<runId>).
         //   - `runsIn === "cluster"` — runs in-cluster. When `sandbox`
         //     is `"user-desktop"` the sandbox tool calls are forwarded
         //     to the user's link daemon; the harness still runs here.

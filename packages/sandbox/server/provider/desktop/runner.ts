@@ -47,18 +47,9 @@ export interface DesktopProviderOptions {
   stateStore?: RunnerStateStoreOps;
 }
 
-/**
- * @deprecated - kept for backward-compatibility. New code passes `userSub` +
- * `dispatch` directly. Will be removed once all callers are migrated.
- */
-export interface DesktopLinkRef {
-  tunnelUrl: string;
-  linkSecret: string;
-}
-
 interface RemoteRecord {
   handle: string;
-  /** Daemon's public URL — `https://<handle>.deco.host` or `http://127.0.0.1:<port>`. */
+  /** Daemon's local sandbox API URL (e.g. `http://127.0.0.1:<port>/_sandbox/<handle>`). */
   sandboxApiUrl: string;
 }
 
@@ -84,10 +75,11 @@ export class DesktopSandboxProvider implements SandboxProvider {
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
     // hashLen=16 mirrors agent-sandbox and the cluster's `computeClaimHandle`
-    // — `<handle>.deco.host` is a public hostname, so a short hash is
-    // brute-forceable at the deco.host gateway. If this changes, the
-    // matching constant in `apps/mesh/src/sandbox/claim-handle.ts` must
-    // change too or the cluster's state-store lookup will silently miss.
+    // — a 16-hex-char handle is used as a public subdomain prefix
+    // (e.g. `<handle>.localhost:<port>`) so a short hash keeps URLs readable.
+    // If this changes, the matching constant in
+    // `apps/mesh/src/sandbox/claim-handle.ts` must change too or the
+    // cluster's state-store lookup will silently miss.
     const handle = computeHandle(id, opts.repo?.branch, { hashLen: 16 });
 
     // Probe before trusting cached records — a dead daemon leaves a stale URL.

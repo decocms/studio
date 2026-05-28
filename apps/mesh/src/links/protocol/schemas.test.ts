@@ -5,41 +5,7 @@ import {
   harnessStreamInputSchema,
   type HarnessStreamInputWire,
   linkEntrySchema,
-  registrationPayloadSchema,
 } from "./schemas";
-
-describe("registrationPayloadSchema", () => {
-  it("accepts a well-formed payload", () => {
-    const result = registrationPayloadSchema.safeParse({
-      machineId: "machine-1",
-      cliVersion: "0.1.0",
-      protocolVersion: 1,
-      capabilities: ["claude-code"],
-      tunnelUrl: "https://example.com/tunnel",
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects unknown capability", () => {
-    const result = registrationPayloadSchema.safeParse({
-      machineId: "machine-1",
-      cliVersion: "0.1.0",
-      protocolVersion: 1,
-      capabilities: ["definitely-not-a-harness"],
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects negative protocolVersion", () => {
-    const result = registrationPayloadSchema.safeParse({
-      machineId: "machine-1",
-      cliVersion: "0.1.0",
-      protocolVersion: -1,
-      capabilities: ["claude-code"],
-    });
-    expect(result.success).toBe(false);
-  });
-});
 
 describe("linkEntrySchema", () => {
   it("preserves linkSecret as opaque string", () => {

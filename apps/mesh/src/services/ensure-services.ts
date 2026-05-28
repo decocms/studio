@@ -762,7 +762,6 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
       "--cwd=apps/mesh",
       "src/cli.ts",
       "link",
-      "--no-tunnel",
       "--port",
       String(port),
     ],

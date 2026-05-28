@@ -183,7 +183,7 @@ async function instantiate(
 }
 
 /**
- * Construct a `DesktopSandboxProvider` bound to the given link entry.
+ * Construct a `DesktopSandboxProvider` bound to the acting user's link.
  * Exported so the unified resolver in `resolve-provider.ts` can build one
  * without going through `getSharedSandboxProvider` (which requires
  * pre-populating `ctx.sandboxPreference` / `ctx.linkForCurrentRun` as a
@@ -192,10 +192,6 @@ async function instantiate(
  */
 export async function buildDesktopProvider(
   ctx: MeshContext,
-  // `link` is retained in the signature so callers (resolve-provider.ts) don't
-  // need to change — the NATS path no longer needs the link's tunnelUrl /
-  // linkSecret, but we still need the acting user's id to route dispatch.
-  _link: NonNullable<MeshContext["linkForCurrentRun"]>,
 ): Promise<SandboxProvider> {
   const { DesktopSandboxProvider } = await import(
     "@decocms/sandbox/provider/desktop"

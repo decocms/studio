@@ -53,7 +53,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.356.0",
+      "version": "2.365.0",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -67,7 +67,6 @@
         "@aws-sdk/s3-request-presigner": "^3.1013.0",
         "@clickhouse/client": "^1.8.1",
         "@dbos-inc/dbos-sdk": "^4.17.6",
-        "@deco-cx/warp-node": "^0.3.23",
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/sortable": "^10.0.0",
         "@dnd-kit/utilities": "^3.2.2",
@@ -657,8 +656,6 @@
     "@daveyplate/better-auth-ui": ["@daveyplate/better-auth-ui@3.4.0", "", { "dependencies": { "@better-auth/api-key": "^1.5.6", "@better-fetch/fetch": "^1.1.21", "@hcaptcha/react-hcaptcha": "^2.0.2", "@noble/hashes": "^2.0.1", "@react-email/components": "^1.0.10", "@wojtekmaj/react-recaptcha-v3": "^0.1.4", "better-call": "2.0.2", "bowser": "^2.11.0", "react-google-recaptcha": "^3.1.0", "react-qr-code": "^2.0.18", "vaul": "^1.1.2" }, "peerDependencies": { "@better-auth/passkey": ">=1.4.6", "@captchafox/react": "^1.10.0", "@daveyplate/better-auth-tanstack": "^1.3.6", "@hookform/resolvers": ">=5.2.0", "@instantdb/react": ">=0.18.0", "@marsidev/react-turnstile": ">=1.1.0", "@radix-ui/react-avatar": ">=1.1.0", "@radix-ui/react-checkbox": ">=1.1.0", "@radix-ui/react-context": ">=1.1.0", "@radix-ui/react-dialog": ">=1.1.0", "@radix-ui/react-dropdown-menu": ">=2.1.0", "@radix-ui/react-label": ">=2.1.0", "@radix-ui/react-primitive": ">=2.0.0", "@radix-ui/react-select": ">=2.2.0", "@radix-ui/react-separator": ">=1.1.0", "@radix-ui/react-slot": ">=1.1.0", "@radix-ui/react-tabs": ">=1.1.0", "@radix-ui/react-tooltip": ">=1.2.0", "@radix-ui/react-use-callback-ref": ">=1.1.0", "@radix-ui/react-use-layout-effect": ">=1.1.0", "@tanstack/react-query": ">=5.66.0", "@triplit/client": ">=1.0.0", "@triplit/react": ">=1.0.0", "better-auth": "^1.4.6", "class-variance-authority": ">=0.7.0", "clsx": ">=2.1.0", "input-otp": ">=1.4.0", "lucide-react": ">=0.469.0", "react": ">=18.0.0", "react-dom": ">=18.0.0", "react-hook-form": ">=7.55.0", "sonner": ">=1.7.0", "tailwind-merge": ">=2.6.0", "tailwindcss": ">=3.0.0", "zod": ">=3.0.0" } }, "sha512-mGA0cKsAk0AcoKkxjff2xQOviMrUDDN+9SsRusURP/kiTmoLvWAv8utaPex0GFLHKm1w3BrLBdJRg9B2LkT7Bw=="],
 
     "@dbos-inc/dbos-sdk": ["@dbos-inc/dbos-sdk@4.17.6", "", { "dependencies": { "commander": "12.0.0", "pg": "8.11.3", "serialize-error": "8.1.0", "superjson": "^1.13.3", "ws": "^8.18.1", "yaml": "^2.8.3" }, "bin": { "dbos": "dist/src/cli/cli.js", "dbos-sdk": "dist/src/cli/cli.js" } }, "sha512-1wt9eESm1AHKnmCWG9pOrzsmroJYLiujVKldi/hlyDXeCAyYmdKRcERtEzUZgPN2zOOSNJcsdf9ItWUacSnROQ=="],
-
-    "@deco-cx/warp-node": ["@deco-cx/warp-node@0.3.23", "", { "dependencies": { "undici": "^6.21.0", "ws": "^8.18.0" } }, "sha512-GMh6Msj62wAvc+YbmIc8FoaIZy/cGUlEwR+FbgDl/08TomJRd3jCV8Tbrb38dIAdHlkmEc5UviLAnx5rfet3OQ=="],
 
     "@deco/ui": ["@deco/ui@workspace:packages/ui"],
 
@@ -3264,7 +3261,7 @@
 
     "uncrypto": ["uncrypto@0.1.3", "", {}, "sha512-Ql87qFHB3s/De2ClA9e0gsnS6zXG27SkTiSJwjCc9MebbfapQfuPzumMIUMi38ezPZVNFcHI9sUIepeQfw8J8Q=="],
 
-    "undici": ["undici@6.25.0", "", {}, "sha512-ZgpWDC5gmNiuY9CnLVXEH8rl50xhRCuLNA97fAUnKi8RRuV4E6KG31pDTsLVUKnohJE0I3XDrTeEydAXRw47xg=="],
+    "undici": ["undici@7.24.8", "", {}, "sha512-6KQ/+QxK49Z/p3HO6E5ZCZWNnCasyZLa5ExaVYyvPxUwKtbCPMKELJOqh7EqOle0t9cH/7d2TaaTRRa6Nhs4YQ=="],
 
     "undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
@@ -3825,8 +3822,6 @@
     "mesh-plugin-workflows/@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
 
     "micromatch/picomatch": ["picomatch@2.3.2", "", {}, "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA=="],
-
-    "miniflare/undici": ["undici@7.24.8", "", {}, "sha512-6KQ/+QxK49Z/p3HO6E5ZCZWNnCasyZLa5ExaVYyvPxUwKtbCPMKELJOqh7EqOle0t9cH/7d2TaaTRRa6Nhs4YQ=="],
 
     "miniflare/ws": ["ws@8.18.0", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw=="],
 

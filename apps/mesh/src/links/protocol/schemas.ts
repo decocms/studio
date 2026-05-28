@@ -7,27 +7,6 @@ export const capabilitySchema = z.enum([
 ]);
 export type Capability = z.infer<typeof capabilitySchema>;
 
-export const registrationPayloadSchema = z.object({
-  machineId: z.string().min(1),
-  cliVersion: z.string().min(1),
-  protocolVersion: z.number().int().nonnegative(),
-  capabilities: z.array(capabilitySchema).min(1),
-  /**
-   * The operating-system hostname of the linked desktop. Used purely as a
-   * human-readable display label in the UI (tooltip, dialog). The
-   * collision-detection invariant still keys off `machineId`. Optional so
-   * older link daemons remain compatible.
-   */
-  hostname: z.string().min(1).optional(),
-  /**
-   * Honored only when the cluster sets MESH_ALLOW_LOCALHOST_LINKS=1.
-   * In production the cluster derives the expected Warp domain from
-   * the authenticated userSub and ignores any value here.
-   */
-  tunnelUrl: z.string().url().optional(),
-});
-export type RegistrationPayload = z.infer<typeof registrationPayloadSchema>;
-
 export const linkEntrySchema = z.object({
   machineId: z.string(),
   /** Human-readable display label sent at registration. See registrationPayloadSchema. */
@@ -52,16 +31,6 @@ export const linkEntrySchema = z.object({
   createdAt: z.string().datetime(),
 });
 export type LinkEntry = z.infer<typeof linkEntrySchema>;
-
-export const registrationResponseSchema = z.object({
-  /**
-   * Raw bearer secret returned exactly once at registration. The link
-   * holds it in process memory; the cluster persists the same raw value
-   * (see linkEntrySchema.linkSecret). Lost on re-register.
-   */
-  linkSecret: z.string(),
-});
-export type RegistrationResponse = z.infer<typeof registrationResponseSchema>;
 
 export const dispatchSSEEventSchema = z.discriminatedUnion("type", [
   z.object({

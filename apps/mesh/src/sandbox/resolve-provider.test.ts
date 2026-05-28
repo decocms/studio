@@ -47,7 +47,7 @@ const byKindSpy = mock(
     throw new Error("unreachable — resolver builds user-desktop directly");
   },
 );
-const buildDesktopSpy = mock(async () => stubDesktop);
+const buildDesktopSpy = mock(async (_ctx: unknown) => stubDesktop);
 
 mock.module("./lifecycle", () => ({
   getSandboxProviderByKind: byKindSpy,
