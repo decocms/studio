@@ -354,44 +354,6 @@ function PreferencesSection() {
   );
 }
 
-function ExperimentalSection() {
-  const [preferences, setPreferences] = usePreferences();
-
-  return (
-    <SettingsSection title="Experimental">
-      <SettingsCard>
-        <SettingsCardItem
-          title="Import from GitHub"
-          description="Enable importing agents from GitHub repositories."
-          onClick={() => {
-            track("preferences_experimental_vibecode_toggled", {
-              enabled: !preferences.experimental_vibecode,
-            });
-            setPreferences((prev) => ({
-              ...prev,
-              experimental_vibecode: !prev.experimental_vibecode,
-            }));
-          }}
-          action={
-            <Switch
-              checked={preferences.experimental_vibecode}
-              onCheckedChange={(checked) => {
-                track("preferences_experimental_vibecode_toggled", {
-                  enabled: checked,
-                });
-                setPreferences((prev) => ({
-                  ...prev,
-                  experimental_vibecode: checked,
-                }));
-              }}
-            />
-          }
-        />
-      </SettingsCard>
-    </SettingsSection>
-  );
-}
-
 export function ProfilePreferencesPage() {
   return (
     <Page>
@@ -401,7 +363,6 @@ export function ProfilePreferencesPage() {
             <Page.Title>Profile & Preferences</Page.Title>
             <ProfileSection />
             <PreferencesSection />
-            <ExperimentalSection />
           </SettingsPage>
         </Page.Body>
       </Page.Content>

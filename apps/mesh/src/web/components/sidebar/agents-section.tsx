@@ -43,7 +43,6 @@ import {
 import { track } from "@/web/lib/posthog-client";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
-import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 import { GitHubRepoPicker } from "@/web/components/github-repo-picker.tsx";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
@@ -152,7 +151,6 @@ function PinAgentPopoverContent({
   });
   const { createFromTemplate, isCreating: isCreatingFromTemplate } =
     useCreateAgentFromTemplate();
-  const [preferences] = usePreferences();
   const isDecoUser = useIsDecoUser();
 
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
@@ -254,24 +252,22 @@ function PinAgentPopoverContent({
             </span>
           </button>
 
-          {preferences.experimental_vibecode && (
-            <button
-              type="button"
-              onClick={() => {
-                track("agent_import_clicked", { source: "github" });
-                onOpenGithubImport();
-                onClose();
-              }}
-              className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group"
-            >
-              <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
-                <GitHubIcon className="size-5 text-muted-foreground" />
-              </div>
-              <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
-                Import GitHub
-              </span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              track("agent_import_clicked", { source: "github" });
+              onOpenGithubImport();
+              onClose();
+            }}
+            className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group"
+          >
+            <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
+              <GitHubIcon className="size-5 text-muted-foreground" />
+            </div>
+            <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
+              Import GitHub
+            </span>
+          </button>
 
           {isDecoUser && (
             <button
