@@ -93,7 +93,7 @@ export function TaskGroupsList() {
 
   const groups = stabilizeGroupOrder(
     org.id,
-    groupThreadsByVirtualMcp(sortedThreads, agents ?? [], decopilotId),
+    groupThreadsByVirtualMcp(sortedThreads, agents, decopilotId),
     decopilotId,
   );
 
