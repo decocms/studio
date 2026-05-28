@@ -1,7 +1,8 @@
 /**
  * Desktop-side link daemon.
  *
- * - Reads session from `<dataDir>/session.json`.
+ * - Receives an authenticated session from its caller (the CLI's `link`
+ *   command obtains one via `ensureSession`).
  * - Opens a WebSocket to `<MESH_CLUSTER_URL>/api/links/connect` with the
  *   session bearer; sends the `hello` frame.
  * - Spawns the local ingress on `--port` so browsers can reach
@@ -21,7 +22,7 @@ import { createControlHandler } from "./control-handler";
 import { connectToCluster } from "./cluster-connection";
 import { startLocalIngress } from "./local-ingress";
 import { loadOrCreateMachineId } from "./machine-id";
-import { readSession } from "./session";
+import type { Session } from "../cli/lib/session";
 import {
   createDesktopSandboxProvider,
   type SpawnResult,
@@ -31,6 +32,12 @@ export interface StartLinkDaemonOptions {
   port: number;
   clusterBaseUrl: string;
   dataDir: string;
+  /**
+   * Authenticated session used to bind the WebSocket to the cluster.
+   * Callers (e.g. the CLI's `link` command) obtain this via
+   * `ensureSession()` before invoking the daemon.
+   */
+  session: Session;
 }
 
 export interface LinkDaemonHandle {
@@ -41,12 +48,7 @@ export interface LinkDaemonHandle {
 export async function startLinkDaemon(
   opts: StartLinkDaemonOptions,
 ): Promise<LinkDaemonHandle> {
-  const session = await readSession(opts.dataDir);
-  if (!session) {
-    throw new Error(
-      "No session found. Run `deco auth login` first, then re-run `deco link`.",
-    );
-  }
+  const session = opts.session;
 
   const machineId = await loadOrCreateMachineId(opts.dataDir);
   const cliVersion = process.env.npm_package_version ?? "0.0.0";

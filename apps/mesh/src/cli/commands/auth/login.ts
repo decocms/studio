@@ -13,6 +13,12 @@ export interface LoginOptions {
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 }
 
+export interface PerformInteractiveLoginOptions {
+  target?: string;
+  openBrowser?: (url: string) => Promise<void>;
+  fetch?: (input: string, init?: RequestInit) => Promise<Response>;
+}
+
 const DEFAULT_TARGET = "https://studio.decocms.com";
 
 const SCOPES = "openid profile email offline_access";
@@ -35,7 +41,15 @@ interface IdTokenClaims {
   name?: string;
 }
 
-export async function loginCommand(options: LoginOptions): Promise<number> {
+/**
+ * Runs the OAuth 2.0 + PKCE flow and returns a fresh Session object.
+ *
+ * Does NOT write the session to disk — callers (`loginCommand`,
+ * `ensureSession`) are responsible for persistence.
+ */
+export async function performInteractiveLogin(
+  options: PerformInteractiveLoginOptions = {},
+): Promise<Session> {
   const target = (options.target ?? DEFAULT_TARGET).replace(/\/$/, "");
   const fetchImpl = options.fetch ?? fetch;
   const openImpl = options.openBrowser ?? defaultOpenBrowser;
@@ -49,12 +63,8 @@ export async function loginCommand(options: LoginOptions): Promise<number> {
   });
   try {
     const redirectUri = `${server.url}/`;
-
-    // 1. Dynamically register this CLI install as an OAuth client.
     const clientId = await registerClient(fetchImpl, target, redirectUri);
 
-    // 2. Build the /login URL — this triggers the existing OAuth-aware login UI,
-    //    which routes to /api/auth/mcp/authorize after the user signs in.
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -69,10 +79,8 @@ export async function loginCommand(options: LoginOptions): Promise<number> {
     console.log(`Opening ${url} in your browser...`);
     await openImpl(url);
 
-    // 3. Wait for the browser to redirect back with an authorization code.
     const { code } = await server.waitForCallback();
 
-    // 4. Exchange the code for an access + id token.
     const token = await exchangeToken(
       fetchImpl,
       target,
@@ -82,14 +90,12 @@ export async function loginCommand(options: LoginOptions): Promise<number> {
       pkce.verifier,
     );
 
-    // 5. Read the user from the id_token (the OIDC standard way — userinfo
-    //    endpoint is advertised but not implemented upstream).
     if (!token.id_token) {
       throw new Error("Token endpoint returned no id_token");
     }
     const claims = decodeIdToken(token.id_token);
 
-    const session: Session = {
+    return {
       target,
       clientId,
       user: { sub: claims.sub, email: claims.email, name: claims.name },
@@ -100,17 +106,26 @@ export async function loginCommand(options: LoginOptions): Promise<number> {
         : undefined,
       createdAt: new Date().toISOString(),
     };
-    await writeSession(options.dataDir, session);
+  } finally {
+    server.close();
+  }
+}
 
-    console.log(`Logged in as ${claims.email ?? claims.sub}.`);
+export async function loginCommand(options: LoginOptions): Promise<number> {
+  try {
+    const session = await performInteractiveLogin({
+      target: options.target,
+      openBrowser: options.openBrowser,
+      fetch: options.fetch,
+    });
+    await writeSession(options.dataDir, session);
+    console.log(`Logged in as ${session.user.email ?? session.user.sub}.`);
     return 0;
   } catch (err) {
     console.error(
       `Login failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     return 1;
-  } finally {
-    server.close();
   }
 }
 

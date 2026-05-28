@@ -212,8 +212,9 @@ export async function startDevServer(
               // daemon so it can immediately reach the WS gateway.
               await waitForPort(Number(settings.port), { intervalMs: 500 });
               // Then wait for the cluster's `bootstrapDevLinkSession` to
-              // drop session.json into linkDataDir, since `readSession`
-              // throws "No session found" if it's missing.
+              // drop session.json into linkDataDir, since the link CLI's
+              // `ensureSession` errors out (non-TTY auto-spawn) if it's
+              // missing.
               const sessionPath = join(linkDataDir, "session.json");
               const deadline = Date.now() + 30_000;
               while (Date.now() < deadline) {
