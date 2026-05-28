@@ -15,7 +15,7 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
   {
     anthropic: ["claude-sonnet-4-6", "claude-sonnet", "claude"],
     openrouter: [
-      "anthropic/claude-opus-4.7",
+      "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-4-6",
       "anthropic/claude-sonnet",
       "anthropic/claude",
@@ -70,7 +70,7 @@ export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
   openrouter: [
     "anthropic/claude-sonnet-4.6",
     "anthropic/claude-sonnet",
-    "anthropic/claude-opus-4.7",
+    "anthropic/claude-opus-4.8",
     "google/gemini-3-pro",
   ],
   deco: [
@@ -89,9 +89,9 @@ export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
  */
 export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
   {
-    anthropic: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-sonnet"],
+    anthropic: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-sonnet"],
     openrouter: [
-      "anthropic/claude-opus-4.7",
+      "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-4.6:extended",
       "anthropic/claude-sonnet-4.6",
       "google/gemini-3-pro",
