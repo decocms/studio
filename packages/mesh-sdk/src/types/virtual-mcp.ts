@@ -102,6 +102,41 @@ export const VirtualMcpUILayoutSchema = z.object({
 export type VirtualMcpUILayout = z.infer<typeof VirtualMcpUILayoutSchema>;
 
 /**
+ * Tile UI declared by a home agent. When present, the `/$org` home page
+ * renders the resource as an iframe inside the agent's tile (same MCP UI
+ * iframe pattern used for tool results in chat).
+ *
+ * The resource lives on a specific underlying connection — not the virtual
+ * MCP gateway — so we store the source `connectionId` here. The host opens
+ * an MCP client to that connection directly so tool calls from inside the
+ * iframe hit bare tool names (the gateway would otherwise reject calls that
+ * don't carry its namespace prefix).
+ */
+const VirtualMcpHomeTileSchema = z.object({
+  /**
+   * Optional for backward compatibility with tiles saved before this field
+   * existed. The home API drops tiles that don't carry a connectionId (they
+   * can't render correctly without it), but parsing must still succeed so
+   * existing virtual MCPs don't fail output validation on COLLECTION_*_LIST.
+   */
+  connectionId: z
+    .string()
+    .optional()
+    .describe(
+      "Connection that owns the resource — the host opens a direct MCP client to this connection so the iframe can call tools by their bare names.",
+    ),
+  resourceUri: z
+    .string()
+    .describe(
+      "ui:// resource URI exposed by `connectionId`. Read on the home page and rendered via MCPAppRenderer.",
+    ),
+  minHeight: z.number().int().positive().optional(),
+  maxHeight: z.number().int().positive().optional(),
+});
+
+export type VirtualMcpHomeTile = z.infer<typeof VirtualMcpHomeTileSchema>;
+
+/**
  * Virtual MCP UI customization schema
  */
 const VirtualMcpUISchema = z.object({
@@ -111,6 +146,7 @@ const VirtualMcpUISchema = z.object({
   themeColor: z.string().nullable().optional(),
   pinnedViews: z.array(VirtualMcpPinnedViewSchema).nullable().optional(),
   layout: VirtualMcpUILayoutSchema.nullable().optional(),
+  homeTile: VirtualMcpHomeTileSchema.nullable().optional(),
 });
 
 export type VirtualMcpUI = z.infer<typeof VirtualMcpUISchema>;

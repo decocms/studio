@@ -599,6 +599,7 @@ function ConnectionItemSkeleton() {
 interface UITool {
   name: string;
   description?: string;
+  resourceUri: string;
 }
 
 interface PinnedView {
@@ -660,9 +661,13 @@ function LayoutTabContent({
                 }> | null;
               } | null;
             }>(result);
-            const uiTools: UITool[] = (item?.tools ?? [])
-              .filter((t) => !!getUIResourceUri(t._meta))
-              .map((t) => ({ name: t.name, description: t.description }));
+            const uiTools: UITool[] = (item?.tools ?? []).flatMap((t) => {
+              const resourceUri = getUIResourceUri(t._meta);
+              if (!resourceUri) return [];
+              return [
+                { name: t.name, description: t.description, resourceUri },
+              ];
+            });
             return {
               fetchOk: true,
               id: connId,
@@ -699,6 +704,7 @@ function LayoutTabContent({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  const homeTile = form.watch("metadata.ui.homeTile") ?? null;
 
   // Convert the stored {type, id, toolName} object into the string composite
   // key used by the <Select> UI. Legacy tab types fold into "settings".
@@ -856,6 +862,33 @@ function LayoutTabContent({
     flushAndSave();
   };
 
+  // Flatten UI tools across connections so the home-tile picker can offer a
+  // single Select. We key by resourceUri (unique per ui:// URI) but also
+  // capture the owning connection — the home page opens a direct client to
+  // that connection so iframe tool calls hit bare tool names.
+  const homeTileOptions = connectionsData.flatMap((conn) =>
+    conn.uiTools.map((tool) => ({
+      resourceUri: tool.resourceUri,
+      connectionId: conn.id,
+      label: `${conn.title} — ${toTitleCase(tool.name)}`,
+    })),
+  );
+
+  const handleHomeTileChange = (value: string) => {
+    if (value === "none") {
+      form.setValue("metadata.ui.homeTile", null, { shouldDirty: true });
+    } else {
+      const opt = homeTileOptions.find((o) => o.resourceUri === value);
+      if (!opt) return;
+      form.setValue(
+        "metadata.ui.homeTile",
+        { resourceUri: opt.resourceUri, connectionId: opt.connectionId },
+        { shouldDirty: true },
+      );
+    }
+    flushAndSave();
+  };
+
   const noConnections = connectionIds.length === 0;
   const noInteractiveTools =
     connectionsWithTools && connectionsData.length === 0;
@@ -949,6 +982,40 @@ function LayoutTabContent({
                 </TooltipContent>
               )}
             </Tooltip>
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5 min-w-0">
+              <Label className="font-normal text-foreground">Home tile</Label>
+              <p className="text-xs text-muted-foreground">
+                Render an interactive tool UI inside this agent's tile on the
+                org home page. Only takes effect when the agent is in the org's
+                default home agents.
+              </p>
+            </div>
+            <Select
+              value={homeTile?.resourceUri ?? "none"}
+              onValueChange={handleHomeTileChange}
+              disabled={homeTileOptions.length === 0}
+            >
+              <SelectTrigger className="w-56 h-8 text-sm shrink-0">
+                <SelectValue
+                  placeholder={
+                    homeTileOptions.length === 0
+                      ? "No interactive tools"
+                      : "None"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {homeTileOptions.map((opt) => (
+                  <SelectItem key={opt.resourceUri} value={opt.resourceUri}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
 
