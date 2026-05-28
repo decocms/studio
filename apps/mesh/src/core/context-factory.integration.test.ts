@@ -2,11 +2,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "bun:test";
 import { type Meter, trace } from "@opentelemetry/api";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
-import { createTestSchema } from "../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import { createMeshContextFactory } from "./context-factory";
 import type { BetterAuthInstance } from "./mesh-context";
 import type { EventBus } from "../event-bus/interface";
@@ -34,15 +34,15 @@ const createMockEventBus = (): EventBus => ({
 });
 
 describe("createMeshContextFactory", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
 
   beforeAll(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   // Helper to create a mock Request object (factory expects Request, not Hono context)

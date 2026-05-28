@@ -9,19 +9,20 @@ import {
   beforeEach,
 } from "bun:test";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import { CredentialVault } from "../encryption/credential-vault";
 import { DownstreamTokenStorage } from "../storage/downstream-token";
 import { ConnectionStorage } from "../storage/connection";
 import type { TokenRefreshResult } from "./refresh-access-token";
 
+// Narrow justified mock per TESTING.md: refreshAccessToken makes a real
+// HTTP call to a third-party OAuth token endpoint we can't wire up in
+// tests. The DB side uses real Postgres.
 const mockRefreshAccessToken =
   vi.fn<(...args: unknown[]) => Promise<TokenRefreshResult>>();
 mock.module("./refresh-access-token", () => ({
@@ -31,15 +32,15 @@ mock.module("./refresh-access-token", () => ({
 const { refreshAndStore } = await import("./token-refresh");
 
 describe("refreshAndStore", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let vault: CredentialVault;
   let tokenStorage: DownstreamTokenStorage;
   const connectionId = "conn_refresh_test";
 
   beforeAll(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
     vault = new CredentialVault(CredentialVault.generateKey());
     tokenStorage = new DownstreamTokenStorage(database.db, vault);
 
@@ -57,7 +58,7 @@ describe("refreshAndStore", () => {
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   beforeEach(async () => {

@@ -22,14 +22,12 @@ import {
   mock,
 } from "bun:test";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../../database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
 import { createApp } from "../app";
 import type { EventBus } from "../../event-bus";
 import { auth } from "../../auth";
@@ -110,7 +108,7 @@ function createMockEventBus(): EventBus {
   };
 }
 
-let database: TestDatabase;
+let database: MeshDatabase;
 let app: Awaited<ReturnType<typeof createApp>>;
 const connectionMap = new Map<string, string>();
 
@@ -119,9 +117,9 @@ describe("MCP OAuth Proxy E2E", () => {
     // Restore all mocks in case other tests mocked global.fetch
     mock.restore();
 
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
     app = await createApp({ database, eventBus: createMockEventBus() });
 
     const orgId = "org_test";
@@ -192,7 +190,7 @@ describe("MCP OAuth Proxy E2E", () => {
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   // ===========================================================================

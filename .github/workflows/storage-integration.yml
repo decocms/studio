@@ -52,18 +52,46 @@ jobs:
       - name: Run migrations
         run: bun run --cwd=apps/mesh migrate
 
-      # The list grows as we migrate more storage tests off PGlite. Each
-      # file runs in its own bun process so a teardown crash in one
-      # doesn't poison the next — same protection as the unit job.
+      # Convention: every `*.integration.test.ts` file is picked up here.
+      # Adding a new integration test = create a `something.integration.test.ts`
+      # and it auto-routes to this workflow. See TESTING.md.
+      # Per-file bun process gives the same Bun 1.3.5 signal-crash
+      # tolerance as the unit job — if bun exits >128 but tests passed
+      # (saw a (pass) marker), accept it as a teardown bug, not a fail.
       - name: Run storage integration tests
         run: |
-          files="apps/mesh/src/storage/virtual.test.ts \
-                 apps/mesh/src/storage/downstream-token.test.ts \
-                 apps/mesh/src/storage/sandbox-runner-state.test.ts \
-                 apps/mesh/src/storage/threads.test.ts \
-                 apps/mesh/src/storage/connection.test.ts"
+          files=$(find apps/mesh -name '*.integration.test.ts' | sort)
+          failed_files=""
+          crashed_files=""
           for f in $files; do
             echo "::group::$f"
-            bun test "$f"
+            set +e
+            out=$(bun test "$f" 2>&1)
+            code=$?
+            set -e
+            echo "$out"
             echo "::endgroup::"
+            if echo "$out" | grep -qE '^\(fail\)|[1-9][0-9]* fail'; then
+              failed_files="$failed_files $f"
+              continue
+            fi
+            if [ "$code" -eq 0 ]; then
+              continue
+            fi
+            # Signal-induced exit AND we saw a (pass) marker → known Bun
+            # 1.3.5 teardown crash, accept. Mirrors the unit-shard logic.
+            if [ "$code" -gt 128 ] && echo "$out" | grep -qE '^\(pass\)|[1-9][0-9]* pass'; then
+              echo "⚠️  $f: bun crashed at teardown (exit $code) after tests passed — accepting"
+              continue
+            fi
+            crashed_files="$crashed_files $f"
           done
+          if [ -n "$failed_files" ]; then
+            echo "❌ Test failures in:$failed_files"
+            exit 1
+          fi
+          if [ -n "$crashed_files" ]; then
+            echo "❌ Bun crashed before tests ran in:$crashed_files"
+            exit 1
+          fi
+          echo "✅ All storage integration files passed"

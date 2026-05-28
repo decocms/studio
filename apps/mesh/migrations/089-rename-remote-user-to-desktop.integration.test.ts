@@ -1,25 +1,25 @@
 /**
- * Integration test for migration 082.
+ * Integration test for migration 089: vmMap kind-key + sandboxProviderKind
+ * rename from `remote-user` to `desktop`.
  *
- * Migrations 080 and 081 silently no-op'd against the wrong table name. This
- * test pins down that 082 actually rewrites the data on a `connections` row
- * (where virtual MCPs live) and that re-running is a no-op — so a fresh
- * install never regresses to the v1 shape, and a partial-prior-run state
- * converges on a single re-run.
+ * Mirrors the 087 pattern: writes to `connections` rows (where virtual
+ * MCPs live as `connection_type='VIRTUAL'`), runs the migration directly,
+ * asserts the resulting `metadata` JSON shape, and confirms re-running is a
+ * no-op. Runner-state and thread updates are exercised by the integration
+ * suite where those tables are seeded — the migration test focuses on the
+ * JSONB rewrites because that's where the logic is non-trivial.
  */
 
-import { beforeEach, afterEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../src/database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../src/storage/test-helpers";
-import { up as up087 } from "./087-fix-vm-map-rekey";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../src/database/test-db-pg";
+import type { MeshDatabase } from "../src/database";
+import { up as up089 } from "./089-rename-remote-user-to-desktop";
 
 const USER = "user_test";
 const ORG = "org_test";
@@ -29,7 +29,7 @@ interface ConnectionRow {
 }
 
 async function getMetadata(
-  database: TestDatabase,
+  database: MeshDatabase,
   id: string,
 ): Promise<Record<string, unknown>> {
   const row = (await sql<ConnectionRow>`
@@ -41,13 +41,11 @@ async function getMetadata(
 }
 
 async function insertVirtualConnection(
-  database: TestDatabase,
+  database: MeshDatabase,
   id: string,
   metadata: Record<string, unknown>,
 ): Promise<void> {
   const now = new Date().toISOString();
-  // `connection_url` is NOT NULL even for VIRTUAL connections; tests use
-  // an inert placeholder URL since the migration only touches `metadata`.
   await sql`
     INSERT INTO connections (
       id, organization_id, created_by, title, connection_type,
@@ -60,37 +58,39 @@ async function insertVirtualConnection(
   `.execute(database.db);
 }
 
-describe("migration 082 — fix vmMap rekey", () => {
-  let database: TestDatabase;
+describe("migration 089 — rename remote-user → desktop", () => {
+  let database: MeshDatabase;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
-  it("wraps a v1 bare entry under its sandboxProviderKind", async () => {
-    await insertVirtualConnection(database, "vir_v1_kind", {
+  it("renames the inner 'remote-user' kind key to 'desktop'", async () => {
+    await insertVirtualConnection(database, "vir_kind_key", {
       vmMap: {
         [USER]: {
           "deco/branch-a": {
-            vmId: "vm-a",
-            previewUrl: "http://x/preview",
-            sandboxProviderKind: "desktop",
-            createdAt: 1779000000000,
+            "remote-user": {
+              vmId: "vm-a",
+              previewUrl: "http://x/preview",
+              sandboxProviderKind: "remote-user",
+              createdAt: 1779000000000,
+            },
           },
         },
       },
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up087(database.db as any);
+    await up089(database.db as any);
 
-    const meta = await getMetadata(database, "vir_v1_kind");
+    const meta = await getMetadata(database, "vir_kind_key");
     expect(meta).toEqual({
       vmMap: {
         [USER]: {
@@ -107,92 +107,55 @@ describe("migration 082 — fix vmMap rekey", () => {
     });
   });
 
-  it("falls back to runnerKind, then docker, when sandboxProviderKind is absent", async () => {
-    await insertVirtualConnection(database, "vir_v1_runner", {
+  it("rewrites sandboxProviderKind field value even when key already migrated", async () => {
+    // Edge case: the outer key matches the new name but the inner
+    // sandboxProviderKind field still carries the old value (would happen
+    // if writer was upgraded mid-flight and the row was written halfway).
+    await insertVirtualConnection(database, "vir_field_only", {
       vmMap: {
         [USER]: {
-          "deco/branch-runner": {
-            vmId: "vm-r",
-            previewUrl: null,
-            runnerKind: "agent-sandbox",
-            createdAt: 1779000000001,
-          },
-          "deco/branch-default": {
-            vmId: "vm-d",
-            previewUrl: null,
+          "deco/branch-b": {
+            desktop: {
+              vmId: "vm-b",
+              previewUrl: null,
+              sandboxProviderKind: "remote-user",
+              createdAt: 1779000000001,
+            },
           },
         },
       },
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up087(database.db as any);
+    await up089(database.db as any);
 
-    const meta = (await getMetadata(database, "vir_v1_runner")) as {
+    const meta = (await getMetadata(database, "vir_field_only")) as {
       vmMap: Record<string, Record<string, Record<string, unknown>>>;
     };
-    const userBranches = meta.vmMap[USER]!;
-    // The runnerKind branch was wrapped under "agent-sandbox" AND its inner
-    // entry's `runnerKind` key was renamed to `sandboxProviderKind`.
-    const runnerBranch = userBranches["deco/branch-runner"]!;
-    expect(Object.keys(runnerBranch)).toEqual(["agent-sandbox"]);
-    expect(runnerBranch["agent-sandbox"]).toEqual({
-      vmId: "vm-r",
+    const branch = meta.vmMap[USER]!["deco/branch-b"]!;
+    expect(branch.desktop).toEqual({
+      vmId: "vm-b",
       previewUrl: null,
-      sandboxProviderKind: "agent-sandbox",
+      sandboxProviderKind: "desktop",
       createdAt: 1779000000001,
     });
-    // The bare-default branch (no kind hint) was wrapped under "docker".
-    expect(Object.keys(userBranches["deco/branch-default"]!)).toEqual([
-      "docker",
-    ]);
   });
 
-  it("renames runnerKind → sandboxProviderKind on already-v2 inner entries", async () => {
-    await insertVirtualConnection(database, "vir_v2_runner", {
+  it("leaves other kinds (docker, agent-sandbox) untouched", async () => {
+    await insertVirtualConnection(database, "vir_other_kinds", {
       vmMap: {
         [USER]: {
           "deco/branch-c": {
-            "agent-sandbox": {
-              vmId: "vm-c",
+            docker: {
+              vmId: "vm-d",
               previewUrl: null,
-              runnerKind: "agent-sandbox",
+              sandboxProviderKind: "docker",
               createdAt: 1779000000002,
             },
-          },
-        },
-      },
-    });
-
-    // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up087(database.db as any);
-
-    const meta = await getMetadata(database, "vir_v2_runner");
-    expect(meta).toEqual({
-      vmMap: {
-        [USER]: {
-          "deco/branch-c": {
             "agent-sandbox": {
-              vmId: "vm-c",
+              vmId: "vm-as",
               previewUrl: null,
               sandboxProviderKind: "agent-sandbox",
-              createdAt: 1779000000002,
-            },
-          },
-        },
-      },
-    });
-  });
-
-  it("is idempotent — re-running on a clean row makes no change", async () => {
-    await insertVirtualConnection(database, "vir_idem", {
-      vmMap: {
-        [USER]: {
-          "deco/branch-i": {
-            desktop: {
-              vmId: "vm-i",
-              previewUrl: null,
-              sandboxProviderKind: "desktop",
               createdAt: 1779000000003,
             },
           },
@@ -201,10 +164,52 @@ describe("migration 082 — fix vmMap rekey", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up087(database.db as any);
+    await up089(database.db as any);
+
+    const meta = await getMetadata(database, "vir_other_kinds");
+    expect(meta).toEqual({
+      vmMap: {
+        [USER]: {
+          "deco/branch-c": {
+            docker: {
+              vmId: "vm-d",
+              previewUrl: null,
+              sandboxProviderKind: "docker",
+              createdAt: 1779000000002,
+            },
+            "agent-sandbox": {
+              vmId: "vm-as",
+              previewUrl: null,
+              sandboxProviderKind: "agent-sandbox",
+              createdAt: 1779000000003,
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it("is idempotent — re-running on already-migrated row makes no change", async () => {
+    await insertVirtualConnection(database, "vir_idem", {
+      vmMap: {
+        [USER]: {
+          "deco/branch-i": {
+            desktop: {
+              vmId: "vm-i",
+              previewUrl: null,
+              sandboxProviderKind: "desktop",
+              createdAt: 1779000000004,
+            },
+          },
+        },
+      },
+    });
+
+    // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
+    await up089(database.db as any);
     const after1 = await getMetadata(database, "vir_idem");
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up087(database.db as any);
+    await up089(database.db as any);
     const after2 = await getMetadata(database, "vir_idem");
 
     expect(after2).toEqual(after1);
@@ -216,7 +221,7 @@ describe("migration 082 — fix vmMap rekey", () => {
     });
 
     // biome-ignore lint/suspicious/noExplicitAny: migration accepts the test Kysely instance
-    await up087(database.db as any);
+    await up089(database.db as any);
 
     const meta = await getMetadata(database, "vir_no_map");
     expect(meta).toEqual({ instructions: "hello" });

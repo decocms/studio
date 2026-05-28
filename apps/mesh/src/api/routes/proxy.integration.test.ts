@@ -12,13 +12,13 @@ process.env.ENCRYPTION_KEY ??= Buffer.from("0".repeat(32)).toString("base64");
 import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
 import { auth } from "../../auth";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../../database/test-db";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
 import type { EventBus } from "../../event-bus";
 import { setGlobalSettings, getSettings } from "../../settings";
-import { createTestSchema } from "../../storage/test-helpers";
 import { createApp } from "../app";
 
 function ensureEncryptionKey() {
@@ -55,7 +55,7 @@ function createMockEventBus(): EventBus {
 }
 
 describe("MCP Proxy null-org bypass", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
 
   const attackerUserId = "user_attacker";
@@ -63,36 +63,25 @@ describe("MCP Proxy null-org bypass", () => {
 
   beforeEach(async () => {
     ensureEncryptionKey();
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
     app = await createApp({ database, eventBus: createMockEventBus() });
 
     const now = new Date().toISOString();
 
-    // Create attacker user
-    await database.db
-      .insertInto("user" as any)
-      .values({
-        id: attackerUserId,
-        email: "attacker@example.com",
-        emailVerified: 0,
-        name: "Attacker",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .execute();
+    // Create attacker user via raw SQL — `emailVerified` is BOOLEAN in
+    // real Postgres (Better Auth) but `storage/types.ts` still has the
+    // stale `number` shape from the PGlite era. Raw SQL bypasses the
+    // type until that gets regenerated.
+    const { sql } = await import("kysely");
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${attackerUserId}, 'attacker@example.com', false, 'Attacker', ${now}, ${now})
+    `.execute(database.db);
 
-    await database.db
-      .insertInto("users")
-      .values({
-        id: attackerUserId,
-        email: "attacker@example.com",
-        name: "Attacker",
-        role: "user",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .execute();
+    // (No insert into "users" — that table only existed in the PGlite
+    // hand-rolled schema, not in real Postgres migrations. The Better Auth
+    // "user" row inserted above is sufficient.)
 
     // Create victim organization and a connection in it
     await database.db
@@ -135,7 +124,7 @@ describe("MCP Proxy null-org bypass", () => {
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     vi.restoreAllMocks();
   });
 

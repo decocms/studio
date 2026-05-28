@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { Hono } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../../database/test-db";
-import { createTestSchema } from "../../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
 import openaiCompatRoutes from "./openai-compat";
 
 // ============================================================================
@@ -27,12 +27,12 @@ const ENDPOINT = `/${MOCK_ORG_SLUG}/v1/chat/completions`;
 // ============================================================================
 
 describe("OpenAI-compat: Schema Validation", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Hono<{ Variables: { meshContext: MeshContext } }>;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
 
     const ctx = {
       db: database.db,
@@ -57,7 +57,7 @@ describe("OpenAI-compat: Schema Validation", () => {
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     mock.restore();
   });
 
@@ -181,16 +181,16 @@ describe("OpenAI-compat: Schema Validation", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Authentication", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Hono<{ Variables: { meshContext: MeshContext } }>;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     mock.restore();
   });
 
@@ -307,16 +307,16 @@ describe("OpenAI-compat: Authentication", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Authorization", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Hono<{ Variables: { meshContext: MeshContext } }>;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     mock.restore();
   });
 
@@ -363,12 +363,12 @@ describe("OpenAI-compat: Authorization", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Tools Schema", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Hono<{ Variables: { meshContext: MeshContext } }>;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
 
     const ctx = {
       db: database.db,
@@ -390,7 +390,7 @@ describe("OpenAI-compat: Tools Schema", () => {
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     mock.restore();
   });
 
@@ -477,12 +477,12 @@ describe("OpenAI-compat: Tools Schema", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Response Format", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Hono<{ Variables: { meshContext: MeshContext } }>;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
 
     const ctx = {
       db: database.db,
@@ -504,7 +504,7 @@ describe("OpenAI-compat: Response Format", () => {
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     mock.restore();
   });
 
@@ -580,12 +580,12 @@ describe("OpenAI-compat: Response Format", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Message Formats", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Hono<{ Variables: { meshContext: MeshContext } }>;
 
   beforeEach(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
 
     const ctx = {
       db: database.db,
@@ -607,7 +607,7 @@ describe("OpenAI-compat: Message Formats", () => {
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     mock.restore();
   });
 

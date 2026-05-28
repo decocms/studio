@@ -86,19 +86,16 @@ jobs:
           # Bun 1.3.5's PGlite teardown crashes — sharding was orchestration
           # overhead for little wall-time gain at the current size.
           #
-          # Exclusions: tests that need real infrastructure live in their
-          # own workflows so this job stays infrastructure-free per
-          # TESTING.md.
-          #   - daemon.e2e.test.ts → .github/workflows/sandbox-daemon.yml
-          #   - storage/*.test.ts → .github/workflows/storage-integration.yml
+          # Tests are split by filename convention:
+          #   *.test.ts             → unit (here)
+          #   *.integration.test.ts → .github/workflows/storage-integration.yml
+          #   *.e2e.test.ts         → reserved for the sandbox-daemon workflow
+          #                          (only daemon.e2e.test.ts uses it today)
+          # See TESTING.md for the decision tree.
           files=$(find apps/mesh/src packages \
             \( -name '*.test.ts' -o -name '*.test.tsx' \) \
-            ! -path '*/daemon/daemon.e2e.test.ts' \
-            ! -path '*/storage/virtual.test.ts' \
-            ! -path '*/storage/downstream-token.test.ts' \
-            ! -path '*/storage/sandbox-runner-state.test.ts' \
-            ! -path '*/storage/threads.test.ts' \
-            ! -path '*/storage/connection.test.ts')
+            ! -name '*.integration.test.ts' \
+            ! -name '*.e2e.test.ts')
           file_count=$(echo "$files" | wc -l)
           echo "Running $file_count test files (one bun process per file)"
           echo "$files"

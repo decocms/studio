@@ -2,39 +2,37 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "kysely";
 import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../../database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
 import { CredentialVault } from "../../encryption/credential-vault";
 import { ConnectionStorage } from "../../storage/connection";
 import { VirtualMCPStorage } from "../../storage/virtual";
 import { installStudioPack } from "./studio-pack";
 
 describe("installStudioPack", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let virtualMcpStorage: VirtualMCPStorage;
   let connectionStorage: ConnectionStorage;
   const orgId = "org_studio_pack_test";
   const userId = "user_studio_pack_test";
 
   beforeAll(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
     virtualMcpStorage = new VirtualMCPStorage(database.db);
     const vault = new CredentialVault(CredentialVault.generateKey());
     connectionStorage = new ConnectionStorage(database.db, vault);
 
     // Seed the org and user required by FK constraints on the connections table.
+    // emailVerified is BOOLEAN in real PG (Better Auth); raw SQL so the
+    // Database schema type's stale `number` doesn't get in the way.
     const now = new Date().toISOString();
     await sql`
       INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
-      VALUES (${userId}, ${userId + "@test.com"}, 0, ${"Test " + userId}, ${now}, ${now})
+      VALUES (${userId}, ${userId + "@test.com"}, false, ${"Test " + userId}, ${now}, ${now})
       ON CONFLICT (id) DO NOTHING
     `.execute(database.db);
     await sql`
@@ -77,7 +75,7 @@ describe("installStudioPack", () => {
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   test("creates all four studio-pack agents on a fresh org", async () => {

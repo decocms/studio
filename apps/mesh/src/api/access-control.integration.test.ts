@@ -10,12 +10,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
 import { auth } from "../auth";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import type { EventBus } from "../event-bus";
-import { createTestSchema } from "../storage/test-helpers";
 import type { Permission } from "../storage/types";
 import { createApp } from "./app";
 
@@ -104,7 +104,7 @@ interface MCPRequest {
 // ============================================================================
 
 describe("Access Control Integration Tests", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
   let testUsers: Map<string, TestUser>;
   let testOrganizations: Map<string, TestOrganization>;
@@ -121,8 +121,8 @@ describe("Access Control Integration Tests", () => {
 
   beforeEach(async () => {
     // Create in-memory database
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
 
     // Create app instance with test database and mock event bus
     app = await createApp({ database, eventBus: createMockEventBus() });
@@ -145,7 +145,7 @@ describe("Access Control Integration Tests", () => {
   });
 
   afterEach(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
     vi.restoreAllMocks();
   });
 
@@ -169,31 +169,16 @@ describe("Access Control Integration Tests", () => {
 
     const now = new Date().toISOString();
 
-    // Insert into Better Auth "user" table (FK target for connections.created_by)
-    await database.db
-      .insertInto("user" as any)
-      .values({
-        id: user.id,
-        email: user.email,
-        emailVerified: 0,
-        name: user.name,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .execute();
-
-    // Insert into application "users" table
-    await database.db
-      .insertInto("users")
-      .values({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .execute();
+    // Insert into Better Auth "user" table via raw SQL. `emailVerified` is
+    // BOOLEAN in real Postgres but the Database schema type still says
+    // `number` (legacy PGlite shape). The application "users" table this
+    // test used to insert into doesn't exist in real Postgres — it was
+    // only created by the PGlite hand-rolled test-helpers schema.
+    const { sql } = await import("kysely");
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${user.id}, ${user.email}, false, ${user.name}, ${now}, ${now})
+    `.execute(database.db);
 
     testUsers.set(user.id, user);
     return user;
