@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { rebaseOntoBase } from "../git/rebase-onto-base";
-import { InvalidRemoteBranchNameError } from "../git/ref-name";
+import {
+  assertValidRemoteBranchName,
+  InvalidRemoteBranchNameError,
+} from "../git/ref-name";
 import { safePath } from "../paths";
 import { git } from "../setup/git";
 import { jsonResponse, parseJsonBody } from "./body-parser";
@@ -145,6 +148,14 @@ function readHeadFile(repoDir: string, filePath: string): string | null {
   return tryGit(repoDir, ["show", `HEAD:${filePath}`]);
 }
 
+function readRefFile(
+  repoDir: string,
+  ref: string,
+  filePath: string,
+): string | null {
+  return tryGit(repoDir, ["show", `${ref}:${filePath}`]);
+}
+
 function computeDiff(repoDir: string): GitDiffResult {
   const status = computeStatus(repoDir);
   const paths = [
@@ -170,6 +181,82 @@ function computeDiff(repoDir: string): GitDiffResult {
   }
 
   return { diffs };
+}
+
+/** Committed changes on HEAD since branching from `origin/{base}` (PR scope). */
+export function computeDiffAgainstBase(
+  repoDir: string,
+  base: string,
+  headSha?: string,
+): GitDiffResult {
+  assertValidRemoteBranchName(base);
+
+  const branch = tryGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  if (!branch || branch === "HEAD") {
+    throw new Error("Cannot compute PR diff from detached HEAD");
+  }
+  assertValidRemoteBranchName(branch);
+
+  // Shallow clones often miss one side of the fork — fetch both tips with depth.
+  try {
+    runGit(repoDir, ["fetch", "--depth", "100", "origin", base, branch]);
+  } catch {
+    // Local-only fixtures / offline sandboxes may already have the refs we need.
+  }
+  if (headSha && /^[0-9a-f]{40}$/i.test(headSha)) {
+    tryGit(repoDir, ["fetch", "--depth", "100", "origin", headSha]);
+  }
+
+  const upstream = `origin/${base}`;
+  if (!tryGit(repoDir, ["rev-parse", "--verify", upstream])) {
+    throw new Error(`Base branch '${base}' not found on origin`);
+  }
+
+  const remoteHead = `origin/${branch}`;
+  let headRef = "HEAD";
+  if (headSha && tryGit(repoDir, ["cat-file", "-e", `${headSha}^{commit}`])) {
+    headRef = headSha;
+  } else if (tryGit(repoDir, ["rev-parse", "--verify", remoteHead])) {
+    headRef = remoteHead;
+  }
+
+  let paths = listThreeDotDiffPaths(repoDir, upstream, headRef);
+
+  if (paths.length === 0) {
+    try {
+      runGit(repoDir, ["fetch", "--deepen", "500", "origin", base, branch]);
+    } catch {
+      /* see fetch note above */
+    }
+    paths = listThreeDotDiffPaths(repoDir, upstream, headRef);
+  }
+
+  const mergeBase =
+    tryGit(repoDir, ["merge-base", upstream, headRef]) ?? upstream;
+
+  const diffs: Record<string, GitDiffEntry> = {};
+  for (const filePath of paths) {
+    diffs[filePath] = {
+      from: readRefFile(repoDir, mergeBase, filePath),
+      to: readRefFile(repoDir, headRef, filePath),
+    };
+  }
+
+  return { diffs };
+}
+
+function listThreeDotDiffPaths(
+  repoDir: string,
+  leftRef: string,
+  rightRef: string,
+): string[] {
+  const namesOutput = tryGit(repoDir, [
+    "diff",
+    "--name-only",
+    "-z",
+    `${leftRef}...${rightRef}`,
+  ]);
+  return namesOutput ? namesOutput.split("\0").filter(Boolean) : [];
 }
 
 function stripAnsi(text: string): string {
@@ -298,10 +385,34 @@ export function makeGitStatusHandler(deps: GitDeps) {
 }
 
 export function makeGitDiffHandler(deps: GitDeps) {
-  return async (_req: Request): Promise<Response> => {
+  return async (req: Request): Promise<Response> => {
     try {
-      return jsonResponse(computeDiff(deps.repoDir));
+      let base: string | undefined;
+      let headSha: string | undefined;
+      if (req.method === "POST") {
+        try {
+          const body = (await parseJsonBody(req)) as {
+            base?: string;
+            headSha?: string;
+          };
+          const rawBase = typeof body.base === "string" ? body.base.trim() : "";
+          const rawHead =
+            typeof body.headSha === "string" ? body.headSha.trim() : "";
+          if (rawBase) base = rawBase;
+          if (rawHead) headSha = rawHead;
+        } catch {
+          // Empty body → working-tree diff.
+        }
+      }
+
+      const result = base
+        ? computeDiffAgainstBase(deps.repoDir, base, headSha)
+        : computeDiff(deps.repoDir);
+      return jsonResponse(result);
     } catch (err) {
+      if (err instanceof InvalidRemoteBranchNameError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
       return jsonResponse(
         { error: err instanceof Error ? err.message : String(err) },
         500,

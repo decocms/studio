@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import { gitSync } from "../git/git-sync";
 import {
+  computeDiffAgainstBase,
   makeGitDiffHandler,
   makeGitDiscardHandler,
   makeGitPublishHandler,
@@ -49,6 +50,51 @@ describe("git routes", () => {
     };
     expect(body.diffs["README.md"]?.from).toContain("hello");
     expect(body.diffs["README.md"]?.to).toContain("hello world");
+  });
+
+  it("diff against base returns committed branch changes", async () => {
+    const { appRoot, repoDir } = initRepo();
+    gitSync(["checkout", "-b", "feature"], { cwd: repoDir, asUser: false });
+    writeFileSync(join(repoDir, "feature.txt"), "on branch\n");
+    gitSync(["add", "feature.txt"], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "add feature file"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    const mainSha = gitSync(["rev-parse", "main"], {
+      cwd: repoDir,
+      asUser: false,
+    }).trim();
+    gitSync(["update-ref", "refs/remotes/origin/main", mainSha], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    const featureSha = gitSync(["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    }).trim();
+    gitSync(["update-ref", `refs/remotes/origin/feature`, featureSha], {
+      cwd: repoDir,
+      asUser: false,
+    });
+
+    const prDiff = computeDiffAgainstBase(repoDir, "main");
+    expect(Object.keys(prDiff.diffs)).toContain("feature.txt");
+    expect(prDiff.diffs["feature.txt"]?.from).toBeNull();
+    expect(prDiff.diffs["feature.txt"]?.to).toContain("on branch");
+
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/diff", {
+        method: "POST",
+        body: JSON.stringify({ base: "main" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      diffs: Record<string, { from: string | null; to: string | null }>;
+    };
+    expect(body.diffs["feature.txt"]?.to).toContain("on branch");
   });
 
   it("publish commits staged changes", async () => {

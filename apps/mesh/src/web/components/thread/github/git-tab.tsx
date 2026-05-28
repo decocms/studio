@@ -42,35 +42,6 @@ function PrHeader({ pr }: { pr: PrSummary }) {
   );
 }
 
-/**
- * State C header block: small PR-number link, title, author · base ← head.
- * Replaces the full-width PrHeader bar in the open-PR view.
- */
-function PrOverview({ pr }: { pr: PrSummary }) {
-  return (
-    <div className="space-y-2">
-      <h1 className="text-2xl font-semibold">{decodeHtmlEntities(pr.title)}</h1>
-      <div className="text-sm text-muted-foreground">
-        <a
-          href={pr.htmlUrl}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={`Open PR #${pr.number} on GitHub`}
-          className="inline-flex items-center gap-1 hover:text-foreground"
-        >
-          PR #{pr.number}
-          <LinkExternal01 className="h-3.5 w-3.5" />
-        </a>
-        {" · "}
-        {pr.author && <>@{pr.author} · </>}
-        <span className="font-mono text-xs">{pr.base}</span>
-        {" ← "}
-        <span className="font-mono text-xs">{pr.head}</span>
-      </div>
-    </div>
-  );
-}
-
 export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
   const { org } = useProjectContext();
   const vm = useVirtualMCP(virtualMcpId);
@@ -92,7 +63,7 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
         <GitBranch01 className="h-6 w-6 text-muted-foreground" />
         <div className="text-muted-foreground">No branch selected.</div>
         <div className="text-xs text-muted-foreground">
-          Pick a branch from the dropdown in the header to see PR status.
+          Pick a branch from the header to see PR status.
         </div>
       </div>
     );
@@ -102,6 +73,7 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
     <GitTabContent
       orgId={org.id}
       orgSlug={org.slug}
+      virtualMcpId={virtualMcpId}
       connectionId={githubRepo.connectionId}
       owner={githubRepo.owner}
       repo={githubRepo.name}
@@ -113,6 +85,7 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
 interface ContentProps {
   orgId: string;
   orgSlug: string;
+  virtualMcpId: string;
   connectionId: string;
   owner: string;
   repo: string;
@@ -120,7 +93,8 @@ interface ContentProps {
 }
 
 function GitTabContent(props: ContentProps) {
-  const { orgId, orgSlug, connectionId, owner, repo, branch } = props;
+  const { orgId, orgSlug, virtualMcpId, connectionId, owner, repo, branch } =
+    props;
 
   const {
     data: pr,
@@ -187,19 +161,16 @@ function GitTabContent(props: ContentProps) {
   // State C: PR open
   if (pr && pr.state === "open") {
     return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex-1 overflow-auto">
-          <div className="mx-auto w-full max-w-[1200px] px-4 pt-8 pb-6 md:px-10 md:pt-12 md:pb-10">
-            <PrOverview pr={pr} />
-            <div className="mt-8">
-              <PrSubTabs
-                pr={pr}
-                connectionId={connectionId}
-                owner={owner}
-                repo={repo}
-              />
-            </div>
-          </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 w-full flex-1 flex-col px-6 py-5">
+          <PrSubTabs
+            pr={pr}
+            virtualMcpId={virtualMcpId}
+            branch={branch}
+            connectionId={connectionId}
+            owner={owner}
+            repo={repo}
+          />
         </div>
       </div>
     );

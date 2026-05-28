@@ -23,7 +23,7 @@ export function agentHasClonableSource(metadata: unknown): boolean {
 /**
  * True only when the virtual MCP has a GitHub repo with an attached
  * connection (i.e. authenticated github identity, not a public-clone
- * template). Gate the BranchPill and the git tab on this predicate.
+ * template). Gate the git tab on this predicate.
  *
  * Built on top of `getActiveGithubRepo`, which already returns null
  * when a stale connectionId references a detached connection.

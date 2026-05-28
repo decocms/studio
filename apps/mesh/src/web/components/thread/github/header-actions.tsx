@@ -35,6 +35,7 @@ import {
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
+import { BranchPill } from "../../chat/pills/branch-pill.tsx";
 
 interface Props {
   virtualMcpId: string;
@@ -282,6 +283,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const actionBusy = githubActionPending || isStreaming;
+  const branchPickerLocked = (chat.messages ?? []).length > 0;
 
   return (
     <>
@@ -289,22 +291,38 @@ export function HeaderActions({ virtualMcpId }: Props) {
         orientation="vertical"
         className="mx-2 data-[orientation=vertical]:h-5"
       />
-      <HeaderButtonRenderer
-        button={button}
-        actionBusy={actionBusy}
-        githubActionPending={githubActionPending}
-        onActivate={onActivate}
-        prNumber={pr?.number}
-        onSquashMerge={handleSquashMerge}
-        onReview={
-          pr
-            ? () => {
-                if (isStreaming) return;
-                void send(tpl.reviewPr({ prNumber: pr.number }));
-              }
-            : undefined
-        }
-      />
+      <div className="flex items-center gap-2">
+        <BranchPill
+          orgId={org.id}
+          orgSlug={org.slug}
+          userId={userId ?? ""}
+          virtualMcpId={virtualMcpId}
+          connectionId={githubRepo.connectionId ?? ""}
+          owner={githubRepo.owner}
+          repo={githubRepo.name}
+          sandboxMap={vm?.metadata?.sandboxMap}
+          value={branch ?? sandboxRouteBranch ?? null}
+          onChange={(next) => void setCurrentTaskBranch(next)}
+          locked={branchPickerLocked}
+          placement="header"
+        />
+        <HeaderButtonRenderer
+          button={button}
+          actionBusy={actionBusy}
+          githubActionPending={githubActionPending}
+          onActivate={onActivate}
+          prNumber={pr?.number}
+          onSquashMerge={handleSquashMerge}
+          onReview={
+            pr
+              ? () => {
+                  if (isStreaming) return;
+                  void send(tpl.reviewPr({ prNumber: pr.number }));
+                }
+              : undefined
+          }
+        />
+      </div>
       {sandboxRouteBranch && (
         <PublishDialog
           open={publishOpen}
@@ -318,6 +336,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
           owner={githubRepo.owner}
           repo={githubRepo.name}
           previewUrl={previewUrl}
+          openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={switchToFreshBranch}
         />

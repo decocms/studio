@@ -595,15 +595,8 @@ export function ChatInput({
                     {/* Right Actions (branch/mode, model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
                       <ChatModeRow
-                        orgId={org.id}
-                        orgSlug={org.slug}
-                        userId={userId ?? ""}
                         virtualMcp={fullVm}
-                        sandboxMap={fullVm?.metadata?.sandboxMap}
                         currentBranch={taskCtx?.currentBranch ?? null}
-                        onBranchChange={
-                          taskCtx?.setCurrentTaskBranch ?? (() => {})
-                        }
                       />
                       <TierTrigger />
 

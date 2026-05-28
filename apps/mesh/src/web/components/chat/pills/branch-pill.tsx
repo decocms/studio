@@ -13,6 +13,7 @@ interface Props {
   value: string | null | undefined;
   onChange: (branch: string) => void;
   locked: boolean;
+  placement?: "chat" | "header";
 }
 
 /**
@@ -21,6 +22,6 @@ interface Props {
  * Button + Tooltip when disabled — the user just can't open the
  * popover.
  */
-export function BranchPill({ locked, ...props }: Props) {
-  return <BranchPicker {...props} disabled={locked} />;
+export function BranchPill({ locked, placement, ...props }: Props) {
+  return <BranchPicker {...props} disabled={locked} placement={placement} />;
 }
