@@ -19,10 +19,8 @@ import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import {
   useProjectContext,
   useMCPClient,
-  useConnections,
   SELF_MCP_ALIAS_ID,
 } from "@decocms/mesh-sdk";
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { toast } from "sonner";
 import {
@@ -154,8 +152,6 @@ function PickerContent({
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigateToAgent = useNavigateToAgent();
-  const [selectedConnection, setSelectedConnection] =
-    useState<ConnectionEntity | null>(null);
   const [autoRespondEnabled, setAutoRespondEnabled] = useState(true);
   const [selectedAutomationKeys, setSelectedAutomationKeys] = useState<
     Set<string>
@@ -176,24 +172,43 @@ function PickerContent({
       ? selectedAutomationKeys
       : new Set<string>();
 
-  const githubConnections = useConnections({ slug: "mcp-github" });
-
-  const autoInstall = useAutoInstallGitHub({
-    enabled: githubConnections.length === 0,
-  });
-
-  const effectiveConnection =
-    githubConnections.length === 1
-      ? (githubConnections[0] ?? null)
-      : selectedConnection;
-
-  const githubClient = useMCPClient({
-    connectionId: effectiveConnection?.id ?? "",
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const selfClient = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
+
+  // Resolve the caller's own mcp-github connection (user-private preferred,
+  // org-shared fallback). Avoids the cross-user leak that
+  // useConnections({ slug: 'mcp-github' }) had: that query could surface a
+  // teammate's connection and end up listing their personal installations.
+  const resolveQuery = useQuery({
+    queryKey: KEYS.connectionResolveForUser(org.id, "mcp-github"),
+    queryFn: async () => {
+      const result = await selfClient.callTool({
+        name: "CONNECTION_RESOLVE_FOR_USER",
+        arguments: { app_id: "mcp-github" },
+      });
+      const structured = (result as { structuredContent?: unknown })
+        .structuredContent;
+      const text = (result as { content?: Array<{ text?: string }> })
+        .content?.[0]?.text;
+      const payload = (structured ?? (text ? JSON.parse(text) : null)) as {
+        connectionId: string | null;
+        access: "user" | "org" | null;
+      } | null;
+      return payload ?? { connectionId: null, access: null };
+    },
+  });
+
+  const resolvedConnectionId = resolveQuery.data?.connectionId ?? null;
+
+  const autoInstall = useAutoInstallGitHub({
+    enabled: resolveQuery.isSuccess && resolvedConnectionId === null,
+  });
+
+  const githubClient = useMCPClient({
+    connectionId: resolvedConnectionId ?? "",
     orgId: org.id,
     orgSlug: org.slug,
   });
@@ -283,11 +298,11 @@ function PickerContent({
 
   const importMutation = useMutation({
     mutationFn: async (repo: Repo) => {
-      if (!effectiveConnection || !selectedInstallation) {
+      if (!resolvedConnectionId || !selectedInstallation) {
         throw new Error("No GitHub connection or installation");
       }
 
-      const connectionId = effectiveConnection.id;
+      const connectionId = resolvedConnectionId;
 
       const result = (await selfClient.callTool({
         name: "COLLECTION_VIRTUAL_MCP_CREATE",
@@ -407,7 +422,7 @@ function PickerContent({
     );
   }
 
-  if (githubConnections.length === 0 && autoInstall.status === "idle") {
+  if (resolvedConnectionId === null) {
     return (
       <AutoInstallGitHubUI
         status="installing"
@@ -417,57 +432,19 @@ function PickerContent({
     );
   }
 
-  if (githubConnections.length > 1 && !effectiveConnection) {
-    return (
-      <div className="flex flex-col py-2">
-        <div className="px-4 py-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            Select a connection
-          </p>
-        </div>
-        {githubConnections.map((conn) => (
-          <button
-            key={conn.id}
-            type="button"
-            onClick={() => setSelectedConnection(conn)}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors text-left"
-          >
-            {conn.icon ? (
-              <img
-                src={conn.icon}
-                alt={conn.title}
-                className="size-7 rounded-full shrink-0"
-              />
-            ) : (
-              <div className="size-7 rounded-full bg-muted flex items-center justify-center shrink-0">
-                <GitHubIcon className="size-3.5 text-muted-foreground" />
-              </div>
-            )}
-            <span className="text-sm font-medium">{conn.title}</span>
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  if (!effectiveConnection) return null;
-
   if (!selectedInstallation) {
     return (
       <InstallationPicker
-        connectionId={effectiveConnection.id}
         orgId={org.id}
         orgSlug={org.slug}
         onSelect={onSelectInstallation}
-        showBackButton={githubConnections.length > 1}
-        onBack={() => setSelectedConnection(null)}
       />
     );
   }
 
   return (
     <RepoBrowser
-      connectionId={effectiveConnection.id}
+      connectionId={resolvedConnectionId}
       orgId={org.id}
       orgSlug={org.slug}
       installation={selectedInstallation}
@@ -483,19 +460,13 @@ function PickerContent({
 }
 
 function InstallationPicker({
-  connectionId,
   orgId,
   orgSlug,
   onSelect,
-  showBackButton,
-  onBack,
 }: {
-  connectionId: string;
   orgId: string;
   orgSlug: string;
   onSelect: (installation: GitHubInstallation) => void;
-  showBackButton: boolean;
-  onBack: () => void;
 }) {
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -503,12 +474,40 @@ function InstallationPicker({
     orgSlug,
   });
 
+  // Resolve the caller's own mcp-github connection. Each user gets only
+  // their installations — the cross-user leak via useConnections() is gone.
+  const resolveQuery = useQuery({
+    queryKey: KEYS.connectionResolveForUser(orgId, "mcp-github"),
+    queryFn: async () => {
+      const result = await selfClient.callTool({
+        name: "CONNECTION_RESOLVE_FOR_USER",
+        arguments: { app_id: "mcp-github" },
+      });
+      const structured = (result as { structuredContent?: unknown })
+        .structuredContent;
+      const text = (result as { content?: Array<{ text?: string }> })
+        .content?.[0]?.text;
+      const payload = (structured ?? (text ? JSON.parse(text) : null)) as {
+        connectionId: string | null;
+        access: "user" | "org" | null;
+      } | null;
+      return payload ?? { connectionId: null, access: null };
+    },
+  });
+
+  const resolvedConnectionId = resolveQuery.data?.connectionId ?? null;
+
+  const autoInstall = useAutoInstallGitHub({
+    enabled: resolveQuery.isSuccess && resolvedConnectionId === null,
+  });
+
   const installationsQuery = useQuery({
-    queryKey: KEYS.githubUserOrgs(orgId, connectionId),
+    queryKey: KEYS.githubUserOrgs(orgId, resolvedConnectionId ?? ""),
+    enabled: resolvedConnectionId !== null,
     queryFn: async () => {
       const result = await selfClient.callTool({
         name: "GITHUB_LIST_USER_ORGS",
-        arguments: { connectionId },
+        arguments: { connectionId: resolvedConnectionId },
       });
       const content = (result as { content?: Array<{ text?: string }> })
         .content?.[0]?.text;
@@ -520,7 +519,23 @@ function InstallationPicker({
     },
   });
 
-  if (installationsQuery.isLoading) {
+  // Defensive: if the user has no GitHub connection, render the inline
+  // install flow rather than crashing or showing an empty list. Normally
+  // the parent PickerContent intercepts this case first, but this guard
+  // makes InstallationPicker safe to render standalone.
+  if (resolveQuery.isSuccess && resolvedConnectionId === null) {
+    return (
+      <AutoInstallGitHubUI
+        status={
+          autoInstall.status === "idle" ? "installing" : autoInstall.status
+        }
+        error={autoInstall.error}
+        retry={autoInstall.retry}
+      />
+    );
+  }
+
+  if (installationsQuery.isLoading || resolveQuery.isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loading01 size={18} className="animate-spin text-muted-foreground" />
@@ -543,19 +558,6 @@ function InstallationPicker({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {showBackButton && (
-        <div className="flex items-center gap-1 px-4 pt-3 pb-1 shrink-0">
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft size={12} />
-            Change connection
-          </button>
-        </div>
-      )}
-
       <div className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
         {data.installations.map((inst) => (
           <button

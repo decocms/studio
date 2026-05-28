@@ -14,7 +14,7 @@ import { authenticateMcp, isConnectionAuthenticated } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
 import { useRegistryApp } from "@/web/hooks/use-registry-app";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
-import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
+import { invalidateVirtualMcpQueries, KEYS } from "@/web/lib/query-keys";
 
 type Status = "idle" | "installing" | "authenticating" | "ready" | "error";
 
@@ -84,6 +84,10 @@ export function useAutoInstallGitHub(opts: {
         throw new Error("Registry item is missing a remote URL for mcp-github");
       }
 
+      // access defaults to 'user' per DB schema (and is set explicitly by
+      // extractConnectionData); new mcp-github connections are private to the
+      // creator so the GITHUB_LIST_USER_ORGS picker shows only their own
+      // installations — never a teammate's.
       const { id } = await actions.create.mutateAsync(connectionData);
 
       // Step 2: Check if OAuth is needed
@@ -157,8 +161,12 @@ export function useAutoInstallGitHub(opts: {
         }
       }
 
-      // Step 5: Invalidate connection queries so picker re-renders
+      // Step 5: Invalidate connection queries so picker re-renders, and
+      // invalidate the per-user resolver so it picks up the new connection.
       invalidateVirtualMcpQueries(queryClient, org.id);
+      queryClient.invalidateQueries({
+        queryKey: KEYS.connectionResolveForUser(org.id, "mcp-github"),
+      });
 
       setConnection(connectionData as ConnectionEntity);
       setStatus("ready");

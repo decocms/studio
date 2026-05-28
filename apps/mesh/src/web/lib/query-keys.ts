@@ -345,6 +345,11 @@ export const KEYS = {
   // Current link info (org-scoped; includes capabilities, machineId, cliVersion).
   currentLink: (orgId: string) => ["current-link", orgId] as const,
 
+  // Resolve a connection for the calling user by app_id
+  // (powers github-repo-picker via CONNECTION_RESOLVE_FOR_USER).
+  connectionResolveForUser: (orgId: string, appId: string) =>
+    ["connection-resolve-for-user", orgId, appId] as const,
+
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>
     ["github-user-orgs", orgId, connectionId] as const,
