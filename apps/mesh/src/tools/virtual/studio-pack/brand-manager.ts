@@ -169,6 +169,9 @@ export const brandManagerAgent = {
         promptName: "brand-manager-create-landing-page",
       },
       isCompleted: async ({ ctx }) => hasAnyObject(ctx, "pages/"),
+      // Repeatable action — keep offering it as an icebreaker even after the
+      // first page exists.
+      alwaysSuggest: true,
     },
   ] as const satisfies readonly StudioPackChecklistItem[],
   getId: StudioPackAgentId.BRAND_MANAGER,
