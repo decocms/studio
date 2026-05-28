@@ -47,13 +47,35 @@ function buildSandboxGitUrl(
   return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/git/${endpoint}`;
 }
 
+/** Error carrying the HTTP status so callers can back off on unreachable
+ *  sandboxes (503 no runner, 410 handle gone) instead of polling forever. */
+class SandboxGitError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "SandboxGitError";
+  }
+}
+
+/** The sandbox is gone / has no runner — polling it again won't help until
+ *  it's re-provisioned, so stop the interval rather than flood 503s. */
+export function isSandboxUnreachable(error: unknown): boolean {
+  return (
+    error instanceof SandboxGitError &&
+    (error.status === 503 || error.status === 410)
+  );
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const body = (await res.json()) as T & { error?: string };
   if (!res.ok) {
-    throw new Error(
+    throw new SandboxGitError(
       typeof body.error === "string"
         ? body.error
         : `Request failed (${res.status})`,
+      res.status,
     );
   }
   return body;
