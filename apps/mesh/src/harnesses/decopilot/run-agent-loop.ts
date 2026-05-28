@@ -39,7 +39,6 @@ import {
 } from "../../api/routes/decopilot/constants";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
-import { makeStepDebugLogger } from "./step-debug-log";
 import type { SubtaskParams } from "./built-in-tools/subtask";
 import type { ConnectionsBlockTool } from "./connections-block";
 
@@ -186,27 +185,9 @@ export async function runAgentLoop(
     ? (undefined as never)
     : createLanguageModel(opts.provider, opts.models.thinking);
 
-  // Off unless DECOPILOT_DEBUG_LOG_DIR is set. Writes one JSON per step
-  // with raw request/response/usage for token-growth investigations.
-  const debugLog = makeStepDebugLogger(
-    `${opts.kind}-${opts.virtualMcp.id}-${Date.now()}`,
-  );
   const wrappedOnStepFinish: StreamTextOnStepFinishCallback<ToolSet> = async (
     step,
   ) => {
-    if (debugLog) {
-      await debugLog({
-        kind: opts.kind,
-        virtualMcpId: opts.virtualMcp.id,
-        modelId: opts.models.thinking.id,
-        request: step.request,
-        response: step.response,
-        usage: step.usage,
-        finishReason: step.finishReason,
-        toolCalls: step.toolCalls,
-        text: step.text,
-      }).catch((e) => console.error("[decopilot:step-debug] write failed", e));
-    }
     return opts.onStepFinish?.(step);
   };
 
