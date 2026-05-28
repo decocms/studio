@@ -1,5 +1,6 @@
 import type { Task } from "@/web/components/chat/task/types";
 import type { StatusKey } from "@/web/lib/task-status";
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 
 /** Synthetic group key for threads with no virtual_mcp_id (tool-call runs etc). */
 export const TOOL_CALL_RUNS_GROUP_KEY = "__tool_call_runs__";
@@ -41,26 +42,38 @@ export function groupThreadsByStatus(threads: Task[]): StatusGroupData[] {
 }
 
 /**
- * Group threads by virtual_mcp_id with Decopilot pinned first.
+ * Group threads by virtual_mcp_id, surfacing every agent from the directory.
  *
- * - `decopilotVirtualMcpId` is always present as the first entry (with an empty
- *   `threads` array if none of the input threads target it). Pass `null` to skip.
- * - Other groups are ordered by `max(updated_at)` desc.
- * - Threads with no `virtual_mcp_id` (tool-call runs) bucket under
- *   `TOOL_CALL_RUNS_GROUP_KEY` and appear last.
- * - Within a group, thread order is preserved from the input (callers already
- *   sort by `updated_at` desc — we don't re-sort).
+ * Ordering:
+ *  - Decopilot pinned first (when provided).
+ *  - Active agents (have at least one thread in `threads`) sorted by
+ *    `max(updated_at)` desc.
+ *  - Inactive agents (in the directory but with no thread in `threads`)
+ *    rendered after, sorted alphabetically by `id`.
+ *  - Threads without a `virtual_mcp_id` bucket under TOOL_CALL_RUNS_GROUP_KEY
+ *    and appear last.
+ *
+ * Within an active group, thread order is preserved from the input (callers
+ * already sort by `updated_at` desc — we don't re-sort).
  */
 export function groupThreadsByVirtualMcp(
   threads: Task[],
+  agents: VirtualMCPEntity[],
   decopilotVirtualMcpId: string | null,
 ): TaskGroupData[] {
   const byId = new Map<string, TaskGroupData>();
 
+  // Seed every directory agent as an empty group; bucketing below may
+  // populate them.
+  for (const agent of agents) {
+    byId.set(agent.id, {
+      virtualMcpId: agent.id,
+      threads: [],
+      latestUpdatedAt: "",
+    });
+  }
+
   for (const thread of threads) {
-    // Defensive: existing orgs may have dangling pre-seeded welcome threads
-    // from the old studio-pack scaffolding. Those rows are harmless but
-    // would otherwise surface as empty rows under each studio-pack agent.
     if (thread.id.startsWith("thrd_welcome_")) continue;
     const key = thread.virtual_mcp_id ?? TOOL_CALL_RUNS_GROUP_KEY;
     const existing = byId.get(key);
@@ -95,13 +108,17 @@ export function groupThreadsByVirtualMcp(
   const toolCallRuns = byId.get(TOOL_CALL_RUNS_GROUP_KEY);
   if (toolCallRuns) byId.delete(TOOL_CALL_RUNS_GROUP_KEY);
 
-  const middle = [...byId.values()].sort((a, b) =>
-    b.latestUpdatedAt.localeCompare(a.latestUpdatedAt),
-  );
+  const remaining = [...byId.values()];
+  const active = remaining
+    .filter((g) => g.threads.length > 0)
+    .sort((a, b) => b.latestUpdatedAt.localeCompare(a.latestUpdatedAt));
+  const inactive = remaining
+    .filter((g) => g.threads.length === 0)
+    .sort((a, b) => a.virtualMcpId.localeCompare(b.virtualMcpId));
 
   const result: TaskGroupData[] = [];
   if (decopilot) result.push(decopilot);
-  result.push(...middle);
+  result.push(...active, ...inactive);
   if (toolCallRuns) result.push(toolCallRuns);
   return result;
 }
