@@ -9,6 +9,7 @@ function fakeProvider(
     async ensureSandbox() {
       return {
         sandboxApiUrl: `http://127.0.0.1:9000`,
+        previewUrl: `http://test-handle.localhost:7070`,
         port: 9000,
       };
     },
@@ -48,6 +49,7 @@ describe("control-handler", () => {
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body!)).toEqual({
       sandboxApiUrl: "http://127.0.0.1:9000",
+      previewUrl: "http://test-handle.localhost:7070",
     });
   });
 
