@@ -15,6 +15,7 @@ const baseEntity: VirtualMCPEntity = {
   pinned: false,
   metadata: { instructions: null },
   connections: [],
+  slots: [],
 };
 
 describe("getActiveGithubRepo", () => {

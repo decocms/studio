@@ -26,6 +26,10 @@ import type {
   VirtualMCPUpdateData,
 } from "./ports";
 import type { Database, DependencyMode } from "./types";
+import type {
+  VirtualMCPConnection,
+  VirtualMCPSlot,
+} from "@decocms/mesh-sdk/types";
 
 /** Raw database row type for connections (VIRTUAL type) */
 type RawConnectionRow = {
@@ -47,7 +51,8 @@ type RawConnectionRow = {
 type RawAggregationRow = {
   id: string;
   parent_connection_id: string;
-  child_connection_id: string;
+  child_connection_id: string | null; // null for slot rows
+  slot_app_id: string | null; // null for concrete rows; XOR with child_connection_id
   selected_tools: string | string[] | null;
   selected_resources: string | string[] | null;
   selected_prompts: string | string[] | null;
@@ -104,6 +109,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
             id: generatePrefixedId("agg"),
             parent_connection_id: id,
             child_connection_id: conn.connection_id,
+            slot_app_id: null,
             selected_tools: conn.selected_tools
               ? JSON.stringify(conn.selected_tools)
               : null,
@@ -112,6 +118,32 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
               : null,
             selected_prompts: conn.selected_prompts
               ? JSON.stringify(conn.selected_prompts)
+              : null,
+            dependency_mode: "direct" as DependencyMode,
+            created_at: now,
+          })),
+        )
+        .execute();
+    }
+
+    // Insert slot aggregations (typed dependencies resolved at runtime)
+    if (data.slots && data.slots.length > 0) {
+      await this.db
+        .insertInto("connection_aggregations")
+        .values(
+          data.slots.map((slot) => ({
+            id: generatePrefixedId("agg"),
+            parent_connection_id: id,
+            child_connection_id: null,
+            slot_app_id: slot.slot_app_id,
+            selected_tools: slot.selected_tools
+              ? JSON.stringify(slot.selected_tools)
+              : null,
+            selected_resources: slot.selected_resources
+              ? JSON.stringify(slot.selected_resources)
+              : null,
+            selected_prompts: slot.selected_prompts
+              ? JSON.stringify(slot.selected_prompts)
               : null,
             dependency_mode: "direct" as DependencyMode,
             created_at: now,
@@ -144,6 +176,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         ...getWellKnownDecopilotVirtualMCP(resolvedOrgId),
         pinned: false,
         connections: [],
+        slots: [],
       };
     }
 
@@ -157,6 +190,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         ...getWellKnownBrandContextSetupVirtualMCP(resolvedOrgId),
         pinned: false,
         connections: [],
+        slots: [],
       };
     }
 
@@ -377,9 +411,13 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       .where("connection_type", "=", "VIRTUAL")
       .execute();
 
-    // Update aggregations if provided
-    if (data.connections !== undefined) {
-      // Collect current direct connection IDs before removing them
+    // Update aggregations if either connections or slots are provided.
+    // Both ride the same delete/re-insert cycle for 'direct' rows so we
+    // preserve the existing behaviour where a single write replaces the
+    // agent's full direct dependency set.
+    if (data.connections !== undefined || data.slots !== undefined) {
+      // Collect current direct connection IDs before removing them, so we
+      // can clean up pinned views for connections that are being removed.
       const currentAggs = await this.db
         .selectFrom("connection_aggregations")
         .select("child_connection_id")
@@ -401,14 +439,31 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         .where("dependency_mode", "=", "direct")
         .execute();
 
-      if (data.connections.length > 0) {
+      // If the caller did not pass connections/slots explicitly, preserve
+      // the previous set by reading the current entity. (data.connections
+      // === undefined means "don't touch connections" — but the delete
+      // above already wiped everything, so we need to re-insert.) To keep
+      // the existing single-field-update behaviour, only do delete+insert
+      // for the fields the caller actually provided. We re-load existing
+      // values for the OTHER field if needed.
+      const connectionsToInsert =
+        data.connections !== undefined
+          ? data.connections
+          : await this.loadExistingConnections(id);
+      const slotsToInsert =
+        data.slots !== undefined
+          ? data.slots
+          : await this.loadExistingSlots(id);
+
+      if (connectionsToInsert.length > 0) {
         await this.db
           .insertInto("connection_aggregations")
           .values(
-            data.connections.map((conn) => ({
+            connectionsToInsert.map((conn) => ({
               id: generatePrefixedId("agg"),
               parent_connection_id: id,
               child_connection_id: conn.connection_id,
+              slot_app_id: null,
               selected_tools: conn.selected_tools
                 ? JSON.stringify(conn.selected_tools)
                 : null,
@@ -425,11 +480,39 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
           .execute();
       }
 
-      // Clean up pinned views for removed connections
-      const newIds = new Set(data.connections.map((c) => c.connection_id));
-      for (const prevId of previousIds) {
-        if (!newIds.has(prevId)) {
-          await this.cleanOrphanedPinnedViews([id], prevId);
+      if (slotsToInsert.length > 0) {
+        await this.db
+          .insertInto("connection_aggregations")
+          .values(
+            slotsToInsert.map((slot) => ({
+              id: generatePrefixedId("agg"),
+              parent_connection_id: id,
+              child_connection_id: null,
+              slot_app_id: slot.slot_app_id,
+              selected_tools: slot.selected_tools
+                ? JSON.stringify(slot.selected_tools)
+                : null,
+              selected_resources: slot.selected_resources
+                ? JSON.stringify(slot.selected_resources)
+                : null,
+              selected_prompts: slot.selected_prompts
+                ? JSON.stringify(slot.selected_prompts)
+                : null,
+              dependency_mode: "direct" as DependencyMode,
+              created_at: now,
+            })),
+          )
+          .execute();
+      }
+
+      // Clean up pinned views for removed connections (slots don't have
+      // pinned views since they're not concrete connections).
+      if (data.connections !== undefined) {
+        const newIds = new Set(data.connections.map((c) => c.connection_id));
+        for (const prevId of previousIds) {
+          if (!newIds.has(prevId)) {
+            await this.cleanOrphanedPinnedViews([id], prevId);
+          }
         }
       }
     }
@@ -485,6 +568,50 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       parentRows.map((r) => r.parent_connection_id),
       connectionId,
     );
+  }
+
+  /**
+   * Load existing concrete connection rows for an agent (direct deps only).
+   * Used by update() to preserve connections when the caller only changes slots.
+   */
+  private async loadExistingConnections(
+    parentId: string,
+  ): Promise<VirtualMCPConnection[]> {
+    const rows = await this.db
+      .selectFrom("connection_aggregations")
+      .selectAll()
+      .where("parent_connection_id", "=", parentId)
+      .where("dependency_mode", "=", "direct")
+      .where("child_connection_id", "is not", null)
+      .execute();
+    return (rows as RawAggregationRow[]).map((row) => ({
+      // child_connection_id is non-null here because of the WHERE clause above
+      connection_id: row.child_connection_id as string,
+      selected_tools: this.parseJson<string[]>(row.selected_tools),
+      selected_resources: this.parseJson<string[]>(row.selected_resources),
+      selected_prompts: this.parseJson<string[]>(row.selected_prompts),
+    }));
+  }
+
+  /**
+   * Load existing slot rows for an agent (direct deps only).
+   * Used by update() to preserve slots when the caller only changes connections.
+   */
+  private async loadExistingSlots(parentId: string): Promise<VirtualMCPSlot[]> {
+    const rows = await this.db
+      .selectFrom("connection_aggregations")
+      .selectAll()
+      .where("parent_connection_id", "=", parentId)
+      .where("dependency_mode", "=", "direct")
+      .where("slot_app_id", "is not", null)
+      .execute();
+    return (rows as RawAggregationRow[]).map((row) => ({
+      // slot_app_id is non-null here because of the WHERE clause above
+      slot_app_id: row.slot_app_id as string,
+      selected_tools: this.parseJson<string[]>(row.selected_tools),
+      selected_resources: this.parseJson<string[]>(row.selected_resources),
+      selected_prompts: this.parseJson<string[]>(row.selected_prompts),
+    }));
   }
 
   /**
@@ -575,6 +702,32 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         ? normalizeSandboxMap(rawSandboxMap)
         : undefined;
 
+    const connections: VirtualMCPConnection[] = [];
+    const slots: VirtualMCPSlot[] = [];
+    for (const agg of aggregationRows) {
+      const selectedTools = this.parseJson<string[]>(agg.selected_tools);
+      const selectedResources = this.parseJson<string[]>(
+        agg.selected_resources,
+      );
+      const selectedPrompts = this.parseJson<string[]>(agg.selected_prompts);
+      if (agg.child_connection_id !== null) {
+        connections.push({
+          connection_id: agg.child_connection_id,
+          selected_tools: selectedTools,
+          selected_resources: selectedResources,
+          selected_prompts: selectedPrompts,
+        });
+      } else if (agg.slot_app_id !== null) {
+        slots.push({
+          slot_app_id: agg.slot_app_id,
+          selected_tools: selectedTools,
+          selected_resources: selectedResources,
+          selected_prompts: selectedPrompts,
+        });
+      }
+      // XOR CHECK at DB level guarantees one branch always fires.
+    }
+
     return {
       id: row.id,
       organization_id: row.organization_id,
@@ -594,12 +747,8 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
           ? { sandboxMap: normalizedSandboxMap }
           : {}),
       },
-      connections: aggregationRows.map((agg) => ({
-        connection_id: agg.child_connection_id,
-        selected_tools: this.parseJson<string[]>(agg.selected_tools),
-        selected_resources: this.parseJson<string[]>(agg.selected_resources),
-        selected_prompts: this.parseJson<string[]>(agg.selected_prompts),
-      })),
+      connections,
+      slots,
     };
   }
 

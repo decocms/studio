@@ -247,6 +247,7 @@ function defineWellKnownAgentVMCP(opts: {
     metadata: { instructions: opts.instructions ?? null },
     pinned: false,
     connections: [],
+    slots: [],
   };
 }
 

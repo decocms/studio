@@ -14,4 +14,5 @@ export {
   type VirtualMCPCreateData,
   type VirtualMCPUpdateData,
   type VirtualMCPConnection,
+  type VirtualMCPSlot,
 } from "@decocms/mesh-sdk/types";

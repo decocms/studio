@@ -25,6 +25,7 @@ export {
   type VirtualMCPCreateData,
   type VirtualMCPUpdateData,
   type VirtualMCPConnection,
+  type VirtualMCPSlot,
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
   type GithubRepo,

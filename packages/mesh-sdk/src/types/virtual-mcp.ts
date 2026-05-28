@@ -46,6 +46,46 @@ const VirtualMCPConnectionInputSchema = VirtualMCPConnectionSchema.extend({
 });
 
 /**
+ * Virtual MCP slot schema — a typed dependency declared without binding to a
+ * specific connection. Resolved at runtime to the caller's user-private
+ * connection of the matching app_id (falling back to an org-shared one).
+ *
+ * Slot uniqueness within a single agent is enforced by a partial unique index
+ * on (parent_connection_id, slot_app_id) WHERE slot_app_id IS NOT NULL.
+ */
+const VirtualMCPSlotSchema = z.object({
+  slot_app_id: z
+    .string()
+    .describe("app_id this slot is typed by (e.g. 'mcp-github')"),
+  selected_tools: z
+    .array(z.string())
+    .nullable()
+    .describe(
+      "Selected tool names. null = all tools, array = only these tools",
+    ),
+  selected_resources: z
+    .array(z.string())
+    .nullable()
+    .describe(
+      "Selected resource URIs or patterns. null = all, array = only these",
+    ),
+  selected_prompts: z
+    .array(z.string())
+    .nullable()
+    .describe(
+      "Selected prompt names. null = all prompts, array = only these prompts",
+    ),
+});
+
+export type VirtualMCPSlot = z.infer<typeof VirtualMCPSlotSchema>;
+
+const VirtualMCPSlotInputSchema = VirtualMCPSlotSchema.extend({
+  selected_tools: VirtualMCPSlotSchema.shape.selected_tools.optional(),
+  selected_resources: VirtualMCPSlotSchema.shape.selected_resources.optional(),
+  selected_prompts: VirtualMCPSlotSchema.shape.selected_prompts.optional(),
+});
+
+/**
  * Pinned view schema - a tool view pinned to a virtual MCP
  */
 const VirtualMcpPinnedViewSchema = z.object({
@@ -471,6 +511,12 @@ export const VirtualMCPEntitySchema = z.object({
   connections: z
     .array(VirtualMCPConnectionSchema)
     .describe("Connections with their selected tools, resources, and prompts"),
+  slots: z
+    .array(VirtualMCPSlotSchema)
+    .default([])
+    .describe(
+      "Typed slots — resolved to the caller's connection of the matching app_id at runtime.",
+    ),
 });
 
 /**
@@ -531,6 +577,10 @@ export const VirtualMCPCreateDataSchema = z.object({
     .describe(
       "Connections to include/exclude (can be empty for exclusion mode)",
     ),
+  slots: z
+    .array(VirtualMCPSlotInputSchema)
+    .optional()
+    .describe("Typed slots to declare on the new agent."),
 });
 
 export type VirtualMCPCreateData = z.infer<typeof VirtualMCPCreateDataSchema>;
@@ -583,6 +633,10 @@ export const VirtualMCPUpdateDataSchema = z.object({
     .array(VirtualMCPConnectionInputSchema)
     .optional()
     .describe("New connections (replaces existing)"),
+  slots: z
+    .array(VirtualMCPSlotInputSchema)
+    .optional()
+    .describe("New slots (replaces existing slots if provided)."),
 });
 
 export type VirtualMCPUpdateData = z.infer<typeof VirtualMCPUpdateDataSchema>;

@@ -84,6 +84,7 @@ function makeVirtualMcp(
       instructions: opts?.instructions ?? null,
     },
     connections,
+    slots: [],
   };
 }
 
