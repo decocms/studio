@@ -61,7 +61,11 @@ jobs:
                  apps/mesh/src/storage/downstream-token.test.ts \
                  apps/mesh/src/storage/sandbox-runner-state.test.ts \
                  apps/mesh/src/storage/threads.test.ts \
-                 apps/mesh/src/storage/connection.test.ts"
+                 apps/mesh/src/storage/connection.test.ts \
+                 apps/mesh/src/tools/virtual/studio-pack.test.ts \
+                 apps/mesh/src/oauth/token-refresh.test.ts \
+                 apps/mesh/src/tools/connection/connection-tools.test.ts \
+                 apps/mesh/src/core/context-factory.test.ts"
           for f in $files; do
             echo "::group::$f"
             bun test "$f"

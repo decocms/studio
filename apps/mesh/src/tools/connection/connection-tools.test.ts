@@ -1,13 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "bun:test";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../../database/test-db";
-import {
-  createTestSchema,
-  seedCommonTestFixtures,
-} from "../../storage/test-helpers";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
 import { CredentialVault } from "../../encryption/credential-vault";
 import {
   COLLECTION_CONNECTIONS_CREATE,
@@ -40,14 +38,14 @@ const createMockBoundAuth = (): BoundAuthClient =>
   }) as unknown as BoundAuthClient;
 
 describe("Connection Tools", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let ctx: MeshContext;
   let vault: CredentialVault;
 
   beforeAll(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
 
     vault = new CredentialVault(CredentialVault.generateKey());
 
@@ -148,7 +146,7 @@ describe("Connection Tools", () => {
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   describe("COLLECTION_CONNECTIONS_CREATE", () => {

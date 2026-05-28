@@ -90,7 +90,7 @@ jobs:
           # own workflows so this job stays infrastructure-free per
           # TESTING.md.
           #   - daemon.e2e.test.ts → .github/workflows/sandbox-daemon.yml
-          #   - storage/*.test.ts → .github/workflows/storage-integration.yml
+          #   - everything else here → .github/workflows/storage-integration.yml
           files=$(find apps/mesh/src packages \
             \( -name '*.test.ts' -o -name '*.test.tsx' \) \
             ! -path '*/daemon/daemon.e2e.test.ts' \
@@ -98,7 +98,11 @@ jobs:
             ! -path '*/storage/downstream-token.test.ts' \
             ! -path '*/storage/sandbox-runner-state.test.ts' \
             ! -path '*/storage/threads.test.ts' \
-            ! -path '*/storage/connection.test.ts')
+            ! -path '*/storage/connection.test.ts' \
+            ! -path '*/tools/virtual/studio-pack.test.ts' \
+            ! -path '*/oauth/token-refresh.test.ts' \
+            ! -path '*/tools/connection/connection-tools.test.ts' \
+            ! -path '*/core/context-factory.test.ts')
           file_count=$(echo "$files" | wc -l)
           echo "Running $file_count test files (one bun process per file)"
           echo "$files"
