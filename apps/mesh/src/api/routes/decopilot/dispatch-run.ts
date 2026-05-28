@@ -53,6 +53,7 @@ import { buildOnTitleUpdated } from "./on-title-updated";
 import {
   checkModelPermission,
   fetchModelPermissions,
+  filterToolTiersByPermission,
 } from "./model-permissions";
 import type { RunRegistry } from "./run-registry";
 import { resolveThreadStatus } from "./status";
@@ -472,6 +473,10 @@ async function prepareRun(
     // 1. Check model permissions (decopilot-only; CLI harnesses run with
     //    the user's own provider credential / local CLI binary, which is
     //    already vetted at credential-creation time).
+    //    Also filters image/deepResearch tier slots: routes.ts already
+    //    strips disallowed tiers at HTTP entry, but resume + automation
+    //    paths re-enter through dispatch-run without that gate, so this
+    //    second pass keeps the policy consistent across entry points.
     if (harnessId === "decopilot") {
       const allowedModels = await fetchModelPermissions(
         ctx.db,
@@ -488,6 +493,10 @@ async function prepareRun(
       ) {
         throw new Error("Model not allowed for your role");
       }
+      input = {
+        ...input,
+        models: filterToolTiersByPermission(allowedModels, input.models),
+      };
     }
 
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;

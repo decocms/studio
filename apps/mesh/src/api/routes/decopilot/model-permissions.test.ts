@@ -9,6 +9,7 @@ import { describe, expect, it } from "bun:test";
 import {
   checkModelPermission,
   extractModelPermissions,
+  filterToolTiersByPermission,
   parseModelsToMap,
 } from "./model-permissions";
 
@@ -122,6 +123,84 @@ describe("checkModelPermission", () => {
       expect(checkModelPermission(models, connB, modelGemini)).toBe(true);
       expect(checkModelPermission(models, connB, modelClaude)).toBe(false);
     });
+  });
+});
+
+// ============================================================================
+// filterToolTiersByPermission
+// ============================================================================
+
+describe("filterToolTiersByPermission", () => {
+  const chatKey = "550e8400-e29b-41d4-a716-446655440000";
+  const imageKey = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+  const drKey = "9c858901-8a57-4791-81d8-1041e02b3e0e";
+
+  const sampleModels = {
+    credentialId: chatKey,
+    thinking: { id: "claude-opus-4-5" },
+    image: { credentialId: imageKey, id: "gpt-image-1" },
+    deepResearch: {
+      credentialId: drKey,
+      id: "deep-research-pro-preview-12-2025",
+    },
+  };
+
+  it("returns models unchanged when allowedModels is undefined (admin/owner)", () => {
+    const result = filterToolTiersByPermission(undefined, sampleModels);
+    expect(result).toBe(sampleModels);
+  });
+
+  it("keeps image tier when its (key, model) is permitted", () => {
+    const allowed = [
+      `${chatKey}:claude-opus-4-5`,
+      `${imageKey}:gpt-image-1`,
+      `${drKey}:deep-research-pro-preview-12-2025`,
+    ];
+    const result = filterToolTiersByPermission(allowed, sampleModels);
+    expect(result.image).toEqual(sampleModels.image);
+    expect(result.deepResearch).toEqual(sampleModels.deepResearch);
+  });
+
+  it("strips image tier when its key is not permitted at all", () => {
+    const allowed = [
+      `${chatKey}:claude-opus-4-5`,
+      `${drKey}:deep-research-pro-preview-12-2025`,
+    ];
+    const result = filterToolTiersByPermission(allowed, sampleModels);
+    expect(result.image).toBeUndefined();
+    expect(result.deepResearch).toEqual(sampleModels.deepResearch);
+  });
+
+  it("strips deepResearch tier when only its modelId is not permitted", () => {
+    const allowed = [
+      `${chatKey}:*`,
+      `${imageKey}:gpt-image-1`,
+      `${drKey}:some-other-model`,
+    ];
+    const result = filterToolTiersByPermission(allowed, sampleModels);
+    expect(result.image).toEqual(sampleModels.image);
+    expect(result.deepResearch).toBeUndefined();
+  });
+
+  it("strips both tiers when neither is permitted", () => {
+    const allowed = [`${chatKey}:claude-opus-4-5`];
+    const result = filterToolTiersByPermission(allowed, sampleModels);
+    expect(result.image).toBeUndefined();
+    expect(result.deepResearch).toBeUndefined();
+    expect(result.thinking).toEqual(sampleModels.thinking);
+    expect(result.credentialId).toBe(sampleModels.credentialId);
+  });
+
+  it("does not filter the chat (thinking) slot — caller throws for that", () => {
+    const allowed = [`${imageKey}:gpt-image-1`];
+    const result = filterToolTiersByPermission(allowed, sampleModels);
+    expect(result.thinking).toEqual(sampleModels.thinking);
+  });
+
+  it("treats *:* as allow-all and keeps every tier", () => {
+    const result = filterToolTiersByPermission(["*:*"], sampleModels);
+    expect(result.image).toEqual(sampleModels.image);
+    expect(result.deepResearch).toEqual(sampleModels.deepResearch);
   });
 });
 
