@@ -24,8 +24,8 @@
  *
  * What this scenario CAN verify against the current harness:
  *
- *   a. After a SIGKILL of the studio container, studio restarts (compose
- *      `restart: unless-stopped`) and becomes healthy again.
+ *   a. After a SIGKILL of the studio container, studio can be brought back up
+ *      (`docker compose up -d studio`) and becomes healthy again.
  *   b. The NATS KV state is clean after restart (no stale claims from the
  *      crashed pod hold up future connections).
  *   c. Tool calls through the MCP API succeed after studio recovers —
@@ -86,6 +86,22 @@ async function composeExec(...args: string[]): Promise<string> {
 /** SIGKILL the studio container — simulates an abrupt host loss. */
 async function killStudio(): Promise<void> {
   await composeExec("kill", "-s", "SIGKILL", "studio");
+}
+
+/**
+ * Bring the studio container back up after a SIGKILL.
+ *
+ * The compose `restart: unless-stopped` policy is kept for the postgres-outage
+ * scenario (studio crashes on DB loss and auto-recovers), but it is NOT a
+ * reliable recovery mechanism here: a `docker compose kill` does not always
+ * trigger the policy promptly, and any restart backoff accumulated by an
+ * earlier crash-looping scenario (e.g. postgres-outage running first) can push
+ * the auto-restart well past this test's timeout. So we drive recovery
+ * explicitly — `up -d` is idempotent and forces the container to a running
+ * state regardless of whether the policy already restarted it.
+ */
+async function startStudio(): Promise<void> {
+  await composeExec("up", "-d", "studio");
 }
 
 /** Wait for studio to report healthy again after restart. */
@@ -151,8 +167,10 @@ describe("link dispatch — pod crash", () => {
       `  → Studio down detected in ${Math.round(downDetectedMs)}ms after kill`,
     );
 
-    // compose `restart: unless-stopped` automatically brings the container
-    // back. Wait for it to become healthy.
+    // Explicitly bring the container back up (see startStudio docstring for
+    // why we don't rely on the compose restart policy here), then wait for it
+    // to become healthy.
+    await startStudio();
     await waitForStudioHealthy(120_000);
     const upTime = Date.now() - killTime;
     console.log(`  → Studio healthy again ${Math.round(upTime)}ms after kill`);
@@ -165,9 +183,11 @@ describe("link dispatch — pod crash", () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   test("tool calls succeed after pod crash and restart", async () => {
-    // Kill studio and wait for recovery (idempotent if already restarted by
-    // the previous test — health poll exits immediately if already healthy).
+    // Kill studio, explicitly bring it back up, and wait for recovery
+    // (idempotent if already restarted by the previous test — health poll
+    // exits immediately if already healthy).
     await killStudio();
+    await startStudio();
     await waitForStudioHealthy(120_000);
 
     // Poll until a tool call through the MCP API succeeds. This exercises
