@@ -139,6 +139,93 @@ describe("VirtualMCPStorage — slots", () => {
     expect(updated?.slots.map((s) => s.slot_app_id)).toEqual(["mcp-slack"]);
   });
 
+  it("update preserves slots when caller omits the slots field", async () => {
+    await insertChildConnection(database, "conn_a", "mcp-linear");
+    await insertChildConnection(database, "conn_b", "mcp-notion");
+
+    const entity = await storage.create(ORG, USER, {
+      title: "test agent",
+      status: "active",
+      pinned: false,
+      connections: [
+        {
+          connection_id: "conn_a",
+          selected_tools: null,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+      slots: [
+        {
+          slot_app_id: "mcp-github",
+          selected_tools: null,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+    });
+
+    // Update ONLY connections — slots field is omitted entirely.
+    const updated = await storage.update(entity.id, USER, {
+      connections: [
+        {
+          connection_id: "conn_b",
+          selected_tools: null,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+    });
+
+    expect(updated?.connections.map((c) => c.connection_id)).toEqual([
+      "conn_b",
+    ]);
+    expect(updated?.slots.map((s) => s.slot_app_id)).toEqual(["mcp-github"]);
+  });
+
+  it("update preserves connections when caller omits the connections field", async () => {
+    await insertChildConnection(database, "conn_a", "mcp-linear");
+
+    const entity = await storage.create(ORG, USER, {
+      title: "test agent",
+      status: "active",
+      pinned: false,
+      connections: [
+        {
+          connection_id: "conn_a",
+          selected_tools: null,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+      slots: [
+        {
+          slot_app_id: "mcp-github",
+          selected_tools: null,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+    });
+
+    // Update ONLY slots — connections field is omitted entirely.
+    const updated = await storage.update(entity.id, USER, {
+      slots: [
+        {
+          slot_app_id: "mcp-slack",
+          selected_tools: null,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+    });
+
+    expect(updated?.connections.map((c) => c.connection_id)).toEqual([
+      "conn_a",
+    ]);
+    expect(updated?.slots.map((s) => s.slot_app_id)).toEqual(["mcp-slack"]);
+  });
+
   it("XOR enforced by DB: concrete child + slot in same agent are stored on separate rows", async () => {
     await insertChildConnection(database, "conn_x", "mcp-linear");
     const entity = await storage.create(ORG, USER, {

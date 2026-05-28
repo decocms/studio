@@ -416,11 +416,14 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     // preserve the existing behaviour where a single write replaces the
     // agent's full direct dependency set.
     if (data.connections !== undefined || data.slots !== undefined) {
-      // Collect current direct connection IDs before removing them, so we
-      // can clean up pinned views for connections that are being removed.
+      // Snapshot the current direct aggregations BEFORE the delete so we can
+      // (a) clean up pinned views for removed connections, and (b) preserve
+      // the untouched field when the caller passes only one of
+      // connections/slots. Reading the rows AFTER the delete would return
+      // an empty set and silently drop the omitted field.
       const currentAggs = await this.db
         .selectFrom("connection_aggregations")
-        .select("child_connection_id")
+        .selectAll()
         .where("parent_connection_id", "=", id)
         .where("dependency_mode", "=", "direct")
         .execute();
@@ -432,6 +435,34 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
           .filter((cid): cid is string => cid !== null),
       );
 
+      // Partition the pre-delete snapshot into concrete connections and
+      // slots so we can use them as the fallback when the caller omits a
+      // field. Mirrors the partition logic in deserializeVirtualMCPEntity.
+      const existingConnections: VirtualMCPConnection[] = [];
+      const existingSlots: VirtualMCPSlot[] = [];
+      for (const agg of currentAggs as RawAggregationRow[]) {
+        const selectedTools = this.parseJson<string[]>(agg.selected_tools);
+        const selectedResources = this.parseJson<string[]>(
+          agg.selected_resources,
+        );
+        const selectedPrompts = this.parseJson<string[]>(agg.selected_prompts);
+        if (agg.child_connection_id !== null) {
+          existingConnections.push({
+            connection_id: agg.child_connection_id,
+            selected_tools: selectedTools,
+            selected_resources: selectedResources,
+            selected_prompts: selectedPrompts,
+          });
+        } else if (agg.slot_app_id !== null) {
+          existingSlots.push({
+            slot_app_id: agg.slot_app_id,
+            selected_tools: selectedTools,
+            selected_resources: selectedResources,
+            selected_prompts: selectedPrompts,
+          });
+        }
+      }
+
       // Only delete 'direct' dependencies - preserve 'indirect' ones from virtual tools
       await this.db
         .deleteFrom("connection_aggregations")
@@ -440,20 +471,11 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         .execute();
 
       // If the caller did not pass connections/slots explicitly, preserve
-      // the previous set by reading the current entity. (data.connections
-      // === undefined means "don't touch connections" — but the delete
-      // above already wiped everything, so we need to re-insert.) To keep
-      // the existing single-field-update behaviour, only do delete+insert
-      // for the fields the caller actually provided. We re-load existing
-      // values for the OTHER field if needed.
+      // the previous set from the pre-delete snapshot.
       const connectionsToInsert =
-        data.connections !== undefined
-          ? data.connections
-          : await this.loadExistingConnections(id);
+        data.connections !== undefined ? data.connections : existingConnections;
       const slotsToInsert =
-        data.slots !== undefined
-          ? data.slots
-          : await this.loadExistingSlots(id);
+        data.slots !== undefined ? data.slots : existingSlots;
 
       if (connectionsToInsert.length > 0) {
         await this.db
@@ -568,50 +590,6 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       parentRows.map((r) => r.parent_connection_id),
       connectionId,
     );
-  }
-
-  /**
-   * Load existing concrete connection rows for an agent (direct deps only).
-   * Used by update() to preserve connections when the caller only changes slots.
-   */
-  private async loadExistingConnections(
-    parentId: string,
-  ): Promise<VirtualMCPConnection[]> {
-    const rows = await this.db
-      .selectFrom("connection_aggregations")
-      .selectAll()
-      .where("parent_connection_id", "=", parentId)
-      .where("dependency_mode", "=", "direct")
-      .where("child_connection_id", "is not", null)
-      .execute();
-    return (rows as RawAggregationRow[]).map((row) => ({
-      // child_connection_id is non-null here because of the WHERE clause above
-      connection_id: row.child_connection_id as string,
-      selected_tools: this.parseJson<string[]>(row.selected_tools),
-      selected_resources: this.parseJson<string[]>(row.selected_resources),
-      selected_prompts: this.parseJson<string[]>(row.selected_prompts),
-    }));
-  }
-
-  /**
-   * Load existing slot rows for an agent (direct deps only).
-   * Used by update() to preserve slots when the caller only changes connections.
-   */
-  private async loadExistingSlots(parentId: string): Promise<VirtualMCPSlot[]> {
-    const rows = await this.db
-      .selectFrom("connection_aggregations")
-      .selectAll()
-      .where("parent_connection_id", "=", parentId)
-      .where("dependency_mode", "=", "direct")
-      .where("slot_app_id", "is not", null)
-      .execute();
-    return (rows as RawAggregationRow[]).map((row) => ({
-      // slot_app_id is non-null here because of the WHERE clause above
-      slot_app_id: row.slot_app_id as string,
-      selected_tools: this.parseJson<string[]>(row.selected_tools),
-      selected_resources: this.parseJson<string[]>(row.selected_resources),
-      selected_prompts: this.parseJson<string[]>(row.selected_prompts),
-    }));
   }
 
   /**
