@@ -1,5 +1,6 @@
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { useSidebar } from "@deco/ui/components/sidebar.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 
 const COLLAPSED_ITEMS = 5;
 const EXPANDED_GROUPS = [
@@ -37,7 +38,7 @@ export function TaskGroupsSkeleton() {
           <div key={i} className="flex flex-col gap-0.5">
             <div className="flex items-center gap-2 px-2 py-1.5">
               <Skeleton className="size-5 rounded-full shrink-0" />
-              <Skeleton className={`h-3 ${group.nameWidth} rounded-sm`} />
+              <Skeleton className={cn("h-3", group.nameWidth, "rounded-sm")} />
             </div>
             {group.taskRows > 0 && (
               <div className="flex flex-col gap-0.5 pb-1 pl-4">
