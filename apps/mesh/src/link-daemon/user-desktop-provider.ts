@@ -64,6 +64,13 @@ export interface DesktopSandboxProvider {
   proxyPort(handle: string): number | null;
   /** Returns the bearer token for the spawned sandbox daemon, or null if unknown. */
   getDaemonToken(handle: string): string | null;
+  /**
+   * True if the daemon either has a ready entry for `handle` or is currently
+   * spawning one. Used by the cluster's `alive()` probe so that vm-events
+   * doesn't emit `gone` during the (potentially multi-second) spawn window
+   * and tear down the sandbox the user is in the middle of starting.
+   */
+  hasHandle(handle: string): boolean;
   recordHit(handle: string): void;
   acquireDispatch(handle: string): () => void;
   listSandboxes(): SandboxState[];
@@ -252,6 +259,9 @@ export function createDesktopSandboxProvider(
     },
     getDaemonToken(handle) {
       return sandboxes.get(handle)?.daemonToken ?? null;
+    },
+    hasHandle(handle) {
+      return sandboxes.has(handle) || inflight.has(handle);
     },
     recordHit(handle) {
       const s = sandboxes.get(handle);

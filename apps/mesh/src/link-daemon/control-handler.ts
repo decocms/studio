@@ -93,6 +93,30 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
         return { status: 204 };
       }
 
+      // Per-handle liveness probe used by the cluster's `provider.alive`.
+      // Returns 200 if the daemon either has a ready entry for `handle` or
+      // is currently spawning one. Must NOT 404 on in-flight handles —
+      // vm-events translates 404 into `event: gone` + state-store cleanup,
+      // which would tear down the sandbox the user is mid-start.
+      if (req.path.startsWith("/api/sandboxes/") && req.method === "GET") {
+        const handle = req.path.slice("/api/sandboxes/".length);
+        if (!handle) {
+          return {
+            status: 400,
+            body: JSON.stringify({ error: "missing_handle" }),
+            headers: { "content-type": "application/json" },
+          };
+        }
+        const known = deps.provider.hasHandle(handle);
+        return known
+          ? {
+              status: 200,
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ handle }),
+            }
+          : { status: 404 };
+      }
+
       return { status: 404, body: "not found" };
     },
 

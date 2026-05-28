@@ -263,7 +263,15 @@ export class DesktopSandboxProvider implements SandboxProvider {
   }
 
   /**
-   * Probe daemon liveness via dispatch. Returns false on any error or timeout.
+   * Probe daemon liveness for `handle` via dispatch.
+   *
+   * Hits `GET /api/sandboxes/<handle>` on the daemon (in-process control
+   * handler), which returns 200 if the daemon either has a ready entry OR
+   * is currently spawning one. We deliberately do NOT proxy through to the
+   * spawned sub-daemon's `/_sandbox/health` — that 404s during the spawn
+   * window, and vm-events translates 404 into `event: gone` + state-store
+   * cleanup, which would tear down the sandbox the user is mid-start.
+   *
    * 1500 ms cap (same as the old HMAC-HTTP path) so a slow NATS channel
    * doesn't block every `ensure`.
    */
@@ -273,7 +281,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
     try {
       await this.dispatchJson(
         "GET",
-        `/_sandbox/${encodeURIComponent(handle)}/health`,
+        `/api/sandboxes/${encodeURIComponent(handle)}`,
         undefined,
         ac.signal,
       );

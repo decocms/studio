@@ -28,6 +28,11 @@ mock.module("@/tools/sandbox/start", () => ({
       startedWith: { packageManager: null, port: null, path: null },
     };
   },
+  // dispatch-run transitively imports `@/api/app`, which loads
+  // `tools/sandbox/index.ts` and re-exports `SANDBOX_START` from "./start".
+  // Without this stub the re-export resolves to `undefined` against the
+  // mock and Bun throws "export 'SANDBOX_START' not found in './start'".
+  SANDBOX_START: { name: "SANDBOX_START" },
 }));
 
 const ensureSandboxCalls: Array<{

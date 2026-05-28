@@ -18,6 +18,9 @@ function fakeProvider(
     getDaemonToken() {
       return "test-token";
     },
+    hasHandle() {
+      return true;
+    },
     recordHit() {},
     acquireDispatch() {
       return () => {};
