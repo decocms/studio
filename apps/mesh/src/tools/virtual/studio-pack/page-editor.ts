@@ -1,10 +1,6 @@
 import { StudioPackAgentId } from "@decocms/mesh-sdk";
 import { DEFAULT_THEMES } from "@/page-preview/default-themes";
-import type {
-  BuildWelcomeMessage,
-  StudioPackConnectionKey,
-  WelcomeContext,
-} from "./types";
+import type { StudioPackConnectionKey } from "./types";
 
 /**
  * The curated theme table is rendered into the agent's INSTRUCTIONS at
@@ -285,15 +281,10 @@ export const pageEditorAgent = {
     "Build landing pages, memos, and structured content with a section library, design systems, and live choreographed preview.",
   selectedTools: PAGE_EDITOR_TOOLS,
   selectedConnections: ["self"] as readonly StudioPackConnectionKey[],
+  selectedPrompts: [] as readonly string[],
   instructions: INSTRUCTIONS,
   // Routes the agent's main panel to the page-preview iframe (the live
   // build canvas) rather than the default chat-only view.
   defaultMainView: { type: "page-preview" } as const,
-  welcomeMessage: (async (_ctx: WelcomeContext) => [
-    {
-      type: "text",
-      text: "Hey — I build landing pages section-by-section with a live preview. Tell me what page you want and I'll start shipping.",
-    },
-  ]) satisfies BuildWelcomeMessage,
   getId: StudioPackAgentId.PAGE_EDITOR,
 } as const;
