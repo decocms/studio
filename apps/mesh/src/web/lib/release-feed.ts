@@ -30,6 +30,30 @@ export interface Release {
  */
 export const RELEASES: Release[] = [
   {
+    id: "claude-opus-4-8",
+    date: "2026-05-28",
+    eyebrow: "Now Available",
+    title: "Claude Opus 4.8 is the new default",
+    bullets: [
+      {
+        icon: Stars02,
+        title: "Smarter thinking, same price",
+        body: "Opus 4.8 now leads the Thinking and Smarter tiers, outperforming Opus 4.7 on coding, reasoning, and agent tasks at the same cost.",
+      },
+      {
+        icon: CheckCircle,
+        title: "More honest answers",
+        body: "It's about 4× less likely to let a code flaw slip through unflagged, and surfaces uncertainty instead of making unsupported claims.",
+      },
+      {
+        icon: Zap,
+        title: "Nothing to change",
+        body: "Chats and agents pick up Opus 4.8 automatically wherever the Thinking or Smarter tier is selected.",
+      },
+    ],
+    learnMoreHref: "https://www.anthropic.com/news/claude-opus-4-8",
+  },
+  {
     id: "enhanced-sidebar",
     date: "2026-05-28",
     eyebrow: "Now Available",

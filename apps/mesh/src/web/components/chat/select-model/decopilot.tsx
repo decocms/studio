@@ -59,7 +59,7 @@ const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
   {
     tier: "smarter",
     prefixes: [
-      "anthropic/claude-opus-4.7",
+      "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-4.6-sonnet",
       "openai/gpt-5.3-codex",
@@ -163,7 +163,7 @@ const SHORTLIST_KEY_PREFIX = "mesh:model-shortlist:";
 
 const DEFAULT_SHORTLIST = new Set([
   // Smarter
-  "anthropic/claude-opus-4.7",
+  "anthropic/claude-opus-4.8",
   "anthropic/claude-sonnet-4.6",
   "anthropic/claude-4.6-sonnet",
   "anthropic/claude-sonnet-4.6:extended",
