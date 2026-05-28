@@ -1,7 +1,8 @@
 /**
  * Desktop-side link daemon.
  *
- * - Reads session from `<dataDir>/session.json`.
+ * - Receives an authenticated session from its caller (the CLI's `link`
+ *   command obtains one via `ensureSession`).
  * - Opens a WebSocket to `<MESH_CLUSTER_URL>/api/links/connect` with the
  *   session bearer; sends the `hello` frame.
  * - Spawns the local ingress on `--port` so browsers can reach
