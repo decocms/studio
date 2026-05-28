@@ -1,5 +1,6 @@
 import { performInteractiveLogin } from "../commands/auth/login";
 import { getValidSession } from "./get-valid-session";
+import { RefreshFailedError } from "./refresh-session";
 import { type Session, writeSession } from "./session";
 
 export interface EnsureSessionOptions {
@@ -24,7 +25,8 @@ export interface EnsureSessionOptions {
  *    login, persists the result, and returns it.
  *  - No session or refresh rejected, and TTY is non-interactive → throws
  *    the standard "No session found" error.
- *  - Transient refresh failure (network/5xx) → rethrows. A browser-login
+ *  - Transient refresh failure (network/5xx) → throws a user-facing
+ *    `Could not refresh session: <reason>...` error. A browser-login
  *    attempt would likely fail the same way; surface the diagnostic instead.
  */
 export async function ensureSession(
@@ -32,16 +34,26 @@ export async function ensureSession(
 ): Promise<Session> {
   const isInteractive = opts.isInteractive ?? Boolean(process.stdout.isTTY);
 
-  const existing = await getValidSession({
-    dataDir: opts.dataDir,
-    fetch: opts.fetch,
-    now: opts.now,
-  });
+  let existing: Session | null;
+  try {
+    existing = await getValidSession({
+      dataDir: opts.dataDir,
+      fetch: opts.fetch,
+      now: opts.now,
+    });
+  } catch (err) {
+    if (err instanceof RefreshFailedError && err.kind === "transient") {
+      throw new Error(
+        `Could not refresh session: ${err.message}. Run \`decocms auth login\` to sign in again.`,
+      );
+    }
+    throw err;
+  }
   if (existing) return existing;
 
   if (!isInteractive) {
     throw new Error(
-      "No session found. Run `deco auth login` first, then re-run the command.",
+      "No session found. Run `decocms auth login` first, then re-run the command.",
     );
   }
 

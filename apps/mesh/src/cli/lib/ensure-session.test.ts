@@ -155,11 +155,11 @@ describe("ensureSession", () => {
       ) as unknown as typeof fetch,
       now: () => FIXED_NOW_MS,
     });
-    await expect(promise).rejects.toThrow(/deco auth login/);
+    await expect(promise).rejects.toThrow(/decocms auth login/);
     expect(openBrowser).not.toHaveBeenCalled();
   });
 
-  it("rethrows transient refresh errors without opening a browser", async () => {
+  it("translates transient refresh errors into a user-facing message and skips the browser", async () => {
     await writeSession(dir, { ...freshSession(), expiresAt: NOW_S - 60 });
     const openBrowser = mock(async () => {
       throw new Error("should not open browser");
@@ -174,7 +174,9 @@ describe("ensureSession", () => {
       fetch: fetchMock as unknown as typeof fetch,
       now: () => FIXED_NOW_MS,
     });
-    await expect(promise).rejects.toMatchObject({ kind: "transient" });
+    await expect(promise).rejects.toThrow(
+      /Could not refresh session.*decocms auth login/,
+    );
     expect(openBrowser).not.toHaveBeenCalled();
   });
 
