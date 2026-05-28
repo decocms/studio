@@ -52,42 +52,15 @@ jobs:
       - name: Run migrations
         run: bun run --cwd=apps/mesh migrate
 
-      # The list grows as we migrate more storage tests off PGlite. Each
-      # file runs in its own bun process so a teardown crash in one
-      # doesn't poison the next — same protection as the unit job, plus
-      # the same Bun 1.3.5 signal-crash tolerance: if bun exits with a
-      # signal-induced code (>128) but tests passed (saw a (pass) marker
-      # in stdout), accept it as a teardown bug, not a test failure.
+      # Convention: every `*.integration.test.ts` file is picked up here.
+      # Adding a new integration test = create a `something.integration.test.ts`
+      # and it auto-routes to this workflow. See TESTING.md.
+      # Per-file bun process gives the same Bun 1.3.5 signal-crash
+      # tolerance as the unit job — if bun exits >128 but tests passed
+      # (saw a (pass) marker), accept it as a teardown bug, not a fail.
       - name: Run storage integration tests
         run: |
-          files="apps/mesh/src/storage/virtual.test.ts \
-                 apps/mesh/src/storage/downstream-token.test.ts \
-                 apps/mesh/src/storage/sandbox-runner-state.test.ts \
-                 apps/mesh/src/storage/threads.test.ts \
-                 apps/mesh/src/storage/connection.test.ts \
-                 apps/mesh/src/tools/virtual/studio-pack.test.ts \
-                 apps/mesh/src/oauth/token-refresh.test.ts \
-                 apps/mesh/src/tools/connection/connection-tools.test.ts \
-                 apps/mesh/src/core/context-factory.test.ts \
-                 apps/mesh/src/api/routes/downstream-token.test.ts \
-                 apps/mesh/src/api/routes/proxy.test.ts \
-                 apps/mesh/src/api/index.test.ts \
-                 apps/mesh/src/api/middleware/resolve-org-from-path.test.ts \
-                 apps/mesh/src/api/routes/openai-compat.test.ts \
-                 apps/mesh/src/api/routes/oauth-proxy.e2e.test.ts \
-                 apps/mesh/src/api/integration-org-scoped.test.ts \
-                 apps/mesh/src/api/access-control.integration.test.ts \
-                 apps/mesh/src/api/routes/decopilot/memory.test.ts \
-                 apps/mesh/src/tools/search/global-search.test.ts \
-                 apps/mesh/src/tools/thread/create.test.ts \
-                 apps/mesh/src/tools/thread/update.test.ts \
-                 apps/mesh/src/tools/thread/list.test.ts \
-                 apps/mesh/src/tools/thread/list-messages.test.ts \
-                 apps/mesh/src/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts \
-                 apps/mesh/migrations/087-fix-vm-map-rekey.test.ts \
-                 apps/mesh/migrations/088-purge-cli-activate-keys.test.ts \
-                 apps/mesh/migrations/089-rename-remote-user-to-desktop.test.ts \
-                 apps/mesh/migrations/092-sandbox-naming-uniformization.test.ts"
+          files=$(find apps/mesh -name '*.integration.test.ts' | sort)
           failed_files=""
           crashed_files=""
           for f in $files; do

@@ -86,42 +86,16 @@ jobs:
           # Bun 1.3.5's PGlite teardown crashes — sharding was orchestration
           # overhead for little wall-time gain at the current size.
           #
-          # Exclusions: tests that need real infrastructure live in their
-          # own workflows so this job stays infrastructure-free per
-          # TESTING.md.
-          #   - daemon.e2e.test.ts → .github/workflows/sandbox-daemon.yml
-          #   - everything else here → .github/workflows/storage-integration.yml
+          # Tests are split by filename convention:
+          #   *.test.ts             → unit (here)
+          #   *.integration.test.ts → .github/workflows/storage-integration.yml
+          #   *.e2e.test.ts         → reserved for the sandbox-daemon workflow
+          #                          (only daemon.e2e.test.ts uses it today)
+          # See TESTING.md for the decision tree.
           files=$(find apps/mesh/src packages \
             \( -name '*.test.ts' -o -name '*.test.tsx' \) \
-            ! -path '*/daemon/daemon.e2e.test.ts' \
-            ! -path '*/storage/virtual.test.ts' \
-            ! -path '*/storage/downstream-token.test.ts' \
-            ! -path '*/storage/sandbox-runner-state.test.ts' \
-            ! -path '*/storage/threads.test.ts' \
-            ! -path '*/storage/connection.test.ts' \
-            ! -path '*/tools/virtual/studio-pack.test.ts' \
-            ! -path '*/oauth/token-refresh.test.ts' \
-            ! -path '*/tools/connection/connection-tools.test.ts' \
-            ! -path '*/core/context-factory.test.ts' \
-            ! -path '*/api/routes/downstream-token.test.ts' \
-            ! -path '*/api/routes/proxy.test.ts' \
-            ! -path '*/api/index.test.ts' \
-            ! -path '*/api/middleware/resolve-org-from-path.test.ts' \
-            ! -path '*/api/routes/openai-compat.test.ts' \
-            ! -path '*/api/routes/oauth-proxy.e2e.test.ts' \
-            ! -path '*/api/integration-org-scoped.test.ts' \
-            ! -path '*/api/access-control.integration.test.ts' \
-            ! -path '*/api/routes/decopilot/memory.test.ts' \
-            ! -path '*/tools/search/global-search.test.ts' \
-            ! -path '*/tools/thread/create.test.ts' \
-            ! -path '*/tools/thread/update.test.ts' \
-            ! -path '*/tools/thread/list.test.ts' \
-            ! -path '*/tools/thread/list-messages.test.ts' \
-            ! -path '*/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts' \
-            ! -path '*/migrations/087-fix-vm-map-rekey.test.ts' \
-            ! -path '*/migrations/088-purge-cli-activate-keys.test.ts' \
-            ! -path '*/migrations/089-rename-remote-user-to-desktop.test.ts' \
-            ! -path '*/migrations/092-sandbox-naming-uniformization.test.ts')
+            ! -name '*.integration.test.ts' \
+            ! -name '*.e2e.test.ts')
           file_count=$(echo "$files" | wc -l)
           echo "Running $file_count test files (one bun process per file)"
           echo "$files"
