@@ -10,6 +10,36 @@ This file provides guidance when working with code in this repository, including
 
 Studio is an open-source control plane for Model Context Protocol (MCP) traffic. It provides a unified layer for authentication, routing, and observability between MCP clients (Cursor, Claude, VS Code) and MCP servers. The system is built as a monorepo using Bun workspaces with TypeScript, Hono (API), and React 19 (UI).
 
+## Working on a feature (the harness contract)
+
+This repo ships a **feature catalog** at `features/<name>/`. Each catalogued feature has:
+
+- `feature.md` — the user-facing story, the happy path, why the feature matters, and a prompt for AI agents extending it.
+- `happy-path.test.ts` — the executable contract, runnable end-to-end.
+
+**Before touching code that participates in a documented feature:**
+
+1. `bun run features:list` — find the feature(s) your change touches.
+2. `bun run features:test <name>` — verify the harness passes on the current code. If it doesn't, that's your first task; fix the divergence (or fix the test if the contract genuinely changed) before doing anything else.
+3. Read `features/<name>/feature.md` end-to-end. The "Prompt for AI agents" section at the bottom is written for you.
+4. **Write or extend `happy-path.test.ts` to cover the new behavior FIRST.** RED. Then code until GREEN.
+5. Loop on test ↔ code ↔ `feature.md` until the harness cohesively expresses the experience you intend.
+6. **Only then ask a human to verify.** If they reject the result, update `feature.md` to capture the new expectation, fail the test against it, and loop.
+
+We do not ship features verified only by humans. The harness is the contract; coding agents that skip it are out of contract.
+
+If your change adds a NEW major feature (something that would degrade the product story if removed, not a refactor), create a feature folder following `features/page-editor/` as the template. The pattern is:
+
+```
+features/<your-feature>/
+  feature.md          # story, value, happy path, prompt for AI agents
+  happy-path.test.ts  # the executable contract
+```
+
+See `features/README.md` for the catalog invariants.
+
+**For richer browser-driven verification beyond the deterministic Playwright spec**, install [Webwright](https://github.com/microsoft/Webwright) as a Claude Code skill (`/plugin install webwright@webwright`) and feed it the happy path from `feature.md`. It writes a re-runnable Playwright script + screenshots + a self-verification log against the critical points you described. Treat the output as evidence for a human pass — not a substitute for the deterministic contract that lives in `happy-path.test.ts` + `*.browser.spec.ts`.
+
 ## Commands
 
 ### Development
@@ -323,6 +353,8 @@ See [`TESTING.md`](./TESTING.md) for the testing philosophy and rules.
 - **E2E (Playwright)** — everything else. Real Postgres + NATS + Better Auth. Lives in `apps/mesh/e2e/tests/`.
 
 If a test needs `vi.mock`, `mock.module`, a stubbed `MeshContext`, or a fake `fetch` — it's not a unit test. Move it to e2e.
+
+**For cross-cutting features** (Page Editor, Brand Manager, Studio Pack install, etc.), the canonical executable contract is `features/<name>/happy-path.test.ts` plus an optional `apps/mesh/e2e/tests/features/<name>.browser.spec.ts`. See **Working on a feature** above — the contract MUST be extended before the implementation, not after.
 
 ## Working with Tools
 

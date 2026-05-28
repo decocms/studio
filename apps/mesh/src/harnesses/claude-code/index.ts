@@ -80,6 +80,41 @@ async function resolveClaudeCodeCwd(
   return await resolveCwd();
 }
 
+/**
+ * Per-agent extra disallowed tools.
+ *
+ * Some agent templates (currently: page-editor) have no legitimate use for
+ * the filesystem / shell / search tools — calling Read on a 25k-token
+ * source file burns 10–30 s of dead air per failed attempt and starts the
+ * agent down a rabbit hole that derails the entire run. The system prompt
+ * forbids these tools but agents under-follow textual rules; hard-disabling
+ * them at the SDK level is the only reliable fix.
+ *
+ * The selected_tools allowlist on the MCP connection only restricts MCP
+ * tools — built-in Read/Write/Edit/Bash/Grep/Glob/ToolSearch/NotebookEdit
+ * are always available unless explicitly disallowed here.
+ */
+function extraDisallowedToolsForAgent(
+  virtualMcp: HarnessStreamInput["virtualMcp"],
+): string[] {
+  const metadata = (virtualMcp.metadata ?? {}) as { type?: unknown };
+  if (metadata.type === "page-editor") {
+    return [
+      "Read",
+      "Write",
+      "Edit",
+      "Bash",
+      "Grep",
+      "Glob",
+      "ToolSearch",
+      "NotebookEdit",
+      "WebFetch",
+      "WebSearch",
+    ];
+  }
+  return [];
+}
+
 export const claudeCodeHarnessFactory: HarnessFactory = {
   id: "claude-code",
   create(_ctx: HarnessContext): Harness {
@@ -116,6 +151,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
           isPlanMode: input.mode === "plan",
           resume: input.resumeSessionRef,
           cwd,
+          extraDisallowedTools: extraDisallowedToolsForAgent(input.virtualMcp),
         });
 
         // 4. Convert UIMessages to ModelMessages. The AI SDK's

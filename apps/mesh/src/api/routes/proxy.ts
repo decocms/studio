@@ -18,8 +18,10 @@ import { Context, Hono } from "hono";
 import { endTime, startTime } from "hono/timing";
 import type { MeshContext } from "../../core/mesh-context";
 import { managementMCP } from "../../tools";
+import { usesLocalObjectStorage } from "../../tools/connection/dev-assets";
 import { guardResponseStream } from "../utils/stream-guard";
 import { handleAuthError } from "./oauth-proxy";
+import { handleDevAssetsMcpRequest } from "./dev-assets-mcp";
 import { handleVirtualMcpRequest } from "./virtual-mcp";
 export { toServerClient, type MCPProxyClient } from "./mcp-proxy-factory";
 
@@ -86,6 +88,27 @@ export const createProxyRoutes = () => {
       await server.connect(transport);
       const selfResponse = await transport.handleRequest(c.req.raw);
       return guardResponseStream(selfResponse, `mcp:self:${connectionId}`);
+    }
+
+    // Dev-assets pseudo-connection ({orgId}_dev-assets) — only active when
+    // object storage is the local filesystem fallback. Mirrors the
+    // unscoped /mcp/{connectionId}_dev-assets route registered in dev-only.ts
+    // so frontend code using the canonical /api/:org/mcp/<id> URL still
+    // reaches the dev-assets MCP server in dev mode.
+    if (connectionId.endsWith("_dev-assets")) {
+      const devOrgId = connectionId.slice(0, -"_dev-assets".length);
+      if (!ctx.organization || ctx.organization.id !== devOrgId) {
+        return c.json({ error: "Connection not found" }, 404);
+      }
+      if (!usesLocalObjectStorage()) {
+        return c.json(
+          { error: "dev-assets is only available in local mode" },
+          404,
+        );
+      }
+      const url = new URL(c.req.url);
+      const baseUrl = `${url.protocol}//${url.host}`;
+      return handleDevAssetsMcpRequest(c.req.raw, ctx, baseUrl);
     }
 
     try {

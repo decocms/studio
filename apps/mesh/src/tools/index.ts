@@ -34,6 +34,7 @@ import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import { getPrompts, getResources } from "./guides";
 import * as ObjectStorageTools from "./object-storage";
+import * as PagePreviewTools from "./page-preview";
 import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
@@ -169,6 +170,23 @@ const CORE_TOOLS = [
   ObjectStorageTools.PUT_PRESIGNED_URL,
   ObjectStorageTools.DELETE_OBJECT,
   ObjectStorageTools.DELETE_OBJECTS,
+
+  // Page Preview tools
+  PagePreviewTools.PAGE_PREVIEW_STATUS,
+  PagePreviewTools.PAGE_PREVIEW_SET,
+  PagePreviewTools.PAGE_PREVIEW_REFRESH,
+  PagePreviewTools.PAGE_PREVIEW_PAGE_CREATE,
+  PagePreviewTools.PAGE_BOOTSTRAP,
+  PagePreviewTools.PAGE_PREVIEW_PROGRESS,
+  PagePreviewTools.DESIGN_SYSTEM_CREATE,
+  PagePreviewTools.DESIGN_SYSTEM_LIST,
+  PagePreviewTools.DESIGN_SYSTEM_SET,
+  PagePreviewTools.DESIGN_SYSTEM_TEMPLATES_LIST,
+  PagePreviewTools.PAGE_RENDER_BLOCK,
+  PagePreviewTools.PAGE_UPDATE_BLOCK,
+  PagePreviewTools.PAGE_REMOVE_BLOCK,
+  PagePreviewTools.PAGE_REVIEW_SUGGEST,
+  PagePreviewTools.PAGE_GET_BLOCKS,
 
   // Registry tools
   ...RegistryTools.tools,

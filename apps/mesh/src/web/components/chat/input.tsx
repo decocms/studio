@@ -51,6 +51,10 @@ import {
 import { isTiptapDocEmpty } from "./tiptap/utils";
 import { ToolsPopover } from "./tools-popover";
 import { SessionStats } from "./usage-stats";
+import {
+  setActiveChatInputHandleRef,
+  setActiveChatInputSubmitter,
+} from "@/web/lib/chat-input-bridge";
 import { authClient } from "@/web/lib/auth-client.ts";
 import { track } from "@/web/lib/posthog-client";
 import { useSound } from "@/web/hooks/use-sound.ts";
@@ -337,6 +341,33 @@ export function ChatInput({
     selectedModel?.limits?.contextWindow;
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
+
+  // Publish the *ref object* (not its current value) to the bridge so
+  // callers dereference at click time, after `useImperativeHandle` in
+  // TiptapInput has populated `tiptapRef.current`. Registering
+  // `.current` from `useEffect([])` race-loses against the child's
+  // imperative-handle effect.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — registers a module-level singleton; cleanup runs on unmount
+  useEffect(() => {
+    setActiveChatInputHandleRef(tiptapRef);
+    return () => setActiveChatInputHandleRef(null);
+  }, []);
+
+  // Stable submitter ref so the bridge can call the LATEST handleSubmit
+  // closure (which captures the current tiptapDoc / streaming state)
+  // without re-registering on every render. The wrapper itself is
+  // stable; only its body dereferences the ref at call time.
+  const handleSubmitRef = useRef<((e?: FormEvent) => void) | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — keeps the bridge's submit reference fresh without re-registering each render
+  useEffect(() => {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment — bridging React state to a non-React singleton; runs in an effect so it's after commit
+    handleSubmitRef.current = handleSubmit;
+  });
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — registers a module-level singleton; cleanup runs on unmount
+  useEffect(() => {
+    setActiveChatInputSubmitter(() => handleSubmitRef.current?.());
+    return () => setActiveChatInputSubmitter(null);
+  }, []);
 
   const isPlanMode = chatMode === "plan";
 

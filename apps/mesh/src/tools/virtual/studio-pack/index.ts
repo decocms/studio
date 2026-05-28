@@ -4,6 +4,7 @@ import { agentManagerAgent } from "./agent-manager";
 import { automationManagerAgent } from "./automation-manager";
 import { brandManagerAgent } from "./brand-manager";
 import { connectionManagerAgent } from "./connection-manager";
+import { pageEditorAgent } from "./page-editor";
 import { storeManagerAgent } from "./store-manager";
 import type {
   ChecklistContext,
@@ -30,6 +31,7 @@ export const STUDIO_PACK_AGENTS = [
   automationManagerAgent,
   connectionManagerAgent,
   storeManagerAgent,
+  pageEditorAgent,
 ] as const;
 
 type StudioPackAgent = (typeof STUDIO_PACK_AGENTS)[number];
@@ -95,6 +97,22 @@ export async function installStudioPack(
       const connectionKeys = agent.selectedConnections ?? ["self"];
       const connectionIds = connectionKeys.map((k) => connectionForKey[k]);
 
+      // Optional UI layout — agents that want a non-default main view
+      // (e.g. Page Editor opens the live page-preview iframe instead of
+      // chat-only) declare it via `defaultMainView`. Threaded through
+      // `metadata.ui.layout.defaultMainView` so the panel-tab resolver
+      // (use-main-panel-tabs.ts) renders the matching system tab.
+      const defaultMainView =
+        "defaultMainView" in agent ? agent.defaultMainView : null;
+      const ui = defaultMainView
+        ? {
+            ui: {
+              pinnedViews: null,
+              layout: { defaultMainView, chatDefaultOpen: true },
+            },
+          }
+        : {};
+
       await virtualMcpStorage.create(
         orgId,
         createdBy,
@@ -106,6 +124,7 @@ export async function installStudioPack(
           pinned: false,
           metadata: {
             instructions: agent.instructions,
+            ...ui,
           },
           connections: connectionIds.map((connection_id) => ({
             connection_id,

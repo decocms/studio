@@ -325,6 +325,9 @@ export const KEYS = {
   defaultBrand: (organizationId: string) =>
     ["brand-context", organizationId, "default"] as const,
 
+  // Page Editor local preview
+  pagePreviewStatus: (orgSlug: string) => ["page-preview", orgSlug] as const,
+
   // Deco profile (scoped by user email)
   decoProfile: (email: string | undefined) => ["deco-profile", email] as const,
 

@@ -77,8 +77,17 @@ export function createLazyClient(
   const shouldBypassCache = (params?: unknown, options?: unknown) =>
     params !== undefined || options !== undefined;
 
+  // In-process MCP servers (dev-assets, SELF management MCP) have tool
+  // lists determined at compile time. There's no latency benefit to
+  // caching them, and the cache keeps biting when the tool list evolves
+  // (e.g. PAGE_PREVIEW_* added to management MCP but virtual MCPs still
+  // see the stale cached list and filter them out of selected_tools).
+  const isInProcessConn =
+    connection.id.endsWith("_dev-assets") || connection.id.endsWith("_self");
+
   // SWR helper: delegates to fetchWithCache for cache-hit/miss logic.
-  // VIRTUAL connections and paginated requests bypass the cache entirely.
+  // VIRTUAL connections, in-process servers, and paginated requests
+  // bypass the cache entirely.
   const swrList = <T extends { nextCursor?: string | undefined }>(
     type: "tools" | "resources" | "prompts",
     listFn: (
@@ -90,9 +99,11 @@ export function createLazyClient(
     buildCachedResult: (cached: unknown[]) => T,
   ) => {
     return async (params?: unknown, options?: RequestOptions): Promise<T> => {
-      // Bypass cache for VIRTUAL connections or paginated requests
+      // Bypass cache for VIRTUAL connections, in-process MCP servers, or
+      // paginated requests
       if (
         connection.connection_type === "VIRTUAL" ||
+        isInProcessConn ||
         !cache ||
         shouldBypassCache(params, options)
       ) {
