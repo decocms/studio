@@ -72,6 +72,9 @@ jobs:
                  apps/mesh/src/api/middleware/resolve-org-from-path.test.ts \
                  apps/mesh/src/api/routes/openai-compat.test.ts \
                  apps/mesh/src/api/routes/oauth-proxy.e2e.test.ts \
+                 apps/mesh/src/api/integration-org-scoped.test.ts \
+                 apps/mesh/src/api/access-control.integration.test.ts \
+                 apps/mesh/src/api/routes/decopilot/memory.test.ts \
                  apps/mesh/src/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts"
           for f in $files; do
             echo "::group::$f"

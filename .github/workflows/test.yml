@@ -109,6 +109,9 @@ jobs:
             ! -path '*/api/middleware/resolve-org-from-path.test.ts' \
             ! -path '*/api/routes/openai-compat.test.ts' \
             ! -path '*/api/routes/oauth-proxy.e2e.test.ts' \
+            ! -path '*/api/integration-org-scoped.test.ts' \
+            ! -path '*/api/access-control.integration.test.ts' \
+            ! -path '*/api/routes/decopilot/memory.test.ts' \
             ! -path '*/harnesses/decopilot/built-in-tools/web-search.e2e.test.ts')
           file_count=$(echo "$files" | wc -l)
           echo "Running $file_count test files (one bun process per file)"
