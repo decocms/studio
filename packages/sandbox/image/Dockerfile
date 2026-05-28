@@ -1,5 +1,5 @@
 # Build: docker build -t studio-sandbox:local -f packages/sandbox/image/Dockerfile packages/sandbox
-FROM oven/bun:1.3.13-debian
+FROM oven/bun:1.3.14-debian
 
 ARG NODE_MAJOR=22
 ARG DENO_VERSION=v1.46.3
