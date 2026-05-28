@@ -204,7 +204,7 @@ function isGatewayWsData(data: unknown): data is WsAttachData {
   return (
     typeof data === "object" &&
     data !== null &&
-    typeof (data as { userSub?: unknown }).userSub === "string"
+    (data as { kind?: unknown }).kind === "gateway"
   );
 }
 

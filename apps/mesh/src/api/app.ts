@@ -1768,7 +1768,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     },
   };
 
-  registerLinksGateway(app as unknown as import("hono").Hono, {
+  registerLinksGateway(app, {
     registry: claimRegistry,
     nats: gatewayNatsAdapter,
     podId: POD_ID,

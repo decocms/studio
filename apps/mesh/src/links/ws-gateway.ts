@@ -10,7 +10,7 @@
  * Enforced via a JS KV `watch` — if a pod sees a `podId` other than its own,
  * it closes the WS with 4001 "superseded".
  */
-import type { Hono } from "hono";
+import type { Env, Hono } from "hono";
 import type { ServerWebSocket } from "bun";
 import {
   decodeFrame,
@@ -58,6 +58,7 @@ interface ConnectionState {
 }
 
 export interface WsAttachData {
+  kind: "gateway";
   userSub: string;
   deps: GatewayDeps;
   helloTimeoutMs: number;
@@ -67,7 +68,10 @@ export interface WsAttachData {
   _inflight?: Map<string, { reply: string }>;
 }
 
-export function registerLinksGateway(app: Hono, deps: GatewayDeps): void {
+export function registerLinksGateway<E extends Env = Env>(
+  app: Hono<E>,
+  deps: GatewayDeps,
+): void {
   const helloTimeoutMs = deps.helloTimeoutMs ?? 5_000;
   const refreshIntervalMs = deps.refreshIntervalMs ?? 20_000;
 
@@ -90,6 +94,7 @@ export function registerLinksGateway(app: Hono, deps: GatewayDeps): void {
 
     const upgraded = server.upgrade(c.req.raw, {
       data: {
+        kind: "gateway",
         userSub,
         deps,
         helloTimeoutMs,
