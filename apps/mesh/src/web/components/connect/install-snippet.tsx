@@ -20,7 +20,7 @@ interface SnippetBlock {
   pathHint?: string;
 }
 
-export function buildSnippet({
+function buildSnippet({
   client,
   mode,
   url,
