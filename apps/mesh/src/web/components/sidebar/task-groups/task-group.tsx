@@ -244,18 +244,23 @@ function AgentExpandedBody({
           <span>New thread</span>
         </button>
       ) : (
-        threads.map((task) => (
-          <TaskRow
-            key={task.id}
-            task={task}
-            isActive={activeTaskId === task.id}
-            onClick={() => onSelectTask(task)}
-            onArchive={() => onArchiveTask(task)}
-            showAutomationBadge={Boolean(task.trigger_id)}
+        <>
+          {threads.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              isActive={activeTaskId === task.id}
+              onClick={() => onSelectTask(task)}
+              onArchive={() => onArchiveTask(task)}
+              showAutomationBadge={Boolean(task.trigger_id)}
+            />
+          ))}
+          <ShowMoreButton
+            onClick={() => void loadMore()}
+            isFetching={isFetching}
           />
-        ))
+        </>
       )}
-      <ShowMoreButton onClick={() => void loadMore()} isFetching={isFetching} />
     </>
   );
 }
