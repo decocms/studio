@@ -75,7 +75,7 @@ export class ThreadManagerStore {
   private archivedTombstones = new Map<string, number>();
   private client: MCPClient | null;
   private nextOffset = 0;
-  private readonly pageSize = 50;
+  private readonly pageSize = 10;
   /**
    * Event buffer: `[]` means "boot, buffering"; `null` means "ready, dispatching live".
    * thread.* events arriving before loadInitialPage resolves are queued here
@@ -181,6 +181,23 @@ export class ThreadManagerStore {
   patchThread(patch: RowPatch): void {
     if (this.isTombstoned(patch.id)) return;
     this.threads.update((list) => applyPatch(list, patch));
+  }
+
+  /**
+   * Bulk-merge a list of tasks into the flat `threads` slot. Uses the
+   * existing `applyPatch` upsert semantics: rows already in the list are
+   * updated in-place; new rows are prepended with synthetic-row defaults.
+   * Tombstones are honoured so a just-archived thread cannot be resurrected
+   * by a per-group "show more" response that still contains the row.
+   */
+  mergeThreads(items: Task[]): void {
+    if (items.length === 0) return;
+    this.threads.update((list) =>
+      items.reduce((acc, t) => {
+        if (this.isTombstoned(t.id)) return acc;
+        return applyPatch(acc, t);
+      }, list),
+    );
   }
 
   private async optimisticUpdate(

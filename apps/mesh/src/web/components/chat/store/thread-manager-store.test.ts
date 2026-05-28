@@ -762,3 +762,96 @@ describe("ThreadManagerStore event buffer during boot", () => {
     store.dispose();
   });
 });
+
+describe("ThreadManagerStore.mergeThreads", () => {
+  afterEach(() => {
+    __resetManagerRegistry();
+    __resetRegistry();
+  });
+
+  it("appends new tasks and dedupes by id", async () => {
+    const sse = makeFakePool();
+    const client = makeMcpClient([
+      {
+        id: "a",
+        title: "A",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const store = new ThreadManagerStore("org", "loc", { client, sse });
+    // Wait for the initial page to land.
+    await new Promise((r) => setTimeout(r, 0));
+
+    store.mergeThreads([
+      {
+        id: "a",
+        title: "A (updated)",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-02T00:00:00Z",
+      },
+      {
+        id: "b",
+        title: "B",
+        created_at: "2026-01-03T00:00:00Z",
+        updated_at: "2026-01-03T00:00:00Z",
+      },
+    ]);
+
+    const list = store.threads.get();
+    expect(list.map((t) => t.id).sort()).toEqual(["a", "b"]);
+    expect(list.find((t) => t.id === "a")?.title).toBe("A (updated)");
+  });
+
+  it("is a no-op for an empty batch", async () => {
+    const sse = makeFakePool();
+    const client = makeMcpClient([
+      {
+        id: "a",
+        title: "A",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const store = new ThreadManagerStore("org", "loc", { client, sse });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const before = store.threads.get();
+    store.mergeThreads([]);
+    expect(store.threads.get()).toBe(before);
+  });
+
+  it("drops items whose id is tombstoned", async () => {
+    const sse = makeFakePool();
+    const client = makeMcpClient([
+      {
+        id: "t-1",
+        title: "A",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      } as Task,
+    ]);
+    const store = new ThreadManagerStore("org", "loc", { client, sse });
+    // Wait for loadInitialPage to complete and store to reach ready state.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.threadsStatus.get()).toEqual({ kind: "ready" });
+
+    // Tombstone the row via hide() (optimistic update removes it immediately).
+    await store.hide("t-1");
+    expect(store.threads.get()).toEqual([]);
+
+    // Simulate a "show more" response that still contains the just-archived row.
+    store.mergeThreads([
+      {
+        id: "t-1",
+        title: "A",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      } as Task,
+    ]);
+
+    // The tombstoned row must remain absent.
+    expect(store.threads.get()).toEqual([]);
+    store.dispose();
+  });
+});

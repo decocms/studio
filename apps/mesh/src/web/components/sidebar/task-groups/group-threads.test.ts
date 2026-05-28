@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "@/web/components/chat/task/types";
-import { groupThreadsByVirtualMcp } from "./group-threads";
+import {
+  groupThreadsByVirtualMcp,
+  groupThreadsByStatus,
+} from "./group-threads";
 
 const t = (overrides: Partial<Task>): Task => ({
   id: overrides.id ?? "x",
@@ -25,6 +28,7 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-04-01T00:00:00Z",
         }),
       ],
+      [],
       "vm-decopilot",
     );
     expect(result.map((g) => g.virtualMcpId)).toEqual([
@@ -52,6 +56,7 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-02-01T00:00:00Z",
         }),
       ],
+      [],
       null,
     );
     expect(result.map((g) => g.virtualMcpId)).toEqual(["vm-2", "vm-1"]);
@@ -76,6 +81,7 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-01-01T00:00:00Z",
         }),
       ],
+      [],
       null,
     );
     expect(result[0]?.threads.map((th) => th.id)).toEqual(["a", "b", "c"]);
@@ -90,6 +96,7 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-05-01T00:00:00Z",
         }),
       ],
+      [],
       "vm-decopilot",
     );
     expect(result.map((g) => g.virtualMcpId)).toEqual([
@@ -113,6 +120,7 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-04-01T00:00:00Z",
         }),
       ],
+      [],
       "vm-decopilot",
     );
     const ids = result.map((g) => g.virtualMcpId);
@@ -120,7 +128,7 @@ describe("groupThreadsByVirtualMcp", () => {
   });
 
   it("returns an empty array when no threads and no decopilot id is supplied", () => {
-    const result = groupThreadsByVirtualMcp([], null);
+    const result = groupThreadsByVirtualMcp([], [], null);
     expect(result).toEqual([]);
   });
 });
@@ -138,6 +146,7 @@ describe("groupThreadsByVirtualMcp - dangling welcome threads", () => {
           virtual_mcp_id: "studio-brand-manager_org-1",
         }),
       ],
+      [],
       null,
     );
     expect(result).toHaveLength(1);
@@ -152,8 +161,129 @@ describe("groupThreadsByVirtualMcp - dangling welcome threads", () => {
           virtual_mcp_id: "studio-store-manager_org-1",
         }),
       ],
+      [],
       null,
     );
     expect(result).toHaveLength(0);
+  });
+});
+
+describe("groupThreadsByVirtualMcp — directory merging", () => {
+  it("includes agents with no threads as empty groups after active ones", () => {
+    const result = groupThreadsByVirtualMcp(
+      [
+        t({
+          id: "a",
+          virtual_mcp_id: "vm-active",
+          updated_at: "2026-05-01T00:00:00Z",
+        }),
+      ],
+      [
+        { id: "vm-active", title: "Active" },
+        { id: "vm-idle", title: "Idle" },
+      ] as unknown as Parameters<typeof groupThreadsByVirtualMcp>[1],
+      null,
+    );
+    expect(result.map((g) => g.virtualMcpId)).toEqual(["vm-active", "vm-idle"]);
+    expect(result.find((g) => g.virtualMcpId === "vm-idle")?.threads).toEqual(
+      [],
+    );
+  });
+
+  it("sorts the inactive tier alphabetically by id when no agent title is present", () => {
+    const result = groupThreadsByVirtualMcp(
+      [],
+      [
+        { id: "vm-zzz", title: "Z" },
+        { id: "vm-aaa", title: "A" },
+      ] as unknown as Parameters<typeof groupThreadsByVirtualMcp>[1],
+      null,
+    );
+    expect(result.map((g) => g.virtualMcpId)).toEqual(["vm-aaa", "vm-zzz"]);
+  });
+
+  it("still pins decopilot first even when it is in the agents directory", () => {
+    const result = groupThreadsByVirtualMcp(
+      [
+        t({
+          id: "a",
+          virtual_mcp_id: "vm-other",
+          updated_at: "2026-05-01T00:00:00Z",
+        }),
+      ],
+      [
+        { id: "vm-decopilot", title: "Decopilot" },
+        { id: "vm-other", title: "Other" },
+      ] as unknown as Parameters<typeof groupThreadsByVirtualMcp>[1],
+      "vm-decopilot",
+    );
+    expect(result.map((g) => g.virtualMcpId)).toEqual([
+      "vm-decopilot",
+      "vm-other",
+    ]);
+  });
+});
+
+describe("groupThreadsByStatus", () => {
+  it("always returns all 5 status groups regardless of input", () => {
+    const result = groupThreadsByStatus([]);
+    expect(result).toHaveLength(5);
+    expect(result.map((g) => g.status)).toEqual([
+      "requires_action",
+      "in_progress",
+      "failed",
+      "expired",
+      "completed",
+    ]);
+  });
+
+  it("returns empty thread arrays for statuses with no matching threads", () => {
+    const result = groupThreadsByStatus([]);
+    for (const group of result) {
+      expect(group.threads).toEqual([]);
+    }
+  });
+
+  it("buckets threads into the correct status group", () => {
+    const result = groupThreadsByStatus([
+      t({ id: "a", status: "in_progress" }),
+      t({ id: "b", status: "completed" }),
+      t({ id: "c", status: "in_progress" }),
+    ]);
+    expect(result).toHaveLength(5);
+    expect(
+      result
+        .find((g) => g.status === "in_progress")
+        ?.threads.map((th) => th.id),
+    ).toEqual(["a", "c"]);
+    expect(
+      result.find((g) => g.status === "completed")?.threads.map((th) => th.id),
+    ).toEqual(["b"]);
+    expect(result.find((g) => g.status === "requires_action")?.threads).toEqual(
+      [],
+    );
+    expect(result.find((g) => g.status === "failed")?.threads).toEqual([]);
+    expect(result.find((g) => g.status === "expired")?.threads).toEqual([]);
+  });
+
+  it("preserves the canonical status order: requires_action, in_progress, failed, expired, completed", () => {
+    const result = groupThreadsByStatus([
+      t({ id: "a", status: "completed" }),
+      t({ id: "b", status: "requires_action" }),
+    ]);
+    expect(result.map((g) => g.status)).toEqual([
+      "requires_action",
+      "in_progress",
+      "failed",
+      "expired",
+      "completed",
+    ]);
+  });
+
+  it("falls back threads with unknown status into 'completed'", () => {
+    const result = groupThreadsByStatus([t({ id: "a", status: undefined })]);
+    expect(
+      result.find((g) => g.status === "completed")?.threads.map((th) => th.id),
+    ).toEqual(["a"]);
   });
 });

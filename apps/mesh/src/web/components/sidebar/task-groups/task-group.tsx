@@ -23,13 +23,13 @@ import {
 import { useGroupExpanded } from "./use-group-expanded";
 import type { Task } from "@/web/components/chat/task/types";
 import { STATUS_CONFIG } from "@/web/lib/task-status";
+import { ShowMoreButton } from "./show-more-button";
+import type { SidebarFilters } from "./next-page-offset";
+import { useGroupShowMore } from "./use-group-show-more";
 
 export interface TaskGroupProps {
   virtualMcpId: string;
   threads: Task[];
-  isDecopilot: boolean;
-  /** Whether this group currently contains the active task — drives default expanded. */
-  hasActiveTask: boolean;
   activeTaskId: string | null;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
@@ -38,13 +38,12 @@ export interface TaskGroupProps {
   onHideGroup: (virtualMcpId: string) => void;
   /** When true, the group renders dimmed (used when filters wipe out the body). */
   dimmed: boolean;
+  filters: SidebarFilters;
 }
 
 export function TaskGroup({
   virtualMcpId,
   threads,
-  isDecopilot,
-  hasActiveTask,
   activeTaskId,
   onSelectTask,
   onArchiveTask,
@@ -52,25 +51,37 @@ export function TaskGroup({
   onShowSettings,
   onHideGroup,
   dimmed,
+  filters,
 }: TaskGroupProps) {
-  const defaultExpanded = isDecopilot || hasActiveTask;
-  const [expanded, setExpanded] = useGroupExpanded(
-    virtualMcpId,
-    defaultExpanded,
-  );
+  const [expanded, setExpanded] = useGroupExpanded(virtualMcpId, false);
   const isToolCallRuns = virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
+  const showMore = useGroupShowMore("agent", virtualMcpId, filters);
+
+  function handleToggleExpanded() {
+    const next = !expanded;
+    setExpanded(next);
+    if (
+      next &&
+      !isToolCallRuns &&
+      threads.length === 0 &&
+      showMore.hasMore &&
+      !showMore.isFetching
+    ) {
+      void showMore.loadMore();
+    }
+  }
 
   const header = (
     <div
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
-      onClick={() => setExpanded(!expanded)}
+      onClick={handleToggleExpanded}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          setExpanded(!expanded);
+          handleToggleExpanded();
         }
       }}
       className={cn(
@@ -137,16 +148,7 @@ export function TaskGroup({
       )}
       {expanded && (
         <div className="flex flex-col gap-0.5 pb-1 pl-4">
-          {threads.length === 0 && !isToolCallRuns ? (
-            <button
-              type="button"
-              onClick={() => onNewTaskInGroup(virtualMcpId)}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
-            >
-              <Plus size={14} />
-              <span>New thread</span>
-            </button>
-          ) : (
+          {isToolCallRuns ? (
             threads.map((task) => (
               <TaskRow
                 key={task.id}
@@ -157,6 +159,16 @@ export function TaskGroup({
                 showAutomationBadge={Boolean(task.trigger_id)}
               />
             ))
+          ) : (
+            <AgentExpandedBody
+              virtualMcpId={virtualMcpId}
+              threads={threads}
+              activeTaskId={activeTaskId}
+              onSelectTask={onSelectTask}
+              onArchiveTask={onArchiveTask}
+              onNewTaskInGroup={onNewTaskInGroup}
+              showMore={showMore}
+            />
           )}
         </div>
       )}
@@ -201,27 +213,124 @@ function TaskGroupLabelInner({ virtualMcpId }: { virtualMcpId: string }) {
   return <>{entity?.title ?? "Agent"}</>;
 }
 
+function AgentExpandedBody({
+  virtualMcpId,
+  threads,
+  activeTaskId,
+  onSelectTask,
+  onArchiveTask,
+  onNewTaskInGroup,
+  showMore,
+}: {
+  virtualMcpId: string;
+  threads: Task[];
+  activeTaskId: string | null;
+  onSelectTask: (task: Task) => void;
+  onArchiveTask: (task: Task) => void;
+  onNewTaskInGroup: (virtualMcpId: string) => void;
+  showMore: ReturnType<typeof useGroupShowMore>;
+}) {
+  const { isFetching, loadMore } = showMore;
+
+  return (
+    <>
+      {threads.length === 0 ? (
+        <button
+          type="button"
+          onClick={() => onNewTaskInGroup(virtualMcpId)}
+          className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
+        >
+          <Plus size={14} />
+          <span>New thread</span>
+        </button>
+      ) : (
+        <>
+          {threads.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              isActive={activeTaskId === task.id}
+              onClick={() => onSelectTask(task)}
+              onArchive={() => onArchiveTask(task)}
+              showAutomationBadge={Boolean(task.trigger_id)}
+            />
+          ))}
+          <ShowMoreButton
+            onClick={() => void loadMore()}
+            isFetching={isFetching}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+function StatusExpandedBody({
+  threads,
+  activeTaskId,
+  onSelectTask,
+  onArchiveTask,
+  showMore,
+}: {
+  threads: Task[];
+  activeTaskId: string | null;
+  onSelectTask: (task: Task) => void;
+  onArchiveTask: (task: Task) => void;
+  showMore: ReturnType<typeof useGroupShowMore>;
+}) {
+  const { isFetching, loadMore } = showMore;
+
+  return (
+    <>
+      {threads.map((task) => (
+        <TaskRow
+          key={task.id}
+          task={task}
+          isActive={activeTaskId === task.id}
+          onClick={() => onSelectTask(task)}
+          onArchive={() => onArchiveTask(task)}
+          showAutomationBadge={Boolean(task.trigger_id)}
+          showAgentIcon
+          hideStatusIdle
+        />
+      ))}
+      <ShowMoreButton onClick={() => void loadMore()} isFetching={isFetching} />
+    </>
+  );
+}
+
 export function StatusGroup({
   status,
   threads,
   activeTaskId,
   onSelectTask,
   onArchiveTask,
+  filters,
 }: {
   status: StatusGroupData["status"];
   threads: Task[];
   activeTaskId: string | null;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
+  filters: SidebarFilters;
 }) {
   const config = STATUS_CONFIG[status];
   const StatusIcon = config.icon;
-  const defaultExpanded =
-    status === "requires_action" || status === "in_progress";
-  const [expanded, setExpanded] = useGroupExpanded(
-    `status-${status}`,
-    defaultExpanded,
-  );
+  const [expanded, setExpanded] = useGroupExpanded(`status-${status}`, false);
+  const showMore = useGroupShowMore("status", status, filters);
+
+  function handleToggleExpanded() {
+    const next = !expanded;
+    setExpanded(next);
+    if (
+      next &&
+      threads.length === 0 &&
+      showMore.hasMore &&
+      !showMore.isFetching
+    ) {
+      void showMore.loadMore();
+    }
+  }
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -229,12 +338,12 @@ export function StatusGroup({
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        onClick={() => setExpanded(!expanded)}
+        onClick={handleToggleExpanded}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setExpanded(!expanded);
+            handleToggleExpanded();
           }
         }}
         className="group/group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-medium text-foreground cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
@@ -256,18 +365,13 @@ export function StatusGroup({
       </div>
       {expanded && (
         <div className="flex flex-col gap-0.5 pb-1 pl-4">
-          {threads.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              isActive={activeTaskId === task.id}
-              onClick={() => onSelectTask(task)}
-              onArchive={() => onArchiveTask(task)}
-              showAutomationBadge={Boolean(task.trigger_id)}
-              showAgentIcon
-              hideStatusIdle
-            />
-          ))}
+          <StatusExpandedBody
+            threads={threads}
+            activeTaskId={activeTaskId}
+            onSelectTask={onSelectTask}
+            onArchiveTask={onArchiveTask}
+            showMore={showMore}
+          />
         </div>
       )}
     </div>
