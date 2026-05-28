@@ -67,15 +67,19 @@ test.describe("Sidebar per-group Show more", () => {
 
     // -------------------------------------------------------------------------
     // 4. Expand the agent group.
-    //    The group header is a role="button" element with aria-expanded="false"
-    //    for collapsed groups. We locate it by the agent title text it contains.
-    //    The sidebar must have loaded at least one task row before we interact.
+    //    Group headers are `<div role="button" aria-expanded>` containers.
+    //    Wait for any group header to appear first — that proves the sidebar
+    //    Suspense (incl. COLLECTION_VIRTUAL_MCP_LIST) has resolved — then
+    //    locate ours by visible text. Using `hasText` avoids accessibility
+    //    name composition pitfalls (nested avatar img alt + nested "New task"
+    //    button inside the same role=button container).
     // -------------------------------------------------------------------------
 
-    // Wait for the task groups section to render by waiting for the agent's
-    // group header to appear. Timeout covers the SSE/WebSocket initial fetch.
-    const groupHeader = page.getByRole("button", { name: agentTitle }).first();
-    await groupHeader.waitFor({ state: "visible", timeout: 20_000 });
+    const anyGroupHeader = page.locator('[role="button"][aria-expanded]');
+    await anyGroupHeader.first().waitFor({ state: "visible", timeout: 30_000 });
+
+    const groupHeader = anyGroupHeader.filter({ hasText: agentTitle }).first();
+    await groupHeader.waitFor({ state: "visible", timeout: 30_000 });
 
     // Expand the group if it is currently collapsed.
     const isExpanded = await groupHeader.getAttribute("aria-expanded");
