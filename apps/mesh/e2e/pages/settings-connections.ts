@@ -39,4 +39,21 @@ export class SettingsConnectionsPage {
       .last()
       .click();
   }
+
+  /** Click an access tab by its label (the button text also carries a count badge). */
+  async clickTab(label: "All" | "Shared" | "Personal"): Promise<void> {
+    await this.page
+      .getByRole("button", { name: new RegExp(`^${label}\\b`) })
+      .click();
+  }
+
+  /** Assert a connection card with the given title is visible. */
+  async expectConnectionVisible(title: string): Promise<void> {
+    await expect(this.page.getByText(title, { exact: true })).toBeVisible();
+  }
+
+  /** Assert no connection card with the given title is present. */
+  async expectConnectionHidden(title: string): Promise<void> {
+    await expect(this.page.getByText(title, { exact: true })).toHaveCount(0);
+  }
 }
