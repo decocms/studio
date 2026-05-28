@@ -51,6 +51,13 @@ export interface SandboxState {
   process: SpawnResult;
   /** Local URL for the spawned sandbox daemon. Always `http://127.0.0.1:<port>`. */
   sandboxApiUrl: string;
+  /**
+   * Public-facing URL the user's browser hits. Routed by the local ingress
+   * (`<handle>.localhost:<ingressPort>`) which the daemon spins up alongside
+   * the sandbox. Distinct from `sandboxApiUrl` so internal probes can skip
+   * the ingress hop.
+   */
+  previewUrl: string;
   lastUsedAt: number;
   activeDispatchCount: number;
   /** Bearer token generated at spawn time; used to authenticate proxied requests. */
@@ -60,7 +67,7 @@ export interface SandboxState {
 export interface DesktopSandboxProvider {
   ensureSandbox(
     input: EnsureSandboxInput,
-  ): Promise<{ sandboxApiUrl: string; port: number }>;
+  ): Promise<{ sandboxApiUrl: string; previewUrl: string; port: number }>;
   proxyPort(handle: string): number | null;
   /** Returns the bearer token for the spawned sandbox daemon, or null if unknown. */
   getDaemonToken(handle: string): string | null;
@@ -93,6 +100,17 @@ export interface DesktopSandboxProviderDeps {
     daemonToken: string,
   ) => Promise<void>;
   waitForHealth: (port: number) => Promise<void>;
+  /**
+   * Returns the public-facing URL for `handle` — usually
+   * `http://<handle>.localhost:<ingressPort>` where `ingressPort` is the
+   * port the local ingress is listening on. Lazy so the provider can be
+   * constructed before the ingress finishes binding (the ingress's
+   * `lookupSandboxPort` calls back into the provider, so the two have a
+   * circular initialization). The default keeps the legacy
+   * `http://127.0.0.1:<port>` for compatibility with tests that don't
+   * stand up an ingress.
+   */
+  resolvePreviewUrl?: (handle: string, port: number) => string;
   /** Override port allocation (tests provide a deterministic value). */
   pickPort?: () => Promise<number> | number;
   maxSandboxes?: number;
@@ -110,6 +128,8 @@ export function createDesktopSandboxProvider(
   const sandboxes = new Map<string, SandboxState>();
   const pickPort = deps.pickPort ?? allocateEphemeralPort;
   const fetcher = deps.fetchImpl ?? fetch;
+  const resolvePreviewUrl =
+    deps.resolvePreviewUrl ?? ((_handle, port) => `http://127.0.0.1:${port}`);
 
   /**
    * Short-timeout GET to `<sandboxUrl>/health`. The cache-hit fast path
@@ -158,7 +178,7 @@ export function createDesktopSandboxProvider(
   // Cleared on settle so a fresh ensure can take a clean swing.
   const inflight = new Map<
     string,
-    Promise<{ sandboxApiUrl: string; port: number }>
+    Promise<{ sandboxApiUrl: string; previewUrl: string; port: number }>
   >();
 
   function evictIfNeeded(): void {
@@ -178,7 +198,7 @@ export function createDesktopSandboxProvider(
 
   const buildEntry = async (
     input: EnsureSandboxInput,
-  ): Promise<{ sandboxApiUrl: string; port: number }> => {
+  ): Promise<{ sandboxApiUrl: string; previewUrl: string; port: number }> => {
     evictIfNeeded();
     const workdir = join(deps.dataDir, "sandboxes", input.handle);
     await mkdir(workdir, { recursive: true });
@@ -203,11 +223,13 @@ export function createDesktopSandboxProvider(
       throw err;
     }
     const sandboxApiUrl = `http://127.0.0.1:${port}`;
+    const previewUrl = resolvePreviewUrl(input.handle, port);
     const state: SandboxState = {
       handle: input.handle,
       port,
       process: spawned,
       sandboxApiUrl,
+      previewUrl,
       lastUsedAt: Date.now(),
       activeDispatchCount: 0,
       daemonToken,
@@ -226,7 +248,7 @@ export function createDesktopSandboxProvider(
       });
     }
 
-    return { sandboxApiUrl, port };
+    return { sandboxApiUrl, previewUrl, port };
   };
 
   return {
@@ -237,6 +259,7 @@ export function createDesktopSandboxProvider(
           existing.lastUsedAt = Date.now();
           return {
             sandboxApiUrl: existing.sandboxApiUrl,
+            previewUrl: existing.previewUrl,
             port: existing.port,
           };
         }

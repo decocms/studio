@@ -49,8 +49,17 @@ export interface DesktopProviderOptions {
 
 interface RemoteRecord {
   handle: string;
-  /** Daemon's local sandbox API URL (e.g. `http://127.0.0.1:<port>/_sandbox/<handle>`). */
+  /** Daemon's local sandbox API URL (e.g. `http://127.0.0.1:<port>`).
+   *  Used as the workdir-equivalent for the cluster's records and for
+   *  sandbox-state-store rehydration. */
   sandboxApiUrl: string;
+  /**
+   * Public-facing preview URL routed through the daemon's local ingress
+   * (`http://<handle>.localhost:<ingressPort>`) — what the user's browser
+   * actually hits. Distinct from `sandboxApiUrl` so internal probes can
+   * skip the ingress hop.
+   */
+  previewUrl: string;
 }
 
 export class DesktopSandboxProvider implements SandboxProvider {
@@ -94,12 +103,17 @@ export class DesktopSandboxProvider implements SandboxProvider {
       }
     } else if (this.stateStore) {
       const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
-      const sandboxApiUrl = (
-        row?.state as { sandboxApiUrl?: string } | undefined
-      )?.sandboxApiUrl;
+      const persisted = row?.state as
+        | { sandboxApiUrl?: string; previewUrl?: string }
+        | undefined;
+      const sandboxApiUrl = persisted?.sandboxApiUrl;
       if (sandboxApiUrl) {
         if (await this.probeHealth(handle)) {
-          const rec: RemoteRecord = { handle, sandboxApiUrl };
+          const rec: RemoteRecord = {
+            handle,
+            sandboxApiUrl,
+            previewUrl: persisted?.previewUrl ?? sandboxApiUrl,
+          };
           this.records.set(handle, rec);
           return this.toSandbox(rec);
         }
@@ -119,18 +133,32 @@ export class DesktopSandboxProvider implements SandboxProvider {
       "/api/sandboxes",
       body,
     );
-    const parsed = JSON.parse(responseText) as { sandboxApiUrl?: unknown };
+    const parsed = JSON.parse(responseText) as {
+      sandboxApiUrl?: unknown;
+      previewUrl?: unknown;
+    };
     if (typeof parsed.sandboxApiUrl !== "string") {
       throw new Error(
         "desktop ensure: daemon did not return a sandboxApiUrl string",
       );
     }
-    const rec: RemoteRecord = { handle, sandboxApiUrl: parsed.sandboxApiUrl };
+    // Backwards-compat: a daemon running pre-previewUrl code returns only
+    // `sandboxApiUrl`. Fall back to it so the browser at least has SOMETHING
+    // to load (it just won't be routed through the local ingress).
+    const previewUrl =
+      typeof parsed.previewUrl === "string"
+        ? parsed.previewUrl
+        : parsed.sandboxApiUrl;
+    const rec: RemoteRecord = {
+      handle,
+      sandboxApiUrl: parsed.sandboxApiUrl,
+      previewUrl,
+    };
     this.records.set(handle, rec);
     if (this.stateStore) {
       await this.stateStore.put(id, RUNNER_KIND, {
         handle,
-        state: { handle, sandboxApiUrl: parsed.sandboxApiUrl },
+        state: { handle, sandboxApiUrl: parsed.sandboxApiUrl, previewUrl },
       });
     }
     return this.toSandbox(rec);
@@ -344,7 +372,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
 
   async getPreviewUrl(handle: string): Promise<string | null> {
     const rec = await this.resolveRecord(handle);
-    return rec?.sandboxApiUrl ?? null;
+    return rec?.previewUrl ?? null;
   }
 
   /**
@@ -369,7 +397,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
     return {
       handle: rec.handle,
       workdir: rec.sandboxApiUrl,
-      previewUrl: rec.sandboxApiUrl,
+      previewUrl: rec.previewUrl,
     };
   }
 
@@ -382,10 +410,16 @@ export class DesktopSandboxProvider implements SandboxProvider {
     if (cached) return cached;
     if (!this.stateStore) return null;
     const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
-    const sandboxApiUrl = (row?.state as { sandboxApiUrl?: string } | undefined)
-      ?.sandboxApiUrl;
+    const persisted = row?.state as
+      | { sandboxApiUrl?: string; previewUrl?: string }
+      | undefined;
+    const sandboxApiUrl = persisted?.sandboxApiUrl;
     if (!sandboxApiUrl) return null;
-    const rec: RemoteRecord = { handle, sandboxApiUrl };
+    const rec: RemoteRecord = {
+      handle,
+      sandboxApiUrl,
+      previewUrl: persisted?.previewUrl ?? sandboxApiUrl,
+    };
     this.records.set(handle, rec);
     return rec;
   }

@@ -73,11 +73,12 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
             body: JSON.stringify({ error: "missing_handle" }),
           };
         }
-        const { sandboxApiUrl } = await deps.provider.ensureSandbox(body);
+        const { sandboxApiUrl, previewUrl } =
+          await deps.provider.ensureSandbox(body);
         return {
           status: 200,
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sandboxApiUrl }),
+          body: JSON.stringify({ sandboxApiUrl, previewUrl }),
         };
       }
       if (req.path.startsWith("/api/sandboxes/") && req.method === "DELETE") {

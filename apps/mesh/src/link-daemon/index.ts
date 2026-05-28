@@ -53,8 +53,16 @@ export async function startLinkDaemon(
   const hostname = osHostname() || undefined;
 
   const innerSpawn = createDefaultDaemonSpawn(opts.dataDir);
+  // Forward declaration so `resolvePreviewUrl` can read the ingress port
+  // once the ingress finishes binding (the ingress's `lookupSandboxPort`
+  // calls into the provider, so the two have a circular initialization).
+  let ingressPort = 0;
   const provider = createDesktopSandboxProvider({
     dataDir: opts.dataDir,
+    resolvePreviewUrl: (handle, port) =>
+      ingressPort > 0
+        ? `http://${handle}.localhost:${ingressPort}`
+        : `http://127.0.0.1:${port}`,
     spawnDaemon: (args): Promise<SpawnResult> => {
       const env: Record<string, string> = {
         DAEMON_BOOT_ID: randomUUID(),
@@ -105,6 +113,7 @@ export async function startLinkDaemon(
     port: opts.port,
     lookupSandboxPort: (handle) => provider.proxyPort(handle),
   });
+  ingressPort = ingress.port;
   console.log(
     `Local ingress listening on http://127.0.0.1:${ingress.port} (use http://<handle>.localhost:${ingress.port}/)`,
   );
