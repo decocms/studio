@@ -358,5 +358,6 @@ export function getWellKnownDecopilotConnection(
     },
     tools: [],
     bindings: [],
+    access: "org",
   };
 }

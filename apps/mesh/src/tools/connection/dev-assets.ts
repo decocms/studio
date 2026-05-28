@@ -86,5 +86,6 @@ export function createDevAssetsConnectionEntity(
     tools: DEV_ASSETS_TOOLS,
     bindings: ["OBJECT_STORAGE"],
     status: "active",
+    access: "org",
   };
 }

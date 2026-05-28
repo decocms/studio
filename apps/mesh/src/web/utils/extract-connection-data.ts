@@ -218,5 +218,6 @@ export function extractConnectionData(
     tools: null,
     bindings: null,
     status: "inactive" as const,
+    access: "user" as const,
   };
 }

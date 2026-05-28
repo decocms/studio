@@ -93,6 +93,10 @@ export async function createVirtualClientFrom(
     },
     async (span) => {
       try {
+        // Internal infrastructure path — the virtual MCP loader must see every
+        // connection referenced by the agent regardless of access. Per-user
+        // visibility is enforced upstream by the agent's own access checks and
+        // by the slot resolver (see slot resolution block below).
         const result = await Promise.all(
           connectionIds.map((connId) =>
             ctx.storage.connections.findById(connId),

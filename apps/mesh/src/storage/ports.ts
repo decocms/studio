@@ -230,7 +230,11 @@ export interface AsyncResearchJobStoragePort {
 
 export interface ConnectionStoragePort {
   create(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
-  findById(id: string): Promise<ConnectionEntity | null>;
+  findById(
+    id: string,
+    organizationId?: string,
+    viewerUserId?: string | null,
+  ): Promise<ConnectionEntity | null>;
   list(
     organizationId: string,
     options?: {
@@ -240,6 +244,7 @@ export interface ConnectionStoragePort {
       orderBy?: OrderByExpression[];
       limit?: number;
       offset?: number;
+      viewerUserId?: string | null;
     },
   ): Promise<{ items: ConnectionEntity[]; totalCount: number }>;
   update(

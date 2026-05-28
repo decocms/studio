@@ -121,10 +121,12 @@ export const AUTOMATION_TRIGGER_ADD = defineTool({
         throw new Error("event_type is required for event triggers");
       }
 
-      // Validate connection belongs to this organization
+      // Validate connection belongs to this organization.
+      // viewerUserId so users can't bind a trigger to another user's private connection.
       const connection = await ctx.storage.connections.findById(
         input.connection_id,
         organization.id,
+        ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
       );
       if (!connection) {
         throw new Error("Connection not found");

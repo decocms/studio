@@ -158,6 +158,7 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
         // Only push pagination to SQL when no post-filtering is needed
         limit: needsBindingFilter ? undefined : limit,
         offset: needsBindingFilter ? undefined : offset,
+        viewerUserId: ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
       });
 
     // Only fetch tools from MCP servers when we need them for binding filtering.

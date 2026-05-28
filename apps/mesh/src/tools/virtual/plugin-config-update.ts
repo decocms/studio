@@ -64,14 +64,22 @@ export const VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE = defineTool({
     const { virtualMcpId, pluginId, connectionId, settings } = input;
     const userId = getUserId(ctx);
 
-    const parentConnection =
-      await ctx.storage.connections.findById(virtualMcpId);
+    const viewerUserId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null;
+    const parentConnection = await ctx.storage.connections.findById(
+      virtualMcpId,
+      undefined,
+      viewerUserId,
+    );
     if (!parentConnection) {
       throw new Error(`Connection not found: ${virtualMcpId}`);
     }
 
     const connectionExists = connectionId
-      ? await ctx.storage.connections.findById(connectionId)
+      ? await ctx.storage.connections.findById(
+          connectionId,
+          undefined,
+          viewerUserId,
+        )
       : null;
 
     if (

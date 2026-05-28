@@ -35,8 +35,13 @@ export const CONNECTION_TEST = defineTool({
     // Check authorization
     await ctx.access.check();
 
-    // Fetch connection to verify org ownership before testing
-    const connection = await ctx.storage.connections.findById(input.id);
+    // Fetch connection to verify org ownership before testing.
+    // viewerUserId hides other users' user-private connections.
+    const connection = await ctx.storage.connections.findById(
+      input.id,
+      organization.id,
+      ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
+    );
     if (!connection || connection.organization_id !== organization.id) {
       throw new Error("Connection not found");
     }

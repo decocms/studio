@@ -103,9 +103,13 @@ async function validateConfiguration(
       continue;
     }
     // Verify connection exists and belongs to same organization
-    // Use consistent error message to prevent cross-org information disclosure
-    const refConnection =
-      await ctx.storage.connections.findById(refConnectionId);
+    // Use consistent error message to prevent cross-org information disclosure.
+    // viewerUserId so the user can't reference another user's private connection.
+    const refConnection = await ctx.storage.connections.findById(
+      refConnectionId,
+      organizationId,
+      ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
+    );
     if (!refConnection || refConnection.organization_id !== organizationId) {
       throw new Error(`Referenced connection not found: ${refConnectionId}`);
     }
@@ -154,8 +158,13 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
 
     const { id, data } = input;
 
-    // First fetch the connection to verify ownership before updating
-    const existing = await ctx.storage.connections.findById(id);
+    // First fetch the connection to verify ownership before updating.
+    // viewerUserId hides other users' user-private connections.
+    const existing = await ctx.storage.connections.findById(
+      id,
+      organization.id,
+      ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
+    );
 
     // Verify it exists and belongs to the current organization
     if (!existing || existing.organization_id !== organization.id) {

@@ -65,6 +65,7 @@ type RawConnectionRow = {
   metadata: string | Record<string, unknown> | null;
   bindings: string | string[] | null;
   status: "active" | "inactive" | "error";
+  access: "user" | "org";
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -84,6 +85,7 @@ const TOP_LEVEL_COLUMNS = new Set([
   "connection_url",
   // connection_token is intentionally excluded — sensitive
   "status",
+  "access",
   "created_at",
   "updated_at",
 ]);
@@ -227,6 +229,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
   async findById(
     id: string,
     organizationId?: string,
+    viewerUserId?: string | null,
   ): Promise<ConnectionEntity | null> {
     // Handle Decopilot ID - return Decopilot connection entity
     const decopilotOrgId = isDecopilot(id);
@@ -245,7 +248,22 @@ export class ConnectionStorage implements ConnectionStoragePort {
     }
 
     const row = await query.executeTakeFirst();
-    return row ? this.deserializeConnection(row as RawConnectionRow) : null;
+    if (!row) return null;
+
+    const rawRow = row as RawConnectionRow;
+
+    // Visibility filter: hide other users' user-private connections from the caller.
+    // When viewerUserId is null/undefined we only hide if access is 'user' AND
+    // no viewer is specified (so unauthenticated/system callers only see org rows).
+    if (viewerUserId !== undefined) {
+      if (rawRow.access === "user") {
+        if (viewerUserId === null || rawRow.created_by !== viewerUserId) {
+          return null;
+        }
+      }
+    }
+
+    return this.deserializeConnection(rawRow);
   }
 
   async list(
@@ -257,12 +275,32 @@ export class ConnectionStorage implements ConnectionStoragePort {
       orderBy?: OrderByExpression[];
       limit?: number;
       offset?: number;
+      viewerUserId?: string | null;
     },
   ): Promise<{ items: ConnectionEntity[]; totalCount: number }> {
     let query = this.db
       .selectFrom("connections")
       .selectAll()
       .where("organization_id", "=", organizationId);
+
+    // Per-user visibility: hide other users' user-private connections.
+    // When viewerUserId is undefined the caller is internal infrastructure
+    // and sees every row regardless of access.
+    if (options?.viewerUserId !== undefined && options?.viewerUserId !== null) {
+      const viewerUserId = options.viewerUserId;
+      query = query.where((eb) =>
+        eb.or([
+          eb("access", "=", "org"),
+          eb.and([
+            eb("access", "=", "user"),
+            eb("created_by", "=", viewerUserId),
+          ]),
+        ]),
+      );
+    } else if (options?.viewerUserId === null) {
+      // Explicit null viewer (system / unauthenticated) → only org-shared rows.
+      query = query.where("access", "=", "org");
+    }
 
     // By default, exclude VIRTUAL connections unless explicitly requested
     if (!options?.includeVirtual) {
@@ -569,6 +607,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
       tools: null,
       bindings: parseJson<string[]>(row.bindings),
       status: row.status,
+      access: row.access ?? "user",
       created_at: row.created_at as string,
       updated_at: row.updated_at as string,
     };

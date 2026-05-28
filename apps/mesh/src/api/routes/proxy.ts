@@ -108,6 +108,7 @@ export const createProxyRoutes = () => {
               const result = await ctx.storage.connections.findById(
                 connectionId,
                 ctx.organization!.id,
+                ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
               );
               span.setStatus({ code: SpanStatusCode.OK });
               return result;
@@ -219,6 +220,7 @@ export const createProxyRoutes = () => {
         const connection = await ctx.storage.connections.findById(
           connectionId,
           ctx.organization?.id,
+          ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
         );
         if (connection?.connection_url) {
           const authResponse = await handleAuthError({
@@ -250,6 +252,7 @@ export const createProxyRoutes = () => {
       const connection = await ctx.storage.connections.findById(
         connectionId,
         ctx.organization?.id,
+        ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
       );
       if (!connection) {
         return c.json({ error: "Connection not found" }, 404);

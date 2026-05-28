@@ -53,8 +53,14 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     // Check authorization
     await ctx.access.check();
 
-    // Fetch connection before deleting to return the entity
-    const connection = await ctx.storage.connections.findById(input.id);
+    // Fetch connection before deleting to return the entity.
+    // viewerUserId hides other users' user-private connections — the caller
+    // can only delete connections they're allowed to see.
+    const connection = await ctx.storage.connections.findById(
+      input.id,
+      organization.id,
+      ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
+    );
     if (!connection) {
       throw new Error(`Connection not found: ${input.id}`);
     }

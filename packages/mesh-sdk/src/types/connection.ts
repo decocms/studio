@@ -152,6 +152,13 @@ export const ConnectionEntitySchema = z.object({
   bindings: z.array(z.string()).nullable().describe("Detected bindings"),
 
   status: z.enum(["active", "inactive", "error"]).describe("Current status"),
+
+  access: z
+    .enum(["user", "org"])
+    .default("user")
+    .describe(
+      "Visibility/ownership. 'user' = private to created_by; 'org' = shared with everyone in the organization.",
+    ),
 });
 
 /**
@@ -185,6 +192,7 @@ export const ConnectionCreateDataSchema = ConnectionEntitySchema.omit({
     configuration_state: true,
     configuration_scopes: true,
     metadata: true,
+    access: true,
   })
   .extend({
     icon: z.string().nullish(),

@@ -66,7 +66,11 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
     }
 
     // Get connection from database
-    const connection = await ctx.storage.connections.findById(input.id);
+    const connection = await ctx.storage.connections.findById(
+      input.id,
+      organization.id,
+      ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
+    );
 
     // Verify connection exists and belongs to the current organization
     if (!connection || connection.organization_id !== organization.id) {
