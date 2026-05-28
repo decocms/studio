@@ -1,5 +1,6 @@
 import { getValidSession } from "../../lib/get-valid-session";
 import { RefreshFailedError } from "../../lib/refresh-session";
+import type { Session } from "../../lib/session";
 
 export interface WhoamiOptions {
   dataDir: string;
@@ -10,7 +11,7 @@ export interface WhoamiOptions {
 }
 
 export async function whoamiCommand(options: WhoamiOptions): Promise<number> {
-  let session;
+  let session: Session | null;
   try {
     session = await getValidSession({
       dataDir: options.dataDir,
