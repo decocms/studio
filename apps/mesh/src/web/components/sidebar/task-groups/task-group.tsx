@@ -64,18 +64,33 @@ export function TaskGroup({
     defaultExpanded,
   );
   const isToolCallRuns = virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
+  const showMore = useGroupShowMore("agent", virtualMcpId, filters);
+
+  function handleToggleExpanded() {
+    const next = !expanded;
+    setExpanded(next);
+    if (
+      next &&
+      !isToolCallRuns &&
+      threads.length === 0 &&
+      showMore.hasMore &&
+      !showMore.isFetching
+    ) {
+      void showMore.loadMore();
+    }
+  }
 
   const header = (
     <div
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
-      onClick={() => setExpanded(!expanded)}
+      onClick={handleToggleExpanded}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          setExpanded(!expanded);
+          handleToggleExpanded();
         }
       }}
       className={cn(
@@ -161,7 +176,7 @@ export function TaskGroup({
               onSelectTask={onSelectTask}
               onArchiveTask={onArchiveTask}
               onNewTaskInGroup={onNewTaskInGroup}
-              filters={filters}
+              showMore={showMore}
             />
           )}
         </div>
@@ -214,7 +229,7 @@ function AgentExpandedBody({
   onSelectTask,
   onArchiveTask,
   onNewTaskInGroup,
-  filters,
+  showMore,
 }: {
   virtualMcpId: string;
   threads: Task[];
@@ -222,13 +237,9 @@ function AgentExpandedBody({
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
   onNewTaskInGroup: (virtualMcpId: string) => void;
-  filters: SidebarFilters;
+  showMore: ReturnType<typeof useGroupShowMore>;
 }) {
-  const { hasMore, isFetching, loadMore } = useGroupShowMore(
-    "agent",
-    virtualMcpId,
-    filters,
-  );
+  const { hasMore, isFetching, loadMore } = showMore;
 
   if (threads.length === 0) {
     if (hasMore) {
