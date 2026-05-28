@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Activity, FilterLines, SearchSm, Users01 } from "@untitledui/icons";
 import {
   Popover,
@@ -16,6 +16,7 @@ import { useSidebar } from "@deco/ui/components/sidebar.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
+  useVirtualMCPs,
 } from "@decocms/mesh-sdk";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { authClient } from "@/web/lib/auth-client";
@@ -24,7 +25,6 @@ import {
   useThreads,
 } from "@/web/components/chat/store/hooks";
 import { filterThreads } from "@/web/components/chat/task";
-import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dialog";
 import { track } from "@/web/lib/posthog-client";
@@ -39,6 +39,7 @@ import {
 } from "./group-threads";
 import { stabilizeGroupOrder } from "./stable-order";
 import { TaskGroup, StatusGroup } from "./task-group";
+import type { SidebarFilters } from "./next-page-offset";
 
 type TypeFilter = "all" | "manual" | "automation";
 type MemberFilter = "all" | "mine";
@@ -66,12 +67,8 @@ export function TaskGroupsList() {
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
 
-  const {
-    threads: allThreads,
-    hasMore,
-    isFetchingMore,
-    fetchNextPage,
-  } = useThreads();
+  const { threads: allThreads } = useThreads();
+  const agents = useVirtualMCPs();
   const visibleThreads = filterThreads(allThreads, { hidden: false });
   const { hide } = useThreadActions();
 
@@ -94,17 +91,9 @@ export function TaskGroupsList() {
   const [searchEverOpened, setSearchEverOpened] = useState(false);
   const { state: sidebarState } = useSidebar();
 
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const lastElementRef = useInfiniteScroll(
-    () => fetchNextPage(),
-    hasMore,
-    isFetchingMore,
-    scrollRef,
-  );
-
   const groups = stabilizeGroupOrder(
     org.id,
-    groupThreadsByVirtualMcp(sortedThreads, decopilotId),
+    groupThreadsByVirtualMcp(sortedThreads, agents ?? [], decopilotId),
     decopilotId,
   );
 
@@ -159,6 +148,12 @@ export function TaskGroupsList() {
   const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
 
   const isCollapsed = sidebarState === "collapsed";
+
+  const filters: SidebarFilters = {
+    type: typeFilter,
+    member: memberFilter,
+    currentUserId: currentUserId ?? null,
+  };
 
   if (isCollapsed) {
     return (
@@ -286,10 +281,7 @@ export function TaskGroupsList() {
         </div>
         <BrowseAgentsButton compact />
       </div>
-      <div
-        ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5 -mr-2 pr-2"
-      >
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5 -mr-2 pr-2">
         {groupBy === "status" ? (
           <>
             {groupThreadsByStatus(
@@ -302,14 +294,9 @@ export function TaskGroupsList() {
                 activeTaskId={activeTaskId}
                 onSelectTask={(t) => setTaskId(t.id, t.virtual_mcp_id)}
                 onArchiveTask={handleArchive}
+                filters={filters}
               />
             ))}
-            {isFetchingMore && (
-              <div className="py-2 text-center text-xs text-muted-foreground">
-                Loading more…
-              </div>
-            )}
-            {hasMore && <div ref={lastElementRef} aria-hidden />}
           </>
         ) : (
           <>
@@ -333,15 +320,10 @@ export function TaskGroupsList() {
                   onShowSettings={handleShowSettings}
                   onHideGroup={handleHideGroup}
                   dimmed={dimmed}
+                  filters={filters}
                 />
               );
             })}
-            {isFetchingMore && (
-              <div className="py-2 text-center text-xs text-muted-foreground">
-                Loading more…
-              </div>
-            )}
-            {hasMore && <div ref={lastElementRef} aria-hidden />}
           </>
         )}
       </div>
