@@ -151,8 +151,19 @@ export class DesktopSandboxProvider implements SandboxProvider {
     path: string,
     init: ProxyRequestInit,
   ): Promise<Response> {
-    const fullPath = path.startsWith("/") ? path : `/${path}`;
-    const targetPath = `/_sandbox/${encodeURIComponent(handle)}${fullPath}`;
+    // Callers pass full paths under the spawned daemon's `/_sandbox/*`
+    // namespace (e.g. `/_sandbox/events`, `/_sandbox/config`). The dispatch
+    // protocol uses the SAME `/_sandbox/<handle>/...` prefix for routing,
+    // and the daemon's `handleStream` proxies to `http://…:<port>/_sandbox`
+    // + the part AFTER the handle. So we strip the caller's `/_sandbox`
+    // prefix before composing the dispatch path — otherwise the daemon
+    // ends up fetching `http://…:<port>/_sandbox/_sandbox/<endpoint>` and
+    // the spawned sandbox returns 404.
+    const normalized = path.startsWith("/") ? path : `/${path}`;
+    const subPath = normalized.startsWith("/_sandbox/")
+      ? normalized.slice("/_sandbox".length)
+      : normalized;
+    const targetPath = `/_sandbox/${encodeURIComponent(handle)}${subPath}`;
     const headers = new Headers(init.headers);
     // Strip hop-by-hop / signing headers
     for (const h of [
@@ -219,8 +230,6 @@ export class DesktopSandboxProvider implements SandboxProvider {
         if (chunk.data != null) initialChunks.push(chunk.data);
       }
     } catch (err) {
-      // Translate dispatch errors to a 502 Response so the caller's
-      // error-handling path (which checks `res.ok`) works correctly.
       const message = err instanceof Error ? err.message : "dispatch error";
       return new Response(JSON.stringify({ error: message }), {
         status: 502,
@@ -228,6 +237,10 @@ export class DesktopSandboxProvider implements SandboxProvider {
       });
     }
 
+    // Track cancellation so a chunk that arrives after the consumer aborts
+    // (in-flight `iterator.next()` resolves after `cancel()` fires) doesn't
+    // try to enqueue on an already-closed controller.
+    let canceled = false;
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       async start(controller) {
@@ -237,6 +250,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
       async pull(controller) {
         try {
           const next = await iterator.next();
+          if (canceled) return;
           if (next.done) {
             controller.close();
             return;
@@ -245,10 +259,11 @@ export class DesktopSandboxProvider implements SandboxProvider {
           if (chunk.data != null)
             controller.enqueue(encoder.encode(chunk.data));
         } catch (err) {
-          controller.error(err);
+          if (!canceled) controller.error(err);
         }
       },
       cancel() {
+        canceled = true;
         // Propagate client cancellation to the dispatch iterator so the
         // daemon's `cancel` frame fires and frees server-side resources.
         void iterator.return?.();
