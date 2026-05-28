@@ -753,9 +753,10 @@ function ConnectionResults({
 
   const isSearching = listState.search.length > 0;
 
-  // Catalog items: show on "All" tab always, or on "Connected" tab when searching
+  // Catalog items: only on the "All" tab (with or without search). Shared and
+  // Personal never show the install catalog.
   const catalogItems =
-    activeTab === "all" || isSearching
+    activeTab === "all"
       ? registryItems.filter((item) => {
           if (
             effectiveRegistryFilter !== "ALL" &&
@@ -1216,19 +1217,17 @@ function ConnectionResults({
                   onConnect={handleInlineConnect}
                 />
               ))}
-              {(activeTab === "all" || isSearching) &&
-                enabledRegistries.length > 0 && (
-                  <div ref={catalogSentinelRef} className="col-span-full h-4" />
-                )}
-              {(activeTab === "all" || isSearching) &&
-                mergedDiscovery.isLoadingMore && (
-                  <div className="col-span-full flex justify-center py-6">
-                    <Loading01
-                      size={24}
-                      className="animate-spin text-muted-foreground"
-                    />
-                  </div>
-                )}
+              {activeTab === "all" && enabledRegistries.length > 0 && (
+                <div ref={catalogSentinelRef} className="col-span-full h-4" />
+              )}
+              {activeTab === "all" && mergedDiscovery.isLoadingMore && (
+                <div className="col-span-full flex justify-center py-6">
+                  <Loading01
+                    size={24}
+                    className="animate-spin text-muted-foreground"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
