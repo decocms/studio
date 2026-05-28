@@ -75,7 +75,10 @@ export function useGroupShowMore(
   });
 
   async function loadMore(): Promise<void> {
-    if (state.isFetching || !state.hasMore) return;
+    // The button stays visible even when hasMore is false so users can pull
+    // in tasks that arrived later (SSE inserts, fresh runs, etc.). We only
+    // guard against re-entrancy here.
+    if (state.isFetching) return;
     const capturedIdentity = identity;
     setState((s) =>
       s.identity === capturedIdentity ? { ...s, isFetching: true } : s,

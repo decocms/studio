@@ -1,4 +1,4 @@
-import { ChevronDown, Loading01 } from "@untitledui/icons";
+import { Loading01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 
 interface ShowMoreButtonProps {
@@ -7,9 +7,10 @@ interface ShowMoreButtonProps {
 }
 
 /**
- * Presentational "Show more" button. The caller is responsible for deciding
- * whether to render this at all (i.e. whether `hasMore` is true) and for
- * wiring it to a paginator (see `useGroupShowMore`).
+ * Presentational "Show more" button. Always rendered (the affordance stays
+ * available so the user can pull in any tasks that arrived after the last
+ * fetch — SSE inserts, fresh runs, etc.). Wire it to a paginator via
+ * `useGroupShowMore`.
  */
 export function ShowMoreButton({ onClick, isFetching }: ShowMoreButtonProps) {
   return (
@@ -24,11 +25,7 @@ export function ShowMoreButton({ onClick, isFetching }: ShowMoreButtonProps) {
         "transition-colors disabled:cursor-progress disabled:opacity-60",
       )}
     >
-      {isFetching ? (
-        <Loading01 size={14} className="animate-spin" />
-      ) : (
-        <ChevronDown size={14} />
-      )}
+      {isFetching && <Loading01 size={14} className="animate-spin" />}
       <span>{isFetching ? "Loading…" : "Show more"}</span>
     </button>
   );

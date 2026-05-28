@@ -230,47 +230,32 @@ function AgentExpandedBody({
   onNewTaskInGroup: (virtualMcpId: string) => void;
   showMore: ReturnType<typeof useGroupShowMore>;
 }) {
-  const { hasMore, isFetching, loadMore } = showMore;
-
-  if (threads.length === 0) {
-    if (hasMore) {
-      return (
-        <ShowMoreButton
-          onClick={() => void loadMore()}
-          isFetching={isFetching}
-        />
-      );
-    }
-    return (
-      <button
-        type="button"
-        onClick={() => onNewTaskInGroup(virtualMcpId)}
-        className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
-      >
-        <Plus size={14} />
-        <span>New thread</span>
-      </button>
-    );
-  }
+  const { isFetching, loadMore } = showMore;
 
   return (
     <>
-      {threads.map((task) => (
-        <TaskRow
-          key={task.id}
-          task={task}
-          isActive={activeTaskId === task.id}
-          onClick={() => onSelectTask(task)}
-          onArchive={() => onArchiveTask(task)}
-          showAutomationBadge={Boolean(task.trigger_id)}
-        />
-      ))}
-      {hasMore && (
-        <ShowMoreButton
-          onClick={() => void loadMore()}
-          isFetching={isFetching}
-        />
+      {threads.length === 0 ? (
+        <button
+          type="button"
+          onClick={() => onNewTaskInGroup(virtualMcpId)}
+          className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
+        >
+          <Plus size={14} />
+          <span>New thread</span>
+        </button>
+      ) : (
+        threads.map((task) => (
+          <TaskRow
+            key={task.id}
+            task={task}
+            isActive={activeTaskId === task.id}
+            onClick={() => onSelectTask(task)}
+            onArchive={() => onArchiveTask(task)}
+            showAutomationBadge={Boolean(task.trigger_id)}
+          />
+        ))
       )}
+      <ShowMoreButton onClick={() => void loadMore()} isFetching={isFetching} />
     </>
   );
 }
@@ -288,19 +273,7 @@ function StatusExpandedBody({
   onArchiveTask: (task: Task) => void;
   showMore: ReturnType<typeof useGroupShowMore>;
 }) {
-  const { hasMore, isFetching, loadMore } = showMore;
-
-  if (threads.length === 0) {
-    if (hasMore) {
-      return (
-        <ShowMoreButton
-          onClick={() => void loadMore()}
-          isFetching={isFetching}
-        />
-      );
-    }
-    return null;
-  }
+  const { isFetching, loadMore } = showMore;
 
   return (
     <>
@@ -316,12 +289,7 @@ function StatusExpandedBody({
           hideStatusIdle
         />
       ))}
-      {hasMore && (
-        <ShowMoreButton
-          onClick={() => void loadMore()}
-          isFetching={isFetching}
-        />
-      )}
+      <ShowMoreButton onClick={() => void loadMore()} isFetching={isFetching} />
     </>
   );
 }
