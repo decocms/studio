@@ -17,13 +17,13 @@
  * resolves the handle lazily on first sandbox-tool invocation.
  */
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { Capability, LinkEntry } from "./protocol";
-import type { LinkRegistry } from "./link-registry";
+import type { Capability } from "./protocol";
+import type { LinkClaimRegistry, LinkClaim } from "./link-claim-registry";
 import type { HarnessId } from "../harnesses";
 
 export type DispatchTarget =
-  | { runsIn: "cluster"; sandbox: SandboxProviderKind; link?: LinkEntry }
-  | { runsIn: "user-desktop"; sandbox: "user-desktop"; link: LinkEntry };
+  | { runsIn: "cluster"; sandbox: SandboxProviderKind; link?: LinkClaim }
+  | { runsIn: "user-desktop"; sandbox: "user-desktop"; link: LinkClaim };
 
 export type DispatchError =
   | { kind: "user_desktop_link_offline" }
@@ -43,7 +43,7 @@ interface Input {
 }
 
 interface Deps {
-  linkRegistry: LinkRegistry;
+  linkClaimRegistry: LinkClaimRegistry;
 }
 
 function capabilityFor(harnessId: HarnessId): Capability | null {
@@ -63,7 +63,7 @@ export async function resolveDispatchTarget(
     return { ok: true, target: { runsIn: "cluster", sandbox: kind } };
   }
 
-  const link = await deps.linkRegistry.get(input.userId);
+  const link = await deps.linkClaimRegistry.get(input.userId);
   if (!link) {
     return { ok: false, error: { kind: "user_desktop_link_offline" } };
   }

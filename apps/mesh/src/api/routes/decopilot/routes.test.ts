@@ -7,7 +7,7 @@ import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { MeshContext } from "@/core/mesh-context";
 import type { Capability } from "@/links/protocol";
-import { createInMemoryLinkRegistry } from "../../../links/link-registry";
+import { createInMemoryLinkClaimRegistry } from "../../../links/link-claim-registry";
 import { computeIdempotencyKey } from "./routes";
 import type { ChatMessage } from "./types";
 
@@ -195,9 +195,7 @@ function buildApp(opts: {
     harness_id: "claude-code",
   };
 
-  const linkRegistry = createInMemoryLinkRegistry({
-    nowSeconds: () => Math.floor(Date.now() / 1000),
-  });
+  const linkClaimRegistry = createInMemoryLinkClaimRegistry();
 
   const threadUpdateSpy = mock(async () => {});
 
@@ -238,7 +236,7 @@ function buildApp(opts: {
         })),
       },
     },
-    linkRegistry,
+    linkClaimRegistry,
     db: {} as MeshContext["db"],
   } as unknown as MeshContext;
 
@@ -263,27 +261,26 @@ function buildApp(opts: {
       runRegistry: {} as Parameters<
         typeof createDecopilotRoutes
       >[0]["runRegistry"],
-      linkRegistry,
+      linkClaimRegistry,
     }),
   );
 
-  // Populate the link registry if the test scenario requires an online link.
+  // Populate the claim registry if the test scenario requires an online link.
   const seedLink = async () => {
     if (opts.linkOnline) {
-      await linkRegistry.put(opts.userId ?? "user_1", {
+      await linkClaimRegistry.put(opts.userId ?? "user_1", {
+        podId: "pod_1",
         machineId: "m1",
         cliVersion: "1.0.0",
-        protocolVersion: 1,
+        previewPort: 5174,
+        connectedAt: Date.now(),
         capabilities:
           opts.linkCapabilities ?? (["claude-code"] as Capability[]),
-        tunnelUrl: "http://localhost:5174",
-        linkSecret: "secret-hash",
-        createdAt: new Date().toISOString(),
       });
     }
   };
 
-  return { app, linkRegistry, ctx, seedLink, threadUpdateSpy };
+  return { app, linkClaimRegistry, ctx, seedLink, threadUpdateSpy };
 }
 
 describe("POST /messages — VM-based dispatch", () => {

@@ -172,6 +172,7 @@ describe("ws-gateway eviction", () => {
       cliVersion: "1.0.0",
       previewPort: 5175,
       connectedAt: Date.now(),
+      capabilities: [],
     });
     const code = await new Promise<number>((resolve) => {
       ws.addEventListener("close", (e) => resolve(e.code));
@@ -210,6 +211,7 @@ describe("GET /api/links/me", () => {
       cliVersion: "1.0.0",
       previewPort: 5174,
       connectedAt: 1,
+      capabilities: [],
     });
     const res = await app.request("/api/links/me", {
       headers: { authorization: "Bearer t" },

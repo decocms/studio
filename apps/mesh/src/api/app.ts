@@ -98,11 +98,10 @@ import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
 import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import {
-  createInMemoryLinkRegistry,
-  type LinkRegistry,
-  NatsLinkRegistry,
-} from "../links/link-registry";
-import { NatsLinkClaimRegistry } from "../links/link-claim-registry";
+  createInMemoryLinkClaimRegistry,
+  NatsLinkClaimRegistry,
+  type LinkClaimRegistry,
+} from "../links/link-claim-registry";
 import {
   gatewayWsHandlers,
   registerLinksGateway,
@@ -845,7 +844,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   let modelListCache: ModelListCache;
   let cancelBroadcast: CancelBroadcast;
   let streamBuffer: StreamBuffer;
-  let linkRegistry: LinkRegistry;
+  let linkClaimRegistry: LinkClaimRegistry;
   let natsProvider: NatsConnectionProvider | null = null;
 
   if (options.eventBus) {
@@ -868,11 +867,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       broadcast: () => {},
       stop: async () => {},
     };
-    // Test/no-NATS branch: an in-memory link registry keeps the link routes
+    // Test/no-NATS branch: an in-memory claim registry keeps the link routes
     // testable without a live NATS cluster.
-    linkRegistry = createInMemoryLinkRegistry({
-      nowSeconds: () => Math.floor(Date.now() / 1000),
-    });
+    linkClaimRegistry = createInMemoryLinkClaimRegistry();
     streamBuffer = {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
@@ -924,11 +921,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       getJetStream: () => natsProvider!.getJetStream(),
     });
 
-    const natsLinkRegistry = new NatsLinkRegistry({
+    const natsClaimRegistry = new NatsLinkClaimRegistry({
       getJetStream: () => natsProvider!.getJetStream(),
     });
-    natsLinkRegistry.init().catch(() => {});
-    linkRegistry = natsLinkRegistry;
+    natsClaimRegistry.init().catch(() => {});
+    linkClaimRegistry = natsClaimRegistry;
 
     eventBus = createEventBus(database, natsProvider);
 
@@ -946,9 +943,9 @@ export async function createApp(options: CreateAppOptions = {}) {
           err,
         );
       });
-      natsLinkRegistry.init().catch((err: unknown) => {
+      natsClaimRegistry.init().catch((err: unknown) => {
         console.warn(
-          "[LinkRegistry] Deferred init failed, link dispatch disabled:",
+          "[LinkClaimRegistry] Deferred init failed, link dispatch disabled:",
           err,
         );
       });
@@ -1302,7 +1299,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     eventBus,
     modelListCache,
     memberRoleCache,
-    linkRegistry,
+    linkClaimRegistry,
   });
   ContextFactory.set(factory);
 
@@ -1741,19 +1738,14 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast,
     streamBuffer,
     runRegistry,
-    linkRegistry,
+    linkClaimRegistry,
   });
   app.route("/api", decopilotRoutes);
 
   // `/api/links/connect` — WS gateway for link daemons.
   // Validates bearer token via Better Auth, upgrades to WebSocket, and
   // claims the user in the NATS JS KV bucket. Replaces registerLinksRoutes.
-  const claimRegistry = new NatsLinkClaimRegistry({
-    getJetStream: () => natsProvider!.getJetStream(),
-  });
-  natsProvider?.onReady(() => {
-    void claimRegistry.init();
-  });
+  // `linkClaimRegistry` was constructed above in the NATS/test branch.
 
   const gatewayNatsAdapter: GatewayNatsAdapter = {
     subscribe(subject, onMessage) {
@@ -1793,7 +1785,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   };
 
   registerLinksGateway(app, {
-    registry: claimRegistry,
+    registry: linkClaimRegistry,
     nats: gatewayNatsAdapter,
     podId: POD_ID,
     validateBearer: async (token) => {

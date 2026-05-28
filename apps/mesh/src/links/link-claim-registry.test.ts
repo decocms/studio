@@ -11,6 +11,7 @@ const sampleClaim: LinkClaim = {
   cliVersion: "1.0.0",
   previewPort: 5174,
   connectedAt: 1_700_000_000_000,
+  capabilities: ["claude-code"],
 };
 
 describe("link-claim-registry (in-memory)", () => {

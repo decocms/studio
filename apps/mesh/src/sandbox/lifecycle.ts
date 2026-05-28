@@ -164,7 +164,7 @@ async function instantiate(
     }
     case "user-desktop": {
       // user-desktop is never the cluster-wide default — there is no
-      // ambient `LinkEntry` to bind to here. It is constructed per-run by
+      // ambient link claim to bind to here. It is constructed per-run by
       // `resolveSandboxProvider` (sandbox/resolve-provider.ts) from
       // either the per-run ctx hint or the recorded sandboxMap kind, both of
       // which carry the user's link. Hitting this branch means SANDBOX_DELETE
@@ -172,7 +172,7 @@ async function instantiate(
       // which today should not happen (the user-desktop provider doesn't
       // write to `sandbox_runner_state`).
       throw new Error(
-        "user-desktop runner cannot be instantiated without a per-run LinkEntry — call resolveSandboxProvider, which binds the link before constructing the provider.",
+        "user-desktop runner cannot be instantiated without a per-run link claim — call resolveSandboxProvider, which binds the link before constructing the provider.",
       );
     }
     default: {

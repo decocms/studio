@@ -18,6 +18,7 @@ import {
   type DispatchFrame,
 } from "./dispatch-frames";
 import type { LinkClaim, LinkClaimRegistry } from "./link-claim-registry";
+import type { Capability } from "./protocol";
 
 export const WS_CLOSE_SUPERSEDED = 4001;
 export const WS_CLOSE_POLICY = 1008;
@@ -152,6 +153,7 @@ async function onHello(
     cliVersion: hello.cliVersion,
     previewPort: hello.previewPort,
     connectedAt: Date.now(),
+    capabilities: hello.capabilities as Capability[],
   };
 
   // Assign state with placeholders first so the message handler routes to

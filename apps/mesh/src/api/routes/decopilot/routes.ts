@@ -44,7 +44,7 @@ import type { DispatchRunInput } from "./dispatch-run";
 import { resolveHarnessId } from "./dispatch-run";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
-import type { LinkRegistry } from "../../../links/link-registry";
+import type { LinkClaimRegistry } from "../../../links/link-claim-registry";
 import { resolveDispatchTarget } from "../../../links/resolve-dispatch-target";
 import {
   resolveSandboxProviderKindFromEnv,
@@ -314,11 +314,12 @@ export interface DecopilotDeps {
    * the thread gate so the cluster can reject early with 409 instead of
    * silently queueing a run that would have nowhere to go.
    */
-  linkRegistry: LinkRegistry;
+  linkClaimRegistry: LinkClaimRegistry;
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
-  const { cancelBroadcast, streamBuffer, runRegistry, linkRegistry } = deps;
+  const { cancelBroadcast, streamBuffer, runRegistry, linkClaimRegistry } =
+    deps;
   const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
 
   // ============================================================================
@@ -436,7 +437,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           pinnedKind ??
           input.sandboxProviderKind ??
           (await resolveDefaultSandboxProviderKind(input.userId, {
-            linkRegistry,
+            linkClaimRegistry,
             resolveEnvKind: resolveSandboxProviderKindFromEnv,
           }));
         pinnedHarness = pinnedHarness ?? input.harnessId ?? credentialHarness;
@@ -472,7 +473,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           sandboxProviderKind: pinnedKind,
           userId: input.userId,
         },
-        { linkRegistry },
+        { linkClaimRegistry },
       );
       if (!result.ok) {
         return c.json(

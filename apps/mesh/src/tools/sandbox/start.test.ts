@@ -1,8 +1,10 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
 import type { MeshContext } from "../../core/mesh-context";
-import type { LinkRegistry } from "../../links/link-registry";
-import type { LinkEntry } from "@/links/protocol";
+import type {
+  LinkClaimRegistry,
+  LinkClaim,
+} from "../../links/link-claim-registry";
 import type {
   EnsureOptions,
   Sandbox,
@@ -203,14 +205,14 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
-  linkRegistry?: LinkRegistry;
+  linkClaimRegistry?: LinkClaimRegistry;
 }): MeshContext {
   const {
     orgId = ORG_ID,
     userId = USER_ID,
     virtualMcp,
     updateSpy = mock(async () => {}),
-    linkRegistry,
+    linkClaimRegistry,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -266,7 +268,7 @@ function makeCtx(overrides: {
     getOrCreateClient: null as never,
     pendingRevalidations: [],
     monitoring: null as never,
-    linkRegistry,
+    linkClaimRegistry,
   } as unknown as MeshContext;
 }
 
@@ -590,21 +592,21 @@ describe("SANDBOX_START", () => {
       },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-    // Link registry with online link so resolveDefaultSandboxProviderKind picks desktop
-    const linkRegistry: LinkRegistry = {
+    // Claim registry with online link so resolveDefaultSandboxProviderKind picks desktop
+    const linkClaimRegistry: LinkClaimRegistry = {
       get: async (_userId: string) => ({
+        podId: "pod_1",
         machineId: "machine_1",
-        tunnelUrl: "https://tunnel.example.com",
-        linkSecret: "secret_abc",
         cliVersion: "1.0.0",
-        protocolVersion: 1,
+        previewPort: 5174,
+        connectedAt: Date.now(),
         capabilities: [],
-        createdAt: new Date().toISOString(),
       }),
       put: async () => {},
       delete: async () => {},
+      watch: () => () => {},
     };
-    const ctx = makeCtx({ virtualMcp, linkRegistry });
+    const ctx = makeCtx({ virtualMcp, linkClaimRegistry });
 
     // Link is online → kind resolves to desktop; no docker entry for desktop → provision a new one
     const result = await SANDBOX_START.handler(
@@ -646,25 +648,25 @@ describe("SANDBOX_START", () => {
   // sandboxProviderKind default-resolution tests
   // -----------------------------------------------------------------------
 
-  const STUB_LINK: LinkEntry = {
+  const STUB_LINK: LinkClaim = {
+    podId: "pod_1",
     machineId: "machine_1",
-    tunnelUrl: "https://tunnel.example.com",
-    linkSecret: "secret_abc",
     cliVersion: "1.0.0",
-    protocolVersion: 1,
+    previewPort: 5174,
+    connectedAt: Date.now(),
     capabilities: [],
-    createdAt: new Date().toISOString(),
   };
 
   it("SANDBOX_START with no sandboxProviderKind picks desktop when the link is online", async () => {
-    const linkRegistry: LinkRegistry = {
+    const linkClaimRegistry: LinkClaimRegistry = {
       get: async (_userId: string) => STUB_LINK,
       put: async () => {},
       delete: async () => {},
+      watch: () => () => {},
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
 
     const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
@@ -684,14 +686,15 @@ describe("SANDBOX_START", () => {
 
   it("SANDBOX_START with no sandboxProviderKind picks env kind when no link", async () => {
     // STUDIO_SANDBOX_PROVIDER is "local-docker" at module load time (top of file)
-    const linkRegistry: LinkRegistry = {
+    const linkClaimRegistry: LinkClaimRegistry = {
       get: async (_userId: string) => null,
       put: async () => {},
       delete: async () => {},
+      watch: () => () => {},
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
 
     const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
@@ -711,14 +714,15 @@ describe("SANDBOX_START", () => {
 
   it("SANDBOX_START with explicit sandboxProviderKind ignores defaults", async () => {
     // Link is online, env is "local-docker" — but explicit "local-docker" must win (and user-desktop would also be overrideable).
-    const linkRegistry: LinkRegistry = {
+    const linkClaimRegistry: LinkClaimRegistry = {
       get: async (_userId: string) => STUB_LINK,
       put: async () => {},
       delete: async () => {},
+      watch: () => () => {},
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy, linkRegistry });
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
 
     const result = await SANDBOX_START.handler(
       {

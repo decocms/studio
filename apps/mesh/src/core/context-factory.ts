@@ -60,7 +60,7 @@ import type {
 
 import type { EventBus } from "../event-bus/interface";
 import type { MemberRoleCache } from "../auth/member-role-cache";
-import type { LinkRegistry } from "../links/link-registry";
+import type { LinkClaimRegistry } from "../links/link-claim-registry";
 
 // ============================================================================
 // Helper Functions
@@ -114,7 +114,7 @@ export interface MeshContextConfig {
   modelListCache?: ModelListCache;
   memberRoleCache?: MemberRoleCache;
   /** Required for desktop sandbox auto-resolution; tests may omit. */
-  linkRegistry?: LinkRegistry;
+  linkClaimRegistry?: LinkClaimRegistry;
 }
 
 // ============================================================================
@@ -1197,7 +1197,7 @@ export async function createMeshContextFactory(
         ),
       },
       eventBus: config.eventBus,
-      linkRegistry: config.linkRegistry,
+      linkClaimRegistry: config.linkClaimRegistry,
       aiProviders: aiProviderFactory,
       createMCPProxy: async (conn: string | ConnectionEntity) => {
         return await createMCPProxy(conn, ctx);

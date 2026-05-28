@@ -16,6 +16,7 @@
  */
 
 import { JSONCodec, StorageType, type JetStreamClient, type KV } from "nats";
+import type { Capability } from "./protocol";
 
 export interface LinkClaim {
   podId: string;
@@ -24,6 +25,8 @@ export interface LinkClaim {
   cliVersion: string;
   previewPort: number;
   connectedAt: number;
+  /** Capabilities advertised by the daemon in its `hello` frame. */
+  capabilities: Capability[];
 }
 
 export type ClaimListener = (claim: LinkClaim | null) => void;

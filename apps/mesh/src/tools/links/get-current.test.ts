@@ -1,24 +1,23 @@
 import { describe, it, expect } from "bun:test";
 import type { MeshContext } from "../../core/mesh-context";
-import { createInMemoryLinkRegistry } from "../../links/link-registry";
-import type { LinkEntry } from "@/links/protocol";
+import { createInMemoryLinkClaimRegistry } from "../../links/link-claim-registry";
+import type { LinkClaim } from "../../links/link-claim-registry";
 import { LINK_CURRENT_GET } from "./get-current";
 
-const STUB_ENTRY: LinkEntry = {
+const STUB_CLAIM: LinkClaim = {
+  podId: "pod_1",
   machineId: "machine_abc",
-  tunnelUrl: "https://link-user_1.deco.host",
-  linkSecret: "super-secret-do-not-leak",
   cliVersion: "1.2.3",
-  protocolVersion: 1,
+  previewPort: 5174,
+  connectedAt: Date.now(),
   capabilities: ["claude-code"],
-  createdAt: new Date().toISOString(),
 };
 
 const USER_ID = "user_1";
 
 function makeCtx(
   overrides: Partial<
-    Pick<MeshContext, "linkRegistry" | "auth" | "access">
+    Pick<MeshContext, "linkClaimRegistry" | "auth" | "access">
   > = {},
 ): MeshContext {
   return {
@@ -74,26 +73,24 @@ function makeCtx(
   } as unknown as MeshContext;
 }
 
-const nowSeconds = () => Math.floor(Date.now() / 1000);
-
 describe("LINK_CURRENT_GET", () => {
   it("returns offline when no registry is wired", async () => {
-    const ctx = makeCtx({ linkRegistry: undefined });
+    const ctx = makeCtx({ linkClaimRegistry: undefined });
     const result = await LINK_CURRENT_GET.handler({}, ctx);
     expect(result).toEqual({ online: false, capabilities: [] });
   });
 
   it("returns offline when registry has no entry for the user", async () => {
-    const registry = createInMemoryLinkRegistry({ nowSeconds });
-    const ctx = makeCtx({ linkRegistry: registry });
+    const registry = createInMemoryLinkClaimRegistry();
+    const ctx = makeCtx({ linkClaimRegistry: registry });
     const result = await LINK_CURRENT_GET.handler({}, ctx);
     expect(result).toEqual({ online: false, capabilities: [] });
   });
 
-  it("returns online with entry fields when link is active", async () => {
-    const registry = createInMemoryLinkRegistry({ nowSeconds });
-    await registry.put(USER_ID, STUB_ENTRY);
-    const ctx = makeCtx({ linkRegistry: registry });
+  it("returns online with claim fields when link is active", async () => {
+    const registry = createInMemoryLinkClaimRegistry();
+    await registry.put(USER_ID, STUB_CLAIM);
+    const ctx = makeCtx({ linkClaimRegistry: registry });
 
     const result = await LINK_CURRENT_GET.handler({}, ctx);
 
@@ -103,29 +100,26 @@ describe("LINK_CURRENT_GET", () => {
     expect(result.capabilities).toEqual(["claude-code"]);
   });
 
-  it("returns offline when the TTL has expired", async () => {
-    const registry = createInMemoryLinkRegistry({
-      ttlSeconds: 10,
-      nowSeconds,
-    });
-    await registry.put(USER_ID, STUB_ENTRY);
-    // Advance clock past TTL
-    registry.advanceNow(11);
-    const ctx = makeCtx({ linkRegistry: registry });
+  it("returns offline after the claim is deleted", async () => {
+    const registry = createInMemoryLinkClaimRegistry();
+    await registry.put(USER_ID, STUB_CLAIM);
+    await registry.delete(USER_ID);
+    const ctx = makeCtx({ linkClaimRegistry: registry });
 
     const result = await LINK_CURRENT_GET.handler({}, ctx);
     expect(result).toEqual({ online: false, capabilities: [] });
   });
 
-  it("never exposes linkSecret in the response", async () => {
-    const registry = createInMemoryLinkRegistry({ nowSeconds });
-    await registry.put(USER_ID, STUB_ENTRY);
-    const ctx = makeCtx({ linkRegistry: registry });
+  it("never exposes sensitive fields in the response", async () => {
+    const registry = createInMemoryLinkClaimRegistry();
+    await registry.put(USER_ID, STUB_CLAIM);
+    const ctx = makeCtx({ linkClaimRegistry: registry });
 
     const result = await LINK_CURRENT_GET.handler({}, ctx);
     const json = JSON.stringify(result);
-    expect(json).not.toContain("linkSecret");
-    expect(json).not.toContain("super-secret-do-not-leak");
+    expect(json).not.toContain("podId");
+    expect(json).not.toContain("previewPort");
+    expect(json).not.toContain("connectedAt");
   });
 
   it("throws when called without auth", async () => {
