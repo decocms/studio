@@ -38,6 +38,8 @@ features/<your-feature>/
 
 See `features/README.md` for the catalog invariants.
 
+**For richer browser-driven verification beyond the deterministic Playwright spec**, install [Webwright](https://github.com/microsoft/Webwright) as a Claude Code skill (`/plugin install webwright@webwright`) and feed it the happy path from `feature.md`. It writes a re-runnable Playwright script + screenshots + a self-verification log against the critical points you described. Treat the output as evidence for a human pass — not a substitute for the deterministic contract that lives in `happy-path.test.ts` + `*.browser.spec.ts`.
+
 ## Commands
 
 ### Development

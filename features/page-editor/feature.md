@@ -75,12 +75,40 @@ The story we promise. If any step breaks, the feature is broken:
   JSON-LD and the inlined module reconstructs the `Sections` namespace.
 - **Multi-tenant** — a second org with the same slug cannot read the first
   org's page from object storage.
-- **Browser (PW=1 only)** — sign up via Better Auth, open the Page Editor
-  agent in the UI, watch the iframe go prelude → design → building → done,
-  assert the final DOM contains the section names from the outline.
+- **Browser (PW=1 only)** — sign up via Better Auth, navigate to the Page
+  Editor agent, assert the iframe loads with the welcome quiz mounted. Spec
+  at `apps/mesh/e2e/tests/features/page-editor.browser.spec.ts`.
 
 If any phase fails, the harness prints which assertion failed and which
 file owns the contract that broke.
+
+## Exploratory verification with Webwright
+
+The Playwright spec above is deterministic and runs in CI — it asserts the
+boot contract. For richer, agent-driven validation (a real LLM driving the
+whole agent build through the browser, taking screenshots, comparing them
+against the happy path) install [Webwright](https://github.com/microsoft/Webwright)
+as a Claude Code skill:
+
+```bash
+/plugin install webwright@webwright
+```
+
+Then point it at the happy path with a task description like:
+
+> Sign up at https://localhost:3000/login as a new user. Wait for the home
+> page to load. Click "Page Editor" in the agents list. In the chat,
+> send "build me a landing page for an AI invoice tool". Wait for the
+> agent to ship sections; the iframe on the right should show, in order:
+> Nav → Hero → Features → CTA → Footer. Take a screenshot of the
+> finished page. Verify each outline section is visible by reading the
+> DOM headings.
+
+Webwright generates a re-runnable Python Playwright script + screenshots +
+an action log. It's slower and non-deterministic (LLM in the loop) but
+catches things the boot-level spec misses — copy rendering, scroll
+choreography, review-tip tooltips, paced reveals. Treat its outputs as
+evidence for a human reviewer, not a replacement for the canonical spec.
 
 ## Files that implement this feature
 

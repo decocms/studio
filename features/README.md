@@ -74,3 +74,25 @@ The `tests/` directory is for *engineering tests* (unit, resilience). The
 `features/` catalog is for *product contracts*. Different audience, different
 shape, different invariants — keeping them separate lets each evolve without
 the other one pulling.
+
+## Two layers of verification
+
+For every catalogued feature:
+
+1. **Deterministic** — `happy-path.test.ts` and the optional sibling
+   `*.browser.spec.ts` (under `apps/mesh/e2e/tests/features/`). Pinned
+   assertions, runs in CI, the contract.
+2. **Exploratory** — an "Exploratory verification" section in `feature.md`
+   describing the happy path as a [Webwright](https://github.com/microsoft/Webwright)
+   task. Webwright is an MIT-licensed browser-agent framework from
+   Microsoft Research that turns a plain-English task into a re-runnable
+   Playwright script with screenshots + a numbered-CP self-verification
+   log. Install as a Claude Code skill via `/plugin install webwright@webwright`,
+   point it at a feature's task, and let an LLM-driven agent stress-test
+   the happy path beyond what the deterministic spec covers (copy
+   rendering, scroll behavior, race conditions a human would spot).
+   Treat its output as evidence for a human reviewer, not a substitute
+   for the deterministic contract.
+
+The deterministic layer is the gate. The exploratory layer is the
+canary — useful before a human pass, but never the only verification.

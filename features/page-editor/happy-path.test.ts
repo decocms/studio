@@ -504,19 +504,17 @@ describe("Phase E — Export bundle", () => {
 });
 
 /* ---------------------------------------------------------------------------
- * Phase F — Browser leg (planned follow-up)
+ * Phase F — Browser leg
  *
- * The full E2E story includes the iframe choreography: prelude → design
- * → building → done, with sections scrolling into view as RENDER_BLOCK
- * lands. That requires a real browser; planned for a follow-up PR
- * gated behind PW=1. See plan doc and feature.md.
+ * Lives in apps/mesh/e2e/tests/features/page-editor.browser.spec.ts so
+ * the existing Playwright config + auth fixtures apply. Runs via
+ * `PW=1 bun run features:test page-editor` — the harness CLI shells
+ * out to playwright after the data-path phases pass.
+ *
+ * It asserts the user-visible boot contract: signup auto-installs the
+ * Studio Pack, the Page Editor agent surfaces in the agents list,
+ * clicking it routes the panel to the iframe (defaultMainView wiring),
+ * and the iframe's preact bundle executes through to the welcome
+ * quiz. Driving an actual agent build through the browser is a
+ * separate, slower test reserved for nightly.
  * ------------------------------------------------------------------------- */
-
-describe.skip("Phase F — Browser leg (planned)", () => {
-  test.skip("iframe shows the full outline in order after a build", () => {
-    // Implementation: Playwright spec that signs up via the existing
-    // apps/mesh/e2e/fixtures/auth.ts, opens the Page Editor agent,
-    // drives a build via the chat, and waits for the iframe DOM to
-    // contain each outline section in order.
-  });
-});

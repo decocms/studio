@@ -120,11 +120,41 @@ function cmdTest(name: string | undefined): never {
   for (const f of targets) console.log(`  • ${f.name}`);
   console.log();
 
-  const result = spawnSync("bun", ["test", ...testPaths], {
+  // Phase A–E: in-process Bun tests against the service layer.
+  const dataResult = spawnSync("bun", ["test", ...testPaths], {
     stdio: "inherit",
     cwd: REPO_ROOT,
   });
-  process.exit(result.status ?? 1);
+  if (dataResult.status !== 0) {
+    process.exit(dataResult.status ?? 1);
+  }
+
+  // Phase F (browser): only when PW=1, only for features that ship a
+  // `*.browser.spec.ts` next to the auth fixtures. Playwright owns its
+  // own config (apps/mesh/playwright.config.ts) so we shell out
+  // matching specs by name. The dev server auto-starts via Playwright's
+  // webServer config.
+  if (process.env.PW === "1") {
+    const browserSpecs = targets.map((f) =>
+      join("apps/mesh/e2e/tests/features", `${f.name}.browser.spec.ts`),
+    );
+    const present = browserSpecs.filter((p) => existsSync(join(REPO_ROOT, p)));
+    if (present.length === 0) {
+      console.log(
+        "(PW=1) no browser specs found next to apps/mesh/e2e/tests/features/",
+      );
+      process.exit(0);
+    }
+    console.log(`\n(PW=1) running ${present.length} browser spec(s)\n`);
+    const browserResult = spawnSync(
+      "bun",
+      ["--bun", "exec", "playwright", "test", ...present],
+      { stdio: "inherit", cwd: join(REPO_ROOT, "apps/mesh") },
+    );
+    process.exit(browserResult.status ?? 1);
+  }
+
+  process.exit(0);
 }
 
 function cmdNew(name: string | undefined): never {
