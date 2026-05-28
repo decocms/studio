@@ -185,12 +185,6 @@ export async function runAgentLoop(
     ? (undefined as never)
     : createLanguageModel(opts.provider, opts.models.thinking);
 
-  const wrappedOnStepFinish: StreamTextOnStepFinishCallback<ToolSet> = async (
-    step,
-  ) => {
-    return opts.onStepFinish?.(step);
-  };
-
   const result = (streamTextFn as typeof streamText)({
     model,
     system: systemMessages,
@@ -203,7 +197,7 @@ export async function runAgentLoop(
       opts.models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
     stopWhen: stepCountIs(stepLimit),
     abortSignal: opts.abortSignal,
-    onStepFinish: wrappedOnStepFinish,
+    onStepFinish: opts.onStepFinish,
     onError: async (event: { error?: unknown }) => {
       const error = event.error ?? event;
       const message =
