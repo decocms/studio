@@ -1,25 +1,25 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { SandboxId } from "@decocms/sandbox/provider";
 import {
-  closeTestDatabase,
-  createTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import { KyselySandboxProviderStateStore } from "./sandbox-runner-state";
-import { createTestSchema } from "./test-helpers";
 
 describe("KyselySandboxProviderStateStore", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let store: KyselySandboxProviderStateStore;
 
   beforeAll(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
     store = new KyselySandboxProviderStateStore(database.db);
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   // Each test uses a unique id to avoid cross-test pollution.
@@ -67,7 +67,7 @@ describe("KyselySandboxProviderStateStore", () => {
     expect(row!.state).toEqual({ version: 2 });
 
     // Verify only one row exists for this (user, project, kind).
-    const { rows } = await database.pglite.query<{ count: string }>(
+    const { rows } = await database.pool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM sandbox_runner_state
          WHERE user_id = $1 AND project_ref = $2 AND sandbox_provider_kind = $3`,
       [id.userId, id.projectRef, "local-docker"],

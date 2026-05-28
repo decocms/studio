@@ -1,28 +1,29 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import { ConnectionStorage } from "./connection";
 import { CredentialVault } from "../encryption/credential-vault";
-import { createTestSchema, seedCommonTestFixtures } from "./test-helpers";
 
 describe("ConnectionStorage", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let storage: ConnectionStorage;
   let vault: CredentialVault;
 
   beforeAll(async () => {
-    database = await createTestDatabase();
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
     vault = new CredentialVault(CredentialVault.generateKey());
     storage = new ConnectionStorage(database.db, vault);
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   describe("create", () => {

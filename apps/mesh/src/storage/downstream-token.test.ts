@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import {
-  createTestDatabase,
-  closeTestDatabase,
-  type TestDatabase,
-} from "../database/test-db";
 import { sql } from "kysely";
-import { createTestSchema, seedCommonTestFixtures } from "./test-helpers";
+import {
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../database/test-db-pg";
+import type { MeshDatabase } from "../database";
 import { CredentialVault } from "../encryption/credential-vault";
 import {
   DownstreamTokenStorage,
@@ -13,13 +14,13 @@ import {
 } from "./downstream-token";
 
 describe("DownstreamTokenStorage", () => {
-  let database: TestDatabase;
+  let database: MeshDatabase;
   let storage: DownstreamTokenStorage;
 
   beforeAll(async () => {
-    database = await createTestDatabase();
-    await createTestSchema(database.db);
-    await seedCommonTestFixtures(database.db);
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
 
     // Create test connections required by FK constraints
     const now = new Date().toISOString();
@@ -36,7 +37,7 @@ describe("DownstreamTokenStorage", () => {
   });
 
   afterAll(async () => {
-    await closeTestDatabase(database);
+    await closeTestPgDatabase(database);
   });
 
   it("should fail-safe invalid expiration date as expired", async () => {

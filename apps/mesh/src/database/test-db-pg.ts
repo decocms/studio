@@ -52,6 +52,35 @@ export async function closeTestPgDatabase(
 }
 
 /**
+ * Seed the common users + organizations that several storage tests
+ * implicitly depend on (matches the PGlite-era `seedCommonTestFixtures`
+ * shape, with the difference that `emailVerified` is the BOOLEAN that real
+ * Postgres expects — PGlite happened to tolerate `0`).
+ *
+ * Call this from a test's `beforeAll` after `resetTestPgDatabase`. If a
+ * test only needs its own bespoke seed, skip this helper entirely.
+ */
+export async function seedCommonTestPgFixtures(
+  database: MeshDatabase,
+): Promise<void> {
+  const now = new Date().toISOString();
+  for (const userId of ["user_1", "user_123", "user_test", "test_user"]) {
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${userId}, ${userId + "@test.com"}, false, ${"Test " + userId}, ${now}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+  }
+  for (const orgId of ["org_1", "org_123", "org_456", "org_test"]) {
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES (${orgId}, ${orgId}, ${orgId}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+  }
+}
+
+/**
  * Truncate every user table in the `public` schema so the next test starts
  * from a clean slate. Preserves migrations (and the migrations bookkeeping
  * table) so we don't need to re-run them between tests.
