@@ -15,6 +15,7 @@ import { MessageTextPart } from "./parts/text-part.tsx";
 import {
   GenericToolCallPart,
   GenerateImagePart,
+  TakeScreenshotPart,
   WebSearchPart,
   ProposePlanPart,
   SubtaskPart,
@@ -438,6 +439,13 @@ function MessagePart({
     case "tool-generate_image":
       return (
         <GenerateImagePart
+          part={part}
+          latency={getMeta(part.toolCallId)?.latencySeconds}
+        />
+      );
+    case "tool-take_screenshot":
+      return (
+        <TakeScreenshotPart
           part={part}
           latency={getMeta(part.toolCallId)?.latencySeconds}
         />

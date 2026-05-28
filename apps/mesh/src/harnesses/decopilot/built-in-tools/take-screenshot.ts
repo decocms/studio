@@ -114,10 +114,12 @@ export function createTakeScreenshotTool(
         const mediaType = "image/jpeg";
         const key = `screenshots/${crypto.randomUUID()}.jpg`;
 
-        // Upload to object storage — needed for UI rendering.
-        // Also generates a presigned URL or data URI for injecting
-        // the image into the conversation via prepareStep.
-        let uri = `data:${mediaType};base64,${Buffer.from(imgBytes).toString("base64")}`;
+        // Upload to object storage and return a stable mesh-storage:// URI
+        // (mirrors generate-image). `uri` is the opaque reference persisted
+        // in the tool result; `imageUrl` is a fetchable URL the model can
+        // load this turn via the prepareStep image injection. Inline base64
+        // is only used as a fallback when no object storage is configured.
+        let uri: string;
         let imageUrl: string | null = null;
 
         if (ctx.objectStorage) {
@@ -132,12 +134,18 @@ export function createTakeScreenshotTool(
               "[take-screenshot] Failed to upload, using data: URI fallback",
               err,
             );
+            uri = `data:${mediaType};base64,${Buffer.from(imgBytes).toString("base64")}`;
           }
+        } else {
+          uri = `data:${mediaType};base64,${Buffer.from(imgBytes).toString("base64")}`;
         }
 
-        // Fallback: use the data URI directly if no presigned URL
+        // pendingImages needs a URL the model can fetch this turn; fall back
+        // to the inline data URI when no presigned URL is available.
         if (!imageUrl) {
-          imageUrl = `data:${mediaType};base64,${Buffer.from(imgBytes).toString("base64")}`;
+          imageUrl = uri.startsWith("data:")
+            ? uri
+            : `data:${mediaType};base64,${Buffer.from(imgBytes).toString("base64")}`;
         }
 
         // Queue the image for injection as a user message in prepareStep.

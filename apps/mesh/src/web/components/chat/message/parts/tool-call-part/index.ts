@@ -1,5 +1,6 @@
 export { GenericToolCallPart } from "./generic.tsx";
 export { GenerateImagePart } from "./generate-image.tsx";
+export { TakeScreenshotPart } from "./take-screenshot.tsx";
 export { WebSearchPart } from "./web-search.tsx";
 export { UserAskPart } from "./user-ask.tsx";
 export { SubtaskPart, SubtaskPartFallback } from "./subtask.tsx";
