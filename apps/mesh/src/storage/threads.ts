@@ -5,12 +5,7 @@
  * Threads are organization-scoped, messages are thread-scoped.
  */
 
-import {
-  type Expression,
-  type ExpressionBuilder,
-  type Kysely,
-  type SqlBool,
-} from "kysely";
+import { type Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type { ThreadStoragePort } from "./ports";
@@ -313,31 +308,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .execute();
   }
 
-  /**
-   * Exclude threads whose agent was deleted.
-   *
-   * User agents are VIRTUAL connections with `vir_`-prefixed ids and are
-   * hard-deleted from `connections`, leaving their threads dangling. We drop a
-   * thread only when its `virtual_mcp_id` is such an id with no surviving row.
-   * Well-known synthetic agents (`decopilot_`, `brand-context-setup_`, …) and
-   * agent-less threads (empty id) don't use the `vir_` prefix, so they're kept.
-   */
-  private notFromDeletedAgent(
-    eb: ExpressionBuilder<Database, "threads">,
-  ): Expression<SqlBool> {
-    return eb.or([
-      // `\_` escapes the LIKE single-char wildcard to match a literal `vir_`.
-      eb("threads.virtual_mcp_id", "not like", "vir\\_%"),
-      eb.exists(
-        eb
-          .selectFrom("connections")
-          .select("connections.id")
-          .whereRef("connections.id", "=", "threads.virtual_mcp_id")
-          .where("connections.connection_type", "=", "VIRTUAL"),
-      ),
-    ]);
-  }
-
   async list(
     organizationId: string,
     createdBy?: string,
@@ -360,7 +330,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .selectAll()
       .where("organization_id", "=", organizationId)
       .where("hidden", "=", archived)
-      .where((eb) => this.notFromDeletedAgent(eb))
       .orderBy("updated_at", "desc");
 
     if (createdBy) {
@@ -401,8 +370,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .selectFrom("threads")
       .select((eb) => eb.fn.count("id").as("count"))
       .where("organization_id", "=", organizationId)
-      .where("hidden", "=", archived)
-      .where((eb) => this.notFromDeletedAgent(eb));
+      .where("hidden", "=", archived);
 
     if (createdBy) {
       countQuery = countQuery.where("created_by", "=", createdBy);
