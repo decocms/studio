@@ -135,53 +135,6 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
 }
 
 /**
- * Fetches the file list for a PR via pull_request_read(get_files).
- * Server returns `changes = additions + deletions`; we derive deletions.
- */
-export function usePrFiles(
-  args: RepoArgs & { prNumber: number | null | undefined },
-) {
-  const client = useMCPClient({
-    connectionId: args.connectionId,
-    orgId: args.orgId,
-    orgSlug: args.orgSlug,
-  });
-
-  return useMCPToolCallQuery<PrFile[]>({
-    client,
-    toolName: "pull_request_read",
-    toolArguments: {
-      method: "get_files",
-      owner: args.owner,
-      repo: args.repo,
-      pullNumber: args.prNumber ?? 0,
-    },
-    enabled: !!args.prNumber,
-    refetchInterval: POLL,
-    refetchIntervalInBackground: false,
-    staleTime: STALE,
-    select: (r) => {
-      const arr = extractToolJson<Record<string, unknown>[]>(r);
-      if (!Array.isArray(arr)) return [];
-      return arr.map((f): PrFile => {
-        const additions = Number(f.additions ?? 0);
-        const changes = Number(f.changes ?? additions);
-        const deletions = Number(
-          f.deletions ?? Math.max(0, changes - additions),
-        );
-        return {
-          filename: String(f.filename ?? ""),
-          status: (f.status as PrFile["status"] | undefined) ?? "modified",
-          additions,
-          deletions,
-          blobUrl: typeof f.blob_url === "string" ? f.blob_url : null,
-        };
-      });
-    },
-  });
-}
-
-/**
  * Fetches CI check runs for a PR's head commit via
  * pull_request_read(get_check_runs).
  */

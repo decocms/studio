@@ -98,7 +98,7 @@ describe("git routes", () => {
   });
 
   it("diff against base honors headSha when set", async () => {
-    const { appRoot, repoDir } = initRepo();
+    const { repoDir } = initRepo();
     gitSync(["checkout", "-b", "feature"], { cwd: repoDir, asUser: false });
     writeFileSync(join(repoDir, "feature.txt"), "v1\n");
     gitSync(["add", "feature.txt"], { cwd: repoDir, asUser: false });

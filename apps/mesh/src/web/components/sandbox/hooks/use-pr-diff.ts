@@ -9,7 +9,7 @@ import {
   type GitDiffResult,
 } from "../../thread/github/sandbox-git-api.ts";
 
-export function prDiffQueryKey(
+function prDiffQueryKey(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
