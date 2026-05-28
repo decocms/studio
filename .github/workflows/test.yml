@@ -87,15 +87,20 @@ jobs:
           #   *.e2e.test.ts         → reserved for the sandbox-daemon workflow
           # See TESTING.md for the decision tree.
           #
-          # Bun 1.3.13 fixed the N-API/WASM teardown crashes that forced us
-          # to spawn one process per file with signal-tolerance branches.
-          # `--isolate` runs each file in a fresh global within the same
-          # process (drained microtasks, closed sockets, killed subprocs).
-          find apps/mesh/src packages \
+          # One bun process per file: cleanest isolation, doesn't share
+          # ports/sockets/DB pools between files. Bun 1.3.14's teardown
+          # fixes mean we no longer need the signal-tolerance branches
+          # we had on 1.3.5 — a real test failure is now the only way
+          # bun exits non-zero.
+          set -e
+          while IFS= read -r f; do
+            echo "::group::$f"
+            bun test "$f"
+            echo "::endgroup::"
+          done < <(find apps/mesh/src packages \
             \( -name '*.test.ts' -o -name '*.test.tsx' \) \
             ! -name '*.integration.test.ts' \
-            ! -name '*.e2e.test.ts' \
-            -print0 | xargs -0 bun test --isolate
+            ! -name '*.e2e.test.ts')
 
   build:
     runs-on: ubuntu-latest
