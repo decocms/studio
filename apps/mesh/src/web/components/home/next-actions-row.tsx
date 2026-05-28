@@ -4,8 +4,7 @@
  * Renders below `Chat.Input` on the /$org home page as a row of prompt
  * cards — each opens a new thread with an agent and autosends a prompt.
  *
- * Server filters out completed items so the row stays pared down as the
- * user makes progress.
+ * Server filters items so the row stays pared down as the user progresses.
  */
 
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
@@ -50,9 +49,13 @@ function AgentPromptCardGroup({
   agentId: string;
   entries: HomePromptEntry[];
 }) {
-  const { start, dialog } = useStartThreadFromPrompt({ agentId });
+  const { start, startBlank, dialog } = useStartThreadFromPrompt({ agentId });
 
   const handleClick = (entry: HomePromptEntry) => {
+    if (!entry.promptName) {
+      void startBlank();
+      return;
+    }
     const prompt: Prompt = {
       name: entry.promptName,
       title: entry.title,
@@ -67,7 +70,7 @@ function AgentPromptCardGroup({
     <>
       {entries.map((entry) => (
         <PromptCard
-          key={entry.promptName}
+          key={entry.promptName || `${entry.agentId}:blank`}
           entry={entry}
           onClick={() => handleClick(entry)}
         />

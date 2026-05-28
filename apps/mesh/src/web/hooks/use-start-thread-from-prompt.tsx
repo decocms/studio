@@ -33,6 +33,11 @@ import { writeStoredAutosend } from "@/web/lib/autosend";
 export interface UseStartThreadFromPromptResult {
   /** Trigger from a card click. Opens args dialog if needed. */
   start: (prompt: Prompt) => Promise<void>;
+  /**
+   * Start a fresh thread with `agentId` without seeding a prompt — used by the
+   * fallback cards for default home agents that expose no prompts.
+   */
+  startBlank: () => Promise<void>;
   /** Render this in your component to mount the args dialog. */
   dialog: ReactNode;
   /** Exposed for tests / loading states. */
@@ -115,6 +120,17 @@ export function useStartThreadFromPrompt({
     await loadAndStart(prompt, values);
   };
 
+  const startBlank = async () => {
+    try {
+      const newId = crypto.randomUUID();
+      await create({ id: newId, virtual_mcp_id: agentId });
+      setTaskId(newId, agentId);
+    } catch (error) {
+      console.error("[start-thread-from-prompt] startBlank failed", error);
+      toast.error("Failed to start thread. Please try again.");
+    }
+  };
+
   const dialog = (
     <PromptArgsDialog
       prompt={dialogPrompt}
@@ -123,5 +139,5 @@ export function useStartThreadFromPrompt({
     />
   );
 
-  return { start, dialog, dialogPrompt };
+  return { start, startBlank, dialog, dialogPrompt };
 }

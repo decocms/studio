@@ -47,7 +47,9 @@ export function NextActionChip() {
 
   // home-next-actions is keyed by agentId and already drops completed
   // items server-side, so the first match is this thread's next step.
-  const next = prompts.find((p) => p.agentId === virtualMcpId);
+  // Skip fallback agent-only entries (no promptName) — the chip needs a
+  // real prompt to send.
+  const next = prompts.find((p) => p.agentId === virtualMcpId && p.promptName);
   if (!next) return null;
 
   const send = async (prompt: Prompt, args?: PromptArgumentValues) => {
