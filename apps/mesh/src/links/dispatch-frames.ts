@@ -63,6 +63,12 @@ export const dispatchFrameSchema = z.discriminatedUnion("type", [
   errorFrame,
 ]);
 
+const KNOWN_FRAME_TYPES = new Set(
+  dispatchFrameSchema.options.map(
+    (opt) => (opt as { shape: { type: { value: string } } }).shape.type.value,
+  ),
+);
+
 export type HelloFrame = z.infer<typeof helloFrame>;
 export type RequestFrame = z.infer<typeof requestFrame>;
 export type CancelFrame = z.infer<typeof cancelFrame>;
@@ -87,18 +93,7 @@ export function decodeFrame(text: string): DispatchFrame {
     throw new Error("dispatch-frames: frame must be an object");
   }
   const type = (raw as { type?: unknown }).type;
-  if (
-    typeof type !== "string" ||
-    ![
-      "hello",
-      "request",
-      "cancel",
-      "headers",
-      "chunk",
-      "end",
-      "error",
-    ].includes(type)
-  ) {
+  if (typeof type !== "string" || !KNOWN_FRAME_TYPES.has(type)) {
     throw new Error(`dispatch-frames: unknown frame type "${String(type)}"`);
   }
   const parsed = dispatchFrameSchema.safeParse(raw);
