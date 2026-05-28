@@ -6,7 +6,6 @@ import { NavigationSidebar } from "./navigation";
 import { MobileNavigationSidebar } from "./navigation-mobile";
 import { SidebarInboxFooter } from "./footer/inbox";
 import { SidebarInboxFooterMobile } from "./footer/inbox-mobile";
-import { SidebarTopActions } from "./top-actions";
 import { TaskGroupsList } from "./task-groups/task-groups-list";
 
 export type {
@@ -33,7 +32,6 @@ export function StudioSidebar() {
             }
           >
             <Separator className="mb-2" />
-            <SidebarTopActions />
             <TaskGroupsList />
           </Suspense>
         </ErrorBoundary>
@@ -54,7 +52,6 @@ export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
         <ErrorBoundary>
           <Suspense fallback={null}>
             <Separator className="mb-2" />
-            <SidebarTopActions />
             <TaskGroupsList />
           </Suspense>
         </ErrorBoundary>
