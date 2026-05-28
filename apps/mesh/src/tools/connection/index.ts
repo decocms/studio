@@ -14,4 +14,7 @@ export { COLLECTION_CONNECTIONS_DELETE } from "./delete";
 // Connection test tool
 export { CONNECTION_TEST } from "./test";
 
+// App-only tools
+export { CONNECTION_RESOLVE_FOR_USER } from "./resolve-for-user";
+
 // Utility exports

@@ -74,6 +74,7 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
+  "CONNECTION_RESOLVE_FOR_USER",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -399,6 +400,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CONNECTION_TEST",
     description: "Test connections",
+    category: "Connections",
+  },
+  {
+    name: "CONNECTION_RESOLVE_FOR_USER",
+    description:
+      "Resolve the caller's connection for a given app_id (user-private preferred, org-shared fallback)",
     category: "Connections",
   },
   {
