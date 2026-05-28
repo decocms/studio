@@ -19,7 +19,7 @@ import {
 } from "@decocms/mcp-utils/aggregate";
 import { getPrompt, useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   PromptArgsDialog,
@@ -42,6 +42,12 @@ export interface UseStartThreadFromPromptResult {
   dialog: ReactNode;
   /** Exposed for tests / loading states. */
   dialogPrompt: Prompt | null;
+  /**
+   * True while a thread creation is in flight. Consumers should disable
+   * their trigger button so repeated clicks during the autosend round-trip
+   * can't spawn duplicate threads.
+   */
+  starting: boolean;
 }
 
 export function useStartThreadFromPrompt({
@@ -58,12 +64,21 @@ export function useStartThreadFromPrompt({
   const { create } = useThreadActions();
   const { setTaskId } = usePanelActions();
   const [dialogPrompt, setDialogPrompt] = useState<Prompt | null>(null);
+  const [starting, setStarting] = useState(false);
+  // `inFlightRef` is the race-safe guard — `starting` (state) is one render
+  // behind on rapid double-clicks, so a ref is what actually prevents the
+  // second invocation from getting past the gate before React commits.
+  const inFlightRef = useRef(false);
 
   const loadAndStart = async (prompt: Prompt, args?: PromptArgumentValues) => {
     if (!client) {
       toast.error("MCP client not available");
       return;
     }
+    if (inFlightRef.current) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- in-flight guard for duplicate-click prevention
+    inFlightRef.current = true;
+    setStarting(true);
     try {
       const result = await getPrompt(client, prompt.name, args);
       // Mirror the editor's `/`-mention insertion shape (mention atom +
@@ -102,10 +117,15 @@ export function useStartThreadFromPrompt({
     } catch (error) {
       console.error("[start-thread-from-prompt] failed", error);
       toast.error("Failed to start thread. Please try again.");
+    } finally {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- release in-flight guard
+      inFlightRef.current = false;
+      setStarting(false);
     }
   };
 
   const start = async (prompt: Prompt) => {
+    if (inFlightRef.current) return;
     if (prompt.arguments && prompt.arguments.length > 0) {
       setDialogPrompt(prompt);
       return;
@@ -121,6 +141,10 @@ export function useStartThreadFromPrompt({
   };
 
   const startBlank = async () => {
+    if (inFlightRef.current) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- in-flight guard for duplicate-click prevention
+    inFlightRef.current = true;
+    setStarting(true);
     try {
       const newId = crypto.randomUUID();
       await create({ id: newId, virtual_mcp_id: agentId });
@@ -128,6 +152,10 @@ export function useStartThreadFromPrompt({
     } catch (error) {
       console.error("[start-thread-from-prompt] startBlank failed", error);
       toast.error("Failed to start thread. Please try again.");
+    } finally {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- release in-flight guard
+      inFlightRef.current = false;
+      setStarting(false);
     }
   };
 
@@ -139,5 +167,5 @@ export function useStartThreadFromPrompt({
     />
   );
 
-  return { start, startBlank, dialog, dialogPrompt };
+  return { start, startBlank, dialog, dialogPrompt, starting };
 }

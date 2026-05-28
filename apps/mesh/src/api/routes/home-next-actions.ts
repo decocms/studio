@@ -26,7 +26,7 @@ import {
 } from "@/tools/virtual/studio-pack";
 
 /** Per default-home agent, cap prompts so a chatty agent can't flood the row. */
-const MAX_PROMPTS_PER_AGENT = 3;
+const MAX_PROMPTS_PER_AGENT = 10;
 /** Bound a slow/unreachable agent so it can't hang the home request. */
 const LIST_PROMPTS_TIMEOUT_MS = 5000;
 
@@ -52,6 +52,22 @@ interface PromptEntry {
   _meta?: Prompt["_meta"];
 }
 
+/**
+ * Tile UI for a home agent. Rendered as an MCP UI iframe inside the agent's
+ * tile on `/$org`. The frontend opens an MCP client to `connectionId` (the
+ * connection that owns the resource, not the virtual MCP gateway) so the
+ * iframe can call tools by their bare names.
+ */
+interface TileEntry {
+  agentId: string;
+  agentName: string;
+  agentIcon: string | null;
+  connectionId: string;
+  resourceUri: string;
+  minHeight?: number;
+  maxHeight?: number;
+}
+
 function indexPromptsByName() {
   const all = getPrompts();
   const byName = new Map<string, (typeof all)[number]>();
@@ -60,73 +76,101 @@ function indexPromptsByName() {
 }
 
 /**
- * Prompts from the org's configured default home agents (custom virtual MCPs).
- * Unlike Studio Pack prompts — which are static guide prompts on the org "self"
- * MCP — these are listed live from each agent's gateway, so their `name`/`_meta`
- * already carry the namespacing the mention chip needs. Studio Pack agent ids
- * are skipped (surfaced via the static path). Agents with no prompts (or an
- * unreachable gateway) still get one fallback card so every configured default
- * home agent shows up on the home row.
+ * Prompts + tile UIs from the org's configured default home agents (custom
+ * virtual MCPs). Prompts are listed live from each agent's gateway; tile UIs
+ * come from `metadata.ui.homeTile` on the virtual MCP and are surfaced as a
+ * separate `tiles` array so the frontend can render iframes independently of
+ * the prompt row. Studio Pack agent ids are skipped (prompts surfaced via the
+ * static path; Studio Pack agents don't declare tile UIs today). Agents with
+ * no prompts (or an unreachable gateway) still get one fallback card so every
+ * configured default home agent shows up on the home row.
  */
-async function defaultHomeAgentPrompts(
+async function defaultHomeAgentNextActions(
   orgId: string,
   ctx: MeshContext,
   skipAgentIds: Set<string>,
-): Promise<PromptEntry[]> {
+): Promise<{ prompts: PromptEntry[]; tiles: TileEntry[] }> {
   const settings = await ctx.storage.organizationSettings.get(orgId);
   const ids = settings?.default_home_agents?.ids ?? [];
   const uniqueIds = [...new Set(ids)].filter((id) => !skipAgentIds.has(id));
 
   const perId = await Promise.all(
-    uniqueIds.map(async (id): Promise<PromptEntry[]> => {
-      const virtualMcp = await ctx.storage.virtualMcps.findById(id);
-      if (!virtualMcp) return [];
-      const fallback = (): PromptEntry => ({
-        agentId: id,
-        agentName: virtualMcp.title,
-        agentIcon: virtualMcp.icon,
-        promptName: "",
-        title: virtualMcp.description || "Start a new chat",
-        description: "",
-        hasArguments: false,
-      });
-      try {
-        const client = await createVirtualClientFrom(
-          virtualMcp,
-          ctx,
-          "passthrough",
-          false,
-          { listTimeoutMs: LIST_PROMPTS_TIMEOUT_MS },
-        );
-        try {
-          const { prompts } = await client.listPrompts();
-          const entries = prompts
-            .slice(0, MAX_PROMPTS_PER_AGENT)
-            .map((prompt) => ({
-              agentId: id,
-              agentName: virtualMcp.title,
-              agentIcon: virtualMcp.icon,
-              promptName: prompt.name,
-              title: prompt.title ?? prompt.name,
-              description: prompt.description ?? "",
-              hasArguments: (prompt.arguments?.length ?? 0) > 0,
-              arguments: prompt.arguments,
-              _meta: prompt._meta,
-            }));
-          return entries.length > 0 ? entries : [fallback()];
-        } finally {
-          await client.close();
-        }
-      } catch (error) {
-        console.error("[home-next-actions] failed to list agent prompts", {
+    uniqueIds.map(
+      async (
+        id,
+      ): Promise<{ prompts: PromptEntry[]; tile: TileEntry | null }> => {
+        const virtualMcp = await ctx.storage.virtualMcps.findById(id);
+        if (!virtualMcp) return { prompts: [], tile: null };
+
+        const homeTile = virtualMcp.metadata?.ui?.homeTile;
+        const tile: TileEntry | null =
+          homeTile?.resourceUri && homeTile.connectionId
+            ? {
+                agentId: id,
+                agentName: virtualMcp.title,
+                agentIcon: virtualMcp.icon,
+                connectionId: homeTile.connectionId,
+                resourceUri: homeTile.resourceUri,
+                minHeight: homeTile.minHeight,
+                maxHeight: homeTile.maxHeight,
+              }
+            : null;
+
+        const fallback = (): PromptEntry => ({
           agentId: id,
-          error,
+          agentName: virtualMcp.title,
+          agentIcon: virtualMcp.icon,
+          promptName: "",
+          title: virtualMcp.description || "Start a new chat",
+          description: "",
+          hasArguments: false,
         });
-        return [fallback()];
-      }
-    }),
+
+        try {
+          const client = await createVirtualClientFrom(
+            virtualMcp,
+            ctx,
+            "passthrough",
+            false,
+            { listTimeoutMs: LIST_PROMPTS_TIMEOUT_MS },
+          );
+          try {
+            const { prompts } = await client.listPrompts();
+            const entries = prompts
+              .slice(0, MAX_PROMPTS_PER_AGENT)
+              .map((prompt) => ({
+                agentId: id,
+                agentName: virtualMcp.title,
+                agentIcon: virtualMcp.icon,
+                promptName: prompt.name,
+                title: prompt.title ?? prompt.name,
+                description: prompt.description ?? "",
+                hasArguments: (prompt.arguments?.length ?? 0) > 0,
+                arguments: prompt.arguments,
+                _meta: prompt._meta,
+              }));
+            return {
+              prompts: entries.length > 0 ? entries : [fallback()],
+              tile,
+            };
+          } finally {
+            await client.close();
+          }
+        } catch (error) {
+          console.error("[home-next-actions] failed to list agent prompts", {
+            agentId: id,
+            error,
+          });
+          return { prompts: [fallback()], tile };
+        }
+      },
+    ),
   );
-  return perId.flat();
+
+  return {
+    prompts: perId.flatMap((r) => r.prompts),
+    tiles: perId.map((r) => r.tile).filter((t): t is TileEntry => t !== null),
+  };
 }
 
 export function createHomeNextActionsRoutes() {
@@ -184,15 +228,12 @@ export function createHomeNextActionsRoutes() {
     const studioPackAgentIds = new Set(
       STUDIO_PACK_AGENTS.map((agent) => agent.getId(orgId)),
     );
-    const defaultPrompts = await defaultHomeAgentPrompts(
-      orgId,
-      mesh,
-      studioPackAgentIds,
-    );
+    const { prompts: defaultPrompts, tiles } =
+      await defaultHomeAgentNextActions(orgId, mesh, studioPackAgentIds);
     prompts.push(...defaultPrompts);
 
     c.header("Cache-Control", "private, max-age=10");
-    return c.json({ prompts });
+    return c.json({ prompts, tiles });
   });
 
   return app;

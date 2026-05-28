@@ -14,8 +14,19 @@ export interface HomePromptEntry {
   _meta?: Prompt["_meta"];
 }
 
+export interface HomeTileEntry {
+  agentId: string;
+  agentName: string;
+  agentIcon: string | null;
+  connectionId: string;
+  resourceUri: string;
+  minHeight?: number;
+  maxHeight?: number;
+}
+
 interface HomeNextActionsResponse {
   prompts: HomePromptEntry[];
+  tiles?: HomeTileEntry[];
 }
 
 export function useHomeNextActions(orgSlug: string) {
@@ -33,5 +44,6 @@ export function useHomeNextActions(orgSlug: string) {
   return {
     isLoading: query.isLoading,
     prompts: query.data?.prompts ?? [],
+    tiles: query.data?.tiles ?? [],
   };
 }
