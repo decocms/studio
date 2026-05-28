@@ -2,7 +2,7 @@
  * Decopilot Route
  *
  * Re-exports from the decopilot module for backwards compatibility.
- * The actual implementation lives in ./decopilot/routes.ts 
+ * The actual implementation lives in ./decopilot/routes.ts
  */
 
 export { createDecopilotRoutes } from "./decopilot/routes";
