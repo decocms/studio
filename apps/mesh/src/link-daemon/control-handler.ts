@@ -13,7 +13,11 @@
  *                                            sandbox daemon's local port
  */
 import type { RequestFrame } from "../links/dispatch-frames";
-import type { DesktopSandboxProvider, RepoRef } from "./user-desktop-provider";
+import type {
+  DesktopSandboxProvider,
+  RepoRef,
+  Workload,
+} from "./user-desktop-provider";
 
 export interface ControlHandlerResponse {
   status: number;
@@ -30,6 +34,7 @@ export interface ControlHandlerDeps {
 interface EnsureSandboxBody {
   handle: string;
   repo?: RepoRef;
+  workload?: Workload;
 }
 
 export type StreamEvent =

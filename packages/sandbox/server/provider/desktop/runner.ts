@@ -123,10 +123,16 @@ export class DesktopSandboxProvider implements SandboxProvider {
       }
     }
 
+    // Forward the workload so the link daemon can pin runtime +
+    // packageManager on the spawned sandbox. Without it the orchestrator
+    // falls through to lockfile autodetect, which on a repo with
+    // `yarn.lock` picks yarn — and the desktop daemon can't reliably
+    // shim a yarn binary into PATH.
     const body = JSON.stringify({
       handle,
       repo: opts.repo,
       branch: opts.repo?.branch,
+      ...(opts.workload ? { workload: opts.workload } : {}),
     });
     const responseText = await this.dispatchJson(
       "POST",
