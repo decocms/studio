@@ -121,3 +121,17 @@ export const harnessStreamInputSchema = z
   .strip();
 
 export type HarnessStreamInputWire = z.infer<typeof harnessStreamInputSchema>;
+
+/**
+ * `hello` frame payload, sent by the daemon as the first message on the WS
+ * after a successful upgrade. Carries the daemon's preview port so the
+ * cluster can build `<handle>.localhost:<previewPort>` URLs.
+ */
+export const helloPayloadSchema = z.object({
+  previewPort: z.number().int().min(1).max(65535),
+  machineId: z.string().min(1),
+  hostname: z.string().optional(),
+  cliVersion: z.string().min(1),
+  capabilities: z.array(capabilitySchema),
+});
+export type HelloPayload = z.infer<typeof helloPayloadSchema>;
