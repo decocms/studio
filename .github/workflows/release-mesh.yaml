@@ -323,19 +323,22 @@ jobs:
         needs.merge-docker.result == 'success'
       )
     runs-on: ubuntu-latest
-    # The bump is a convenience and must never red the release. If the dispatch
-    # token isn't configured, the step no-ops and the job passes.
+    # Reuses DEPLOY_REPO_TOKEN — the decobot machine-user PAT already used to
+    # dispatch to argo-deploy-mesh (non-personal; decobot is admin on
+    # decocms/deco-apps-cd). Same bot, same mechanism as the legacy repo, no
+    # new/ personal token. The bump is a convenience and must never red the
+    # release: if the token isn't present the step no-ops and the job passes.
     env:
-      DISPATCH_TOKEN: ${{ secrets.DECO_APPS_CD_DISPATCH_TOKEN }}
+      DISPATCH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
     steps:
       - name: Skip notice (dispatch token not configured)
         if: env.DISPATCH_TOKEN == ''
-        run: echo "::notice::DECO_APPS_CD_DISPATCH_TOKEN not set — skipping the deco-apps-cd bump. Add the org-level PAT to enable it."
+        run: echo "::notice::DEPLOY_REPO_TOKEN not set — skipping the deco-apps-cd bump."
       - name: Dispatch studio-image-bump to deco-apps-cd
         if: env.DISPATCH_TOKEN != ''
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.DECO_APPS_CD_DISPATCH_TOKEN }}
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
           repository: decocms/deco-apps-cd
           event-type: studio-image-bump
           client-payload: '{"version": "${{ needs.prepare.outputs.version }}"}'
