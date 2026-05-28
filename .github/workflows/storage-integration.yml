@@ -56,17 +56,46 @@ jobs:
       # Adding a new integration test = create a `something.integration.test.ts`
       # and it auto-routes to this workflow. See TESTING.md.
       #
-      # One bun process per file: cleanest isolation between heavy-DB
-      # files. Bun 1.3.14's teardown fixes mean we no longer need the
-      # signal-tolerance branches we had on 1.3.5.
+      # Per-file bun process + signal tolerance: heavy-DB integration
+      # tests still hit Bun teardown crashes (SIGSEGV/SIGILL/SIGABRT)
+      # after all tests pass — not fully fixed even in 1.3.14. If exit
+      # code > 128 AND we saw a (pass) marker, accept it as a Bun
+      # teardown bug, not a real failure. The unit job doesn't need
+      # this because pure-logic tests don't trigger the crash class.
       - name: Run storage integration tests
         run: |
-          set -e
+          failed_files=""
+          crashed_files=""
           while IFS= read -r f; do
             echo "::group::$f"
-            bun test "$f"
+            set +e
+            out=$(bun test "$f" 2>&1)
+            code=$?
+            set -e
+            echo "$out"
             echo "::endgroup::"
+            if echo "$out" | grep -qE '^\(fail\)|[1-9][0-9]* fail'; then
+              failed_files="$failed_files $f"
+              continue
+            fi
+            if [ "$code" -eq 0 ]; then
+              continue
+            fi
+            if [ "$code" -gt 128 ] && echo "$out" | grep -qE '^\(pass\)|[1-9][0-9]* pass'; then
+              echo "⚠️  $f: bun crashed at teardown (exit $code) after tests passed — accepting"
+              continue
+            fi
+            crashed_files="$crashed_files $f"
           done < <(find apps/mesh -name '*.integration.test.ts' | sort)
+          if [ -n "$failed_files" ]; then
+            echo "❌ Test failures in:$failed_files"
+            exit 1
+          fi
+          if [ -n "$crashed_files" ]; then
+            echo "❌ Bun crashed before tests ran in:$crashed_files"
+            exit 1
+          fi
+          echo "✅ All integration test files passed"
           failed_files=""
           crashed_files=""
           for f in $files; do
