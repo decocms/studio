@@ -102,7 +102,13 @@ import {
   type LinkRegistry,
   NatsLinkRegistry,
 } from "../links/link-registry";
-import { registerLinksRoutes } from "../links/routes";
+import { NatsLinkClaimRegistry } from "../links/link-claim-registry";
+import {
+  gatewayWsHandlers,
+  registerLinksGateway,
+  type GatewayNatsAdapter,
+  type WsAttachData,
+} from "../links/ws-gateway";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
@@ -1715,17 +1721,62 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   app.route("/api", decopilotRoutes);
 
-  // `/api/links/*` — link daemon registration, heartbeat, status.
-  // Session auth uses the same Better-Auth flow as every other authed
-  // route: `meshContext.auth.user.id` is the userSub. Bearer auth on
-  // heartbeat is the `linkSecret` (verified inside the route).
-  registerLinksRoutes(app, {
-    linkRegistry,
-    getAuthenticatedUserSub: (c) => {
-      const ctx = c.get("meshContext");
-      return ctx?.auth?.user?.id ?? null;
+  // `/api/links/connect` — WS gateway for link daemons.
+  // Validates bearer token via Better Auth, upgrades to WebSocket, and
+  // claims the user in the NATS JS KV bucket. Replaces registerLinksRoutes.
+  const claimRegistry = new NatsLinkClaimRegistry({
+    getJetStream: () => natsProvider!.getJetStream(),
+  });
+  natsProvider?.onReady(() => {
+    void claimRegistry.init();
+  });
+
+  const gatewayNatsAdapter: GatewayNatsAdapter = {
+    subscribe(subject, onMessage) {
+      const nc = natsProvider?.getConnection();
+      if (!nc) return () => {};
+      const sub = nc.subscribe(subject);
+      void (async () => {
+        for await (const m of sub) {
+          try {
+            onMessage(m.data, m.reply);
+          } catch {
+            // swallow
+          }
+        }
+      })();
+      return () => {
+        try {
+          sub.unsubscribe();
+        } catch {
+          /* */
+        }
+      };
     },
-    allowLocalhostLinks: process.env.MESH_ALLOW_LOCALHOST_LINKS === "1",
+    publish(subject, data) {
+      natsProvider?.getConnection()?.publish(subject, data);
+    },
+    async request(subject, data, timeoutMs) {
+      const nc = natsProvider?.getConnection();
+      if (!nc) return null;
+      try {
+        const reply = await nc.request(subject, data, { timeout: timeoutMs });
+        return reply.data;
+      } catch {
+        return null;
+      }
+    },
+  };
+
+  registerLinksGateway(app as unknown as import("hono").Hono, {
+    registry: claimRegistry,
+    nats: gatewayNatsAdapter,
+    podId: POD_ID,
+    validateBearer: async (token) => {
+      const headers = new Headers({ authorization: `Bearer ${token}` });
+      const session = await auth.api.getSession({ headers });
+      return (session as { user?: { id?: string } } | null)?.user?.id ?? null;
+    },
   });
 
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs)
@@ -2020,3 +2071,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   return Object.assign(app, { markShuttingDown, shutdown, initDbos });
 }
+
+export { gatewayWsHandlers };
+export type { WsAttachData };
