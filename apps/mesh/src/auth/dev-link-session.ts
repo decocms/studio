@@ -8,7 +8,7 @@
  * thing the link talks to. To avoid asking the developer to manually
  * `auth login` against their own dev cluster, we mint a Better Auth
  * API key for the local admin user at first dev boot and serialize it
- * in the `Session` shape `apps/mesh/src/link-daemon/session.ts` expects.
+ * in the `Session` shape `apps/mesh/src/cli/lib/session.ts` defines.
  *
  * The link then presents that API key as a Bearer token to
  * `POST /api/links`. The cluster's `getAuthenticatedUserSub` resolves
