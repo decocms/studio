@@ -4,8 +4,7 @@
  * Renders below `Chat.Input` on the /$org home page as a row of prompt
  * cards — each opens a new thread with an agent and autosends a prompt.
  *
- * Server filters out completed items so the row stays pared down as the
- * user makes progress.
+ * Server filters items so the row stays pared down as the user progresses.
  */
 
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";

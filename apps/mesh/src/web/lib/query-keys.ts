@@ -69,7 +69,7 @@ export const KEYS = {
   // Models list (scoped by organization)
   modelsList: (orgId: string) => ["models-list", orgId] as const,
 
-  // Home next-actions — prompts + dialog actions surfaced under Chat.Input.
+  // Home next-actions — agent prompts under Chat.Input.
   homeNextActions: (orgSlug: string) => ["home-next-actions", orgSlug] as const,
 
   // Allowed models for current user (scoped by organization)
