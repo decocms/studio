@@ -28,6 +28,10 @@ import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item"
 import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
 import { ReleaseCard } from "@/web/components/release-channel/release-card";
 import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
+import {
+  SidebarTopActions,
+  SidebarTopActionsInline,
+} from "@/web/components/sidebar/top-actions";
 
 function InboxPopover({ children }: { children: ReactNode }) {
   const { items, markReleaseSeen } = useInboxFeed();
@@ -271,6 +275,7 @@ export function SidebarInboxFooter() {
   if (isCollapsed) {
     return (
       <SidebarFooter className="px-2 pb-3 gap-1">
+        <SidebarTopActions />
         <SidebarMenu>
           <SidebarMenuItem>
             <ConnectionsFullButton />
@@ -302,6 +307,7 @@ export function SidebarInboxFooter() {
         <SettingsIconButton />
         <InboxIconButton />
         <ConnectionsIconButton />
+        <SidebarTopActionsInline />
       </div>
     </SidebarFooter>
   );

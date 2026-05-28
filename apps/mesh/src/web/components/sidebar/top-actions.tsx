@@ -16,6 +16,11 @@ import {
 } from "@decocms/mesh-sdk";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { cn } from "@deco/ui/lib/utils.ts";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 
 class SilentErrorBoundary extends Component<
   { children: ReactNode },
@@ -103,6 +108,80 @@ export function SidebarTopActions() {
     <SilentErrorBoundary>
       <Suspense fallback={null}>
         <CreditChipConditional />
+      </Suspense>
+    </SilentErrorBoundary>
+  );
+}
+
+function CreditChipInline() {
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const { data, isPending, isError } = useMCPToolCallQuery<
+    { balanceCents: number } | undefined
+  >({
+    client,
+    toolName: "AI_PROVIDER_CREDITS",
+    toolArguments: { providerId: "deco" },
+    staleTime: 60_000,
+    select: (result) =>
+      (result as { structuredContent?: { balanceCents: number } })
+        .structuredContent,
+  });
+  const balanceDollars =
+    data?.balanceCents != null ? data.balanceCents / 100 : null;
+  const tooltipLabel =
+    isPending || isError || balanceDollars == null
+      ? "Credits"
+      : `Credits: $${balanceDollars.toFixed(2)}`;
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={tooltipLabel}
+          onClick={() =>
+            navigate({
+              to: "/$org/settings/ai-providers",
+              params: { org: org.slug },
+            })
+          }
+          className={cn(
+            "relative flex h-10 md:h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+            "hover:bg-sidebar-accent hover:text-sidebar-foreground",
+            balanceDollars != null
+              ? creditColor(balanceDollars)
+              : "text-sidebar-foreground/60",
+          )}
+        >
+          <Coins04 className="size-4" />
+          {balanceDollars != null && (
+            <span>{`$${balanceDollars.toFixed(2)}`}</span>
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{tooltipLabel}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function CreditChipInlineConditional() {
+  const keys = useAiProviderKeys();
+  const hasDecoKey = keys.some((k) => k.providerId === "deco");
+  if (!hasDecoKey) return null;
+  return <CreditChipInline />;
+}
+
+export function SidebarTopActionsInline() {
+  return (
+    <SilentErrorBoundary>
+      <Suspense fallback={null}>
+        <CreditChipInlineConditional />
       </Suspense>
     </SilentErrorBoundary>
   );
