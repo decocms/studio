@@ -49,7 +49,7 @@ function buildSandboxGitUrl(
 
 /** Error carrying the HTTP status so callers can back off on unreachable
  *  sandboxes (503 no runner, 410 handle gone) instead of polling forever. */
-export class SandboxGitError extends Error {
+class SandboxGitError extends Error {
   constructor(
     message: string,
     readonly status: number,
