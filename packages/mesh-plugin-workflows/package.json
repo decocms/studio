@@ -25,8 +25,6 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@electric-sql/pglite": "^0.3.15",
-    "kysely-pglite": "^0.6.1",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
