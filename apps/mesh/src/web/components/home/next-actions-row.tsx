@@ -8,10 +8,12 @@
  */
 
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
+import { Suspense } from "react";
 import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { AgentAvatar } from "@/web/components/agent-icon";
+import { ErrorBoundary } from "@/web/components/error-boundary";
 import {
   type HomePromptEntry,
   type HomeTileEntry,
@@ -207,6 +209,24 @@ function AgentUITile({
   );
 }
 
+function AgentUITileFallback({ tile }: { tile: HomeTileEntry }) {
+  return (
+    <div className="flex w-full grow basis-80 flex-col gap-3 rounded-xl border border-border bg-background p-3 opacity-60">
+      <div className="flex items-center gap-3">
+        <AgentAvatar icon={tile.agentIcon} name={tile.agentName} size="sm+" />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="truncate text-sm font-medium text-foreground">
+            {tile.agentName}
+          </div>
+          <div className="truncate text-xs text-muted-foreground">
+            Tile unavailable
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function NextActionsRow() {
   const { org } = useProjectContext();
   const { isLoading, prompts, tiles } = useHomeNextActions(org.slug);
@@ -242,11 +262,17 @@ export function NextActionsRow() {
       {hasTile && (
         <div className="flex min-w-0 flex-col gap-3 lg:flex-1">
           {tiles.map((tile) => (
-            <AgentUITile
+            <ErrorBoundary
               key={tile.agentId}
-              tile={tile}
-              prompts={promptsByAgent.get(tile.agentId) ?? []}
-            />
+              fallback={<AgentUITileFallback tile={tile} />}
+            >
+              <Suspense fallback={<AgentUITileFallback tile={tile} />}>
+                <AgentUITile
+                  tile={tile}
+                  prompts={promptsByAgent.get(tile.agentId) ?? []}
+                />
+              </Suspense>
+            </ErrorBoundary>
           ))}
         </div>
       )}
