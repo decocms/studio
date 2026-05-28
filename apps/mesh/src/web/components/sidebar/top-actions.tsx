@@ -21,6 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 
 class SilentErrorBoundary extends Component<
   { children: ReactNode },
@@ -141,8 +142,7 @@ function CreditChipInline() {
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
-        <button
-          type="button"
+        <ToolbarIconButton
           aria-label={tooltipLabel}
           onClick={() =>
             navigate({
@@ -150,20 +150,10 @@ function CreditChipInline() {
               params: { org: org.slug },
             })
           }
-          className={cn(
-            "relative flex h-10 md:h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-            "hover:bg-sidebar-accent hover:text-sidebar-foreground",
-            balanceDollars != null
-              ? creditColor(balanceDollars)
-              : "text-sidebar-foreground/60",
-          )}
+          className={cn(balanceDollars != null && creditColor(balanceDollars))}
         >
           <Coins04 className="size-4" />
-          {balanceDollars != null && (
-            <span>{`$${balanceDollars.toFixed(2)}`}</span>
-          )}
-        </button>
+        </ToolbarIconButton>
       </TooltipTrigger>
       <TooltipContent side="top">{tooltipLabel}</TooltipContent>
     </Tooltip>
