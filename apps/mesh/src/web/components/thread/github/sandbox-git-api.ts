@@ -29,6 +29,7 @@ export interface GitDiffEntry {
 
 export interface GitDiffResult {
   diffs: Record<string, GitDiffEntry>;
+  mergeBaseSha?: string;
 }
 
 export interface CommitSuggestion {
@@ -78,10 +79,22 @@ export async function fetchGitDiff(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
+  options?: { base?: string; headSha?: string },
 ): Promise<GitDiffResult> {
+  const payload =
+    options?.base || options?.headSha
+      ? {
+          ...(options.base ? { base: options.base } : {}),
+          ...(options.headSha ? { headSha: options.headSha } : {}),
+        }
+      : undefined;
   const res = await sandboxFetch(
     buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "diff"),
-    { method: "POST" },
+    {
+      method: "POST",
+      headers: payload ? { "content-type": "application/json" } : undefined,
+      body: payload ? JSON.stringify(payload) : undefined,
+    },
   );
   return parseJson<GitDiffResult>(res);
 }

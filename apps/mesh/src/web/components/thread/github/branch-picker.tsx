@@ -39,6 +39,8 @@ interface Props {
   /** When true, the trigger is disabled — the user can't open the
    *  picker. The tooltip still surfaces the current branch on hover. */
   disabled?: boolean;
+  /** Chat input uses responsive label collapse; header always shows the name. */
+  placement?: "chat" | "header";
 }
 
 /**
@@ -60,7 +62,9 @@ export function BranchPicker({
   value,
   onChange,
   disabled = false,
+  placement = "chat",
 }: Props) {
+  const isHeader = placement === "header";
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [isSearchingRemote, setIsSearchingRemote] = useState(false);
@@ -131,21 +135,33 @@ export function BranchPicker({
           <span className="inline-flex min-w-0 shrink">
             <PopoverTrigger asChild>
               <Button
-                variant="ghost"
-                size="default"
+                variant={isHeader ? "outline" : "ghost"}
+                size={isHeader ? "sm" : "default"}
                 aria-label={label}
                 disabled={disabled}
                 className={cn(
-                  "font-mono text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
-                  disabled ? "gap-0" : "gap-0 @[320px]/chat-bottom:gap-1.5",
+                  "font-mono shrink min-w-0 max-w-[200px]",
+                  isHeader
+                    ? "gap-1.5 text-xs"
+                    : cn(
+                        "text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
+                        disabled
+                          ? "gap-0"
+                          : "gap-0 @[320px]/chat-bottom:gap-1.5",
+                      ),
                 )}
               >
-                <GitBranch01 className="h-3.5 w-3.5" />
+                <GitBranch01 className="h-3.5 w-3.5 shrink-0" />
                 <span
                   className={cn(
-                    "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                    !disabled &&
-                      "@[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
+                    "min-w-0 truncate",
+                    isHeader
+                      ? ""
+                      : cn(
+                          "transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+                          !disabled &&
+                            "@[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
+                        ),
                   )}
                 >
                   {label}
@@ -153,7 +169,12 @@ export function BranchPicker({
                 {!disabled && (
                   <ChevronDown
                     size={12}
-                    className="opacity-60 hidden @[320px]/chat-bottom:inline-block"
+                    className={cn(
+                      "opacity-60 shrink-0",
+                      isHeader
+                        ? ""
+                        : "hidden @[320px]/chat-bottom:inline-block",
+                    )}
                   />
                 )}
               </Button>

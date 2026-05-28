@@ -27,6 +27,8 @@ import {
 } from "@/web/lib/agent-capabilities";
 import { useChatTask } from "@/web/components/chat/index";
 import { useThreadManager } from "@/web/components/chat/store/hooks";
+import { getActiveGithubRepo } from "@/web/lib/github-repo.ts";
+import { usePrByBranch } from "@/web/components/thread/github/use-pr-data.ts";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -36,6 +38,7 @@ import {
   formatPinnedViewTabId,
   parseAutomationTabId,
   resolveActiveTabAndOpen,
+  resolveDefaultTabId,
   resolveTabClickTarget,
   type AutomationTabParsed,
 } from "./tab-id";
@@ -129,7 +132,19 @@ export function useMainPanelTabs(ctx: {
   };
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
+  const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
+
+  const githubRepo = getActiveGithubRepo(entity);
+  const prQuery = usePrByBranch({
+    orgId: org.id,
+    orgSlug: org.slug,
+    connectionId: githubRepo?.connectionId ?? "",
+    owner: githubRepo?.owner ?? "",
+    repo: githubRepo?.name ?? "",
+    branch: githubRepo ? currentBranch : null,
+  });
+  const hasOpenPr = prQuery.data?.state === "open";
 
   const entityUI =
     (
@@ -161,15 +176,35 @@ export function useMainPanelTabs(ctx: {
   const hasClonableSource = agentHasClonableSource(entity?.metadata);
   const connections = useConnections({ includeVirtual: true });
 
-  const { activeTab, mainOpen } = resolveActiveTabAndOpen({
-    mainParam: search.main,
-    metadata: entityLayout
-      ? {
-          defaultMainView: entityLayout.defaultMainView ?? null,
-          tabs: layoutTabs.map((t) => ({ id: t.id })),
-        }
-      : null,
-  });
+  const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
+    resolveActiveTabAndOpen({
+      mainParam: search.main,
+      metadata: entityLayout
+        ? {
+            defaultMainView: entityLayout.defaultMainView ?? null,
+            tabs: layoutTabs.map((t) => ({ id: t.id })),
+          }
+        : null,
+    });
+
+  const gitTabVisible =
+    hasActiveGithubRepo &&
+    (hasOpenPr || (prQuery.isPending && rawActiveTab === "git"));
+  const activeTab =
+    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+      ? resolveDefaultTabId(
+          entityLayout
+            ? {
+                defaultMainView: entityLayout.defaultMainView ?? null,
+                tabs: layoutTabs.map((t) => ({ id: t.id })),
+              }
+            : null,
+        )
+      : rawActiveTab;
+  const mainOpen =
+    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+      ? false
+      : rawMainOpen;
 
   const automationTabParsed = parseAutomationTabId(activeTab);
 
@@ -181,8 +216,8 @@ export function useMainPanelTabs(ctx: {
   if (hasClonableSource) {
     systemTabs.push({ id: "preview", title: "Preview" });
   }
-  if (hasActiveGithubRepo) {
-    systemTabs.push({ id: "git", title: currentBranch ?? "git" });
+  if (gitTabVisible) {
+    systemTabs.push({ id: "git", title: "Review changes" });
   }
   systemTabs.push({ id: "settings", title: "Settings" });
   systemTabs.push({ id: "automations", title: "Automations" });

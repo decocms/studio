@@ -10,37 +10,19 @@ describe("ChatModeRowPure", () => {
     const { container } = render(
       <ChatModeRowPure
         clonable={false}
-        connected={false}
-        branchPill={<span data-testid="branch-pill">branch</span>}
         modePicker={<span data-testid="mode-picker">mode</span>}
       />,
     );
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders ModePicker only when clonable but not connected (template)", () => {
-    const { queryByTestId, getByTestId } = render(
-      <ChatModeRowPure
-        clonable={true}
-        connected={false}
-        branchPill={<span data-testid="branch-pill">branch</span>}
-        modePicker={<span data-testid="mode-picker">mode</span>}
-      />,
-    );
-    expect(queryByTestId("branch-pill")).toBeNull();
-    expect(getByTestId("mode-picker")).toBeInTheDocument();
-  });
-
-  it("renders BranchPill + ModePicker when connected", () => {
+  it("renders ModePicker when clonable", () => {
     const { getByTestId } = render(
       <ChatModeRowPure
         clonable={true}
-        connected={true}
-        branchPill={<span data-testid="branch-pill">branch</span>}
         modePicker={<span data-testid="mode-picker">mode</span>}
       />,
     );
-    expect(getByTestId("branch-pill")).toBeInTheDocument();
     expect(getByTestId("mode-picker")).toBeInTheDocument();
   });
 });
