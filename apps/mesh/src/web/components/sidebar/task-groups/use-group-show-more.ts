@@ -102,10 +102,12 @@ export function useGroupShowMore(
         .structuredContent?.items;
       const items: Task[] = Array.isArray(raw) ? (raw as Task[]) : [];
 
-      // Drop the response if the identity changed mid-flight (filters or
-      // grouping switched). Merge into the store first so the next render
-      // sees both the new tasks and the cleared isFetching together.
-      if (identity === capturedIdentity) manager.mergeThreads(items);
+      // Stale responses (filters/grouping changed mid-flight) are harmless:
+      // `mergeThreads` dedupes by id and the rendered view re-filters and
+      // re-sorts, so any rows that don't match the new identity are simply
+      // ignored. The setState updater below guards hasMore/isFetching so
+      // those don't leak across identities.
+      manager.mergeThreads(items);
       setState((s) => {
         if (s.identity !== capturedIdentity) return s;
         return {
