@@ -3,7 +3,12 @@ import {
   stripToolNamespace,
 } from "@decocms/mcp-utils/aggregate";
 import { ArrowRight, Stars02 } from "@untitledui/icons";
-import { getPrompt, useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
+import {
+  getPrompt,
+  isStudioPackAgent,
+  useMCPClient,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -29,6 +34,7 @@ export function NextActionChip() {
   const [dialogPrompt, setDialogPrompt] = useState<Prompt | null>(null);
 
   if (!virtualMcpId || isStreaming) return null;
+  if (!isStudioPackAgent(virtualMcpId)) return null;
 
   // Only suggest a "next" once the user has actually done something in
   // this thread. A user_ask resolution flips the part to `output-available`

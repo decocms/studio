@@ -361,10 +361,11 @@ export function ChatInput({
   const lastUsage = [...messages]
     .reverse()
     .find((m) => m.role === "assistant" && m.metadata?.usage)?.metadata?.usage;
-  // Prefer per-turn context size; fall back to cumulative for legacy messages.
-  const lastTotalTokens =
-    lastUsage?.contextTokens ??
-    (lastUsage?.totalTokens ?? 0) - (lastUsage?.reasoningTokens ?? 0);
+  // Per-turn context size (size of the prompt the model saw on the LATEST
+  // step). Sibling `inputTokens`/`totalTokens` are cumulative across the
+  // turn's steps — DO NOT fall back to them here; they read as if the
+  // model's context is much fuller than it actually is.
+  const lastTotalTokens = lastUsage?.contextTokens ?? 0;
 
   const playClickSound = useSound(question004Sound);
 

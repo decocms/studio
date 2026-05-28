@@ -92,6 +92,9 @@ export interface StepUsageEmission {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Size of the prompt the model saw on the LATEST step. Drives the
+   *  UI's context-window % ring. Sibling `inputTokens` is cumulative. */
+  contextTokens: number;
   cachedInputTokens: number;
   inputTokenDetails: {
     cacheReadTokens: number;
@@ -111,6 +114,9 @@ export interface FinalUsageEmission {
   outputTokens: number;
   reasoningTokens: number | undefined;
   totalTokens: number;
+  /** Size of the prompt the model saw on the LATEST step. Drives the
+   *  UI's context-window % ring. Sibling `inputTokens` is cumulative. */
+  contextTokens: number;
   cachedInputTokens: number;
   inputTokenDetails: {
     cacheReadTokens: number;
@@ -186,6 +192,7 @@ export function createUsageAccumulator(): UsageAccumulator {
   const cache = { read: 0, write: 0, input: 0 };
   let accCost = 0;
   let lastProviderMetadata: Record<string, unknown> | undefined;
+  let lastStepInputTokens = 0;
 
   function readOpenRouterCost(
     providerMetadata: Record<string, unknown> | undefined,
@@ -204,6 +211,7 @@ export function createUsageAccumulator(): UsageAccumulator {
       if (providerMetadata !== undefined) {
         lastProviderMetadata = providerMetadata;
       }
+      lastStepInputTokens = usage?.inputTokens ?? 0;
       totals = {
         inputTokens: totals.inputTokens + (usage?.inputTokens ?? 0),
         outputTokens: totals.outputTokens + (usage?.outputTokens ?? 0),
@@ -224,6 +232,7 @@ export function createUsageAccumulator(): UsageAccumulator {
         inputTokens: totals.inputTokens,
         outputTokens: totals.outputTokens,
         totalTokens: totals.totalTokens,
+        contextTokens: lastStepInputTokens,
         // Forward AI-SDK normalized cache token details so the
         // frontend's tooltip can read them. Without this our explicit
         // usage shape replaces the SDK's default and drops these fields.
@@ -280,6 +289,7 @@ export function createUsageAccumulator(): UsageAccumulator {
           (totalUsage as { reasoningTokens?: number } | null | undefined)
             ?.reasoningTokens ?? undefined,
         totalTokens: effectiveUsage.totalTokens ?? 0,
+        contextTokens: lastStepInputTokens,
         cachedInputTokens: cache.read,
         inputTokenDetails: {
           cacheReadTokens: cache.read,
