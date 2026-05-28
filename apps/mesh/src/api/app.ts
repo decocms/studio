@@ -1789,9 +1789,29 @@ export async function createApp(options: CreateAppOptions = {}) {
     nats: gatewayNatsAdapter,
     podId: POD_ID,
     validateBearer: async (token) => {
-      const headers = new Headers({ authorization: `Bearer ${token}` });
-      const session = await auth.api.getSession({ headers });
-      return (session as { user?: { id?: string } } | null)?.user?.id ?? null;
+      // Production tokens are OAuth access tokens minted by the MCP OIDC
+      // provider (`decocms auth login`). `X-MCP-Session-Auth: true` tells the
+      // apiKey plugin to skip — otherwise its `customAPIKeyGetter` grabs the
+      // Bearer header and throws `INVALID_API_KEY` on non-key tokens. Build a
+      // fresh Headers so the marker is server-set, never client-trusted.
+      const headers = new Headers({
+        authorization: `Bearer ${token}`,
+        "X-MCP-Session-Auth": "true",
+      });
+      const mcp = (await auth.api
+        .getMcpSession({ headers })
+        .catch(() => null)) as { userId?: string } | null;
+      if (mcp?.userId) return mcp.userId;
+      // Dev fallback: `bootstrapDevLinkSession` stores a Better Auth API key
+      // as the bearer, since the local cluster has no OIDC flow.
+      const verified = (await auth.api
+        .verifyApiKey({ body: { key: token } })
+        .catch(() => null)) as {
+        valid?: boolean;
+        key?: { userId?: string };
+      } | null;
+      if (verified?.valid && verified.key?.userId) return verified.key.userId;
+      return null;
     },
   });
 
