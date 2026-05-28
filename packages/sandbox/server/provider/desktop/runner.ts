@@ -181,32 +181,42 @@ export class DesktopSandboxProvider implements SandboxProvider {
       bodyStr = await normalizeBodyToString(init.body);
     }
 
-    // Collect headers + body chunks. The daemon's control handler emits a
-    // `headers` frame (carrying the upstream status & content-type) followed
-    // by zero or more `chunk` frames; the dispatcher surfaces both.
+    // Read the `headers` frame first (always emitted before any body chunks),
+    // then return a Response whose body is a ReadableStream that pulls from
+    // the dispatch iterator. Buffering the whole body before returning would
+    // break SSE consumers (the daemon's `/_sandbox/events` never sends an
+    // `end` frame), so vm-events would hang forever waiting for the buffered
+    // Response that never resolves.
+    const iter = this.dispatch(
+      this.userSub,
+      {
+        method: init.method,
+        path: targetPath,
+        headers: flatHeaders,
+        body: bodyStr,
+      },
+      { signal: init.signal },
+    );
+    const iterator = iter[Symbol.asyncIterator]();
+
     let status = 200;
     let respHeaders: Record<string, string> = {
       "content-type": "application/octet-stream",
     };
-    let collected = "";
+    // Buffer for any body chunks that arrived in the same loop tick as the
+    // headers frame (the dispatcher can deliver several frames back-to-back).
+    const initialChunks: string[] = [];
     try {
-      const iter = this.dispatch(
-        this.userSub,
-        {
-          method: init.method,
-          path: targetPath,
-          headers: flatHeaders,
-          body: bodyStr,
-        },
-        { signal: init.signal },
-      );
-      for await (const chunk of iter) {
+      while (true) {
+        const next = await iterator.next();
+        if (next.done) break;
+        const chunk = next.value;
         if (chunk.headers) {
           status = chunk.headers.status;
           respHeaders = chunk.headers.headers;
-        } else if (chunk.data != null) {
-          collected += chunk.data;
+          break;
         }
+        if (chunk.data != null) initialChunks.push(chunk.data);
       }
     } catch (err) {
       // Translate dispatch errors to a 502 Response so the caller's
@@ -218,7 +228,32 @@ export class DesktopSandboxProvider implements SandboxProvider {
       });
     }
 
-    return new Response(collected, { status, headers: respHeaders });
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        for (const data of initialChunks) controller.enqueue(encoder.encode(data));
+      },
+      async pull(controller) {
+        try {
+          const next = await iterator.next();
+          if (next.done) {
+            controller.close();
+            return;
+          }
+          const chunk = next.value;
+          if (chunk.data != null) controller.enqueue(encoder.encode(chunk.data));
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+      cancel() {
+        // Propagate client cancellation to the dispatch iterator so the
+        // daemon's `cancel` frame fires and frees server-side resources.
+        void iterator.return?.();
+      },
+    });
+
+    return new Response(body, { status, headers: respHeaders });
   }
 
   async alive(handle: string): Promise<boolean> {
