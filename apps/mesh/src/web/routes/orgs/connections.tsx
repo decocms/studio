@@ -979,17 +979,52 @@ function ConnectionResults({
     const existingConnIds = new Set(
       agent.connections.map((c) => c.connection_id),
     );
-    const newConns = [...selectedIds]
-      .filter((id) => !existingConnIds.has(id))
-      .map((connection_id) => ({
-        connection_id,
-        selected_tools: null as string[] | null,
-        selected_resources: null as string[] | null,
-        selected_prompts: null as string[] | null,
-      }));
+    const existingSlotApps = new Set(
+      (agent.slots ?? []).map((s) => s.slot_app_id),
+    );
 
-    if (newConns.length === 0) {
-      toast.info("All selected connections are already in that agent");
+    // Partition the selection: org-scoped connections attach as concrete
+    // children; user-private connections must attach as typed slots (resolved
+    // per-caller to each user's own connection of that app_id). A private
+    // connection without an app_id can't be slotted, so it's skipped.
+    type SelectionFields = {
+      selected_tools: string[] | null;
+      selected_resources: string[] | null;
+      selected_prompts: string[] | null;
+    };
+    const emptySelection: SelectionFields = {
+      selected_tools: null,
+      selected_resources: null,
+      selected_prompts: null,
+    };
+    const newConns: ({ connection_id: string } & SelectionFields)[] = [];
+    const newSlots: ({ slot_app_id: string } & SelectionFields)[] = [];
+    const skippedPrivate: string[] = [];
+
+    for (const id of selectedIds) {
+      const conn = connections.find((c) => c.id === id);
+      if (!conn) continue;
+      if (conn.access === "user") {
+        if (!conn.app_id) {
+          skippedPrivate.push(conn.title);
+          continue;
+        }
+        if (existingSlotApps.has(conn.app_id)) continue;
+        existingSlotApps.add(conn.app_id);
+        newSlots.push({ slot_app_id: conn.app_id, ...emptySelection });
+      } else {
+        if (existingConnIds.has(conn.id)) continue;
+        existingConnIds.add(conn.id);
+        newConns.push({ connection_id: conn.id, ...emptySelection });
+      }
+    }
+
+    if (newConns.length === 0 && newSlots.length === 0) {
+      toast.info(
+        skippedPrivate.length > 0
+          ? "Private connections need an app id to attach as a slot"
+          : "All selected connections are already in that agent",
+      );
       return;
     }
 
@@ -1000,6 +1035,15 @@ function ConnectionResults({
           id: agentId,
           data: {
             connections: [...agent.connections, ...newConns],
+            slots: [
+              ...(agent.slots ?? []).map((s) => ({
+                slot_app_id: s.slot_app_id,
+                selected_tools: s.selected_tools,
+                selected_resources: s.selected_resources,
+                selected_prompts: s.selected_prompts,
+              })),
+              ...newSlots,
+            ],
           },
         },
       });
@@ -1015,9 +1059,17 @@ function ConnectionResults({
         },
       });
 
+      const added = newConns.length + newSlots.length;
       toast.success(
-        `Added ${newConns.length} connection${newConns.length !== 1 ? "s" : ""} to "${agent.title}"`,
+        `Added ${added} connection${added !== 1 ? "s" : ""} to "${agent.title}"`,
       );
+      if (skippedPrivate.length > 0) {
+        toast.warning(
+          `Skipped ${skippedPrivate.length} private connection${
+            skippedPrivate.length !== 1 ? "s" : ""
+          } without an app id`,
+        );
+      }
       exitSelectionMode();
     } catch {
       toast.error("Failed to add connections to agent");
