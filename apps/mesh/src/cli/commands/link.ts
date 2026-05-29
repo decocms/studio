@@ -8,10 +8,12 @@
  * login flow is visible). With a TTY (and no `--no-tui`), renders the Ink
  * task-manager view; otherwise streams plain `console.log` output.
  */
+import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ensureSession } from "../lib/ensure-session";
 import { startLinkDaemon, type LinkDaemonMonitor } from "../../link-daemon";
+import { formatLogLine } from "../format-log-line";
 
 export interface LinkCommandOptions {
   port?: number;
@@ -31,19 +33,34 @@ export interface LinkCommandOptions {
 }
 
 /**
- * Swallow daemon stdout so it can't corrupt the Ink render; route errors to
- * the TUI footer via `onError`. `--no-tui` is the escape hatch for full logs.
+ * Redirect the parent process's console away from the terminal so it can't
+ * corrupt the Ink render. When `logFd` is given, `log`/`warn`/`error` lines
+ * are appended to the `deco link` log file; `error` is additionally surfaced
+ * in the TUI footer via `onError`. `--no-tui` is the escape hatch for live
+ * terminal logs (it never installs this interception).
  */
-function interceptLinkConsole(onError: (msg: string) => void): () => void {
+function interceptLinkConsole(
+  onError: (msg: string) => void,
+  logFd?: number,
+): () => void {
   const original = {
     log: console.log,
     warn: console.warn,
     error: console.error,
   };
-  console.log = () => {};
-  console.warn = () => {};
+  const tee = (args: unknown[]): void => {
+    if (logFd === undefined) return;
+    try {
+      writeSync(logFd, `${formatLogLine(args)}\n`);
+    } catch {
+      // Log file unavailable — never let logging break the daemon.
+    }
+  };
+  console.log = (...args: unknown[]) => tee(args);
+  console.warn = (...args: unknown[]) => tee(args);
   console.error = (...args: unknown[]) => {
-    onError(args.map((a) => (typeof a === "string" ? a : String(a))).join(" "));
+    tee(args);
+    onError(formatLogLine(args));
   };
   return () => {
     console.log = original.log;
@@ -95,6 +112,7 @@ export async function runLinkCommand(
     "https://studio.decocms.com";
 
   let restoreConsole: (() => void) | undefined;
+  let logFd: number | undefined;
   try {
     // Login flow (may open a browser / prompt) runs with normal console.
     // Auth targets the same studio we link against.
@@ -124,8 +142,17 @@ export async function runLinkCommand(
         setClusterUrl,
         setDaemonError,
         setIngress,
+        setLogPath,
         setMachine,
       } = await import("../link-store");
+
+      // Combined log file: both the parent's intercepted console output and
+      // every spawned sandbox daemon's stdout/stderr land here, keeping the
+      // Ink canvas clean. Append mode so it survives across restarts.
+      mkdirSync(dataDir, { recursive: true });
+      const logPath = join(dataDir, "link.log");
+      logFd = openSync(logPath, "a");
+      setLogPath(logPath);
 
       setClusterUrl(clusterBaseUrl);
       setCluster("connecting");
@@ -135,7 +162,7 @@ export async function runLinkCommand(
         onCluster: (s) => setCluster(s),
         onMachine: (label) => setMachine(label),
       };
-      restoreConsole = interceptLinkConsole(setDaemonError);
+      restoreConsole = interceptLinkConsole(setDaemonError, logFd);
       render(createElement(LinkApp), { patchConsole: false });
     } else if (opts.banner !== false) {
       const { printBanner } = await import("../banner-art");
@@ -148,6 +175,7 @@ export async function runLinkCommand(
       dataDir,
       session,
       monitor,
+      logFd,
     });
     return await handle.stopped;
   } catch (err) {
@@ -159,5 +187,12 @@ export async function runLinkCommand(
   } finally {
     // Backstop: console must never leak patched, regardless of exit path.
     restoreConsole?.();
+    if (logFd !== undefined) {
+      try {
+        closeSync(logFd);
+      } catch {
+        // already closed
+      }
+    }
   }
 }
