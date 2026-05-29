@@ -394,7 +394,7 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
       data-slot="sidebar-menu"
       data-sidebar="menu"
       className={cn(
-        "flex w-full min-w-0 flex-col gap-1 group-data-[state=collapsed]/sidebar:items-center",
+        "flex w-full min-w-0 list-none flex-col gap-1 group-data-[state=collapsed]/sidebar:items-center",
         className,
       )}
       {...props}
@@ -407,7 +407,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
     <li
       data-slot="sidebar-menu-item"
       data-sidebar="menu-item"
-      className={cn("group/menu-item relative w-full", className)}
+      className={cn("group/menu-item relative w-full list-none", className)}
       {...props}
     />
   );
