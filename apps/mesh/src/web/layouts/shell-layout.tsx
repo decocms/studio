@@ -8,6 +8,7 @@ import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { AUTOSEND_QUERY_VALUE } from "@/web/lib/autosend";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { readCachedOrg, writeCachedOrg } from "@/web/lib/query-persist";
 import { PostHogGroupSync } from "@/web/providers/posthog-group-sync";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -194,6 +195,12 @@ function ShellLayoutContent() {
   const org = orgMatch?.params.org;
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
 
+  // Session is guaranteed present here (this renders inside <SignedIn>), so the
+  // user id is available synchronously to scope the org cache by principal.
+  const { data: session } = authClient.useSession();
+  const userId = session?.user?.id;
+  const cachedOrg = org && userId ? readCachedOrg(userId, org) : null;
+
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscribes to document keydown for ⌘K shortcuts dialog; DOM event listener has no React 19 alternative
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
@@ -244,8 +251,22 @@ function ShellLayoutContent() {
         localStorage.setItem(LOCALSTORAGE_KEYS.lastOrgSlug(), org);
       }
 
+      // Seed the user-scoped cache so the next refresh renders instantly.
+      if (userId && data) {
+        writeCachedOrg(userId, org, data);
+      }
+
       return data;
     },
+    // Hydrate from the user-scoped cache so the shell paints without waiting on
+    // the network; the stale `initialDataUpdatedAt` triggers a background
+    // refetch that flips to the access gate if membership was revoked.
+    initialData: cachedOrg
+      ? (cachedOrg.data as Awaited<
+          ReturnType<typeof authClient.organization.getFullOrganization>
+        >["data"])
+      : undefined,
+    initialDataUpdatedAt: cachedOrg?.updatedAt,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
   });
