@@ -24,8 +24,15 @@ RUN groupadd -g 1001 bunapp && \
 USER bunuser
 WORKDIR /app/apps/mesh
 
-# Install the package locally during build (cached in image layer)
-RUN bun add decocms@${MESH_VERSION}
+# Install the package locally during build (cached in image layer).
+# Retry to absorb npm CDN tarball-propagation lag: a freshly published version
+# can be in the manifest while its .tgz is still 404ing on the CDN.
+RUN for i in $(seq 1 10); do \
+      bun add decocms@${MESH_VERSION} && exit 0; \
+      echo "bun add attempt $i/10 failed, waiting 15s for npm propagation..."; \
+      sleep 15; \
+    done; \
+    echo "bun add decocms@${MESH_VERSION} failed after 10 attempts" && exit 1
 
 # Drop the build toolchain now that native modules have been compiled.
 USER root

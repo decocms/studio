@@ -108,16 +108,23 @@ jobs:
         working-directory: apps/mesh
       - name: Wait for npm propagation
         run: |
-          echo "Waiting for npm registry propagation..."
-          for i in $(seq 1 12); do
-            if npm view decocms@${{ needs.prepare.outputs.version }} version >/dev/null 2>&1; then
-              echo "Version available on npm after $((i * 10))s"
+          VERSION=${{ needs.prepare.outputs.version }}
+          # Poll the tarball, not the manifest. `npm view ... version` hits the
+          # version manifest, which propagates almost immediately, but `bun add`
+          # downloads the .tgz from the CDN, which propagates later. Gating on the
+          # manifest lets build-docker start before the tarball is fetchable, so
+          # `bun add decocms@$VERSION` 404s. Gate on the actual tarball instead.
+          TARBALL="https://registry.npmjs.org/decocms/-/decocms-${VERSION}.tgz"
+          echo "Waiting for npm tarball propagation: $TARBALL"
+          for i in $(seq 1 30); do
+            if curl -fsI "$TARBALL" >/dev/null 2>&1; then
+              echo "Tarball available on npm CDN after $((i * 10))s"
               exit 0
             fi
-            echo "Attempt $i/12 - not yet available, waiting 10s..."
+            echo "Attempt $i/30 - tarball not yet propagated, waiting 10s..."
             sleep 10
           done
-          echo "Version not available on npm after 120s"
+          echo "Tarball not available on npm CDN after 300s"
           exit 1
 
   build-docker:
