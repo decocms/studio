@@ -22,6 +22,9 @@ import {
   SqlAsyncResearchJobStorage,
 } from "@/storage/async-research-jobs";
 import type { MeshContextFactory } from "@/automations/fire";
+import { getObjectStorageS3Service } from "@/object-storage/factory";
+import { createBoundObjectStorage } from "@/object-storage/bound-object-storage";
+import { DevObjectStorage } from "@/object-storage/dev-object-storage";
 
 export interface BuildAutomationContextDeps {
   db: Kysely<Database>;
@@ -109,6 +112,15 @@ export function createAutomationContextFactory(
       deps.asyncResearchJobStorage,
       membership.orgId,
     );
+
+    // The base context was built without `req`, so it had no organization and
+    // objectStorage was set to null (context-factory.ts). Now that the org is
+    // resolved, rebuild it the same way the request path does — otherwise tools
+    // like generate_image silently fall back to inlining base64 data: URIs.
+    const s3Service = getObjectStorageS3Service();
+    ctx.objectStorage = s3Service
+      ? createBoundObjectStorage(s3Service, membership.orgId)
+      : new DevObjectStorage(membership.orgId, ctx.baseUrl);
 
     return ctx;
   };
