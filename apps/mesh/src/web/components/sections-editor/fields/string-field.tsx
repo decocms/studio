@@ -3,6 +3,40 @@ import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import type { FieldProps } from "./field-props";
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * Native <input type="date"> / <input type="datetime-local"> give us the
+ * segmented MM/DD/YYYY auto-advance UX users expect from a date picker.
+ * Deco persists ISO 8601 strings, so we convert at the edges.
+ */
+function isoToDateInput(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function dateInputToIso(dateValue: string): string {
+  if (!dateValue) return "";
+  // Interpret as local midnight so the date the user picked is what gets stored.
+  const d = new Date(`${dateValue}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+}
+
+function isoToDateTimeInput(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function dateTimeInputToIso(localValue: string): string {
+  if (!localValue) return "";
+  const d = new Date(localValue);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+}
+
 function FieldLabel({
   htmlFor,
   label,
@@ -52,6 +86,44 @@ export function StringField({
           value={strValue}
           onChange={(e) => onChange(e.target.value)}
           rows={4}
+        />
+      </div>
+    );
+  }
+
+  if (format === "date") {
+    return (
+      <div className="space-y-2">
+        <FieldLabel
+          htmlFor={path}
+          label={label}
+          description={schema.description}
+        />
+        <Input
+          id={path}
+          type="date"
+          value={isoToDateInput(strValue)}
+          onChange={(e) => onChange(dateInputToIso(e.target.value))}
+          className="h-10"
+        />
+      </div>
+    );
+  }
+
+  if (format === "date-time") {
+    return (
+      <div className="space-y-2">
+        <FieldLabel
+          htmlFor={path}
+          label={label}
+          description={schema.description}
+        />
+        <Input
+          id={path}
+          type="datetime-local"
+          value={isoToDateTimeInput(strValue)}
+          onChange={(e) => onChange(dateTimeInputToIso(e.target.value))}
+          className="h-10"
         />
       </div>
     );

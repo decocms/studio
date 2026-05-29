@@ -1,6 +1,12 @@
 import { useState, useRef } from "react";
-import { ChevronRight, Loading01 } from "@untitledui/icons";
+import { ChevronRight, Flag01, Loading01, Plus } from "@untitledui/icons";
+import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
@@ -15,6 +21,8 @@ import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema } from "./resolve-schema";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
+import { resolveMatcherIconName } from "./matcher-icons";
+import { getIconComponent } from "../agent-icon";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
 import type { SectionCatalogEntry } from "./section-catalog";
@@ -39,6 +47,28 @@ import {
 } from "./section-variants";
 
 const AUTOSAVE_DELAY = 700;
+
+const VARIANT_GREEN_TEXT = "oklch(0.65 0.15 160)";
+const VARIANT_TAB_ACTIVE_CLASS =
+  "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
+
+function VariantTabIcon({
+  rule,
+  matchers,
+}: {
+  rule: Record<string, unknown> | undefined;
+  matchers: Array<{ resolveType: string; iconName: string }>;
+}) {
+  const rt = (rule?.__resolveType as string) ?? "";
+  // Prefer the schema-defined icon (resolved by extractMatchers) so custom
+  // matchers like "Birthday" pick up the Calendar icon set in their schema
+  // metadata, instead of falling back to FilterLines via regex matching.
+  const fromSchema = matchers.find((m) => m.resolveType === rt)?.iconName;
+  const iconName = fromSchema ?? resolveMatcherIconName(rt);
+  const Icon = getIconComponent(iconName);
+  if (!Icon) return null;
+  return <Icon size={14} className="shrink-0" />;
+}
 
 interface PageVariant {
   label: string;
@@ -223,11 +253,29 @@ function parsePageVariants(sections: unknown): PageVariant[] {
         rule?: Record<string, unknown>;
         value?: unknown;
       }>;
-      return raw.map((v, i) => ({
-        label: formatMatcher(v.rule) || `Variant ${i + 1}`,
-        sections: Array.isArray(v.value) ? (v.value as RawSection[]) : [],
-        rule: v.rule,
-      }));
+      // When several variants share the same matcher label (e.g. all "Default"
+      // because none have a rule set yet), append an index so the user can
+      // tell them apart in the tab bar.
+      const labels = raw.map((v) => formatMatcher(v.rule));
+      const labelCounts = labels.reduce<Record<string, number>>((acc, l) => {
+        acc[l] = (acc[l] ?? 0) + 1;
+        return acc;
+      }, {});
+      const seen: Record<string, number> = {};
+      return raw.map((v, i) => {
+        const baseLabel = labels[i] ?? `Variant ${i + 1}`;
+        const total = labelCounts[baseLabel] ?? 1;
+        let label = baseLabel;
+        if (total > 1) {
+          seen[baseLabel] = (seen[baseLabel] ?? 0) + 1;
+          label = `${baseLabel} ${seen[baseLabel]}`;
+        }
+        return {
+          label: label || `Variant ${i + 1}`,
+          sections: Array.isArray(v.value) ? (v.value as RawSection[]) : [],
+          rule: v.rule,
+        };
+      });
     }
   }
   return [];
@@ -361,6 +409,7 @@ export function SectionsEditor({
   previewReady = true,
   previewUrl,
   currentPath,
+  activePageBlockKey = null,
   activeGlobalBlockKey = null,
   externalSelectedIndex,
   onSaved,
@@ -373,6 +422,10 @@ export function SectionsEditor({
   /** Sandbox preview base URL used for section gallery previews. */
   previewUrl?: string;
   currentPath: string;
+  /** When set, identifies the page by its unique decofile block key. Takes
+   * precedence over `currentPath` for selection — required when multiple
+   * pages share the same `path`. */
+  activePageBlockKey?: string | null;
   /** When set, edits a saved global block instead of a page. */
   activeGlobalBlockKey?: string | null;
   /** Section index selected via click-through from the preview iframe. */
@@ -497,7 +550,9 @@ export function SectionsEditor({
   const isGlobalBlockMode = !!activeGlobalBlockKey;
   const activePage = isGlobalBlockMode
     ? null
-    : pages.find((p) => norm(p.path) === norm(currentPath));
+    : activePageBlockKey
+      ? (pages.find((p) => p.key === activePageBlockKey) ?? null)
+      : (pages.find((p) => norm(p.path) === norm(currentPath)) ?? null);
   const activePageKey = isGlobalBlockMode
     ? activeGlobalBlockKey
     : (activePage?.key ?? null);
@@ -1339,6 +1394,57 @@ export function SectionsEditor({
             ...fieldBreadcrumbs,
           ]
       : [];
+  const handleAddPageVariant = () => {
+    if (!activePageKey) return;
+    const fullPageData = decofile[activePageKey] as Record<string, unknown>;
+    const current = fullPageData.sections;
+    // Seed the new variant with a clone of the currently active variant's
+    // sections — gives the user a working baseline to modify (matches the
+    // A/B-test mental model: fork-then-tweak).
+    const seedSections = structuredClone(rawSections);
+    let updatedSections: Record<string, unknown>;
+    if (Array.isArray(current)) {
+      updatedSections = {
+        variants: [{ value: current }, { value: seedSections }],
+      };
+    } else if (current && typeof current === "object") {
+      const obj = current as Record<string, unknown>;
+      if (Array.isArray(obj.variants)) {
+        updatedSections = {
+          ...obj,
+          variants: [...(obj.variants as unknown[]), { value: seedSections }],
+        };
+      } else {
+        return;
+      }
+    } else {
+      updatedSections = {
+        variants: [{ value: [] }, { value: seedSections }],
+      };
+    }
+    const newVariantIndex = Array.isArray(updatedSections.variants as unknown[])
+      ? (updatedSections.variants as unknown[]).length - 1
+      : 1;
+    saveBlock.mutate(
+      {
+        blockKey: activePageKey,
+        data: { ...fullPageData, sections: updatedSections },
+      },
+      {
+        onSuccess: () => {
+          setActiveVariantIndex(newVariantIndex);
+          setSelectedSectionIndex(null);
+          setFormValue(null);
+          setActiveResolveType(null);
+          setFieldBreadcrumbs([]);
+          setRuleFormValue(null);
+          setRuleResolveType(null);
+        },
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  };
+
   const exitSectionEditing = () => {
     clearSectionEditing();
   };
@@ -1419,49 +1525,92 @@ export function SectionsEditor({
             </div>
           </div>
         ) : (
-          <PageHeaderInputs
-            pageKey={activePageKey!}
-            initialName={activePage!.name}
-            initialPath={activePage!.path}
-            onFieldChange={savePageField}
-          />
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <PageHeaderInputs
+                pageKey={activePageKey!}
+                initialName={activePage!.name}
+                initialPath={activePage!.path}
+                onFieldChange={savePageField}
+              />
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Add variant"
+                  className="size-7 shrink-0"
+                  style={{ color: "oklch(0.65 0.15 160)" }}
+                  onClick={handleAddPageVariant}
+                >
+                  <Flag01 size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Add variant</TooltipContent>
+            </Tooltip>
+          </div>
         )}
       </div>
 
       {/* Variant selector (when page sections are multivariate) */}
       {hasMultipleVariants && !isEditing && (
-        <div className="flex gap-1 px-3 py-1.5 border-b shrink-0 overflow-x-auto">
-          {pageVariants.map((variant, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => {
-                setActiveVariantIndex(i);
-                setSelectedSectionIndex(null);
-                setFormValue(null);
-                setActiveResolveType(null);
-                setFieldBreadcrumbs([]);
-                const variantRule = pageVariants[i]?.rule;
-                const variantRuleRt =
-                  (variantRule?.__resolveType as string) ?? "";
-                setRuleResolveType(variantRuleRt);
-                if (variantRule) {
-                  const { __resolveType: _, ...ruleData } = variantRule;
-                  setRuleFormValue(ruleData);
-                } else {
-                  setRuleFormValue(null);
-                }
-              }}
-              className={cn(
-                "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                i === safeVariantIndex
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              {variant.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5 px-3 py-2 border-b shrink-0 overflow-x-auto">
+          {pageVariants.map((variant, i) => {
+            const isActive = i === safeVariantIndex;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setActiveVariantIndex(i);
+                  setSelectedSectionIndex(null);
+                  setFormValue(null);
+                  setActiveResolveType(null);
+                  setFieldBreadcrumbs([]);
+                  const variantRule = pageVariants[i]?.rule;
+                  const variantRuleRt =
+                    (variantRule?.__resolveType as string) ?? "";
+                  setRuleResolveType(variantRuleRt);
+                  if (variantRule) {
+                    const { __resolveType: _, ...ruleData } = variantRule;
+                    setRuleFormValue(ruleData);
+                  } else {
+                    setRuleFormValue(null);
+                  }
+                }}
+                className={cn(
+                  "shrink-0 inline-flex items-center gap-1.5 rounded-md px-3 h-8 text-sm font-medium transition-colors cursor-pointer",
+                  isActive
+                    ? VARIANT_TAB_ACTIVE_CLASS
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <VariantTabIcon
+                  rule={variant.rule}
+                  matchers={availableMatchers}
+                />
+                <span className="truncate">{variant.label}</span>
+              </button>
+            );
+          })}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Add variant"
+                className="size-8 shrink-0 ml-auto cursor-pointer"
+                style={{ color: VARIANT_GREEN_TEXT }}
+                onClick={handleAddPageVariant}
+              >
+                <Plus size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Add variant</TooltipContent>
+          </Tooltip>
         </div>
       )}
 
