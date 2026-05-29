@@ -454,6 +454,11 @@ import type { ModelListCache } from "@/ai-providers/model-list-cache";
 import { getObjectStorageS3Service } from "../object-storage/factory";
 import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../object-storage/dev-object-storage";
+import {
+  createIconHoister,
+  withConnectionIconHoisting,
+  withVirtualMcpIconHoisting,
+} from "../object-storage/icon-hoister";
 
 /**
  * Fetch role permissions from the database
@@ -1183,6 +1188,24 @@ export async function createMeshContextFactory(
       : s3Service
         ? createBoundObjectStorage(s3Service, organization.id)
         : new DevObjectStorage(organization.id, baseUrl);
+
+    // Hoist inline data: icons to object storage on connection/virtual-MCP
+    // writes so base64 blobs never land on the row (and never get re-inlined
+    // into COLLECTION_*_LIST results). Decorate here — not in the storage
+    // classes — because those are singletons without objectStorage/org slug.
+    const iconHoister = createIconHoister({
+      objectStorage,
+      baseUrl,
+      orgSlug: organization?.slug,
+    });
+    storage.connections = withConnectionIconHoisting(
+      storage.connections,
+      iconHoister,
+    );
+    storage.virtualMcps = withVirtualMcpIconHoisting(
+      storage.virtualMcps,
+      iconHoister,
+    );
 
     const ctx: MeshContext = {
       timings,
