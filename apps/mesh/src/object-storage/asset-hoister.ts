@@ -107,6 +107,9 @@ export function createAssetHoister(
     prefix?: string;
     /** Max decoded asset size to hoist (bytes). Defaults to 5 MiB. */
     maxBytes?: number;
+    /** When true, compute the would-be files URL without uploading. Used by
+     * the backfill's --dry-run so it can report changes without S3 writes. */
+    dryRun?: boolean;
   },
 ): AssetHoister {
   const {
@@ -115,6 +118,7 @@ export function createAssetHoister(
     orgSlug,
     prefix = "connection-icons",
     maxBytes = MAX_ASSET_BYTES,
+    dryRun = false,
   } = deps;
   return async (value) => {
     if (typeof value !== "string") return value;
@@ -141,6 +145,7 @@ export function createAssetHoister(
     // writes are idempotent (overwrite identical content) and dedup for free.
     const digest = createHash("sha256").update(bytes).digest("hex");
     const key = `${prefix}/${digest}.${ext}`;
+    if (dryRun) return toFilesUrl(baseUrl, orgSlug, key);
     try {
       await objectStorage.put(key, bytes, {
         contentType: mimeType,
@@ -189,6 +194,19 @@ async function hoistDeep(
     return changed ? out : value;
   }
   return value;
+}
+
+/**
+ * Deep-hoist inline `data:` media in an arbitrary JSON value, returning the
+ * SAME reference when nothing changed. Exposed so the one-off thread-asset
+ * backfill (`deco backfill-thread-assets`) reuses the exact traversal +
+ * hoisting logic as the live write sink — no duplicated regex/key/URL rules.
+ */
+export function hoistInlineAssets(
+  value: unknown,
+  hoist: AssetHoister,
+): Promise<unknown> {
+  return hoistDeep(value, hoist);
 }
 
 /**
@@ -299,9 +317,10 @@ type ThreadMessageStore = {
 
 /**
  * Decorate a thread storage so inline `data:` media is hoisted out of message
- * `parts` (and `metadata`) on `saveMessages`. Reads intentionally stay pure:
- * legacy inline rows should be repaired by an explicit bounded backfill/repair
- * path, not by uploading and writing during `listMessages`.
+ * `parts` (and `metadata`) on `saveMessages`. Reads stay pure — `listMessages`
+ * is not decorated — so the hot read path never uploads or writes. The write
+ * sink stops new base64 from landing; rows written before this sink keep their
+ * inline media until they are next saved through `saveMessages`.
  */
 function withThreadMessageHoisting<T extends ThreadMessageStore>(
   base: T,
@@ -330,7 +349,7 @@ function withThreadMessageHoisting<T extends ThreadMessageStore>(
  * factory and the automation context factory so the two paths hoist
  * identically.
  */
-export function decorateThreadsWithAssetHoisting<T extends ThreadMessageStore>(
+function decorateThreadsWithAssetHoisting<T extends ThreadMessageStore>(
   threads: T,
   deps: AssetHoistingDeps,
 ): T {

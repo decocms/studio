@@ -66,6 +66,12 @@ const { values, positionals } = parseArgs({
     },
     target: { type: "string" },
     env: { type: "string", short: "e" },
+    "dry-run": {
+      type: "boolean",
+      default: false,
+    },
+    batch: { type: "string" },
+    limit: { type: "string" },
   },
   allowPositionals: true,
 });
@@ -82,6 +88,7 @@ Usage:
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
   deco link [options]                Start the desktop-side link daemon
+  deco backfill-thread-assets        Hoist legacy inline media out of thread_messages
   deco completion [shell]            Install shell completions
 
 Server Options:
@@ -104,6 +111,12 @@ Auth Options:
 
 Link Options:
   --port <port>     Local port for the daemon (default: 5174)
+
+Backfill Options (backfill-thread-assets):
+  --dry-run             Report what would change without uploading or writing
+  --batch <n>           Rows scanned per page (default: 500)
+  --limit <n>           Cap total rows scanned (default: all)
+  --base-url <url>      Public origin for stored URLs (default: BASE_URL env)
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
@@ -188,6 +201,20 @@ if (command === "services") {
     home: decoHome,
   });
   process.exit(0);
+}
+
+// ── Backfill: hoist legacy inline media out of thread_messages ──────────
+if (command === "backfill-thread-assets") {
+  const { backfillThreadAssetsCommand } = await import(
+    "./cli/commands/backfill-thread-assets"
+  );
+  const code = await backfillThreadAssetsCommand({
+    dryRun: values["dry-run"] === true,
+    batch: values.batch ? Number(values.batch) : 500,
+    limit: values.limit ? Number(values.limit) : undefined,
+    baseUrl: values["base-url"],
+  });
+  process.exit(code);
 }
 
 // ── Auth / Link helpers ────────────────────────────────────────────────
@@ -315,7 +342,15 @@ if (command === "dev") {
 
 if (
   command &&
-  !["init", "completion", "dev", "services", "auth", "link"].includes(command)
+  ![
+    "init",
+    "completion",
+    "dev",
+    "services",
+    "auth",
+    "link",
+    "backfill-thread-assets",
+  ].includes(command)
 ) {
   console.error(`Unknown command: ${command}`);
   process.exit(1);
