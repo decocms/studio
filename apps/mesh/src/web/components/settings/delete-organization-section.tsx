@@ -1,3 +1,4 @@
+import { invalidateOrganizationListCache } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { KEYS } from "@/web/lib/query-keys";
 import { track } from "@/web/lib/posthog-client";
@@ -65,6 +66,10 @@ export function DeleteOrganizationSection() {
       if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === org.slug) {
         localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
       }
+
+      // Drop the TTL-cached org list so the homeRoute loader doesn't redirect
+      // back to the just-deleted org (this path navigates client-side).
+      invalidateOrganizationListCache();
 
       // Drop active-org caches that might still hold the archived org
       queryClient.removeQueries({

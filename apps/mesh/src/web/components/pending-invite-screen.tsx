@@ -1,4 +1,7 @@
-import { authClient } from "@/web/lib/auth-client";
+import {
+  authClient,
+  invalidateOrganizationListCache,
+} from "@/web/lib/auth-client";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Mail01 } from "@untitledui/icons";
@@ -27,6 +30,9 @@ export function PendingInviteScreen({
       return result.data;
     },
     onSuccess: () => {
+      // Membership changed — drop the cached org list so the home loader sees
+      // the newly joined org.
+      invalidateOrganizationListCache();
       window.location.href = `/${orgSlug}`;
     },
     onError: (error) => {

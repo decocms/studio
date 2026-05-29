@@ -2,6 +2,7 @@ import { AutoDomainJoinScreen } from "@/web/components/auto-domain-join-screen";
 import { NoAccessScreen } from "@/web/components/no-access-screen";
 import { PendingInviteScreen } from "@/web/components/pending-invite-screen";
 import { useOrgAccessStatus } from "@/web/hooks/use-org-access-status";
+import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 
 /**
  * Renders the right "you can't enter here yet" screen when the shell layout's
@@ -10,6 +11,19 @@ import { useOrgAccessStatus } from "@/web/hooks/use-org-access-status";
  */
 export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
   const { data } = useOrgAccessStatus(orgSlug);
+
+  // Self-heal the home route's optimistic redirect: if we sent the user here
+  // from a cached slug that turned out to be stale (org deleted or membership
+  // lost), clear it and bounce back to "/" so the home loader can pick a valid
+  // destination — instead of dead-ending on the not-found / no-access screen.
+  if (
+    (data.status === "not-found" || data.status === "no-access") &&
+    localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug
+  ) {
+    localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    window.location.href = "/";
+    return null;
+  }
 
   if (data.status === "not-found") {
     return <NoAccessScreen orgSlug={orgSlug} reason="not-found" />;

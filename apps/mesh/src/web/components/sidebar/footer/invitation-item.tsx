@@ -1,4 +1,7 @@
-import { authClient } from "@/web/lib/auth-client";
+import {
+  authClient,
+  invalidateOrganizationListCache,
+} from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Check, XClose } from "@untitledui/icons";
 import { useState } from "react";
@@ -33,6 +36,9 @@ export function InvitationItem({ invitation }: { invitation: Invitation }) {
     // A failure here should not surface as "failed to accept" — fall back to
     // the root and let the post-redirect flow pick a default org.
     toast.success("Invitation accepted!");
+    // Membership changed — drop the cached org list so the home loader sees
+    // the newly joined org.
+    invalidateOrganizationListCache();
     let slug: string | undefined;
     try {
       const orgResult = await authClient.organization.getFullOrganization({
