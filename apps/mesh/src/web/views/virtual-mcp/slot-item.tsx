@@ -118,9 +118,6 @@ function SlotItemInner({
               Not connected for you
             </p>
           </div>
-          <Badge variant="special" className="shrink-0">
-            Personal
-          </Badge>
           <Button
             asChild
             variant="outline"
