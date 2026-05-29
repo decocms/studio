@@ -76,6 +76,8 @@ import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
+import { ConnectAgentGate } from "@/web/components/chat/connect-agent-gate";
+import { useUnresolvedSlots } from "@/web/hooks/use-unresolved-slots";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -309,6 +311,13 @@ function AgentInsetProvider() {
   // Fetch entity (Suspense-based — resolved before render)
   const entity = useVirtualMCP(virtualMcpId);
 
+  const { unresolved, isLoading: slotsLoading } = useUnresolvedSlots(
+    org.id,
+    org.slug,
+    entity?.slots ?? [],
+  );
+  const showConnectGate = !slotsLoading && unresolved.length > 0;
+
   const layoutMetadata = (entity?.metadata as any)?.ui?.layout ?? null;
   const entityMetadata = layoutMetadata
     ? {
@@ -348,6 +357,21 @@ function AgentInsetProvider() {
     virtualMcpId,
     entity,
   };
+
+  if (showConnectGate) {
+    return (
+      <InsetContext value={insetContextValue}>
+        <div className="flex-1 min-w-0 flex flex-col">
+          <ConnectAgentGate
+            agentTitle={entity?.title ?? ""}
+            agentIcon={entity?.icon ?? null}
+            slots={unresolved}
+            orgSlug={org.slug}
+          />
+        </div>
+      </InsetContext>
+    );
+  }
 
   if (ensureState.status === "creating" || ensureState.status === "loading") {
     return (
