@@ -361,13 +361,15 @@ function AgentInsetProvider() {
   if (showConnectGate) {
     return (
       <InsetContext value={insetContextValue}>
-        <div className="flex-1 min-w-0 flex flex-col">
-          <ConnectAgentGate
-            agentTitle={entity?.title ?? ""}
-            agentIcon={entity?.icon ?? null}
-            slots={unresolved}
-            orgSlug={org.slug}
-          />
+        <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
+          <div className="h-full bg-background card-shadow rounded-[0.75rem] overflow-hidden">
+            <ConnectAgentGate
+              agentTitle={entity?.title ?? ""}
+              agentIcon={entity?.icon ?? null}
+              slots={unresolved}
+              orgSlug={org.slug}
+            />
+          </div>
         </div>
       </InsetContext>
     );
