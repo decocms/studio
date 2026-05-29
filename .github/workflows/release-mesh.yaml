@@ -1,14 +1,15 @@
 name: Release Mesh
 
 on:
+  # Releases are driven by the version bump. release-tagging commits
+  # "[release]: bump to X" touching ONLY apps/mesh/package.json, and that push
+  # (App token → re-triggers workflows) is what fires this. Triggering on
+  # package.json alone means we run exactly ONCE per release — the feature
+  # commit that preceded the bump no longer also spawns a (redundant) run.
   push:
     branches: [main]
     paths:
-      - "apps/mesh/**"
-      - "packages/runtime/**"
-      - "packages/mesh-plugin-*/**"
-      - "packages/mesh-sdk/**"
-      - "packages/sandbox/**"
+      - "apps/mesh/package.json"
   workflow_dispatch:
     inputs:
       deploy_to_production:
