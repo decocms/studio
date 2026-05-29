@@ -71,6 +71,7 @@ export function getWellKnownRegistryConnection(
       isDefault: true,
       type: "registry",
     },
+    access: "org",
   };
 }
 
@@ -99,6 +100,7 @@ export function getWellKnownCommunityRegistryConnection(): ConnectionCreateData 
       isDefault: true,
       type: "registry",
     },
+    access: "org",
   };
 }
 
@@ -131,6 +133,7 @@ export function getWellKnownSelfConnection(
       isDefault: true,
       type: "self",
     },
+    access: "org",
   };
 }
 

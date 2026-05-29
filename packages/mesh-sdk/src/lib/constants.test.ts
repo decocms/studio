@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { StudioPackAgentId, isStudioPackAgent } from "./constants";
+import {
+  StudioPackAgentId,
+  getWellKnownCommunityRegistryConnection,
+  getWellKnownRegistryConnection,
+  getWellKnownSelfConnection,
+  isStudioPackAgent,
+} from "./constants";
 
 describe("StudioPackAgentId", () => {
   test("generates the Store Manager id with the org suffix", () => {
@@ -22,5 +28,15 @@ describe("isStudioPackAgent", () => {
     expect(isStudioPackAgent(undefined)).toBe(false);
     expect(isStudioPackAgent("vir_abc")).toBe(false);
     expect(isStudioPackAgent("decopilot_org_xyz")).toBe(false);
+  });
+});
+
+describe("auto-seeded org connections", () => {
+  test("well-known Self / Deco Store / Community Registry connections are org-scoped", () => {
+    expect(
+      getWellKnownSelfConnection("http://localhost:3000", "org_xyz").access,
+    ).toBe("org");
+    expect(getWellKnownRegistryConnection("org_xyz").access).toBe("org");
+    expect(getWellKnownCommunityRegistryConnection().access).toBe("org");
   });
 });
