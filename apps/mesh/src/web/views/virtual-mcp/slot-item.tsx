@@ -118,16 +118,6 @@ function SlotItemInner({
               Not connected for you
             </p>
           </div>
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs shrink-0"
-          >
-            <Link to="/$org/settings/connections" params={{ org: orgSlug }}>
-              Connect
-            </Link>
-          </Button>
         </div>
       )}
 
