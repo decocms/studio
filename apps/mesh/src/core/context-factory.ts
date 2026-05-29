@@ -112,6 +112,7 @@ export interface MeshContextConfig {
   };
   eventBus: EventBus;
   modelListCache?: ModelListCache;
+  providerKeyCache?: ProviderKeyCache;
   memberRoleCache?: MemberRoleCache;
   /** Required for desktop sandbox auto-resolution; tests may omit. */
   linkClaimRegistry?: LinkClaimRegistry;
@@ -451,6 +452,7 @@ import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { ModelListCache } from "@/ai-providers/model-list-cache";
+import type { ProviderKeyCache } from "@/storage/provider-key-cache";
 import { getObjectStorageS3Service } from "../object-storage/factory";
 import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../object-storage/dev-object-storage";
@@ -1045,7 +1047,11 @@ export async function createMeshContextFactory(
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
     virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
-    aiProviderKeys: new AIProviderKeyStorage(config.db, vault),
+    aiProviderKeys: new AIProviderKeyStorage(
+      config.db,
+      vault,
+      config.providerKeyCache,
+    ),
     secrets: new SecretStorage(config.db, vault),
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),

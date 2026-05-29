@@ -14,16 +14,18 @@ import {
   RegistrySearchInputSchema,
   RegistrySearchOutputSchema,
 } from "@/tools/registry/schema";
-import { TtlLruCache } from "./list-cache";
+import { createTtlLruCache } from "@/lib/ttl-lru-cache";
 
 const LIST_CACHE_TTL_MS = 60_000 * 60; // 1 hour
 const LIST_CACHE_MAX_ENTRIES = 500;
 
-// Shared across requests: the public list is unauthenticated and read-heavy.
-const publicListCache = new TtlLruCache<PrivateRegistryListResult>(
-  LIST_CACHE_MAX_ENTRIES,
-  LIST_CACHE_TTL_MS,
-);
+// Shared across requests: the public list is unauthenticated and read-heavy, so
+// use an access-ordered LRU (reads keep popular queries warm).
+const publicListCache = createTtlLruCache<PrivateRegistryListResult>({
+  ttlMs: LIST_CACHE_TTL_MS,
+  maxSize: LIST_CACHE_MAX_ENTRIES,
+  updateRecencyOnGet: true,
+});
 
 /**
  * Create public MCP tools for the registry
