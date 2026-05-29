@@ -4,6 +4,7 @@ import { withRuntime } from "@decocms/runtime";
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
 import { RegistryItemStorage } from "@/storage/registry/registry-item";
+import type { PrivateRegistryListResult } from "@/storage/registry/types";
 import {
   RegistryListInputSchema,
   RegistryListOutputSchema,
@@ -13,6 +14,16 @@ import {
   RegistrySearchInputSchema,
   RegistrySearchOutputSchema,
 } from "@/tools/registry/schema";
+import { TtlLruCache } from "./list-cache";
+
+const LIST_CACHE_TTL_MS = 60_000 * 60; // 1 hour
+const LIST_CACHE_MAX_ENTRIES = 500;
+
+// Shared across requests: the public list is unauthenticated and read-heavy.
+const publicListCache = new TtlLruCache<PrivateRegistryListResult>(
+  LIST_CACHE_MAX_ENTRIES,
+  LIST_CACHE_TTL_MS,
+);
 
 /**
  * Create public MCP tools for the registry
@@ -29,14 +40,21 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
     inputSchema: RegistryListInputSchema,
     outputSchema: RegistryListOutputSchema,
     execute: async ({ context }) => {
-      const result = await storage.listPublic(orgId, {
+      const query = {
         limit: context.limit,
         offset: context.offset,
         cursor: context.cursor,
         tags: context.tags,
         categories: context.categories,
         where: context.where,
-      });
+      };
+      const cacheKey = `${orgId}:${JSON.stringify(query)}`;
+
+      const cached = publicListCache.get(cacheKey);
+      if (cached) return cached;
+
+      const result = await storage.listPublic(orgId, query);
+      publicListCache.set(cacheKey, result);
       return result;
     },
   });
