@@ -349,7 +349,7 @@ describe("ConnectionStorage", () => {
         title: "Slug Test App Name",
         app_name: "my-cool-app",
         connection_type: "HTTP",
-        connection_url: "https://test.com",
+        connection_url: "https://slug-appname.test",
       });
       expect(conn.slug).toBe("my-cool-app");
     });
@@ -372,7 +372,7 @@ describe("ConnectionStorage", () => {
         created_by: "user_123",
         title: "Slug Update Test",
         connection_type: "HTTP",
-        connection_url: "https://test.com",
+        connection_url: "https://slug-update.test",
       });
 
       const updated = await storage.update(conn.id, {
@@ -389,7 +389,7 @@ describe("ConnectionStorage", () => {
         created_by: "user_123",
         title: "Original Name",
         connection_type: "HTTP",
-        connection_url: "https://test.com",
+        connection_url: "https://update-title.test",
       });
 
       const updated = await storage.update(created.id, {
@@ -405,7 +405,7 @@ describe("ConnectionStorage", () => {
         created_by: "user_123",
         title: "Test",
         connection_type: "HTTP",
-        connection_url: "https://test.com",
+        connection_url: "https://update-status.test",
       });
 
       const updated = await storage.update(created.id, {
@@ -421,7 +421,7 @@ describe("ConnectionStorage", () => {
         created_by: "user_123",
         title: "Test",
         connection_type: "HTTP",
-        connection_url: "https://test.com",
+        connection_url: "https://update-metadata.test",
       });
 
       const updated = await storage.update(created.id, {
@@ -437,7 +437,7 @@ describe("ConnectionStorage", () => {
         created_by: "user_123",
         title: "Test",
         connection_type: "HTTP",
-        connection_url: "https://test.com",
+        connection_url: "https://update-bindings.test",
       });
 
       const updated = await storage.update(created.id, {
@@ -455,7 +455,7 @@ describe("ConnectionStorage", () => {
         created_by: "user_123",
         title: "To Delete",
         connection_type: "HTTP",
-        connection_url: "https://test.com",
+        connection_url: "https://delete-me.test",
       });
 
       await storage.delete(created.id);
@@ -499,7 +499,7 @@ describe("ConnectionStorage", () => {
         created_by: "user_123",
         title: "JSON Test",
         connection_type: "SSE",
-        connection_url: "https://test.com",
+        connection_url: "https://json-test.test",
         connection_headers: { headers: { "X-Test": "value" } },
         metadata: { key: "value" },
       });
