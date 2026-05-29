@@ -247,8 +247,10 @@ export class NatsStreamBuffer implements StreamBuffer {
     const decoder = new TextDecoder();
 
     // Reassembly buffer for chunks the producer split across fragment
-    // messages (see `publishChunk`). Fragments for one chunk arrive in order
-    // and contiguously, so a single in-flight accumulator is sufficient.
+    // messages (see `publishChunk`). A fresh accumulator is anchored on the
+    // index-0 fragment; any fragment arriving without a live, matching
+    // accumulator (a lost fragment, or a `deliverPolicy: "new"` subscriber
+    // that joined mid-sequence) is dropped so it can't poison the next chunk.
     let frag: { total: number; received: number; parts: Uint8Array[] } | null =
       null;
     const reassembleFragment = (msg: {
@@ -259,8 +261,10 @@ export class NatsStreamBuffer implements StreamBuffer {
       if (!totalStr) return null; // not a fragment — caller handles as JSON
       const total = Number(totalStr);
       const index = Number(msg.headers?.get(FRAG_INDEX_HEADER) ?? "0");
-      if (!frag || frag.total !== total) {
+      if (index === 0) {
         frag = { total, received: 0, parts: new Array(total) };
+      } else if (!frag || frag.total !== total) {
+        return null; // stray fragment — no matching in-flight chunk
       }
       if (!frag.parts[index]) frag.received++;
       frag.parts[index] = msg.data;
