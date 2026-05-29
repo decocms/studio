@@ -34,6 +34,7 @@ import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { INTERNAL_VIEWER } from "./ports";
 import type { ConnectionStoragePort, ConnectionViewer } from "./ports";
 import type { Database } from "./types";
+import { deriveAppId } from "./derive-app-id";
 
 /** JSON fields that need serialization/deserialization */
 const JSON_FIELDS = [
@@ -185,6 +186,24 @@ function applyWhereToSql(where: WhereExpression): RawBuilder<SqlBool> {
   }
 }
 
+/**
+ * Translates the Postgres unique-violation on idx_connections_user_app_unique
+ * into a user-facing error. Re-throws anything else untouched.
+ */
+function rethrowDuplicateConnectionError(err: unknown): never {
+  const e = err as { code?: string; constraint?: string; message?: string };
+  const isDup =
+    e?.code === "23505" &&
+    (e?.constraint === "idx_connections_user_app_unique" ||
+      (e?.message ?? "").includes("idx_connections_user_app_unique"));
+  if (isDup) {
+    throw new Error(
+      "A private connection for this service already exists. Each service can have only one private connection per user.",
+    );
+  }
+  throw err;
+}
+
 export class ConnectionStorage implements ConnectionStoragePort {
   constructor(
     private db: Kysely<Database>,
@@ -208,16 +227,21 @@ export class ConnectionStorage implements ConnectionStoragePort {
     const slug = getConnectionSlug(data);
     const serialized = await this.serializeConnection({
       ...data,
+      app_id: deriveAppId(data),
       id: data.id ?? id,
       slug,
       status: "active",
       created_at: now,
       updated_at: now,
     });
-    await this.db
-      .insertInto("connections")
-      .values(serialized as Insertable<Database["connections"]>)
-      .execute();
+    try {
+      await this.db
+        .insertInto("connections")
+        .values(serialized as Insertable<Database["connections"]>)
+        .execute();
+    } catch (err) {
+      rethrowDuplicateConnectionError(err);
+    }
 
     const connection = await this.findById(id, undefined, INTERNAL_VIEWER);
     if (!connection) {
