@@ -49,9 +49,14 @@ export function useSlotAppDisplays<T extends SlotLike>(
               result as { structuredContent?: { item?: RegistryItem } }
             ).structuredContent;
             item = structured?.item ?? null;
-          } catch {
+          } catch (err) {
             // Unknown app / registry error → fallback row (deep-link), never
             // fail the whole gate.
+            console.warn(
+              "[useSlotAppDisplays] registry lookup failed for",
+              appId,
+              err,
+            );
             item = null;
           }
           return [
