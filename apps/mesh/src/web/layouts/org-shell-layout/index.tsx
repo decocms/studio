@@ -64,7 +64,7 @@ export default function OrgShellLayout() {
             <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
               <Toolbar.Header>
                 <Toolbar.LeftColumn>
-                  <Toolbar.Logo />
+                  <Toolbar.LogoLink />
                   <SidebarTriggerButton />
                   <span className="hidden md:contents">
                     <Toolbar.Nav />
