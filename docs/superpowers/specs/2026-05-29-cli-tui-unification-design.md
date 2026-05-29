@@ -88,7 +88,18 @@ A single shared helper — `resolveTui(values)` returning a boolean — used by
 - `logFlow`, `toggleLogFlow` in `cli-store.ts`.
 - The `L` key handler in `app.tsx` and the "L toggle log flow" hint in
   `header.tsx`.
-- **Keep `K`** (the requests ↔ config view toggle).
+
+**Remove the `K` toggle and the config view entirely:**
+- `config-view.tsx` (and its test, if any) — deleted.
+- `viewMode`, `env`, `setEnv`, `toggleViewMode` in `cli-store.ts`.
+- The `setEnv(settings)` calls in `commands/serve.ts` (`:93`) and
+  `commands/dev.ts` (`:116`).
+- The `K` key handler and the `viewMode` branch in `app.tsx` — `App` now
+  renders only `<Banner>` + status header + `RequestLog`. With no remaining key
+  handlers, the `useInput` block is removed (and with it the "K toggle config"
+  hint in `header.tsx`).
+- Net result: the only Ink shells with key input are gone; `serve`/`dev` render
+  a static banner + status + growing request log.
 
 **Remove auto-scroll height:**
 - `request-log.tsx` maps the **full** log list — no `useTerminalSize`, no
@@ -179,9 +190,15 @@ Two tiers only (per `TESTING.md`): unit (pure logic) and e2e (everything else).
 - `apps/mesh/src/cli.ts` — `resolveTui` helper, `link` TUI wiring, remove
   `--vibe`, switch banner printing to `printBanner`.
 - `apps/mesh/src/fmt.ts` — remove `ASCII_ART`, keep `dim`.
-- `apps/mesh/src/cli/header.tsx` — use `<Banner>`, drop vibe branch + `L` hint.
-- `apps/mesh/src/cli/app.tsx` — drop vibe/`L` handlers + `HEADER_HEIGHT*`.
-- `apps/mesh/src/cli/cli-store.ts` — drop `vibe`/`logFlow` state + setters.
+- `apps/mesh/src/cli/header.tsx` — use `<Banner>`, drop vibe branch + `L`/`K`
+  hints.
+- `apps/mesh/src/cli/app.tsx` — drop vibe/`L`/`K` handlers, the `useInput`
+  block, the `viewMode` branch, and `HEADER_HEIGHT*`.
+- `apps/mesh/src/cli/cli-store.ts` — drop `vibe`/`logFlow`/`viewMode`/`env`
+  state + their setters (`setVibe`, `toggleVibeState`, `toggleLogFlow`,
+  `setEnv`, `toggleViewMode`).
+- `apps/mesh/src/cli/commands/serve.ts`, `commands/dev.ts` — remove `setEnv`
+  call + import.
 - `apps/mesh/src/cli/request-log.tsx` — full list, no windowing.
 - `apps/mesh/src/link-daemon/user-desktop-provider.ts` — `onEvent` emission.
 - `apps/mesh/src/link-daemon/index.ts` — accept/forward `onEvent`.
@@ -190,8 +207,10 @@ Two tiers only (per `TESTING.md`): unit (pure logic) and e2e (everything else).
 - `apps/mesh/src/cli/vibe/vibe-player.ts`, `apps/mesh/src/cli/vibe/playlist.json`
 - `apps/mesh/src/cli/capy-frames.ts`, `capy-animation.ts`, `matrix-rain.ts`
 - `apps/mesh/src/cli/use-terminal-size.ts` (if no remaining consumers)
+- `apps/mesh/src/cli/config-view.tsx`
 
 ## Open Questions
 
-None outstanding. Confirmed: keep `K` config toggle; failed rows linger with
-their error until next `ensure`/delete.
+None outstanding. Confirmed: remove the `K` toggle **and** the config view
+entirely; failed sandbox rows linger with their error until next
+`ensure`/delete.
