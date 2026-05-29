@@ -20,7 +20,10 @@ export function ConnectSlotRow({
   const { connect, status, error } = useConnectApp();
   const registryItem =
     display.kind === "registry" ? display.registryItem : null;
-  const busy = status === "connecting" || status === "authenticating";
+  const busy =
+    status === "connecting" ||
+    status === "authenticating" ||
+    status === "ready";
 
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border px-4 py-3">
@@ -44,7 +47,7 @@ export function ConnectSlotRow({
           disabled={busy}
           onClick={() => connect(registryItem)}
         >
-          {status === "connecting" ? (
+          {status === "connecting" || status === "ready" ? (
             <>
               <Loading01 size={12} className="animate-spin" />
               Connecting…

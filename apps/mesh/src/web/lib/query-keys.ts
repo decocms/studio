@@ -356,11 +356,11 @@ export const KEYS = {
   unresolvedSlots: (orgId: string, sortedAppIds: string[]) =>
     ["unresolved-slots", orgId, ...sortedAppIds] as const,
 
-  // Batched registry-metadata lookup for an agent's unresolved slots (powers
-  // the connect gate's icon/name + registry-vs-fallback decision). appIds must
-  // be sorted by the caller so the key is stable regardless of slot ordering.
-  slotAppDisplays: (orgId: string, sortedAppIds: string[]) =>
-    ["slot-app-displays", orgId, ...sortedAppIds] as const,
+  // Per-app registry display metadata for a connect-gate slot. Keyed per
+  // app_id (not per slot set) so resolving one slot of a multi-slot agent does
+  // not re-suspend the gate for the remaining slots.
+  slotAppDisplay: (orgId: string, appId: string) =>
+    ["slot-app-display", orgId, appId] as const,
 
   // Broad prefixes for invalidating every variant of the slot-resolution
   // queries at once — used after an inline connect so any mounted connect gate
