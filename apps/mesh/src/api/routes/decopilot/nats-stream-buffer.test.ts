@@ -214,9 +214,9 @@ describe("NatsStreamBuffer", () => {
       const buffer = bufferWith(() => Promise.resolve(sub));
       const stream = await buffer.createTailStream("task-1");
 
-      const stale = fragmentChunk("X".repeat(120), 3);
-      push(stale[1]); // joined mid-sequence — index 0 never seen
-      push(stale[2]);
+      const [, stale1, stale2] = fragmentChunk("X".repeat(120), 3);
+      push(stale1!); // joined mid-sequence — index 0 never seen
+      push(stale2!);
       const good = "good-payload-after-join";
       for (const f of fragmentChunk(good, 3)) push(f);
       end();
@@ -232,9 +232,9 @@ describe("NatsStreamBuffer", () => {
       const buffer = bufferWith(() => Promise.resolve(sub));
       const stream = await buffer.createTailStream("task-1");
 
-      const lost = fragmentChunk("Y".repeat(120), 3);
-      push(lost[0]); // index 1 publish "failed" — never arrives
-      push(lost[2]);
+      const [lost0, , lost2] = fragmentChunk("Y".repeat(120), 3);
+      push(lost0!); // index 1 publish "failed" — never arrives
+      push(lost2!);
       const recovered = "recovered-after-loss";
       for (const f of fragmentChunk(recovered, 3)) push(f);
       end();
