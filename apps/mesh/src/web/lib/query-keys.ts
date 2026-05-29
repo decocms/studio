@@ -356,6 +356,12 @@ export const KEYS = {
   unresolvedSlots: (orgId: string, sortedAppIds: string[]) =>
     ["unresolved-slots", orgId, ...sortedAppIds] as const,
 
+  // Batched registry-metadata lookup for an agent's unresolved slots (powers
+  // the connect gate's icon/name + registry-vs-fallback decision). appIds must
+  // be sorted by the caller so the key is stable regardless of slot ordering.
+  slotAppDisplays: (orgId: string, sortedAppIds: string[]) =>
+    ["slot-app-displays", orgId, ...sortedAppIds] as const,
+
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>
     ["github-user-orgs", orgId, connectionId] as const,
