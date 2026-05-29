@@ -16,7 +16,7 @@ import {
 } from "@/tools/registry/schema";
 import { TtlLruCache } from "./list-cache";
 
-const LIST_CACHE_TTL_MS = 60_000;
+const LIST_CACHE_TTL_MS = 60_000 * 60; // 1 hour
 const LIST_CACHE_MAX_ENTRIES = 500;
 
 // Shared across requests: the public list is unauthenticated and read-heavy.
