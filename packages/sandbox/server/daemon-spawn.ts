@@ -86,10 +86,25 @@ export async function resolveDaemonExec(homeDir: string): Promise<string> {
 }
 
 /**
+ * Resolve the stdout/stderr target for the spawned daemon. With no `outFd`
+ * the child inherits the parent's terminal fds (the default — used by
+ * `--no-tui` and the managed/dev daemon, whose output is meant to stream to
+ * the parent). When the `deco link` TUI is active the caller passes a
+ * log-file fd so the child's output lands in a file instead of corrupting
+ * the Ink canvas.
+ */
+export function resolveDaemonStdio(outFd?: number): "inherit" | number {
+  return outFd ?? "inherit";
+}
+
+/**
  * Default Bun.spawn-based daemon launcher. `homeDir` is the DATA_DIR
  * root used to materialize the daemon bundle when running from a bundle.
  */
-export function createDefaultDaemonSpawn(homeDir: string): SpawnDaemonFn {
+export function createDefaultDaemonSpawn(
+  homeDir: string,
+  opts: { outFd?: number } = {},
+): SpawnDaemonFn {
   return async (args) => {
     const daemonExec = await resolveDaemonExec(homeDir);
     const ptyNodeModulesDir = resolveNodePtyNodeModulesDir();
@@ -97,6 +112,7 @@ export function createDefaultDaemonSpawn(homeDir: string): SpawnDaemonFn {
     const nodePath = existingNodePath
       ? `${ptyNodeModulesDir}:${existingNodePath}`
       : ptyNodeModulesDir;
+    const stdio = resolveDaemonStdio(opts.outFd);
     const proc = Bun.spawn({
       cmd: ["bun", "run", daemonExec],
       env: {
@@ -104,8 +120,8 @@ export function createDefaultDaemonSpawn(homeDir: string): SpawnDaemonFn {
         NODE_PATH: nodePath,
         ...args.env,
       },
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: stdio,
+      stderr: stdio,
       stdin: "ignore",
     });
     return {
