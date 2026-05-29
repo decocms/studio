@@ -791,7 +791,7 @@ function ItemList({
         </Tooltip>
       </div>
       <ScrollArea className="flex-1 min-h-0">
-        <div className="p-1.5">
+        <div className="flex flex-col gap-1 p-1.5">
           {activeCollection === "pages" ? (
             filteredPages.length === 0 ? (
               <ListEmpty
