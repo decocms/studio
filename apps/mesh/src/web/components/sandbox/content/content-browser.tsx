@@ -53,6 +53,7 @@ import { useDeleteBlock } from "@/web/components/sections-editor/use-delete-bloc
 import {
   extractGlobalSections,
   extractPages,
+  hasEditableDecoContent,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
@@ -286,9 +287,8 @@ function ContentBrowserReady({
     a.name.localeCompare(b.name),
   );
   const globalSections = extractGlobalSections(decofile, meta);
-  const isDecoSite = pages.length > 0 || globalSections.length > 0;
 
-  if (!isDecoSite) {
+  if (!hasEditableDecoContent(decofile, meta)) {
     return (
       <EmptyMessage
         icon={AlertCircle}

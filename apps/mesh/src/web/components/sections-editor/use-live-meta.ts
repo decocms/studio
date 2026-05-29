@@ -8,10 +8,14 @@ interface UseLiveMetaParams {
   branch: string;
 }
 
-export function useLiveMeta(params: UseLiveMetaParams | null) {
+export function useLiveMeta(
+  params: UseLiveMetaParams | null,
+  options?: { fetchEnabled?: boolean },
+) {
   const key = params
     ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`
     : "";
+  const fetchEnabled = options?.fetchEnabled ?? true;
   return useQuery({
     queryKey: KEYS.liveMeta(key),
     queryFn: async () => {
@@ -22,7 +26,7 @@ export function useLiveMeta(params: UseLiveMetaParams | null) {
       if (!res.ok) throw new Error(`Failed to fetch live meta: ${res.status}`);
       return (await res.json()) as LiveMeta;
     },
-    enabled: !!params,
+    enabled: !!params && fetchEnabled,
     staleTime: 300_000,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),

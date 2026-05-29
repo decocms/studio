@@ -11,7 +11,7 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import {
   SELF_MCP_ALIAS_ID,
@@ -29,7 +29,10 @@ import { useChatTask } from "@/web/components/chat/index";
 import { useThreadManager } from "@/web/components/chat/store/hooks";
 import { getActiveGithubRepo } from "@/web/lib/github-repo.ts";
 import { usePrByBranch } from "@/web/components/thread/github/use-pr-data.ts";
-import { isDecoSiteDecofile } from "@/web/components/sections-editor/is-deco-site";
+import { useDecofile } from "@/web/components/sections-editor/use-decofile";
+import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
+import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
+import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -177,22 +180,25 @@ export function useMainPanelTabs(ctx: {
   const hasClonableSource = agentHasClonableSource(entity?.metadata);
   const connections = useConnections({ includeVirtual: true });
 
-  // Show "Content" only when the sandbox decofile confirms this is a Deco
-  // site. We peek the React Query cache (no fetch) — populated lazily when
-  // Preview/Content actually run. `null` = unknown (no data yet) → show
-  // optimistically; `false` = confirmed non-Deco → hide.
-  const queryClient = useQueryClient();
-  const decofileCacheKey =
-    entity?.id && currentBranch
-      ? `${org.slug}/${entity.id}/${currentBranch}`
+  // Show "Content" only when decofile/meta confirm editable pages or sections
+  // — same rule as Preview's Sections editor toggle. Fetch only after the dev
+  // server is up (shared query keys with Preview / Content). Requires
+  // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
+  const vmEvents = useSandboxEvents();
+  const devServerReady = vmEvents.lifecycle.phase === "running";
+  const decofileFetchParams =
+    hasClonableSource && entity?.id && currentBranch
+      ? { orgSlug: org.slug, virtualMcpId: entity.id, branch: currentBranch }
       : null;
-  const cachedDecofile = decofileCacheKey
-    ? queryClient.getQueryData<Record<string, unknown>>(
-        KEYS.decofile(decofileCacheKey),
-      )
-    : undefined;
-  const isLikelyDecoSite =
-    cachedDecofile === undefined ? null : isDecoSiteDecofile(cachedDecofile);
+  // Subscribe to the same query keys as Preview; only fetch after the dev
+  // server is running, but still re-render when Preview warms the cache.
+  const { data: decofile } = useDecofile(decofileFetchParams, {
+    fetchEnabled: devServerReady,
+  });
+  const { data: meta } = useLiveMeta(decofileFetchParams, {
+    fetchEnabled: devServerReady,
+  });
+  const showContentTab = hasEditableDecoContent(decofile, meta);
 
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
@@ -233,7 +239,7 @@ export function useMainPanelTabs(ctx: {
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource) {
     systemTabs.push({ id: "preview", title: "Preview" });
-    if (isLikelyDecoSite !== false) {
+    if (showContentTab) {
       systemTabs.push({ id: "content", title: "Content" });
     }
   }

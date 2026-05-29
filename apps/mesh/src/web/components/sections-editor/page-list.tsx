@@ -39,6 +39,20 @@ const PAGE_RESOLVE_TYPES = new Set([
   "$live/pages/LivePage.tsx",
 ]);
 
+/**
+ * Same gate as Preview's "Sections editor" mode and the Content tab body:
+ * at least one Deco page block or one saved global section.
+ */
+export function hasEditableDecoContent(
+  decofile: Record<string, unknown> | undefined | null,
+  meta: LiveMeta | undefined | null,
+): boolean {
+  if (!decofile) return false;
+  if (extractPages(decofile).length > 0) return true;
+  if (!meta) return false;
+  return extractGlobalSections(decofile, meta).length > 0;
+}
+
 export function extractPages(decofile: Record<string, unknown>): PageEntry[] {
   const pages: PageEntry[] = [];
   for (const [key, val] of Object.entries(decofile)) {
