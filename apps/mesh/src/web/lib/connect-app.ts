@@ -68,7 +68,8 @@ export async function connectApp(
     orgId: org.id,
   });
 
-  if (!(authStatus.supportsOAuth && !authStatus.isAuthenticated)) {
+  const needsOAuth = authStatus.supportsOAuth && !authStatus.isAuthenticated;
+  if (!needsOAuth) {
     return { id, oauth: "not-needed", error: null };
   }
 
@@ -107,6 +108,8 @@ export async function connectApp(
           data: { connection_token: token },
         });
       } else {
+        // Server persisted the token; empty update just triggers the mutation's
+        // cache invalidation / side-effects.
         await connectionActions.update.mutateAsync({ id, data: {} });
       }
     } catch {
