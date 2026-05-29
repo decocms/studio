@@ -620,6 +620,36 @@ export const createOrgScopedWellKnownProtectedResourceRoutes = () => {
  *
  * Returns the response (even if error) so caller can handle/pass-through error status
  */
+/**
+ * GET with bounded retry for transient failures. The auth-server metadata
+ * endpoints are third-party; a momentary 5xx or network blip otherwise surfaces
+ * to the client as a hard 502 (and made the OAuth-proxy E2E suite flaky against
+ * live providers like Supabase). Retries network errors and 5xx responses with
+ * short backoff; 4xx (incl. 404/401, which drive well-known format fallback) is
+ * returned as-is so the caller's discovery logic is unchanged.
+ */
+async function fetchMetadataWithRetry(
+  url: string,
+  init: RequestInit,
+  attempts = 3,
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    const isLast = i === attempts - 1;
+    try {
+      const res = await fetch(url, init);
+      if (res.status < 500 || isLast) return res;
+    } catch (err) {
+      lastErr = err;
+      if (isLast) throw err;
+    }
+    // Backoff before the next attempt: 150ms, then 300ms.
+    await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+  }
+  // Unreachable (the loop returns or throws on the last attempt).
+  throw lastErr ?? new Error("fetchMetadataWithRetry: retries exhausted");
+}
+
 export async function fetchAuthorizationServerMetadata(
   authServerUrl: string,
 ): Promise<Response> {
@@ -666,7 +696,7 @@ export async function fetchAuthorizationServerMetadata(
   // Try each URL in order
   let response: Response | null = null;
   for (const tryUrl of urlsToTry) {
-    response = await fetch(tryUrl.toString(), {
+    response = await fetchMetadataWithRetry(tryUrl.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
     });

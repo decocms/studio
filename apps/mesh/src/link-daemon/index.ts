@@ -25,8 +25,20 @@ import { loadOrCreateMachineId } from "./machine-id";
 import type { Session } from "../cli/lib/session";
 import {
   createDesktopSandboxProvider,
+  type SandboxEvent,
   type SpawnResult,
 } from "./user-desktop-provider";
+
+/**
+ * Optional observability hooks for the `deco link` TUI. All no-ops when the
+ * daemon runs with `--no-tui` (the monitor is simply omitted).
+ */
+export interface LinkDaemonMonitor {
+  onEvent?: (event: SandboxEvent) => void;
+  onIngress?: (port: number) => void;
+  onCluster?: (status: "connecting" | "linked" | "closed") => void;
+  onMachine?: (label: string) => void;
+}
 
 export interface StartLinkDaemonOptions {
   port: number;
@@ -38,6 +50,8 @@ export interface StartLinkDaemonOptions {
    * `ensureSession()` before invoking the daemon.
    */
   session: Session;
+  /** Optional TUI hooks. Omitted in --no-tui mode. */
+  monitor?: LinkDaemonMonitor;
 }
 
 export interface LinkDaemonHandle {
@@ -53,6 +67,7 @@ export async function startLinkDaemon(
   const machineId = await loadOrCreateMachineId(opts.dataDir);
   const cliVersion = process.env.npm_package_version ?? "0.0.0";
   const hostname = osHostname() || undefined;
+  opts.monitor?.onMachine?.(hostname ?? "this machine");
 
   const innerSpawn = createDefaultDaemonSpawn(opts.dataDir);
   // Forward declaration so `resolvePreviewUrl` can read the ingress port
@@ -123,6 +138,7 @@ export async function startLinkDaemon(
       await waitForDaemonReady(`http://127.0.0.1:${port}`);
     },
     maxSandboxes: 20,
+    onEvent: opts.monitor?.onEvent,
   });
 
   const ingress = await startLocalIngress({
@@ -133,6 +149,7 @@ export async function startLinkDaemon(
   console.log(
     `Local ingress listening on http://127.0.0.1:${ingress.port} (use http://<handle>.localhost:${ingress.port}/)`,
   );
+  opts.monitor?.onIngress?.(ingress.port);
 
   // The control handler reverse-proxies `/_sandbox/<handle>/*` to each
   // spawned sandbox daemon's local port. The provider exposes `proxyPort`
@@ -156,7 +173,10 @@ export async function startLinkDaemon(
       capabilities: await detectCapabilities(),
     },
     controlHandler,
-    onConnected: () => console.log(`Linked to ${opts.clusterBaseUrl}`),
+    onConnected: () => {
+      opts.monitor?.onCluster?.("linked");
+      console.log(`Linked to ${opts.clusterBaseUrl}`);
+    },
   });
 
   let resolveStopped!: (code: number) => void;
@@ -189,6 +209,7 @@ export async function startLinkDaemon(
   process.on("SIGTERM", () => void shutdown());
 
   void cluster.closed.then(() => {
+    opts.monitor?.onCluster?.("closed");
     if (!shuttingDown) {
       console.error("Cluster connection closed permanently; exiting.");
       void shutdown();

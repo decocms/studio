@@ -15,6 +15,7 @@
 import { parseArgs } from "util";
 import { homedir } from "os";
 import { join } from "path";
+import { resolveTui } from "./cli/resolve-tui";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -60,10 +61,6 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
-    vibe: {
-      type: "boolean",
-      default: false,
-    },
     target: { type: "string" },
     env: { type: "string", short: "e" },
     "dry-run": {
@@ -88,7 +85,7 @@ Usage:
   deco services <up|down|status>     Manage services (Postgres, NATS)
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
-  deco link [options]                Start the desktop-side link daemon
+  deco link [studio-url] [options]   Start the desktop-side link daemon
   deco backfill-assets               Hoist legacy inline media out of threads + connections
   deco completion [shell]            Install shell completions
 
@@ -98,7 +95,6 @@ Server Options:
   --no-local-mode       Disable auto-login (use cloud/SSO auth)
   --skip-migrations     Skip database migrations on startup
   --no-tui              Disable Ink UI, plain stdout (CI mode)
-  --vibe                Play synthwave soundtrack while running
   -h, --help            Show this help message
   -v, --version         Show version
 
@@ -111,6 +107,7 @@ Auth Options:
   --target <url>        Decocms target (default: https://studio.decocms.com)
 
 Link Options:
+  [studio-url]      Studio to link against (default: https://studio.decocms.com)
   --port <port>     Local port for the daemon (default: 5174)
 
 Backfill Options (backfill-assets):
@@ -136,6 +133,7 @@ Examples:
   deco init my-app                Scaffold a new MCP app
   deco auth login                 Log in to studio.decocms.com
   deco auth whoami                Show current session
+  deco link https://studio.decocms.com   Link this machine to a studio
 
 Documentation:
   https://decocms.com/studio
@@ -269,6 +267,25 @@ if (command === "auth") {
 // ── Link command ───────────────────────────────────────────────────────
 if (command === "link") {
   const { runLinkCommand } = await import("./cli/commands/link");
+  // Optional positional: the studio to link against (auth target + cluster
+  // websocket), e.g. https://studio-stg.decocms.com. When omitted, falls back
+  // to MESH_CLUSTER_URL / https://studio.decocms.com (resolved in runLinkCommand).
+  const studioArg = positionals[1];
+  let studioUrl: string | undefined;
+  if (studioArg !== undefined) {
+    try {
+      const parsed = new URL(studioArg);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error("must be http(s)");
+      }
+      studioUrl = studioArg.replace(/\/$/, "");
+    } catch {
+      console.error(
+        `Invalid studio URL: "${studioArg}". Example: https://studio.decocms.com`,
+      );
+      process.exit(1);
+    }
+  }
   // The top-level `parseArgs` declares `--port` with a default of 3000
   // (for the server command). Only honor it for `deco link` if the user
   // actually passed `--port`/`-p` on the command line — otherwise
@@ -280,8 +297,18 @@ if (command === "link") {
       a.startsWith("--port=") ||
       a.startsWith("-p="),
   );
+  const tui = resolveTui({
+    noTui: values["no-tui"] === true,
+    isTty: process.stdout.isTTY,
+  });
   const code = await runLinkCommand({
     port: portExplicit ? Number(values.port) : undefined,
+    clusterBaseUrl: studioUrl,
+    tui,
+    version: await getVersion(),
+    // Managed daemons (dev / npx --local-sandbox-provider) suppress the
+    // banner — the parent dev/serve process already renders one.
+    banner: process.env.DECOCMS_LINK_MANAGED !== "1",
   });
   process.exit(code);
 }
@@ -294,7 +321,10 @@ if (command === "dev") {
     process.env.DECOCMS_HOME ||
     join(process.cwd(), ".deco");
 
-  const noTui = values["no-tui"] === true || !process.stdout.isTTY;
+  const noTui = !resolveTui({
+    noTui: values["no-tui"] === true,
+    isTty: process.stdout.isTTY,
+  });
 
   const localSandboxProvider = values["local-sandbox-provider"] === true;
   const devOptions = {
@@ -309,18 +339,8 @@ if (command === "dev") {
   };
 
   if (noTui) {
-    const { ASCII_ART, dim } = await import("./fmt");
-    console.log("");
-    for (const line of ASCII_ART) {
-      console.log(line);
-    }
-    console.log(dim(`  v${await getVersion()}`));
-    console.log("");
-
-    if (values.vibe === true) {
-      const { startVibe } = await import("./cli/vibe/vibe-player");
-      startVibe(decoHome);
-    }
+    const { printBanner } = await import("./cli/banner-art");
+    printBanner(await getVersion());
 
     const { startDevServer } = await import("./cli/commands/dev");
     const result = await startDevServer(devOptions);
@@ -331,20 +351,13 @@ if (command === "dev") {
     const { createElement } = await import("react");
     const { App } = await import("./cli/app");
     const { startDevServer } = await import("./cli/commands/dev");
-    const { setDevMode, setVibe, setDataDir } = await import("./cli/cli-store");
+    const { setDevMode } = await import("./cli/cli-store");
 
     const displayHome = decoHome.replace(homedir(), "~");
     setDevMode({ localSandboxProvider });
-    setDataDir(decoHome);
     render(createElement(App, { home: displayHome }), {
       patchConsole: false,
     });
-
-    if (values.vibe === true) {
-      const { startVibe } = await import("./cli/vibe/vibe-player");
-      setVibe(true);
-      startVibe(decoHome);
-    }
 
     const result = await startDevServer(devOptions);
     const code = await result.process.exited;
@@ -382,22 +395,15 @@ const serveOptions = {
   localMode: values["no-local-mode"] !== true,
 };
 
-const noTui = values["no-tui"] === true || !process.stdout.isTTY;
+const noTui = !resolveTui({
+  noTui: values["no-tui"] === true,
+  isTty: process.stdout.isTTY,
+});
 
 if (noTui) {
   // Plain stdout mode — no Ink, just console.log (CI-friendly)
-  const { ASCII_ART, dim } = await import("./fmt");
-  console.log("");
-  for (const line of ASCII_ART) {
-    console.log(line);
-  }
-  console.log(dim(`  v${await getVersion()}`));
-  console.log("");
-
-  if (values.vibe === true) {
-    const { startVibe } = await import("./cli/vibe/vibe-player");
-    startVibe(decoHome);
-  }
+  const { printBanner } = await import("./cli/banner-art");
+  printBanner(await getVersion());
 
   const { startServer } = await import("./cli/commands/serve");
   await startServer({ ...serveOptions, noTui: true });
@@ -415,18 +421,6 @@ if (noTui) {
   render(createElement(App, { home: displayHome }), {
     patchConsole: false,
   });
-
-  {
-    const { setDataDir } = await import("./cli/cli-store");
-    setDataDir(decoHome);
-  }
-
-  if (values.vibe === true) {
-    const { startVibe } = await import("./cli/vibe/vibe-player");
-    const { setVibe } = await import("./cli/cli-store");
-    setVibe(true);
-    startVibe(decoHome);
-  }
 
   await startServer(serveOptions);
 }
