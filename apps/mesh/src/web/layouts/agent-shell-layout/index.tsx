@@ -311,12 +311,14 @@ function AgentInsetProvider() {
   // Fetch entity (Suspense-based — resolved before render)
   const entity = useVirtualMCP(virtualMcpId);
 
-  const { unresolved, isLoading: slotsLoading } = useUnresolvedSlots(
+  // Suspense-based: AgentInsetProvider suspends until slot resolution settles,
+  // so the gate decision is made before any panel renders (no flash).
+  const { unresolved } = useUnresolvedSlots(
     org.id,
     org.slug,
     entity?.slots ?? [],
   );
-  const showConnectGate = !slotsLoading && unresolved.length > 0;
+  const showConnectGate = unresolved.length > 0;
 
   const layoutMetadata = (entity?.metadata as any)?.ui?.layout ?? null;
   const entityMetadata = layoutMetadata
