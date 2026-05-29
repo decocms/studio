@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
 import { createBoundObjectStorage } from "../../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../../object-storage/dev-object-storage";
+import { decorateStorageWithAssetHoisting } from "../../object-storage/asset-hoister";
 import { getObjectStorageS3Service } from "../../object-storage/factory";
 
 export const resolveOrgFromPath: MiddlewareHandler<{
@@ -87,6 +88,14 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   ctx.objectStorage = s3Service
     ? createBoundObjectStorage(s3Service, org.id)
     : new DevObjectStorage(org.id, ctx.baseUrl);
+  // Asset hoisters close over object storage and org slug. Context creation can
+  // happen before path-org resolution, so refresh the wrappers after rebinding
+  // object storage to avoid writing files into the session-active org.
+  decorateStorageWithAssetHoisting(ctx.storage, {
+    objectStorage: ctx.objectStorage,
+    baseUrl: ctx.baseUrl,
+    orgSlug: org.slug,
+  });
 
   return await next();
 };

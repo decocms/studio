@@ -25,10 +25,7 @@ import type { MeshContextFactory } from "@/automations/fire";
 import { getObjectStorageS3Service } from "@/object-storage/factory";
 import { createBoundObjectStorage } from "@/object-storage/bound-object-storage";
 import { DevObjectStorage } from "@/object-storage/dev-object-storage";
-import {
-  createAssetHoister,
-  withThreadMessageHoisting,
-} from "@/object-storage/asset-hoister";
+import { decorateStorageWithAssetHoisting } from "@/object-storage/asset-hoister";
 
 export interface BuildAutomationContextDeps {
   db: Kysely<Database>;
@@ -126,19 +123,14 @@ export function createAutomationContextFactory(
       ? createBoundObjectStorage(s3Service, membership.orgId)
       : new DevObjectStorage(membership.orgId, ctx.baseUrl);
 
-    // Re-apply the message hoist on the freshly-rebuilt thread storage so
-    // dispatched runs (which save messages through this ctx) keep inline
-    // data: media out of thread_messages.parts. ContextFactory.create() already
-    // decorated connections/virtualMcps, which we inherit untouched.
-    ctx.storage.threads = withThreadMessageHoisting(
-      ctx.storage.threads,
-      createAssetHoister({
-        objectStorage: ctx.objectStorage,
-        baseUrl: ctx.baseUrl,
-        orgSlug: membership.orgSlug,
-        prefix: "thread-assets",
-      }),
-    );
+    // Re-apply asset hoisting after rebuilding org-bound storage. The base
+    // ContextFactory.create() call above ran without an org, so its original
+    // hoisters captured null object storage and must not be inherited.
+    decorateStorageWithAssetHoisting(ctx.storage, {
+      objectStorage: ctx.objectStorage,
+      baseUrl: ctx.baseUrl,
+      orgSlug: membership.orgSlug,
+    });
 
     return ctx;
   };

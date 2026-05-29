@@ -7,9 +7,9 @@
  *
  * Route: GET /api/:org/files/:key
  *
- * This endpoint is the stable public URL stored in chat history as
- * the text annotation for uploaded files. Clients (UI <img> tags,
- * MCP tools) can use it instead of presigned URLs and it always works.
+ * This endpoint is the stable URL stored in chat history as the text
+ * annotation for uploaded files. Authenticated clients (UI <img> tags) can use
+ * it instead of presigned URLs and it always works.
  *
  * Requires an authenticated session (MeshContext) — the org ID in the
  * URL is only used to extract the file key, not to bypass auth.
@@ -29,6 +29,10 @@ app.get("/:org/files/*", async (c) => {
   const ctx = c.get("meshContext");
 
   const orgId = ctx.organization?.id;
+
+  if (!ctx.auth?.user?.id) {
+    throw new HTTPException(401, { message: "Authentication required" });
+  }
 
   if (!orgId) {
     throw new HTTPException(401, { message: "Organization context required" });

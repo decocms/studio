@@ -19,21 +19,13 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
+import { toFilesUrl } from "@/object-storage/key-utils";
 import type { ChatMessage } from "./types";
 import {
   toMeshStorageUri,
   parseMeshStorageKey,
   meshStorageRegex,
 } from "./mesh-storage-uri";
-
-/** Build the stable redirect URL the UI / tools use to access a file. */
-function toFileRedirectUrl(
-  baseUrl: string,
-  orgSlug: string,
-  key: string,
-): string {
-  return `${baseUrl}/api/${orgSlug}/files/${key}`;
-}
 
 /**
  * MIME types we never hand to providers as native file parts.
@@ -217,7 +209,7 @@ export async function uploadFileParts(
       return {
         dataUrl: part.url,
         meshStorageUrl: toMeshStorageUri(uploadedKey),
-        redirectUrl: toFileRedirectUrl(ctx.baseUrl, orgSlug, uploadedKey),
+        redirectUrl: toFilesUrl(ctx.baseUrl, orgSlug, uploadedKey),
         filename,
       };
     }),

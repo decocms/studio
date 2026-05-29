@@ -9,36 +9,59 @@
  * threads by hundreds of KB–MB per call and overflowing NATS/LLM limits.
  *
  * The hoister uploads the bytes to object storage once and stores a directly
- * loadable files URL instead. It returns `${baseUrl}/api/${orgSlug}/files/${key}`
- * — NOT a `mesh-storage://` URI — because icon/media rendering loads the value
- * as a raw `<img src>` / media src and does not resolve the mesh-storage scheme.
+ * loadable files URL instead — `${baseUrl}/api/${orgSlug}/files/${key}`, NOT a
+ * `mesh-storage://` URI. The files URL is what icon/media rendering needs: the
+ * UI loads the value as a raw `<img src>` / media src (same-origin, session
+ * cookie) and does not resolve the mesh-storage scheme.
+ *
+ * Scope of the thread sink: by the time message parts reach here, real
+ * user-attached vision media has already been turned into `mesh-storage://`
+ * refs upstream by `uploadFileParts` (file-materializer), which the model
+ * fetches via fresh per-turn presigned URLs. So this sink only catches `data:`
+ * media that bypassed that pipeline — chiefly icons re-inlined from tool
+ * results — which are rendered in the UI, not fetched server-side by a vision
+ * model. The auth-gated `/files/` URL is therefore the right target for them.
  *
  * Applied as a per-request decorator on `storage.connections`/`storage.virtualMcps`
  * /`storage.threads` in the context factory, where `ctx.objectStorage` and the
  * org slug exist (the base storage classes are singletons and have neither).
- * Only `data:(image|audio|video)/*` values are touched; other strings (and
- * non-media data: URIs) pass through.
+ * Only `data:(image|audio|video)/*` values with a known-safe extension are
+ * touched; other strings (and active/unknown media types like SVG) pass through.
  */
 
 import { createHash } from "node:crypto";
 import type { BoundObjectStorage } from "./bound-object-storage";
+import { toFilesUrl } from "./key-utils";
 import type {
   ConnectionStoragePort,
   VirtualMCPStoragePort,
 } from "../storage/ports";
 import type { ThreadMessage } from "../storage/types";
 
-const DATA_MEDIA = /^data:((?:image|audio|video)\/[^;]+);base64,(.+)$/s;
+// Captures the media type (group 1, params stripped) and the base64 payload
+// (group 2). Tolerates media-type parameters (e.g. `;charset=utf-8`) before
+// `;base64` and is case-insensitive, since data: URIs are per RFC 2397.
+const DATA_MEDIA =
+  /^data:((?:image|audio|video)\/[^;,]+)(?:;[^,]+)?;base64,(.+)$/is;
 /** Default cap on decoded asset size. Larger payloads stay inline rather than
  * decoded into a Buffer, so a pathological data: URI can't OOM the process. */
 const MAX_ASSET_BYTES = 5 * 1024 * 1024;
+/** Recursion guard for `hoistDeep` — bail on pathologically deep/cyclic JSON
+ * rather than overflowing the stack. */
+const MAX_DEPTH = 64;
+const ASSET_HOISTING_TARGET: unique symbol = Symbol("assetHoistingTarget");
+/**
+ * Known-safe media types we will hoist, mapped to file extension. SVG is
+ * deliberately absent: it can carry script and is served inline same-origin by
+ * the `/files/` route, so hoisting it would turn an icon into stored XSS. Any
+ * media type not in this map stays inline (see `createAssetHoister`).
+ */
 const EXT_BY_MIME: Record<string, string> = {
   // image
   "image/png": "png",
   "image/jpeg": "jpg",
   "image/gif": "gif",
   "image/webp": "webp",
-  "image/svg+xml": "svg",
   "image/x-icon": "ico",
   "image/vnd.microsoft.icon": "ico",
   // audio
@@ -60,15 +83,32 @@ export type AssetHoister = (
   value: string | null | undefined,
 ) => Promise<string | null | undefined>;
 
-export function createAssetHoister(deps: {
+export interface AssetHoistingDeps {
   objectStorage: BoundObjectStorage | null;
   baseUrl: string;
   orgSlug: string | undefined;
-  /** Storage key prefix for uploaded assets. */
-  prefix?: string;
-  /** Max decoded asset size to hoist (bytes). Defaults to 5 MiB. */
-  maxBytes?: number;
-}): AssetHoister {
+}
+
+type AssetHoistingWrapped<T> = T & {
+  [ASSET_HOISTING_TARGET]?: T;
+};
+
+function unwrapAssetHoisting<T>(value: T): T {
+  let current = value as AssetHoistingWrapped<T>;
+  while (current?.[ASSET_HOISTING_TARGET]) {
+    current = current[ASSET_HOISTING_TARGET] as AssetHoistingWrapped<T>;
+  }
+  return current as T;
+}
+
+export function createAssetHoister(
+  deps: AssetHoistingDeps & {
+    /** Storage key prefix for uploaded assets. */
+    prefix?: string;
+    /** Max decoded asset size to hoist (bytes). Defaults to 5 MiB. */
+    maxBytes?: number;
+  },
+): AssetHoister {
   const {
     objectStorage,
     baseUrl,
@@ -81,7 +121,13 @@ export function createAssetHoister(deps: {
     const match = value.match(DATA_MEDIA);
     if (!match) return value; // already a URL / not a data: media URI
     if (!objectStorage || !orgSlug) return value; // no storage → leave as-is
-    const [, mimeType, b64] = match;
+    const [, rawMime, b64] = match;
+    const mimeType = rawMime!.toLowerCase();
+    // Only hoist known-safe media types. Unknown/active types (e.g. SVG, which
+    // can execute script when served inline) stay inline rather than becoming a
+    // file URL with an attacker-controlled content-type.
+    const ext = EXT_BY_MIME[mimeType];
+    if (!ext) return value;
     // Estimate decoded size from the base64 length (≈ len * 3/4) before
     // allocating. Oversized assets stay inline — caps memory at the source.
     if (Math.floor((b64!.length * 3) / 4) > maxBytes) {
@@ -94,12 +140,12 @@ export function createAssetHoister(deps: {
     // Content-addressed key: same bytes → same key → same URL, so retried
     // writes are idempotent (overwrite identical content) and dedup for free.
     const digest = createHash("sha256").update(bytes).digest("hex");
-    const key = `${prefix}/${digest}.${EXT_BY_MIME[mimeType!] ?? "bin"}`;
+    const key = `${prefix}/${digest}.${ext}`;
     try {
       await objectStorage.put(key, bytes, {
         contentType: mimeType,
       });
-      return `${baseUrl}/api/${orgSlug}/files/${key}`;
+      return toFilesUrl(baseUrl, orgSlug, key);
     } catch (err) {
       console.error(
         "[asset-hoister] upload failed, keeping inline asset:",
@@ -110,21 +156,37 @@ export function createAssetHoister(deps: {
   };
 }
 
-/** Recursively replace every inline `data:` media string in a JSON value. */
+/**
+ * Recursively replace every inline `data:` media string in a JSON value.
+ * Returns the SAME reference when nothing changed, so callers can cheaply
+ * detect whether a hoist actually touched the value. Object properties are
+ * hoisted in parallel.
+ */
 async function hoistDeep(
   value: unknown,
   hoist: AssetHoister,
+  depth = 0,
 ): Promise<unknown> {
+  if (depth > MAX_DEPTH) return value;
   if (typeof value === "string") return (await hoist(value)) ?? value;
   if (Array.isArray(value)) {
-    return Promise.all(value.map((item) => hoistDeep(item, hoist)));
+    const items = await Promise.all(
+      value.map((item) => hoistDeep(item, hoist, depth + 1)),
+    );
+    return items.some((it, i) => it !== value[i]) ? items : value;
   }
   if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value);
+    const hoisted = await Promise.all(
+      entries.map(([, v]) => hoistDeep(v, hoist, depth + 1)),
+    );
+    let changed = false;
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      out[k] = await hoistDeep(v, hoist);
-    }
-    return out;
+    entries.forEach(([k, v], i) => {
+      out[k] = hoisted[i];
+      if (hoisted[i] !== v) changed = true;
+    });
+    return changed ? out : value;
   }
   return value;
 }
@@ -152,12 +214,13 @@ async function hoistConnectionData<
  * (in `icon` and `metadata`) before persisting. Other methods pass through
  * untouched.
  */
-export function withConnectionAssetHoisting<T extends ConnectionStoragePort>(
+function withConnectionAssetHoisting<T extends ConnectionStoragePort>(
   base: T,
   hoist: AssetHoister,
 ): T {
   return new Proxy(base, {
     get(target, prop, receiver) {
+      if (prop === ASSET_HOISTING_TARGET) return target;
       if (prop === "create") {
         return async (data: Parameters<ConnectionStoragePort["create"]>[0]) =>
           target.create(await hoistConnectionData(data, hoist));
@@ -178,12 +241,13 @@ export function withConnectionAssetHoisting<T extends ConnectionStoragePort>(
  * Decorate a VirtualMCPStoragePort so create/update hoist inline `data:` media
  * (in `icon` and `metadata`).
  */
-export function withVirtualMcpAssetHoisting<T extends VirtualMCPStoragePort>(
+function withVirtualMcpAssetHoisting<T extends VirtualMCPStoragePort>(
   base: T,
   hoist: AssetHoister,
 ): T {
   return new Proxy(base, {
     get(target, prop, receiver) {
+      if (prop === ASSET_HOISTING_TARGET) return target;
       if (prop === "create") {
         return async (
           organizationId: string,
@@ -211,62 +275,96 @@ export function withVirtualMcpAssetHoisting<T extends VirtualMCPStoragePort>(
   });
 }
 
-/** Hoist inline `data:` media out of a single message's `parts` and `metadata`. */
+/**
+ * Hoist inline `data:` media out of a single message's `parts` and `metadata`.
+ * Returns the SAME message reference when nothing changed.
+ */
 async function hoistMessage<M extends ThreadMessage>(
   m: M,
   hoist: AssetHoister,
 ): Promise<M> {
-  return {
-    ...m,
-    parts: (await hoistDeep(m.parts, hoist)) as ThreadMessage["parts"],
-    metadata: (await hoistDeep(m.metadata, hoist)) as ThreadMessage["metadata"],
-  };
+  const parts = (await hoistDeep(m.parts, hoist)) as ThreadMessage["parts"];
+  const metadata = (await hoistDeep(
+    m.metadata,
+    hoist,
+  )) as ThreadMessage["metadata"];
+  if (parts === m.parts && metadata === m.metadata) return m;
+  return { ...m, parts, metadata };
 }
 
-type ListMessagesResult = { messages: ThreadMessage[]; total: number };
+/** Minimal thread-storage surface the message hoister decorates. */
+type ThreadMessageStore = {
+  saveMessages: (data: ThreadMessage[]) => Promise<void>;
+};
 
 /**
  * Decorate a thread storage so inline `data:` media is hoisted out of message
- * `parts` (and `metadata`) on BOTH directions:
- * - `saveMessages` (write sink): neutralizes content re-inlined from tool
- *   results — e.g. `COLLECTION_THREAD_MESSAGES_LIST` echoing a bloated thread,
- *   or `*_LIST` icons — so base64 never lands in `thread_messages.parts`.
- * - `listMessages` (read sink): lazily cleans rows that predate the write sink
- *   (or were written through a path that bypassed it), so legacy base64 never
- *   re-enters LLM context / API responses. Upload is content-addressed, so a
- *   repeated read of the same legacy row is idempotent (overwrites identical
- *   bytes); the DB row itself is rewritten on its next save.
+ * `parts` (and `metadata`) on `saveMessages`. Reads intentionally stay pure:
+ * legacy inline rows should be repaired by an explicit bounded backfill/repair
+ * path, not by uploading and writing during `listMessages`.
  */
-export function withThreadMessageHoisting<
-  T extends {
-    saveMessages: (
-      data: ThreadMessage[],
-      organizationId: string,
-    ) => Promise<void>;
-    listMessages: (...args: never[]) => Promise<ListMessagesResult>;
-  },
->(base: T, hoist: AssetHoister): T {
+function withThreadMessageHoisting<T extends ThreadMessageStore>(
+  base: T,
+  hoist: AssetHoister,
+): T {
   return new Proxy(base, {
     get(target, prop, receiver) {
+      if (prop === ASSET_HOISTING_TARGET) return target;
       if (prop === "saveMessages") {
-        return async (data: ThreadMessage[], organizationId: string) => {
+        return async (data: ThreadMessage[]) => {
           const hoisted = await Promise.all(
             data.map((m) => hoistMessage(m, hoist)),
           );
-          return target.saveMessages(hoisted, organizationId);
-        };
-      }
-      if (prop === "listMessages") {
-        return async (...args: never[]) => {
-          const result = await target.listMessages(...args);
-          const messages = await Promise.all(
-            result.messages.map((m) => hoistMessage(m, hoist)),
-          );
-          return { ...result, messages };
+          return target.saveMessages(hoisted);
         };
       }
       const value = Reflect.get(target, prop, receiver);
       return typeof value === "function" ? value.bind(target) : value;
     },
   });
+}
+
+/**
+ * Wrap thread storage so inline `data:` media in message parts is hoisted to
+ * object storage (prefix `thread-assets`). Used by both the request context
+ * factory and the automation context factory so the two paths hoist
+ * identically.
+ */
+export function decorateThreadsWithAssetHoisting<T extends ThreadMessageStore>(
+  threads: T,
+  deps: AssetHoistingDeps,
+): T {
+  return withThreadMessageHoisting(
+    unwrapAssetHoisting(threads),
+    createAssetHoister({ ...deps, prefix: "thread-assets" }),
+  );
+}
+
+/**
+ * Decorate connection, virtual-MCP, and thread storage in place so all inline
+ * `data:` media is hoisted to object storage on write. Single wiring point
+ * shared by the context factory; connection and
+ * virtual-MCP icons share one hoister (default `connection-icons` prefix),
+ * thread parts use `thread-assets`.
+ */
+export function decorateStorageWithAssetHoisting<
+  S extends {
+    connections: ConnectionStoragePort;
+    virtualMcps: VirtualMCPStoragePort;
+    threads: ThreadMessageStore;
+  },
+>(storage: S, deps: AssetHoistingDeps): void {
+  const iconHoister = createAssetHoister(deps);
+  storage.connections = withConnectionAssetHoisting(
+    unwrapAssetHoisting(storage.connections),
+    iconHoister,
+  ) as S["connections"];
+  storage.virtualMcps = withVirtualMcpAssetHoisting(
+    unwrapAssetHoisting(storage.virtualMcps),
+    iconHoister,
+  ) as S["virtualMcps"];
+  storage.threads = decorateThreadsWithAssetHoisting(
+    unwrapAssetHoisting(storage.threads),
+    deps,
+  ) as S["threads"];
 }

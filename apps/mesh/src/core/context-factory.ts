@@ -454,12 +454,7 @@ import type { ModelListCache } from "@/ai-providers/model-list-cache";
 import { getObjectStorageS3Service } from "../object-storage/factory";
 import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../object-storage/dev-object-storage";
-import {
-  createAssetHoister,
-  withConnectionAssetHoisting,
-  withVirtualMcpAssetHoisting,
-  withThreadMessageHoisting,
-} from "../object-storage/asset-hoister";
+import { decorateStorageWithAssetHoisting } from "../object-storage/asset-hoister";
 
 /**
  * Fetch role permissions from the database
@@ -1191,34 +1186,15 @@ export async function createMeshContextFactory(
         : new DevObjectStorage(organization.id, baseUrl);
 
     // Hoist inline data: media to object storage on connection/virtual-MCP
-    // writes so base64 blobs never land on the row (and never get re-inlined
-    // into COLLECTION_*_LIST results). Decorate here — not in the storage
-    // classes — because those are singletons without objectStorage/org slug.
-    const assetHoister = createAssetHoister({
+    // writes (and out of thread message parts) so base64 blobs never land on a
+    // row or get re-inlined into COLLECTION_*_LIST results. Decorate here — not
+    // in the storage classes — because those are singletons without
+    // objectStorage/org slug.
+    decorateStorageWithAssetHoisting(storage, {
       objectStorage,
       baseUrl,
       orgSlug: organization?.slug,
     });
-    storage.connections = withConnectionAssetHoisting(
-      storage.connections,
-      assetHoister,
-    );
-    storage.virtualMcps = withVirtualMcpAssetHoisting(
-      storage.virtualMcps,
-      assetHoister,
-    );
-    // Sink choke point: hoist inline data: media out of message parts on save,
-    // so base64 re-inlined from tool results (e.g. COLLECTION_THREAD_MESSAGES_LIST)
-    // never lands in thread_messages.parts regardless of which tool produced it.
-    storage.threads = withThreadMessageHoisting(
-      storage.threads,
-      createAssetHoister({
-        objectStorage,
-        baseUrl,
-        orgSlug: organization?.slug,
-        prefix: "thread-assets",
-      }),
-    );
 
     const ctx: MeshContext = {
       timings,
