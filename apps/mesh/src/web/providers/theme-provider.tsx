@@ -13,15 +13,25 @@ import { setOAuthRedirectOrigin } from "@decocms/mesh-sdk";
 import { usePreferences } from "@/web/hooks/use-preferences";
 
 async function fetchPublicConfig(): Promise<PublicConfig> {
-  const response = await fetch("/api/config");
-  if (!response.ok) {
-    throw new Error("Failed to load public configuration");
+  performance.mark("mesh:config-fetch:start");
+  try {
+    const response = await fetch("/api/config");
+    if (!response.ok) {
+      throw new Error("Failed to load public configuration");
+    }
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || "Failed to load public configuration");
+    }
+    return data.config;
+  } finally {
+    performance.mark("mesh:config-fetch:end");
+    performance.measure(
+      "mesh:config-fetch",
+      "mesh:config-fetch:start",
+      "mesh:config-fetch:end",
+    );
   }
-  const data = await response.json();
-  if (!data.success) {
-    throw new Error(data.error || "Failed to load public configuration");
-  }
-  return data.config;
 }
 
 /**
