@@ -17,6 +17,7 @@ import {
   requireOrganization,
 } from "../../core/mesh-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
+import { getMcpReadCache } from "../../mcp-clients/mcp-read-cache";
 import { ConnectionEntitySchema } from "./schema";
 
 const ConnectionDeleteInputSchema = CollectionDeleteInputSchema.extend({
@@ -112,6 +113,8 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     getMcpListCache()
       ?.invalidate(input.id)
       .catch(() => {});
+    // Drop cached read content for this connection
+    getMcpReadCache().invalidate(input.id);
 
     const userId = getUserId(ctx);
     if (userId) {
