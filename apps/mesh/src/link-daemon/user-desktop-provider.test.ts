@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDesktopSandboxProvider } from "./user-desktop-provider";
+import {
+  createDesktopSandboxProvider,
+  type SandboxEvent,
+} from "./user-desktop-provider";
 
 function fakeDaemonSpawner() {
   return {
@@ -128,6 +131,58 @@ describe("desktop sandbox provider", () => {
           .map((s) => s.handle)
           .sort(),
       ).toEqual(["b", "c"]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("emits spawning then ready events via onEvent", async () => {
+    const dataDir = tmpDataDir();
+    try {
+      const events: SandboxEvent[] = [];
+      let portCounter = 30000;
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        postConfig: async () => {},
+        waitForHealth: async () => {},
+        pickPort: () => portCounter++,
+        onEvent: (e) => events.push(e),
+      });
+      await provider.ensureSandbox({ handle: "abc", repo: undefined });
+      const phases = events
+        .filter((e) => e.handle === "abc")
+        .map((e) => e.phase);
+      expect(phases).toContain("spawning");
+      expect(phases).toContain("ready");
+      expect(phases.indexOf("spawning")).toBeLessThan(phases.indexOf("ready"));
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("emits a failed event when bring-up throws", async () => {
+    const dataDir = tmpDataDir();
+    try {
+      const events: SandboxEvent[] = [];
+      let portCounter = 30000;
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        postConfig: async () => {},
+        waitForHealth: async () => {
+          throw new Error("boom");
+        },
+        pickPort: () => portCounter++,
+        onEvent: (e) => events.push(e),
+      });
+      await expect(
+        provider.ensureSandbox({ handle: "xyz", repo: undefined }),
+      ).rejects.toThrow();
+      const failed = events.find(
+        (e) => e.handle === "xyz" && e.phase === "failed",
+      );
+      expect(failed?.error).toContain("boom");
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }

@@ -22,6 +22,24 @@ import { mkdir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 
+// Not exported — only referenced via SandboxEvent.phase below.
+type SandboxPhase = "spawning" | "ready" | "failed" | "evicted" | "deleted";
+
+/**
+ * Observability event emitted on every sandbox lifecycle transition.
+ * Purely additive — consumers (the link TUI store) subscribe via the
+ * provider's `onEvent` dep. Never alters control flow.
+ */
+export interface SandboxEvent {
+  handle: string;
+  phase: SandboxPhase;
+  port?: number;
+  previewUrl?: string;
+  /** Set on `failed`. */
+  error?: string;
+  activeDispatchCount?: number;
+}
+
 export interface SpawnResult {
   port: number;
   kill: (signal?: NodeJS.Signals) => void;
@@ -139,6 +157,8 @@ export interface DesktopSandboxProviderDeps {
    * a mock so the probe doesn't hit a non-existent local port.
    */
   fetchImpl?: typeof fetch;
+  /** Optional observability hook for lifecycle transitions (link TUI). */
+  onEvent?: (event: SandboxEvent) => void;
 }
 
 export function createDesktopSandboxProvider(
@@ -150,6 +170,8 @@ export function createDesktopSandboxProvider(
   const fetcher = deps.fetchImpl ?? fetch;
   const resolvePreviewUrl =
     deps.resolvePreviewUrl ?? ((_handle, port) => `http://127.0.0.1:${port}`);
+
+  const emit = (event: SandboxEvent): void => deps.onEvent?.(event);
 
   /**
    * Short-timeout GET to `<sandboxUrl>/health`. The cache-hit fast path
@@ -185,6 +207,7 @@ export function createDesktopSandboxProvider(
     // registered replacement and leave the new daemon process orphaned.
     if (sandboxes.get(state.handle) === state) {
       sandboxes.delete(state.handle);
+      emit({ handle: state.handle, phase: "evicted" });
     }
   };
 
@@ -214,11 +237,13 @@ export function createDesktopSandboxProvider(
       // already gone
     }
     sandboxes.delete(victim.handle);
+    emit({ handle: victim.handle, phase: "evicted" });
   }
 
   const buildEntry = async (
     input: EnsureSandboxInput,
   ): Promise<{ sandboxApiUrl: string; previewUrl: string; port: number }> => {
+    emit({ handle: input.handle, phase: "spawning" });
     evictIfNeeded();
     const workdir = join(deps.dataDir, "sandboxes", input.handle);
     await mkdir(workdir, { recursive: true });
@@ -258,6 +283,11 @@ export function createDesktopSandboxProvider(
       } catch {
         // already gone
       }
+      emit({
+        handle: input.handle,
+        phase: "failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
       throw err;
     }
     const sandboxApiUrl = `http://127.0.0.1:${port}`;
@@ -276,6 +306,13 @@ export function createDesktopSandboxProvider(
       daemonToken,
     };
     sandboxes.set(input.handle, state);
+    emit({
+      handle: input.handle,
+      phase: "ready",
+      port,
+      previewUrl,
+      activeDispatchCount: 0,
+    });
 
     // Watchdog: clear the map entry if the daemon process exits unexpectedly.
     // Without this the cache returns a stale dead port and the cluster's
@@ -285,6 +322,7 @@ export function createDesktopSandboxProvider(
         const current = sandboxes.get(input.handle);
         if (current === state) {
           sandboxes.delete(input.handle);
+          emit({ handle: input.handle, phase: "evicted" });
         }
       });
     }
@@ -335,13 +373,24 @@ export function createDesktopSandboxProvider(
       const s = sandboxes.get(handle);
       if (!s) return () => {};
       s.activeDispatchCount += 1;
+      emit({
+        handle,
+        phase: "ready",
+        activeDispatchCount: s.activeDispatchCount,
+      });
       let released = false;
       return () => {
         if (released) return;
         released = true;
         const cur = sandboxes.get(handle);
-        if (cur)
+        if (cur) {
           cur.activeDispatchCount = Math.max(0, cur.activeDispatchCount - 1);
+          emit({
+            handle,
+            phase: "ready",
+            activeDispatchCount: cur.activeDispatchCount,
+          });
+        }
       };
     },
     listSandboxes() {
@@ -356,6 +405,7 @@ export function createDesktopSandboxProvider(
         // already gone
       }
       sandboxes.delete(handle);
+      emit({ handle, phase: "deleted" });
     },
     async shutdown() {
       for (const s of sandboxes.values()) {
