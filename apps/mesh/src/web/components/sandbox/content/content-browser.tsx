@@ -1,0 +1,1058 @@
+import { Suspense, lazy, useState } from "react";
+import {
+  AlertCircle,
+  Copy01,
+  DotsHorizontal,
+  Edit01,
+  Globe02,
+  LayoutAlt01,
+  Loading01,
+  PlayCircle,
+  Plus,
+  SearchLg,
+  Trash01,
+} from "@untitledui/icons";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@deco/ui/components/alert-dialog.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
+import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import { cn } from "@deco/ui/lib/utils.js";
+import {
+  SELF_MCP_ALIAS_ID,
+  parseBranchMap,
+  useMCPClient,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
+import { useInsetContext } from "@/web/layouts/agent-shell-layout";
+import { authClient } from "@/web/lib/auth-client";
+import { useChatTask } from "@/web/components/chat/context";
+import { useDecofile } from "@/web/components/sections-editor/use-decofile";
+import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
+import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
+import { useDeleteBlock } from "@/web/components/sections-editor/use-delete-block";
+import {
+  extractGlobalSections,
+  extractPages,
+  type GlobalSectionEntry,
+  type PageEntry,
+} from "@/web/components/sections-editor/page-list";
+import { normalizePagePath } from "@/web/components/sections-editor/page-path-utils";
+import type { SectionCatalogEntry } from "@/web/components/sections-editor/section-catalog";
+import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
+import {
+  useIsSandboxStartPending,
+  useSandboxStart,
+  type SandboxStartArgs,
+} from "@/web/components/sandbox/hooks/use-sandbox-start";
+import {
+  buildDuplicatePage,
+  buildEmptyPage,
+  nextUniqueBlockKey,
+  nextUniqueName,
+  nextUniquePagePath,
+} from "./content-mutations";
+import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
+import { SectionRenameDialog } from "./section-rename-dialog";
+
+const SectionsEditor = lazy(() =>
+  import("@/web/components/sections-editor/sections-editor").then((m) => ({
+    default: m.SectionsEditor,
+  })),
+);
+
+const AddSectionModal = lazy(() =>
+  import("@/web/components/sections-editor/add-section-modal").then((m) => ({
+    default: m.AddSectionModal,
+  })),
+);
+
+type CollectionId = "pages" | "sections";
+
+type Selection =
+  | { collection: "pages"; path: string }
+  | { collection: "sections"; key: string }
+  | null;
+
+type PageDialogState = {
+  mode: PageFormMode;
+  sourceKey: string | null; // null for "create"
+  initialName: string;
+  initialPath: string;
+} | null;
+
+type DeleteTarget =
+  | { kind: "page"; key: string; label: string }
+  | { kind: "section"; key: string; label: string }
+  | null;
+
+export function ContentBrowser() {
+  const inset = useInsetContext();
+  const { data: session } = authClient.useSession();
+  const { currentBranch: branch } = useChatTask();
+  const { org } = useProjectContext();
+
+  const virtualMcpId = inset?.entity?.id ?? null;
+  const userId = session?.user?.id;
+  const metadata = inset?.entity?.metadata;
+  const branchMap =
+    userId && branch
+      ? parseBranchMap(metadata?.sandboxMap?.[userId]?.[branch])
+      : {};
+  const branchMapEntries = Object.values(branchMap);
+  const vmEntry =
+    branchMapEntries.find((e) => e.sandboxProviderKind !== "user-desktop") ??
+    branchMapEntries[0];
+  const previewUrl = vmEntry?.previewUrl ?? null;
+
+  const vmEvents = useSandboxEvents();
+  const devServerReady = vmEvents.lifecycle.phase === "running";
+
+  const mcpClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: inset?.entity?.organization_id ?? "",
+    orgSlug: org.slug,
+  });
+  const startVm = useSandboxStart(mcpClient);
+  const vmStartPending = useIsSandboxStartPending(
+    virtualMcpId ?? undefined,
+    branch ?? undefined,
+  );
+
+  const triggerStart = () => {
+    if (!virtualMcpId) return;
+    const args: SandboxStartArgs = { virtualMcpId };
+    if (branch) args.branch = branch;
+    startVm.mutate(args);
+  };
+
+  if (!devServerReady) {
+    return (
+      <SandboxNotReadyCard
+        isStarting={vmStartPending || startVm.isPending}
+        onStart={triggerStart}
+        canStart={!!virtualMcpId}
+      />
+    );
+  }
+
+  if (!virtualMcpId || !branch) {
+    return <EmptyMessage title="Waiting for sandbox context…" />;
+  }
+
+  return (
+    <ContentBrowserReady
+      orgSlug={org.slug}
+      virtualMcpId={virtualMcpId}
+      branch={branch}
+      previewUrl={previewUrl}
+    />
+  );
+}
+
+function ContentBrowserReady({
+  orgSlug,
+  virtualMcpId,
+  branch,
+  previewUrl,
+}: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  previewUrl: string | null;
+}) {
+  const fetchParams = { orgSlug, virtualMcpId, branch };
+  const { data: decofile, isLoading: decofileLoading } =
+    useDecofile(fetchParams);
+  const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams);
+
+  const saveBlock = useSaveBlock(fetchParams);
+  const deleteBlock = useDeleteBlock(fetchParams);
+
+  const [activeCollection, setActiveCollection] =
+    useState<CollectionId>("pages");
+  const [selection, setSelection] = useState<Selection>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  // Reset search when switching collections (derived-state sync pattern)
+  const [prevCollection, setPrevCollection] = useState(activeCollection);
+  if (prevCollection !== activeCollection) {
+    setPrevCollection(activeCollection);
+    setSearchQuery("");
+  }
+
+  // Dialog state
+  const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
+  const [pageDialogError, setPageDialogError] = useState<string | undefined>();
+  const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
+
+  if (decofileLoading || metaLoading) {
+    return (
+      <div className="h-full w-full flex items-center justify-center">
+        <Loading01 size={20} className="animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!decofile || !meta) {
+    return <EmptyMessage title="Could not load site data." />;
+  }
+
+  const pages = extractPages(decofile).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  const globalSections = extractGlobalSections(decofile, meta);
+  const isDecoSite = pages.length > 0 || globalSections.length > 0;
+
+  if (!isDecoSite) {
+    return (
+      <EmptyMessage
+        icon={AlertCircle}
+        title="No editable content"
+        description="This project doesn't expose any Deco pages or sections."
+      />
+    );
+  }
+
+  const counts: Record<CollectionId, number> = {
+    pages: pages.length,
+    sections: globalSections.length,
+  };
+  const takenPaths = new Set(pages.map((p) => normalizePagePath(p.path)));
+  const takenPageNames = new Set(pages.map((p) => p.name));
+  const takenSectionNames = new Set(globalSections.map((s) => s.name));
+
+  // ------------------ Page CRUD ------------------
+  const openCreatePage = () => {
+    setPageDialogError(undefined);
+    setPageDialog({
+      mode: "create",
+      sourceKey: null,
+      initialName: "My new page",
+      initialPath: "/example",
+    });
+  };
+
+  const openDuplicatePage = (page: PageEntry) => {
+    setPageDialogError(undefined);
+    setPageDialog({
+      mode: "duplicate",
+      sourceKey: page.key,
+      initialName: nextUniqueName(takenPageNames, page.name),
+      initialPath: nextUniquePagePath(takenPaths, page.path),
+    });
+  };
+
+  const openRenamePage = (page: PageEntry) => {
+    setPageDialogError(undefined);
+    setPageDialog({
+      mode: "rename",
+      sourceKey: page.key,
+      initialName: page.name,
+      initialPath: page.path,
+    });
+  };
+
+  const submitPageDialog = async (values: { name: string; path: string }) => {
+    if (!pageDialog) return;
+    const { mode, sourceKey } = pageDialog;
+    try {
+      if (mode === "create") {
+        const data = buildEmptyPage(values.name, values.path);
+        const key = await generateUniquePageKey(values.name);
+        await saveBlock.mutateAsync({ blockKey: key, data });
+        toast.success(`Created "${values.name}"`);
+        setSelection({ collection: "pages", path: values.path });
+      } else if (mode === "duplicate" && sourceKey) {
+        const source = decofile[sourceKey] as
+          | Record<string, unknown>
+          | undefined;
+        if (!source) throw new Error("Source page not found");
+        const { key, data } = buildDuplicatePage({
+          source,
+          pages,
+          newName: values.name,
+          newPath: values.path,
+        });
+        await saveBlock.mutateAsync({ blockKey: key, data });
+        toast.success(`Duplicated as "${values.name}"`);
+        setSelection({ collection: "pages", path: values.path });
+      } else if (mode === "rename" && sourceKey) {
+        const source = decofile[sourceKey] as
+          | Record<string, unknown>
+          | undefined;
+        if (!source) throw new Error("Page not found");
+        const data: Record<string, unknown> = {
+          ...source,
+          name: values.name,
+          path: values.path,
+        };
+        await saveBlock.mutateAsync({ blockKey: sourceKey, data });
+        toast.success("Page updated");
+        if (
+          selection?.collection === "pages" &&
+          normalizePagePath(selection.path) ===
+            normalizePagePath(pageDialog.initialPath)
+        ) {
+          setSelection({ collection: "pages", path: values.path });
+        }
+      }
+      setPageDialog(null);
+    } catch (err) {
+      setPageDialogError(err instanceof Error ? err.message : "Save failed");
+    }
+  };
+
+  // Defer key generation until save time so renaming-then-saving still
+  // produces a key whose embedded name matches the final name.
+  const generateUniquePageKey = async (name: string) => {
+    const { generatePageBlockKey } = await import(
+      "@/web/components/sections-editor/page-block-template"
+    );
+    let key = generatePageBlockKey(name);
+    while (Object.hasOwn(decofile, key)) {
+      key = generatePageBlockKey(name);
+    }
+    return key;
+  };
+
+  const validatePageValues = ({
+    path,
+  }: {
+    name: string;
+    path: string;
+  }): string | null => {
+    if (!pageDialog) return null;
+    const targetNorm = normalizePagePath(path);
+    const sourceNorm =
+      pageDialog.mode === "rename"
+        ? normalizePagePath(pageDialog.initialPath)
+        : null;
+    if (sourceNorm !== targetNorm && takenPaths.has(targetNorm)) {
+      return `A page with path "${path}" already exists.`;
+    }
+    return null;
+  };
+
+  // ------------------ Section CRUD ------------------
+  const handleCreateSection = async (entry: SectionCatalogEntry) => {
+    const baseLabel = (entry.title || entry.resolveType.split("/").pop() || "")
+      .replace(/\.(tsx?|jsx?)$/, "")
+      .replace(/[^A-Za-z0-9_-]/g, "");
+    const safeBase =
+      /^[A-Za-z]/.test(baseLabel) && baseLabel.length > 0
+        ? baseLabel
+        : "Section";
+    const newKey = nextUniqueBlockKey(decofile, safeBase);
+    const data: Record<string, unknown> = {
+      __resolveType: entry.resolveType,
+      name: newKey,
+    };
+    try {
+      await saveBlock.mutateAsync({ blockKey: newKey, data });
+      toast.success(`Created section "${newKey}"`);
+      setAddSectionOpen(false);
+      setSelection({ collection: "sections", key: newKey });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not create section",
+      );
+    }
+  };
+
+  const handleDuplicateSection = async (section: GlobalSectionEntry) => {
+    const source = decofile[section.key] as Record<string, unknown> | undefined;
+    if (!source) {
+      toast.error("Section not found.");
+      return;
+    }
+    const newKey = nextUniqueBlockKey(decofile, section.key);
+    const newName = nextUniqueName(takenSectionNames, section.name);
+    const data: Record<string, unknown> = { ...source, name: newName };
+    try {
+      await saveBlock.mutateAsync({ blockKey: newKey, data });
+      toast.success(`Duplicated "${section.name}"`);
+      setSelection({ collection: "sections", key: newKey });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Duplicate failed");
+    }
+  };
+
+  const handleRenameSection = async (newName: string) => {
+    if (!renameSectionKey) return;
+    const source = decofile[renameSectionKey] as
+      | Record<string, unknown>
+      | undefined;
+    if (!source) {
+      toast.error("Section not found.");
+      return;
+    }
+    try {
+      await saveBlock.mutateAsync({
+        blockKey: renameSectionKey,
+        data: { ...source, name: newName },
+      });
+      toast.success("Section renamed");
+      setRenameSectionKey(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Rename failed");
+    }
+  };
+
+  // ------------------ Delete ------------------
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { kind, key, label } = deleteTarget;
+    try {
+      await deleteBlock.mutateAsync({ blockKey: key });
+      toast.success(`Deleted "${label}"`);
+      if (kind === "page") {
+        const deletedPath = pages.find((p) => p.key === key)?.path;
+        if (
+          deletedPath &&
+          selection?.collection === "pages" &&
+          normalizePagePath(selection.path) === normalizePagePath(deletedPath)
+        ) {
+          setSelection(null);
+        }
+      } else if (
+        selection?.collection === "sections" &&
+        selection.key === key
+      ) {
+        setSelection(null);
+      }
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    }
+  };
+
+  // ------------------ Render ------------------
+  return (
+    <div className="flex h-full w-full">
+      <CollectionsSidebar
+        active={activeCollection}
+        counts={counts}
+        onSelect={(id) => {
+          setActiveCollection(id);
+          setSelection(null);
+        }}
+      />
+      <ItemList
+        activeCollection={activeCollection}
+        pages={pages}
+        sections={globalSections}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        selection={selection}
+        onSelect={setSelection}
+        onCreate={() => {
+          if (activeCollection === "pages") {
+            openCreatePage();
+          } else {
+            setAddSectionOpen(true);
+          }
+        }}
+        onDuplicatePage={openDuplicatePage}
+        onRenamePage={openRenamePage}
+        onDeletePage={(page) =>
+          setDeleteTarget({ kind: "page", key: page.key, label: page.name })
+        }
+        onDuplicateSection={handleDuplicateSection}
+        onRenameSection={(s) => setRenameSectionKey(s.key)}
+        onDeleteSection={(s) =>
+          setDeleteTarget({ kind: "section", key: s.key, label: s.name })
+        }
+      />
+      <div className="flex-1 min-w-0">
+        {selection ? (
+          <Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center">
+                <Loading01
+                  size={20}
+                  className="animate-spin text-muted-foreground"
+                />
+              </div>
+            }
+          >
+            <SectionsEditor
+              key={
+                selection.collection === "pages"
+                  ? `page:${selection.path}`
+                  : `section:${selection.key}`
+              }
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              previewReady
+              previewUrl={previewUrl ?? undefined}
+              currentPath={
+                selection.collection === "pages" ? selection.path : "/"
+              }
+              activeGlobalBlockKey={
+                selection.collection === "sections" ? selection.key : null
+              }
+            />
+          </Suspense>
+        ) : (
+          <EmptyMessage
+            title={
+              activeCollection === "pages"
+                ? "Select a page to edit"
+                : "Select a section to edit"
+            }
+            description={
+              activeCollection === "pages"
+                ? 'Pick a page from the list, or click "+ New" to create one.'
+                : 'Pick a section from the list, or click "+ New" to create one.'
+            }
+          />
+        )}
+      </div>
+
+      {/* Page create/duplicate/rename dialog */}
+      {pageDialog && (
+        <PageFormDialog
+          open={!!pageDialog}
+          mode={pageDialog.mode}
+          initialName={pageDialog.initialName}
+          initialPath={pageDialog.initialPath}
+          isPending={saveBlock.isPending}
+          error={pageDialogError}
+          validate={validatePageValues}
+          onSubmit={submitPageDialog}
+          onOpenChange={(next) => {
+            if (!next) {
+              setPageDialog(null);
+              setPageDialogError(undefined);
+            }
+          }}
+        />
+      )}
+
+      {/* Section rename dialog */}
+      {renameSectionKey && (
+        <SectionRenameDialog
+          open={!!renameSectionKey}
+          blockKey={renameSectionKey}
+          initialName={
+            globalSections.find((s) => s.key === renameSectionKey)?.name ??
+            renameSectionKey
+          }
+          isPending={saveBlock.isPending}
+          onSubmit={handleRenameSection}
+          onOpenChange={(next) => {
+            if (!next) setRenameSectionKey(null);
+          }}
+        />
+      )}
+
+      {/* Create global section — reuses the section gallery */}
+      {addSectionOpen && previewUrl && (
+        <Suspense fallback={null}>
+          <AddSectionModal
+            open={addSectionOpen}
+            onOpenChange={setAddSectionOpen}
+            meta={meta}
+            decofile={decofile}
+            previewBaseUrl={previewUrl}
+            onSelect={handleCreateSection}
+          />
+        </Suspense>
+      )}
+
+      {/* Delete confirmation */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(next) => {
+          if (!next && !deleteBlock.isPending) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {deleteTarget?.kind === "page" ? "page" : "section"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.kind === "page"
+                ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
+                : deleteTarget?.kind === "section"
+                  ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
+                  : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBlock.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDelete();
+              }}
+              disabled={deleteBlock.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteBlock.isPending ? (
+                <>
+                  <Loading01 size={14} className="animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function CollectionsSidebar({
+  active,
+  counts,
+  onSelect,
+}: {
+  active: CollectionId;
+  counts: Record<CollectionId, number>;
+  onSelect: (id: CollectionId) => void;
+}) {
+  return (
+    <div className="w-[208px] shrink-0 border-r flex flex-col">
+      <div className="px-3 h-12 flex items-center border-b shrink-0">
+        <span className="text-sm font-medium">Content</span>
+      </div>
+      <nav className="flex flex-col p-1.5 gap-0.5">
+        <CollectionRow
+          id="pages"
+          icon={LayoutAlt01}
+          label="Pages"
+          count={counts.pages}
+          active={active === "pages"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="sections"
+          icon={Globe02}
+          label="Sections"
+          count={counts.sections}
+          active={active === "sections"}
+          onSelect={onSelect}
+        />
+      </nav>
+    </div>
+  );
+}
+
+function CollectionRow({
+  id,
+  icon: Icon,
+  label,
+  count,
+  active,
+  onSelect,
+}: {
+  id: CollectionId;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  count: number;
+  active: boolean;
+  onSelect: (id: CollectionId) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(id)}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
+    >
+      <Icon size={16} className="shrink-0" />
+      <span className="flex-1 truncate">{label}</span>
+      <span
+        className={cn(
+          "shrink-0 text-xs tabular-nums",
+          active ? "text-accent-foreground/70" : "text-muted-foreground/70",
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function ItemList({
+  activeCollection,
+  pages,
+  sections,
+  searchQuery,
+  onSearchChange,
+  selection,
+  onSelect,
+  onCreate,
+  onDuplicatePage,
+  onRenamePage,
+  onDeletePage,
+  onDuplicateSection,
+  onRenameSection,
+  onDeleteSection,
+}: {
+  activeCollection: CollectionId;
+  pages: PageEntry[];
+  sections: GlobalSectionEntry[];
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  selection: Selection;
+  onSelect: (next: Selection) => void;
+  onCreate: () => void;
+  onDuplicatePage: (page: PageEntry) => void;
+  onRenamePage: (page: PageEntry) => void;
+  onDeletePage: (page: PageEntry) => void;
+  onDuplicateSection: (section: GlobalSectionEntry) => void;
+  onRenameSection: (section: GlobalSectionEntry) => void;
+  onDeleteSection: (section: GlobalSectionEntry) => void;
+}) {
+  const q = searchQuery.toLowerCase();
+  const filteredPages = pages.filter(
+    (p) =>
+      !q ||
+      p.name.toLowerCase().includes(q) ||
+      p.path.toLowerCase().includes(q),
+  );
+  const filteredSections = sections.filter(
+    (s) =>
+      !q ||
+      s.name.toLowerCase().includes(q) ||
+      s.key.toLowerCase().includes(q) ||
+      s.resolveType.toLowerCase().includes(q),
+  );
+
+  const placeholder =
+    activeCollection === "pages" ? "Search pages…" : "Search sections…";
+  const createTooltip =
+    activeCollection === "pages" ? "Create new page" : "Create new section";
+
+  return (
+    <div className="w-[300px] shrink-0 border-r flex flex-col min-h-0">
+      <div className="px-2 h-12 flex items-center gap-1 border-b shrink-0">
+        <div className="flex flex-1 items-center gap-2 pl-1">
+          <SearchLg
+            size={14}
+            className="shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={placeholder}
+            aria-label={placeholder}
+            className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          />
+        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onCreate}
+              aria-label={createTooltip}
+            >
+              <Plus size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{createTooltip}</TooltipContent>
+        </Tooltip>
+      </div>
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-1.5">
+          {activeCollection === "pages" ? (
+            filteredPages.length === 0 ? (
+              <ListEmpty
+                hasItems={pages.length > 0}
+                emptyLabel="No pages yet."
+                emptyHint='Click "+" to create your first page.'
+              />
+            ) : (
+              filteredPages.map((page) => {
+                const isActive =
+                  selection?.collection === "pages" &&
+                  selection.path === page.path;
+                return (
+                  <ItemRow
+                    key={page.key}
+                    icon={LayoutAlt01}
+                    title={page.name}
+                    subtitle={page.path}
+                    active={isActive}
+                    onClick={() =>
+                      onSelect({ collection: "pages", path: page.path })
+                    }
+                    menu={
+                      <ItemActions
+                        onDuplicate={() => onDuplicatePage(page)}
+                        onRename={() => onRenamePage(page)}
+                        onDelete={() => onDeletePage(page)}
+                      />
+                    }
+                  />
+                );
+              })
+            )
+          ) : filteredSections.length === 0 ? (
+            <ListEmpty
+              hasItems={sections.length > 0}
+              emptyLabel="No saved sections yet."
+              emptyHint='Click "+" to create one, or save a section from a page.'
+            />
+          ) : (
+            filteredSections.map((section) => {
+              const isActive =
+                selection?.collection === "sections" &&
+                selection.key === section.key;
+              const typeLabel = section.resolveType
+                .split("/")
+                .pop()
+                ?.replace(/\.tsx?$/, "");
+              return (
+                <ItemRow
+                  key={section.key}
+                  icon={Globe02}
+                  title={section.name}
+                  subtitle={typeLabel ?? section.resolveType}
+                  active={isActive}
+                  onClick={() =>
+                    onSelect({ collection: "sections", key: section.key })
+                  }
+                  menu={
+                    <ItemActions
+                      onDuplicate={() => onDuplicateSection(section)}
+                      onRename={() => onRenameSection(section)}
+                      onDelete={() => onDeleteSection(section)}
+                    />
+                  }
+                />
+              );
+            })
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+function ItemRow({
+  icon: Icon,
+  title,
+  subtitle,
+  active,
+  onClick,
+  menu,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  title: string;
+  subtitle: string;
+  active: boolean;
+  onClick: () => void;
+  menu?: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "group relative flex items-center rounded-md transition-colors",
+        active ? "bg-accent text-accent-foreground" : "hover:bg-muted",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer"
+      >
+        <Icon
+          size={16}
+          className={cn(
+            "shrink-0",
+            active ? "text-accent-foreground" : "text-muted-foreground",
+          )}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{title}</span>
+          <span
+            className={cn(
+              "block truncate text-xs",
+              active ? "text-accent-foreground/70" : "text-muted-foreground",
+            )}
+          >
+            {subtitle}
+          </span>
+        </span>
+      </button>
+      {menu && (
+        <div
+          className={cn(
+            "pr-1 opacity-0 transition-opacity group-hover:opacity-100",
+            active && "opacity-100",
+          )}
+        >
+          {menu}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ItemActions({
+  onDuplicate,
+  onRename,
+  onDelete,
+}: {
+  onDuplicate: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="More actions"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DotsHorizontal size={14} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuItem onClick={onRename}>
+          <Edit01 size={14} />
+          Rename
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onDuplicate}>
+          <Copy01 size={14} />
+          Duplicate
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={onDelete}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash01 size={14} />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ListEmpty({
+  hasItems,
+  emptyLabel,
+  emptyHint,
+}: {
+  hasItems: boolean;
+  emptyLabel: string;
+  emptyHint: string;
+}) {
+  return (
+    <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+      {hasItems ? (
+        "No results match your search."
+      ) : (
+        <>
+          <div>{emptyLabel}</div>
+          <div className="mt-1 text-muted-foreground/80">{emptyHint}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EmptyMessage({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
+      {Icon && <Icon size={24} className="text-muted-foreground/60" />}
+      <div>{title}</div>
+      {description && (
+        <div className="text-xs text-muted-foreground/80 max-w-sm">
+          {description}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SandboxNotReadyCard({
+  isStarting,
+  onStart,
+  canStart,
+}: {
+  isStarting: boolean;
+  onStart: () => void;
+  canStart: boolean;
+}) {
+  return (
+    <div className="flex h-full w-full items-center justify-center p-6">
+      <div className="max-w-sm rounded-xl border bg-card p-6 text-center shadow-sm">
+        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <PlayCircle size={20} />
+        </div>
+        <h3 className="text-sm font-medium">Dev server isn't running</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Content editing reads live data from your sandbox. Start it to browse
+          pages and sections.
+        </p>
+        <Button
+          className="mt-4 w-full"
+          onClick={onStart}
+          disabled={!canStart || isStarting}
+        >
+          {isStarting ? (
+            <>
+              <Loading01 size={14} className="animate-spin" />
+              Starting…
+            </>
+          ) : (
+            <>
+              <PlayCircle size={14} />
+              Start dev server
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}

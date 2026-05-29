@@ -201,6 +201,42 @@ export function makeWriteHandler(deps: FsDeps) {
   };
 }
 
+/**
+ * Delete a single file inside the workspace. Symmetric with `write` —
+ * same safePath clamp, same onWorkingTreeWrite signal so the branch
+ * dirty-state recomputes. Idempotent (returns ok with `existed: false`
+ * for a missing path) so the client can retry without races.
+ */
+export function makeUnlinkHandler(deps: FsDeps) {
+  return async (req: Request): Promise<Response> => {
+    let body: { path?: string };
+    try {
+      body = (await parseJsonBody(req)) as typeof body;
+    } catch (e) {
+      return jsonResponse({ error: (e as Error).message }, 400);
+    }
+    if (!body.path || typeof body.path !== "string")
+      return jsonResponse({ error: "path is required" }, 400);
+    const filePath = safePath(deps.appRoot, deps.repoDir, body.path);
+    if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
+    let existed = true;
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.isDirectory())
+        return jsonResponse({ error: "Refusing to unlink directory" }, 400);
+      fs.unlinkSync(filePath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        existed = false;
+      } else {
+        return jsonResponse({ error: (err as Error).message }, 500);
+      }
+    }
+    if (existed) deps.onWorkingTreeWrite?.();
+    return jsonResponse({ ok: true, existed });
+  };
+}
+
 export function makeEditHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: {

@@ -11,7 +11,7 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import {
   SELF_MCP_ALIAS_ID,
@@ -29,6 +29,7 @@ import { useChatTask } from "@/web/components/chat/index";
 import { useThreadManager } from "@/web/components/chat/store/hooks";
 import { getActiveGithubRepo } from "@/web/lib/github-repo.ts";
 import { usePrByBranch } from "@/web/components/thread/github/use-pr-data.ts";
+import { isDecoSiteDecofile } from "@/web/components/sections-editor/is-deco-site";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -176,6 +177,23 @@ export function useMainPanelTabs(ctx: {
   const hasClonableSource = agentHasClonableSource(entity?.metadata);
   const connections = useConnections({ includeVirtual: true });
 
+  // Show "Content" only when the sandbox decofile confirms this is a Deco
+  // site. We peek the React Query cache (no fetch) — populated lazily when
+  // Preview/Content actually run. `null` = unknown (no data yet) → show
+  // optimistically; `false` = confirmed non-Deco → hide.
+  const queryClient = useQueryClient();
+  const decofileCacheKey =
+    entity?.id && currentBranch
+      ? `${org.slug}/${entity.id}/${currentBranch}`
+      : null;
+  const cachedDecofile = decofileCacheKey
+    ? queryClient.getQueryData<Record<string, unknown>>(
+        KEYS.decofile(decofileCacheKey),
+      )
+    : undefined;
+  const isLikelyDecoSite =
+    cachedDecofile === undefined ? null : isDecoSiteDecofile(cachedDecofile);
+
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
       mainParam: search.main,
@@ -215,6 +233,9 @@ export function useMainPanelTabs(ctx: {
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource) {
     systemTabs.push({ id: "preview", title: "Preview" });
+    if (isLikelyDecoSite !== false) {
+      systemTabs.push({ id: "content", title: "Content" });
+    }
   }
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
