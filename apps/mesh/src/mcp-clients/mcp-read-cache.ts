@@ -25,7 +25,7 @@ const READ_CACHE_TTL_MS = 5 * 60_000;
 /** LRU cap to bound memory; oldest entries evicted first. */
 const READ_CACHE_MAX_ENTRIES = 1000;
 /** Skip caching results larger than this (avoid pinning huge file blobs). */
-const READ_CACHE_MAX_VALUE_BYTES = 256 * 1024;
+const READ_CACHE_MAX_VALUE_BYTES = 2 * 1024 * 1024; // 2 MiB
 
 export type McpReadType = "resources/read" | "prompts/get";
 
