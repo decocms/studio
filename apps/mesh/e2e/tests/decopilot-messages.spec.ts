@@ -276,7 +276,7 @@ test.describe("POST /messages — first-message pinning", () => {
     }
   });
 
-  test("subsequent message uses the pinned harness and ignores a conflicting body", async ({
+  test("subsequent message keeps the pinned sandbox kind and ignores a conflicting body", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -301,9 +301,14 @@ test.describe("POST /messages — first-message pinning", () => {
       );
       expect(first.status()).toBe(202);
 
-      // Second message sends a conflicting body. If the route honored it, the
-      // "decopilot" harness would need the decopilot-sandbox capability the
-      // link lacks → 409. Using the pinned claude-code harness → 202.
+      // Second message sends a conflicting sandbox kind (local-docker). The
+      // thread row already pins user-desktop, which is the single source of
+      // truth — the body's kind must be ignored. We keep harnessId
+      // "claude-code" here on purpose: a non-CLI harness in the body (e.g.
+      // "decopilot") would force real per-request model resolution via
+      // resolveTier, which 400s on an org with no model configured. (The old
+      // unit test only "passed" that path because it mocked resolveTier — the
+      // real front door exposes the dependency.)
       const second = await postMessage(
         api,
         orgSlug,
@@ -311,12 +316,13 @@ test.describe("POST /messages — first-message pinning", () => {
         messageBody({
           agentId,
           sandboxProviderKind: "local-docker",
-          harnessId: "decopilot",
+          harnessId: "claude-code",
         }),
       );
       expect(second.status()).toBe(202);
 
-      // Pins were not overwritten by the second request's body.
+      // The conflicting body did not overwrite the pinned values: the row is
+      // still user-desktop, not local-docker.
       const { rows } = await db.query(
         "SELECT sandbox_provider_kind, harness_id FROM threads WHERE id = $1",
         [threadId],
