@@ -1,6 +1,6 @@
 {
   "name": "@decocms/sandbox",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "type": "module",
   "description": "Sandbox runner for isolated per-user containerised tool execution",
   "scripts": {
