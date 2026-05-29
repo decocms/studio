@@ -85,6 +85,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         app_name: null,
         app_id: null,
         connection_type: "VIRTUAL",
+        access: "org",
         pinned: data.pinned ?? false,
         connection_url: `virtual://${id}`,
         connection_token: null,

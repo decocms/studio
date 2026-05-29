@@ -1,13 +1,26 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  test,
+} from "bun:test";
 import { sql } from "kysely";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
   resetTestPgDatabase,
+  seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
 import type { MeshDatabase } from "../database";
 import { VirtualMCPStorage } from "./virtual";
 import { getDecopilotId } from "@decocms/mesh-sdk";
+
+const USER = "user_test";
+const ORG = "org_test";
 
 describe("VirtualMCPStorage.findById (Decopilot)", () => {
   let database: MeshDatabase;
@@ -77,5 +90,36 @@ describe("VirtualMCPStorage.findById (Decopilot)", () => {
     expect(decopilot).not.toBeNull();
     expect(decopilot?.title).toBe("Decopilot");
     expect(decopilot?.connections).toEqual([]);
+  });
+});
+
+describe("VirtualMCPStorage — org-scoped access", () => {
+  let database: MeshDatabase;
+  let storage: VirtualMCPStorage;
+
+  beforeEach(async () => {
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
+    storage = new VirtualMCPStorage(database.db);
+  });
+
+  afterEach(async () => {
+    await closeTestPgDatabase(database);
+  });
+
+  it("creates agents as org-scoped regardless of the connections default", async () => {
+    const entity = await storage.create(ORG, USER, {
+      title: "org agent",
+      status: "active",
+      pinned: false,
+      connections: [],
+      slots: [],
+    });
+
+    const row = (await sql<{ access: string }>`
+      SELECT access FROM connections WHERE id = ${entity.id}
+    `.execute(database.db)) as unknown as { rows: { access: string }[] };
+    expect(row.rows[0]?.access).toBe("org");
   });
 });
