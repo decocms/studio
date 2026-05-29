@@ -1,6 +1,21 @@
 import { useState, useRef } from "react";
-import { ChevronRight, Flag01, Loading01, Plus } from "@untitledui/icons";
+import {
+  ChevronRight,
+  DotsHorizontal,
+  Edit01,
+  Flag01,
+  Loading01,
+  Plus,
+  Trash01,
+} from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import {
   Tooltip,
@@ -8,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { VariantRenameDialog } from "./variant-rename-dialog";
 import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
@@ -71,7 +87,10 @@ function VariantTabIcon({
 }
 
 interface PageVariant {
+  /** Display label (custom name if set, otherwise derived from the rule). */
   label: string;
+  /** User-provided custom name override. */
+  name?: string;
   sections: RawSection[];
   rule?: Record<string, unknown>;
 }
@@ -88,6 +107,36 @@ function labelFromResolveType(rt: string): string {
       .replace(/[-_]/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
   );
+}
+
+/**
+ * Render a `start`/`end` ISO-date pair as a compact range — used by deco's
+ * built-in date matcher AND by any custom matcher whose rule happens to
+ * carry the same field names (e.g. project-defined `Date` / `Birthday`
+ * matchers that don't share resolveType with the website package). Returns
+ * null when the rule has no readable date fields so callers can fall back.
+ */
+function formatDateRange(rule: Record<string, unknown>): string | null {
+  const { start, end } = rule as { start?: unknown; end?: unknown };
+  const startStr = typeof start === "string" ? start : "";
+  const endStr = typeof end === "string" ? end : "";
+  if (!startStr && !endStr) return null;
+  const fmt = new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const tryFormat = (iso: string): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return fmt.format(d);
+  };
+  const startFmt = tryFormat(startStr);
+  const endFmt = tryFormat(endStr);
+  if (startFmt && endFmt) return `${startFmt} → ${endFmt}`;
+  if (startFmt) return `From ${startFmt}`;
+  if (endFmt) return `Until ${endFmt}`;
+  return null;
 }
 
 function formatMatcher(rule: Record<string, unknown> | undefined): string {
@@ -127,36 +176,8 @@ function formatMatcher(rule: Record<string, unknown> | undefined): string {
     }
 
     case "website/matchers/date.ts":
-    case "$live/matchers/MatchDate.ts": {
-      const { start, end } = rule as { start?: string; end?: string };
-      if (!start && !end) return labelFromResolveType(rt);
-      const fmt = new Intl.DateTimeFormat("en", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
-      if (start && end) {
-        try {
-          return `${fmt.format(new Date(start))} \u2192 ${fmt.format(new Date(end))}`;
-        } catch {
-          return labelFromResolveType(rt);
-        }
-      }
-      if (start) {
-        try {
-          return `From ${fmt.format(new Date(start))}`;
-        } catch {
-          return labelFromResolveType(rt);
-        }
-      }
-      if (end) {
-        try {
-          return `Until ${fmt.format(new Date(end))}`;
-        } catch {
-          return labelFromResolveType(rt);
-        }
-      }
-      return labelFromResolveType(rt);
-    }
+    case "$live/matchers/MatchDate.ts":
+      return formatDateRange(rule) ?? labelFromResolveType(rt);
 
     case "website/matchers/random.ts":
     case "$live/matchers/MatchRandom.ts": {
@@ -232,8 +253,14 @@ function formatMatcher(rule: Record<string, unknown> | undefined): string {
       return labelFromResolveType(rt);
     }
 
-    default:
+    default: {
+      // Project-defined matchers (e.g. "Date", "Birthday") don't share
+      // resolveType with the website package, so generic field inspection
+      // is the only way to surface their actual configuration on the tab.
+      const range = formatDateRange(rule);
+      if (range) return range;
       return labelFromResolveType(rt) || "Default";
+    }
   }
 }
 
@@ -252,11 +279,14 @@ function parsePageVariants(sections: unknown): PageVariant[] {
       const raw = obj.variants as Array<{
         rule?: Record<string, unknown>;
         value?: unknown;
+        name?: unknown;
       }>;
-      // When several variants share the same matcher label (e.g. all "Default"
-      // because none have a rule set yet), append an index so the user can
-      // tell them apart in the tab bar.
-      const labels = raw.map((v) => formatMatcher(v.rule));
+      // Custom name (if set) wins over the rule-derived label. Disambiguate
+      // remaining duplicates with an index ("Default 1", "Default 2").
+      const labels = raw.map((v) => {
+        const customName = typeof v.name === "string" ? v.name.trim() : "";
+        return customName || formatMatcher(v.rule);
+      });
       const labelCounts = labels.reduce<Record<string, number>>((acc, l) => {
         acc[l] = (acc[l] ?? 0) + 1;
         return acc;
@@ -270,8 +300,10 @@ function parsePageVariants(sections: unknown): PageVariant[] {
           seen[baseLabel] = (seen[baseLabel] ?? 0) + 1;
           label = `${baseLabel} ${seen[baseLabel]}`;
         }
+        const customName = typeof v.name === "string" ? v.name.trim() : "";
         return {
           label: label || `Variant ${i + 1}`,
+          name: customName || undefined,
           sections: Array.isArray(v.value) ? (v.value as RawSection[]) : [],
           rule: v.rule,
         };
@@ -462,6 +494,9 @@ export function SectionsEditor({
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
   const [formResetKey, setFormResetKey] = useState(0);
   const [makeReusableIndex, setMakeReusableIndex] = useState<number | null>(
+    null,
+  );
+  const [renameVariantIndex, setRenameVariantIndex] = useState<number | null>(
     null,
   );
   const [addSectionOpen, setAddSectionOpen] = useState(false);
@@ -1445,6 +1480,87 @@ export function SectionsEditor({
     );
   };
 
+  /**
+   * Read the page's variants array, apply a transform, then either persist
+   * the modified `{ variants: [...] }` shape or collapse back to a flat
+   * sections array when only one variant remains. Shared by delete + rename.
+   */
+  const mutatePageVariants = (
+    transform: (
+      variants: Array<Record<string, unknown>>,
+    ) => Array<Record<string, unknown>> | null,
+    onSaved?: () => void,
+  ) => {
+    if (!activePageKey) return;
+    const fullPageData = decofile[activePageKey] as Record<string, unknown>;
+    const current = fullPageData.sections;
+    if (!current || typeof current !== "object" || Array.isArray(current))
+      return;
+    const obj = current as Record<string, unknown>;
+    if (!Array.isArray(obj.variants)) return;
+    const next = transform([
+      ...(obj.variants as Array<Record<string, unknown>>),
+    ]);
+    if (!next) return;
+    const updatedSections: unknown =
+      next.length === 1 && Array.isArray(next[0]?.value)
+        ? (next[0].value as unknown[])
+        : { ...obj, variants: next };
+    saveBlock.mutate(
+      {
+        blockKey: activePageKey,
+        data: { ...fullPageData, sections: updatedSections },
+      },
+      {
+        onSuccess: () => onSaved?.(),
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  };
+
+  const handleDeletePageVariant = (variantIndex: number) => {
+    mutatePageVariants(
+      (variants) => {
+        if (variants.length <= 1) return null;
+        variants.splice(variantIndex, 1);
+        return variants;
+      },
+      () => {
+        // After delete, keep the user on a valid neighboring variant.
+        const collapsing = pageVariants.length - 1 === 1;
+        if (collapsing) {
+          setActiveVariantIndex(0);
+        } else if (variantIndex < safeVariantIndex) {
+          setActiveVariantIndex(safeVariantIndex - 1);
+        } else if (variantIndex === safeVariantIndex) {
+          setActiveVariantIndex(Math.max(0, variantIndex - 1));
+        }
+        setSelectedSectionIndex(null);
+        setFormValue(null);
+        setActiveResolveType(null);
+        setFieldBreadcrumbs([]);
+        setRuleFormValue(null);
+        setRuleResolveType(null);
+      },
+    );
+  };
+
+  const handleRenamePageVariant = (variantIndex: number, nextName: string) => {
+    mutatePageVariants((variants) => {
+      const target = variants[variantIndex];
+      if (!target) return null;
+      const trimmed = nextName.trim();
+      if (trimmed) {
+        variants[variantIndex] = { ...target, name: trimmed };
+      } else {
+        // Clearing the name reverts to the auto-derived label.
+        const { name: _drop, ...rest } = target as Record<string, unknown>;
+        variants[variantIndex] = rest;
+      }
+      return variants;
+    });
+  };
+
   const exitSectionEditing = () => {
     clearSectionEditing();
   };
@@ -1559,40 +1675,76 @@ export function SectionsEditor({
         <div className="flex items-center gap-1.5 px-3 py-2 border-b shrink-0 overflow-x-auto">
           {pageVariants.map((variant, i) => {
             const isActive = i === safeVariantIndex;
+            const canDelete = pageVariants.length > 1;
             return (
-              <button
+              <div
                 key={i}
-                type="button"
-                onClick={() => {
-                  setActiveVariantIndex(i);
-                  setSelectedSectionIndex(null);
-                  setFormValue(null);
-                  setActiveResolveType(null);
-                  setFieldBreadcrumbs([]);
-                  const variantRule = pageVariants[i]?.rule;
-                  const variantRuleRt =
-                    (variantRule?.__resolveType as string) ?? "";
-                  setRuleResolveType(variantRuleRt);
-                  if (variantRule) {
-                    const { __resolveType: _, ...ruleData } = variantRule;
-                    setRuleFormValue(ruleData);
-                  } else {
-                    setRuleFormValue(null);
-                  }
-                }}
                 className={cn(
-                  "shrink-0 inline-flex items-center gap-1.5 rounded-md px-3 h-8 text-sm font-medium transition-colors cursor-pointer",
+                  "group shrink-0 inline-flex items-center rounded-md transition-colors",
                   isActive
                     ? VARIANT_TAB_ACTIVE_CLASS
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                <VariantTabIcon
-                  rule={variant.rule}
-                  matchers={availableMatchers}
-                />
-                <span className="truncate">{variant.label}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveVariantIndex(i);
+                    setSelectedSectionIndex(null);
+                    setFormValue(null);
+                    setActiveResolveType(null);
+                    setFieldBreadcrumbs([]);
+                    const variantRule = pageVariants[i]?.rule;
+                    const variantRuleRt =
+                      (variantRule?.__resolveType as string) ?? "";
+                    setRuleResolveType(variantRuleRt);
+                    if (variantRule) {
+                      const { __resolveType: _, ...ruleData } = variantRule;
+                      setRuleFormValue(ruleData);
+                    } else {
+                      setRuleFormValue(null);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-sm font-medium cursor-pointer"
+                >
+                  <VariantTabIcon
+                    rule={variant.rule}
+                    matchers={availableMatchers}
+                  />
+                  <span className="truncate">{variant.label}</span>
+                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Actions for ${variant.label}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className={cn(
+                        "inline-flex h-8 w-6 items-center justify-center pr-1 cursor-pointer transition-opacity",
+                        "opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100",
+                        isActive && "opacity-100",
+                      )}
+                    >
+                      <DotsHorizontal size={12} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-36">
+                    <DropdownMenuItem onClick={() => setRenameVariantIndex(i)}>
+                      <Edit01 size={14} />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={!canDelete}
+                      onClick={() => handleDeletePageVariant(i)}
+                    >
+                      <Trash01 size={14} />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             );
           })}
           <Tooltip>
@@ -1697,7 +1849,7 @@ export function SectionsEditor({
         <ScrollArea className="flex-1 min-h-0">
           {/* Variant rule editor */}
           {hasMultipleVariants && ruleResolveType !== null && (
-            <div className="px-3 py-3 border-b space-y-2">
+            <div className="px-3 pt-3 pb-5 border-b space-y-3">
               <span className="text-xs font-medium text-muted-foreground">
                 Variant rule
               </span>
@@ -1708,7 +1860,7 @@ export function SectionsEditor({
                 onSelect={handleMatcherTypeChange}
               />
               {ruleSchema && ruleFormValue && (
-                <div className="pt-1">
+                <div className="space-y-3">
                   <SchemaForm
                     schema={ruleSchema}
                     value={ruleFormValue}
@@ -1719,7 +1871,7 @@ export function SectionsEditor({
               )}
             </div>
           )}
-          <div className="p-2">
+          <div className="p-2 pt-3">
             <SectionList
               listKey={`${activePageKey ?? ""}-${safeVariantIndex}`}
               sections={parsedSections}
@@ -1758,6 +1910,21 @@ export function SectionsEditor({
           decofile={decofile}
           previewBaseUrl={previewUrl}
           onSelect={handleAddSection}
+        />
+      )}
+
+      {renameVariantIndex !== null && (
+        <VariantRenameDialog
+          open
+          initialName={pageVariants[renameVariantIndex]?.name ?? ""}
+          autoLabel={formatMatcher(pageVariants[renameVariantIndex]?.rule)}
+          onSubmit={(name) => {
+            handleRenamePageVariant(renameVariantIndex, name);
+            setRenameVariantIndex(null);
+          }}
+          onOpenChange={(open) => {
+            if (!open) setRenameVariantIndex(null);
+          }}
         />
       )}
     </div>
