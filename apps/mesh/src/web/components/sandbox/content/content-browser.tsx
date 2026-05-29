@@ -58,14 +58,20 @@ import {
 } from "@/web/components/sections-editor/page-list";
 import { normalizePagePath } from "@/web/components/sections-editor/page-path-utils";
 import type { SectionCatalogEntry } from "@/web/components/sections-editor/section-catalog";
+import { useNavigate } from "@tanstack/react-router";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
+  sandboxUserStop,
   useIsSandboxStartPending,
   useSandboxStart,
   type SandboxStartArgs,
 } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { SandboxStateCard } from "@/web/components/sandbox/preview/state-card";
 import { derivePhaseProgress } from "@/web/components/sandbox/preview/derive-phase-progress";
+import {
+  computePreviewState,
+  type LifecycleFailure,
+} from "@/web/components/sandbox/preview/preview-state";
 import {
   buildDuplicatePage,
   buildEmptyPage,
@@ -127,7 +133,7 @@ export function ContentBrowser() {
   const previewUrl = vmEntry?.previewUrl ?? null;
 
   const vmEvents = useSandboxEvents();
-  const devServerReady = vmEvents.lifecycle.phase === "running";
+  const lifecyclePhase = vmEvents.lifecycle.phase;
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -139,6 +145,7 @@ export function ContentBrowser() {
     virtualMcpId ?? undefined,
     branch ?? undefined,
   );
+  const navigate = useNavigate();
 
   const triggerStart = () => {
     if (!virtualMcpId) return;
@@ -147,22 +154,69 @@ export function ContentBrowser() {
     startVm.mutate(args);
   };
 
-  if (!devServerReady) {
-    const isStarting = vmStartPending || startVm.isPending;
-    if (isStarting) {
-      const progress = derivePhaseProgress({
-        claimPhase: vmEvents.phase,
-        lifecycle: vmEvents.lifecycle,
-      });
-      return (
-        <SandboxStateCard
-          kind="starting-now"
-          progress={progress}
-          claimPhase={vmEvents.phase}
-        />
-      );
-    }
-    return <SandboxStateCard kind="never-started" onStart={triggerStart} />;
+  // Mirror Preview's state machine so both tabs agree on what the
+  // sandbox is doing. Without this Content would always show
+  // "never-started" even when the sandbox is suspended/crashed/errored.
+  const lifecycleFailure: LifecycleFailure | null =
+    lifecyclePhase === "start-failed" ||
+    lifecyclePhase === "install-failed" ||
+    lifecyclePhase === "clone-failed"
+      ? lifecyclePhase
+      : null;
+  const lifecycleFailureError =
+    lifecycleFailure && "error" in vmEvents.lifecycle
+      ? (vmEvents.lifecycle.error ?? null)
+      : null;
+  const upstreamStatus =
+    lifecyclePhase === "running"
+      ? "online"
+      : lifecyclePhase === "crashed"
+        ? "offline"
+        : "booting";
+  const userStopped =
+    !!virtualMcpId &&
+    !!branch &&
+    sandboxUserStop.isStopped(virtualMcpId, branch);
+  const sandboxState = computePreviewState({
+    previewUrl,
+    status: upstreamStatus,
+    // Content doesn't render an iframe, so the iframe/no-html branches
+    // are dead. Pass `true` to short-circuit them to "iframe" (= ready).
+    htmlSupport: true,
+    suspended: vmEvents.suspended,
+    appPaused: vmEvents.status.state === "paused",
+    vmStartPending,
+    lastStartError: startVm.error?.message ?? null,
+    lifecycleFailure,
+    lifecycleFailureError,
+    claimPhase: vmEvents.phase,
+    notFound: vmEvents.notFound,
+    userStopped,
+  });
+
+  // Send the user to Preview for terminal/file inspection — Content has
+  // neither surface, so the dev-script-failed / crashed buttons would be
+  // dead ends here.
+  const openPreview = () =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({ ...prev, main: "preview" }),
+      replace: true,
+    });
+
+  // `no-html` can't happen here — htmlSupport is hard-coded to true so
+  // computePreviewState routes "dev server is up" to `iframe`. Keep both
+  // in the guard so TS narrows correctly.
+  if (sandboxState.kind !== "iframe" && sandboxState.kind !== "no-html") {
+    return (
+      <SandboxStateRenderer
+        state={sandboxState}
+        claimPhase={vmEvents.phase}
+        lifecycle={vmEvents.lifecycle}
+        onStart={triggerStart}
+        onOpenPreview={openPreview}
+      />
+    );
   }
 
   if (!virtualMcpId || !branch) {
@@ -1000,6 +1054,76 @@ function ListEmpty({
       )}
     </div>
   );
+}
+
+/**
+ * Renders the SandboxStateCard variant that matches the current
+ * sandbox state. Mirrors Preview's switch so Content shows the same
+ * "Sandbox is paused" / "Sandbox crashed" / etc. cards instead of
+ * always falling back to "never-started".
+ *
+ * For card actions that don't make sense in Content (View logs,
+ * Browse files), we redirect the user to the Preview tab — Content
+ * has no terminal or file explorer of its own.
+ */
+function SandboxStateRenderer({
+  state,
+  claimPhase,
+  lifecycle,
+  onStart,
+  onOpenPreview,
+}: {
+  state: Exclude<
+    ReturnType<typeof computePreviewState>,
+    { kind: "iframe" } | { kind: "no-html" }
+  >;
+  claimPhase: ReturnType<typeof useSandboxEvents>["phase"];
+  lifecycle: ReturnType<typeof useSandboxEvents>["lifecycle"];
+  onStart: () => void;
+  onOpenPreview: () => void;
+}) {
+  const progress = derivePhaseProgress({ claimPhase, lifecycle });
+
+  switch (state.kind) {
+    case "never-started":
+      return <SandboxStateCard kind="never-started" onStart={onStart} />;
+    case "starting-now":
+      return (
+        <SandboxStateCard
+          kind="starting-now"
+          progress={progress}
+          claimPhase={claimPhase}
+        />
+      );
+    case "suspended":
+      return <SandboxStateCard kind="suspended" onResume={onStart} />;
+    case "crashed":
+      return <SandboxStateCard kind="crashed" onOpenTerminal={onOpenPreview} />;
+    case "errored":
+      return (
+        <SandboxStateCard
+          kind="errored"
+          progress={progress}
+          logSource="setup"
+          errorLine={state.error.split("\n")[0] ?? "Failed to start"}
+          onRetry={onStart}
+          drawerOpen
+        />
+      );
+    case "dev-script-failed":
+      return (
+        <SandboxStateCard
+          kind="dev-script-failed"
+          progress={progress}
+          logSource={state.failure === "start-failed" ? "dev" : "setup"}
+          errorLine={state.error.split("\n")[0] ?? "Dev script exited"}
+          onRetry={onStart}
+          onOpenTerminal={onOpenPreview}
+          onBrowseFiles={onOpenPreview}
+          drawerOpen
+        />
+      );
+  }
 }
 
 function EmptyMessage({
