@@ -13,7 +13,7 @@ import { ConnectionCard } from "@/web/components/connections/connection-card.tsx
 import type { RegistryItem } from "@/web/components/store/types";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
-import { connectApp } from "@/web/lib/connect-app";
+import { connectApp, persistDownstreamToken } from "@/web/lib/connect-app";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import {
   authenticateMcp,
@@ -742,47 +742,13 @@ export function AddConnectionDialog({
           connection_id: id,
           flow: "clone",
         });
-        if (tokenInfo) {
-          try {
-            const response = await fetch(
-              `/api/${org.slug}/connections/${id}/oauth-token`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                  accessToken: tokenInfo.accessToken,
-                  refreshToken: tokenInfo.refreshToken,
-                  expiresIn: tokenInfo.expiresIn,
-                  scope: tokenInfo.scope,
-                  clientId: tokenInfo.clientId,
-                  clientSecret: tokenInfo.clientSecret,
-                  tokenEndpoint: tokenInfo.tokenEndpoint,
-                }),
-              },
-            );
-            if (!response.ok) {
-              await connectionActions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            } else {
-              await connectionActions.update.mutateAsync({ id, data: {} });
-            }
-          } catch {
-            await connectionActions.update.mutateAsync({
-              id,
-              data: { connection_token: token },
-            });
-          }
-        } else {
-          await connectionActions.update.mutateAsync({
-            id,
-            data: { connection_token: token },
-          });
-        }
+        await persistDownstreamToken({
+          orgSlug: org.slug,
+          connectionId: id,
+          token,
+          tokenInfo,
+          connectionActions,
+        });
         await queryClient.invalidateQueries({
           queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
         });
@@ -944,50 +910,13 @@ export function AddConnectionDialog({
               connection_id: id,
               flow: "custom_create",
             });
-            if (tokenInfo) {
-              try {
-                const response = await fetch(
-                  `/api/${org.slug}/connections/${id}/oauth-token`,
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    credentials: "include",
-                    body: JSON.stringify({
-                      accessToken: tokenInfo.accessToken,
-                      refreshToken: tokenInfo.refreshToken,
-                      expiresIn: tokenInfo.expiresIn,
-                      scope: tokenInfo.scope,
-                      clientId: tokenInfo.clientId,
-                      clientSecret: tokenInfo.clientSecret,
-                      tokenEndpoint: tokenInfo.tokenEndpoint,
-                    }),
-                  },
-                );
-                if (!response.ok) {
-                  await connectionActions.update.mutateAsync({
-                    id,
-                    data: { connection_token: token },
-                  });
-                } else {
-                  await connectionActions.update.mutateAsync({
-                    id,
-                    data: {},
-                  });
-                }
-              } catch {
-                await connectionActions.update.mutateAsync({
-                  id,
-                  data: { connection_token: token },
-                });
-              }
-            } else {
-              await connectionActions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            }
+            await persistDownstreamToken({
+              orgSlug: org.slug,
+              connectionId: id,
+              token,
+              tokenInfo,
+              connectionActions,
+            });
             await queryClient.invalidateQueries({
               queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
             });

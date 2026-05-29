@@ -15,6 +15,7 @@ import {
   authenticateMcp,
   isConnectionAuthenticated,
 } from "@/web/lib/mcp-oauth";
+import { persistDownstreamToken } from "@/web/lib/connect-app";
 import { KEYS } from "@/web/lib/query-keys";
 import { ConnectionInstancesPanel } from "./connection-instances-panel.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -314,59 +315,13 @@ function ConnectionInspectorViewWithConnection({
       return;
     }
 
-    if (tokenInfo) {
-      try {
-        const response = await fetch(
-          `/api/${projectOrg.slug}/connections/${connId}/oauth-token`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              accessToken: tokenInfo.accessToken,
-              refreshToken: tokenInfo.refreshToken,
-              expiresIn: tokenInfo.expiresIn,
-              scope: tokenInfo.scope,
-              clientId: tokenInfo.clientId,
-              clientSecret: tokenInfo.clientSecret,
-              tokenEndpoint: tokenInfo.tokenEndpoint,
-            }),
-          },
-        );
-        if (!response.ok) {
-          console.error("Failed to save OAuth token:", await response.text());
-          await connectionActions.update.mutateAsync({
-            id: connId,
-            data: { connection_token: token },
-          });
-        } else {
-          try {
-            await connectionActions.update.mutateAsync({
-              id: connId,
-              data: {},
-            });
-          } catch (err) {
-            console.warn(
-              "Failed to refresh connection tools after OAuth:",
-              err,
-            );
-          }
-        }
-      } catch (err) {
-        console.error("Error saving OAuth token:", err);
-        await connectionActions.update.mutateAsync({
-          id: connId,
-          data: { connection_token: token },
-        });
-      }
-    } else {
-      await connectionActions.update.mutateAsync({
-        id: connId,
-        data: { connection_token: token },
-      });
-    }
+    await persistDownstreamToken({
+      orgSlug: projectOrg.slug,
+      connectionId: connId,
+      token,
+      tokenInfo,
+      connectionActions,
+    });
 
     const mcpProxyUrl = new URL(
       `/api/${projectOrg.slug}/mcp/${connId}`,

@@ -10,6 +10,7 @@ import { usePanelActions } from "@/web/layouts/shell-layout";
 import { User } from "@/web/components/user/user";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
 
+import { persistDownstreamToken } from "@/web/lib/connect-app";
 import {
   authenticateMcp,
   isConnectionAuthenticated,
@@ -1529,59 +1530,13 @@ function VirtualMcpDetailViewWithData({
       return null;
     }
 
-    if (tokenInfo) {
-      try {
-        const response = await fetch(
-          `/api/${org.slug}/connections/${connectionId}/oauth-token`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              accessToken: tokenInfo.accessToken,
-              refreshToken: tokenInfo.refreshToken,
-              expiresIn: tokenInfo.expiresIn,
-              scope: tokenInfo.scope,
-              clientId: tokenInfo.clientId,
-              clientSecret: tokenInfo.clientSecret,
-              tokenEndpoint: tokenInfo.tokenEndpoint,
-            }),
-          },
-        );
-        if (!response.ok) {
-          console.error("Failed to save OAuth token:", await response.text());
-          await connectionActions.update.mutateAsync({
-            id: connectionId,
-            data: { connection_token: token },
-          });
-        } else {
-          try {
-            await connectionActions.update.mutateAsync({
-              id: connectionId,
-              data: {},
-            });
-          } catch (err) {
-            console.warn(
-              "Failed to refresh connection tools after OAuth:",
-              err,
-            );
-          }
-        }
-      } catch (err) {
-        console.error("Error saving OAuth token:", err);
-        await connectionActions.update.mutateAsync({
-          id: connectionId,
-          data: { connection_token: token },
-        });
-      }
-    } else {
-      await connectionActions.update.mutateAsync({
-        id: connectionId,
-        data: { connection_token: token },
-      });
-    }
+    await persistDownstreamToken({
+      orgSlug: org.slug,
+      connectionId,
+      token,
+      tokenInfo,
+      connectionActions,
+    });
 
     const mcpProxyUrl = new URL(
       `/api/${org.slug}/mcp/${connectionId}`,

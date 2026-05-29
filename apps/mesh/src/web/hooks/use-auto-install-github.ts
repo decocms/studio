@@ -12,6 +12,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { authenticateMcp, isConnectionAuthenticated } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
+import { persistDownstreamToken } from "@/web/lib/connect-app";
 import { useRegistryApp } from "@/web/hooks/use-registry-app";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
 import { invalidateVirtualMcpQueries, KEYS } from "@/web/lib/query-keys";
@@ -124,40 +125,13 @@ export function useAutoInstallGitHub(opts: {
         }
 
         // Step 4: Persist OAuth token
-        if (tokenInfo) {
-          try {
-            const response = await fetch(
-              `/api/${org.slug}/connections/${id}/oauth-token`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                  accessToken: tokenInfo.accessToken,
-                  refreshToken: tokenInfo.refreshToken,
-                  expiresIn: tokenInfo.expiresIn,
-                  scope: tokenInfo.scope,
-                  clientId: tokenInfo.clientId,
-                  clientSecret: tokenInfo.clientSecret,
-                  tokenEndpoint: tokenInfo.tokenEndpoint,
-                }),
-              },
-            );
-            if (!response.ok) {
-              await actions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            }
-          } catch {
-            await actions.update.mutateAsync({
-              id,
-              data: { connection_token: token },
-            });
-          }
-        }
+        await persistDownstreamToken({
+          orgSlug: org.slug,
+          connectionId: id,
+          token,
+          tokenInfo,
+          connectionActions: actions,
+        });
       }
 
       // Step 5: Invalidate connection queries so picker re-renders, and

@@ -17,6 +17,7 @@ import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { useEnabledRegistries } from "@/web/hooks/use-enabled-registries";
 import { useListState } from "@/web/hooks/use-list-state";
 import { authClient } from "@/web/lib/auth-client";
+import { persistDownstreamToken } from "@/web/lib/connect-app";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { useMergedStoreDiscovery } from "@/web/hooks/use-merged-store-discovery";
 import { getGitHubAvatarUrl } from "@/web/utils/github";
@@ -844,47 +845,13 @@ function ConnectionResults({
             connection_id: id,
             flow: "connections_page_connect",
           });
-          if (tokenInfo) {
-            try {
-              const response = await fetch(
-                `/api/${org.slug}/connections/${id}/oauth-token`,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  credentials: "include",
-                  body: JSON.stringify({
-                    accessToken: tokenInfo.accessToken,
-                    refreshToken: tokenInfo.refreshToken,
-                    expiresIn: tokenInfo.expiresIn,
-                    scope: tokenInfo.scope,
-                    clientId: tokenInfo.clientId,
-                    clientSecret: tokenInfo.clientSecret,
-                    tokenEndpoint: tokenInfo.tokenEndpoint,
-                  }),
-                },
-              );
-              if (!response.ok) {
-                await actions.update.mutateAsync({
-                  id,
-                  data: { connection_token: token },
-                });
-              } else {
-                await actions.update.mutateAsync({ id, data: {} });
-              }
-            } catch {
-              await actions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            }
-          } else {
-            await actions.update.mutateAsync({
-              id,
-              data: { connection_token: token },
-            });
-          }
+          await persistDownstreamToken({
+            orgSlug: org.slug,
+            connectionId: id,
+            token,
+            tokenInfo,
+            connectionActions: actions,
+          });
           await queryClient.invalidateQueries({
             queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
           });

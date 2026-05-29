@@ -10,6 +10,7 @@ import type { RegistryItem } from "@/web/components/store/types";
 import {
   authenticateMcp,
   isConnectionAuthenticated,
+  type OAuthTokenInfo,
 } from "@/web/lib/mcp-oauth";
 import { KEYS } from "@/web/lib/query-keys";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
@@ -32,6 +33,73 @@ export interface ConnectAppResult {
    * created), an OAuth error string when `oauth === "failed"`, else null.
    */
   error: string | null;
+}
+
+/**
+ * Persist a freshly obtained downstream OAuth token for an existing connection.
+ *
+ * Posts the structured token to the connection's oauth-token endpoint; on any
+ * failure (or when the provider returned no `tokenInfo`) falls back to storing
+ * the raw token on the connection so it still works. On success an empty update
+ * triggers the mutation's cache invalidation / tool refresh. Never throws —
+ * every failure degrades to the fallback path.
+ */
+export async function persistDownstreamToken(deps: {
+  orgSlug: string;
+  connectionId: string;
+  token: string;
+  tokenInfo: OAuthTokenInfo | null;
+  connectionActions: ReturnType<typeof useConnectionActions>;
+}): Promise<void> {
+  const { orgSlug, connectionId, token, tokenInfo, connectionActions } = deps;
+
+  const storeRawToken = () =>
+    connectionActions.update.mutateAsync({
+      id: connectionId,
+      data: { connection_token: token },
+    });
+
+  if (!tokenInfo) {
+    await storeRawToken();
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/${orgSlug}/connections/${connectionId}/oauth-token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          accessToken: tokenInfo.accessToken,
+          refreshToken: tokenInfo.refreshToken,
+          expiresIn: tokenInfo.expiresIn,
+          scope: tokenInfo.scope,
+          clientId: tokenInfo.clientId,
+          clientSecret: tokenInfo.clientSecret,
+          tokenEndpoint: tokenInfo.tokenEndpoint,
+        }),
+      },
+    );
+    if (!response.ok) {
+      await storeRawToken();
+      return;
+    }
+    // Server persisted the token; the empty update just kicks the mutation's
+    // cache invalidation / tool refresh. Best-effort — the token is already
+    // saved, so a refresh failure must not surface as an auth failure.
+    try {
+      await connectionActions.update.mutateAsync({
+        id: connectionId,
+        data: {},
+      });
+    } catch {
+      // non-fatal
+    }
+  } catch {
+    await storeRawToken();
+  }
 }
 
 export async function connectApp(
@@ -83,47 +151,13 @@ export async function connectApp(
     return { id, oauth: "failed", error: error ?? "no token received" };
   }
 
-  if (tokenInfo) {
-    try {
-      const response = await fetch(
-        `/api/${org.slug}/connections/${id}/oauth-token`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            accessToken: tokenInfo.accessToken,
-            refreshToken: tokenInfo.refreshToken,
-            expiresIn: tokenInfo.expiresIn,
-            scope: tokenInfo.scope,
-            clientId: tokenInfo.clientId,
-            clientSecret: tokenInfo.clientSecret,
-            tokenEndpoint: tokenInfo.tokenEndpoint,
-          }),
-        },
-      );
-      if (!response.ok) {
-        await connectionActions.update.mutateAsync({
-          id,
-          data: { connection_token: token },
-        });
-      } else {
-        // Server persisted the token; empty update just triggers the mutation's
-        // cache invalidation / side-effects.
-        await connectionActions.update.mutateAsync({ id, data: {} });
-      }
-    } catch {
-      await connectionActions.update.mutateAsync({
-        id,
-        data: { connection_token: token },
-      });
-    }
-  } else {
-    await connectionActions.update.mutateAsync({
-      id,
-      data: { connection_token: token },
-    });
-  }
+  await persistDownstreamToken({
+    orgSlug: org.slug,
+    connectionId: id,
+    token,
+    tokenInfo,
+    connectionActions,
+  });
 
   await queryClient.invalidateQueries({
     queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
