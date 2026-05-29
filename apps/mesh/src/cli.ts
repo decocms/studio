@@ -309,13 +309,8 @@ if (command === "dev") {
   };
 
   if (noTui) {
-    const { ASCII_ART, dim } = await import("./fmt");
-    console.log("");
-    for (const line of ASCII_ART) {
-      console.log(line);
-    }
-    console.log(dim(`  v${await getVersion()}`));
-    console.log("");
+    const { printBanner } = await import("./cli/banner-art");
+    printBanner(await getVersion());
 
     if (values.vibe === true) {
       const { startVibe } = await import("./cli/vibe/vibe-player");
@@ -386,13 +381,8 @@ const noTui = values["no-tui"] === true || !process.stdout.isTTY;
 
 if (noTui) {
   // Plain stdout mode — no Ink, just console.log (CI-friendly)
-  const { ASCII_ART, dim } = await import("./fmt");
-  console.log("");
-  for (const line of ASCII_ART) {
-    console.log(line);
-  }
-  console.log(dim(`  v${await getVersion()}`));
-  console.log("");
+  const { printBanner } = await import("./cli/banner-art");
+  printBanner(await getVersion());
 
   if (values.vibe === true) {
     const { startVibe } = await import("./cli/vibe/vibe-player");
