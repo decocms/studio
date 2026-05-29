@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getActiveGithubRepo } from "./github-repo";
+import { GITHUB_APP_ID } from "@/web/utils/constants";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 
 const baseEntity: VirtualMCPEntity = {
@@ -95,6 +96,33 @@ describe("getActiveGithubRepo", () => {
         },
         {
           connection_id: "conn-other",
+          selected_tools: null,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+    };
+    expect(getActiveGithubRepo(entity)).toEqual(githubRepo);
+  });
+
+  test("returns githubRepo when GitHub is attached as a typed slot", () => {
+    const githubRepo = {
+      url: "https://github.com/owner/repo",
+      owner: "owner",
+      name: "repo",
+      installationId: 123,
+      connectionId: "conn-github",
+    };
+    const entity: VirtualMCPEntity = {
+      ...baseEntity,
+      metadata: {
+        instructions: null,
+        githubRepo,
+      },
+      connections: [],
+      slots: [
+        {
+          slot_app_id: GITHUB_APP_ID,
           selected_tools: null,
           selected_resources: null,
           selected_prompts: null,

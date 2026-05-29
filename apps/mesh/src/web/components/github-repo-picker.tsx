@@ -325,7 +325,11 @@ function PickerContent({
                 },
               },
             },
-            connections: [{ connection_id: connectionId }],
+            // The GitHub connection is user-private, so it must be attached as
+            // a typed slot (resolved per-caller to each user's own GitHub
+            // connection of this app_id), not a concrete child.
+            connections: [],
+            slots: [{ slot_app_id: GITHUB_APP_ID }],
           },
         },
       })) as { structuredContent?: unknown };
