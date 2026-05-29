@@ -14,6 +14,7 @@ import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
 import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
+import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { WebPageTab } from "./web-page-tab";
@@ -53,6 +54,9 @@ export function MainPanelContent({
   }
   if (activeTab === "preview") {
     return <PreviewTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "content") {
+    return <ContentTab virtualMcpId={virtualMcpId} />;
   }
   if (automationTabParsed) {
     return <AutomationTab tabId={activeTab} />;

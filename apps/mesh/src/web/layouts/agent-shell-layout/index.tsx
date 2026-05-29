@@ -519,18 +519,19 @@ function AgentInsetProvider() {
           virtualMcpId={chatVirtualMcpId}
           task={ensureState.status === "ready" ? ensureState.task : null}
         >
-          <Toolbar.Tabs>
-            <MainPanelTabsBar
-              virtualMcpId={virtualMcpId}
-              taskId={layout.taskId}
-            />
-          </Toolbar.Tabs>
-
           <VmEventsBridge
             virtualMcpId={virtualMcpId}
             hasActiveGithubRepo={hasActiveGithubRepo}
             sandboxMap={entity?.metadata?.sandboxMap}
           >
+            {/* Tabs must live under SandboxEventsProvider — useMainPanelTabs
+                gates Content on lifecycle.phase === "running" + decofile. */}
+            <Toolbar.Tabs>
+              <MainPanelTabsBar
+                virtualMcpId={virtualMcpId}
+                taskId={layout.taskId}
+              />
+            </Toolbar.Tabs>
             <NewTaskBridge
               onNewTaskRef={onNewTask}
               createNewTask={layout.createNewTask}
