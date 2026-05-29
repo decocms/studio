@@ -101,7 +101,7 @@ function SlotItemInner({
             </p>
           </div>
           <Badge variant="special" className="shrink-0">
-            Slot
+            Personal
           </Badge>
         </Link>
       ) : (
@@ -119,7 +119,7 @@ function SlotItemInner({
             </p>
           </div>
           <Badge variant="special" className="shrink-0">
-            Slot
+            Personal
           </Badge>
           <Button
             asChild
