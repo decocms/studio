@@ -91,9 +91,13 @@ import {
   type McpListCache,
 } from "../mcp-clients/mcp-list-cache";
 import {
-  JetStreamKVModelListCache,
+  InMemoryModelListCache,
   type ModelListCache,
 } from "../ai-providers/model-list-cache";
+import {
+  createProviderKeyCache,
+  type ProviderKeyCache,
+} from "../storage/provider-key-cache";
 import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
 import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
@@ -841,7 +845,13 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   let eventBus: EventBus;
   let mcpListCache: McpListCache;
-  let modelListCache: ModelListCache;
+  // Model lists are public, low-stakes metadata cached per-replica with a TTL —
+  // no NATS needed, so this is shared across the test and production branches.
+  const modelListCache: ModelListCache = new InMemoryModelListCache();
+  // Provider-key resolve cache. The NATS connection is wired in the production
+  // branch below; without it the cache runs local-only (TTL still applies),
+  // which is what the test/no-NATS branch wants.
+  let providerKeyCache: ProviderKeyCache;
   let cancelBroadcast: CancelBroadcast;
   let streamBuffer: StreamBuffer;
   let linkClaimRegistry: LinkClaimRegistry;
@@ -850,13 +860,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   if (options.eventBus) {
     // Test mode: use provided event bus and no-op stubs (no NATS required)
     eventBus = options.eventBus;
+    // Local-only (no NATS): cross-replica broadcast is a no-op, TTL still applies.
+    providerKeyCache = createProviderKeyCache();
     mcpListCache = {
-      get: async () => null,
-      set: async () => {},
-      invalidate: async () => {},
-      teardown: () => {},
-    };
-    modelListCache = {
       get: async () => null,
       set: async () => {},
       invalidate: async () => {},
@@ -906,11 +912,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     tlc.init().catch(() => {});
     mcpListCache = tlc;
 
-    const mlc = new JetStreamKVModelListCache({
-      getJetStream: () => natsProvider!.getJetStream(),
+    providerKeyCache = createProviderKeyCache({
+      getConnection: () => natsProvider!.getConnection(),
     });
-    mlc.init().catch(() => {});
-    modelListCache = mlc;
 
     cancelBroadcast = new NatsCancelBroadcast({
       getConnection: () => natsProvider!.getConnection(),
@@ -934,9 +938,8 @@ export async function createApp(options: CreateAppOptions = {}) {
       tlc.init().catch((err: unknown) => {
         console.error("[McpListCache] Deferred init failed:", err);
       });
-      mlc.init().catch((err: unknown) => {
-        console.error("[ModelListCache] Deferred init failed:", err);
-      });
+      // Subscribe to cross-replica key invalidations (idempotent).
+      providerKeyCache.start();
       streamBuffer.init().catch((err: unknown) => {
         console.warn(
           "[StreamBuffer] Deferred init failed, late-join disabled:",
@@ -1048,6 +1051,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     streamBuffer.teardown();
     mcpListCache.teardown();
     modelListCache.teardown();
+    providerKeyCache.teardown();
     setMcpListCache(null);
   };
 
@@ -1298,6 +1302,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     },
     eventBus,
     modelListCache,
+    providerKeyCache,
     memberRoleCache,
     linkClaimRegistry,
   });

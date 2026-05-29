@@ -1,5 +1,5 @@
+import { createTtlLruCache, type TtlLruCache } from "../lib/ttl-lru-cache";
 import type { ModelInfo } from "./types";
-import { JSONCodec, StorageType, type JetStreamClient, type KV } from "nats";
 
 export interface ModelListCache {
   get(organizationId: string, providerId: string): Promise<ModelInfo[] | null>;
@@ -16,25 +16,30 @@ function cacheKey(organizationId: string, providerId: string): string {
   return `${organizationId}.${providerId}`;
 }
 
-const KV_BUCKET = "MESH_MODEL_LISTS";
-const KV_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_MAX_SIZE = 5_000;
 
-export interface JetStreamKVModelListCacheOptions {
-  getJetStream: () => JetStreamClient | null;
+export interface InMemoryModelListCacheOptions {
+  ttlMs?: number;
+  maxSize?: number;
 }
 
-export class JetStreamKVModelListCache implements ModelListCache {
-  private kv: KV | null = null;
-  private readonly codec = JSONCodec<ModelInfo[]>();
+/**
+ * Process-local model-list cache.
+ *
+ * Model lists are public, low-stakes metadata and the previous implementation
+ * never invalidated cross-replica — it relied entirely on TTL. A per-replica
+ * LRU gives the same TTL-bounded staleness with no NATS round-trip per hit, at
+ * the cost of each replica fetching upstream independently on a cold miss
+ * (acceptable for provider model-list endpoints).
+ */
+export class InMemoryModelListCache implements ModelListCache {
+  private readonly cache: TtlLruCache<ModelInfo[]>;
 
-  constructor(private readonly options: JetStreamKVModelListCacheOptions) {}
-
-  async init(): Promise<void> {
-    const js = this.options.getJetStream();
-    if (!js) return; // NATS not ready — cache disabled until re-init
-    this.kv = await js.views.kv(KV_BUCKET, {
-      ttl: KV_TTL_MS,
-      storage: StorageType.Memory,
+  constructor(options?: InMemoryModelListCacheOptions) {
+    this.cache = createTtlLruCache<ModelInfo[]>({
+      ttlMs: options?.ttlMs ?? DEFAULT_TTL_MS,
+      maxSize: options?.maxSize ?? DEFAULT_MAX_SIZE,
     });
   }
 
@@ -42,16 +47,7 @@ export class JetStreamKVModelListCache implements ModelListCache {
     organizationId: string,
     providerId: string,
   ): Promise<ModelInfo[] | null> {
-    if (!this.kv) return null;
-    try {
-      const key = cacheKey(organizationId, providerId);
-      const entry = await this.kv.get(`models.${key}`);
-      if (!entry?.value?.length) return null;
-      if (entry.operation === "DEL" || entry.operation === "PURGE") return null;
-      return this.codec.decode(entry.value);
-    } catch {
-      return null;
-    }
+    return this.cache.get(cacheKey(organizationId, providerId)) ?? null;
   }
 
   async set(
@@ -59,26 +55,14 @@ export class JetStreamKVModelListCache implements ModelListCache {
     providerId: string,
     models: ModelInfo[],
   ): Promise<void> {
-    if (!this.kv) return;
-    try {
-      const key = cacheKey(organizationId, providerId);
-      await this.kv.put(`models.${key}`, this.codec.encode(models));
-    } catch (err) {
-      console.warn("[ModelListCache] set failed:", err);
-    }
+    this.cache.set(cacheKey(organizationId, providerId), models);
   }
 
   async invalidate(organizationId: string, providerId: string): Promise<void> {
-    if (!this.kv) return;
-    try {
-      const key = cacheKey(organizationId, providerId);
-      await this.kv.delete(`models.${key}`);
-    } catch {
-      // best-effort
-    }
+    this.cache.delete(cacheKey(organizationId, providerId));
   }
 
   teardown(): void {
-    this.kv = null;
+    this.cache.clear();
   }
 }
