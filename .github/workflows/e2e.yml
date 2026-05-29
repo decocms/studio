@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    # The "[release]: bump" commit touches only apps/mesh/package.json; skip it
+    # here so the version bump doesn't re-spawn this suite (release-mesh owns it).
+    paths-ignore:
+      - "apps/mesh/package.json"
   pull_request:
 
 jobs:
