@@ -144,12 +144,13 @@ export const EDIT_DESCRIPTION =
   "old_string must be unique in the file unless replace_all is true.";
 
 export const GREP_DESCRIPTION =
-  "Search file contents in the VM using ripgrep. " +
+  "Search file contents in the VM project directory. " +
+  "Prefers ripgrep when available; falls back to GNU grep otherwise. " +
   "Supports regex patterns, file type filtering via glob, and context lines.";
 
 export const GLOB_DESCRIPTION =
   "Find files by name pattern in the VM's project directory. " +
-  "Uses ripgrep for gitignore-aware matching. Returns relative file paths.";
+  "Returns relative file paths.";
 
 export function buildBashDescription(): string {
   return (

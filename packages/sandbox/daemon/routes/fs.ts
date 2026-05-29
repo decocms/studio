@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import { safePath } from "../paths";
 import { parseJsonBody, jsonResponse } from "./body-parser";
+export { makeGrepHandler } from "./grep-search";
 
 /**
  * Wall-clock cap for fetches in write_from_url / upload_to_url.
@@ -300,98 +301,6 @@ export function makeEditHandler(deps: FsDeps) {
       replacements: replaceAll ? count : 1,
       content: updated,
     });
-  };
-}
-
-export function makeGrepHandler(deps: FsDeps) {
-  return async (req: Request): Promise<Response> => {
-    let body: {
-      pattern?: string;
-      path?: string;
-      output_mode?: "files" | "count" | "content";
-      ignore_case?: boolean;
-      context?: number;
-      glob?: string;
-      limit?: number;
-    };
-    try {
-      body = (await parseJsonBody(req)) as typeof body;
-    } catch (e) {
-      return jsonResponse({ error: (e as Error).message }, 400);
-    }
-    if (!body.pattern)
-      return jsonResponse({ error: "pattern is required" }, 400);
-    const searchPath = body.path
-      ? safePath(deps.appRoot, deps.repoDir, body.path)
-      : deps.repoDir;
-    if (!searchPath)
-      return jsonResponse({ error: "Path escapes app root" }, 400);
-    const args: string[] = [];
-    const mode = body.output_mode ?? "files";
-    if (mode === "files") args.push("--files-with-matches");
-    else if (mode === "count") args.push("--count");
-    else args.push("--line-number");
-    if (body.ignore_case) args.push("-i");
-    if (body.context && mode === "content")
-      args.push("-C", String(body.context));
-    if (body.glob) args.push("--glob", body.glob);
-    args.push("--", body.pattern, searchPath);
-
-    const limit = body.limit ?? 250;
-    const child = spawn(
-      "rg",
-      args,
-      spawnOpts({
-        cwd: deps.repoDir,
-        stdio: ["ignore", "pipe", "pipe"],
-      }) as Parameters<typeof spawn>[2],
-    );
-    let stdout = "";
-    let lineCount = 0;
-    let truncated = false;
-    child.stdout!.on("data", (chunk: Buffer) => {
-      if (truncated) return;
-      const lines = chunk.toString("utf-8").split("\n");
-      for (const line of lines) {
-        if (lineCount >= limit) {
-          truncated = true;
-          try {
-            child.kill("SIGTERM");
-          } catch {}
-          break;
-        }
-        if (line) {
-          stdout += (stdout ? "\n" : "") + line;
-          lineCount++;
-        }
-      }
-    });
-    let stderr = "";
-    child.stderr!.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf-8");
-    });
-    let spawnError: Error | null = null;
-    const code: number | null = await new Promise((resolve) => {
-      child.on("close", (c) => resolve(c));
-      child.on("error", (err) => {
-        spawnError = err;
-        resolve(-1);
-      });
-    });
-    if (spawnError) {
-      return jsonResponse(
-        {
-          error: `grep unavailable: ${(spawnError as Error).message}. Install ripgrep ("brew install ripgrep") or use bash + grep.`,
-        },
-        500,
-      );
-    }
-    if (code !== null && code > 1)
-      return jsonResponse(
-        { error: stderr || `rg failed with code ${code}` },
-        500,
-      );
-    return jsonResponse({ results: stdout, matchCount: lineCount });
   };
 }
 

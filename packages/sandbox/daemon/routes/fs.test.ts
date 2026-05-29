@@ -14,9 +14,9 @@ import {
   makeWriteHandler,
   makeUnlinkHandler,
   makeEditHandler,
-  makeGrepHandler,
   makeGlobHandler,
 } from "./fs";
+import { makeGrepHandler } from "./grep-search";
 
 const hasRg = spawnSync("which", ["rg"]).status === 0;
 
@@ -197,7 +197,7 @@ describe("fs handlers", () => {
     expect(readFileSync(join(appRoot, "e.txt"), "utf-8")).toBe("b b b");
   });
 
-  (hasRg ? it : it.skip)("grep: returns matching content lines", async () => {
+  it("grep: returns matching content lines", async () => {
     writeFileSync(join(appRoot, "needle.txt"), "hello world\n");
     const h = makeGrepHandler({ appRoot, repoDir: appRoot });
     const res = await h(
@@ -206,8 +206,9 @@ describe("fs handlers", () => {
         output_mode: "content",
       }),
     );
-    const body = (await res.json()) as { results: string };
+    const body = (await res.json()) as { results: string; matchCount: number };
     expect(body.results).toContain("hello world");
+    expect(body).not.toHaveProperty("warning");
   });
 
   (hasRg ? it : it.skip)("glob: returns matching file names", async () => {
