@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
-import { useSidebar } from "@deco/ui/components/sidebar.tsx";
+import { SidebarMenu, useSidebar } from "@deco/ui/components/sidebar.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
@@ -157,7 +157,7 @@ export function TaskGroupsList() {
 
   if (isCollapsed) {
     return (
-      <div className="flex flex-col min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {groups.map((group) => {
           const filtered = typeFiltered(memberFiltered(group.threads));
           const dimmed = filtersActive && filtered.length === 0;
@@ -174,7 +174,7 @@ export function TaskGroupsList() {
             />
           );
         })}
-      </div>
+      </SidebarMenu>
     );
   }
 
