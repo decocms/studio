@@ -213,34 +213,27 @@ export function createGenerateImageTool(
 
         // Upload images to object storage, return stable mesh-storage: URIs.
         // The model sees only URIs (lightweight, opaque); the frontend resolves
-        // them to fetchable URLs for rendering.
+        // them to fetchable URLs for rendering. We must NOT inline base64 data:
+        // URIs into the result: a single image is ~1 MB+ of base64, which
+        // exceeds the NATS JetStream max_payload (1 MiB) backing the Decopilot
+        // UI stream and blows past the model's context window. Fail loudly
+        // instead so the failure is visible rather than poisoning the thread.
+        if (!ctx.objectStorage) {
+          throw new Error(
+            "Object storage is unavailable; cannot persist the generated image.",
+          );
+        }
+        const objectStorage = ctx.objectStorage;
         const images = await Promise.all(
           result.images.map(async (img) => {
             const mediaType = img.mediaType ?? "image/png";
             const ext = mediaType.split("/")[1] ?? "png";
             const key = `generated-images/${crypto.randomUUID()}.${ext}`;
-
-            if (ctx.objectStorage) {
-              try {
-                const bytes = Uint8Array.from(atob(img.base64), (c) =>
-                  c.charCodeAt(0),
-                );
-                await ctx.objectStorage.put(key, bytes, {
-                  contentType: mediaType,
-                });
-                return { uri: toMeshStorageUri(key), mediaType };
-              } catch (err) {
-                console.error(
-                  "[generate-image] Failed to upload, falling back to data: URI",
-                  err,
-                );
-              }
-            }
-            // Fallback: inline data: URI (no object storage configured)
-            return {
-              uri: `data:${mediaType};base64,${img.base64}`,
-              mediaType,
-            };
+            const bytes = Uint8Array.from(atob(img.base64), (c) =>
+              c.charCodeAt(0),
+            );
+            await objectStorage.put(key, bytes, { contentType: mediaType });
+            return { uri: toMeshStorageUri(key), mediaType };
           }),
         );
 
