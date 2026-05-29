@@ -77,7 +77,7 @@ describe("InMemoryMcpReadCache", () => {
   it("does not cache oversized results", () => {
     const cache = new InMemoryMcpReadCache();
     const params = { uri: "file://big" };
-    const big = { blob: "x".repeat(300_000) };
+    const big = { blob: "x".repeat(3 * 1024 * 1024) }; // > 2 MiB cap
     cache.set("resources/read", "c1", params, big);
     expect(cache.get("resources/read", "c1", params)).toBeNull();
   });
