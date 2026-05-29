@@ -18,7 +18,7 @@ import type { ReactNode } from "react";
 
 import "../../index.css";
 
-import { authClient } from "@/web/lib/auth-client";
+import { listOrganizationsCached } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 
 import { sourcePlugins } from "./plugins.ts";
@@ -119,11 +119,24 @@ const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
   beforeLoad: async () => {
-    // Fetch org list once — used for both slug validation and redirect
-    const { data: orgs } = await authClient.organization.list();
+    // Fast path: redirect returning users immediately from the cached slug,
+    // WITHOUT awaiting the org-list network call. This is what keeps a cold
+    // load from blocking on a round-trip (the previous blank/white screen).
+    // The org layout validates membership via getFullOrganization, and a stale
+    // slug self-heals in OrgAccessGate (clears the slug + bounces back to "/").
+    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    if (lastOrgSlug) {
+      throw redirect({
+        to: "/$org",
+        params: { org: lastOrgSlug },
+      });
+    }
 
-    // If the list call failed, skip redirect logic to avoid clearing a
-    // valid cached slug due to a transient API failure.
+    // No cached slug — fetch the list (cached) to pick a destination.
+    const { data: orgs } = await listOrganizationsCached();
+
+    // If the list call failed, skip redirect logic to avoid a misfire on a
+    // transient API failure.
     if (!orgs) return;
 
     // Filter out archived organizations — they are soft-deleted and invisible to the UI
@@ -133,21 +146,6 @@ const homeRoute = createRoute({
     const activeOrgs = (orgs as OrgWithMeta[]).filter(
       (o) => !o.metadata?.archived,
     );
-
-    // Fast path: validate cached slug against current membership before redirecting.
-    // If stale (org deleted/archived or user removed), clear it to prevent a redirect loop.
-    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
-    if (lastOrgSlug) {
-      const slugIsValid = activeOrgs.some((o) => o.slug === lastOrgSlug);
-      if (slugIsValid) {
-        throw redirect({
-          to: "/$org",
-          params: { org: lastOrgSlug },
-        });
-      }
-      // Stale — remove so future visits don't loop
-      localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
-    }
 
     // Redirect to first available org (every user gets a default org on signup)
     const firstOrg = activeOrgs[0];
@@ -168,7 +166,7 @@ const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/onboarding",
   beforeLoad: async () => {
-    const { data: orgs } = await authClient.organization.list();
+    const { data: orgs } = await listOrganizationsCached();
     type OrgWithMeta = NonNullable<typeof orgs>[number] & {
       metadata?: { archived?: boolean } | null;
     };
@@ -619,6 +617,11 @@ const routeTree = rootRoute.addChildren([
 
 const router = createRouter({
   routeTree,
+  // Show the splash (not a blank screen) while a route loader/beforeLoad is
+  // awaiting — e.g. the new-user org-list fetch. 200ms delay avoids a flash on
+  // instant (synchronous) redirects like the returning-user fast path.
+  defaultPendingComponent: SplashScreen,
+  defaultPendingMs: 200,
   defaultNotFoundComponent: () => (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-4 p-8">
