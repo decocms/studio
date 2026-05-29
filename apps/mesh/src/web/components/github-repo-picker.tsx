@@ -33,6 +33,7 @@ import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { useResolveConnectionForUser } from "@/web/hooks/use-resolve-connection-for-user";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
+import { GITHUB_APP_ID } from "@/web/utils/constants";
 import {
   STOREFRONT_GITHUB_AUTOMATIONS,
   setupStorefrontGithubAutomations,
@@ -183,10 +184,12 @@ function PickerContent({
   // org-shared fallback). Avoids the cross-user leak that
   // useConnections({ slug: 'mcp-github' }) had: that query could surface a
   // teammate's connection and end up listing their personal installations.
+  // Resolution matches on connections.app_id (the scoped registry id,
+  // GITHUB_APP_ID), NOT the bare slug.
   const resolveQuery = useResolveConnectionForUser(
     org.id,
     org.slug,
-    "mcp-github",
+    GITHUB_APP_ID,
   );
 
   const resolvedConnectionId = resolveQuery.data?.connectionId ?? null;
@@ -480,10 +483,11 @@ function InstallationPicker({
 
   // Resolve the caller's own mcp-github connection. Each user gets only
   // their installations — the cross-user leak via useConnections() is gone.
+  // Matches on connections.app_id (GITHUB_APP_ID), not the bare slug.
   const resolveQuery = useResolveConnectionForUser(
     orgId,
     orgSlug,
-    "mcp-github",
+    GITHUB_APP_ID,
   );
 
   const resolvedConnectionId = resolveQuery.data?.connectionId ?? null;

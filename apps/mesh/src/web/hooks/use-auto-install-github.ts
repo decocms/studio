@@ -15,6 +15,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { useRegistryApp } from "@/web/hooks/use-registry-app";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
 import { invalidateVirtualMcpQueries, KEYS } from "@/web/lib/query-keys";
+import { GITHUB_APP_ID } from "@/web/utils/constants";
 
 type Status = "idle" | "installing" | "authenticating" | "ready" | "error";
 
@@ -24,8 +25,6 @@ interface UseAutoInstallGitHubResult {
   connection: ConnectionEntity | null;
   retry: () => void;
 }
-
-const GITHUB_APP_ID = "deco/mcp-github";
 
 export function useAutoInstallGitHub(opts: {
   enabled: boolean;
@@ -165,7 +164,7 @@ export function useAutoInstallGitHub(opts: {
       // invalidate the per-user resolver so it picks up the new connection.
       invalidateVirtualMcpQueries(queryClient, org.id);
       queryClient.invalidateQueries({
-        queryKey: KEYS.connectionResolveForUser(org.id, "mcp-github"),
+        queryKey: KEYS.connectionResolveForUser(org.id, GITHUB_APP_ID),
       });
 
       setConnection(connectionData as ConnectionEntity);
