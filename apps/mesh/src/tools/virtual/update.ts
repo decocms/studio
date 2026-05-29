@@ -12,6 +12,7 @@ import {
   requireOrganization,
 } from "../../core/mesh-context";
 import { VirtualMCPEntitySchema, VirtualMCPUpdateDataSchema } from "./schema";
+import { assertConcreteChildrenAreOrgScoped } from "./assert-concrete-children-org-scoped";
 
 /**
  * Input schema for updating a virtual MCP
@@ -64,6 +65,12 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
     if (existing.organization_id !== organization.id) {
       throw new Error(`Virtual MCP not found: ${input.id}`);
     }
+
+    await assertConcreteChildrenAreOrgScoped(
+      input.data.connections ?? [],
+      ctx.storage.connections,
+      organization.id,
+    );
 
     // Shallow-merge incoming metadata with existing so that callers can send
     // partial metadata updates (e.g. only enabled_plugins) without wiping

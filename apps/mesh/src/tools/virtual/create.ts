@@ -14,6 +14,7 @@ import {
   requireOrganization,
 } from "../../core/mesh-context";
 import { VirtualMCPCreateDataSchema, VirtualMCPEntitySchema } from "./schema";
+import { assertConcreteChildrenAreOrgScoped } from "./assert-concrete-children-org-scoped";
 /**
  * Random icon+color for new agents (server-side, no React deps).
  * Uses the same icon:// format as the client-side agent-icon module.
@@ -108,6 +109,12 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     if (!userId) {
       throw new Error("User ID required to create virtual MCP");
     }
+
+    await assertConcreteChildrenAreOrgScoped(
+      input.data.connections ?? [],
+      ctx.storage.connections,
+      organization.id,
+    );
 
     // Create the virtual MCP (input.data is already in the correct format)
     // Note: The facade creates a VIRTUAL connection in the connections table
