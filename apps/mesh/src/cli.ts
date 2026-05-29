@@ -66,6 +66,13 @@ const { values, positionals } = parseArgs({
     },
     target: { type: "string" },
     env: { type: "string", short: "e" },
+    "dry-run": {
+      type: "boolean",
+      default: false,
+    },
+    batch: { type: "string" },
+    limit: { type: "string" },
+    org: { type: "string" },
   },
   allowPositionals: true,
 });
@@ -82,6 +89,7 @@ Usage:
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
   deco link [options]                Start the desktop-side link daemon
+  deco backfill-assets               Hoist legacy inline media out of threads + connections
   deco completion [shell]            Install shell completions
 
 Server Options:
@@ -104,6 +112,14 @@ Auth Options:
 
 Link Options:
   --port <port>     Local port for the daemon (default: 5174)
+
+Backfill Options (backfill-assets):
+  --target <t>          all | threads | connections (default: all)
+  --org <slug|id>       Restrict to a single organization
+  --dry-run             Report what would change without uploading or writing
+  --batch <n>           Rows scanned per page (default: 500)
+  --limit <n>           Cap total rows scanned per target (default: all)
+  --base-url <url>      Public origin for stored URLs (default: BASE_URL env)
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
@@ -188,6 +204,29 @@ if (command === "services") {
     home: decoHome,
   });
   process.exit(0);
+}
+
+// ── Backfill: hoist legacy inline media out of stored rows ──────────────
+if (command === "backfill-assets") {
+  const { backfillThreadAssetsCommand } = await import(
+    "./cli/commands/backfill-assets"
+  );
+  const targetArg = (values.target as string | undefined) ?? "all";
+  if (!["all", "threads", "connections"].includes(targetArg)) {
+    console.error(
+      `Invalid --target "${targetArg}". Use: all | threads | connections`,
+    );
+    process.exit(1);
+  }
+  const code = await backfillThreadAssetsCommand({
+    dryRun: values["dry-run"] === true,
+    batch: values.batch ? Number(values.batch) : 500,
+    limit: values.limit ? Number(values.limit) : undefined,
+    baseUrl: values["base-url"],
+    org: values.org as string | undefined,
+    target: targetArg as "all" | "threads" | "connections",
+  });
+  process.exit(code);
 }
 
 // ── Auth / Link helpers ────────────────────────────────────────────────
@@ -315,7 +354,15 @@ if (command === "dev") {
 
 if (
   command &&
-  !["init", "completion", "dev", "services", "auth", "link"].includes(command)
+  ![
+    "init",
+    "completion",
+    "dev",
+    "services",
+    "auth",
+    "link",
+    "backfill-assets",
+  ].includes(command)
 ) {
   console.error(`Unknown command: ${command}`);
   process.exit(1);

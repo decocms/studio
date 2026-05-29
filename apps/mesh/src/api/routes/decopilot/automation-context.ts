@@ -25,6 +25,7 @@ import type { MeshContextFactory } from "@/automations/fire";
 import { getObjectStorageS3Service } from "@/object-storage/factory";
 import { createBoundObjectStorage } from "@/object-storage/bound-object-storage";
 import { DevObjectStorage } from "@/object-storage/dev-object-storage";
+import { decorateStorageWithAssetHoisting } from "@/object-storage/asset-hoister";
 
 export interface BuildAutomationContextDeps {
   db: Kysely<Database>;
@@ -121,6 +122,15 @@ export function createAutomationContextFactory(
     ctx.objectStorage = s3Service
       ? createBoundObjectStorage(s3Service, membership.orgId)
       : new DevObjectStorage(membership.orgId, ctx.baseUrl);
+
+    // Re-apply asset hoisting after rebuilding org-bound storage. The base
+    // ContextFactory.create() call above ran without an org, so its original
+    // hoisters captured null object storage and must not be inherited.
+    decorateStorageWithAssetHoisting(ctx.storage, {
+      objectStorage: ctx.objectStorage,
+      baseUrl: ctx.baseUrl,
+      orgSlug: membership.orgSlug,
+    });
 
     return ctx;
   };

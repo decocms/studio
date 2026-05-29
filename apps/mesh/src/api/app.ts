@@ -1863,7 +1863,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   };
   sharedDispatch = createDispatcher({ nats: dispatcherNatsAdapter });
 
-  // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs)
+  // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs).
+  // Resolve the org from the URL before serving so the stable URL cannot drift
+  // to the session-active org when the path targets a different org.
+  app.use("/api/:org/files/*", resolveOrgFromPath);
   app.route("/api", filesRoutes);
 
   // Thread outputs (model-shared files surfaced as download chips in the chat)
