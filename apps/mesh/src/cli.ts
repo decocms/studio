@@ -15,6 +15,7 @@
 import { parseArgs } from "util";
 import { homedir } from "os";
 import { join } from "path";
+import { resolveTui } from "./cli/resolve-tui";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -294,7 +295,10 @@ if (command === "dev") {
     process.env.DECOCMS_HOME ||
     join(process.cwd(), ".deco");
 
-  const noTui = values["no-tui"] === true || !process.stdout.isTTY;
+  const noTui = !resolveTui({
+    noTui: values["no-tui"] === true,
+    isTty: process.stdout.isTTY,
+  });
 
   const localSandboxProvider = values["local-sandbox-provider"] === true;
   const devOptions = {
@@ -377,7 +381,10 @@ const serveOptions = {
   localMode: values["no-local-mode"] !== true,
 };
 
-const noTui = values["no-tui"] === true || !process.stdout.isTTY;
+const noTui = !resolveTui({
+  noTui: values["no-tui"] === true,
+  isTty: process.stdout.isTTY,
+});
 
 if (noTui) {
   // Plain stdout mode — no Ink, just console.log (CI-friendly)
