@@ -8,7 +8,6 @@
 import { buildSettings } from "../../settings/pipeline";
 import {
   addLogEntry,
-  setEnv,
   setMigrationsDone,
   setServerUrl,
   setTuiConsoleIntercepted,
@@ -90,7 +89,6 @@ export async function startServer(options: ServeOptions): Promise<void> {
   for (const s of services) {
     updateService({ name: s.name, status: "ready", port: s.port });
   }
-  setEnv(settings);
   setMigrationsDone();
 
   await import("../../index");

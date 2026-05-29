@@ -1,28 +1,11 @@
-import { Box, Text, useInput } from "ink";
+import { Box } from "ink";
 import { useSyncExternalStore } from "react";
-import { ConfigView } from "./config-view";
 import { Header } from "./header";
 import { RequestLog } from "./request-log";
-import {
-  getCliState,
-  subscribeCliState,
-  toggleLogFlow,
-  toggleViewMode,
-} from "./cli-store";
-
-const HEADER_HEIGHT = 15;
+import { getCliState, subscribeCliState } from "./cli-store";
 
 export function App({ home }: { home: string }) {
   const state = useSyncExternalStore(subscribeCliState, getCliState);
-
-  useInput((_input) => {
-    if (_input === "k" || _input === "K") {
-      toggleViewMode();
-    }
-    if (_input === "l" || _input === "L") {
-      toggleLogFlow();
-    }
-  });
 
   return (
     <Box flexDirection="column">
@@ -32,16 +15,7 @@ export function App({ home }: { home: string }) {
         home={home}
         serverUrl={state.serverUrl}
       />
-
-      {state.viewMode === "config" ? (
-        state.env ? (
-          <ConfigView env={state.env} />
-        ) : (
-          <Text dimColor>Loading configuration...</Text>
-        )
-      ) : (
-        <RequestLog logs={state.logs} headerHeight={HEADER_HEIGHT} />
-      )}
+      <RequestLog logs={state.logs} />
     </Box>
   );
 }

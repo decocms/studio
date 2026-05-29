@@ -11,7 +11,6 @@ import type { Subprocess } from "bun";
 import { buildSettings } from "../../settings/pipeline";
 import {
   addLogEntry,
-  setEnv,
   setMigrationsDone,
   setServerUrl,
   updateService,
@@ -113,7 +112,6 @@ export async function startDevServer(
   for (const s of services) {
     updateService({ name: s.name, status: "ready", port: s.port });
   }
-  setEnv(settings);
   setMigrationsDone();
 
   // ── Spawn dev servers ─────────────────────────────────────────────
