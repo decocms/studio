@@ -82,4 +82,24 @@ describe("ConnectionStorage — app_id derivation", () => {
     });
     expect(updated.app_id).toBe("deco/mcp-github");
   });
+
+  it("rejects a second private connection to the same service for the same user", async () => {
+    await storage.create({
+      organization_id: ORG,
+      created_by: USER,
+      title: "first",
+      connection_type: "HTTP",
+      connection_url: "https://dup.com/mcp",
+    });
+
+    await expect(
+      storage.create({
+        organization_id: ORG,
+        created_by: USER,
+        title: "second",
+        connection_type: "HTTP",
+        connection_url: "https://dup.com/mcp",
+      }),
+    ).rejects.toThrow(/only one private connection per user/i);
+  });
 });
