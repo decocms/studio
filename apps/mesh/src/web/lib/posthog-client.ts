@@ -11,7 +11,7 @@
 
 import posthog from "posthog-js";
 
-import { wasCacheRestored } from "@/web/lib/query-persist";
+import { wasCacheRestored, wasOrgCacheRestored } from "@/web/lib/query-persist";
 
 let initialized = false;
 let lastOrgGroupKey: string | null = null;
@@ -107,7 +107,10 @@ export function flushBootstrapTiming() {
     // Whole thing: navigation start → shell rendered.
     time_to_shell_ms: Math.round(performance.now()),
     // Did localStorage hydration spare us the cold fetches this load?
+    // `active_org_fetch_ms` still reflects the background revalidation when the
+    // org was cached — `org_cache_restored` tells you it didn't block paint.
     cache_restored: wasCacheRestored(),
+    org_cache_restored: wasOrgCacheRestored(),
   });
 }
 

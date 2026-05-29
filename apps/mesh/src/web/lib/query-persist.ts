@@ -28,6 +28,7 @@ const WRITE_DEBOUNCE_MS = 1000;
 const PERSISTED_KEY_HEADS = new Set(["publicConfig"]);
 
 let cacheRestored = false;
+let orgCacheRestored = false;
 
 function isPersistable(queryKey: readonly unknown[]): boolean {
   const head = queryKey[0];
@@ -101,17 +102,81 @@ export function persistQueryClient(queryClient: QueryClient): () => void {
   });
 }
 
-/** Wipe the persisted cache. Call on sign-out so the next user starts clean. */
+// --- Active-org cache (user-scoped) -----------------------------------------
+// Org membership is auth-sensitive, so unlike publicConfig it is NOT persisted
+// through the generic dehydrate path. Instead it's keyed by the authenticated
+// user id and only ever read back for that same user. A different principal —
+// e.g. after a cookie-only logout that leaves localStorage intact — gets a
+// cache miss and falls through to a fresh fetch + the access gate. Consumed via
+// `initialData` so the suspense query renders instantly and revalidates in the
+// background.
+
+const ORG_KEY_PREFIX = "mesh:org-cache:";
+
+type CachedOrgMap = Record<string, { data: unknown; updatedAt: number }>;
+
+function orgCacheKey(userId: string): string {
+  return `${ORG_KEY_PREFIX}${userId}`;
+}
+
+/** Read the cached org for (user, slug), or null on miss/expiry. */
+export function readCachedOrg(
+  userId: string,
+  slug: string,
+): { data: unknown; updatedAt: number } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(orgCacheKey(userId));
+    if (!raw) return null;
+    const entry = (JSON.parse(raw) as CachedOrgMap)[slug];
+    if (!entry || Date.now() - entry.updatedAt > MAX_AGE_MS) return null;
+    orgCacheRestored = true;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/** Store the org for (user, slug). */
+export function writeCachedOrg(
+  userId: string,
+  slug: string,
+  data: unknown,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const key = orgCacheKey(userId);
+    const raw = window.localStorage.getItem(key);
+    const map: CachedOrgMap = raw ? JSON.parse(raw) : {};
+    map[slug] = { data, updatedAt: Date.now() };
+    window.localStorage.setItem(key, JSON.stringify(map));
+  } catch {
+    // Quota / serialization failure is non-fatal.
+  }
+}
+
+/** Wipe all persisted caches. Call on sign-out so the next user starts clean. */
 export function clearPersistedQueryCache(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
+    for (let i = window.localStorage.length - 1; i >= 0; i--) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith(ORG_KEY_PREFIX)) {
+        window.localStorage.removeItem(key);
+      }
+    }
   } catch {
     // ignore
   }
 }
 
-/** Whether this page load hydrated any query from localStorage. */
+/** Whether this page load hydrated the public config from localStorage. */
 export function wasCacheRestored(): boolean {
   return cacheRestored;
+}
+
+/** Whether the active org was served from the user-scoped cache this load. */
+export function wasOrgCacheRestored(): boolean {
+  return orgCacheRestored;
 }
