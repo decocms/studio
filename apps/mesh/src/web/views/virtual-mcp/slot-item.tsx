@@ -30,7 +30,9 @@ function SlotItemSkeleton() {
 /**
  * Renders one typed slot in the agent settings connections list. Resolves the
  * slot's app_id to the caller's own connection: resolved slots render like a
- * concrete connection (violet-tinted), unresolved slots show a Connect link.
+ * concrete connection (violet-tinted). Settings is only reachable once every
+ * slot resolves (the agent-view connect gate handles connecting), so the
+ * unresolved branch is a defensive "not connected" fallback with no action.
  */
 export function SlotItem({
   slotAppId,
