@@ -72,6 +72,7 @@ const { values, positionals } = parseArgs({
     },
     batch: { type: "string" },
     limit: { type: "string" },
+    org: { type: "string" },
   },
   allowPositionals: true,
 });
@@ -88,7 +89,7 @@ Usage:
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
   deco link [options]                Start the desktop-side link daemon
-  deco backfill-thread-assets        Hoist legacy inline media out of thread_messages
+  deco backfill-assets               Hoist legacy inline media out of threads + connections
   deco completion [shell]            Install shell completions
 
 Server Options:
@@ -112,10 +113,12 @@ Auth Options:
 Link Options:
   --port <port>     Local port for the daemon (default: 5174)
 
-Backfill Options (backfill-thread-assets):
+Backfill Options (backfill-assets):
+  --target <t>          all | threads | connections (default: all)
+  --org <slug|id>       Restrict to a single organization
   --dry-run             Report what would change without uploading or writing
   --batch <n>           Rows scanned per page (default: 500)
-  --limit <n>           Cap total rows scanned (default: all)
+  --limit <n>           Cap total rows scanned per target (default: all)
   --base-url <url>      Public origin for stored URLs (default: BASE_URL env)
 
 Environment Variables:
@@ -203,16 +206,25 @@ if (command === "services") {
   process.exit(0);
 }
 
-// ── Backfill: hoist legacy inline media out of thread_messages ──────────
-if (command === "backfill-thread-assets") {
+// ── Backfill: hoist legacy inline media out of stored rows ──────────────
+if (command === "backfill-assets") {
   const { backfillThreadAssetsCommand } = await import(
-    "./cli/commands/backfill-thread-assets"
+    "./cli/commands/backfill-assets"
   );
+  const targetArg = (values.target as string | undefined) ?? "all";
+  if (!["all", "threads", "connections"].includes(targetArg)) {
+    console.error(
+      `Invalid --target "${targetArg}". Use: all | threads | connections`,
+    );
+    process.exit(1);
+  }
   const code = await backfillThreadAssetsCommand({
     dryRun: values["dry-run"] === true,
     batch: values.batch ? Number(values.batch) : 500,
     limit: values.limit ? Number(values.limit) : undefined,
     baseUrl: values["base-url"],
+    org: values.org as string | undefined,
+    target: targetArg as "all" | "threads" | "connections",
   });
   process.exit(code);
 }
@@ -349,7 +361,7 @@ if (
     "services",
     "auth",
     "link",
-    "backfill-thread-assets",
+    "backfill-assets",
   ].includes(command)
 ) {
   console.error(`Unknown command: ${command}`);
