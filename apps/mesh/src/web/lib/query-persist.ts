@@ -18,13 +18,14 @@ const STORAGE_KEY = "mesh:rq-cache";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
 const WRITE_DEBOUNCE_MS = 1000;
 
-// Query-key heads that gate first paint on refresh. Keep this list tight —
-// persisting org-scoped data widens what lands in localStorage.
-const PERSISTED_KEY_HEADS = new Set([
-  "publicConfig",
-  "activeOrganization",
-  "organizations",
-]);
+// Only the public config is persisted. It's the outermost suspense gate
+// (theme/styling) and is identical for every user, so caching it is pure win.
+//
+// Auth-sensitive queries are deliberately NOT persisted: `activeOrganization`
+// is an authorization gate (a stale "you're a member" value would render the
+// org shell instead of the invite / no-access screen — see shell-layout.tsx),
+// and session state must always revalidate against the server.
+const PERSISTED_KEY_HEADS = new Set(["publicConfig"]);
 
 let cacheRestored = false;
 
