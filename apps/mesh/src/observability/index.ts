@@ -332,14 +332,24 @@ export function initObservability(): void {
 
   const sdk = new NodeSDK({
     serviceName: _settings.otelServiceName,
-    traceExporter,
     metricReaders: [
       prometheusExporter,
       ...(monitoringMetricReader ? [monitoringMetricReader] : []),
     ],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     sampler: headSampler,
+    // NodeSDK ignores the top-level `traceExporter` option whenever
+    // `spanProcessors` is provided, so the OTLP exporter must be wired in here
+    // explicitly — otherwise spans only reach the local NDJSON file.
     spanProcessors: [
+      ...(traceExporter
+        ? [
+            new BatchSpanProcessor(traceExporter, {
+              scheduledDelayMillis: 60_000,
+              maxExportBatchSize: 1000,
+            }),
+          ]
+        : []),
       ...(monitoringTraceExporter
         ? [
             new BatchSpanProcessor(monitoringTraceExporter, {
