@@ -99,12 +99,15 @@ export async function runLinkCommand(
       session,
       monitor,
     });
-    const code = await handle.stopped;
-    restoreConsole?.();
-    return code;
+    return await handle.stopped;
   } catch (err) {
+    // Restore BEFORE printing so a fatal error is visible on real stderr,
+    // not swallowed into the TUI footer.
     restoreConsole?.();
     console.error(err instanceof Error ? err.message : String(err));
     return 1;
+  } finally {
+    // Backstop: console must never leak patched, regardless of exit path.
+    restoreConsole?.();
   }
 }
