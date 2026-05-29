@@ -38,9 +38,10 @@ function getClock(): number {
 }
 
 function statusCell(row: SandboxRow): { color: string; text: string } {
-  if (row.status === "ready") return { color: "green", text: "● ready" };
-  if (row.status === "spawning") return { color: "yellow", text: "◌ spawning" };
-  return { color: "red", text: `✗ failed: ${row.error ?? ""}` };
+  if (row.status === "ready") return { color: "green", text: "● Live" };
+  if (row.status === "spawning")
+    return { color: "yellow", text: "◌ Starting…" };
+  return { color: "red", text: `✗ Error: ${row.error ?? ""}` };
 }
 
 export function LinkApp() {
@@ -59,35 +60,35 @@ export function LinkApp() {
       </Box>
 
       <Box>
-        <Text>Cluster </Text>
+        <Text>{"Connection".padEnd(16)}</Text>
         {state.cluster === "linked" ? (
-          <Text color="green">✓ linked</Text>
+          <Text color="green">✓ Connected to deco</Text>
         ) : state.cluster === "connecting" ? (
-          <Text color="yellow">◌ connecting</Text>
+          <Text color="yellow">◌ Connecting…</Text>
         ) : (
-          <Text color="red">✗ disconnected</Text>
+          <Text color="red">✗ Disconnected</Text>
         )}
       </Box>
       <Box>
-        <Text>Ingress </Text>
+        <Text>{"Preview server".padEnd(16)}</Text>
         {state.ingressUrl ? (
-          <Text color="green">✓ {state.ingressUrl}</Text>
+          <Text color="green">✓ Ready at {state.ingressUrl}</Text>
         ) : (
-          <Text dimColor>starting…</Text>
+          <Text dimColor>Starting…</Text>
         )}
       </Box>
       <Box marginBottom={1}>
         <Text dimColor>
-          {`Machine   ${state.machine ?? "this machine"} · ${rows.length} / ${state.cap} sandboxes`}
+          {`${"Computer".padEnd(16)}${state.machine ?? "this computer"} · ${rows.length} of ${state.cap} previews`}
         </Text>
       </Box>
 
       {rows.length === 0 ? (
-        <Text dimColor>No sandboxes yet.</Text>
+        <Text dimColor>No previews running yet.</Text>
       ) : (
         <Box flexDirection="column">
           <Text dimColor>
-            {`${"HANDLE".padEnd(16)}${"PORT".padEnd(8)}${"STATUS".padEnd(22)}${"ACTIVE".padEnd(8)}${"IDLE".padEnd(8)}PREVIEW`}
+            {`${"PROJECT".padEnd(16)}${"STATUS".padEnd(22)}${"REQUESTS".padEnd(10)}${"LAST USED".padEnd(11)}PREVIEW URL`}
           </Text>
           {rows.map((row) => {
             const s = statusCell(row);
@@ -98,10 +99,9 @@ export function LinkApp() {
             return (
               <Box key={row.handle}>
                 <Text>{row.handle.padEnd(16)}</Text>
-                <Text>{String(row.port ?? "—").padEnd(8)}</Text>
                 <Text color={s.color}>{s.text.padEnd(22)}</Text>
-                <Text>{String(row.activeDispatchCount).padEnd(8)}</Text>
-                <Text>{idle.padEnd(8)}</Text>
+                <Text>{String(row.activeDispatchCount).padEnd(10)}</Text>
+                <Text>{idle.padEnd(11)}</Text>
                 <Text dimColor>{row.previewUrl ?? "—"}</Text>
               </Box>
             );
