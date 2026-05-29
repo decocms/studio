@@ -75,7 +75,6 @@ function EditForm({
 
   const isOpenAICompatible = provider.id === "openai-compatible";
   const supportsApiKey = provider.supportedMethods.includes("api-key");
-  const typedApiKey = watch("apiKey") ?? "";
 
   const {
     register,
@@ -90,6 +89,8 @@ function EditForm({
       baseUrl: currentBaseUrl ?? "",
     },
   });
+
+  const typedApiKey = watch("apiKey") ?? "";
 
   const { mutate: save, isPending } = useMutation({
     mutationFn: async (data: EditFormData) => {
