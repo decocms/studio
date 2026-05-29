@@ -61,10 +61,6 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
-    vibe: {
-      type: "boolean",
-      default: false,
-    },
     target: { type: "string" },
     env: { type: "string", short: "e" },
     "dry-run": {
@@ -99,7 +95,6 @@ Server Options:
   --no-local-mode       Disable auto-login (use cloud/SSO auth)
   --skip-migrations     Skip database migrations on startup
   --no-tui              Disable Ink UI, plain stdout (CI mode)
-  --vibe                Play synthwave soundtrack while running
   -h, --help            Show this help message
   -v, --version         Show version
 
@@ -316,11 +311,6 @@ if (command === "dev") {
     const { printBanner } = await import("./cli/banner-art");
     printBanner(await getVersion());
 
-    if (values.vibe === true) {
-      const { startVibe } = await import("./cli/vibe/vibe-player");
-      startVibe(decoHome);
-    }
-
     const { startDevServer } = await import("./cli/commands/dev");
     const result = await startDevServer(devOptions);
     const code = await result.process.exited;
@@ -330,7 +320,7 @@ if (command === "dev") {
     const { createElement } = await import("react");
     const { App } = await import("./cli/app");
     const { startDevServer } = await import("./cli/commands/dev");
-    const { setDevMode, setVibe, setDataDir } = await import("./cli/cli-store");
+    const { setDevMode, setDataDir } = await import("./cli/cli-store");
 
     const displayHome = decoHome.replace(homedir(), "~");
     setDevMode({ localSandboxProvider });
@@ -338,12 +328,6 @@ if (command === "dev") {
     render(createElement(App, { home: displayHome }), {
       patchConsole: false,
     });
-
-    if (values.vibe === true) {
-      const { startVibe } = await import("./cli/vibe/vibe-player");
-      setVibe(true);
-      startVibe(decoHome);
-    }
 
     const result = await startDevServer(devOptions);
     const code = await result.process.exited;
@@ -391,11 +375,6 @@ if (noTui) {
   const { printBanner } = await import("./cli/banner-art");
   printBanner(await getVersion());
 
-  if (values.vibe === true) {
-    const { startVibe } = await import("./cli/vibe/vibe-player");
-    startVibe(decoHome);
-  }
-
   const { startServer } = await import("./cli/commands/serve");
   await startServer({ ...serveOptions, noTui: true });
 } else {
@@ -416,13 +395,6 @@ if (noTui) {
   {
     const { setDataDir } = await import("./cli/cli-store");
     setDataDir(decoHome);
-  }
-
-  if (values.vibe === true) {
-    const { startVibe } = await import("./cli/vibe/vibe-player");
-    const { setVibe } = await import("./cli/cli-store");
-    setVibe(true);
-    startVibe(decoHome);
   }
 
   await startServer(serveOptions);

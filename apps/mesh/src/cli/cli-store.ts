@@ -16,7 +16,6 @@ interface CliState {
   logs: LogEntry[];
   viewMode: "requests" | "config";
   logFlow: boolean;
-  vibe: boolean;
   dataDir: string | null;
 }
 
@@ -31,7 +30,6 @@ let state: CliState = {
   logs: [],
   viewMode: "requests",
   logFlow: false,
-  vibe: false,
   dataDir: null,
 };
 
@@ -118,16 +116,6 @@ export function toggleLogFlow() {
 
 export function setDataDir(dataDir: string) {
   state = { ...state, dataDir };
-  emit();
-}
-
-export function setVibe(value: boolean) {
-  state = { ...state, vibe: value };
-  emit();
-}
-
-export function toggleVibeState() {
-  state = { ...state, vibe: !state.vibe };
   emit();
 }
 
