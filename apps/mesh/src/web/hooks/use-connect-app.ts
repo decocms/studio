@@ -4,6 +4,7 @@ import { useConnectionActions, useProjectContext } from "@decocms/mesh-sdk";
 import type { RegistryItem } from "@/web/components/store/types";
 import { authClient } from "@/web/lib/auth-client";
 import { connectApp } from "@/web/lib/connect-app";
+import { KEYS } from "@/web/lib/query-keys";
 
 export type ConnectAppStatus =
   | "idle"
@@ -31,7 +32,12 @@ export function useConnectApp(): {
   const [error, setError] = useState<string | null>(null);
 
   const connect = async (item: RegistryItem) => {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id) {
+      // The connect button is only rendered for authenticated users, so this
+      // is a defensive guard that should not fire in practice.
+      console.warn("useConnectApp: no session user, skipping connect");
+      return;
+    }
     setError(null);
     setStatus("connecting");
     try {
@@ -52,9 +58,11 @@ export function useConnectApp(): {
         return;
       }
       // Re-resolve the gate (and settings slot rows) so this slot drops.
-      await queryClient.invalidateQueries({ queryKey: ["unresolved-slots"] });
       await queryClient.invalidateQueries({
-        queryKey: ["connection-resolve-for-user"],
+        queryKey: KEYS.unresolvedSlotsPrefix(),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: KEYS.connectionResolveForUserPrefix(),
       });
       setStatus("ready");
     } catch (err) {

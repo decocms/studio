@@ -362,6 +362,13 @@ export const KEYS = {
   slotAppDisplays: (orgId: string, sortedAppIds: string[]) =>
     ["slot-app-displays", orgId, ...sortedAppIds] as const,
 
+  // Broad prefixes for invalidating every variant of the slot-resolution
+  // queries at once — used after an inline connect so any mounted connect gate
+  // and slot row re-resolves.
+  unresolvedSlotsPrefix: () => ["unresolved-slots"] as const,
+  connectionResolveForUserPrefix: () =>
+    ["connection-resolve-for-user"] as const,
+
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>
     ["github-user-orgs", orgId, connectionId] as const,
