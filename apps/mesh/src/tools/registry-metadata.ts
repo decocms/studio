@@ -137,6 +137,7 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_KEY_LIST",
   "AI_PROVIDER_KEY_DELETE",
   "AI_PROVIDER_KEY_UPDATE",
+  "AI_PROVIDER_KEY_PREVIEW",
   "AI_PROVIDER_OAUTH_URL",
   "AI_PROVIDER_OAUTH_EXCHANGE",
   "AI_PROVIDER_PROVISION_KEY",
@@ -667,7 +668,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "AI_PROVIDER_KEY_UPDATE",
-    description: "Update AI provider API key label",
+    description: "Update AI provider API key label or credential",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PROVIDER_KEY_PREVIEW",
+    description: "Get masked preview of AI provider API key",
     category: "AI Providers",
   },
   {
@@ -1143,6 +1149,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_KEY_LIST",
       "AI_PROVIDER_KEY_DELETE",
       "AI_PROVIDER_KEY_UPDATE",
+      "AI_PROVIDER_KEY_PREVIEW",
       "AI_PROVIDER_OAUTH_URL",
       "AI_PROVIDER_OAUTH_EXCHANGE",
       "AI_PROVIDER_PROVISION_KEY",

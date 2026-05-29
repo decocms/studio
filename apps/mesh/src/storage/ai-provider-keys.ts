@@ -227,6 +227,71 @@ export class AIProviderKeyStorage {
     return this.rowToKeyInfo(row);
   }
 
+  async getPreview(
+    keyId: string,
+    organizationId: string,
+  ): Promise<{ label: string; maskedKey: string; baseUrl?: string }> {
+    const { keyInfo, apiKey } = await this.resolve(keyId, organizationId);
+    if (keyInfo.providerId === "openai-compatible") {
+      try {
+        const parsed = JSON.parse(apiKey) as {
+          baseUrl?: string;
+          apiKey?: string;
+        };
+        const rawKey = parsed.apiKey ?? "";
+        const maskedKey =
+          rawKey.length > 4
+            ? `${"•".repeat(rawKey.length - 4)}${rawKey.slice(-4)}`
+            : "•".repeat(rawKey.length || 1);
+        return { label: keyInfo.label, maskedKey, baseUrl: parsed.baseUrl };
+      } catch {
+        return { label: keyInfo.label, maskedKey: "••••••••" };
+      }
+    }
+    const maskedKey =
+      apiKey.length > 4
+        ? `${"•".repeat(apiKey.length - 4)}${apiKey.slice(-4)}`
+        : "•".repeat(apiKey.length || 1);
+    return { label: keyInfo.label, maskedKey };
+  }
+
+  async updateKey(
+    keyId: string,
+    organizationId: string,
+    updates: { label?: string; apiKey?: string },
+  ): Promise<ProviderKeyInfo> {
+    if (updates.apiKey !== undefined) {
+      const encryptedApiKey = await this.vault.encrypt(updates.apiKey);
+      const keyHash = hashApiKey(updates.apiKey);
+      const row = await this.db
+        .updateTable("ai_provider_keys")
+        .set({
+          ...(updates.label !== undefined ? { label: updates.label } : {}),
+          encrypted_api_key: encryptedApiKey,
+          key_hash: keyHash,
+        })
+        .where("id", "=", keyId)
+        .where("organization_id", "=", organizationId)
+        .returning([
+          "id",
+          "provider_id",
+          "label",
+          "preset_id",
+          "organization_id",
+          "created_by",
+          "created_at",
+        ])
+        .executeTakeFirst();
+      if (!row) throw new Error(`AI provider key ${keyId} not found`);
+      this.cache?.invalidate(organizationId, keyId);
+      return this.rowToKeyInfo(row);
+    }
+    if (updates.label !== undefined) {
+      return this.updateLabel(keyId, organizationId, updates.label);
+    }
+    return this.findById(keyId, organizationId);
+  }
+
   async delete(keyId: string, organizationId: string): Promise<void> {
     const result = await this.db
       .deleteFrom("ai_provider_keys")
