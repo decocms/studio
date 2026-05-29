@@ -171,7 +171,15 @@ export function createDesktopSandboxProvider(
   const resolvePreviewUrl =
     deps.resolvePreviewUrl ?? ((_handle, port) => `http://127.0.0.1:${port}`);
 
-  const emit = (event: SandboxEvent): void => deps.onEvent?.(event);
+  // Observability must never break provider control flow: a throwing
+  // onEvent consumer is swallowed (the JSDoc on SandboxEvent guarantees this).
+  const emit = (event: SandboxEvent): void => {
+    try {
+      deps.onEvent?.(event);
+    } catch {
+      // ignore consumer errors
+    }
+  };
 
   /**
    * Short-timeout GET to `<sandboxUrl>/health`. The cache-hit fast path
