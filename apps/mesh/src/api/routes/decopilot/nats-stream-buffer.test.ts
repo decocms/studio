@@ -1,7 +1,10 @@
 import { describe, it, expect, mock } from "bun:test";
 import { NatsStreamBuffer } from "./nats-stream-buffer";
 
-type DeferredMsg = { data: Uint8Array };
+type DeferredMsg = {
+  data: Uint8Array;
+  headers?: { get(name: string): string | undefined };
+};
 
 function createControlledSubscription() {
   const queue: Array<{ done: false; value: DeferredMsg } | { done: true }> = [];
@@ -157,6 +160,88 @@ describe("NatsStreamBuffer", () => {
     function encodeMsg(payload: unknown): DeferredMsg {
       return { data: new TextEncoder().encode(JSON.stringify(payload)) };
     }
+
+    // Mirror the producer's fragment headers (see `publishChunk`): split the
+    // encoded `{ p: value }` bytes into `parts` ordered fragment messages.
+    function fragmentChunk(value: unknown, parts: number): DeferredMsg[] {
+      const bytes = new TextEncoder().encode(JSON.stringify({ p: value }));
+      const sliceSize = Math.ceil(bytes.length / parts);
+      const msgs: DeferredMsg[] = [];
+      for (let i = 0; i < parts; i++) {
+        const data = bytes.slice(i * sliceSize, (i + 1) * sliceSize);
+        const hdr: Record<string, string> = {
+          "Dp-Frag-Idx": String(i),
+          "Dp-Frag-Total": String(parts),
+        };
+        msgs.push({ data, headers: { get: (name) => hdr[name] } });
+      }
+      return msgs;
+    }
+
+    it("reassembles a fragmented chunk byte-exact", async () => {
+      const { sub, push, end } = createControlledSubscription();
+      const buffer = bufferWith(() => Promise.resolve(sub));
+      const stream = await buffer.createTailStream("task-1");
+
+      const value = { type: "text-delta", text: "x".repeat(200) };
+      for (const f of fragmentChunk(value, 4)) push(f);
+      end();
+
+      const chunks = await readAll(stream!);
+      expect(chunks).toEqual([value]);
+    });
+
+    it("keeps consecutive same-total fragmented chunks separate", async () => {
+      const { sub, push, end } = createControlledSubscription();
+      const buffer = bufferWith(() => Promise.resolve(sub));
+      const stream = await buffer.createTailStream("task-1");
+
+      const a = "A".repeat(120);
+      const b = "B".repeat(120);
+      for (const f of fragmentChunk(a, 3)) push(f);
+      for (const f of fragmentChunk(b, 3)) push(f);
+      end();
+
+      const chunks = await readAll(stream!);
+      expect(chunks).toEqual([a, b]);
+    });
+
+    it("drops a mid-sequence fragment join without poisoning the next chunk", async () => {
+      // A `deliverPolicy: "new"` subscriber can land mid-fragment, seeing
+      // index>0 first with no index-0 anchor. Those strays must be discarded
+      // so they don't corrupt the next complete chunk.
+      const { sub, push, end } = createControlledSubscription();
+      const buffer = bufferWith(() => Promise.resolve(sub));
+      const stream = await buffer.createTailStream("task-1");
+
+      const [, stale1, stale2] = fragmentChunk("X".repeat(120), 3);
+      push(stale1!); // joined mid-sequence — index 0 never seen
+      push(stale2!);
+      const good = "good-payload-after-join";
+      for (const f of fragmentChunk(good, 3)) push(f);
+      end();
+
+      const chunks = await readAll(stream!);
+      expect(chunks).toEqual([good]);
+    });
+
+    it("drops an incomplete chunk (lost fragment) and recovers on the next", async () => {
+      // A failed middle publish leaves a gap. The stale accumulator must not
+      // bleed into a following same-total chunk.
+      const { sub, push, end } = createControlledSubscription();
+      const buffer = bufferWith(() => Promise.resolve(sub));
+      const stream = await buffer.createTailStream("task-1");
+
+      const [lost0, , lost2] = fragmentChunk("Y".repeat(120), 3);
+      push(lost0!); // index 1 publish "failed" — never arrives
+      push(lost2!);
+      const recovered = "recovered-after-loss";
+      for (const f of fragmentChunk(recovered, 3)) push(f);
+      end();
+
+      const chunks = await readAll(stream!);
+      expect(chunks).toEqual([recovered]);
+    });
 
     it("returns null when JetStream is unavailable", async () => {
       const buffer = new NatsStreamBuffer({
