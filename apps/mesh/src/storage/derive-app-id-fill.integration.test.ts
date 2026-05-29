@@ -50,4 +50,36 @@ describe("ConnectionStorage — app_id derivation", () => {
     });
     expect(conn.app_id).toBe("deco/mcp-github");
   });
+
+  it("re-derives a synthetic app_id when the url changes on update", async () => {
+    const conn = await storage.create({
+      organization_id: ORG,
+      created_by: USER,
+      title: "custom",
+      connection_type: "HTTP",
+      connection_url: "https://old.com/mcp",
+    });
+    expect(conn.app_id).toBe("url:old.com/mcp");
+
+    const updated = await storage.update(conn.id, {
+      connection_url: "https://new.com/mcp",
+    });
+    expect(updated.app_id).toBe("url:new.com/mcp");
+  });
+
+  it("never re-derives a real registry app_id on update", async () => {
+    const conn = await storage.create({
+      organization_id: ORG,
+      created_by: USER,
+      title: "gh",
+      connection_type: "HTTP",
+      connection_url: "https://api.github.com/mcp",
+      app_id: "deco/mcp-github",
+    });
+
+    const updated = await storage.update(conn.id, {
+      connection_url: "https://api.github.com/v2/mcp",
+    });
+    expect(updated.app_id).toBe("deco/mcp-github");
+  });
 });

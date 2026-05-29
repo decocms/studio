@@ -391,22 +391,48 @@ export class ConnectionStorage implements ConnectionStoragePort {
       return connection;
     }
 
-    // Recompute slug if any slug-relevant field changed
     const slugData: Record<string, unknown> = { ...data };
-    if (
+
+    // Reload existing once if we need it for slug recomputation or app_id
+    // re-derivation.
+    const needsExisting =
       data.app_name !== undefined ||
       data.connection_url !== undefined ||
-      data.title !== undefined
+      data.title !== undefined ||
+      data.connection_headers !== undefined;
+    const existing = needsExisting
+      ? await this.findById(id, undefined, INTERNAL_VIEWER)
+      : null;
+
+    // Recompute slug if any slug-relevant field changed
+    if (
+      existing &&
+      (data.app_name !== undefined ||
+        data.connection_url !== undefined ||
+        data.title !== undefined)
     ) {
-      const existing = await this.findById(id, undefined, INTERNAL_VIEWER);
-      if (existing) {
-        slugData.slug = getConnectionSlug({
-          app_name: data.app_name ?? existing.app_name,
-          connection_url: data.connection_url ?? existing.connection_url,
-          title: data.title ?? existing.title,
-          id,
-        });
-      }
+      slugData.slug = getConnectionSlug({
+        app_name: data.app_name ?? existing.app_name,
+        connection_url: data.connection_url ?? existing.connection_url,
+        title: data.title ?? existing.title,
+        id,
+      });
+    }
+
+    // Re-derive app_id when transport details change. deriveAppId preserves a
+    // real registry app_id and only recomputes null/synthetic ids.
+    if (
+      existing &&
+      (data.connection_url !== undefined ||
+        data.connection_headers !== undefined)
+    ) {
+      slugData.app_id = deriveAppId({
+        connection_type: data.connection_type ?? existing.connection_type,
+        connection_url: data.connection_url ?? existing.connection_url,
+        connection_headers:
+          data.connection_headers ?? existing.connection_headers,
+        app_id: data.app_id ?? existing.app_id,
+      });
     }
 
     const serialized = await this.serializeConnection({
@@ -414,11 +440,15 @@ export class ConnectionStorage implements ConnectionStoragePort {
       updated_at: new Date().toISOString(),
     });
 
-    await this.db
-      .updateTable("connections")
-      .set(serialized)
-      .where("id", "=", id)
-      .execute();
+    try {
+      await this.db
+        .updateTable("connections")
+        .set(serialized)
+        .where("id", "=", id)
+        .execute();
+    } catch (err) {
+      rethrowDuplicateConnectionError(err);
+    }
 
     const connection = await this.findById(id, undefined, INTERNAL_VIEWER);
     if (!connection) {
