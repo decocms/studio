@@ -85,7 +85,7 @@ Usage:
   deco services <up|down|status>     Manage services (Postgres, NATS)
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
-  deco link <studio-url> [options]   Start the desktop-side link daemon
+  deco link [studio-url] [options]   Start the desktop-side link daemon
   deco backfill-assets               Hoist legacy inline media out of threads + connections
   deco completion [shell]            Install shell completions
 
@@ -107,7 +107,7 @@ Auth Options:
   --target <url>        Decocms target (default: https://studio.decocms.com)
 
 Link Options:
-  <studio-url>      Studio to link against, e.g. https://studio.decocms.com (required)
+  [studio-url]      Studio to link against (default: https://studio.decocms.com)
   --port <port>     Local port for the daemon (default: 5174)
 
 Backfill Options (backfill-assets):
@@ -267,26 +267,24 @@ if (command === "auth") {
 // ── Link command ───────────────────────────────────────────────────────
 if (command === "link") {
   const { runLinkCommand } = await import("./cli/commands/link");
-  // Required positional: the studio to link against (auth target + cluster
-  // websocket), e.g. https://studio.decocms.com or https://studio-stg.decocms.com.
+  // Optional positional: the studio to link against (auth target + cluster
+  // websocket), e.g. https://studio-stg.decocms.com. When omitted, falls back
+  // to MESH_CLUSTER_URL / https://studio.decocms.com (resolved in runLinkCommand).
   const studioArg = positionals[1];
-  if (!studioArg) {
-    console.error("Usage: deco link <studio-url> [--port <port>]");
-    console.error("Example: deco link https://studio.decocms.com");
-    process.exit(1);
-  }
-  let studioUrl: string;
-  try {
-    const parsed = new URL(studioArg);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error("must be http(s)");
+  let studioUrl: string | undefined;
+  if (studioArg !== undefined) {
+    try {
+      const parsed = new URL(studioArg);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error("must be http(s)");
+      }
+      studioUrl = studioArg.replace(/\/$/, "");
+    } catch {
+      console.error(
+        `Invalid studio URL: "${studioArg}". Example: https://studio.decocms.com`,
+      );
+      process.exit(1);
     }
-    studioUrl = studioArg.replace(/\/$/, "");
-  } catch {
-    console.error(
-      `Invalid studio URL: "${studioArg}". Example: https://studio.decocms.com`,
-    );
-    process.exit(1);
   }
   // The top-level `parseArgs` declares `--port` with a default of 3000
   // (for the server command). Only honor it for `deco link` if the user

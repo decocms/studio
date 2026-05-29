@@ -48,13 +48,13 @@ describe("writeSession + readSession", () => {
 
   it("writes the file with mode 0600", async () => {
     await writeSession(dir, sample);
-    const s = await stat(sessionPath(dir));
+    const s = await stat(sessionPath(dir, sample.target));
     // Mask off the file-type bits and compare permission bits.
     expect(s.mode & 0o777).toBe(0o600);
   });
 
   it("forces mode 0600 even when overwriting an existing file with looser permissions", async () => {
-    const path = sessionPath(dir);
+    const path = sessionPath(dir, sample.target);
     // Pre-create the file with mode 0644 to simulate a broken prior state.
     await writeFile(path, "{}", { mode: 0o644 });
     await chmod(path, 0o644); // ensure 0644 even if writeFile honored mode
@@ -66,6 +66,44 @@ describe("writeSession + readSession", () => {
     const after = await stat(path);
     expect(after.mode & 0o777).toBe(0o600);
     expect(await readSession(dir)).toEqual(sample);
+  });
+});
+
+describe("per-studio session keying", () => {
+  const prod = sample;
+  const stg: Session = {
+    ...sample,
+    target: "https://studio-stg.decocms.com",
+    accessToken: "tok_stg",
+  };
+
+  it("keeps sessions for different studios side by side", async () => {
+    await writeSession(dir, prod);
+    await writeSession(dir, stg);
+    expect(await readSession(dir, prod.target)).toEqual(prod);
+    expect(await readSession(dir, stg.target)).toEqual(stg);
+  });
+
+  it("falls back to the legacy session.json when no host-keyed file exists", async () => {
+    // The dev-link bootstrap writes the legacy single-file form.
+    await writeFile(sessionPath(dir), JSON.stringify(prod), { mode: 0o600 });
+    expect(await readSession(dir, prod.target)).toEqual(prod);
+  });
+
+  it("clears every studio's session when no target is given", async () => {
+    await writeSession(dir, prod);
+    await writeSession(dir, stg);
+    await clearSession(dir);
+    expect(await readSession(dir, prod.target)).toBeNull();
+    expect(await readSession(dir, stg.target)).toBeNull();
+  });
+
+  it("clears only the targeted studio's session", async () => {
+    await writeSession(dir, prod);
+    await writeSession(dir, stg);
+    await clearSession(dir, stg.target);
+    expect(await readSession(dir, stg.target)).toBeNull();
+    expect(await readSession(dir, prod.target)).toEqual(prod);
   });
 });
 

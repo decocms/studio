@@ -7,11 +7,16 @@ import {
   mock,
   spyOn,
 } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureSession } from "./ensure-session";
-import { readSession, type Session, writeSession } from "./session";
+import {
+  readSession,
+  type Session,
+  sessionPath,
+  writeSession,
+} from "./session";
 
 const TARGET = "https://studio.decocms.com";
 const FIXED_NOW_MS = 1_700_000_000_000;
@@ -177,6 +182,56 @@ describe("ensureSession", () => {
     await expect(promise).rejects.toThrow(
       /Could not refresh session.*decocms auth login/,
     );
+    expect(openBrowser).not.toHaveBeenCalled();
+  });
+
+  it("re-logs in against the requested studio when the cached session is for a different one", async () => {
+    // Cached prod session (host-keyed); we link against staging.
+    await writeSession(dir, freshSession());
+    const STG = "https://studio-stg.decocms.com";
+    const m = mockOAuth();
+
+    const session = await ensureSession({
+      dataDir: dir,
+      intent: "Link",
+      target: STG,
+      isInteractive: true,
+      openBrowser: m.openBrowser,
+      fetch: m.fetchMock as unknown as typeof fetch,
+      now: () => FIXED_NOW_MS,
+    });
+
+    // Logged in fresh against staging rather than reusing the prod token.
+    expect(session.accessToken).toBe("at_login");
+    expect(m.openBrowser).toHaveBeenCalled();
+    // The prod session is preserved (studios coexist).
+    expect((await readSession(dir, TARGET))?.accessToken).toBe("at_old");
+  });
+
+  it("keeps a legacy session for a different studio when non-interactive (dev bootstrap)", async () => {
+    // The dev-link bootstrap writes the legacy single-file session.
+    await writeFile(sessionPath(dir), JSON.stringify(freshSession()), {
+      mode: 0o600,
+    });
+    const openBrowser = mock(async () => {
+      throw new Error("should not open browser");
+    });
+    const fetchMock = mock(async () => {
+      throw new Error("should not fetch");
+    });
+
+    const session = await ensureSession({
+      dataDir: dir,
+      intent: "Link",
+      target: "https://studio-stg.decocms.com",
+      isInteractive: false,
+      openBrowser,
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => FIXED_NOW_MS,
+    });
+
+    // Reused, not rejected — the daemon's preflight surfaces a real mismatch.
+    expect(session.accessToken).toBe("at_old");
     expect(openBrowser).not.toHaveBeenCalled();
   });
 

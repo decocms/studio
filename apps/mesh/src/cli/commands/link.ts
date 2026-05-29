@@ -52,6 +52,34 @@ function interceptLinkConsole(onError: (msg: string) => void): () => void {
   };
 }
 
+/**
+ * Fails loudly when the studio rejects the session token (401/403) instead of
+ * letting the daemon's WS reconnect loop retry an invalid token indefinitely
+ * (the WS handshake 401 surfaces only as an abnormal 1006 close, which the
+ * reconnect policy treats as retryable). Network/other errors are ignored —
+ * the connection attempt will surface those itself.
+ */
+async function assertStudioAcceptsToken(
+  clusterBaseUrl: string,
+  token: string,
+): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${clusterBaseUrl}/api/links/me`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return; // network / timeout — let the daemon try and report
+  }
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(
+      `Authentication rejected by ${clusterBaseUrl} — the session token was not accepted. ` +
+        `Run \`deco auth login --target ${clusterBaseUrl}\` and try again.`,
+    );
+  }
+}
+
 export async function runLinkCommand(
   opts: LinkCommandOptions = {},
 ): Promise<number> {
@@ -75,6 +103,14 @@ export async function runLinkCommand(
       intent: "Link",
       target: clusterBaseUrl,
     });
+
+    // Preflight (interactive / standalone only): confirm the studio accepts
+    // this token before connecting. The managed daemon (dev) skips it — its
+    // failures surface in the parent dev logs, and it authenticates with a
+    // bootstrapped API key rather than a logged-in session.
+    if (process.env.DECOCMS_LINK_MANAGED !== "1") {
+      await assertStudioAcceptsToken(clusterBaseUrl, session.accessToken);
+    }
 
     let monitor: LinkDaemonMonitor | undefined;
 
