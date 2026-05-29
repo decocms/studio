@@ -13,7 +13,9 @@ import type { UseFormReturn } from "react-hook-form";
  * here because the entity schema uses `.default([])` which splits `z.input`
  * (slots?: …) from `z.output` (slots: …). react-hook-form's `useForm<T>` +
  * `zodResolver` requires identical input/output types — so we keep slots
- * optional throughout the form layer and default in the submit handler.
+ * optional throughout the form layer. At runtime the value is never actually
+ * undefined: `VirtualMCPStorage.findById` always returns `slots: []`, which
+ * seeds the form's default values.
  */
 export const VirtualMcpFormSchema = VirtualMCPEntitySchema.pick({
   status: true,
