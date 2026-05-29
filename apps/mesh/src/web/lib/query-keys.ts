@@ -350,6 +350,12 @@ export const KEYS = {
   connectionResolveForUser: (orgId: string, appId: string) =>
     ["connection-resolve-for-user", orgId, appId] as const,
 
+  // Batched resolution of an agent's typed slots for the calling user
+  // (powers the "connect to use this agent" chat gate). appIds must be sorted
+  // by the caller so the key is stable regardless of slot ordering.
+  unresolvedSlots: (orgId: string, sortedAppIds: string[]) =>
+    ["unresolved-slots", orgId, ...sortedAppIds] as const,
+
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>
     ["github-user-orgs", orgId, connectionId] as const,

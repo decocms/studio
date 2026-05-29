@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
+import { KEYS } from "@/web/lib/query-keys";
 import type { ResolvedConnectionForUser } from "./use-resolve-connection-for-user";
 import { type SlotLike, unresolvedSlots } from "./unresolved-slots";
 
@@ -26,8 +27,13 @@ export function useUnresolvedSlots<T extends SlotLike>(
   const sortedAppIds = [...appIds].sort();
 
   const query = useQuery({
-    queryKey: ["unresolved-slots", orgId, ...sortedAppIds],
+    queryKey: KEYS.unresolvedSlots(orgId, sortedAppIds),
     enabled: appIds.length > 0,
+    // Clear the gate promptly once the user connects: connecting goes through
+    // a deep-link / OAuth popup, so re-resolve on every window focus (not just
+    // when stale) when the user returns.
+    staleTime: 0,
+    refetchOnWindowFocus: "always",
     queryFn: async (): Promise<Record<string, string | null>> => {
       const entries = await Promise.all(
         appIds.map(async (appId) => {
@@ -50,6 +56,10 @@ export function useUnresolvedSlots<T extends SlotLike>(
     },
   });
 
+  // Fail open: if resolution errors (query.data undefined), report no
+  // unresolved slots so a transient resolve blip doesn't block chat. The
+  // run would then surface the server-side SlotUnresolvedError, which is the
+  // pre-existing fallback rather than a regression.
   return {
     unresolved: query.data ? unresolvedSlots(slots, query.data) : [],
     isLoading: appIds.length > 0 && query.isLoading,
