@@ -1,66 +1,59 @@
 /**
- * ClickHouse DDL management for monitoring rollup tables.
+ * ClickHouse DDL for the monitoring dashboard.
  *
- * Creates the pre-aggregated rollup table and materialized view that
- * eliminate per-query full-table scans on monitoring_metrics.
+ * Studio emits monitoring telemetry as standard OTel log records (attributes
+ * prefixed `studio.monitoring.*`). In production those land in the ClickStack
+ * OTel-native `otel_logs` table. The dashboard queries in storage/monitoring-sql.ts
+ * expect a FLAT row shape (organization_id, tool_name, duration_ms, ...), so we
+ * expose a thin VIEW that projects `otel_logs` into that shape. The view is
+ * virtual (no storage); ClickHouse pushes the WHERE predicates down into otel_logs.
  *
- * Uses its own @clickhouse/client instance with client.command() for DDL,
- * keeping the QueryEngine interface read-only.
+ * NOTE: this DDL assumes the standard OpenTelemetry ClickHouse exporter schema
+ * for `otel_logs` (columns `Timestamp`, `SpanId`, `LogAttributes Map(...)`).
+ * If the deployed ClickStack/collector uses different column names, adjust the
+ * SELECT below to match.
  */
 
-const ROLLUP_TABLE_DDL = `
-CREATE TABLE IF NOT EXISTS monitoring_metrics_rollup_1m (
-  bucket DateTime,
-  organization_id String,
-  connection_id String,
-  tool_name String,
-  name String,
-  status String,
-  value SimpleAggregateFunction(sum, Float64),
-  hist_count SimpleAggregateFunction(sum, Float64),
-  hist_sum SimpleAggregateFunction(sum, Float64),
-  hist_min SimpleAggregateFunction(min, Float64),
-  hist_max SimpleAggregateFunction(max, Float64),
-  hist_bucket_counts AggregateFunction(sumForEach, Array(Float64)),
-  hist_boundaries SimpleAggregateFunction(any, Array(Float64))
-) ENGINE = AggregatingMergeTree()
-PARTITION BY toYYYYMM(bucket)
-ORDER BY (organization_id, name, bucket, connection_id, tool_name, status)
-TTL bucket + INTERVAL 90 DAY
-`;
+import { MONITORING_LOG_ATTR } from "./schema";
 
-const MATERIALIZED_VIEW_DDL = `
-CREATE MATERIALIZED VIEW IF NOT EXISTS monitoring_metrics_rollup_1m_mv
-TO monitoring_metrics_rollup_1m
-AS SELECT
-  toStartOfMinute(timestamp) AS bucket,
-  organization_id,
-  connection_id,
-  tool_name,
-  name,
-  status,
-  sum(value) AS value,
-  sum(hist_count) AS hist_count,
-  sum(hist_sum) AS hist_sum,
-  min(hist_min) AS hist_min,
-  max(hist_max) AS hist_max,
-  sumForEachState(
-    JSONExtract(hist_bucket_counts, 'Array(Float64)')
-  ) AS hist_bucket_counts,
-  any(
-    JSONExtract(hist_boundaries, 'Array(Float64)')
-  ) AS hist_boundaries
-FROM monitoring_metrics
-GROUP BY organization_id, name, bucket, connection_id, tool_name, status
+const A = MONITORING_LOG_ATTR;
+
+/**
+ * View that projects otel_logs (OTel-native) into the flat monitoring row shape
+ * the dashboard SQL reads. Only monitoring log records (tool_call / llm_call)
+ * are included.
+ */
+const MONITORING_VIEW_DDL = `
+CREATE VIEW IF NOT EXISTS studio_monitoring_logs AS
+SELECT
+  SpanId AS id,
+  LogAttributes['${A.ORGANIZATION_ID}'] AS organization_id,
+  LogAttributes['${A.CONNECTION_ID}'] AS connection_id,
+  LogAttributes['${A.CONNECTION_TITLE}'] AS connection_title,
+  LogAttributes['${A.TOOL_NAME}'] AS tool_name,
+  LogAttributes['${A.INPUT}'] AS input,
+  LogAttributes['${A.OUTPUT}'] AS output,
+  LogAttributes['${A.IS_ERROR}'] = 'true' AS is_error,
+  LogAttributes['${A.ERROR_MESSAGE}'] AS error_message,
+  toFloat64OrZero(LogAttributes['${A.DURATION_MS}']) AS duration_ms,
+  Timestamp AS timestamp,
+  LogAttributes['${A.USER_ID}'] AS user_id,
+  LogAttributes['${A.REQUEST_ID}'] AS request_id,
+  LogAttributes['${A.USER_AGENT}'] AS user_agent,
+  LogAttributes['${A.VIRTUAL_MCP_ID}'] AS virtual_mcp_id,
+  LogAttributes['${A.PROPERTIES}'] AS properties
+FROM otel_logs
+WHERE LogAttributes['${A.TYPE}'] IN ('tool_call', 'llm_call')
 `;
 
 /**
- * Run ClickHouse DDL to create the rollup table and materialized view.
+ * Create the monitoring view over otel_logs.
  *
- * Logs errors but does not throw — queries detect the rollup table's
- * existence at query time and fall back to the raw table automatically.
+ * Logs errors but does not throw — if the view can't be created (e.g. otel_logs
+ * doesn't exist yet), monitoring queries will simply fail at read time and the
+ * dashboard shows empty state, which is preferable to blocking startup.
  */
-export async function ensureClickHouseRollup(
+export async function ensureClickHouseViews(
   clickhouseUrl: string,
 ): Promise<void> {
   try {
@@ -68,21 +61,14 @@ export async function ensureClickHouseRollup(
     const client = createClient({ url: clickhouseUrl });
 
     try {
-      await client.command({ query: ROLLUP_TABLE_DDL });
-      console.log(
-        "[clickhouse-schema] monitoring_metrics_rollup_1m table ready",
-      );
-
-      await client.command({ query: MATERIALIZED_VIEW_DDL });
-      console.log(
-        "[clickhouse-schema] monitoring_metrics_rollup_1m_mv view ready",
-      );
+      await client.command({ query: MONITORING_VIEW_DDL });
+      console.log("[clickhouse-schema] studio_monitoring_logs view ready");
     } finally {
       await client.close();
     }
   } catch (err) {
     console.error(
-      "[clickhouse-schema] Failed to create rollup DDL (queries will fall back to raw table):",
+      "[clickhouse-schema] Failed to create monitoring view (dashboard queries may fail until otel_logs exists):",
       err,
     );
   }

@@ -55,7 +55,7 @@ export async function buildRequestHeaders(
   superUser: boolean,
 ): Promise<Record<string, string>> {
   return ctx.tracer.startActiveSpan(
-    "mesh.connection.build_headers",
+    "studio.connection.build_headers",
     { attributes: { "connection.id": connection.id } },
     async (span) => {
       try {

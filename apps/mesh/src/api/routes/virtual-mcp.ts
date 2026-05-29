@@ -70,7 +70,7 @@ export async function handleVirtualMcpRequest(
     }
 
     const virtualMcp = await ctx.tracer.startActiveSpan(
-      "mesh.virtual_mcp.lookup",
+      "studio.virtual_mcp.lookup",
       { attributes: { "virtual_mcp.id": virtualId } },
       async (span) => {
         try {
@@ -141,7 +141,7 @@ export async function handleVirtualMcpRequest(
 
     // Create client from entity (always passthrough)
     const client = await ctx.tracer.startActiveSpan(
-      "mesh.virtual_mcp.create_client",
+      "studio.virtual_mcp.create_client",
       { attributes: { "virtual_mcp.id": virtualMcp.id ?? "decopilot" } },
       async (span) => {
         try {

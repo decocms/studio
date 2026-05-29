@@ -98,7 +98,7 @@ export const createProxyRoutes = () => {
 
         // Fetch connection scoped to the caller's organization
         const connection = await ctx.tracer.startActiveSpan(
-          "mesh.connection.lookup",
+          "studio.connection.lookup",
           { attributes: { "connection.id": connectionId } },
           async (span) => {
             startTime(c, "mcp.find_connection");
@@ -147,7 +147,7 @@ export const createProxyRoutes = () => {
         // lazy client reuses the same connection instead of double-connecting.
         if (connection.connection_url) {
           await ctx.tracer.startActiveSpan(
-            "mesh.connection.handshake",
+            "studio.connection.handshake",
             {
               attributes: {
                 "connection.id": connectionId,

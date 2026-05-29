@@ -1,17 +1,27 @@
-import { describe, it, expect, beforeEach, vi } from "bun:test";
-import { logs, type LogRecord } from "@opentelemetry/api-logs";
+import { describe, it, expect, beforeEach } from "bun:test";
+import type {
+  Logger,
+  LoggerProvider,
+  LogRecord,
+} from "@opentelemetry/api-logs";
 import { MONITORING_LOG_ATTR, MONITORING_LOG_TYPE_VALUE } from "./schema";
 import { emitMonitoringLog } from "./emit";
 import type { EmitMonitoringLogParams } from "./emit";
+import { setMonitoringLoggerProvider } from "./logger";
 
-// Intercept log records by spying on logs.getLogger()
+// Capture emitted records by wiring a fake monitoring LoggerProvider through
+// the real accessor (setMonitoringLoggerProvider) that initObservability uses.
 let emittedRecords: LogRecord[] = [];
 
-vi.spyOn(logs, "getLogger").mockReturnValue({
+const captureLogger: Logger = {
   emit(record: LogRecord) {
     emittedRecords.push(record);
   },
-});
+};
+
+setMonitoringLoggerProvider({
+  getLogger: () => captureLogger,
+} as unknown as LoggerProvider);
 
 function makeParams(
   overrides: Partial<EmitMonitoringLogParams> = {},

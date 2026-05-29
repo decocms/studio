@@ -31,7 +31,7 @@ describe("NDJSONLogExporter", () => {
     expect(typeof exporter.forceFlush).toBe("function");
   });
 
-  it("should only export records with a known mesh.monitoring.type", async () => {
+  it("should only export records with a known studio.monitoring.type", async () => {
     const toolCallRecord = makeTestMonitoringLogRecord({
       [MONITORING_LOG_ATTR.TOOL_NAME]: "REAL_TOOL",
     });

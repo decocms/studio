@@ -55,12 +55,13 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
     await migrateToLatest({ keepOpen: true, database, skipBetterAuth: true });
   }
 
-  // 4b. ClickHouse rollup DDL (non-blocking — queries fall back to raw table)
+  // 4b. ClickHouse monitoring view over otel_logs (non-blocking — if it can't
+  // be created the dashboard just shows empty state instead of blocking boot).
   if (config.settings.clickhouseUrl) {
-    const { ensureClickHouseRollup } = await import(
+    const { ensureClickHouseViews } = await import(
       "../monitoring/clickhouse-schema"
     );
-    await ensureClickHouseRollup(config.settings.clickhouseUrl);
+    await ensureClickHouseViews(config.settings.clickhouseUrl);
   }
 
   // 5. Assemble and freeze

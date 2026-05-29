@@ -2,7 +2,12 @@
  * Monitoring schema and constants.
  *
  * Single source of truth for:
- * - mesh.monitoring.* OTel log attribute keys (used by emit + NDJSONLogExporter)
+ * - studio.monitoring.* OTel log attribute keys (used by emit + NDJSONLogExporter)
+ *
+ * IMPORTANT: these attribute keys are a contract with the storage backend.
+ * In ClickHouse OTel-native mode the queries in storage/monitoring-sql.ts read
+ * them as `LogAttributes['studio.monitoring.*']` and the rollup MV in
+ * clickhouse-schema.ts groups by them. Renaming a key here means updating both.
  * - MonitoringRow type (used by NDJSONLogExporter + SqlMonitoringStorage)
  * - Log-record-to-row conversion (used by NDJSONLogExporter)
  * - Shared constants (span name, default data path)
@@ -70,23 +75,23 @@ function getAttrNullable(
   return val != null && val !== "" ? String(val) : null;
 }
 
-/** Shared constants for mesh.monitoring.* log attribute keys. */
+/** Shared constants for studio.monitoring.* log attribute keys. */
 export const MONITORING_LOG_ATTR = {
-  TYPE: "mesh.monitoring.type",
-  ORGANIZATION_ID: "mesh.monitoring.organization_id",
-  CONNECTION_ID: "mesh.monitoring.connection_id",
-  CONNECTION_TITLE: "mesh.monitoring.connection_title",
-  TOOL_NAME: "mesh.monitoring.tool_name",
-  INPUT: "mesh.monitoring.input",
-  OUTPUT: "mesh.monitoring.output",
-  IS_ERROR: "mesh.monitoring.is_error",
-  ERROR_MESSAGE: "mesh.monitoring.error_message",
-  DURATION_MS: "mesh.monitoring.duration_ms",
-  USER_ID: "mesh.monitoring.user_id",
-  REQUEST_ID: "mesh.monitoring.request_id",
-  USER_AGENT: "mesh.monitoring.user_agent",
-  VIRTUAL_MCP_ID: "mesh.monitoring.virtual_mcp_id",
-  PROPERTIES: "mesh.monitoring.properties",
+  TYPE: "studio.monitoring.type",
+  ORGANIZATION_ID: "studio.monitoring.organization_id",
+  CONNECTION_ID: "studio.monitoring.connection_id",
+  CONNECTION_TITLE: "studio.monitoring.connection_title",
+  TOOL_NAME: "studio.monitoring.tool_name",
+  INPUT: "studio.monitoring.input",
+  OUTPUT: "studio.monitoring.output",
+  IS_ERROR: "studio.monitoring.is_error",
+  ERROR_MESSAGE: "studio.monitoring.error_message",
+  DURATION_MS: "studio.monitoring.duration_ms",
+  USER_ID: "studio.monitoring.user_id",
+  REQUEST_ID: "studio.monitoring.request_id",
+  USER_AGENT: "studio.monitoring.user_agent",
+  VIRTUAL_MCP_ID: "studio.monitoring.virtual_mcp_id",
+  PROPERTIES: "studio.monitoring.properties",
 } as const;
 
 export const MONITORING_LOG_TYPE_VALUE = "tool_call";
