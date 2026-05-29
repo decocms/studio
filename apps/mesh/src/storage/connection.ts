@@ -399,7 +399,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
       data.app_name !== undefined ||
       data.connection_url !== undefined ||
       data.title !== undefined ||
-      data.connection_headers !== undefined;
+      data.connection_headers !== undefined ||
+      data.connection_type !== undefined;
     const existing = needsExisting
       ? await this.findById(id, undefined, INTERNAL_VIEWER)
       : null;
@@ -424,7 +425,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
     if (
       existing &&
       (data.connection_url !== undefined ||
-        data.connection_headers !== undefined)
+        data.connection_headers !== undefined ||
+        data.connection_type !== undefined)
     ) {
       slugData.app_id = deriveAppId({
         connection_type: data.connection_type ?? existing.connection_type,

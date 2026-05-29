@@ -70,6 +70,32 @@ describe("assertConcreteChildrenAreOrgScoped", () => {
     ).rejects.toThrow(/private and cannot be added as a concrete child/i);
   });
 
+  it("rejects another user's private connection (the cross-user leak case)", async () => {
+    // Seed a private connection owned by a DIFFERENT user than the caller.
+    // The guard fetches with INTERNAL_VIEWER specifically so this row is
+    // visible and rejected — the per-user visibility filter would otherwise
+    // hide it and let the leak through.
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO connections (
+        id, organization_id, created_by, title, connection_type,
+        connection_url, app_id, access, status, created_at, updated_at
+      ) VALUES (
+        'conn_other_private', ${ORG}, 'user_1', 'conn_other_private', 'HTTP',
+        'https://other-user.example.com', 'other-user-app', 'user',
+        'active', ${now}, ${now}
+      )
+    `.execute(database.db);
+
+    await expect(
+      assertConcreteChildrenAreOrgScoped(
+        [{ connection_id: "conn_other_private" }],
+        storage,
+        ORG,
+      ),
+    ).rejects.toThrow(/private and cannot be added as a concrete child/i);
+  });
+
   it("is a no-op for an empty list", async () => {
     await expect(
       assertConcreteChildrenAreOrgScoped([], storage, ORG),
