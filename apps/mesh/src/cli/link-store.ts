@@ -22,6 +22,8 @@ export interface SandboxRow {
 // Not exported — mirrors cli-store's CliState.
 interface LinkState {
   cluster: ClusterStatus;
+  /** Studio URL the daemon links against (shown in the TUI header). */
+  clusterUrl: string | null;
   ingressUrl: string | null;
   ingressPort: number | null;
   machine: string | null;
@@ -71,6 +73,7 @@ export function formatIdle(ms: number): string {
 
 let state: LinkState = {
   cluster: "connecting",
+  clusterUrl: null,
   ingressUrl: null,
   ingressPort: null,
   machine: null,
@@ -96,6 +99,11 @@ export function subscribeLinkState(listener: () => void): () => void {
 
 export function setCluster(status: ClusterStatus) {
   state = { ...state, cluster: status };
+  emit();
+}
+
+export function setClusterUrl(url: string) {
+  state = { ...state, clusterUrl: url };
   emit();
 }
 

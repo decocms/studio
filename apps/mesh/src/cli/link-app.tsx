@@ -60,21 +60,23 @@ export function LinkApp() {
       </Box>
 
       <Box>
-        <Text>{"Connection".padEnd(16)}</Text>
         {state.cluster === "linked" ? (
-          <Text color="green">✓ Connected to deco</Text>
+          <Text color="green">✓ Connected to {state.clusterUrl ?? "deco"}</Text>
         ) : state.cluster === "connecting" ? (
-          <Text color="yellow">◌ Connecting…</Text>
+          <Text color="yellow">
+            ◌ Connecting to {state.clusterUrl ?? "deco"}…
+          </Text>
         ) : (
-          <Text color="red">✗ Disconnected</Text>
+          <Text color="red">
+            ✗ Disconnected from {state.clusterUrl ?? "deco"}
+          </Text>
         )}
       </Box>
       <Box>
-        <Text>{"Preview server".padEnd(16)}</Text>
         {state.ingressUrl ? (
-          <Text color="green">✓ Ready at {state.ingressUrl}</Text>
+          <Text color="green">✓ Serving at {state.ingressUrl}</Text>
         ) : (
-          <Text dimColor>Starting…</Text>
+          <Text dimColor>◌ Starting local server…</Text>
         )}
       </Box>
       <Box marginBottom={1}>

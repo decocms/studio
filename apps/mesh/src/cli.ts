@@ -85,7 +85,7 @@ Usage:
   deco services <up|down|status>     Manage services (Postgres, NATS)
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
-  deco link [options]                Start the desktop-side link daemon
+  deco link <studio-url> [options]   Start the desktop-side link daemon
   deco backfill-assets               Hoist legacy inline media out of threads + connections
   deco completion [shell]            Install shell completions
 
@@ -107,6 +107,7 @@ Auth Options:
   --target <url>        Decocms target (default: https://studio.decocms.com)
 
 Link Options:
+  <studio-url>      Studio to link against, e.g. https://studio.decocms.com (required)
   --port <port>     Local port for the daemon (default: 5174)
 
 Backfill Options (backfill-assets):
@@ -132,6 +133,7 @@ Examples:
   deco init my-app                Scaffold a new MCP app
   deco auth login                 Log in to studio.decocms.com
   deco auth whoami                Show current session
+  deco link https://studio.decocms.com   Link this machine to a studio
 
 Documentation:
   https://decocms.com/studio
@@ -265,6 +267,27 @@ if (command === "auth") {
 // ── Link command ───────────────────────────────────────────────────────
 if (command === "link") {
   const { runLinkCommand } = await import("./cli/commands/link");
+  // Required positional: the studio to link against (auth target + cluster
+  // websocket), e.g. https://studio.decocms.com or https://studio-stg.decocms.com.
+  const studioArg = positionals[1];
+  if (!studioArg) {
+    console.error("Usage: deco link <studio-url> [--port <port>]");
+    console.error("Example: deco link https://studio.decocms.com");
+    process.exit(1);
+  }
+  let studioUrl: string;
+  try {
+    const parsed = new URL(studioArg);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("must be http(s)");
+    }
+    studioUrl = studioArg.replace(/\/$/, "");
+  } catch {
+    console.error(
+      `Invalid studio URL: "${studioArg}". Example: https://studio.decocms.com`,
+    );
+    process.exit(1);
+  }
   // The top-level `parseArgs` declares `--port` with a default of 3000
   // (for the server command). Only honor it for `deco link` if the user
   // actually passed `--port`/`-p` on the command line — otherwise
@@ -282,6 +305,7 @@ if (command === "link") {
   });
   const code = await runLinkCommand({
     port: portExplicit ? Number(values.port) : undefined,
+    clusterBaseUrl: studioUrl,
     tui,
     version: await getVersion(),
     // Managed daemons (dev / npx --local-sandbox-provider) suppress the

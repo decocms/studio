@@ -7,6 +7,8 @@ export interface EnsureSessionOptions {
   dataDir: string;
   /** Human-readable name of the action requiring auth, e.g. "Link". */
   intent: string;
+  /** Studio to authenticate against for interactive login (defaults to prod). */
+  target?: string;
   /** Defaults to `process.stdout.isTTY`. */
   isInteractive?: boolean;
   // Injectables (all default to real implementations):
@@ -60,6 +62,7 @@ export async function ensureSession(
   console.log(`Not logged in — opening browser to sign in to ${opts.intent}.`);
 
   const session = await performInteractiveLogin({
+    target: opts.target,
     openBrowser: opts.openBrowser,
     fetch: opts.fetch,
   });

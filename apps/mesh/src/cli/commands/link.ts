@@ -69,7 +69,12 @@ export async function runLinkCommand(
   let restoreConsole: (() => void) | undefined;
   try {
     // Login flow (may open a browser / prompt) runs with normal console.
-    const session = await ensureSession({ dataDir, intent: "Link" });
+    // Auth targets the same studio we link against.
+    const session = await ensureSession({
+      dataDir,
+      intent: "Link",
+      target: clusterBaseUrl,
+    });
 
     let monitor: LinkDaemonMonitor | undefined;
 
@@ -80,11 +85,13 @@ export async function runLinkCommand(
       const {
         pushSandboxEvent,
         setCluster,
+        setClusterUrl,
         setDaemonError,
         setIngress,
         setMachine,
       } = await import("../link-store");
 
+      setClusterUrl(clusterBaseUrl);
       setCluster("connecting");
       monitor = {
         onEvent: (e) => pushSandboxEvent(e),

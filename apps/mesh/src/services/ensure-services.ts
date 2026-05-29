@@ -762,6 +762,8 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
       "--cwd=apps/mesh",
       "src/cli.ts",
       "link",
+      // Required positional: the studio to link against.
+      inputs.clusterUrl,
       "--port",
       String(port),
       // Managed background daemon: never render the Ink TUI (it would paint
