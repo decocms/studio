@@ -241,7 +241,7 @@ export class AIProviderKeyStorage {
         const rawKey = parsed.apiKey ?? "";
         const maskedKey =
           rawKey.length > 4
-            ? `${"•".repeat(rawKey.length - 4)}${rawKey.slice(-4)}`
+            ? `${"•".repeat(8)}${rawKey.slice(-4)}`
             : "•".repeat(rawKey.length || 1);
         return { label: keyInfo.label, maskedKey, baseUrl: parsed.baseUrl };
       } catch {
@@ -250,7 +250,7 @@ export class AIProviderKeyStorage {
     }
     const maskedKey =
       apiKey.length > 4
-        ? `${"•".repeat(apiKey.length - 4)}${apiKey.slice(-4)}`
+        ? `${"•".repeat(8)}${apiKey.slice(-4)}`
         : "•".repeat(apiKey.length || 1);
     return { label: keyInfo.label, maskedKey };
   }
