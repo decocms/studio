@@ -222,17 +222,26 @@ export function createDesktopSandboxProvider(
     evictIfNeeded();
     const workdir = join(deps.dataDir, "sandboxes", input.handle);
     await mkdir(workdir, { recursive: true });
+    console.log(
+      `[user-desktop] ensure handle=${input.handle} repo=${input.repo?.cloneUrl ?? "(none)"} branch=${input.repo?.branch ?? "(none)"} runtime=${input.workload?.runtime ?? "(autodetect)"} pm=${input.workload?.packageManager ?? "(autodetect)"}`,
+    );
     // Two ephemeral ports per sandbox: one for the daemon's HTTP/proxy
     // (port) and one for the dev script the orchestrator will spawn
     // (devPort). Without a dedicated devPort, every framework's
     // default 3000 collides with the cluster (and with other sandboxes).
     const daemonToken = randomBytes(24).toString("hex");
     const [port, devPort] = await Promise.all([pickPort(), pickPort()]);
+    console.log(
+      `[user-desktop] spawn handle=${input.handle} port=${port} devPort=${devPort} workdir=${workdir}`,
+    );
     const spawned = await Promise.resolve(
       deps.spawnDaemon({ workdir, handle: input.handle, port, daemonToken }),
     );
     try {
       await deps.waitForHealth(port);
+      console.log(
+        `[user-desktop] healthy handle=${input.handle} port=${port} — posting config`,
+      );
       await deps.postConfig(
         port,
         devPort,
@@ -240,6 +249,10 @@ export function createDesktopSandboxProvider(
         daemonToken,
       );
     } catch (err) {
+      console.error(
+        `[user-desktop] sandbox bring-up failed handle=${input.handle} port=${port} (killing daemon):`,
+        err,
+      );
       try {
         spawned.kill("SIGKILL");
       } catch {
@@ -249,6 +262,9 @@ export function createDesktopSandboxProvider(
     }
     const sandboxApiUrl = `http://127.0.0.1:${port}`;
     const previewUrl = resolvePreviewUrl(input.handle, port);
+    console.log(
+      `[user-desktop] ready handle=${input.handle} port=${port} sandboxApiUrl=${sandboxApiUrl} previewUrl=${previewUrl}`,
+    );
     const state: SandboxState = {
       handle: input.handle,
       port,

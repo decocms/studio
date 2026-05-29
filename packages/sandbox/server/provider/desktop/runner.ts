@@ -199,7 +199,8 @@ export class DesktopSandboxProvider implements SandboxProvider {
       : normalized;
     const targetPath = `/_sandbox/${encodeURIComponent(handle)}${subPath}`;
     const headers = new Headers(init.headers);
-    // Strip hop-by-hop / signing headers
+    // Strip hop-by-hop / auth headers — the daemon's control handler
+    // re-injects the bearer `daemonToken` on the far side.
     for (const h of [
       "host",
       "cookie",
@@ -207,9 +208,6 @@ export class DesktopSandboxProvider implements SandboxProvider {
       "keep-alive",
       "transfer-encoding",
       "upgrade",
-      "x-mesh-signature",
-      "x-mesh-timestamp",
-      "x-mesh-nonce",
       "authorization",
     ]) {
       headers.delete(h);

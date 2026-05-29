@@ -129,6 +129,7 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
     handleStream(req) {
       const sm = SANDBOX_PATH.exec(req.path);
       if (!sm) {
+        console.warn(`[control] handleStream no path match path=${req.path}`);
         return (async function* () {
           yield {
             type: "headers" as const,
@@ -142,6 +143,9 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
       const rest = sm[2] ?? "/";
       const port = deps.provider.proxyPort(handle);
       if (port == null) {
+        console.warn(
+          `[control] handleStream unknown handle=${handle} method=${req.method} rest=${rest} (no spawned sandbox for this handle)`,
+        );
         return (async function* () {
           yield {
             type: "headers" as const,
@@ -155,17 +159,40 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
       const streamHeaders: Record<string, string> = { ...req.headers };
       if (token) streamHeaders.authorization = `Bearer ${token}`;
       const release = deps.provider.acquireDispatch(handle);
+      // SSE-style endpoints (`/events`) are long-lived and noisy; skip the
+      // per-request log for them so the link terminal stays focused on the
+      // lifecycle + dispatch traffic that actually fails.
+      const verbose = rest !== "/events" && rest !== "/idle";
+      if (verbose) {
+        console.log(
+          `[control] proxy ${req.method} ${rest} handle=${handle} port=${port}`,
+        );
+      }
       return (async function* () {
         try {
-          const res = await fetcher(
-            `http://127.0.0.1:${port}/_sandbox${rest}`,
-            {
+          let res: Response;
+          try {
+            res = await fetcher(`http://127.0.0.1:${port}/_sandbox${rest}`, {
               method: req.method,
               headers: streamHeaders,
               ...(req.body !== undefined ? { body: req.body } : {}),
               redirect: "manual",
-            },
-          );
+            });
+          } catch (err) {
+            // Connection refused / reset: the spawned sandbox daemon died or
+            // never bound its port. Surface it — otherwise the cluster only
+            // sees a dropped dispatch and reports `decopilot.finish: failed`.
+            console.error(
+              `[control] proxy ${req.method} ${rest} handle=${handle} port=${port} fetch failed:`,
+              err,
+            );
+            throw err;
+          }
+          if (verbose && (res.status < 200 || res.status >= 300)) {
+            console.warn(
+              `[control] proxy ${req.method} ${rest} → ${res.status} handle=${handle}`,
+            );
+          }
           yield {
             type: "headers" as const,
             status: res.status,
