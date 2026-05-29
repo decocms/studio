@@ -114,6 +114,115 @@ export class ClickHouseClientEngine implements QueryEngine {
   }
 }
 
+/**
+ * Config for the ClickHouse Cloud Query API engine. Authenticates with an
+ * OpenAPI key (key id + secret over HTTP Basic) instead of a database
+ * user/password embedded in a connection URL.
+ */
+export interface ClickHouseQueryApiConfig {
+  serviceId: string;
+  keyId: string;
+  keySecret: string;
+  maxMemoryUsage?: string;
+  maxExecutionTime?: number;
+}
+
+/**
+ * Build a ClickHouseQueryApiConfig from settings, or undefined when the
+ * three required values are not all present. Used by callers to decide
+ * whether to opt into the Query API path over the url-based engine.
+ */
+export function resolveClickHouseQueryApiConfig(settings: {
+  clickhouseServiceId?: string;
+  clickhouseKeyId?: string;
+  clickhouseKeySecret?: string;
+}): ClickHouseQueryApiConfig | undefined {
+  const { clickhouseServiceId, clickhouseKeyId, clickhouseKeySecret } =
+    settings;
+  if (clickhouseServiceId && clickhouseKeyId && clickhouseKeySecret) {
+    return {
+      serviceId: clickhouseServiceId,
+      keyId: clickhouseKeyId,
+      keySecret: clickhouseKeySecret,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * Execute one SQL statement against the ClickHouse Cloud query gateway and
+ * return parsed JSONEachRow rows. Shared by ClickHouseQueryApiEngine (read
+ * SELECTs) and the rollup DDL path (CREATE TABLE / MATERIALIZED VIEW).
+ */
+export async function runClickHouseQueryApi(
+  config: ClickHouseQueryApiConfig,
+  sql: string,
+): Promise<Record<string, unknown>[]> {
+  const auth = Buffer.from(`${config.keyId}:${config.keySecret}`).toString(
+    "base64",
+  );
+  const response = await fetch(
+    `https://queries.clickhouse.cloud/service/${config.serviceId}/run?format=JSONEachRow`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${auth}`,
+      },
+      body: JSON.stringify({ sql }),
+    },
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `ClickHouse Query API failed: ${response.status} ${response.statusText} - ${errorText.slice(0, 500)}`,
+    );
+  }
+  const text = await response.text();
+  if (!text.trim()) return [];
+  const rows: Record<string, unknown>[] = [];
+  for (const line of text.trim().split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      rows.push(JSON.parse(line));
+    } catch {
+      console.error(
+        `[clickhouse-query-api] skipped malformed row: ${line.slice(0, 100)}...`,
+      );
+    }
+  }
+  return rows;
+}
+
+/**
+ * ClickHouse Cloud Query API engine for production monitoring queries.
+ * Runs SQL over `queries.clickhouse.cloud/service/{id}/run` with an OpenAPI
+ * key. Opt-in alternative to ClickHouseClientEngine, which stays the default
+ * so existing url-based deployments are unaffected.
+ */
+export class ClickHouseQueryApiEngine implements QueryEngine {
+  private maxMemoryUsage: string;
+  private maxExecutionTime: number;
+
+  constructor(private config: ClickHouseQueryApiConfig) {
+    this.maxMemoryUsage = config.maxMemoryUsage ?? "200000000";
+    this.maxExecutionTime = config.maxExecutionTime ?? 30;
+  }
+
+  async query(sql: string): Promise<Record<string, unknown>[]> {
+    return runClickHouseQueryApi(this.config, this.withSettings(sql));
+  }
+
+  // Preserve the memory/time guardrails ClickHouseClientEngine sets via
+  // clickhouse_settings. The gateway takes raw SQL, so the limits are
+  // appended as a SETTINGS clause; skipped if the SQL already declares one.
+  private withSettings(sql: string): string {
+    if (/\bsettings\b/i.test(sql)) return sql;
+    const half = Math.floor(Number(this.maxMemoryUsage) / 2);
+    return `${sql}\nSETTINGS max_memory_usage=${this.maxMemoryUsage}, max_execution_time=${this.maxExecutionTime}, max_bytes_before_external_group_by=${half}, max_bytes_before_external_sort=${half}`;
+  }
+}
+
 const DEFAULT_TABLE_NAME = "monitoring_logs";
 
 export interface MonitoringEngineConfig {

@@ -73,6 +73,9 @@ export function resolveConfig(
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,
+    clickhouseServiceId: envVars.CLICKHOUSE_SERVICE_ID,
+    clickhouseKeyId: envVars.CLICKHOUSE_KEY_ID,
+    clickhouseKeySecret: envVars.CLICKHOUSE_KEY_SECRET,
     otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
     // Config files

@@ -27,6 +27,9 @@ export interface Settings {
 
   // Observability
   clickhouseUrl: string | undefined;
+  clickhouseServiceId: string | undefined;
+  clickhouseKeyId: string | undefined;
+  clickhouseKeySecret: string | undefined;
   otelServiceName: string;
 
   // Event Bus & Networking

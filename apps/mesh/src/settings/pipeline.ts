@@ -56,11 +56,22 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
   }
 
   // 4b. ClickHouse rollup DDL (non-blocking — queries fall back to raw table)
-  if (config.settings.clickhouseUrl) {
+  if (
+    config.settings.clickhouseUrl ||
+    (config.settings.clickhouseServiceId &&
+      config.settings.clickhouseKeyId &&
+      config.settings.clickhouseKeySecret)
+  ) {
     const { ensureClickHouseRollup } = await import(
       "../monitoring/clickhouse-schema"
     );
-    await ensureClickHouseRollup(config.settings.clickhouseUrl);
+    const { resolveClickHouseQueryApiConfig } = await import(
+      "../monitoring/query-engine"
+    );
+    const queryApi = resolveClickHouseQueryApiConfig(config.settings);
+    await ensureClickHouseRollup(
+      queryApi ? { queryApi } : { url: config.settings.clickhouseUrl! },
+    );
   }
 
   // 5. Assemble and freeze

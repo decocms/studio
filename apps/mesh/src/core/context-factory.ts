@@ -24,6 +24,8 @@ import {
 import {
   createMonitoringEngine,
   ClickHouseClientEngine,
+  ClickHouseQueryApiEngine,
+  resolveClickHouseQueryApiConfig,
 } from "../monitoring/query-engine";
 import type { QueryEngine } from "../monitoring/query-engine";
 import { getLogsDir, getMetricsDir } from "../monitoring/schema";
@@ -980,8 +982,12 @@ export async function createMeshContextFactory(
   const vault = new CredentialVault(config.encryption.key);
 
   // Create monitoring engines (shared across requests)
-  const clickhouseUrl = getSettings().clickhouseUrl;
-  const isClickHouse = !!clickhouseUrl;
+  const settings = getSettings();
+  const clickhouseUrl = settings.clickhouseUrl;
+  // Query API (OpenAPI key) takes precedence when configured; the url-based
+  // engine remains the default so existing deployments are unaffected.
+  const queryApiConfig = resolveClickHouseQueryApiConfig(settings);
+  const isClickHouse = !!clickhouseUrl || !!queryApiConfig;
   const dialect: SqlDialect = config.monitoringEngines
     ? "duckdb"
     : isClickHouse
@@ -997,9 +1003,12 @@ export async function createMeshContextFactory(
     // crash). See MeshContextConfig.monitoringEngines for the why.
     monitoringEngine = config.monitoringEngines.monitoringEngine;
     metricEngine = config.monitoringEngines.metricEngine;
-  } else if (isClickHouse) {
-    monitoringEngine = new ClickHouseClientEngine(clickhouseUrl!);
-    metricEngine = new ClickHouseClientEngine(clickhouseUrl!);
+  } else if (queryApiConfig) {
+    monitoringEngine = new ClickHouseQueryApiEngine(queryApiConfig);
+    metricEngine = new ClickHouseQueryApiEngine(queryApiConfig);
+  } else if (clickhouseUrl) {
+    monitoringEngine = new ClickHouseClientEngine(clickhouseUrl);
+    metricEngine = new ClickHouseClientEngine(clickhouseUrl);
   } else {
     const { engine: me } = await createMonitoringEngine({
       basePath: getLogsDir(),

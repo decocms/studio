@@ -6,6 +6,7 @@ const SECRET_KEYS = new Set([
   "ENCRYPTION_KEY",
   "MESH_JWT_SECRET",
   "STUDIO_PROVISION_SECRET_KEY",
+  "CLICKHOUSE_KEY_SECRET",
 ]);
 
 const URL_KEYS = new Set(["DATABASE_URL", "CLICKHOUSE_URL", "NATS_URL"]);
@@ -141,6 +142,9 @@ function getConfigSections(e: Settings): ConfigSection[] {
       title: "Observability",
       entries: [
         { key: "CLICKHOUSE_URL", value: e.clickhouseUrl },
+        { key: "CLICKHOUSE_SERVICE_ID", value: e.clickhouseServiceId },
+        { key: "CLICKHOUSE_KEY_ID", value: e.clickhouseKeyId },
+        { key: "CLICKHOUSE_KEY_SECRET", value: e.clickhouseKeySecret },
         { key: "OTEL_SERVICE_NAME", value: e.otelServiceName },
       ],
     },

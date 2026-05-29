@@ -5,8 +5,14 @@
  * eliminate per-query full-table scans on monitoring_metrics.
  *
  * Uses its own @clickhouse/client instance with client.command() for DDL,
- * keeping the QueryEngine interface read-only.
+ * keeping the QueryEngine interface read-only. When a ClickHouse Cloud Query
+ * API config is supplied instead of a url, DDL is sent over the Query API.
  */
+
+import {
+  runClickHouseQueryApi,
+  type ClickHouseQueryApiConfig,
+} from "./query-engine";
 
 const ROLLUP_TABLE_DDL = `
 CREATE TABLE IF NOT EXISTS monitoring_metrics_rollup_1m (
@@ -54,19 +60,36 @@ FROM monitoring_metrics
 GROUP BY organization_id, name, bucket, connection_id, tool_name, status
 `;
 
+export type ClickHouseRollupTarget =
+  | { url: string }
+  | { queryApi: ClickHouseQueryApiConfig };
+
 /**
  * Run ClickHouse DDL to create the rollup table and materialized view.
  *
  * Logs errors but does not throw — queries detect the rollup table's
  * existence at query time and fall back to the raw table automatically.
+ * (Creating these objects requires a credential with DDL rights; a
+ * read-only Query API key will land on the raw-table fallback.)
  */
 export async function ensureClickHouseRollup(
-  clickhouseUrl: string,
+  target: ClickHouseRollupTarget,
 ): Promise<void> {
   try {
-    const { createClient } = await import("@clickhouse/client");
-    const client = createClient({ url: clickhouseUrl });
+    if ("queryApi" in target) {
+      await runClickHouseQueryApi(target.queryApi, ROLLUP_TABLE_DDL);
+      console.log(
+        "[clickhouse-schema] monitoring_metrics_rollup_1m table ready",
+      );
+      await runClickHouseQueryApi(target.queryApi, MATERIALIZED_VIEW_DDL);
+      console.log(
+        "[clickhouse-schema] monitoring_metrics_rollup_1m_mv view ready",
+      );
+      return;
+    }
 
+    const { createClient } = await import("@clickhouse/client");
+    const client = createClient({ url: target.url });
     try {
       await client.command({ query: ROLLUP_TABLE_DDL });
       console.log(
