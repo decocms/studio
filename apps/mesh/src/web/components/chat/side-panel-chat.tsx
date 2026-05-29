@@ -21,8 +21,6 @@ import {
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
-import { ConnectAgentGate } from "./connect-agent-gate";
-import { useUnresolvedSlots } from "@/web/hooks/use-unresolved-slots";
 
 // ---------- Default sidebar empty state ----------
 
@@ -70,12 +68,6 @@ function ChatPanelContent() {
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
   const fullVm = useVirtualMCP(displayAgent.id);
-  const { unresolved, isLoading: slotsLoading } = useUnresolvedSlots(
-    org.id,
-    org.slug,
-    fullVm?.slots ?? [],
-  );
-  const showConnectGate = !slotsLoading && unresolved.length > 0;
   const link = useCurrentLink();
 
   // Clonable agents (Start Website + GitHub-imported) can route through
@@ -93,21 +85,6 @@ function ChatPanelContent() {
           <Chat.EmptyState>
             <Chat.NoAiProviderEmptyState />
           </Chat.EmptyState>
-        </Chat.Main>
-      </Chat>
-    );
-  }
-
-  if (showConnectGate) {
-    return (
-      <Chat className="animate-in fade-in-0 duration-200">
-        <Chat.Main className="flex flex-col items-center">
-          <ConnectAgentGate
-            agentTitle={fullVm?.title ?? displayAgent.title}
-            agentIcon={fullVm?.icon ?? displayAgent.icon}
-            slots={unresolved}
-            orgSlug={org.slug}
-          />
         </Chat.Main>
       </Chat>
     );
