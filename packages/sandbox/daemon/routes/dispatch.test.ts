@@ -1,11 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import {
-  fixtures,
-  signRequest,
-} from "../../../../apps/mesh/src/links/protocol";
+import { fixtures } from "../../../../apps/mesh/src/links/protocol";
 import { handleCancelRequest, handleDispatchRequest } from "./dispatch";
 
-const SECRET = "test-secret-32-bytes-padding-padding-padding";
+const DAEMON_TOKEN = "test-daemon-token-32-chars-min-aaaa";
 
 function makeFakeHarness() {
   return {
@@ -21,33 +18,28 @@ function makeDeps(
   overrides: Partial<Parameters<typeof handleDispatchRequest>[1]> = {},
 ) {
   return {
-    bearerSecret: SECRET,
+    daemonToken: DAEMON_TOKEN,
     lookupHarness: () => makeFakeHarness(),
-    seenNonce: () => false,
     ...overrides,
   };
 }
 
-function signedDispatch(body: string) {
-  const sig = signRequest({
-    secret: SECRET,
-    method: "POST",
-    path: "/_sandbox/dispatch",
-    body,
-  });
+function authedDispatch(body: string, token = DAEMON_TOKEN) {
   return new Request("http://localhost/_sandbox/dispatch", {
     method: "POST",
     body,
-    headers: { ...sig, "Content-Type": "application/json" },
+    headers: {
+      authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
   });
 }
 
-function signedCancel(runId: string) {
+function authedCancel(runId: string, token = DAEMON_TOKEN) {
   const path = `/_sandbox/runs/${runId}`;
-  const sig = signRequest({ secret: SECRET, method: "DELETE", path, body: "" });
   return new Request(`http://localhost${path}`, {
     method: "DELETE",
-    headers: { ...sig },
+    headers: { authorization: `Bearer ${token}` },
   });
 }
 
@@ -65,7 +57,7 @@ describe("POST /_sandbox/dispatch", () => {
       harnessId: "fake",
       input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId: "run-dispatch-1" },
     });
-    const res = await handleDispatchRequest(signedDispatch(body), makeDeps());
+    const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
 
@@ -77,7 +69,7 @@ describe("POST /_sandbox/dispatch", () => {
     expect(events.at(-1)).toBe('{"type":"done"}');
   });
 
-  it("rejects an unsigned request", async () => {
+  it("rejects a request with no bearer token", async () => {
     const req = new Request("http://x/_sandbox/dispatch", {
       method: "POST",
       body: "{}",
@@ -86,35 +78,29 @@ describe("POST /_sandbox/dispatch", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a bad signature", async () => {
-    const body = JSON.stringify({ harnessId: "fake", input: {} });
-    const sig = signRequest({
-      secret: "wrong-secret-32-bytes-paddingpadding",
-      method: "POST",
-      path: "/_sandbox/dispatch",
-      body,
+  it("rejects a bearer token that does not match", async () => {
+    const body = JSON.stringify({
+      harnessId: "fake",
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId: "run-token-2" },
     });
-    const req = new Request("http://localhost/_sandbox/dispatch", {
-      method: "POST",
-      body,
-      headers: { ...sig, "Content-Type": "application/json" },
-    });
-    const res = await handleDispatchRequest(req, makeDeps());
+    const res = await handleDispatchRequest(
+      authedDispatch(body, "wrong-token"),
+      makeDeps(),
+    );
     expect(res.status).toBe(401);
   });
 
   it("returns 400 on invalid input shape", async () => {
     const body = JSON.stringify({ harnessId: "fake", input: { bogus: true } });
-    const res = await handleDispatchRequest(signedDispatch(body), makeDeps());
+    const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
     expect(res.status).toBe(400);
   });
 
   it("returns 410 Gone for a tombstoned runId (cancel-before-dispatch)", async () => {
     // Cancel first — this writes a tombstone.
     const runId = "run-tombstone-1";
-    const cancelRes = await handleCancelRequest(signedCancel(runId), {
-      bearerSecret: SECRET,
-      seenNonce: () => false,
+    const cancelRes = await handleCancelRequest(authedCancel(runId), {
+      daemonToken: DAEMON_TOKEN,
     });
     expect(cancelRes.status).toBe(204);
 
@@ -123,7 +109,7 @@ describe("POST /_sandbox/dispatch", () => {
       harnessId: "fake",
       input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId },
     });
-    const res = await handleDispatchRequest(signedDispatch(body), makeDeps());
+    const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
     expect(res.status).toBe(410);
   });
 
@@ -142,7 +128,7 @@ describe("POST /_sandbox/dispatch", () => {
         },
       }),
     });
-    const res = await handleDispatchRequest(signedDispatch(body), deps);
+    const res = await handleDispatchRequest(authedDispatch(body), deps);
     expect(res.status).toBe(200);
     const events = await readSSE(res);
     const errorEvent = events.find((e) => e.includes('"type":"error"'));
@@ -154,20 +140,24 @@ describe("POST /_sandbox/dispatch", () => {
 
 describe("DELETE /_sandbox/runs/:runId", () => {
   it("returns 204 even for an unknown runId (idempotent)", async () => {
-    const res = await handleCancelRequest(signedCancel("run-unknown-1"), {
-      bearerSecret: SECRET,
-      seenNonce: () => false,
+    const res = await handleCancelRequest(authedCancel("run-unknown-1"), {
+      daemonToken: DAEMON_TOKEN,
     });
     expect(res.status).toBe(204);
   });
 
-  it("rejects an unsigned cancel", async () => {
+  it("rejects a cancel with no bearer token", async () => {
     const path = "/_sandbox/runs/run-x";
     const req = new Request(`http://x${path}`, { method: "DELETE" });
-    const res = await handleCancelRequest(req, {
-      bearerSecret: SECRET,
-      seenNonce: () => false,
-    });
+    const res = await handleCancelRequest(req, { daemonToken: DAEMON_TOKEN });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a cancel with a non-matching bearer token", async () => {
+    const res = await handleCancelRequest(
+      authedCancel("run-x", "wrong-token"),
+      { daemonToken: DAEMON_TOKEN },
+    );
     expect(res.status).toBe(401);
   });
 });

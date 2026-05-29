@@ -96,6 +96,16 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    agents fall through to undefined (SDK default).
         const cwd = await resolveClaudeCodeCwd(input);
 
+        // Diagnostics: on the user-desktop path this runs inside the spawned
+        // sandbox daemon (stdout inherited by `deco link`), so these lines
+        // surface in the link terminal. They pin the three most common
+        // failure causes for a `decopilot.finish: failed` with no other
+        // signal — wrong cwd (CLI runs outside the checkout), an
+        // unreachable MCP endpoint, or a bad model id.
+        console.log(
+          `[claude-code] stream start model=${sdkModelId} cwd=${cwd ?? "(default)"} mcpUrl=${input.mcp.url} mode=${input.mode} resume=${input.resumeSessionRef ? "yes" : "no"}`,
+        );
+
         // 3. Build the Claude Code language model. The MCP URL + headers
         //    are already minted by the shared layer (it owns the
         //    temp-API-key lifecycle); the harness just forwards them.
@@ -223,6 +233,16 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
           for await (const chunk of uiStream) {
             yield chunk;
           }
+        } catch (err) {
+          // The dispatch route (packages/sandbox/daemon/routes/dispatch.ts)
+          // also logs the crash, but logging here captures the resolved
+          // cwd/model context at the point of failure — the most useful
+          // detail when the CLI subprocess fails to start.
+          console.error(
+            `[claude-code] stream error model=${sdkModelId} cwd=${cwd ?? "(default)"}:`,
+            err,
+          );
+          throw err;
         } finally {
           // Report cumulative usage to the surrounding scope for
           // posthog's `chat_message_completed` event. Mirrors what the

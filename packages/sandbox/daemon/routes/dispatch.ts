@@ -1,15 +1,14 @@
 /**
  * `POST /_sandbox/dispatch` + `DELETE /_sandbox/runs/:runId`.
  *
- * Authenticated by HMAC against the daemon's `linkSecret` (the same
- * value the cluster computed for the registered link entry — see
- * `apps/mesh/src/links/protocol`'s `signRequest` / `verifyRequest`). The
+ * Authenticated by the daemon's bearer `daemonToken` (see `../auth`). The
  * cluster-side caller is `remoteDispatch` in
- * `apps/mesh/src/harnesses/remote-dispatch.ts`; both sides parse SSE
+ * `apps/mesh/src/harnesses/remote-dispatch.ts`, proxied to the daemon by
+ * the link daemon's control handler over loopback; both sides parse SSE
  * events from `dispatchSSEEventSchema`.
  *
  * Dispatch flow:
- *   1. Verify HMAC.
+ *   1. Verify the bearer token.
  *   2. Decode + Zod-validate the body.
  *   3. Refuse if the runId is currently tombstoned (cancel-before-dispatch).
  *   4. Register an AbortController keyed by runId so a later DELETE
@@ -26,9 +25,9 @@
 import {
   dispatchSSEEventSchema,
   harnessStreamInputSchema,
-  verifyRequest,
   type DispatchSSEEvent,
 } from "../../../../apps/mesh/src/links/protocol";
+import { requireToken } from "../auth";
 
 /** Minimal harness shape the dispatch route needs. Decoupled from the
  *  harness factories in `apps/mesh/src/harnesses` so the route file (and
@@ -39,22 +38,18 @@ export interface DispatchHarness {
 }
 
 export interface DispatchDeps {
-  /** Daemon-side bearer secret. Equals the link's `linkSecret` from the
-   *  cluster's `LinkRegistry` — the cluster signs with it, the daemon
-   *  verifies with it. */
-  bearerSecret: string;
+  /** Bearer daemon token. The link daemon's control handler injects it as
+   *  `Authorization: Bearer <daemonToken>` when proxying over loopback;
+   *  in-cluster docker uses the same scheme. */
+  daemonToken: string;
   /** Look up a harness factory by id and instantiate it for this run.
    *  Throws if the id is unknown. */
   lookupHarness: (id: string, input: unknown) => DispatchHarness;
-  /** Nonce-replay guard. Returning `true` means the nonce was already
-   *  used and should be rejected. The caller owns the cache (sized,
-   *  TTL'd, etc.) — the route itself doesn't decide policy. */
-  seenNonce: (nonce: string) => boolean;
 }
 
 export interface CancelDeps {
-  bearerSecret: string;
-  seenNonce: (nonce: string) => boolean;
+  /** See `DispatchDeps.daemonToken`. */
+  daemonToken: string;
 }
 
 const TOMBSTONE_MS = 60_000;
@@ -81,29 +76,10 @@ export async function handleDispatchRequest(
   req: Request,
   deps: DispatchDeps,
 ): Promise<Response> {
-  const body = await req.text();
-  const url = new URL(req.url);
+  const denied = requireToken(req, deps.daemonToken);
+  if (denied) return denied;
 
-  // When fronted by the link's reverse proxy, the cluster signed the
-  // request against the PRE-strip path (e.g. /_sandbox/<handle>/_sandbox/dispatch),
-  // not the post-strip path the daemon sees. The proxy forwards the
-  // original via X-Forwarded-Path; fall back to url.pathname for direct
-  // (non-proxied) callers like loopback tests.
-  const signedPath = req.headers.get("x-forwarded-path") ?? url.pathname;
-  const verification = verifyRequest({
-    secret: deps.bearerSecret,
-    method: req.method,
-    path: signedPath,
-    body,
-    headers: Object.fromEntries(req.headers),
-    seenNonce: deps.seenNonce,
-  });
-  if (!verification.valid) {
-    return new Response(JSON.stringify({ error: verification.reason }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
-  }
+  const body = await req.text();
 
   let parsed: { harnessId: unknown; input: unknown };
   try {
@@ -146,11 +122,19 @@ export async function handleDispatchRequest(
   const ctrl = new AbortController();
   activeRuns.set(input.runId, ctrl);
 
+  console.log(
+    `[dispatch] received harness=${parsed.harnessId} runId=${input.runId} threadId=${input.threadId}`,
+  );
+
   let harness: DispatchHarness;
   try {
     harness = deps.lookupHarness(parsed.harnessId, input);
   } catch (err) {
     activeRuns.delete(input.runId);
+    console.error(
+      `[dispatch] lookupHarness failed harness=${parsed.harnessId} runId=${input.runId}:`,
+      err,
+    );
     return new Response(
       JSON.stringify({
         error: "unknown_harness",
@@ -168,12 +152,21 @@ export async function handleDispatchRequest(
           encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
         );
       };
+      let chunkCount = 0;
       try {
         for await (const chunk of harness.stream()) {
           if (ctrl.signal.aborted) break;
+          chunkCount++;
           write({ type: "ui-message-chunk", chunk });
         }
+        console.log(
+          `[dispatch] done harness=${parsed.harnessId} runId=${input.runId} chunks=${chunkCount} aborted=${ctrl.signal.aborted}`,
+        );
       } catch (err) {
+        console.error(
+          `[dispatch] harness crashed harness=${parsed.harnessId} runId=${input.runId} chunks=${chunkCount}:`,
+          err,
+        );
         write({
           type: "error",
           code: "harness_crashed",
@@ -206,16 +199,8 @@ export async function handleCancelRequest(
   if (!match) return new Response(null, { status: 404 });
   const runId = match[1]!;
 
-  const signedPath = req.headers.get("x-forwarded-path") ?? url.pathname;
-  const v = verifyRequest({
-    secret: deps.bearerSecret,
-    method: req.method,
-    path: signedPath,
-    body: "",
-    headers: Object.fromEntries(req.headers),
-    seenNonce: deps.seenNonce,
-  });
-  if (!v.valid) return new Response(null, { status: 401 });
+  const denied = requireToken(req, deps.daemonToken);
+  if (denied) return denied;
 
   const ctrl = activeRuns.get(runId);
   if (ctrl) ctrl.abort();
