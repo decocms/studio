@@ -276,8 +276,14 @@ if (command === "link") {
       a.startsWith("--port=") ||
       a.startsWith("-p="),
   );
+  const tui = resolveTui({
+    noTui: values["no-tui"] === true,
+    isTty: process.stdout.isTTY,
+  });
   const code = await runLinkCommand({
     port: portExplicit ? Number(values.port) : undefined,
+    tui,
+    version: await getVersion(),
   });
   process.exit(code);
 }
