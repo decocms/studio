@@ -284,6 +284,9 @@ if (command === "link") {
     port: portExplicit ? Number(values.port) : undefined,
     tui,
     version: await getVersion(),
+    // Managed daemons (dev / npx --local-sandbox-provider) suppress the
+    // banner — the parent dev/serve process already renders one.
+    banner: process.env.DECOCMS_LINK_MANAGED !== "1",
   });
   process.exit(code);
 }

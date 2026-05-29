@@ -764,6 +764,9 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
       "link",
       "--port",
       String(port),
+      // Managed background daemon: never render the Ink TUI (it would paint
+      // over the parent dev/serve terminal when stdio is inherited).
+      "--no-tui",
     ],
     {
       cwd: inputs.repoRoot,
@@ -772,6 +775,8 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
         MESH_CLUSTER_URL: inputs.clusterUrl,
         DATA_DIR: inputs.linkDataDir,
         DECOCMS_HOME: inputs.linkDataDir,
+        // Suppress the plain banner — the parent dev/serve already shows one.
+        DECOCMS_LINK_MANAGED: "1",
       },
       stdio: inputs.stdio ?? ["inherit", "inherit", "inherit"],
     },

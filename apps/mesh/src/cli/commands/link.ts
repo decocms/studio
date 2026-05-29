@@ -21,6 +21,13 @@ export interface LinkCommandOptions {
   tui?: boolean;
   /** Version string for the banner (plain mode). */
   version?: string;
+  /**
+   * Print the ASCII banner in plain mode. Default true. The managed daemon
+   * spawned by `ensureLink` (dev / npx `--local-sandbox-provider`) sets this
+   * to false so it doesn't render a second banner inside the parent
+   * `dev`/`serve` TUI.
+   */
+  banner?: boolean;
 }
 
 /**
@@ -87,7 +94,7 @@ export async function runLinkCommand(
       };
       restoreConsole = interceptLinkConsole(setDaemonError);
       render(createElement(LinkApp), { patchConsole: false });
-    } else {
+    } else if (opts.banner !== false) {
       const { printBanner } = await import("../banner-art");
       printBanner(opts.version ?? "0.0.0");
     }
