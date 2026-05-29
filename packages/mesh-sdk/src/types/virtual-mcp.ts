@@ -146,10 +146,45 @@ const VirtualMcpUISchema = z.object({
   themeColor: z.string().nullable().optional(),
   pinnedViews: z.array(VirtualMcpPinnedViewSchema).nullable().optional(),
   layout: VirtualMcpUILayoutSchema.nullable().optional(),
+  /**
+   * Legacy single-tile slot. Still honored by the home-next-actions
+   * endpoint when `homeTiles` is empty/absent. New writes go to
+   * `homeTiles` so agents can surface more than one UI on the home
+   * board.
+   */
   homeTile: VirtualMcpHomeTileSchema.nullable().optional(),
+  /**
+   * Multiple home tiles per agent. Each entry becomes its own tile on
+   * the org home board, rendered via MCPAppRenderer against the
+   * resource's owning connection.
+   */
+  homeTiles: z.array(VirtualMcpHomeTileSchema).nullable().optional(),
+  /**
+   * Curated list of prompt names to surface on the home board. When
+   * absent / null, the BE falls back to listing every prompt the
+   * agent's gateway exposes (today's behavior). An explicit empty
+   * array means "no prompts" — useful for an agent that only wants to
+   * surface its UI tiles.
+   */
+  homePrompts: z.array(z.string()).nullable().optional(),
 });
 
 export type VirtualMcpUI = z.infer<typeof VirtualMcpUISchema>;
+
+/**
+ * Canonical reader for an agent's pinned home tiles. Prefers the
+ * `homeTiles` array; falls back to the legacy single `homeTile` slot so
+ * agents written before the multi-tile migration still surface their
+ * tile. Returning `[]` (rather than null) keeps callers branchless.
+ */
+export function getHomeTiles(
+  ui: VirtualMcpUI | null | undefined,
+): VirtualMcpHomeTile[] {
+  const arr = ui?.homeTiles;
+  if (Array.isArray(arr) && arr.length > 0) return arr;
+  const legacy = ui?.homeTile;
+  return legacy ? [legacy] : [];
+}
 
 /**
  * Shell-portable env var name: must start with a letter or underscore and

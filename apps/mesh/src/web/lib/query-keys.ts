@@ -72,6 +72,14 @@ export const KEYS = {
   // Home next-actions — agent prompts under Chat.Input.
   homeNextActions: (orgSlug: string) => ["home-next-actions", orgSlug] as const,
 
+  // Per-agent presence probe for the add-tile drawer (UI tools + prompts).
+  agentSummary: (orgId: string, agentId: string) =>
+    ["agent-summary", orgId, agentId] as const,
+
+  // Prompts exposed by an agent's gateway (drawer's prompt list).
+  agentPrompts: (orgId: string, agentId: string) =>
+    ["agent-prompts", orgId, agentId] as const,
+
   // Allowed models for current user (scoped by organization)
   allowedModels: (locator: ProjectLocator) =>
     [locator, "allowed-models"] as const,
