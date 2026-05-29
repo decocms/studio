@@ -1,6 +1,8 @@
 import { useState, useRef } from "react";
 import {
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   DotsHorizontal,
   Edit01,
   Flag01,
@@ -499,6 +501,7 @@ export function SectionsEditor({
   const [renameVariantIndex, setRenameVariantIndex] = useState<number | null>(
     null,
   );
+  const [isVariantRuleOpen, setIsVariantRuleOpen] = useState(true);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [activeSectionVariantIndex, setActiveSectionVariantIndex] = useState(0);
   const [sectionRuleFormValue, setSectionRuleFormValue] = useState<Record<
@@ -1597,7 +1600,26 @@ export function SectionsEditor({
       {/* Page header */}
       <div className="px-3 py-2.5 border-b shrink-0">
         {isEditing && (!isGlobalBlockMode || fieldBreadcrumbs.length > 0) ? (
-          <div className="flex min-w-0 items-center overflow-hidden">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            {!isGlobalBlockMode && hasMultipleVariants && activeVariant && (
+              <button
+                type="button"
+                onClick={exitSectionEditing}
+                title={`Editing in variant: ${activeVariant.label}`}
+                className={cn(
+                  "shrink-0 inline-flex items-center gap-1 rounded-md h-6 px-1.5 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80",
+                  VARIANT_TAB_ACTIVE_CLASS,
+                )}
+              >
+                <VariantTabIcon
+                  rule={activeVariant.rule}
+                  matchers={availableMatchers}
+                />
+                <span className="max-w-[160px] truncate">
+                  {activeVariant.label}
+                </span>
+              </button>
+            )}
             <nav
               aria-label="Editing breadcrumb"
               className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
@@ -1672,97 +1694,104 @@ export function SectionsEditor({
 
       {/* Variant selector (when page sections are multivariate) */}
       {hasMultipleVariants && !isEditing && (
-        <div className="flex items-center gap-1.5 px-3 py-2 border-b shrink-0 overflow-x-auto">
-          {pageVariants.map((variant, i) => {
-            const isActive = i === safeVariantIndex;
-            const canDelete = pageVariants.length > 1;
-            return (
-              <div
-                key={i}
-                className={cn(
-                  "group shrink-0 inline-flex items-center rounded-md transition-colors",
-                  isActive
-                    ? VARIANT_TAB_ACTIVE_CLASS
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveVariantIndex(i);
-                    setSelectedSectionIndex(null);
-                    setFormValue(null);
-                    setActiveResolveType(null);
-                    setFieldBreadcrumbs([]);
-                    const variantRule = pageVariants[i]?.rule;
-                    const variantRuleRt =
-                      (variantRule?.__resolveType as string) ?? "";
-                    setRuleResolveType(variantRuleRt);
-                    if (variantRule) {
-                      const { __resolveType: _, ...ruleData } = variantRule;
-                      setRuleFormValue(ruleData);
-                    } else {
-                      setRuleFormValue(null);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-sm font-medium cursor-pointer"
+        <div className="flex items-center border-b shrink-0">
+          <div className="flex flex-1 min-w-0 items-center gap-1.5 pl-3 pr-2 py-2 overflow-x-auto">
+            {pageVariants.map((variant, i) => {
+              const isActive = i === safeVariantIndex;
+              const canDelete = pageVariants.length > 1;
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "group shrink-0 inline-flex items-center rounded-md transition-colors",
+                    isActive
+                      ? VARIANT_TAB_ACTIVE_CLASS
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
                 >
-                  <VariantTabIcon
-                    rule={variant.rule}
-                    matchers={availableMatchers}
-                  />
-                  <span className="truncate">{variant.label}</span>
-                </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={`Actions for ${variant.label}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className={cn(
-                        "inline-flex h-8 w-6 items-center justify-center pr-1 cursor-pointer transition-opacity",
-                        "opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100",
-                        isActive && "opacity-100",
-                      )}
-                    >
-                      <DotsHorizontal size={12} />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-36">
-                    <DropdownMenuItem onClick={() => setRenameVariantIndex(i)}>
-                      <Edit01 size={14} />
-                      Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      disabled={!canDelete}
-                      onClick={() => handleDeletePageVariant(i)}
-                    >
-                      <Trash01 size={14} />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            );
-          })}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Add variant"
-                className="size-8 shrink-0 ml-auto cursor-pointer"
-                style={{ color: VARIANT_GREEN_TEXT }}
-                onClick={handleAddPageVariant}
-              >
-                <Plus size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Add variant</TooltipContent>
-          </Tooltip>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveVariantIndex(i);
+                      setSelectedSectionIndex(null);
+                      setFormValue(null);
+                      setActiveResolveType(null);
+                      setFieldBreadcrumbs([]);
+                      const variantRule = pageVariants[i]?.rule;
+                      const variantRuleRt =
+                        (variantRule?.__resolveType as string) ?? "";
+                      setRuleResolveType(variantRuleRt);
+                      if (variantRule) {
+                        const { __resolveType: _, ...ruleData } = variantRule;
+                        setRuleFormValue(ruleData);
+                      } else {
+                        setRuleFormValue(null);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-sm font-medium cursor-pointer"
+                  >
+                    <VariantTabIcon
+                      rule={variant.rule}
+                      matchers={availableMatchers}
+                    />
+                    <span className="truncate">{variant.label}</span>
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`Actions for ${variant.label}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className={cn(
+                          "inline-flex h-8 w-6 items-center justify-center pr-1 cursor-pointer transition-opacity",
+                          "opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100",
+                          isActive && "opacity-100",
+                        )}
+                      >
+                        <DotsHorizontal size={12} />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-36">
+                      <DropdownMenuItem
+                        onClick={() => setRenameVariantIndex(i)}
+                      >
+                        <Edit01 size={14} />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        disabled={!canDelete}
+                        onClick={() => handleDeletePageVariant(i)}
+                      >
+                        <Trash01 size={14} />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              );
+            })}
+          </div>
+          {/* Pinned "+" — stays visible regardless of horizontal scroll. */}
+          <div className="shrink-0 pr-3 pl-1 py-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Add variant"
+                  className="size-8 shrink-0 cursor-pointer"
+                  style={{ color: VARIANT_GREEN_TEXT }}
+                  onClick={handleAddPageVariant}
+                >
+                  <Plus size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Add variant</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       )}
 
@@ -1847,27 +1876,48 @@ export function SectionsEditor({
         </ScrollArea>
       ) : (
         <ScrollArea className="flex-1 min-h-0">
-          {/* Variant rule editor */}
+          {/* Variant rule editor (collapsible so users can reclaim space) */}
           {hasMultipleVariants && ruleResolveType !== null && (
-            <div className="px-3 pt-3 pb-5 border-b space-y-3">
-              <span className="text-xs font-medium text-muted-foreground">
-                Variant rule
-              </span>
-              <MatcherPicker
-                currentRt={ruleResolveType}
-                currentLabel={formatMatcher(activeVariant?.rule)}
-                matchers={availableMatchers}
-                onSelect={handleMatcherTypeChange}
-              />
-              {ruleSchema && ruleFormValue && (
-                <div className="space-y-3">
-                  <SchemaForm
-                    schema={ruleSchema}
-                    value={ruleFormValue}
-                    onChange={handleRuleFormChange}
-                    basePath=""
+            <div
+              className={cn(
+                "px-3 border-b",
+                isVariantRuleOpen ? "pt-3 pb-5 space-y-3" : "py-2",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => setIsVariantRuleOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 text-left cursor-pointer rounded-sm py-0.5 hover:bg-muted/40"
+                aria-expanded={isVariantRuleOpen}
+              >
+                <span className="text-xs font-medium text-muted-foreground">
+                  Variant rule
+                </span>
+                {isVariantRuleOpen ? (
+                  <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                )}
+              </button>
+              {isVariantRuleOpen && (
+                <>
+                  <MatcherPicker
+                    currentRt={ruleResolveType}
+                    currentLabel={formatMatcher(activeVariant?.rule)}
+                    matchers={availableMatchers}
+                    onSelect={handleMatcherTypeChange}
                   />
-                </div>
+                  {ruleSchema && ruleFormValue && (
+                    <div className="space-y-3">
+                      <SchemaForm
+                        schema={ruleSchema}
+                        value={ruleFormValue}
+                        onChange={handleRuleFormChange}
+                        basePath=""
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
