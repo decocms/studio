@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { Page } from "@/web/components/page";
 import type { RegistryItem } from "@/web/components/store/types";
+import { connectionAttachTarget } from "@/web/views/virtual-mcp/connection-attach";
 import { DeleteConnectionDialogs } from "@/web/components/delete-connection-dialogs";
 import { useDeleteConnection } from "@/web/hooks/use-delete-connection";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
@@ -1004,18 +1005,20 @@ function ConnectionResults({
     for (const id of selectedIds) {
       const conn = connections.find((c) => c.id === id);
       if (!conn) continue;
-      if (conn.access === "user") {
-        if (!conn.app_id) {
-          skippedPrivate.push(conn.title);
-          continue;
-        }
-        if (existingSlotApps.has(conn.app_id)) continue;
-        existingSlotApps.add(conn.app_id);
-        newSlots.push({ slot_app_id: conn.app_id, ...emptySelection });
+      const target = connectionAttachTarget(conn);
+      if (target.kind === "skip-no-app-id") {
+        skippedPrivate.push(conn.title);
+      } else if (target.kind === "slot") {
+        if (existingSlotApps.has(target.slotAppId)) continue;
+        existingSlotApps.add(target.slotAppId);
+        newSlots.push({ slot_app_id: target.slotAppId, ...emptySelection });
       } else {
-        if (existingConnIds.has(conn.id)) continue;
-        existingConnIds.add(conn.id);
-        newConns.push({ connection_id: conn.id, ...emptySelection });
+        if (existingConnIds.has(target.connectionId)) continue;
+        existingConnIds.add(target.connectionId);
+        newConns.push({
+          connection_id: target.connectionId,
+          ...emptySelection,
+        });
       }
     }
 

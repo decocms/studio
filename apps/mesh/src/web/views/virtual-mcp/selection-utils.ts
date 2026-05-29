@@ -37,3 +37,47 @@ export const ALL_ITEMS_SELECTED: ConnectionFormValue = {
   resources: null,
   prompts: null,
 } as const;
+
+/**
+ * Selection fields as stored on a Virtual MCP connection/slot form entry.
+ * `null` means "all exposed", `[]` means "none exposed", `[...]` a subset.
+ */
+export interface ToolSelectionFields {
+  selected_tools: SelectionValue;
+  selected_resources?: SelectionValue;
+  selected_prompts?: SelectionValue;
+}
+
+const isEmptyArray = (value: SelectionValue | undefined): boolean =>
+  Array.isArray(value) && value.length === 0;
+
+/**
+ * A connection/slot is "disabled" only when it exposes nothing at all — i.e.
+ * every selection field is an explicit empty array. Anything else (all-null =
+ * everything, or a non-empty subset, or an unset field) counts as enabled.
+ */
+export function isSelectionEnabled(sel: ToolSelectionFields): boolean {
+  return !(
+    isEmptyArray(sel.selected_tools) &&
+    isEmptyArray(sel.selected_resources) &&
+    isEmptyArray(sel.selected_prompts)
+  );
+}
+
+/** Selection fields exposing everything (the enabled state). */
+export function enabledSelection(): Required<ToolSelectionFields> {
+  return {
+    selected_tools: null,
+    selected_resources: null,
+    selected_prompts: null,
+  };
+}
+
+/** Selection fields exposing nothing (the disabled state). */
+export function disabledSelection(): Required<ToolSelectionFields> {
+  return {
+    selected_tools: [],
+    selected_resources: [],
+    selected_prompts: [],
+  };
+}

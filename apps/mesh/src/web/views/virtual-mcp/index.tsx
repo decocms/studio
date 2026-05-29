@@ -71,7 +71,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Settings02,
-  Settings04,
   Maximize01,
   Play,
   Plus,
@@ -87,9 +86,15 @@ import { IconPicker } from "../../components/icon-picker";
 import { SimpleIconPicker } from "../../components/simple-icon-picker";
 import { Page } from "@/web/components/page";
 import { AddConnectionDialog } from "./add-connection-dialog";
+import { connectionAttachTarget } from "./connection-attach";
+import { EnableToggle } from "./enable-toggle";
 import { track } from "@/web/lib/posthog-client";
-import { DependencySelectionDialog } from "./dependency-selection-dialog";
-import { ALL_ITEMS_SELECTED } from "./selection-utils";
+import {
+  ALL_ITEMS_SELECTED,
+  disabledSelection,
+  enabledSelection,
+  isSelectionEnabled,
+} from "./selection-utils";
 import {
   VirtualMcpFormSchema,
   type VirtualMcpFormData,
@@ -110,15 +115,11 @@ import { RuntimeFields } from "@/web/components/sandbox/runtime-card/runtime-fie
 type DialogState = {
   shareDialogOpen: boolean;
   addDialogOpen: boolean;
-  settingsDialogOpen: boolean;
-  settingsConnectionId: string | null;
 };
 
 type DialogAction =
   | { type: "SET_SHARE_DIALOG_OPEN"; payload: boolean }
-  | { type: "SET_ADD_DIALOG_OPEN"; payload: boolean }
-  | { type: "OPEN_SETTINGS"; payload: string }
-  | { type: "CLOSE_SETTINGS" };
+  | { type: "SET_ADD_DIALOG_OPEN"; payload: boolean };
 
 function dialogReducer(state: DialogState, action: DialogAction): DialogState {
   switch (action.type) {
@@ -126,18 +127,6 @@ function dialogReducer(state: DialogState, action: DialogAction): DialogState {
       return { ...state, shareDialogOpen: action.payload };
     case "SET_ADD_DIALOG_OPEN":
       return { ...state, addDialogOpen: action.payload };
-    case "OPEN_SETTINGS":
-      return {
-        ...state,
-        settingsDialogOpen: true,
-        settingsConnectionId: action.payload,
-      };
-    case "CLOSE_SETTINGS":
-      return {
-        ...state,
-        settingsDialogOpen: false,
-        settingsConnectionId: null,
-      };
     default:
       return state;
   }
@@ -230,7 +219,8 @@ function stripIncompleteEnvEntries(
 function ConnectionItem({
   connection_id,
   usedConnectionIds,
-  onOpenSettings,
+  enabled,
+  onToggleEnabled,
   onRemove,
   onAuthenticate,
   onSwitchInstance,
@@ -238,7 +228,8 @@ function ConnectionItem({
 }: {
   connection_id: string;
   usedConnectionIds: Set<string>;
-  onOpenSettings: () => void;
+  enabled: boolean;
+  onToggleEnabled: (enabled: boolean) => void;
   onRemove: () => void;
   onAuthenticate: (connectionId: string) => void;
   onSwitchInstance: (oldId: string, newId: string) => void;
@@ -265,7 +256,8 @@ function ConnectionItem({
         orgSlug={org.slug}
         appName={connection.app_name}
         usedConnectionIds={usedConnectionIds}
-        onOpenSettings={onOpenSettings}
+        enabled={enabled}
+        onToggleEnabled={onToggleEnabled}
         onRemove={onRemove}
         onAuthenticate={onAuthenticate}
         onSwitchInstance={onSwitchInstance}
@@ -408,7 +400,8 @@ function ConnectionItemWithAuth({
   orgSlug,
   appName,
   usedConnectionIds,
-  onOpenSettings,
+  enabled,
+  onToggleEnabled,
   onRemove,
   onAuthenticate,
   onSwitchInstance,
@@ -423,7 +416,8 @@ function ConnectionItemWithAuth({
   orgSlug: string;
   appName?: string | null;
   usedConnectionIds: Set<string>;
-  onOpenSettings: () => void;
+  enabled: boolean;
+  onToggleEnabled: (enabled: boolean) => void;
   onRemove: () => void;
   onAuthenticate: (connectionId: string) => void;
   onSwitchInstance: (oldId: string, newId: string) => void;
@@ -454,9 +448,9 @@ function ConnectionItemWithAuth({
           icon={connectionIcon}
           name={connectionTitle}
           size="sm"
-          className="shrink-0"
+          className={cn("shrink-0", !enabled && "opacity-50")}
         />
-        <div className="flex-1 min-w-0">
+        <div className={cn("flex-1 min-w-0", !enabled && "opacity-50")}>
           <p className="text-sm font-medium truncate">{connectionTitle}</p>
           {needsAuth ? (
             <span className="text-xs text-destructive font-medium">
@@ -495,7 +489,7 @@ function ConnectionItemWithAuth({
         )}
       </Link>
 
-      {/* Footer — instance selector + resources summary + edit + remove */}
+      {/* Footer — instance selector + enable/disable + remove */}
       <div className="flex items-center gap-3 px-4 py-2 border-t border-border bg-muted/25">
         {/* Instance selector */}
         {appName && (
@@ -508,21 +502,8 @@ function ConnectionItemWithAuth({
           />
         )}
 
-        <div className="flex items-center gap-0.5 ml-auto">
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={onOpenSettings}
-                aria-label="Configure resources"
-              >
-                <Settings04 size={13} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Configure resources</TooltipContent>
-          </Tooltip>
+        <div className="flex items-center gap-2 ml-auto">
+          <EnableToggle enabled={enabled} onToggle={onToggleEnabled} />
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <Button
@@ -1182,8 +1163,6 @@ function VirtualMcpDetailViewWithData({
   const [dialogState, dispatch] = useReducer(dialogReducer, {
     shareDialogOpen: false,
     addDialogOpen: false,
-    settingsDialogOpen: false,
-    settingsConnectionId: null,
   });
 
   const [instructionsFullscreen, setInstructionsFullscreen] = useState(false);
@@ -1328,6 +1307,59 @@ function VirtualMcpDetailViewWithData({
   };
 
   const handleAddConnection = async (connectionId: string) => {
+    // Org-scoped connections attach as concrete children; user-private
+    // connections must attach as typed slots (resolved per-caller to each
+    // user's own connection of that app_id). Fetch the entity to learn its
+    // access/app_id — the same connection may be reached via the existing,
+    // clone, connect, or custom-create flows, all of which only carry an id.
+    let conn: ConnectionEntity | null = null;
+    try {
+      const result = await client.callTool({
+        name: "COLLECTION_CONNECTIONS_GET",
+        arguments: { id: connectionId },
+      });
+      conn = (
+        (result.structuredContent ?? {}) as {
+          item: ConnectionEntity | null;
+        }
+      ).item;
+    } catch (err) {
+      console.error("Failed to load connection for attach:", err);
+    }
+
+    const target = conn
+      ? connectionAttachTarget(conn)
+      : { kind: "connection" as const, connectionId };
+
+    if (target.kind === "skip-no-app-id") {
+      toast.error("Private connections need an app id to attach as a slot");
+      return;
+    }
+
+    if (target.kind === "slot") {
+      const currentSlots = form.getValues("slots") ?? [];
+      // Don't add duplicate slots for the same app_id
+      if (currentSlots.some((s) => s.slot_app_id === target.slotAppId)) {
+        dispatch({ type: "SET_ADD_DIALOG_OPEN", payload: false });
+        return;
+      }
+      form.setValue(
+        "slots",
+        [
+          ...currentSlots,
+          {
+            slot_app_id: target.slotAppId,
+            selected_tools: ALL_ITEMS_SELECTED.tools,
+            selected_resources: ALL_ITEMS_SELECTED.resources,
+            selected_prompts: ALL_ITEMS_SELECTED.prompts,
+          },
+        ],
+        { shouldDirty: true },
+      );
+      dispatch({ type: "SET_ADD_DIALOG_OPEN", payload: false });
+      return;
+    }
+
     const current = form.getValues("connections");
     // Don't add duplicates
     if (current.some((c) => c.connection_id === connectionId)) return;
@@ -1460,8 +1492,28 @@ function VirtualMcpDetailViewWithData({
     }
   };
 
-  const handleOpenSettings = (connectionId: string) => {
-    dispatch({ type: "OPEN_SETTINGS", payload: connectionId });
+  const handleToggleConnection = (connectionId: string, enabled: boolean) => {
+    const current = form.getValues("connections");
+    const fields = enabled ? enabledSelection() : disabledSelection();
+    form.setValue(
+      "connections",
+      current.map((c) =>
+        c.connection_id === connectionId ? { ...c, ...fields } : c,
+      ),
+      { shouldDirty: true },
+    );
+  };
+
+  const handleToggleSlot = (slotAppId: string, enabled: boolean) => {
+    const current = form.getValues("slots") ?? [];
+    const fields = enabled ? enabledSelection() : disabledSelection();
+    form.setValue(
+      "slots",
+      current.map((s) =>
+        s.slot_app_id === slotAppId ? { ...s, ...fields } : s,
+      ),
+      { shouldDirty: true },
+    );
   };
 
   const handleAuthenticate = async (
@@ -1757,7 +1809,7 @@ Define step-by-step how the agent should handle requests.
                 <h2 className="text-sm font-medium text-foreground">
                   Connections
                 </h2>
-                {connections.length > 0 && (
+                {(connections.length > 0 || slots.length > 0) && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1792,8 +1844,9 @@ Define step-by-step how the agent should handle requests.
                         <ConnectionItem
                           connection_id={conn.connection_id}
                           usedConnectionIds={addedConnectionIds}
-                          onOpenSettings={() =>
-                            handleOpenSettings(conn.connection_id)
+                          enabled={isSelectionEnabled(conn)}
+                          onToggleEnabled={(enabled) =>
+                            handleToggleConnection(conn.connection_id, enabled)
                           }
                           onRemove={() =>
                             handleRemoveConnection(conn.connection_id)
@@ -1817,6 +1870,10 @@ Define step-by-step how the agent should handle requests.
                       slotAppId={slot.slot_app_id}
                       orgId={org.id}
                       orgSlug={org.slug}
+                      enabled={isSelectionEnabled(slot)}
+                      onToggleEnabled={(enabled) =>
+                        handleToggleSlot(slot.slot_app_id, enabled)
+                      }
                       onRemove={() => handleRemoveSlot(slot.slot_app_id)}
                     />
                   </ErrorBoundary>
@@ -1977,19 +2034,6 @@ Define step-by-step how the agent should handle requests.
         agentId={virtualMcp.id}
         addedConnectionIds={addedConnectionIds}
         onAdd={handleAddConnection}
-      />
-
-      <DependencySelectionDialog
-        open={dialogState.settingsDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            dispatch({ type: "CLOSE_SETTINGS" });
-          }
-        }}
-        selectedId={dialogState.settingsConnectionId}
-        form={form}
-        connections={connections}
-        onAuthenticate={handleAuthenticate}
       />
 
       <VirtualMCPShareModal
