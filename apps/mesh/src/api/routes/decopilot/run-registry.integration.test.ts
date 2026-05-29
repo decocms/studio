@@ -315,11 +315,23 @@ describe("RunRegistry storage orchestration (real Postgres)", () => {
       expect(signal.aborted).toBe(true);
       expect(registry.isRunning(thread.id)).toBe(false);
 
-      // The terminal write is fire-and-forget inside the reaper.
-      await waitFor(
-        async () => (await storage.get(thread.id, ORG))?.status === "failed",
-      );
+      // The terminal write + purge are fire-and-forget inside the reaper, and
+      // the reactor calls streamBuffer.purge() on the line *after* the status
+      // write commits. Poll until BOTH the row and the purge are observable —
+      // asserting purge the instant status flips to "failed" is a race (it
+      // passed locally and in CI for #3579, then flaked here).
+      await waitFor(async () => {
+        const r = await storage.get(thread.id, ORG);
+        return (
+          r?.status === "failed" &&
+          r.run_owner_pod === null &&
+          r.run_config === null &&
+          r.run_started_at === null &&
+          purged.includes(thread.id)
+        );
+      });
       const row = await storage.get(thread.id, ORG);
+      expect(row?.status).toBe("failed");
       expect(row?.run_owner_pod).toBeNull();
       expect(row?.run_config).toBeNull();
       expect(row?.run_started_at).toBeNull();
