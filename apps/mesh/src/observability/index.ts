@@ -6,9 +6,10 @@
  */
 
 import {
-  context,
   createContextKey,
   metrics,
+  propagation,
+  ROOT_CONTEXT,
   SpanStatusCode,
   trace,
   type Attributes,
@@ -501,10 +502,19 @@ console.debug = (...args: unknown[]) => {
 };
 
 /**
- * Create a context with the request set for sampling decisions
+ * Build the parent context for an inbound request span.
+ *
+ * Starts from ROOT_CONTEXT — never the ambient `context.active()`. Inheriting
+ * the active context is what let spans from unrelated requests chain into one
+ * ever-growing trace (the "infinite trace parent"). If the caller sent a valid
+ * W3C `traceparent`, we continue that trace; otherwise this is a fresh root.
  */
 export const withRequest = (req: Request): Context => {
-  return context.active().setValue(REQUEST_CONTEXT_KEY, req);
+  const extracted = propagation.extract(ROOT_CONTEXT, req.headers, {
+    get: (headers, key) => (headers as Headers).get(key) ?? undefined,
+    keys: (headers) => [...(headers as Headers).keys()],
+  });
+  return extracted.setValue(REQUEST_CONTEXT_KEY, req);
 };
 
 /**
