@@ -374,16 +374,29 @@ export function decorateStorageWithAssetHoisting<
   },
 >(storage: S, deps: AssetHoistingDeps): void {
   const iconHoister = createAssetHoister(deps);
-  storage.connections = withConnectionAssetHoisting(
-    unwrapAssetHoisting(storage.connections),
-    iconHoister,
-  ) as S["connections"];
-  storage.virtualMcps = withVirtualMcpAssetHoisting(
-    unwrapAssetHoisting(storage.virtualMcps),
-    iconHoister,
-  ) as S["virtualMcps"];
-  storage.threads = decorateThreadsWithAssetHoisting(
-    unwrapAssetHoisting(storage.threads),
-    deps,
-  ) as S["threads"];
+  // Guard each port: some contexts (e.g. the resolve-org-from-path middleware
+  // running against a partially-built context) carry only a subset of storage
+  // ports. `new Proxy(undefined)` would throw, so only wrap real objects.
+  if (isObject(storage.connections)) {
+    storage.connections = withConnectionAssetHoisting(
+      unwrapAssetHoisting(storage.connections),
+      iconHoister,
+    ) as S["connections"];
+  }
+  if (isObject(storage.virtualMcps)) {
+    storage.virtualMcps = withVirtualMcpAssetHoisting(
+      unwrapAssetHoisting(storage.virtualMcps),
+      iconHoister,
+    ) as S["virtualMcps"];
+  }
+  if (isObject(storage.threads)) {
+    storage.threads = decorateThreadsWithAssetHoisting(
+      unwrapAssetHoisting(storage.threads),
+      deps,
+    ) as S["threads"];
+  }
+}
+
+function isObject(value: unknown): boolean {
+  return value !== null && typeof value === "object";
 }
