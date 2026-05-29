@@ -30,6 +30,8 @@ interface LinkState {
   cap: number;
   sandboxes: Map<string, SandboxRow>;
   daemonError: string | null;
+  /** Absolute path of the combined `deco link` log file (TUI mode only). */
+  logPath: string | null;
 }
 
 const DEFAULT_CAP = 20;
@@ -80,6 +82,7 @@ let state: LinkState = {
   cap: DEFAULT_CAP,
   sandboxes: new Map(),
   daemonError: null,
+  logPath: null,
 };
 
 const listeners = new Set<() => void>();
@@ -119,6 +122,11 @@ export function setMachine(label: string) {
 
 export function setDaemonError(message: string) {
   state = { ...state, daemonError: message };
+  emit();
+}
+
+export function setLogPath(path: string) {
+  state = { ...state, logPath: path };
   emit();
 }
 
