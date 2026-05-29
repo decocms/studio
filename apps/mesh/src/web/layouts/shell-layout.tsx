@@ -218,9 +218,20 @@ function ShellLayoutContent() {
       // session breaks multi-tab usage because the session row is shared
       // across tabs. We rely on the URL slug (mounted under /api/:org/...)
       // for org resolution instead.
-      const { data } = await authClient.organization.getFullOrganization({
-        query: { organizationSlug: org },
-      });
+      // Marked for the perf_app_bootstrap timing event (see posthog-client).
+      performance.mark("mesh:active-org-fetch:start");
+      const { data } = await authClient.organization
+        .getFullOrganization({
+          query: { organizationSlug: org },
+        })
+        .finally(() => {
+          performance.mark("mesh:active-org-fetch:end");
+          performance.measure(
+            "mesh:active-org-fetch",
+            "mesh:active-org-fetch:start",
+            "mesh:active-org-fetch:end",
+          );
+        });
 
       // Don't persist archived orgs — homeRoute would just redirect off them again
       const isArchived =

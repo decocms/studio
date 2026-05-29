@@ -11,8 +11,11 @@
 
 import posthog from "posthog-js";
 
+import { wasCacheRestored } from "@/web/lib/query-persist";
+
 let initialized = false;
 let lastOrgGroupKey: string | null = null;
+let bootstrapTimingSent = false;
 
 export function initPostHog(key: string, host: string) {
   if (initialized || typeof window === "undefined") return;
@@ -21,6 +24,10 @@ export function initPostHog(key: string, host: string) {
     capture_pageview: "history_change",
     capture_pageleave: true,
     autocapture: true,
+    // Real-user Core Web Vitals (LCP, FCP, CLS, INP) as $web_vitals events.
+    // On a cold refresh LCP ≈ when the app shell paints, so this is the
+    // headline "how slow is the load" signal, sliceable by org/route/device.
+    capture_performance: { web_vitals: true, network_timing: true },
     // Capture unhandled JS exceptions (DOMError, TypeError, unhandled promise
     // rejections) as $exception events — gives us client-side error tracking
     // without hand-wiring every try/catch.
@@ -59,6 +66,49 @@ export function resetUser() {
 export function track(event: string, properties?: Record<string, unknown>) {
   if (!initialized) return;
   posthog.capture(event, properties);
+}
+
+/**
+ * Emit a one-shot `perf_app_bootstrap` event breaking down how long the
+ * initial load took, per phase. Call once the app shell has rendered (PostHog
+ * is initialized by then). Phase durations come from the browser Performance
+ * API, which records them regardless of when PostHog inits — the config fetch
+ * happens *before* init, so a buffered/manual capture would miss it.
+ *
+ * `config_fetch_ms` / `active_org_fetch_ms` are absent when those queries were
+ * served from the persisted cache (no network) — which is itself the signal
+ * that persistence is doing its job (`cache_restored: true`).
+ */
+export function flushBootstrapTiming() {
+  if (!initialized || bootstrapTimingSent) return;
+  if (typeof performance === "undefined") return;
+  bootstrapTimingSent = true;
+
+  const nav = performance.getEntriesByType("navigation")[0] as
+    | PerformanceNavigationTiming
+    | undefined;
+
+  const measure = (name: string): number | undefined => {
+    const entry = performance.getEntriesByName(name, "measure")[0];
+    return entry ? Math.round(entry.duration) : undefined;
+  };
+
+  track("perf_app_bootstrap", {
+    nav_type: nav?.type,
+    // Network/document phases (relative to navigation start).
+    ttfb_ms: nav ? Math.round(nav.responseStart) : undefined,
+    dom_interactive_ms: nav ? Math.round(nav.domInteractive) : undefined,
+    dom_content_loaded_ms: nav
+      ? Math.round(nav.domContentLoadedEventEnd)
+      : undefined,
+    // SPA bootstrap phases that gate first paint (the suspense chain).
+    config_fetch_ms: measure("mesh:config-fetch"),
+    active_org_fetch_ms: measure("mesh:active-org-fetch"),
+    // Whole thing: navigation start → shell rendered.
+    time_to_shell_ms: Math.round(performance.now()),
+    // Did localStorage hydration spare us the cold fetches this load?
+    cache_restored: wasCacheRestored(),
+  });
 }
 
 /**
@@ -104,4 +154,5 @@ export function captureException(
 export function __resetForTest() {
   initialized = false;
   lastOrgGroupKey = null;
+  bootstrapTimingSent = false;
 }

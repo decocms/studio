@@ -9,7 +9,10 @@
  * `setOrganizationGroup` itself, so re-renders are cheap.
  */
 
-import { setOrganizationGroup } from "@/web/lib/posthog-client";
+import {
+  flushBootstrapTiming,
+  setOrganizationGroup,
+} from "@/web/lib/posthog-client";
 
 export function PostHogGroupSync({
   activeOrg,
@@ -25,6 +28,7 @@ export function PostHogGroupSync({
       name: activeOrg.name ?? undefined,
       slug: activeOrg.slug ?? undefined,
     });
+    flushBootstrapTiming();
   }
   return null;
 }

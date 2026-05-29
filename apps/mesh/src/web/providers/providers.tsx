@@ -6,6 +6,10 @@ import { BetterAuthUIProvider } from "@/web/providers/better-auth-ui-provider";
 import { PostHogIdentitySync } from "@/web/providers/posthog-provider";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { ThemeProvider } from "@/web/providers/theme-provider";
+import {
+  hydrateQueryClient,
+  persistQueryClient,
+} from "@/web/lib/query-persist";
 import { Toaster } from "sonner";
 
 const queryClient = new QueryClient({
@@ -24,6 +28,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+hydrateQueryClient(queryClient);
+persistQueryClient(queryClient);
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (

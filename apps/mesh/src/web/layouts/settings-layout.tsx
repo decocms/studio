@@ -56,6 +56,7 @@ import { pluginSettingsSidebarItems } from "@/web/index";
 import { useStatusSounds } from "../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
+import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import {
   MobileSidebarSheet,
@@ -271,6 +272,7 @@ export function SettingsSidebar() {
                 <SidebarMenuButton
                   onClick={() => {
                     track("signed_out", { source: "settings_sidebar" });
+                    clearPersistedQueryCache();
                     authClient.signOut();
                   }}
                   className="flex items-center gap-2.5 text-sm"
@@ -348,7 +350,10 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
           <div className="h-px bg-border/50 my-2" />
           <button
             type="button"
-            onClick={() => authClient.signOut()}
+            onClick={() => {
+              clearPersistedQueryCache();
+              authClient.signOut();
+            }}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <span className="shrink-0">
