@@ -4,10 +4,13 @@ on:
   push:
     branches:
       - main
-    # The "[release]: bump" commit touches only apps/mesh/package.json; skip it
-    # here so the version bump doesn't re-spawn this heavy suite.
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need this heavy suite re-run.
     paths-ignore:
       - "apps/mesh/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
   workflow_dispatch:
 
 jobs:
