@@ -44,6 +44,16 @@ function statusCell(row: SandboxRow): { color: string; text: string } {
   return { color: "red", text: `✗ Error: ${row.error ?? ""}` };
 }
 
+// Shared by the header and every row so columns can never drift. Each fixed
+// column gets a 1-cell right gutter (marginRight) so a fully-truncated cell
+// still separates from the next. PREVIEW URL is last and takes the rest.
+const COLS = {
+  project: 18,
+  status: 14,
+  requests: 10,
+  lastUsed: 11,
+} as const;
+
 export function LinkApp() {
   const state = useSyncExternalStore(subscribeLinkState, getLinkState);
   const now = useSyncExternalStore(subscribeClock, getClock);
@@ -89,9 +99,33 @@ export function LinkApp() {
         <Text dimColor>No previews running yet.</Text>
       ) : (
         <Box flexDirection="column">
-          <Text dimColor>
-            {`${"PROJECT".padEnd(16)}${"STATUS".padEnd(22)}${"REQUESTS".padEnd(10)}${"LAST USED".padEnd(11)}PREVIEW URL`}
-          </Text>
+          <Box>
+            <Box width={COLS.project} flexShrink={0} marginRight={1}>
+              <Text dimColor wrap="truncate-end">
+                PROJECT
+              </Text>
+            </Box>
+            <Box width={COLS.status} flexShrink={0} marginRight={1}>
+              <Text dimColor wrap="truncate-end">
+                STATUS
+              </Text>
+            </Box>
+            <Box width={COLS.requests} flexShrink={0} marginRight={1}>
+              <Text dimColor wrap="truncate-end">
+                REQUESTS
+              </Text>
+            </Box>
+            <Box width={COLS.lastUsed} flexShrink={0} marginRight={1}>
+              <Text dimColor wrap="truncate-end">
+                LAST USED
+              </Text>
+            </Box>
+            <Box flexGrow={1}>
+              <Text dimColor wrap="truncate-end">
+                PREVIEW URL
+              </Text>
+            </Box>
+          </Box>
           {rows.map((row) => {
             const s = statusCell(row);
             const idle =
@@ -100,11 +134,27 @@ export function LinkApp() {
                 : formatIdle(now - row.lastChangeAt);
             return (
               <Box key={row.handle}>
-                <Text>{row.handle.padEnd(16)}</Text>
-                <Text color={s.color}>{s.text.padEnd(22)}</Text>
-                <Text>{String(row.activeDispatchCount).padEnd(10)}</Text>
-                <Text>{idle.padEnd(11)}</Text>
-                <Text dimColor>{row.previewUrl ?? "—"}</Text>
+                <Box width={COLS.project} flexShrink={0} marginRight={1}>
+                  <Text wrap="truncate-end">{row.handle}</Text>
+                </Box>
+                <Box width={COLS.status} flexShrink={0} marginRight={1}>
+                  <Text color={s.color} wrap="truncate-end">
+                    {s.text}
+                  </Text>
+                </Box>
+                <Box width={COLS.requests} flexShrink={0} marginRight={1}>
+                  <Text wrap="truncate-end">
+                    {String(row.activeDispatchCount)}
+                  </Text>
+                </Box>
+                <Box width={COLS.lastUsed} flexShrink={0} marginRight={1}>
+                  <Text wrap="truncate-end">{idle}</Text>
+                </Box>
+                <Box flexGrow={1}>
+                  <Text dimColor wrap="truncate-end">
+                    {row.previewUrl ?? "—"}
+                  </Text>
+                </Box>
               </Box>
             );
           })}
@@ -114,6 +164,11 @@ export function LinkApp() {
       {state.daemonError ? (
         <Box marginTop={1}>
           <Text color="red">⚠ {state.daemonError}</Text>
+        </Box>
+      ) : null}
+      {state.logPath ? (
+        <Box marginTop={1}>
+          <Text dimColor>Logs: {state.logPath}</Text>
         </Box>
       ) : null}
     </Box>

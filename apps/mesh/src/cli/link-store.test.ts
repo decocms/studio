@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { applySandboxEvent, formatIdle, type SandboxRow } from "./link-store";
+import {
+  applySandboxEvent,
+  formatIdle,
+  getLinkState,
+  setLogPath,
+  type SandboxRow,
+} from "./link-store";
 
 function empty(): Map<string, SandboxRow> {
   return new Map();
@@ -95,5 +101,12 @@ describe("formatIdle", () => {
     expect(formatIdle(5_000)).toBe("5s");
     expect(formatIdle(65_000)).toBe("1m");
     expect(formatIdle(3_700_000)).toBe("1h");
+  });
+});
+
+describe("setLogPath", () => {
+  it("stores the log path on the link state", () => {
+    setLogPath("/tmp/deco/link.log");
+    expect(getLinkState().logPath).toBe("/tmp/deco/link.log");
   });
 });

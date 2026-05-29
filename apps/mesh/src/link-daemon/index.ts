@@ -52,6 +52,13 @@ export interface StartLinkDaemonOptions {
   session: Session;
   /** Optional TUI hooks. Omitted in --no-tui mode. */
   monitor?: LinkDaemonMonitor;
+  /**
+   * When set, spawned sandbox daemons write stdout/stderr to this file
+   * descriptor (the `deco link` log file) instead of inheriting the
+   * terminal. Omitted in `--no-tui` / managed mode so their output streams
+   * to the parent process.
+   */
+  logFd?: number;
 }
 
 export interface LinkDaemonHandle {
@@ -69,7 +76,9 @@ export async function startLinkDaemon(
   const hostname = osHostname() || undefined;
   opts.monitor?.onMachine?.(hostname ?? "this machine");
 
-  const innerSpawn = createDefaultDaemonSpawn(opts.dataDir);
+  const innerSpawn = createDefaultDaemonSpawn(opts.dataDir, {
+    outFd: opts.logFd,
+  });
   // Forward declaration so `resolvePreviewUrl` can read the ingress port
   // once the ingress finishes binding (the ingress's `lookupSandboxPort`
   // calls into the provider, so the two have a circular initialization).
