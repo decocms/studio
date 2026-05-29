@@ -4,10 +4,14 @@ on:
   push:
     branches:
       - main
-    # The "[release]: bump" commit touches only apps/mesh/package.json; skip it
-    # here so the version bump doesn't re-spawn this suite (release-mesh owns it).
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need the suite re-run (PRs already validated them, and the
+    # [release] bump is owned by release-mesh).
     paths-ignore:
       - "apps/mesh/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
   pull_request:
     branches:
       - main
