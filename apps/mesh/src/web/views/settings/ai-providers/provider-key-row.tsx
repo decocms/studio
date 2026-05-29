@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { Edit01, Trash01, Check, X } from "@untitledui/icons";
+import { Edit01, Trash01 } from "@untitledui/icons";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { SettingsCardItem } from "@/web/components/settings/settings-section";
@@ -28,6 +28,7 @@ import {
   OPENAI_COMPATIBLE_PRESETS,
   type OpenAICompatiblePreset,
 } from "@/web/utils/openai-compatible-presets";
+import { EditProviderKeyDialog } from "./edit-provider-dialog";
 
 interface ProviderKeyRowProps {
   providerKey: AiProviderKey;
@@ -43,8 +44,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   });
   const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draftLabel, setDraftLabel] = useState(providerKey.label);
+  const [editOpen, setEditOpen] = useState(false);
 
   const isOpenAICompatible = provider.id === "openai-compatible";
 
@@ -67,20 +67,6 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
     return `${providerKey.label} · added ${formatDistanceToNow(new Date(providerKey.createdAt))} ago`;
   })();
 
-  const { mutate: updateLabel, isPending: isUpdating } = useMutation({
-    mutationFn: async (label: string) => {
-      await client.callTool({
-        name: "AI_PROVIDER_KEY_UPDATE",
-        arguments: { keyId: providerKey.id, label },
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
-      setEditing(false);
-    },
-    onError: () => toast.error("Failed to update key label"),
-  });
-
   const { mutate: deleteKey, isPending: isDeleting } = useMutation({
     mutationFn: async () => {
       await client.callTool({
@@ -100,17 +86,6 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
     onError: (err) => toast.error(`Failed to delete key: ${err.message}`),
   });
 
-  const startEdit = () => {
-    setDraftLabel(providerKey.label);
-    setEditing(true);
-  };
-
-  const submitEdit = () => {
-    const trimmed = draftLabel.trim();
-    if (!trimmed) return;
-    updateLabel(trimmed);
-  };
-
   return (
     <>
       <SettingsCardItem
@@ -128,74 +103,42 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             />
           )
         }
-        title={
-          editing ? (
-            <input
-              autoFocus
-              className="font-medium bg-transparent border-b border-border outline-none w-full"
-              value={draftLabel}
-              onChange={(e) => setDraftLabel(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitEdit();
-                if (e.key === "Escape") setEditing(false);
-              }}
-            />
-          ) : (
-            displayName
-          )
-        }
-        description={editing ? null : description}
+        title={displayName}
+        description={description}
         action={
           <div className="flex items-center gap-0.5">
-            {editing ? (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                  disabled={isUpdating || !draftLabel.trim()}
-                  onClick={submitEdit}
-                >
-                  <Check size={14} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                  onClick={() => setEditing(false)}
-                >
-                  <X size={14} />
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                  onClick={startEdit}
-                >
-                  <Edit01 size={14} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                  disabled={isDeleting}
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  <Trash01 size={14} />
-                </Button>
-              </>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => setEditOpen(true)}
+            >
+              <Edit01 size={14} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              disabled={isDeleting}
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash01 size={14} />
+            </Button>
           </div>
         }
+      />
+
+      <EditProviderKeyDialog
+        providerKey={providerKey}
+        provider={provider}
+        open={editOpen}
+        onOpenChange={setEditOpen}
       />
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete API Key</AlertDialogTitle>
+            <AlertDialogTitle>Delete API key</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete{" "}
               <span className="font-medium text-foreground">
