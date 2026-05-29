@@ -94,3 +94,17 @@ export function buildDuplicatePage(args: {
 export function buildEmptyPage(name: string, path: string) {
   return createEmptyPageBlock(name, path);
 }
+
+const MAX_UNIQUE_KEY_ATTEMPTS = 1000;
+
+/** Fresh `pages-<name>-<uuid>` key that does not collide with an existing decofile entry. */
+export function generateUniquePageBlockKey(
+  decofile: Record<string, unknown>,
+  name: string,
+): string {
+  for (let i = 0; i < MAX_UNIQUE_KEY_ATTEMPTS; i++) {
+    const key = generatePageBlockKey(name);
+    if (!Object.hasOwn(decofile, key)) return key;
+  }
+  throw new Error("Could not generate a unique page block key");
+}

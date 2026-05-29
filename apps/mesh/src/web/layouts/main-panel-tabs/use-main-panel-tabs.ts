@@ -214,17 +214,18 @@ export function useMainPanelTabs(ctx: {
   const gitTabVisible =
     hasActiveGithubRepo &&
     (hasOpenPr || (prQuery.isPending && rawActiveTab === "git"));
+  const layoutForDefault = entityLayout
+    ? {
+        defaultMainView: entityLayout.defaultMainView ?? null,
+        tabs: layoutTabs.map((t) => ({ id: t.id })),
+      }
+    : null;
   const activeTab =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
-      ? resolveDefaultTabId(
-          entityLayout
-            ? {
-                defaultMainView: entityLayout.defaultMainView ?? null,
-                tabs: layoutTabs.map((t) => ({ id: t.id })),
-              }
-            : null,
-        )
-      : rawActiveTab;
+      ? resolveDefaultTabId(layoutForDefault)
+      : rawActiveTab === "content" && !showContentTab
+        ? resolveDefaultTabId(layoutForDefault)
+        : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false

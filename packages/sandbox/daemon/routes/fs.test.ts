@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import {
   makeReadHandler,
   makeWriteHandler,
+  makeUnlinkHandler,
   makeEditHandler,
   makeGrepHandler,
   makeGlobHandler,
@@ -112,6 +113,47 @@ describe("fs handlers", () => {
     );
     expect(res.status).toBe(200);
     expect(readFileSync(join(appRoot, "new.txt"), "utf-8")).toBe("hello");
+  });
+
+  it("unlink: deletes a .deco/blocks json file", async () => {
+    const blockDir = join(appRoot, ".deco", "blocks");
+    mkdirSync(blockDir, { recursive: true });
+    const blockPath = join(blockDir, "Header.json");
+    writeFileSync(blockPath, "{}");
+    const h = makeUnlinkHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/unlink", { path: ".deco/blocks/Header.json" }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; existed: boolean };
+    expect(body.ok).toBe(true);
+    expect(body.existed).toBe(true);
+    expect(() => readFileSync(blockPath)).toThrow();
+  });
+
+  it("unlink: is idempotent when the file is missing", async () => {
+    const h = makeUnlinkHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/unlink", { path: ".deco/blocks/missing.json" }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; existed: boolean };
+    expect(body.existed).toBe(false);
+  });
+
+  it("unlink: rejects paths outside .deco/blocks", async () => {
+    writeFileSync(join(appRoot, "secret.txt"), "x");
+    const h = makeUnlinkHandler({ appRoot, repoDir: appRoot });
+    const res = await h(post("/_sandbox/unlink", { path: "secret.txt" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("unlink: refuses directories", async () => {
+    const blockDir = join(appRoot, ".deco", "blocks");
+    mkdirSync(blockDir, { recursive: true });
+    const h = makeUnlinkHandler({ appRoot, repoDir: appRoot });
+    const res = await h(post("/_sandbox/unlink", { path: ".deco/blocks" }));
+    expect(res.status).toBe(400);
   });
 
   it("edit: rejects when old_string doesn't match", async () => {

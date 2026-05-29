@@ -217,6 +217,17 @@ export function makeUnlinkHandler(deps: FsDeps) {
     }
     if (!body.path || typeof body.path !== "string")
       return jsonResponse({ error: "path is required" }, 400);
+    const normalized = body.path.replaceAll("\\", "/");
+    if (
+      !normalized.startsWith(".deco/blocks/") ||
+      !normalized.endsWith(".json") ||
+      normalized.includes("..")
+    ) {
+      return jsonResponse(
+        { error: "path must be a .deco/blocks/<key>.json file" },
+        400,
+      );
+    }
     const filePath = safePath(deps.appRoot, deps.repoDir, body.path);
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
     let existed = true;

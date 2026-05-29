@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { extractGlobalSections, extractPages } from "./page-list";
+import {
+  extractGlobalSections,
+  extractPages,
+  hasEditableDecoContent,
+} from "./page-list";
 import type { LiveMeta } from "./resolve-schema";
 
 describe("page-list", () => {
@@ -53,5 +57,43 @@ describe("page-list", () => {
       name: "Site Header",
       resolveType: "site/sections/Header.tsx",
     });
+  });
+
+  it("hasEditableDecoContent is true when pages exist", () => {
+    expect(
+      hasEditableDecoContent(
+        {
+          "pages-home-abc123456789": {
+            __resolveType: "website/pages/Page.tsx",
+            path: "/",
+          },
+        },
+        null,
+      ),
+    ).toBe(true);
+  });
+
+  it("hasEditableDecoContent is true when only global sections exist", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Header.tsx": { $ref: "#/definitions/Header" },
+          },
+        },
+      },
+      schema: {},
+    };
+    const decofile = {
+      Header: { __resolveType: "site/sections/Header.tsx", name: "Header" },
+    };
+    expect(hasEditableDecoContent(decofile, meta)).toBe(true);
+  });
+
+  it("hasEditableDecoContent is false without pages or sections", () => {
+    expect(hasEditableDecoContent({}, null)).toBe(false);
+    expect(
+      hasEditableDecoContent({ Header: { __resolveType: "site/x" } }, null),
+    ).toBe(false);
   });
 });

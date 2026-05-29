@@ -53,7 +53,6 @@ import { useDeleteBlock } from "@/web/components/sections-editor/use-delete-bloc
 import {
   extractGlobalSections,
   extractPages,
-  hasEditableDecoContent,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
@@ -76,6 +75,7 @@ import {
 import {
   buildDuplicatePage,
   buildEmptyPage,
+  generateUniquePageBlockKey,
   nextUniqueBlockKey,
   nextUniqueName,
   nextUniquePagePath,
@@ -288,7 +288,7 @@ function ContentBrowserReady({
   );
   const globalSections = extractGlobalSections(decofile, meta);
 
-  if (!hasEditableDecoContent(decofile, meta)) {
+  if (pages.length === 0 && globalSections.length === 0) {
     return (
       <EmptyMessage
         icon={AlertCircle}
@@ -343,7 +343,7 @@ function ContentBrowserReady({
     try {
       if (mode === "create") {
         const data = buildEmptyPage(values.name, values.path);
-        const key = await generateUniquePageKey(values.name);
+        const key = generateUniquePageBlockKey(decofile, values.name);
         await saveBlock.mutateAsync({ blockKey: key, data });
         toast.success(`Created "${values.name}"`);
         setSelection({ collection: "pages", path: values.path });
@@ -385,19 +385,6 @@ function ContentBrowserReady({
     } catch (err) {
       setPageDialogError(err instanceof Error ? err.message : "Save failed");
     }
-  };
-
-  // Defer key generation until save time so renaming-then-saving still
-  // produces a key whose embedded name matches the final name.
-  const generateUniquePageKey = async (name: string) => {
-    const { generatePageBlockKey } = await import(
-      "@/web/components/sections-editor/page-block-template"
-    );
-    let key = generatePageBlockKey(name);
-    while (Object.hasOwn(decofile, key)) {
-      key = generatePageBlockKey(name);
-    }
-    return key;
   };
 
   const validatePageValues = ({
@@ -530,9 +517,12 @@ function ContentBrowserReady({
         onSearchChange={setSearchQuery}
         selection={selection}
         onSelect={setSelection}
+        previewUrl={previewUrl}
         onCreate={() => {
           if (activeCollection === "pages") {
             openCreatePage();
+          } else if (!previewUrl) {
+            toast.error("Start the preview dev server to add sections.");
           } else {
             setAddSectionOpen(true);
           }
@@ -774,6 +764,7 @@ function ItemList({
   activeCollection,
   pages,
   sections,
+  previewUrl,
   searchQuery,
   onSearchChange,
   selection,
@@ -789,6 +780,7 @@ function ItemList({
   activeCollection: CollectionId;
   pages: PageEntry[];
   sections: GlobalSectionEntry[];
+  previewUrl: string | null;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   selection: Selection;
@@ -820,6 +812,10 @@ function ItemList({
     activeCollection === "pages" ? "Search pages…" : "Search sections…";
   const createTooltip =
     activeCollection === "pages" ? "Create new page" : "Create new section";
+  const sectionCreateBlocked = activeCollection === "sections" && !previewUrl;
+  const createDisabledReason = sectionCreateBlocked
+    ? "Start the preview dev server to add sections"
+    : undefined;
 
   return (
     <div className="w-[300px] shrink-0 border-r flex flex-col min-h-0">
@@ -845,12 +841,16 @@ function ItemList({
               variant="ghost"
               size="icon"
               onClick={onCreate}
+              disabled={sectionCreateBlocked}
               aria-label={createTooltip}
+              aria-disabled={sectionCreateBlocked}
             >
               <Plus size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">{createTooltip}</TooltipContent>
+          <TooltipContent side="bottom">
+            {createDisabledReason ?? createTooltip}
+          </TooltipContent>
         </Tooltip>
       </div>
       <ScrollArea className="flex-1 min-h-0">
