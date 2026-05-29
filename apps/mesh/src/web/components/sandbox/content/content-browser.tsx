@@ -7,7 +7,6 @@ import {
   Globe02,
   LayoutAlt01,
   Loading01,
-  PlayCircle,
   Plus,
   SearchLg,
   Trash01,
@@ -65,6 +64,8 @@ import {
   useSandboxStart,
   type SandboxStartArgs,
 } from "@/web/components/sandbox/hooks/use-sandbox-start";
+import { SandboxStateCard } from "@/web/components/sandbox/preview/state-card";
+import { derivePhaseProgress } from "@/web/components/sandbox/preview/derive-phase-progress";
 import {
   buildDuplicatePage,
   buildEmptyPage,
@@ -147,13 +148,21 @@ export function ContentBrowser() {
   };
 
   if (!devServerReady) {
-    return (
-      <SandboxNotReadyCard
-        isStarting={vmStartPending || startVm.isPending}
-        onStart={triggerStart}
-        canStart={!!virtualMcpId}
-      />
-    );
+    const isStarting = vmStartPending || startVm.isPending;
+    if (isStarting) {
+      const progress = derivePhaseProgress({
+        claimPhase: vmEvents.phase,
+        lifecycle: vmEvents.lifecycle,
+      });
+      return (
+        <SandboxStateCard
+          kind="starting-now"
+          progress={progress}
+          claimPhase={vmEvents.phase}
+        />
+      );
+    }
+    return <SandboxStateCard kind="never-started" onStart={triggerStart} />;
   }
 
   if (!virtualMcpId || !branch) {
@@ -1011,48 +1020,6 @@ function EmptyMessage({
           {description}
         </div>
       )}
-    </div>
-  );
-}
-
-function SandboxNotReadyCard({
-  isStarting,
-  onStart,
-  canStart,
-}: {
-  isStarting: boolean;
-  onStart: () => void;
-  canStart: boolean;
-}) {
-  return (
-    <div className="flex h-full w-full items-center justify-center p-6">
-      <div className="max-w-sm rounded-xl border bg-card p-6 text-center shadow-sm">
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <PlayCircle size={20} />
-        </div>
-        <h3 className="text-sm font-medium">Dev server isn't running</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Content editing reads live data from your sandbox. Start it to browse
-          pages and sections.
-        </p>
-        <Button
-          className="mt-4 w-full"
-          onClick={onStart}
-          disabled={!canStart || isStarting}
-        >
-          {isStarting ? (
-            <>
-              <Loading01 size={14} className="animate-spin" />
-              Starting…
-            </>
-          ) : (
-            <>
-              <PlayCircle size={14} />
-              Start dev server
-            </>
-          )}
-        </Button>
-      </div>
     </div>
   );
 }
