@@ -17,6 +17,7 @@ import {
 import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
+import { SlotItem } from "./slot-item";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1162,6 +1163,7 @@ function VirtualMcpDetailViewWithData({
 
   // Watch connections for reactive UI
   const connections = form.watch("connections");
+  const slots = form.watch("slots") ?? [];
 
   // GitHub repo connected (real auth) — instructions become read-only
   const hasGithubRepo = agentHasConnectedGithub(virtualMcp);
@@ -1364,6 +1366,15 @@ function VirtualMcpDetailViewWithData({
     const current = form.getValues("connections");
     const filtered = current.filter((c) => c.connection_id !== connectionId);
     form.setValue("connections", filtered, { shouldDirty: true });
+  };
+
+  const handleRemoveSlot = (slotAppId: string) => {
+    const current = form.getValues("slots") ?? [];
+    form.setValue(
+      "slots",
+      current.filter((s) => s.slot_app_id !== slotAppId),
+      { shouldDirty: true },
+    );
   };
 
   const handleSwitchInstance = (oldId: string, newId: string) => {
@@ -1758,7 +1769,7 @@ Define step-by-step how the agent should handle requests.
                 )}
               </div>
               <div className="flex flex-col gap-2">
-                {connections.length === 0 ? (
+                {connections.length === 0 && slots.length === 0 ? (
                   <button
                     type="button"
                     onClick={handleOpenAddDialog}
@@ -1797,6 +1808,19 @@ Define step-by-step how the agent should handle requests.
                     </ErrorBoundary>
                   ))
                 )}
+                {slots.map((slot) => (
+                  <ErrorBoundary
+                    key={`slot:${slot.slot_app_id}`}
+                    fallback={() => null}
+                  >
+                    <SlotItem
+                      slotAppId={slot.slot_app_id}
+                      orgId={org.id}
+                      orgSlug={org.slug}
+                      onRemove={() => handleRemoveSlot(slot.slot_app_id)}
+                    />
+                  </ErrorBoundary>
+                ))}
               </div>
             </section>
 
