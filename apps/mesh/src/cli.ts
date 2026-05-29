@@ -326,11 +326,10 @@ if (command === "dev") {
     const { createElement } = await import("react");
     const { App } = await import("./cli/app");
     const { startDevServer } = await import("./cli/commands/dev");
-    const { setDevMode, setDataDir } = await import("./cli/cli-store");
+    const { setDevMode } = await import("./cli/cli-store");
 
     const displayHome = decoHome.replace(homedir(), "~");
     setDevMode({ localSandboxProvider });
-    setDataDir(decoHome);
     render(createElement(App, { home: displayHome }), {
       patchConsole: false,
     });
@@ -397,11 +396,6 @@ if (noTui) {
   render(createElement(App, { home: displayHome }), {
     patchConsole: false,
   });
-
-  {
-    const { setDataDir } = await import("./cli/cli-store");
-    setDataDir(decoHome);
-  }
 
   await startServer(serveOptions);
 }

@@ -12,7 +12,6 @@ interface CliState {
   migrationsStatus: "pending" | "done";
   serverUrl: string | null;
   logs: LogEntry[];
-  dataDir: string | null;
 }
 
 let state: CliState = {
@@ -23,7 +22,6 @@ let state: CliState = {
   migrationsStatus: "pending",
   serverUrl: null,
   logs: [],
-  dataDir: null,
 };
 
 const listeners = new Set<() => void>();
@@ -83,11 +81,6 @@ export function setDevMode(opts: { localSandboxProvider?: boolean } = {}) {
         : []),
     ],
   };
-  emit();
-}
-
-export function setDataDir(dataDir: string) {
-  state = { ...state, dataDir };
   emit();
 }
 
