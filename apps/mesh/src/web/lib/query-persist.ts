@@ -111,7 +111,7 @@ export function persistQueryClient(queryClient: QueryClient): () => void {
 // `initialData` so the suspense query renders instantly and revalidates in the
 // background.
 
-const ORG_KEY_PREFIX = "mesh:org-cache:";
+const ORG_KEY_PREFIX = "studio:org-cache:";
 
 type CachedOrgMap = Record<string, { data: unknown; updatedAt: number }>;
 
