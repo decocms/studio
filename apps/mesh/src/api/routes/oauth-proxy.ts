@@ -79,7 +79,7 @@ async function checkOriginSupportsOAuth(
   headers: Record<string, string> = {},
 ): Promise<string | null> {
   try {
-    const response = await fetch(connectionUrl, {
+    const response = await fetchWithTimeout(connectionUrl, {
       method: "POST",
       headers: {
         ...headers,
@@ -135,7 +135,7 @@ async function checkHasOAuthMetadata(connectionUrl: string): Promise<boolean> {
       "/.well-known/oauth-authorization-server",
       connUrl.origin,
     );
-    const authServerRes = await fetch(authServerUrl.toString(), {
+    const authServerRes = await fetchWithTimeout(authServerUrl.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -172,11 +172,13 @@ export async function fetchProtectedResourceMetadata(
     resourcePath = resourcePath.slice(0, -1);
   }
 
-  // Try format 1 first (most common)
+  // Try format 1 first (most common). Each format fetch is timeout-bounded and
+  // retried for transient failures so a slow/hung upstream can't stall discovery
+  // (see fetchMetadataWithRetry).
   const format1Url = new URL(connectionUrl);
   format1Url.pathname = `${resourcePath}/.well-known/oauth-protected-resource`;
 
-  let response = await fetch(format1Url.toString(), {
+  let response = await fetchMetadataWithRetry(format1Url.toString(), {
     method: "GET",
     headers: { Accept: "application/json" },
   });
@@ -190,7 +192,7 @@ export async function fetchProtectedResourceMetadata(
   const format2Url = new URL(connectionUrl);
   format2Url.pathname = `/.well-known/oauth-protected-resource${resourcePath}`;
 
-  response = await fetch(format2Url.toString(), {
+  response = await fetchMetadataWithRetry(format2Url.toString(), {
     method: "GET",
     headers: { Accept: "application/json" },
   });
@@ -200,7 +202,7 @@ export async function fetchProtectedResourceMetadata(
   const format3Url = new URL(connectionUrl);
   format3Url.pathname = `/.well-known/oauth-protected-resource`;
 
-  response = await fetch(format3Url.toString(), {
+  response = await fetchMetadataWithRetry(format3Url.toString(), {
     method: "GET",
     headers: { Accept: "application/json" },
   });
@@ -621,23 +623,55 @@ export const createOrgScopedWellKnownProtectedResourceRoutes = () => {
  * Returns the response (even if error) so caller can handle/pass-through error status
  */
 /**
- * GET with bounded retry for transient failures. The auth-server metadata
- * endpoints are third-party; a momentary 5xx or network blip otherwise surfaces
- * to the client as a hard 502 (and made the OAuth-proxy E2E suite flaky against
- * live providers like Supabase). Retries network errors and 5xx responses with
- * short backoff; 4xx (incl. 404/401, which drive well-known format fallback) is
+ * Per-attempt timeout for third-party OAuth discovery fetches. A slow upstream
+ * (observed: a ~15s hang on a cold CDN edge for OpenRouter's protected-resource
+ * endpoint) must not stall discovery for the full socket lifetime. 4s is ample
+ * headroom for a healthy metadata endpoint (real ones answer well under 1s)
+ * while aborting a true hang fast enough that 3 attempts stay comfortably under
+ * the OAuth-proxy E2E suite's 15s budget.
+ */
+const METADATA_FETCH_TIMEOUT_MS = 4000;
+
+/**
+ * GET/POST a third-party endpoint with a bounded per-attempt timeout. Discovery
+ * endpoints occasionally hang; without a deadline a single slow upstream stalls
+ * OAuth discovery indefinitely (and tipped the protected-resource E2E test past
+ * its 15s timeout). Returns the fetch Response; aborts (and throws) after
+ * `timeoutMs`. Callers that swallow errors to a fallback (null/false) pass no
+ * retry; callers that want transient-failure resilience use
+ * `fetchMetadataWithRetry`.
+ */
+function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = METADATA_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+}
+
+/**
+ * GET with a bounded per-attempt timeout and bounded retry for transient
+ * failures. The metadata endpoints are third-party; a momentary 5xx, network
+ * blip, or slow/hung response otherwise surfaces to the client as a hard 502 or
+ * a stalled request (and made the OAuth-proxy E2E suite flaky against live
+ * providers like Supabase and OpenRouter). Aborts each attempt after
+ * `timeoutMs`, retries network errors / timeouts / 5xx responses with short
+ * backoff; 4xx (incl. 404/401, which drive well-known format fallback) is
  * returned as-is so the caller's discovery logic is unchanged.
  */
 async function fetchMetadataWithRetry(
   url: string,
   init: RequestInit,
-  attempts = 3,
+  {
+    attempts = 3,
+    timeoutMs = METADATA_FETCH_TIMEOUT_MS,
+  }: { attempts?: number; timeoutMs?: number } = {},
 ): Promise<Response> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     const isLast = i === attempts - 1;
     try {
-      const res = await fetch(url, init);
+      const res = await fetchWithTimeout(url, init, timeoutMs);
       if (res.status < 500 || isLast) return res;
     } catch (err) {
       lastErr = err;
