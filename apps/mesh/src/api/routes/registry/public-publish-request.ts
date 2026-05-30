@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import type { Context } from "hono";
 import { posthog } from "@/posthog";
 import type { ServerPluginContext } from "@decocms/bindings/server-plugin";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
@@ -264,18 +264,29 @@ async function findRegistryItemConflict(
     : null;
 }
 
-export function publicPublishRequestRoutes(
-  app: Hono,
+/**
+ * Build the publish-request handler. Returns a Hono handler that resolves the
+ * org from either the `:orgRef` or `:org` path param (so it can be mounted at
+ * both the legacy `/org/:orgRef/registry/publish-request` and the new
+ * `/api/:org/registry/publish-request` paths).
+ *
+ * NOTE: This handler does its own org lookup — it does NOT rely on
+ * resolveOrgFromPath (this is a public endpoint; auth is optional).
+ */
+export function createPublishRequestHandler(
   ctx: ServerPluginContext,
-): void {
+): (c: Context) => Promise<Response> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = ctx.db as any;
   const typedDb = ctx.db as Kysely<PrivateRegistryDatabase>;
   const storage = new PublishRequestStorage(typedDb);
   const apiKeyStorage = new PublishApiKeyStorage(typedDb);
 
-  app.post("/org/:orgRef/registry/publish-request", async (c) => {
-    const orgRef = c.req.param("orgRef");
+  return async (c) => {
+    const orgRef = c.req.param("orgRef") ?? c.req.param("org");
+    if (!orgRef) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
     const organizationId = await resolveOrganizationId(db as CoreDb, orgRef);
     if (!organizationId) {
       return c.json({ error: "Organization not found" }, 404);
@@ -412,5 +423,5 @@ export function publicPublishRequestRoutes(
       },
       201,
     );
-  });
+  };
 }

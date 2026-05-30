@@ -53,28 +53,48 @@ function useSidebar() {
 function SidebarProvider({
   children,
   defaultOpen = false,
+  open: openProp,
+  onOpenChange,
 }: {
   children: React.ReactNode;
   defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const isMobile = useIsMobile();
+  const [internalOpen, setInternalOpen] = React.useState(defaultOpen);
   const [openMobile, setOpenMobile] = React.useState(false);
 
+  const isControlled = openProp !== undefined;
+  const open = isControlled ? openProp : internalOpen;
+
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (!isControlled) setInternalOpen(next);
+      onOpenChange?.(next);
+    },
+    [isControlled, onOpenChange],
+  );
+
   const toggleSidebar = React.useCallback(() => {
-    if (isMobile) setOpenMobile((open) => !open);
-  }, [isMobile]);
+    if (isMobile) {
+      setOpenMobile((prev) => !prev);
+    } else {
+      setOpen(!open);
+    }
+  }, [isMobile, open, setOpen]);
 
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
-      state: defaultOpen ? ("expanded" as const) : ("collapsed" as const),
-      open: defaultOpen,
-      setOpen: () => {},
+      state: open ? ("expanded" as const) : ("collapsed" as const),
+      open,
+      setOpen,
       isMobile,
       openMobile,
       setOpenMobile,
       toggleSidebar,
     }),
-    [defaultOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+    [open, setOpen, isMobile, openMobile, toggleSidebar],
   );
 
   return (
@@ -154,6 +174,7 @@ function Sidebar({
     <div
       className={cn(
         "group/sidebar peer text-sidebar-foreground hidden md:flex flex-col shrink-0 overflow-hidden",
+        "transition-[width] duration-150 ease-out motion-reduce:transition-none",
         isExpanded ? "w-(--sidebar-width)" : "w-(--sidebar-width-icon)",
       )}
       data-state={state}
@@ -165,7 +186,7 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         className={cn(
-          "flex flex-col h-full",
+          "flex flex-col h-full transition-[width] duration-150 ease-out motion-reduce:transition-none",
           isExpanded ? "w-(--sidebar-width)" : "w-(--sidebar-width-icon)",
           className,
         )}
@@ -373,7 +394,7 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
       data-slot="sidebar-menu"
       data-sidebar="menu"
       className={cn(
-        "flex w-full min-w-0 flex-col gap-1 group-data-[state=collapsed]/sidebar:items-center",
+        "flex w-full min-w-0 list-none flex-col gap-1 group-data-[state=collapsed]/sidebar:items-center",
         className,
       )}
       {...props}
@@ -386,14 +407,14 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
     <li
       data-slot="sidebar-menu-item"
       data-sidebar="menu-item"
-      className={cn("group/menu-item relative w-full", className)}
+      className={cn("group/menu-item relative w-full list-none", className)}
       {...props}
     />
   );
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-lg py-0 pr-0.5 pl-1.5 text-left text-sm outline-0 outline-sidebar-ring transition-[width,height,padding] focus-visible:outline-2 focus-visible:-outline-offset-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&_svg]:opacity-60 hover:[&_svg]:opacity-100",
+  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-lg py-0 pr-0.5 pl-1.5 text-left text-sm outline-0 outline-sidebar-ring transition-[width,height,padding] duration-150 ease-out motion-reduce:transition-none focus-visible:outline-2 focus-visible:-outline-offset-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate group-data-[state=collapsed]/sidebar:[&>span:last-child]:hidden [&>svg]:size-4 [&>svg]:shrink-0 [&_svg]:opacity-60 hover:[&_svg]:opacity-100",
   {
     variants: {
       variant: {
@@ -403,7 +424,7 @@ const sidebarMenuButtonVariants = cva(
       },
       size: {
         default:
-          "group-data-[state=expanded]/sidebar:h-8 group-data-[state=expanded]/sidebar:px-2 group-data-[state=collapsed]/sidebar:w-full! group-data-[state=collapsed]/sidebar:aspect-square! group-data-[state=collapsed]/sidebar:h-auto! group-data-[state=collapsed]/sidebar:p-0! group-data-[state=collapsed]/sidebar:justify-center text-sm",
+          "group-data-[state=expanded]/sidebar:h-8 group-data-[state=expanded]/sidebar:px-2 group-data-[state=collapsed]/sidebar:w-full! group-data-[state=collapsed]/sidebar:aspect-square! group-data-[state=collapsed]/sidebar:max-w-[calc(var(--sidebar-width-icon)-1rem)]! group-data-[state=collapsed]/sidebar:h-auto! group-data-[state=collapsed]/sidebar:p-0! group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:justify-center text-sm",
         sm: "h-7 text-xs",
         lg: "h-12 text-sm p-0!",
       },

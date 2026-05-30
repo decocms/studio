@@ -1,0 +1,128 @@
+name: Storage Integration
+
+# Storage-layer tests that previously used PGlite (WASM-emulated Postgres)
+# now run against a real `postgres:16` service so the SQL surface, query
+# planner, RETURNING/ON CONFLICT semantics, advisory locks, LISTEN/NOTIFY,
+# and extension behavior all match production. PGlite produced false
+# confidence — passing locally, sometimes failing in prod.
+#
+# Lives outside the unit-test workflow because real Postgres is
+# infrastructure per TESTING.md. No HTTP, no auth, no Playwright — just
+# the storage adapters being exercised against a real DB.
+
+on:
+  push:
+    branches:
+      - main
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need the suite re-run (PRs already validated them, and the
+    # [release] bump is owned by release-mesh).
+    paths-ignore:
+      - "apps/mesh/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # See test.yml for why this gate exists: skip the (required) check on
+  # workflow/docs/markdown-only PRs without leaving the required check
+  # stuck pending. Pushes to main always run.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Detect relevant changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Push to main runs everything — except the [release]: version-bump
+            # commit, which only touches the version string. release-mesh picks
+            # that commit up on its own push trigger and cuts the release.
+            case "$HEAD_MSG" in
+              '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
+              *) echo "relevant=true" >> "$GITHUB_OUTPUT" ;;
+            esac
+            exit 0
+          fi
+          set +e
+          FILES=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename')
+          if [ $? -ne 0 ]; then
+            echo "Could not list PR files — running to be safe."
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changed files:"; echo "$FILES"
+          relevant=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .github/*|apps/docs/*|*.md) ;;
+              *) relevant=true; break ;;
+            esac
+          done <<< "$FILES"
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+
+  storage-integration:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run migrations
+        run: bun run --cwd=apps/mesh migrate
+
+      # Convention: every `*.integration.test.ts` file is picked up here.
+      # Adding a new integration test = create a `something.integration.test.ts`
+      # and it auto-routes to this workflow. See TESTING.md.
+      #
+      # One bun process per file: cleanest isolation between heavy-DB
+      # files. The previous signal-tolerance branch (exit > 128 +
+      # (pass) marker → accept) is gone because the Bun teardown crash
+      # it caught was DuckDB's N-API finalizer — neutralized in code by
+      # the `monitoringEngines` stub in the context-factory test. CI
+      # confirmed no other test trips a teardown crash. If a real one
+      # ever shows up, it should fail loudly so we diagnose it instead
+      # of silently swallowing it.
+      - name: Run storage integration tests
+        run: |
+          set -e
+          while IFS= read -r f; do
+            echo "::group::$f"
+            bun test "$f"
+            echo "::endgroup::"
+          done < <(find apps/mesh -name '*.integration.test.ts' | sort)

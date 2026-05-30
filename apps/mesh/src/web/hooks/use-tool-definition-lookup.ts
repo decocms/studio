@@ -16,13 +16,14 @@ export function useToolDefinitionLookup(
   rawToolName: string | null,
   connectionId: string | null,
   orgId: string,
+  orgSlug: string,
 ): { toolDef: Tool | undefined; isLoading: boolean } {
   const { data: toolDef, isLoading } = useQuery({
     queryKey: KEYS.toolDefinitionLookup(connectionId, orgId, rawToolName),
     queryFn: async () => {
       if (!rawToolName || !connectionId) return null;
 
-      const client = await createMCPClient({ connectionId, orgId });
+      const client = await createMCPClient({ connectionId, orgId, orgSlug });
       try {
         const { tools } = await client.listTools();
 

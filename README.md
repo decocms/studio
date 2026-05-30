@@ -88,11 +88,11 @@ You can also define outcomes declaratively and let Studio work backward to deriv
 
 Token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Latency, errors, bottlenecks. One dashboard.
 
-### From your laptop to your org
+### From your desktop to your org
 
 | | |
 |---|---|
-| **Local** | `bunx decocms` on your laptop. Embedded PostgreSQL. Private. |
+| **Local** | `bunx decocms` on your desktop. Embedded PostgreSQL. Private. |
 | **Cloud** | Log in to studio.decocms.com. Control local projects from any browser. |
 | **Team** | Invite people. Roles. Shared connections. Cost attribution. |
 | **Enterprise** | Self-hosted. Your infra. Your rules. |

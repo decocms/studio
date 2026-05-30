@@ -38,6 +38,7 @@ export function useVirtualMCPs(options: UseVirtualMCPsOptions = {}) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useCollectionList<VirtualMCPEntity>(
@@ -61,6 +62,7 @@ export function useVirtualMCP(
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   // If null/undefined, return null (use default virtual MCP)
@@ -85,6 +87,7 @@ export function useVirtualMCPActions() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useCollectionActions<VirtualMCPEntity>(org.id, "VIRTUAL_MCP", client);

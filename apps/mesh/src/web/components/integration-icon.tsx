@@ -57,8 +57,8 @@ export function IntegrationIcon({
   className,
   fallbackIcon,
 }: IntegrationIconProps) {
-  // Delegate icon:// URLs to AgentAvatar for colored-icon rendering
-  if (icon?.startsWith("icon://")) {
+  // Delegate icon:// and URL-with-color to AgentAvatar for colored rendering
+  if (icon?.startsWith("icon://") || icon?.includes("#agentcolor=")) {
     return (
       <AgentAvatar
         icon={icon}

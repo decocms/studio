@@ -51,13 +51,11 @@ export async function createOutboundClient(
 
   switch (connection.connection_type) {
     case "STDIO": {
-      // Block STDIO connections in production unless explicitly allowed
-      if (
-        getSettings().nodeEnv === "production" &&
-        !getSettings().unsafeAllowStdioTransport
-      ) {
+      // STDIO transports spawn arbitrary local commands, so they're only
+      // available in single-tenant local mode (`mesh dev`/`mesh serve --local-mode`).
+      if (!getSettings().localMode) {
         throw new Error(
-          "STDIO connections are disabled in production. Set UNSAFE_ALLOW_STDIO_TRANSPORT=true to enable.",
+          "STDIO connections are only available in local mode (--local-mode).",
         );
       }
 

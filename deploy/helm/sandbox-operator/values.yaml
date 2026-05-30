@@ -1,0 +1,27 @@
+# Default values for the sandbox-operator chart.
+#
+# This chart is a thin packaging of the vendored upstream
+# kubernetes-sigs/agent-sandbox operator + CRDs. All Studio-specific
+# configuration (sandbox image, resource ceilings, egress posture,
+# preview Gateway, warm pool, ...) lives in the companion sandbox-env
+# chart, which is installed once per environment alongside this one.
+#
+# If you need to override the controller image, replicas, or args, edit
+# templates/agent-sandbox-manifest.yaml — but prefer re-running
+# vendor.sh against a newer upstream release first.
+
+controller:
+  # Annotations applied to the controller Pod template. The controller
+  # already exposes Prometheus metrics on port 8080 (/metrics) but the
+  # upstream manifest doesn't ship any scrape hint. If your cluster uses
+  # annotation-based discovery (vmagent/prometheus job=kubernetes-pods
+  # with `prometheus.io/scrape` relabeling), set:
+  #   podAnnotations:
+  #     prometheus.io/scrape: "true"
+  #     prometheus.io/port: "8080"
+  #     prometheus.io/path: "/metrics"
+  # Empty default — installs that don't scrape pods aren't affected.
+  podAnnotations: {}
+  # Extra labels for the controller Pod template (merged with the
+  # built-in `app: agent-sandbox-controller`).
+  podLabels: {}

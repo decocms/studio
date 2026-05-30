@@ -194,6 +194,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -381,9 +382,10 @@ export function VirtualMCPShareModal({
   onOpenChange: (open: boolean) => void;
   virtualMcp: VirtualMCPEntity;
 }) {
+  const { org } = useProjectContext();
   // Virtual MCPs (agents) are accessed via the virtual-mcp endpoint
   const virtualMcpUrl = new URL(
-    `/mcp/virtual-mcp/${virtualMcp.id}`,
+    `/api/${org.slug}/mcp/virtual-mcp/${virtualMcp.id}`,
     window.location.origin,
   );
 

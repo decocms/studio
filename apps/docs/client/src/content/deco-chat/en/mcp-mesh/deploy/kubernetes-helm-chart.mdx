@@ -1,14 +1,14 @@
 ---
 title: "Kubernetes: Helm Chart"
-description: Deploy MCP Mesh on Kubernetes using the Helm chart
+description: Deploy Studio on Kubernetes using the Helm chart
 icon: Rocket
 ---
 
 import Callout from "../../../../../components/ui/Callout.astro";
 
-This guide explains how to deploy the MCP Mesh on Kubernetes using the Helm chart.
+This guide explains how to deploy Studio on Kubernetes using the Helm chart.
 
-Learn more: [the MCP Mesh product page](https://www.decocms.com/mesh)
+Learn more: [Studio product page](https://www.decocms.com/studio)
 
 Helm chart source: [decocms/helm-chart-deco-mcp-mesh](https://github.com/decocms/helm-chart-deco-mcp-mesh)
 
@@ -213,7 +213,7 @@ service:
 
 database:
   engine: postgresql
-  url: "postgresql://mesh_user:mesh_password@mesh.example.com:5432/mesh_db"  
+  url: "postgresql://mesh_user:mesh_password@postgres.example.com:5432/mesh_db"  
   caCert: |
     -----BEGIN CERTIFICATE-----
     aaaaaaaabbbbbbcccccccccddddddd

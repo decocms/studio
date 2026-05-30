@@ -1,0 +1,192 @@
+import type { AiProviderInfo } from "@decocms/mesh-sdk";
+import { ChevronRight } from "@untitledui/icons";
+import { Avatar } from "@deco/ui/components/avatar.tsx";
+import {
+  SettingsCard,
+  SettingsCardItem,
+  SettingsSection,
+} from "@/web/components/settings/settings-section";
+import {
+  OPENAI_COMPATIBLE_PRESETS,
+  type OpenAICompatiblePreset,
+} from "@/web/utils/openai-compatible-presets";
+
+export type ProviderSelection =
+  | { kind: "provider"; provider: AiProviderInfo }
+  | {
+      kind: "openai-compatible";
+      provider: AiProviderInfo;
+      preset: OpenAICompatiblePreset | null;
+    };
+
+interface ProviderGridProps {
+  providers: AiProviderInfo[];
+  onSelect: (selection: ProviderSelection) => void;
+  /** When provided, cloud section is capped at 4 tiles with a "see all" row. */
+  onShowAll?: () => void;
+}
+
+const CLOUD_PREVIEW_COUNT = 4;
+
+function ProviderTile({
+  logo,
+  name,
+  description,
+  onClick,
+}: {
+  logo?: string | null;
+  name: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <SettingsCardItem
+      onClick={onClick}
+      icon={
+        logo ? (
+          <img
+            src={logo}
+            alt={name}
+            className="size-8 rounded-md object-contain dark:bg-white dark:p-0.5"
+          />
+        ) : (
+          <Avatar
+            fallback={name.charAt(0)}
+            className="size-8 bg-primary/10 text-primary"
+          />
+        )
+      }
+      title={name}
+      description={description}
+    />
+  );
+}
+
+export function ProviderGrid({
+  providers,
+  onSelect,
+  onShowAll,
+}: ProviderGridProps) {
+  const deco = providers.find((p) => p.id === "deco");
+  const CLOUD_ORDER: Record<string, number> = {
+    openrouter: 0,
+    anthropic: 1,
+    google: 2,
+  };
+  const cloud = providers
+    .filter((p) => p.id !== "deco" && p.id !== "openai-compatible")
+    .sort((a, b) => {
+      const ai = CLOUD_ORDER[a.id] ?? Number.MAX_SAFE_INTEGER;
+      const bi = CLOUD_ORDER[b.id] ?? Number.MAX_SAFE_INTEGER;
+      return ai - bi;
+    });
+  const openaiCompatible = providers.find((p) => p.id === "openai-compatible");
+  const openaiPreset = OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === "openai");
+
+  const allCloudTiles = [
+    ...cloud.map((provider) => (
+      <ProviderTile
+        key={provider.id}
+        logo={provider.logo}
+        name={provider.name}
+        description={provider.description}
+        onClick={() => onSelect({ kind: "provider", provider })}
+      />
+    )),
+    ...(openaiCompatible && openaiPreset
+      ? [
+          <ProviderTile
+            key={openaiPreset.id}
+            logo={openaiPreset.logo}
+            name={openaiPreset.name}
+            description={openaiPreset.description}
+            onClick={() =>
+              onSelect({
+                kind: "openai-compatible",
+                provider: openaiCompatible,
+                preset: openaiPreset,
+              })
+            }
+          />,
+        ]
+      : []),
+    ...(openaiCompatible
+      ? [
+          ...OPENAI_COMPATIBLE_PRESETS.filter((p) => p.id !== "openai").map(
+            (preset) => (
+              <ProviderTile
+                key={preset.id}
+                logo={preset.logo}
+                name={preset.name}
+                description={preset.description}
+                onClick={() =>
+                  onSelect({
+                    kind: "openai-compatible",
+                    provider: openaiCompatible,
+                    preset,
+                  })
+                }
+              />
+            ),
+          ),
+          <ProviderTile
+            key="custom"
+            logo={openaiCompatible.logo}
+            name="Custom OpenAI-compatible"
+            description="Bring your own model server (advanced)"
+            onClick={() =>
+              onSelect({
+                kind: "openai-compatible",
+                provider: openaiCompatible,
+                preset: null,
+              })
+            }
+          />,
+        ]
+      : []),
+  ];
+
+  const hiddenCount = allCloudTiles.length - CLOUD_PREVIEW_COUNT;
+  const shouldPreview = !!onShowAll && hiddenCount > 0;
+  const visibleCloudTiles = shouldPreview
+    ? allCloudTiles.slice(0, CLOUD_PREVIEW_COUNT)
+    : allCloudTiles;
+
+  return (
+    <div className="flex flex-col gap-6">
+      {deco && (
+        <SettingsSection>
+          <div className="relative rounded-xl border border-violet-400/30 bg-gradient-to-br from-violet-50/50 via-transparent to-lime-50/30 dark:from-violet-950/20 dark:to-lime-950/10 p-1.5">
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-violet-400/5 to-lime-400/5 pointer-events-none" />
+            <p className="text-xs font-medium text-violet-700 dark:text-violet-400 mb-1.5 px-2 pt-2 relative">
+              Recommended — 100+ models, pay as you go
+            </p>
+            <SettingsCard className="relative">
+              <ProviderTile
+                logo={deco.logo}
+                name={deco.name}
+                description={deco.description}
+                onClick={() => onSelect({ kind: "provider", provider: deco })}
+              />
+            </SettingsCard>
+          </div>
+        </SettingsSection>
+      )}
+
+      <SettingsSection>
+        <SettingsCard>
+          {visibleCloudTiles}
+          {shouldPreview && (
+            <SettingsCardItem
+              onClick={onShowAll}
+              title={`${hiddenCount} more provider${hiddenCount === 1 ? "" : "s"}`}
+              action={
+                <ChevronRight size={16} className="text-muted-foreground" />
+              }
+            />
+          )}
+        </SettingsCard>
+      </SettingsSection>
+    </div>
+  );
+}

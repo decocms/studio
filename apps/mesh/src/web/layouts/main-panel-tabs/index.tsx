@@ -14,10 +14,15 @@ import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
 import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
-import { EnvTab } from "./env-tab";
+import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
-import { isLegacySettingsTab, parsePinnedViewTabId } from "./tab-id";
+import { WebPageTab } from "./web-page-tab";
+import {
+  isLegacySettingsTab,
+  parsePinnedViewTabId,
+  parseWebPageTabId,
+} from "./tab-id";
 
 const AppViewContent = lazy(() =>
   import("@/web/routes/project-app-view").then((m) => ({
@@ -32,10 +37,11 @@ export function MainPanelContent({
   taskId: string;
   virtualMcpId: string;
 }) {
-  const { activeTab, layoutTabs, automationTabParsed } = useMainPanelTabs({
-    virtualMcpId,
-    taskId,
-  });
+  const { activeTab, layoutTabs, expandedTools, automationTabParsed } =
+    useMainPanelTabs({
+      virtualMcpId,
+      taskId,
+    });
 
   if (isLegacySettingsTab(activeTab)) {
     return <SettingsTab virtualMcpId={virtualMcpId} />;
@@ -46,18 +52,28 @@ export function MainPanelContent({
   if (activeTab === "automations") {
     return <AutomationsListTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "env") {
-    return <EnvTab virtualMcpId={virtualMcpId} />;
-  }
   if (activeTab === "preview") {
     return <PreviewTab virtualMcpId={virtualMcpId} />;
   }
+  if (activeTab === "content") {
+    return <ContentTab virtualMcpId={virtualMcpId} />;
+  }
   if (automationTabParsed) {
-    return <AutomationTab tabId={activeTab} virtualMcpId={virtualMcpId} />;
+    return <AutomationTab tabId={activeTab} />;
+  }
+
+  const webPage = parseWebPageTabId(activeTab);
+  if (webPage) {
+    return <WebPageTab slug={webPage.slug} />;
   }
 
   const pinnedView = parsePinnedViewTabId(activeTab);
   if (pinnedView) {
+    const expandedTool = expandedTools.find(
+      (t) =>
+        t.appId === pinnedView.connectionId &&
+        t.toolName === pinnedView.toolName,
+    );
     return (
       <Suspense
         fallback={
@@ -73,6 +89,7 @@ export function MainPanelContent({
           key={activeTab}
           connectionId={pinnedView.connectionId}
           toolName={pinnedView.toolName}
+          args={expandedTool?.args}
         />
       </Suspense>
     );
@@ -95,6 +112,7 @@ export function MainPanelContent({
           key={activeTab}
           connectionId={agentTab.view.appId}
           toolName={agentTab.id}
+          args={agentTab.view.args}
         />
       </Suspense>
     );

@@ -18,14 +18,15 @@ const child = Bun.spawn(
     "run",
     join(repoRoot, "apps/mesh/src/cli.ts"),
     "dev",
+    "--local-sandbox-provider",
     ...process.argv.slice(2),
   ],
   {
     stdio: ["inherit", "inherit", "inherit"],
     env: {
       ...process.env,
-      MESH_SANDBOX_DEV_DAEMON_DIR:
-        process.env.MESH_SANDBOX_DEV_DAEMON_DIR ?? sandboxDaemonDir,
+      STUDIO_SANDBOX_DEV_DAEMON_DIR:
+        process.env.STUDIO_SANDBOX_DEV_DAEMON_DIR ?? sandboxDaemonDir,
     },
   },
 );

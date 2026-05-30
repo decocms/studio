@@ -16,7 +16,7 @@ interface ShortcutGroup {
   shortcuts: Shortcut[];
 }
 
-const KEYBOARD_SHORTCUTS = {
+export const KEYBOARD_SHORTCUTS = {
   keyboardShortcuts: { keys: [MOD, "K"], description: "Keyboard shortcuts" },
   focusChatInput: { keys: [MOD, "L"], description: "Focus chat input" },
   saveAndFormat: { keys: [MOD, "S"], description: "Save & format" },

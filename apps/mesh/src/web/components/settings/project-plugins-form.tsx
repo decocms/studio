@@ -1,4 +1,3 @@
-import { type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
@@ -8,60 +7,11 @@ import { toast } from "sonner";
 import { Container } from "@untitledui/icons";
 import { sourcePlugins } from "@/web/plugins";
 import { pluginSidebarGroups, pluginSettingsSidebarItems } from "@/web/index";
-import type { AnyClientPlugin } from "@decocms/bindings/plugins";
-
-type PluginRowProps = {
-  plugin: AnyClientPlugin;
-  isEnabled: boolean;
-  isSaving: boolean;
-  description: string | null;
-  label: string;
-  icon?: ReactNode;
-  onToggle: (pluginId: string, enabled: boolean) => void;
-};
-
-function PluginRow({
-  plugin,
-  isEnabled,
-  isSaving,
-  description,
-  label,
-  icon,
-  onToggle,
-}: PluginRowProps) {
-  return (
-    <div
-      className="flex flex-col border-b border-border last:border-0"
-      onClick={() => !isSaving && onToggle(plugin.id, !isEnabled)}
-      style={{ cursor: isSaving ? undefined : "pointer" }}
-    >
-      <div className="flex items-center justify-between gap-6 py-4">
-        <div className="flex items-start gap-3 min-w-0 flex-1">
-          {icon && (
-            <span className="text-muted-foreground mt-0.5 shrink-0 [&>svg]:size-4">
-              {icon}
-            </span>
-          )}
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">{label}</p>
-            {description && (
-              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                {description}
-              </p>
-            )}
-          </div>
-        </div>
-        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-          <Switch
-            checked={isEnabled}
-            onCheckedChange={(checked) => onToggle(plugin.id, checked)}
-            disabled={isSaving}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
+import {
+  SettingsCard,
+  SettingsCardItem,
+  SettingsSection,
+} from "@/web/components/settings/settings-section";
 
 export function ProjectPluginsForm() {
   const { org, project } = useProjectContext();
@@ -134,25 +84,40 @@ export function ProjectPluginsForm() {
   }
 
   return (
-    <div className="flex flex-col">
-      {sourcePlugins.map((plugin) => {
-        const meta = getPluginMeta(plugin.id);
-        const description = getPluginDescription(plugin.id);
-        const isEnabled = serverPlugins.includes(plugin.id);
+    <SettingsSection>
+      <SettingsCard>
+        {sourcePlugins.map((plugin) => {
+          const meta = getPluginMeta(plugin.id);
+          const description = getPluginDescription(plugin.id);
+          const isEnabled = serverPlugins.includes(plugin.id);
 
-        return (
-          <PluginRow
-            key={plugin.id}
-            plugin={plugin}
-            isEnabled={isEnabled}
-            isSaving={mutation.isPending}
-            description={description}
-            label={meta?.label ?? plugin.id}
-            icon={meta?.icon ?? <Container size={14} />}
-            onToggle={handleTogglePlugin}
-          />
-        );
-      })}
-    </div>
+          return (
+            <SettingsCardItem
+              key={plugin.id}
+              title={meta?.label ?? plugin.id}
+              description={description ?? undefined}
+              icon={
+                <span className="text-muted-foreground [&>svg]:size-4">
+                  {meta?.icon ?? <Container size={14} />}
+                </span>
+              }
+              onClick={() =>
+                !mutation.isPending && handleTogglePlugin(plugin.id, !isEnabled)
+              }
+              action={
+                <Switch
+                  checked={isEnabled}
+                  onCheckedChange={(checked) =>
+                    handleTogglePlugin(plugin.id, checked)
+                  }
+                  disabled={mutation.isPending}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              }
+            />
+          );
+        })}
+      </SettingsCard>
+    </SettingsSection>
   );
 }

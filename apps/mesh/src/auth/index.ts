@@ -25,21 +25,25 @@ import {
 } from "better-auth/plugins";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import {
+  adminAc as systemAdminAc,
+  defaultRoles as systemDefaultRoles,
+} from "better-auth/plugins/admin/access";
+import {
   adminAc,
   defaultStatements,
-} from "better-auth/plugins/organization/access";
+} from "@decocms/better-auth/plugins/organization/access";
 
 import { getConfig } from "@/core/config";
 import { posthog } from "@/posthog";
 import { getBaseUrl } from "@/core/server-constants";
 import { createAccessControl, Role } from "@decocms/better-auth/plugins/access";
 import { getDb, getDatabaseUrl, getDbDialect } from "../database";
-import { OrganizationDomainStorage } from "../storage/organization-domains";
 import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
+import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
 import { createSSOConfig } from "./sso";
 
@@ -134,7 +138,7 @@ if (
 
     sendInvitationEmail = async (data) => {
       const inviterName = data.inviter.user?.name || data.inviter.user?.email;
-      const acceptUrl = `${getBaseUrl()}/auth/accept-invitation?invitationId=${data.invitation.id}&redirectTo=/`;
+      const acceptUrl = `${getBaseUrl()}/auth/accept-invitation?invitationId=${data.invitation.id}&redirectTo=/${data.organization.slug}`;
 
       await sendEmail({
         to: data.email,
@@ -289,6 +293,10 @@ const plugins = [
   adminPlugin({
     defaultRole: "user",
     adminRoles: ["admin", "owner"],
+    roles: {
+      ...systemDefaultRoles,
+      owner: systemAdminAc,
+    },
   }),
 
   // OpenAPI plugin for API documentation
@@ -434,6 +442,16 @@ export const auth = betterAuth({
     user: {
       create: {
         after: async (user) => {
+          // Tag the PostHog person record with email/name BEFORE the
+          // user_signed_up capture so that event lands on a person record
+          // that already has $set: { email } applied.
+          identifyAuthenticatedUser({
+            id: user.id,
+            email: user.email,
+            name: user.name ?? null,
+            emailVerified: !!user.emailVerified,
+          });
+
           // Top-of-funnel signup event. Fires once per new user account,
           // before any org is created. Use this (not organization_created)
           // to measure raw signup volume.
@@ -448,37 +466,15 @@ export const auth = betterAuth({
             },
           });
 
-          // Domain-based handling for verified corporate emails.
-          // 1. If an org claimed the domain with auto-join → add as member
-          // 2. If corporate but unclaimed → skip default org creation so
-          //    the user hits /onboarding to set up their company org
+          // Domain-based handling for verified corporate emails (OAuth, magic link, OTP).
+          // Email/password signups have emailVerified=false at hook time and fall through
+          // to default org creation — there's no verification path to gate on.
+          // All verified corporate users go to /onboarding regardless of auto-join status
+          // so the user can explicitly choose to join an existing org or create a new one.
           if (user.emailVerified) {
             const emailDomain = user.email?.split("@")[1]?.toLowerCase();
             if (emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
-              let domainHandled = false;
-              try {
-                const domainStorage = new OrganizationDomainStorage(getDb().db);
-                const domainRecord =
-                  await domainStorage.getByDomain(emailDomain);
-
-                if (domainRecord?.autoJoinEnabled) {
-                  await auth.api.addMember({
-                    body: {
-                      userId: user.id,
-                      role: "user",
-                      organizationId: domainRecord.organizationId,
-                    },
-                  } as any);
-                  return;
-                }
-                // Corporate email, no auto-join → let /onboarding handle it
-                domainHandled = true;
-              } catch (error) {
-                console.error("[Auth] Domain auto-join check failed:", error);
-                // domainHandled stays false → fall through to default org creation
-              }
-
-              if (domainHandled) return;
+              return;
             }
           }
 
@@ -491,10 +487,15 @@ export const auth = betterAuth({
             ? user.name.split(" ")[0]
             : user.email.split("@")[0];
 
-          const maxAttempts = 3;
+          const maxAttempts = 5;
           for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const orgName = `${firstName} ${getRandomSuffix()}`;
-            const orgSlug = slugify(orgName);
+            // After the first collision, append entropy so retries don't keep
+            // redrawing from the same small suffix pool and exhaust attempts.
+            const orgSlug =
+              attempt === 0
+                ? slugify(orgName)
+                : slugify(`${orgName} ${Math.floor(Math.random() * 1e6)}`);
 
             try {
               const created = await auth.api.createOrganization({
@@ -544,6 +545,31 @@ export const auth = betterAuth({
               }
             }
           }
+        },
+      },
+    },
+    session: {
+      create: {
+        // Re-identify on every successful login (email/password, OTP,
+        // magic link, SSO). PostHog merges person properties server-side,
+        // so this is idempotent and provides automatic backfill for
+        // existing users whose person records were created before
+        // posthog.identify was wired into the auth flow.
+        after: async (session) => {
+          const row = await getDb()
+            .db.selectFrom("user")
+            .select(["id", "email", "name", "emailVerified"])
+            .where("id", "=", session.userId)
+            .executeTakeFirst();
+
+          if (!row) return;
+
+          identifyAuthenticatedUser({
+            id: row.id,
+            email: row.email,
+            name: row.name ?? null,
+            emailVerified: !!row.emailVerified,
+          });
         },
       },
     },

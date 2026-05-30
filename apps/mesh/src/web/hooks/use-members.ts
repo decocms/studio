@@ -5,7 +5,7 @@
  * Uses Suspense for loading states - wrap components in <Suspense> and <ErrorBoundary>.
  */
 
-import { authClient } from "@/web/lib/auth-client";
+import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -32,9 +32,10 @@ import { useSuspenseQuery } from "@tanstack/react-query";
  */
 export function useMembers() {
   const { locator } = useProjectContext();
+  const orgAuth = useOrgAuthClient();
 
   return useSuspenseQuery({
     queryKey: KEYS.members(locator),
-    queryFn: () => authClient.organization.listMembers(),
+    queryFn: () => orgAuth.organization.listMembers(),
   });
 }

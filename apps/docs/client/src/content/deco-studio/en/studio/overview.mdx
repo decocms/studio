@@ -8,60 +8,71 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ![deco](https://assets.decocache.com/mcp/9a3facd8-1199-4635-becc-bdc3f5ee7ab1/deco-banner-capy.png)
 
-## Open-source control plane for your AI agents.
+## The home for your AI agents
 
-deco Studio is where you hire agents, connect tools, organize them into projects, and track every token and dollar. Self-host or use the cloud. Built on the [Model Context Protocol](https://modelcontextprotocol.io).
+deco Studio is where you build agents, connect them to tools, run them on schedules or events, and see exactly what they're doing. Self-host or use the cloud. Built on the [Model Context Protocol](https://modelcontextprotocol.io).
 
 ### Agents
 
-Browse and hire AI agents from the built-in store. Each agent comes with specific tool skills and tested prompts. Agents compose — they can call each other. Every action is tracked with cost attribution.
+An agent is an AI configured for one specific job: a focused set of tools, clear instructions, and its own thread history. Agents are the working surface of Studio — you spend most of your time inside one. Each agent is also its own MCP endpoint, so external clients like Cursor and Claude Desktop can use it directly.
 
 ### Connections
 
-Set up MCP connections through the web UI with one-click OAuth. Monitor latency, errors, and costs per connection. Share tools across your team without sharing credentials.
+Plug in any tool or service — GitHub, Slack, databases, your own API, anything MCP-compatible. Set up credentials once at the org level, then attach the tools you want to each agent. Credentials never leave Studio.
 
+### Automations
 
-### Projects
-
-Projects bring agents and connections together around a goal. The project's UI adapts to what's inside — add a content agent and a CMS connection, the sidebar shows content management; add an analytics agent and a database, it shows dashboards and queries.
+Run an agent unattended on a schedule or in response to an event. Attached to a specific agent, so the scope of what the run can do is whatever you've configured for that agent.
 
 ### Observability
 
-Token spend per connection. Latency, errors, bottlenecks. Every tool invocation logged with caller identity, inputs, outputs, and timing. One dashboard.
+Every tool call your agents make is logged automatically — who called it, when, what came back, and how long it took. One place to debug, audit, and watch performance.
+
+### Extensibility
+
+Studio is open at every layer:
+
+- **MCP apps** — bundle tools with React views in a single package, and Studio will render those views directly inside the agent. Start from the [template repo](https://github.com/decocms/mcp-app).
+- **Sandboxes** — back an agent with a GitHub repository and Studio runs it as an isolated dev environment scoped to that agent (typically the agent's own MCP server).
+- **Git-native** — code-backed agents live in a real repo with branches and PRs, surfaced in the agent's **Git** tab. Your version control stays your source of truth.
+- **MCP everywhere** — every agent is exposed as its own MCP endpoint, callable from Cursor, Claude Desktop, your own code, or another agent.
+
+### Solutions: pre-built agent suites
+
+For teams managing storefronts and content-heavy digital experiences, deco offers **packaged agent suites** built on top of Studio — the most complete one available today is the **[Agentic CMS](./solutions/agentic-cms)**, the evolution of [deco.cx](https://docs.deco.cx). See [Solutions](./solutions/overview) for the full list.
 
 ---
 
-### Core Capabilities
-
-| Capability | Description |
-|---|---|
-| **Agents** | Browse, hire, and compose AI agents with cost attribution |
-| **Connections** | Route MCP traffic through one governed endpoint with auth, proxy, and token vault |
-| **Projects** | Organize agents and connections around goals with an adaptive UI |
-| **Virtual MCPs** | Compose and expose governed toolsets as MCP endpoints |
-| **Observability** | Traces, costs, errors, and latency per connection |
-| **Access Control** | RBAC — OAuth 2.1 + API keys per workspace/project |
-| **Multi-tenancy** | Workspace/project isolation for config, credentials, policies, and audit logs |
-| **Event Bus** | Pub/sub between connections with scheduled/cron delivery and at-least-once guarantees |
-
-### Deployment Options
+### What you can do with Studio
 
 | | |
 |---|---|
-| **Local** | `bunx decocms` — embedded PostgreSQL, fully private |
-| **Cloud** | [studio.decocms.com](https://studio.decocms.com) — control projects from any browser |
-| **Team** | Shared connections, roles, cost attribution |
-| **Enterprise** | Self-hosted on your infrastructure |
+| **Build agents** | Compose focused AI workers from your connected tools, instructions, and resources |
+| **Connect tools** | Add GitHub, Slack, databases, or any MCP server — credentials stay secure |
+| **Run hands-free** | Trigger agents on schedules or events with automations |
+| **See everything** | Logs, costs, and traces for every agent action, in one dashboard |
+| **Extend with code** | Ship MCP apps (tools + UI) and back agents with Git repos in their own sandboxes |
+| **Control access** | Manage who can use which tools with team roles and permissions |
+| **Run on your terms** | Self-host on your own infrastructure or use our cloud |
+
+### Deployment options
+
+| | |
+|---|---|
+| **Local** | `bunx -p decocms deco` — runs entirely on your machine, fully private |
+| **Cloud** | [studio.decocms.com](https://studio.decocms.com) — manage everything from your browser |
+| **Team** | Shared connections, roles, and cost tracking across your organization |
+| **Self-hosted** | Deploy to your own infrastructure with Docker or Kubernetes |
 
 ---
 
-## Getting Started
+## Get started
 
 **[Quickstart](./quickstart)** — Get running in 5 minutes (cloud or local)
 
-**[Concepts](./concepts)** — Connections, Virtual MCPs, projects, and agents
+**[Key concepts](./concepts)** — Anatomy of the Studio UI, plus how the pieces fit together
 
-**[Self-Hosting](./self-hosting/quickstart)** — Docker Compose or Kubernetes
+**[Self-hosting](./self-hosting/quickstart)** — Docker Compose or Kubernetes
 
 ## Links
 

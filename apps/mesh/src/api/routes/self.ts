@@ -14,22 +14,26 @@ type Variables = {
   meshContext: MeshContext;
 };
 
-const app = new Hono<{ Variables: Variables }>();
+type SelfEnv = { Variables: Variables };
 
-/**
- * MCP Server endpoint for self-management tools
- *
- * Route: POST /mcp/self
- * Exposes all PROJECT_* and CONNECTION_* tools via MCP protocol
- */
-app.all("/", async (c) => {
-  const server = await managementMCP(c.get("meshContext"));
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    enableJsonResponse:
-      c.req.raw.headers.get("Accept")?.includes("application/json") ?? false,
+export const createSelfRoutes = () => {
+  const app = new Hono<SelfEnv>();
+
+  /**
+   * MCP Server endpoint for self-management tools
+   *
+   * Route: POST /mcp/self
+   * Exposes all PROJECT_* and CONNECTION_* tools via MCP protocol
+   */
+  app.all("/", async (c) => {
+    const server = await managementMCP(c.get("meshContext"));
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      enableJsonResponse:
+        c.req.raw.headers.get("Accept")?.includes("application/json") ?? false,
+    });
+    await server.connect(transport);
+    return transport.handleRequest(c.req.raw);
   });
-  await server.connect(transport);
-  return transport.handleRequest(c.req.raw);
-});
 
-export default app;
+  return app;
+};

@@ -802,15 +802,20 @@ function ConnectionResults({
       const { id } = await actions.create.mutateAsync(connectionData);
 
       // Handle OAuth flow
-      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+      const mcpProxyUrl = new URL(
+        `/api/${org.slug}/mcp/${id}`,
+        window.location.origin,
+      );
       const authStatus = await isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       });
 
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
         const { token, tokenInfo, error } = await authenticateMcp({
           connectionId: id,
+          orgSlug: org.slug,
           scope: "offline_access",
         });
         if (error || !token) {
@@ -829,10 +834,12 @@ function ConnectionResults({
           if (tokenInfo) {
             try {
               const response = await fetch(
-                `/api/connections/${id}/oauth-token`,
+                `/api/${org.slug}/connections/${id}/oauth-token`,
                 {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
                   credentials: "include",
                   body: JSON.stringify({
                     accessToken: tokenInfo.accessToken,
@@ -885,6 +892,7 @@ function ConnectionResults({
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const invalidateConnections = () => {

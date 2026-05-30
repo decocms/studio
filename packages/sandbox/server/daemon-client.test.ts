@@ -44,6 +44,7 @@ describe("probeDaemonHealth", () => {
           JSON.stringify({
             ready: true,
             bootId: "boot-123",
+            configured: true,
             setup: { running: false, done: true },
           }),
           { status: 200, headers: { "content-type": "application/json" } },
@@ -53,6 +54,7 @@ describe("probeDaemonHealth", () => {
     expect(result).toEqual({
       ready: true,
       bootId: "boot-123",
+      configured: true,
       setup: { running: false, done: true },
     });
   });
@@ -96,7 +98,7 @@ describe("probeDaemonHealth", () => {
 });
 
 describe("daemonBash", () => {
-  it("sends POST to {daemonUrl}/_decopilot_vm/bash with auth and base64 JSON body", async () => {
+  it("sends POST to {daemonUrl}/_sandbox/bash with auth and JSON body", async () => {
     const { calls } = installFetch(
       () =>
         new Response(
@@ -117,16 +119,14 @@ describe("daemonBash", () => {
     });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.input).toBe("http://daemon:9000/_decopilot_vm/bash");
+    expect(calls[0]!.input).toBe("http://daemon:9000/_sandbox/bash");
     expect(calls[0]!.init.method).toBe("POST");
 
     const headers = new Headers(calls[0]!.init.headers as HeadersInit);
     expect(headers.get("authorization")).toBe("Bearer tok-123");
     expect(headers.get("content-type")).toBe("application/json");
 
-    const b64Body = String(calls[0]!.init.body);
-    const rawBody = Buffer.from(b64Body, "base64").toString("utf-8");
-    const body = JSON.parse(rawBody);
+    const body = JSON.parse(String(calls[0]!.init.body));
     expect(body.command).toBe("echo hi");
     expect(body.cwd).toBe("/work");
     expect(body.env).toEqual({ A: "1" });
@@ -172,9 +172,7 @@ describe("daemonBash", () => {
         }),
     );
     await daemonBash("http://d", "t", { command: "x" });
-    const b64Body = String(calls[0]!.init.body);
-    const rawBody = Buffer.from(b64Body, "base64").toString("utf-8");
-    const body = JSON.parse(rawBody);
+    const body = JSON.parse(String(calls[0]!.init.body));
     expect(body.timeout).toBe(60_000);
     // AbortSignal must be present too (timeoutMs + 5_000 wired via AbortSignal.timeout).
     expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
@@ -188,9 +186,7 @@ describe("daemonBash", () => {
         }),
     );
     await daemonBash("http://d", "t", { command: "x", timeoutMs: 12_000 });
-    const b64Body = String(calls[0]!.init.body);
-    const rawBody = Buffer.from(b64Body, "base64").toString("utf-8");
-    const body = JSON.parse(rawBody);
+    const body = JSON.parse(String(calls[0]!.init.body));
     expect(body.timeout).toBe(12_000);
     // The implementation composes AbortSignal.timeout(timeoutMs + 5_000);
     // we can't read the numeric deadline back, but we can at least confirm a

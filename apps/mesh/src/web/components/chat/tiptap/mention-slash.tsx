@@ -16,7 +16,6 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { usePromptConnectionMap } from "@/web/components/chat/use-prompt-connection-map";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type {
   ListPromptsResult,
@@ -31,7 +30,15 @@ import {
   PromptArgsDialog,
   type PromptArgumentValues,
 } from "../dialog-prompt-arguments.tsx";
-import { BaseItem, insertMention, OnSelectProps, Suggestion } from "./mention";
+import {
+  BaseItem,
+  createMentionDoc,
+  getMentionStorage,
+  insertMention,
+  OnSelectProps,
+  Suggestion,
+  type EditMentionRequest,
+} from "./mention";
 import { track } from "@/web/lib/posthog-client";
 
 interface SlashMentionProps {
@@ -54,6 +61,14 @@ interface PromptSelectContext {
   item: SlashItem;
 }
 
+interface EditingMention {
+  promptId: string;
+  promptName: string;
+  args: Record<string, string>;
+  pos: number;
+  prompt: Prompt;
+}
+
 async function fetchAndInsertPrompt(
   editor: Editor,
   range: Range,
@@ -70,6 +85,8 @@ async function fetchAndInsertPrompt(
       name: stripToolNamespace(promptName, clientId),
       metadata: result.messages,
       char: "/",
+      kind: "prompt",
+      args: values,
     });
   } catch (error) {
     console.error("[slash] Failed to fetch prompt:", error);
@@ -91,6 +108,7 @@ async function fetchAndInsertResource(
       name: resourceUri,
       metadata: result.contents,
       char: "/",
+      kind: "resource",
     });
   } catch (error) {
     console.error("[slash] Failed to fetch resource:", error);
@@ -104,11 +122,8 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
-  const promptToConnection = usePromptConnectionMap(virtualMcpId, org.id);
-  const promptToConnectionRef = useRef(promptToConnection);
-  promptToConnectionRef.current = promptToConnection;
-
   const promptsQueryKey = KEYS.virtualMcpPrompts(virtualMcpId, org.id);
   const resourcesQueryKey = KEYS.virtualMcpResources(virtualMcpId, org.id);
   // Combined key for the suggestion dropdown
@@ -121,6 +136,32 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   const [activePrompt, setActivePrompt] = useState<PromptSelectContext | null>(
     null,
   );
+  const [editingMention, setEditingMention] = useState<EditingMention | null>(
+    null,
+  );
+
+  // Bridge for chip clicks → edit dialog. The storage on the MentionNode
+  // extension is read by `MentionNodeView`; we assign the callback directly
+  // on every render so it always closes over the latest `client` / query state.
+  const mentionStorage = getMentionStorage(editor);
+  if (mentionStorage) {
+    mentionStorage.onEditChip = async (req: EditMentionRequest) => {
+      if (!client) return;
+      try {
+        const prompts = await fetchPrompts(
+          queryClient,
+          promptsQueryKey,
+          client,
+        );
+        const prompt = prompts.find((p) => p.name === req.promptId);
+        if (!prompt?.arguments || prompt.arguments.length === 0) return;
+        setEditingMention({ ...req, prompt });
+      } catch (error) {
+        console.error("[slash] Failed to load prompt for editing:", error);
+        toast.error("Failed to load prompt. Please try again.");
+      }
+    };
+  }
 
   // Track picker open → close outcome so we can measure abandonment.
   const pickerOpenedAtRef = useRef<number | null>(null);
@@ -171,6 +212,44 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
     setActivePrompt(null);
   };
 
+  const handleEditDialogSubmit = async (newValues: PromptArgumentValues) => {
+    if (!editingMention || !client) return;
+    try {
+      const result = await getPrompt(
+        client,
+        editingMention.promptId,
+        newValues,
+      );
+      const clientId = getGatewayClientId(editingMention.prompt._meta);
+      editor
+        .chain()
+        .focus()
+        .setNodeSelection(editingMention.pos)
+        .deleteSelection()
+        .insertContentAt(
+          editingMention.pos,
+          createMentionDoc({
+            id: editingMention.promptId,
+            name: stripToolNamespace(editingMention.promptId, clientId),
+            metadata: result.messages,
+            char: "/",
+            kind: "prompt",
+            args: newValues,
+          }),
+        )
+        .run();
+      track("chat_picker_item_selected", {
+        picker: "/edit",
+        item_kind: "prompt",
+        item_name: editingMention.promptId,
+      });
+    } catch (error) {
+      console.error("[slash] Failed to update prompt:", error);
+      toast.error("Failed to update prompt. Please try again.");
+    }
+    setEditingMention(null);
+  };
+
   const fetchItems = async (props: { query: string }): Promise<SlashItem[]> => {
     const { query } = props;
     if (!client) return [];
@@ -196,7 +275,6 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         name: p.name,
         title: p.title,
         description: p.description,
-        icon: promptToConnectionRef.current.get(p.name)?.icon ?? null,
         kind: "prompt" as const,
         arguments: p.arguments,
         _meta: p._meta,
@@ -228,8 +306,10 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
     activePrompt?.item.kind === "prompt"
       ? ({
           name: activePrompt.item.name,
+          title: activePrompt.item.title,
           arguments: activePrompt.item.arguments,
           description: activePrompt.item.description,
+          _meta: activePrompt.item._meta,
         } as Prompt)
       : null;
 
@@ -265,6 +345,17 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         prompt={dialogPrompt}
         setPrompt={() => setActivePrompt(null)}
         onSubmit={handleDialogSubmit}
+      />
+      <PromptArgsDialog
+        key={
+          editingMention
+            ? `edit-${editingMention.promptId}-${editingMention.pos}`
+            : "edit-idle"
+        }
+        prompt={editingMention?.prompt ?? null}
+        setPrompt={() => setEditingMention(null)}
+        onSubmit={handleEditDialogSubmit}
+        defaultValues={editingMention?.args}
       />
     </>
   );

@@ -54,9 +54,7 @@ async function handleTerminalStatus(
   deps: RunReactorDeps,
 ): Promise<void> {
   const { storage, streamBuffer, sseHub } = deps;
-  // Read thread to get virtual_mcp_id for SSE event
   const thread = await storage.get(taskId, orgId);
-  const virtualMcpId = thread?.virtual_mcp_id ?? undefined;
 
   await storage.update(taskId, orgId, {
     status,
@@ -67,7 +65,15 @@ async function handleTerminalStatus(
   streamBuffer.purge(taskId);
   sseHub.emit(
     orgId,
-    createDecopilotThreadStatusEvent(taskId, status, virtualMcpId),
+    createDecopilotThreadStatusEvent(taskId, status, {
+      virtualMcpId: thread?.virtual_mcp_id ?? undefined,
+      createdBy: thread?.created_by,
+      triggerId: thread?.trigger_id,
+      title: thread?.title,
+      branch: thread?.branch ?? null,
+      createdAt: thread?.created_at,
+      updatedAt: thread?.updated_at,
+    }),
   );
   sseHub.emit(orgId, createDecopilotFinishEvent(taskId, status));
 }
@@ -95,15 +101,18 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
       if (!claimed) {
         throw new RunClaimError(event.taskId);
       }
-      // Read virtual_mcp_id for SSE event (thread exists at this point)
       const startedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(
         event.orgId,
-        createDecopilotThreadStatusEvent(
-          event.taskId,
-          "in_progress",
-          startedThread?.virtual_mcp_id ?? undefined,
-        ),
+        createDecopilotThreadStatusEvent(event.taskId, "in_progress", {
+          virtualMcpId: startedThread?.virtual_mcp_id ?? undefined,
+          createdBy: startedThread?.created_by,
+          triggerId: startedThread?.trigger_id,
+          title: startedThread?.title,
+          branch: startedThread?.branch ?? null,
+          createdAt: startedThread?.created_at,
+          updatedAt: startedThread?.updated_at,
+        }),
       );
       return;
     }
@@ -116,11 +125,15 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
       const resumedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(
         event.orgId,
-        createDecopilotThreadStatusEvent(
-          event.taskId,
-          "in_progress",
-          resumedThread?.virtual_mcp_id ?? undefined,
-        ),
+        createDecopilotThreadStatusEvent(event.taskId, "in_progress", {
+          virtualMcpId: resumedThread?.virtual_mcp_id ?? undefined,
+          createdBy: resumedThread?.created_by,
+          triggerId: resumedThread?.trigger_id,
+          title: resumedThread?.title,
+          branch: resumedThread?.branch ?? null,
+          createdAt: resumedThread?.created_at,
+          updatedAt: resumedThread?.updated_at,
+        }),
       );
       return;
     }
@@ -171,11 +184,15 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
       const failedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(
         event.orgId,
-        createDecopilotThreadStatusEvent(
-          event.taskId,
-          "failed",
-          failedThread?.virtual_mcp_id ?? undefined,
-        ),
+        createDecopilotThreadStatusEvent(event.taskId, "failed", {
+          virtualMcpId: failedThread?.virtual_mcp_id ?? undefined,
+          createdBy: failedThread?.created_by,
+          triggerId: failedThread?.trigger_id,
+          title: failedThread?.title,
+          branch: failedThread?.branch ?? null,
+          createdAt: failedThread?.created_at,
+          updatedAt: failedThread?.updated_at,
+        }),
       );
       sseHub.emit(
         event.orgId,

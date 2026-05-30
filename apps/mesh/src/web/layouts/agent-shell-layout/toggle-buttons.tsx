@@ -1,128 +1,54 @@
-/**
- * ToggleButtons — left/right panel toggles portal'd into the outer Toolbar.
- *
- * Layout differs by virtual MCP:
- *   - Non-decopilot agents: tasks + chat toggles (main panel opens/closes
- *     via the header tab bar).
- *   - Decopilot: tasks toggle only (no layout icon on home).
- *
- * When the tasks panel is closed, an additional "new task" button slides
- * in via a grid-cols animation so the shortcut is always reachable
- * without stealing visual weight when tasks are already visible.
- */
-
-import { Edit05, Menu02, MessageCircle01 } from "@untitledui/icons";
+import { Edit05, MessageCircle01 } from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
-import { useTasksPanelState } from "@/web/hooks/use-tasks-panel-state";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { track } from "@/web/lib/posthog-client";
 
 export interface ToggleButtonsProps {
-  isDecopilot: boolean;
   chatOpen: boolean;
   toggleChat: () => void;
-  /** When set, reveals an animated "new task" button next to the chat toggle. */
   onNewTask?: () => void;
 }
 
-const TOGGLE_BASE =
-  "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors";
-const TOGGLE_ACTIVE = "bg-sidebar-accent text-sidebar-foreground";
-const TOGGLE_INACTIVE =
-  "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground";
-
 export function ToggleButtons({
-  isDecopilot,
   chatOpen,
   toggleChat,
   onNewTask,
 }: ToggleButtonsProps) {
-  const { tasksOpen, toggleTasks } = useTasksPanelState();
-  const showNewTask = !!onNewTask;
-
   return (
     <>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
-          <button
-            type="button"
+          <ToolbarIconButton
             onClick={() => {
               track("agent_toolbar_toggled", {
-                button: "tasks",
-                next_state: !tasksOpen ? "open" : "closed",
+                button: "chat",
+                next_state: !chatOpen ? "open" : "closed",
               });
-              toggleTasks();
+              toggleChat();
             }}
-            aria-pressed={tasksOpen}
-            className={cn(
-              TOGGLE_BASE,
-              tasksOpen ? TOGGLE_ACTIVE : TOGGLE_INACTIVE,
-            )}
+            aria-pressed={chatOpen}
+            aria-label="Chat"
+            active={chatOpen}
           >
-            <Menu02 size={16} />
-          </button>
+            <MessageCircle01 size={16} />
+          </ToolbarIconButton>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Tasks</TooltipContent>
+        <TooltipContent side="bottom">Chat</TooltipContent>
       </Tooltip>
-      {!isDecopilot && (
+      {onNewTask && (
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={() => {
-                track("agent_toolbar_toggled", {
-                  button: "chat",
-                  next_state: !chatOpen ? "open" : "closed",
-                });
-                toggleChat();
-              }}
-              aria-pressed={chatOpen}
-              className={cn(
-                TOGGLE_BASE,
-                chatOpen ? TOGGLE_ACTIVE : TOGGLE_INACTIVE,
-              )}
-            >
-              <MessageCircle01 size={16} />
-            </button>
+            <ToolbarIconButton onClick={onNewTask} aria-label="New task">
+              <Edit05 size={16} />
+            </ToolbarIconButton>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Chat</TooltipContent>
+          <TooltipContent side="bottom">New task</TooltipContent>
         </Tooltip>
       )}
-      <div
-        className={cn(
-          "grid transition-[grid-template-columns] duration-200 ease-[var(--ease-out-quart)]",
-          showNewTask ? "grid-cols-[1fr]" : "grid-cols-[0fr]",
-        )}
-      >
-        <div className="overflow-hidden">
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={onNewTask}
-                disabled={!showNewTask}
-                tabIndex={showNewTask ? 0 : -1}
-                aria-hidden={!showNewTask}
-                className={cn(
-                  TOGGLE_BASE,
-                  TOGGLE_INACTIVE,
-                  "transition-[transform,opacity] duration-200 ease-[var(--ease-out-quart)] will-change-transform",
-                  showNewTask
-                    ? "translate-x-0 opacity-100"
-                    : "-translate-x-2 opacity-0",
-                )}
-              >
-                <Edit05 size={16} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">New task</TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
     </>
   );
 }

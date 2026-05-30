@@ -5,7 +5,7 @@
  * Threads are organization-scoped, messages are thread-scoped.
  */
 
-import type { Kysely } from "kysely";
+import { type Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type { ThreadStoragePort } from "./ports";
@@ -47,6 +47,25 @@ export class OrgScopedThreadStorage {
         "OrgScopedThreadStorage: thread operations require an authenticated organization",
       );
     }
+    return this.organizationId;
+  }
+
+  /**
+   * Rebind this storage to a different org id.
+   * Called by `resolveOrgFromPath` middleware after the org is resolved from
+   * the URL slug — meshContext is constructed eagerly, so when no `x-org-id`
+   * header is present the storage starts with `organizationId = undefined`
+   * and must be updated in-place once the path-resolved org is known.
+   */
+  setOrganizationId(organizationId: string | undefined): void {
+    this.organizationId = organizationId;
+  }
+
+  /**
+   * Currently bound organization id (or undefined). Exposed primarily for
+   * tests that assert middleware rebinds the storage correctly.
+   */
+  getOrganizationId(): string | undefined {
     return this.organizationId;
   }
 
@@ -110,6 +129,14 @@ export class OrgScopedThreadStorage {
   ): Promise<{ messages: ThreadMessage[]; total: number }> {
     return this.inner.listMessages(taskId, this.requireOrg(), options);
   }
+
+  listWithLastMessage(options: {
+    limit: number;
+    createdBy?: string;
+    lastMessageRole: "assistant" | "user";
+  }): Promise<Array<{ thread: Thread; lastMessage: ThreadMessage }>> {
+    return this.inner.listWithLastMessage(this.requireOrg(), options);
+  }
 }
 
 // ============================================================================
@@ -146,6 +173,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
       trigger_id: data.trigger_id ?? null,
       virtual_mcp_id: data.virtual_mcp_id ?? "",
       branch: data.branch ?? null,
+      sandbox_provider_kind: null,
+      harness_id: null,
       created_at: now,
       updated_at: now,
       created_by: data.created_by,
@@ -234,7 +263,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.branch !== undefined) {
       updateData.branch = data.branch;
     }
-
+    if (data.sandbox_provider_kind !== undefined) {
+      updateData.sandbox_provider_kind = data.sandbox_provider_kind;
+    }
+    if (data.harness_id !== undefined) {
+      updateData.harness_id = data.harness_id;
+    }
     await this.db
       .updateTable("threads")
       .set(updateData)
@@ -505,6 +539,80 @@ export class SqlThreadStorage implements ThreadStoragePort {
     });
   }
 
+  /**
+   * Last N threads whose most recent `thread_messages` row has the given
+   * `lastMessageRole`. Backs the "Suggested actions" cards on the Tasks
+   * panel — `assistant` for the primary set (AI is waiting on the user),
+   * `user` for the fallback set (user wrote last) used to fill the panel
+   * when the primary set is short.
+   *
+   * One round-trip: a LATERAL subquery picks each thread's last message
+   * (created_at DESC, id DESC for stable tiebreak), then the outer query
+   * keeps only the rows whose last message matches the requested role.
+   * Ordered by the last-message timestamp.
+   */
+  async listWithLastMessage(
+    organizationId: string,
+    options: {
+      limit: number;
+      createdBy?: string;
+      lastMessageRole: "assistant" | "user";
+    },
+  ): Promise<Array<{ thread: Thread; lastMessage: ThreadMessage }>> {
+    let query = this.db
+      .selectFrom("threads as t")
+      .innerJoinLateral(
+        (eb) =>
+          eb
+            .selectFrom("thread_messages as m")
+            .selectAll()
+            .whereRef("m.thread_id", "=", "t.id")
+            .orderBy("m.created_at", "desc")
+            .orderBy("m.id", "desc")
+            .limit(1)
+            .as("lm"),
+        (join) => join.onTrue(),
+      )
+      .selectAll("t")
+      .select([
+        "lm.id as lm_id",
+        "lm.thread_id as lm_thread_id",
+        "lm.metadata as lm_metadata",
+        "lm.parts as lm_parts",
+        "lm.role as lm_role",
+        "lm.created_at as lm_created_at",
+        "lm.updated_at as lm_updated_at",
+      ])
+      .where("t.organization_id", "=", organizationId)
+      .where("t.hidden", "=", false)
+      .where("lm.role", "=", options.lastMessageRole)
+      .orderBy("lm.created_at", "desc")
+      .limit(options.limit);
+
+    if (options.createdBy) {
+      query = query.where("t.created_by", "=", options.createdBy);
+    }
+
+    const rows = await query.execute();
+
+    return rows.map((row) => ({
+      thread: this.threadFromDbRow(row),
+      lastMessage: this.messageFromDbRow({
+        id: row.lm_id,
+        thread_id: row.lm_thread_id,
+        // `thread_messages.metadata` is `string | null`. Kysely's inference
+        // unions it with `threads.metadata` (ThreadMetadata) because both
+        // tables expose a `metadata` column under the same join row — the
+        // values are unrelated, so we narrow back to the messages shape.
+        metadata: row.lm_metadata as string | null,
+        parts: row.lm_parts as string | Record<string, unknown>[],
+        role: row.lm_role,
+        created_at: row.lm_created_at,
+        updated_at: row.lm_updated_at,
+      }),
+    }));
+  }
+
   async listMessages(
     taskId: string,
     organizationId: string,
@@ -560,35 +668,49 @@ export class SqlThreadStorage implements ThreadStoragePort {
     organizationId: string,
     podId: string,
   ): Promise<boolean> {
-    // Claim any in-progress run not already owned by this pod.
-    // Matches both orphaned (NULL) and stale-pod (different pod) runs.
-    // Uses raw SQL for the OR because Kysely's eb.or with IS NULL + != can
-    // behave unexpectedly on some PG drivers.
+    // Claim any in-progress run, regardless of which pod is recorded as the
+    // current owner. Callers MUST verify that this pod's RunRegistry has no
+    // live entry for `taskId` before invoking this — that's the orphan
+    // precondition. Same-pod claims are intentionally allowed because:
+    //
+    //   1. K8s rolling restarts re-use the StatefulSet pod name, so a
+    //      previous incarnation may have left `run_owner_pod = currentPodId`
+    //      while the new process has an empty registry.
+    //   2. If the run was projected out of memory (e.g. a transient DB
+    //      failure in the reactor between in-memory projection and the
+    //      `run_owner_pod = NULL` write on terminal status), the same pod is
+    //      the only authority that can recover it without restarting.
+    //
+    // Excluding same-pod claims here used to lock those threads in
+    // `in_progress` indefinitely on single-pod self-hosted deploys.
     const result = await this.db
       .updateTable("threads")
       .set({ run_owner_pod: podId, updated_at: new Date().toISOString() })
       .where("id", "=", taskId)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
-      .where(({ eb, or }) =>
-        or([eb("run_owner_pod", "is", null), eb("run_owner_pod", "!=", podId)]),
-      )
       .executeTakeFirst();
     return (result?.numUpdatedRows ?? 0n) > 0n;
   }
 
-  async listOrphanedRuns(currentPodId: string): Promise<Thread[]> {
+  async listOrphanedRuns(_currentPodId: string): Promise<Thread[]> {
+    // Lists every in_progress thread with a persisted run_config, regardless
+    // of which pod is recorded as the current owner. Intended for the
+    // startup recovery sweep, which runs against a registry that is empty
+    // by construction — anything in the DB is recoverable from this
+    // process's perspective.
+    //
+    // Filtering out same-pod owners (the previous behavior) was a bug for
+    // K8s StatefulSet rolling restarts, where the new pod re-uses the
+    // previous incarnation's POD_NAME. Those runs were silently skipped
+    // until something else (a user revisit hitting /stream) recovered them.
+    //
+    // The `_currentPodId` parameter is retained for interface compatibility.
     const rows = await this.db
       .selectFrom("threads")
       .selectAll()
       .where("status", "=", "in_progress")
       .where("run_config", "is not", null)
-      .where((eb) =>
-        eb.or([
-          eb("run_owner_pod", "is", null),
-          eb("run_owner_pod", "!=", currentPodId),
-        ]),
-      )
       .orderBy("run_started_at", "asc")
       .limit(100)
       .execute();
@@ -677,6 +799,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
     run_started_at?: Date | string | null;
     virtual_mcp_id?: string | null;
     branch?: string | null;
+    sandbox_provider_kind?: string | null;
+    harness_id?: string | null;
     metadata?: ThreadMetadata | string | null;
     created_at: Date | string;
     updated_at: Date | string;
@@ -716,6 +840,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
         : null,
       virtual_mcp_id: row.virtual_mcp_id ?? "",
       branch: row.branch ?? null,
+      sandbox_provider_kind: row.sandbox_provider_kind ?? null,
+      harness_id: row.harness_id ?? null,
       metadata,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),

@@ -69,6 +69,32 @@ import * as migration067threadsmetadata from "./067-threads-metadata.ts";
 import * as migration068threadsbranch from "./068-threads-branch.ts";
 import * as migration069sandboxrunnerstate from "./069-sandbox-runner-state.ts";
 import * as migration070modelcategories from "./070-model-categories.ts";
+import * as migration071defaulthomeagents from "./071-default-home-agents.ts";
+import * as migration072aiproviderkeypresetid from "./072-ai-provider-key-preset-id.ts";
+import * as migration073backfillbasicusageroles from "./073-backfill-basic-usage-roles.ts";
+import * as migration074sandboxrunnerstatehandlenonunique from "./074-sandbox-runner-state-handle-nonunique.ts";
+import * as migration075threadinflightasyncjobs from "./075-thread-inflight-async-jobs.ts";
+import * as migration076automationsdropagentjson from "./076-automations-drop-agent-json.ts";
+import * as migration077tieronlymodelselection from "./077-tier-only-model-selection.ts";
+import * as migration078automationtoolcallkind from "./078-automation-tool-call-kind.ts";
+import * as migration079striplegacyfreestylevmmapentries from "./079-strip-legacy-freestyle-vm-map-entries.ts";
+import * as migration080asyncresearchjobs from "./080-async-research-jobs.ts";
+import * as migration081asyncresearchjobsresultcontent from "./081-async-research-jobs-result-content.ts";
+import * as migration082secrets from "./082-secrets.ts";
+import * as migration083threadrunlocally from "./083-thread-run-locally.ts";
+import * as migration084drophostsandboxrows from "./084-drop-host-sandbox-rows.ts";
+import * as migration085renamerunnerkindd from "./085-rename-runner-kind.ts";
+import * as migration086threadpinsandvmmaprekey from "./086-thread-pins-and-vm-map-rekey.ts";
+import * as migration087fixvmmaprekey from "./087-fix-vm-map-rekey.ts";
+import * as migration088purgecliactivatekeys from "./088-purge-cli-activate-keys.ts";
+import * as migration089renameremoteusertodesktop from "./089-rename-remote-user-to-desktop.ts";
+import * as migration090automationwebhooktriggers from "./090-automation-webhook-triggers.ts";
+import * as migration091organizationdomainsallowmulti from "./091-organization-domains-allow-multi.ts";
+import * as migration092sandboxnaminguniformization from "./092-sandbox-naming-uniformization.ts";
+import * as migration093backfillglobalsearchbasicusage from "./093-backfill-global-search-basic-usage.ts";
+import * as migration094orgfileconfigs from "./094-org-file-configs.ts";
+import * as migration095removeautomationtoolcallkind from "./095-remove-automation-tool-call-kind.ts";
+import * as migration096orgfileconfigspublicurlbase from "./096-org-file-configs-public-url-base.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -152,6 +178,39 @@ const migrations: Record<string, Migration> = {
   "068-threads-branch": migration068threadsbranch,
   "069-sandbox-runner-state": migration069sandboxrunnerstate,
   "070-model-categories": migration070modelcategories,
+  "071-default-home-agents": migration071defaulthomeagents,
+  "072-ai-provider-key-preset-id": migration072aiproviderkeypresetid,
+  "073-backfill-basic-usage-roles": migration073backfillbasicusageroles,
+  "074-sandbox-runner-state-handle-nonunique":
+    migration074sandboxrunnerstatehandlenonunique,
+  "075-thread-inflight-async-jobs": migration075threadinflightasyncjobs,
+  "076-automations-drop-agent-json": migration076automationsdropagentjson,
+  "077-tier-only-model-selection": migration077tieronlymodelselection,
+  "078-automation-tool-call-kind": migration078automationtoolcallkind,
+  "079-strip-legacy-freestyle-vm-map-entries":
+    migration079striplegacyfreestylevmmapentries,
+  "080-async-research-jobs": migration080asyncresearchjobs,
+  "081-async-research-jobs-result-content":
+    migration081asyncresearchjobsresultcontent,
+  "082-secrets": migration082secrets,
+  "083-thread-run-locally": migration083threadrunlocally,
+  "084-drop-host-sandbox-rows": migration084drophostsandboxrows,
+  "085-rename-runner-kind": migration085renamerunnerkindd,
+  "086-thread-pins-and-vm-map-rekey": migration086threadpinsandvmmaprekey,
+  "087-fix-vm-map-rekey": migration087fixvmmaprekey,
+  "088-purge-cli-activate-keys": migration088purgecliactivatekeys,
+  "089-rename-remote-user-to-desktop": migration089renameremoteusertodesktop,
+  "090-automation-webhook-triggers": migration090automationwebhooktriggers,
+  "091-organization-domains-allow-multi":
+    migration091organizationdomainsallowmulti,
+  "092-sandbox-naming-uniformization": migration092sandboxnaminguniformization,
+  "093-backfill-global-search-basic-usage":
+    migration093backfillglobalsearchbasicusage,
+  "094-org-file-configs": migration094orgfileconfigs,
+  "095-remove-automation-tool-call-kind":
+    migration095removeautomationtoolcallkind,
+  "096-org-file-configs-public-url-base":
+    migration096orgfileconfigspublicurlbase,
 };
 
 export default migrations;

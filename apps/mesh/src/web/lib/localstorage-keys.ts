@@ -10,8 +10,6 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:assistant-chat:tasks:${locator}`,
   messages: (locator: ProjectLocator, taskId: string) =>
     `mesh:messages:${locator}:${taskId}`,
-  chatSelectedModel: (locator: ProjectLocator) =>
-    `mesh:chat:selectedModel:${locator}`,
   chatSelectedMode: (locator: ProjectLocator) =>
     `mesh:chat:selectedMode:${locator}`,
   chatSelectedImageModel: (locator: ProjectLocator) =>
@@ -20,17 +18,18 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:selectedDeepResearchModel:${locator}`,
   chatSimpleModeTier: (locator: ProjectLocator) =>
     `mesh:chat:simpleModeTier:${locator}`,
+  chatAutosend: (locator: ProjectLocator | string, taskId: string) =>
+    `mesh:chat:autosend:${locator}:${taskId}`,
   assistantChatActiveTask: (locator: ProjectLocator) =>
     `mesh:assistant-chat:active-task:${locator}`,
   decoChatPanelWidth: () => `mesh:decochat:panel-width`,
+  tasksPanelWidth: () => `mesh:tasks-panel:width`,
   sidebarOpen: () => `mesh:sidebar-open`,
   orgHomeQuickstart: (org: string) => `mesh:org-home:quickstart:${org}`,
   storeShowStdio: () => `mesh:store:show-stdio`,
   preferences: () => `mesh:user:preferences`,
   pluginConnection: (org: string, pluginId: string) =>
     `mesh:plugin:connection:${org}:${pluginId}`,
-  chatTaskOwnerFilter: (locator: ProjectLocator) =>
-    `mesh:chat:task-owner-filter:${locator}`,
   lastOrgSlug: () => `mesh:last-org-slug`,
   connectionsTab: (org: string) => `mesh:connections:tab:${org}`,
   taskLastViewed: (locator: ProjectLocator) =>

@@ -11,14 +11,13 @@ import type {
 import type { OrganizationSettings } from "../../storage/types";
 
 const SAMPLE_SIMPLE_MODE = {
-  enabled: true,
-  chat: {
+  tiers: {
     fast: { keyId: "key_1", modelId: "gpt-4o-mini", title: "Fast" },
     smart: { keyId: "key_1", modelId: "gpt-4o", title: "Smart" },
     thinking: { keyId: "key_1", modelId: "o1-preview", title: "Thinking" },
+    image: { keyId: "key_2", modelId: "dall-e-3", title: "Image" },
+    web_research: null,
   },
-  image: { keyId: "key_2", modelId: "dall-e-3", title: "Image" },
-  webResearch: null,
 };
 
 const SAMPLE_REGISTRY_CONFIG = {
@@ -34,6 +33,7 @@ const buildStoredSettings = (
   enabled_plugins: null,
   registry_config: null,
   simple_mode: null,
+  default_home_agents: null,
   createdAt: "2024-01-01T00:00:00.000Z",
   updatedAt: "2024-01-01T00:00:00.000Z",
   ...overrides,
@@ -73,9 +73,12 @@ const createMockContext = (
       virtualMcps: null as never,
       users: null as never,
       threads: null as never,
+      asyncResearchJobs: null as never,
       tags: null as never,
       virtualMcpPluginConfigs: null as never,
       aiProviderKeys: null as never,
+      secrets: null as never,
+      orgFileConfigs: null as never,
       oauthPkceStates: null as never,
       automations: null as never,
       orgSsoConfig: null as never,

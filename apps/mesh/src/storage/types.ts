@@ -137,15 +137,19 @@ export interface SimpleModeModelSlot {
   title?: string;
 }
 
+export type SimpleModeTier =
+  | "fast"
+  | "smart"
+  | "thinking"
+  | "image"
+  | "web_research";
+
 export interface SimpleModeConfig {
-  enabled: boolean;
-  chat: {
-    fast: SimpleModeModelSlot | null;
-    smart: SimpleModeModelSlot | null;
-    thinking: SimpleModeModelSlot | null;
-  };
-  image: SimpleModeModelSlot | null;
-  webResearch: SimpleModeModelSlot | null;
+  tiers: Record<SimpleModeTier, SimpleModeModelSlot | null>;
+}
+
+export interface DefaultHomeAgentsConfig {
+  ids: string[];
 }
 
 export interface OrganizationSettingsTable {
@@ -154,6 +158,7 @@ export interface OrganizationSettingsTable {
   enabled_plugins: JsonArray<string[]> | null;
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
+  default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -164,6 +169,7 @@ export interface OrganizationSettings {
   enabled_plugins: string[] | null;
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
+  default_home_agents: DefaultHomeAgentsConfig | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -249,6 +255,12 @@ export interface AIProviderKeyTable {
   label: string;
   encrypted_api_key: string;
   key_hash: string | null; // SHA-256 of the plaintext key; null for legacy rows
+  /**
+   * Frontend-controlled subtype for grouping keys under branded preset cards
+   * (e.g. "litellm", "ollama" all map to provider_id = "openai-compatible").
+   * Null for non-preset keys.
+   */
+  preset_id: string | null;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
 }
@@ -258,9 +270,82 @@ export interface ProviderKeyInfo {
   id: string;
   providerId: ProviderId;
   label: string;
+  presetId: string | null;
   organizationId: string;
   createdBy: string;
   createdAt: string;
+}
+
+export type SecretScopeKind = "user" | "organization";
+
+export interface SecretTable {
+  id: string;
+  organization_id: string;
+  scope: SecretScopeKind;
+  user_id: string | null;
+  name: string;
+  encrypted_value: string;
+  description: string | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/** Public DTO for a secret — never exposes the encrypted value. */
+export interface SecretInfo {
+  id: string;
+  organizationId: string;
+  scope: SecretScopeKind;
+  userId: string | null;
+  name: string;
+  description: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+/**
+ * Org-scoped S3-compatible bucket configuration. Stores connection metadata
+ * plus an encrypted JSON blob holding the access key / secret key pair.
+ * `endpoint` and `force_path_style` support non-AWS S3 (R2, MinIO, GCS).
+ */
+export interface OrgFileConfigTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  bucket: string;
+  region: string;
+  endpoint: string | null;
+  force_path_style: ColumnType<boolean, boolean | undefined, boolean>;
+  prefix: string | null;
+  // Public URL host (e.g. R2 dev domain, CDN). Null = compute from bucket+region.
+  public_url_base: string | null;
+  encrypted_credentials: string;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/** Public DTO for a file config — never exposes access key / secret key. */
+export interface FileConfigInfo {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  bucket: string;
+  region: string;
+  endpoint: string | null;
+  forcePathStyle: boolean;
+  prefix: string | null;
+  publicUrlBase: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
 }
 
 /**
@@ -723,6 +808,21 @@ export {
   type ThreadStatus,
 } from "@decocms/mesh-sdk";
 
+export interface InflightAsyncJob {
+  /** Tool call that submitted this job (for diagnostics; not the resume key). */
+  toolCallId: string;
+  /** Adapter id that owns this job — must equal `MeshProvider.info.id`. */
+  provider: string;
+  /** Provider-side model id, e.g. `deep-research-preview-04-2026`. */
+  modelId: string;
+  /** Original query text — used together with provider+modelId to deduplicate on resume. */
+  query: string;
+  /** Adapter-opaque handle (e.g. Gemini interaction id) — passed back to `resume()`. */
+  jobId: string;
+  /** ISO timestamp set when the job was submitted. */
+  startedAt: string;
+}
+
 export interface ThreadTable {
   id: string;
   organization_id: string;
@@ -743,10 +843,25 @@ export interface ThreadTable {
     Date | string | null,
     Date | string | null
   >;
+  /**
+   * Long-running provider jobs (`AsyncResearchProvider`) still in flight for
+   * this thread. Each entry is removed when the underlying job reaches a
+   * terminal state. Surviving entries are how a fresh pod re-attaches to a
+   * job after a crash.
+   */
+  inflight_async_jobs: ColumnType<
+    InflightAsyncJob[] | null,
+    string | null,
+    string | null
+  >;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
+  /** Sandbox provider kind pinned on first message (e.g. "local-docker", "cluster", "user-desktop") */
+  sandbox_provider_kind: string | null;
+  /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
+  harness_id: string | null;
   /** Per-task UI state (e.g., expanded_tools for right-panel tabs) */
   metadata: ColumnType<ThreadMetadata, string | undefined, string>;
   created_at: ColumnType<Date, Date | string, never>;
@@ -787,7 +902,116 @@ export interface Thread {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
+  /** Sandbox provider kind pinned on first message (e.g. "local-docker", "cluster", "user-desktop") */
+  sandbox_provider_kind: string | null;
+  /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
+  harness_id: string | null;
   metadata: ThreadMetadata;
+}
+
+/**
+ * Lifecycle states for a single async research job.
+ *
+ * pending   — row inserted, provider job not yet submitted (rare; the gap
+ *             between INSERT and the submit call).
+ * polling   — submitted to the provider, driving to terminal state.
+ * completed — provider returned a final report.
+ * failed    — provider reported terminal failure.
+ * cancelled — user aborted; provider job (best-effort) cancelled too.
+ * abandoned — sweeper flipped a stale polling row whose `last_polled_at`
+ *             is older than the staleness threshold. Visible in audit logs;
+ *             contrast with the old approach that silently filtered stale
+ *             rows at read time.
+ */
+const ASYNC_RESEARCH_JOB_STATUSES = [
+  "pending",
+  "polling",
+  "completed",
+  "failed",
+  "cancelled",
+  "abandoned",
+] as const;
+export type AsyncResearchJobStatus =
+  (typeof ASYNC_RESEARCH_JOB_STATUSES)[number];
+
+export interface AsyncResearchJobCitation {
+  url: string;
+  title?: string;
+}
+
+export interface AsyncResearchJobTable {
+  id: ColumnType<string, string | undefined, never>;
+  interaction_id: string | null;
+  tool_call_id: string;
+
+  organization_id: string;
+  thread_id: string;
+  message_id: string | null;
+
+  provider: string;
+  model_id: string;
+  query: string;
+
+  status: AsyncResearchJobStatus;
+  attempts: number;
+  last_polled_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  last_error: string | null;
+
+  input_tokens: number | null;
+  output_tokens: number | null;
+  citations: JsonArray<AsyncResearchJobCitation> | null;
+  result_uri: string | null;
+  result_preview: string | null;
+  /**
+   * Full report text for inline-sized completed jobs. NULL when the
+   * report was offloaded to blob storage via `result_uri`. Drives the
+   * replay path so a re-entry with the same tool_call_id returns the
+   * exact original content (not the truncated preview).
+   */
+  result_content: string | null;
+
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+  completed_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+}
+
+/** Runtime representation of an async research job (decoded JSON columns). */
+export interface AsyncResearchJob {
+  id: string;
+  interactionId: string | null;
+  toolCallId: string;
+
+  organizationId: string;
+  threadId: string;
+  messageId: string | null;
+
+  provider: string;
+  modelId: string;
+  query: string;
+
+  status: AsyncResearchJobStatus;
+  attempts: number;
+  lastPolledAt: string | null;
+  lastError: string | null;
+
+  inputTokens: number | null;
+  outputTokens: number | null;
+  citations: AsyncResearchJobCitation[] | null;
+  resultUri: string | null;
+  resultPreview: string | null;
+  resultContent: string | null;
+
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
 }
 
 export interface ThreadMessageTable {
@@ -883,11 +1107,10 @@ export interface AutomationTable {
   name: string;
   active: boolean;
   created_by: string;
-  agent: string; // JSON string: { id, mode }
-  messages: string; // JSON string: UIMessage[]
-  models: string; // JSON string: { connectionId, thinking, coding?, fast? }
+  messages: string;
+  models: string;
   temperature: number;
-  virtual_mcp_id: string | null;
+  virtual_mcp_id: string;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
@@ -901,11 +1124,10 @@ export interface Automation {
   name: string;
   active: boolean;
   created_by: string;
-  agent: string;
   messages: string;
   models: string;
   temperature: number;
-  virtual_mcp_id: string | null;
+  virtual_mcp_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -932,6 +1154,9 @@ export interface AutomationTriggerTable {
     Date | string | null,
     Date | string | null
   >;
+  // For webhook triggers: Better Auth apikey.id used to authenticate POSTs.
+  // Null for cron/event triggers.
+  api_key_id: string | null;
   created_at: ColumnType<Date, Date | string, never>;
 }
 
@@ -941,13 +1166,14 @@ export interface AutomationTriggerTable {
 export interface AutomationTrigger {
   id: string;
   automation_id: string;
-  type: "cron" | "event";
+  type: "cron" | "event" | "webhook";
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
   params: string | null;
   last_run_at: string | null;
   next_run_at: string | null;
+  api_key_id: string | null;
   created_at: string;
 }
 
@@ -969,10 +1195,10 @@ export interface KVTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
-export interface SandboxRunnerStateTable {
+export interface SandboxProviderStateTable {
   user_id: string;
   project_ref: string;
-  runner_kind: string;
+  sandbox_provider_kind: string;
   handle: string;
   state: ColumnType<Record<string, unknown>, string, string>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
@@ -1090,6 +1316,7 @@ export interface Database {
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
+  async_research_jobs: AsyncResearchJobTable;
 
   // Member tags tables
   organization_tags: OrganizationTagTable;
@@ -1100,6 +1327,12 @@ export interface Database {
 
   // AI Provider keys tables
   ai_provider_keys: AIProviderKeyTable;
+
+  // Generic secrets vault (org and user scoped)
+  secrets: SecretTable;
+
+  // Org-scoped S3 bucket configurations
+  org_file_configs: OrgFileConfigTable;
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;
@@ -1124,5 +1357,5 @@ export interface Database {
   // Organization domain claims (for auto-join)
   organization_domains: OrganizationDomainTable;
 
-  sandbox_runner_state: SandboxRunnerStateTable;
+  sandbox_runner_state: SandboxProviderStateTable;
 }

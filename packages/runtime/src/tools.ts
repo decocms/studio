@@ -11,10 +11,11 @@ import type {
   CallToolResult,
   GetPromptResult,
   Implementation,
+  ListToolsResult,
   ToolAnnotations,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import type { ZodRawShape, ZodSchema, ZodTypeAny } from "zod";
+import type { ZodSchema, ZodTypeAny } from "zod";
 import { BindingRegistry, injectBindingSchemas } from "./bindings.ts";
 import { Event, type EventHandlers } from "./events.ts";
 import type { DefaultEnv, User } from "./index.ts";
@@ -823,6 +824,12 @@ export const createMCPServer = <
   let cached: Registrations | null = null;
   let inflightResolve: Promise<Registrations> | null = null;
 
+  // The MCP SDK's `tools/list` handler runs `toJsonSchemaCompat()` for every
+  // registered tool on every request. For MCPs with hundreds of tools that
+  // dominates per-request latency (seconds, not ms). Cache the rendered
+  // payload across requests within the isolate.
+  let cachedListToolsResult: ListToolsResult | null = null;
+
   let _warnedFactoryDeprecation = false;
   const warnFactoryDeprecation = () => {
     if (!_warnedFactoryDeprecation) {
@@ -940,15 +947,19 @@ export const createMCPServer = <
           _meta: tool._meta,
           description: tool.description,
           annotations: tool.annotations,
+          // Pass the full ZodObject (not its `.shape`) so the SDK skips
+          // `objectFromShape(...)` (a fresh `z.object(shape)` per tool) inside
+          // `_createRegisteredTool`. The SDK's `getZodSchemaObject` returns
+          // an already-built object as-is.
           inputSchema:
             tool.inputSchema && "shape" in tool.inputSchema
-              ? (tool.inputSchema.shape as ZodRawShape)
-              : z.object({}).shape,
+              ? (tool.inputSchema as ZodTypeAny)
+              : z.object({}),
           outputSchema:
             tool.outputSchema &&
             typeof tool.outputSchema === "object" &&
             "shape" in tool.outputSchema
-              ? (tool.outputSchema.shape as ZodRawShape)
+              ? (tool.outputSchema as ZodTypeAny)
               : undefined,
         },
         async (args) => {
@@ -1077,6 +1088,37 @@ export const createMCPServer = <
 
     const registrations = await resolveRegistrations(bindings);
     registerAll(server, registrations);
+
+    // Wrap the SDK-installed `tools/list` handler so the rendered payload is
+    // computed once per isolate and reused across requests. The MCP Server
+    // itself can't be shared across requests (its transport is single-use, see
+    // `Protocol.connect`), so each request still spins up a fresh Server +
+    // Transport — but the listTools render is by far the dominant cost for
+    // large tool surfaces, and it's pure of request-scoped state.
+    // Hardcoded per MCP spec — Zod 4 stores literal values at `_zod.def.value`,
+    // not `.value`, so introspecting `ListToolsRequestSchema.shape.method` is
+    // brittle across zod versions. The string is the protocol method name.
+    const TOOLS_LIST_METHOD = "tools/list";
+    const innerHandlers = (
+      server.server as unknown as {
+        _requestHandlers: Map<
+          string,
+          (req: unknown, extra: unknown) => Promise<unknown>
+        >;
+      }
+    )._requestHandlers;
+    const sdkListToolsHandler = innerHandlers.get(TOOLS_LIST_METHOD);
+    if (sdkListToolsHandler) {
+      innerHandlers.set(TOOLS_LIST_METHOD, async (req, extra) => {
+        if (!cachedListToolsResult) {
+          cachedListToolsResult = (await sdkListToolsHandler(
+            req,
+            extra,
+          )) as ListToolsResult;
+        }
+        return cachedListToolsResult;
+      });
+    }
 
     return { server, ...registrations };
   };

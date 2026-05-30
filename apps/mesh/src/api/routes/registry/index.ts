@@ -1,2 +1,2 @@
-export { publicMCPServerRoutes } from "./public-mcp-server";
-export { publicPublishRequestRoutes } from "./public-publish-request";
+export { createPublicMCPHandler } from "./public-mcp-server";
+export { createPublishRequestHandler } from "./public-publish-request";

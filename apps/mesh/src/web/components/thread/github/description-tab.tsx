@@ -19,6 +19,7 @@ export function DescriptionTab({ pr, connectionId, owner, repo }: Props) {
   const { org } = useProjectContext();
   const commentsQuery = usePrComments({
     orgId: org.id,
+    orgSlug: org.slug,
     connectionId,
     owner,
     repo,

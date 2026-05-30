@@ -10,7 +10,7 @@ import { requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_UPDATE = defineTool({
   name: "ORGANIZATION_UPDATE",
-  description: "Update an organization's name, slug, or description.",
+  description: "Update an organization's name or description.",
   annotations: {
     title: "Update Organization",
     readOnlyHint: false,
@@ -20,12 +20,6 @@ export const ORGANIZATION_UPDATE = defineTool({
   },
   inputSchema: z.object({
     id: z.string(),
-    slug: z
-      .string()
-      .min(1)
-      .max(50)
-      .regex(/^[a-z0-9-]+$/)
-      .optional(),
     name: z.string().min(1).max(255).optional(),
     description: z.string().optional(),
   }),
@@ -47,9 +41,10 @@ export const ORGANIZATION_UPDATE = defineTool({
     await ctx.access.check();
 
     // Build update data
+    // Slug is intentionally NOT updatable: it anchors org URLs (/api/:org/...)
+    // and renaming would silently invalidate every saved URL.
     const updateData: Record<string, unknown> = {};
     if (input.name) updateData.name = input.name;
-    if (input.slug) updateData.slug = input.slug;
     if (input.description)
       updateData.metadata = { description: input.description };
 

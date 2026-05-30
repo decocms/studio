@@ -30,3 +30,20 @@ export function getBaseUrl(): string {
 export function getInternalUrl(): string {
   return `http://localhost:${getSettings().port ?? 3000}`;
 }
+
+/**
+ * Get the cluster's externally reachable URL.
+ *
+ * Used when minting URLs that need to be resolvable from outside the
+ * cluster — e.g. the MCP endpoint URL handed to a remote link daemon
+ * (remote harness dispatch), which talks back to the cluster over the
+ * public network from the user's desktop.
+ *
+ * Uses `MESH_PUBLIC_URL` when set, otherwise falls back to `BASE_URL`
+ * (the same hostname the server advertises to browsers and OAuth clients).
+ * Falls back to `getBaseUrl()` so production deployments without a
+ * separate public-URL setting still work.
+ */
+export function getPublicUrl(): string {
+  return process.env.MESH_PUBLIC_URL ?? getBaseUrl();
+}

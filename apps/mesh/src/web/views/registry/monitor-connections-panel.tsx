@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { authenticateMcp, isConnectionAuthenticated } from "@decocms/mesh-sdk";
+import {
+  authenticateMcp,
+  isConnectionAuthenticated,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -69,6 +73,7 @@ function ConnectionRow({
 
   const updateAuth = useUpdateMonitorConnectionAuth();
   const { updateMutation } = useRegistryMutations();
+  const { org } = useProjectContext();
   const connectionId = entry.mapping.connection_id;
   const authStatus = entry.mapping.auth_status;
   const title = entry.item?.title ?? entry.mapping.item_id;
@@ -80,8 +85,9 @@ function ConnectionRow({
     queryKey: KEYS.monitorConnectionAuthProbe(connectionId),
     queryFn: async () =>
       isConnectionAuthenticated({
-        url: `/mcp/${connectionId}`,
+        url: `/api/${org.slug}/mcp/${connectionId}`,
         token: null,
+        orgId: org.id,
       }),
     staleTime: 10_000,
     retry: 1,
@@ -148,6 +154,7 @@ function ConnectionRow({
       toast.info(`Opening authentication window for "${title}"...`);
       const authResult = await authenticateMcp({
         connectionId,
+        orgSlug: org.slug,
         clientName: `MCP Test - ${title}`,
         timeout: 180000,
         scope: "offline_access",
@@ -161,10 +168,12 @@ function ConnectionRow({
       // Save OAuth tokens
       if (authResult.tokenInfo) {
         const res = await fetch(
-          `/api/connections/${connectionId}/oauth-token`,
+          `/api/${org.slug}/connections/${connectionId}/oauth-token`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+            },
             credentials: "include",
             body: JSON.stringify({
               accessToken: authResult.tokenInfo.accessToken,
@@ -199,7 +208,7 @@ function ConnectionRow({
   };
 
   const saveTokenInternal = async (token: string) => {
-    const res = await fetch("/mcp/self", {
+    const res = await fetch(`/api/${org.slug}/mcp/self`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },

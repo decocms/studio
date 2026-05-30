@@ -8,17 +8,14 @@
  *   ?main absent     default (open iff defaultMainView != null)
  *   ?chat=0|1        chat panel open state
  *   ?virtualmcpid    which MCP the chat + right panel are scoped to
- *
- * Tasks-panel state is owned by useTasksPanelState (separate hook).
  */
 
 import { useRef } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { resolveDefaultTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
-import { useTaskActions } from "@/web/hooks/use-tasks";
+import { useThreadActions } from "@/web/components/chat/store/hooks";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,15 +55,6 @@ export interface ChatMainLayoutActions {
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
-
-export function resolveTasksOpen(
-  urlParam: number | undefined,
-  hasItems: boolean,
-): boolean {
-  if (urlParam === 1) return true;
-  if (urlParam === 0) return false;
-  return hasItems;
-}
 
 export function resolveDefaultPanelState(ctx: {
   entityMetadata: EntityLayoutMetadata | null;
@@ -108,7 +96,6 @@ export function computeChatMainSizes(
 // ---------------------------------------------------------------------------
 
 type PanelSearchParams = {
-  tasks?: number;
   chat?: number;
   main?: string;
   virtualmcpid?: string;
@@ -143,8 +130,7 @@ export function useChatMainPanelState(
     org?: string;
     taskId?: string;
   };
-  const queryClient = useQueryClient();
-  const taskActions = useTaskActions();
+  const { create } = useThreadActions();
   const { locator } = useProjectContext();
 
   const { virtualMcpId, orgSlug, isAgentRoute } = routeCtx;
@@ -159,6 +145,7 @@ export function useChatMainPanelState(
   const mainOpen = defaults.mainOpen;
 
   const fallbackRef = useRef(crypto.randomUUID());
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   const taskId = routeParamsRaw.taskId ?? fallbackRef.current;
 
   const routeBase = "/$org/$taskId" as const;
@@ -181,11 +168,10 @@ export function useChatMainPanelState(
     navigate({
       to: routeBase,
       params: makeParams(id),
-      search: (prev: Record<string, unknown>) => {
+      search: (_prev: Record<string, unknown>) => {
         const next: Record<string, unknown> = {};
         if (targetVirtualMcpId) next.virtualmcpid = targetVirtualMcpId;
         else if (isAgentRoute) next.virtualmcpid = virtualMcpId;
-        if (prev.tasks) next.tasks = prev.tasks;
         return next;
       },
     });
@@ -212,12 +198,12 @@ export function useChatMainPanelState(
   };
 
   // Carry the active task's branch into the new thread so it lands on the
-  // same warm sandbox. Server picks from vmMap when no branch is provided.
+  // same warm sandbox. Server picks from sandboxMap when no branch is provided.
   const createNewTask = async () => {
     const newTaskId = crypto.randomUUID();
-    const branch = readCachedTaskBranch(queryClient, locator, taskId);
+    const branch = readCachedTaskBranch(orgSlug, locator, taskId);
     try {
-      await taskActions.create.mutateAsync({
+      await create({
         id: newTaskId,
         virtual_mcp_id: virtualMcpId,
         ...(branch ? { branch } : {}),
@@ -229,12 +215,11 @@ export function useChatMainPanelState(
     navigate({
       to: routeBase,
       params: makeParams(newTaskId),
-      search: (prev: Record<string, unknown>) => {
+      search: (_prev: Record<string, unknown>) => {
         const next: Record<string, unknown> = {
           ...preserveVirtualMcp,
           chat: 1,
         };
-        if (prev.tasks) next.tasks = prev.tasks;
         return next;
       },
     });

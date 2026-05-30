@@ -1,7 +1,6 @@
 /**
  * Hook to fetch an MCP app's metadata from the deco registry by app ID.
- * Used at CTA time (e.g., recruit modal) to get full connection details.
- * Display metadata (title, icon) comes from WELL_KNOWN_AGENT_TEMPLATES constants.
+ * Used at CTA time to get full connection details.
  */
 
 import {
@@ -22,7 +21,11 @@ import type { RegistryItem } from "@/web/components/store/types";
 export function useRegistryApp(appId: string, options?: { enabled?: boolean }) {
   const { org } = useProjectContext();
   const registryId = WellKnownOrgMCPId.REGISTRY(org.id);
-  const client = useMCPClient({ connectionId: registryId, orgId: org.id });
+  const client = useMCPClient({
+    connectionId: registryId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
 
   return useMCPToolCallQuery<RegistryItem | null>({
     client,

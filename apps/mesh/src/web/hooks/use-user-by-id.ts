@@ -36,6 +36,7 @@ export function useUserById(userId: string) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({

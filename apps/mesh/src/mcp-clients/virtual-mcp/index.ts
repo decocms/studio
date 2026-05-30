@@ -7,6 +7,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
+import { SpanStatusCode } from "@opentelemetry/api";
 import { getMcpListCache } from "../mcp-list-cache";
 import type { MeshContext } from "../../core/mesh-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
@@ -69,16 +70,40 @@ export async function createVirtualClientFrom(
   _strategy: "passthrough",
   superUser = false,
   options?: { listTimeoutMs?: number },
-): Promise<Client> {
+): Promise<PassthroughClient> {
   // Inclusion mode: use only the connections specified in virtual MCP
   const connectionIds = virtualMcp.connections.map((c) => c.connection_id);
 
   // Load all connections in parallel
-  const connectionPromises = connectionIds.map((connId) =>
-    ctx.storage.connections.findById(connId),
+  const allConnections = await ctx.tracer.startActiveSpan(
+    "mesh.virtual_mcp.load_connections",
+    {
+      attributes: {
+        "virtual_mcp.id": virtualMcp.id ?? "decopilot",
+        "virtual_mcp.connection_count": connectionIds.length,
+      },
+    },
+    async (span) => {
+      try {
+        const result = await Promise.all(
+          connectionIds.map((connId) =>
+            ctx.storage.connections.findById(connId),
+          ),
+        );
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (err) {
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (err as Error).message,
+        });
+        span.recordException(err as Error);
+        throw err;
+      } finally {
+        span.end();
+      }
+    },
   );
-
-  const allConnections = await Promise.all(connectionPromises);
 
   // Filter out inactive connections and self-referencing VIRTUAL connections
   const loadedConnections = allConnections.filter(

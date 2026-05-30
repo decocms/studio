@@ -5,7 +5,15 @@
  * Uses Memory and ModelProvider abstractions.
  */
 
+import { createHash } from "node:crypto";
 import type { MeshContext } from "@/core/mesh-context";
+import {
+  TierUnavailableError,
+  resolveTier,
+  tryResolveTier,
+} from "@/core/resolve-tier";
+import { resolveAgentTier } from "@/ai-providers/agent-tiers";
+import type { ChatTier, SimpleModeTier } from "@/tools/organization/schema";
 import { posthog } from "@/posthog";
 import {
   consumeStream,
@@ -28,15 +36,45 @@ import type { RunRegistry } from "./run-registry";
 import {
   checkModelPermission,
   fetchModelPermissions,
+  filterToolTiersByPermission,
   parseModelsToMap,
 } from "./model-permissions";
-import { PersistedRunConfigSchema, toModelsConfig } from "./run-config";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import { streamCore } from "./stream-core";
-import { RunClaimError } from "./run-reactor";
-import type { SqlThreadStorage } from "@/storage/threads";
-import { getPodId } from "@/core/pod-identity";
+import type { DispatchRunInput } from "./dispatch-run";
+import { resolveHarnessId } from "./dispatch-run";
+import { enqueueThreadRun } from "@/dispatch-queue";
+import { wrapWithSseKeepalive } from "./sse-keepalive";
+import type { LinkClaimRegistry } from "../../../links/link-claim-registry";
+import { resolveDispatchTarget } from "../../../links/resolve-dispatch-target";
+import {
+  resolveSandboxProviderKindFromEnv,
+  type SandboxProviderKind,
+} from "@decocms/sandbox/provider";
+import { resolveDefaultSandboxProviderKind } from "@/sandbox/resolve-default-provider-kind";
+import type { HarnessId } from "@/harnesses";
+
+// ============================================================================
+// Idempotency
+// ============================================================================
+
+/**
+ * Derive the workflowID idempotency key from the last request message.
+ *
+ * - User messages have a fresh id per turn, so the id itself is unique.
+ * - Assistant messages are re-POSTed with the same id across approval /
+ *   tool-output rounds in a single logical turn. Hashing the serialized
+ *   message makes each round produce a distinct key while still letting
+ *   a genuine network retry of an identical POST collapse onto the same
+ *   workflow.
+ */
+export function computeIdempotencyKey(
+  lastMsg: ChatMessage | undefined,
+): string | undefined {
+  if (!lastMsg) return undefined;
+  if (lastMsg.role === "user" && lastMsg.id) return lastMsg.id;
+  return createHash("sha1").update(JSON.stringify(lastMsg)).digest("hex");
+}
 
 // ============================================================================
 // Request Validation
@@ -65,34 +103,215 @@ async function validateRequest(
   };
 }
 
+/**
+ * Look up the providerId for the credential the request would use, so
+ * POST /messages can pick the right harness (and therefore the right
+ * link capability) before enqueuing onto the thread gate. Returns
+ * undefined when the credential row isn't found — the caller falls back
+ * to "decopilot" (matches the existing prepareRun behavior).
+ */
+async function resolveProviderId(
+  ctx: MeshContext,
+  credentialId: string,
+  organizationId: string,
+): Promise<string | undefined> {
+  try {
+    const row = await ctx.storage.aiProviderKeys.findById(
+      credentialId,
+      organizationId,
+    );
+    return row?.providerId;
+  } catch {
+    return undefined;
+  }
+}
+
 // ============================================================================
-// Default Model Resolution
+// Per-Request Model Resolution
 // ============================================================================
 
-async function resolveDefaultModels(
-  ctx: MeshContext,
-  organizationId: string,
-): Promise<ModelsConfig> {
-  const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
-  if (keys.length === 0) {
-    throw new HTTPException(400, {
-      message: "No AI provider credentials configured for this organization",
-    });
-  }
-  const credential = keys[0]!;
-  const modelList = await ctx.aiProviders.listModels(
-    credential.id,
-    organizationId,
-  );
-  if (modelList.length === 0) {
-    throw new HTTPException(400, {
-      message: "No models available from the configured AI provider",
-    });
-  }
-  const model = modelList[0]!;
+function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
+  const caps = resolved.modelMeta.capabilities;
   return {
-    credentialId: credential.id,
-    thinking: { id: model.modelId, title: model.title },
+    id: resolved.modelId,
+    title: resolved.modelMeta.title ?? resolved.modelId,
+    provider: resolved.modelMeta.providerId ?? null,
+    capabilities:
+      caps && caps.length > 0
+        ? {
+            vision:
+              caps.includes("vision") || caps.includes("image") || undefined,
+            text: caps.includes("text") || undefined,
+            reasoning: caps.includes("reasoning") || undefined,
+          }
+        : undefined,
+    limits: resolved.modelMeta.limits
+      ? {
+          contextWindow: resolved.modelMeta.limits.contextWindow,
+          maxOutputTokens:
+            resolved.modelMeta.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  };
+}
+
+/**
+ * Resolves a tier (defaulting to "smart") to a full ModelsConfig via the
+ * shared resolveTier(), which falls back to curated provider defaults when
+ * the org's tier slot is unset. Also resolves the "image" and "web_research"
+ * tiers — when present they enable the generate_image and web_search
+ * built-in tools (registration is conditional in built-in-tools/index.ts).
+ *
+ * Exported so server-initiated dispatch paths (e.g. preset-task /start)
+ * can compose a ModelsConfig the same way HTTP chat does, instead of
+ * duplicating the tier-resolution + tryResolve fallback logic.
+ */
+async function resolvePerRequestModels(
+  ctx: MeshContext,
+  tier: SimpleModeTier | undefined,
+  harnessId: HarnessId | null | undefined,
+): Promise<ModelsConfig> {
+  if (harnessId === "claude-code" || harnessId === "codex") {
+    const chatTier: ChatTier =
+      tier === "fast" || tier === "smart" || tier === "thinking"
+        ? tier
+        : "smart";
+    const entry = resolveAgentTier(harnessId, chatTier);
+    if (!entry) {
+      // Should be unreachable — resolveAgentTier returns non-null for
+      // both supported CLI harnesses and every ChatTier value.
+      throw new Error(
+        `No model mapping for harness "${harnessId}" tier "${chatTier}"`,
+      );
+    }
+    return {
+      credentialId: `desktop:${harnessId}`,
+      thinking: {
+        id: entry.modelId,
+        title: entry.label,
+        provider: harnessId,
+      },
+    };
+  }
+
+  const [chat, image, webResearch] = await Promise.all([
+    resolveTier(ctx, tier ?? "smart"),
+    tryResolveTier(ctx, "image"),
+    tryResolveTier(ctx, "web_research"),
+  ]);
+  return {
+    credentialId: chat.credentialId,
+    thinking: toModelInfo(chat),
+    ...(image
+      ? { image: { ...toModelInfo(image), credentialId: image.credentialId } }
+      : {}),
+    ...(webResearch
+      ? {
+          deepResearch: {
+            ...toModelInfo(webResearch),
+            credentialId: webResearch.credentialId,
+          },
+        }
+      : {}),
+  };
+}
+
+// ============================================================================
+// Shared validate path
+// ============================================================================
+
+/**
+ * Parse + permission-check an HTTP request into a `DispatchRunInput`
+ * ready to hand to `enqueueThreadRun` (POST /messages).
+ *
+ * Pure-ish: reads `c` for the request body and auth context, but no
+ * downstream side effects. Throws `HTTPException` / `TierUnavailableError`
+ * for caller-visible problems.
+ *
+ * When `threadIdParam` is provided (e.g. from a URL path like
+ * `/threads/:threadId/...`) the body's `thread_id` must match — rejecting
+ * a body that disagrees rather than silently overriding either side.
+ * Legacy callers that supply the id in the body alone are unaffected.
+ */
+async function validate(
+  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  threadIdParam: string | undefined,
+): Promise<
+  DispatchRunInput & {
+    sandboxProviderKind?: SandboxProviderKind | null;
+    harnessId?: HarnessId | null;
+  }
+> {
+  const ctx = c.get("meshContext");
+
+  const {
+    organization,
+    tier,
+    agent,
+    systemMessages,
+    requestMessage,
+    temperature,
+    memory: memoryConfig,
+    thread_id,
+    branch,
+    toolApprovalLevel,
+    mode,
+    sandboxProviderKind,
+    harnessId,
+  } = await validateRequest(c);
+
+  const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
+  if (threadIdParam && bodyThreadId && bodyThreadId !== threadIdParam) {
+    throw new HTTPException(400, {
+      message: "threadId in URL does not match thread_id in body",
+    });
+  }
+  const taskIdInput = threadIdParam ?? bodyThreadId;
+
+  const userId = ctx.auth?.user?.id;
+  if (!userId) {
+    throw new HTTPException(401, { message: "User ID is required" });
+  }
+
+  const resolvedModels = await resolvePerRequestModels(ctx, tier, harnessId);
+
+  const allowedModels = await fetchModelPermissions(
+    ctx.db,
+    organization.id,
+    ctx.auth.user?.role,
+  );
+  if (
+    allowedModels !== undefined &&
+    !checkModelPermission(
+      allowedModels,
+      resolvedModels.credentialId,
+      resolvedModels.thinking.id,
+    )
+  ) {
+    throw new HTTPException(403, {
+      message: "Model not allowed for your role",
+    });
+  }
+  // Silently drop tool tiers (image, deepResearch) that resolve to a key
+  // the user's role can't access — otherwise an admin-set tier slot would
+  // grant restricted users implicit access to the underlying credential
+  // via generate_image / web_search.
+  const models = filterToolTiersByPermission(allowedModels, resolvedModels);
+
+  return {
+    messages: [...systemMessages, requestMessage],
+    models,
+    agent,
+    temperature,
+    toolApprovalLevel,
+    mode,
+    organizationId: organization.id,
+    userId,
+    taskId: taskIdInput,
+    windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
+    branch: branch ?? null,
+    sandboxProviderKind: sandboxProviderKind ?? null,
+    harnessId: harnessId ?? null,
   };
 }
 
@@ -104,11 +323,18 @@ export interface DecopilotDeps {
   cancelBroadcast: CancelBroadcast;
   streamBuffer: StreamBuffer;
   runRegistry: RunRegistry;
-  threadStorage: SqlThreadStorage;
+  /**
+   * Used to resolve the user's link daemon. POST /messages calls
+   * `resolveDispatchTarget` against this registry before enqueuing onto
+   * the thread gate so the cluster can reject early with 409 instead of
+   * silently queueing a run that would have nowhere to go.
+   */
+  linkClaimRegistry: LinkClaimRegistry;
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
-  const { cancelBroadcast, streamBuffer, runRegistry, threadStorage } = deps;
+  const { cancelBroadcast, streamBuffer, runRegistry, linkClaimRegistry } =
+    deps;
   const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
 
   // ============================================================================
@@ -137,214 +363,181 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Stream Endpoint
+  // Messages Endpoint — enqueue a run on the per-thread gate queue
   // ============================================================================
+  //
+  // POST /:org/decopilot/threads/:threadId/messages
+  //
+  // Enqueues the run on `threadGateWorkflow` (partition=threadId,
+  // concurrency=1) and returns `202 { taskId }` in milliseconds. The
+  // response carries no SSE body — the client is expected to be listening
+  // on `GET /:org/decopilot/threads/:threadId/stream` to receive chunks once the
+  // workflow dequeues and dispatches.
+  //
+  // If another run on this thread is already executing, the new message
+  // queues behind it and dispatches only after that run completes.
+  //
+  // Idempotency: a retried POST collapses onto the existing workflow
+  // handle. The key is derived from the last message:
+  //   - user turn: the message id (unique per turn).
+  //   - approval / tool-output continuation: SHA1 of the serialized
+  //     message. The assistant message id is reused across approval
+  //     rounds in the same logical turn, so the id alone would dedupe
+  //     two distinct accepts onto the first workflow and leave the
+  //     second round's state unsaved (bricked approval prompt). Hashing
+  //     the message contents gives each round a fresh workflowID while
+  //     still collapsing genuine network retries of the same POST.
 
-  app.post("/:org/decopilot/stream", async (c) => {
+  app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
       const ctx = c.get("meshContext");
-
-      // 1. Validate request
-      const {
-        organization,
-        models: clientModels,
-        agent,
-        systemMessages,
-        requestMessage,
-        temperature,
-        memory: memoryConfig,
-        thread_id,
-        branch,
-        toolApprovalLevel,
-        mode,
-      } = await validateRequest(c);
-
-      const userId = ctx.auth?.user?.id;
-      if (!userId) {
-        throw new HTTPException(401, { message: "User ID is required" });
+      const input = await validate(c, c.req.param("threadId"));
+      const taskId = input.taskId;
+      if (!taskId) {
+        // validate() always sets taskId from the URL param, so this is
+        // a structural invariant rather than a user-facing error.
+        throw new HTTPException(400, { message: "threadId is required" });
       }
 
-      // 2. Resolve models — use client-provided or fall back to org defaults
-      const models =
-        clientModels ?? (await resolveDefaultModels(ctx, organization.id));
-
-      // 3. Check model permissions
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
-
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
+      // Resolve the dispatch target up-front so we can reject a
+      // request with 409 *before* enqueuing it onto the thread gate.
+      // Holding the link-online decision at POST time also keeps DBOS
+      // replay from rerouting the run if the daemon disconnects between
+      // enqueue and dispatch (the workflow body reads target directly off
+      // the serialized request).
+      //
+      // The thread row's (sandbox_provider_kind, harness_id) are the
+      // single source of truth for routing. Tolerate storage failure when
+      // loading the thread row — a missing/erroring row just means we fall
+      // back to the request body / default helpers (the canonical thread row
+      // is created by COLLECTION_THREADS_CREATE before the first POST, but
+      // legacy callers and tests may skip it).
+      let existingThread: Awaited<
+        ReturnType<typeof ctx.storage.threads.get>
+      > | null = null;
+      try {
+        existingThread = (await ctx.storage.threads?.get?.(taskId)) ?? null;
+      } catch {
+        existingThread = null;
       }
 
-      const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
-      const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
+      // Fall back to the "ephemeral" synthetic branch when neither the
+      // thread row nor the request body pins one. Synthetic branches
+      // (see packages/sandbox/daemon/constants.ts:isSyntheticBranch) are
+      // accepted by the daemon as sandboxMap routing keys but never checked
+      // out — exactly the right semantics for Decopilot threads on
+      // agents with no clonable repo, where the branch is purely an
+      // isolation key.
+      const branch = existingThread?.branch ?? input.branch ?? "ephemeral";
+      const branchWasDefaulted = !existingThread?.branch && !input.branch;
 
-      // 4. Delegate to streamCore
-      const result = await streamCore(
-        {
-          messages: [...systemMessages, requestMessage],
-          models,
-          agent,
-          temperature,
-          toolApprovalLevel,
-          mode,
-          organizationId: organization.id,
-          userId,
-          taskId: resolvedThreadId,
-          windowSize,
-          branch: branch ?? null,
-        },
+      // Determine the pinned (kind, harness). If the thread row has them,
+      // use those. Otherwise this is the first message — derive defaults and
+      // persist to the thread row.
+      let pinnedKind = (existingThread?.sandbox_provider_kind ??
+        null) as SandboxProviderKind | null;
+
+      const providerId = await resolveProviderId(
         ctx,
-        { runRegistry, streamBuffer, cancelBroadcast },
+        input.models.credentialId,
+        input.organizationId,
       );
+      const credentialHarness = resolveHarnessId(providerId);
 
-      posthog.capture({
-        distinctId: userId,
-        event: "chat_message_started",
-        groups: { organization: organization.id },
-        properties: {
-          organization_id: organization.id,
-          agent_id: agent,
-          mode,
-          thread_id: resolvedThreadId,
-          credential_id: models.credentialId,
+      let pinnedHarness = (existingThread?.harness_id ??
+        null) as HarnessId | null;
+
+      if (!pinnedKind || !pinnedHarness || branchWasDefaulted) {
+        pinnedKind =
+          pinnedKind ??
+          input.sandboxProviderKind ??
+          (await resolveDefaultSandboxProviderKind(input.userId, {
+            linkClaimRegistry,
+            resolveEnvKind: resolveSandboxProviderKindFromEnv,
+          }));
+        pinnedHarness = pinnedHarness ?? input.harnessId ?? credentialHarness;
+
+        if (existingThread) {
+          try {
+            await ctx.storage.threads?.update?.(taskId, {
+              sandbox_provider_kind: pinnedKind,
+              harness_id: pinnedHarness,
+              ...(branchWasDefaulted ? { branch } : {}),
+            });
+          } catch (err) {
+            console.warn(
+              "[decopilot:messages] failed to persist thread pins",
+              err,
+            );
+          }
+        }
+      }
+
+      // `resolveDispatchTarget` only needs the resolved `sandboxProviderKind`
+      // — we pass it directly instead of provisioning a VM here. VM
+      // provisioning happens lazily inside the built-in tools layer
+      // (`apps/mesh/src/harnesses/decopilot/built-in-tools/index.ts`'s
+      // `ensureHandle`) on the first VM-tool invocation. Eagerly calling
+      // `ensureSandbox` at POST time used to fail in environments without a
+      // link daemon for the user even when the run never touches the
+      // sandbox (e.g. CI multi-pod tests that drive only the mock AI
+      // provider).
+      const result = await resolveDispatchTarget(
+        {
+          harnessId: pinnedHarness,
+          sandboxProviderKind: pinnedKind,
+          userId: input.userId,
         },
-      });
+        { linkClaimRegistry },
+      );
+      if (!result.ok) {
+        return c.json(
+          {
+            error: "link_unavailable",
+            code: result.error.kind,
+            activeCapabilities:
+              result.error.kind === "user_desktop_link_capability_missing"
+                ? result.error.activeCapabilities
+                : undefined,
+          },
+          409,
+        );
+      }
+      const target = result.target;
 
-      return createUIMessageStreamResponse({
-        stream: result.stream,
-        consumeSseStream: consumeStream,
-      });
+      const { abortSignal: _ignored, ...rest } = input;
+      const serializableRequest = {
+        ...rest,
+        target,
+        harnessId: pinnedHarness,
+      };
+      const lastMsg = input.messages[input.messages.length - 1];
+      const idempotencyKey = computeIdempotencyKey(lastMsg);
+      const workflowID = idempotencyKey
+        ? `thread-run:${taskId}:${idempotencyKey}`
+        : undefined;
+
+      // The workflow body emits `chat_message_started` inside a DBOS step,
+      // so idempotent retries that collapse onto an existing workflowID
+      // don't double-count in PostHog. Don't add a duplicate emit here.
+      await enqueueThreadRun(
+        {
+          threadId: taskId,
+          request: serializableRequest,
+          source: "user-message",
+        },
+        { workflowID },
+      );
+      return c.json({ taskId }, 202);
     } catch (err) {
-      console.error("[decopilot:stream] Error", err);
-
+      console.error("[decopilot:messages] Error", err);
+      if (err instanceof TierUnavailableError) {
+        return c.json({ error: err.message }, 400);
+      }
       if (err instanceof HTTPException) {
         return c.json({ error: err.message }, err.status);
       }
-
-      if (err instanceof Error && err.name === "AbortError") {
-        console.warn("[decopilot:stream] Aborted", { error: err.message });
-        return c.json({ error: "Request aborted" }, 400);
-      }
-
       posthog.captureException(err);
-      console.error("[decopilot:stream] Failed", {
-        error: err instanceof Error ? err.message : JSON.stringify(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
-      return c.json(
-        { error: err instanceof Error ? err.message : JSON.stringify(err) },
-        500,
-      );
-    }
-  });
-
-  app.post("/:org/decopilot/runtime/stream", async (c) => {
-    try {
-      const ctx = c.get("meshContext");
-
-      // 1. Validate request
-      const {
-        organization,
-        models: clientModels,
-        agent,
-        systemMessages,
-        requestMessage,
-        temperature,
-        memory: memoryConfig,
-        thread_id,
-        branch,
-        toolApprovalLevel,
-        mode,
-      } = await validateRequest(c);
-
-      const userId = ctx.auth?.user?.id;
-      if (!userId) {
-        throw new HTTPException(401, { message: "User ID is required" });
-      }
-
-      // 2. Resolve models — use client-provided or fall back to org defaults
-      const models =
-        clientModels ?? (await resolveDefaultModels(ctx, organization.id));
-
-      // 3. Check model permissions
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
-
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          models.credentialId,
-          models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
-      }
-
-      const windowSize = memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE;
-      const resolvedThreadId = thread_id ?? memoryConfig?.thread_id;
-
-      // 4. Delegate to streamCore
-      const result = await streamCore(
-        {
-          messages: [...systemMessages, requestMessage],
-          models,
-          agent,
-          temperature,
-          toolApprovalLevel,
-          mode,
-          organizationId: organization.id,
-          userId,
-          taskId: resolvedThreadId,
-          windowSize,
-          branch: branch ?? null,
-        },
-        ctx,
-        { runRegistry, streamBuffer, cancelBroadcast },
-      );
-
-      return createUIMessageStreamResponse({
-        stream: result.stream,
-        consumeSseStream: consumeStream,
-      });
-    } catch (err) {
-      console.error("[decopilot:stream] Error", err);
-
-      if (err instanceof RunClaimError) {
-        return c.json({ error: err.message }, 409);
-      }
-
-      if (err instanceof HTTPException) {
-        return c.json({ error: err.message }, err.status);
-      }
-
-      if (err instanceof Error && err.name === "AbortError") {
-        console.warn("[decopilot:stream] Aborted", { error: err.message });
-        return c.json({ error: "Request aborted" }, 400);
-      }
-
-      console.error("[decopilot:stream] Failed", {
-        error: err instanceof Error ? err.message : JSON.stringify(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
       return c.json(
         { error: err instanceof Error ? err.message : JSON.stringify(err) },
         500,
@@ -400,124 +593,68 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   });
 
   // ============================================================================
-  // Attach Endpoint — replay JetStream-buffered stream for late-joining clients
+  // Stream Endpoint — tail the per-thread JetStream subject
   // ============================================================================
+  //
+  // Pure live tail. The client owns initial message state via the
+  // `COLLECTION_THREAD_MESSAGES_LIST` MCP tool and re-fetches the latest
+  // page on every reconnect; this endpoint serves only live UI message
+  // chunks from the JetStream subject. The persistent connection stays
+  // open across runs — clients detect run boundaries from the AI-SDK
+  // `{type: "finish"}` chunk. One open stream per (tab, thread) covers
+  // every run.
+  //
+  // Recovery for in-flight runs whose owning pod died is handled out of
+  // band: the thread-gate workflow step is restarted by the DBOS recovery
+  // executor on a healthy pod, and the heartbeat watcher in `app.ts`
+  // resurrects orphaned runs explicitly. Either way, chunks land back on
+  // this thread's JetStream subject and the existing stream tail picks
+  // them up — no client-triggered resume is needed here.
 
-  app.get("/:org/decopilot/attach/:threadId", async (c) => {
+  app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
-      const { taskId, thread, organization } = await validateThreadAccess(c);
+      const { taskId, thread } = await validateThreadAccess(c);
 
-      // ── Fast path: run is active on this pod → replay buffer ──
-      if (runRegistry.isRunning(taskId)) {
-        const replayChunkStream = await streamBuffer.createReplayStream(taskId);
-        if (!replayChunkStream) {
-          return c.body(null, 204);
-        }
-
-        const replayStream = createUIMessageStream({
-          execute: async ({ writer }) => {
-            const reader = replayChunkStream.getReader();
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                writer.write(value);
-              }
-            } finally {
-              reader.releaseLock();
-            }
-          },
-        });
-
-        return createUIMessageStreamResponse({
-          stream: replayStream,
-          consumeSseStream: consumeStream,
-        });
-      }
-
-      // ── Orphan resume path ──
-      const ctx = c.get("meshContext");
-      const userId = ctx.auth?.user?.id;
-
-      // Not in_progress → nothing to resume
-      if (thread.status !== "in_progress") {
-        return c.body(null, 204);
-      }
-
-      // Only the thread owner can trigger orphan resume
-      if (thread.created_by !== userId) {
-        return c.body(null, 204);
-      }
-
-      // No persisted config → can't resume; force-fail so user can retry
-      if (!thread.run_config) {
-        await threadStorage.forceFailIfInProgress(taskId, organization.id);
-        return c.body(null, 204);
-      }
-
-      // Validate stored config (schema drift protection)
-      const parsed = PersistedRunConfigSchema.safeParse(thread.run_config);
-      if (!parsed.success) {
-        await threadStorage.forceFailIfInProgress(taskId, organization.id);
-        return c.body(null, 204);
-      }
-      const config = parsed.data;
-
-      // Re-check model permissions with CURRENT user role
-      const allowedModels = await fetchModelPermissions(
-        ctx.db,
-        organization.id,
-        ctx.auth.user?.role,
-      );
-      if (
-        allowedModels !== undefined &&
-        !checkModelPermission(
-          allowedModels,
-          config.models.credentialId,
-          config.models.thinking.id,
-        )
-      ) {
-        throw new HTTPException(403, {
-          message: "Model not allowed for your role",
-        });
-      }
-
-      // Atomic CAS claim — succeeds for null or stale run_owner_pod
-      const claimed = await threadStorage.claimOrphanedRun(
+      // Use the DB's view, not pod-local registry state. A client attached
+      // to a non-owner pod (any multi-pod deployment, including mid-deploy
+      // and after a DBOS replay rehome) needs `"all"` to catch chunks the
+      // owning pod has already pumped to the shared JetStream subject.
+      // The buffer is purged on terminal events (run-reactor), so `"all"`
+      // only ever replays the current in-flight run.
+      const deliverPolicy = thread.status === "in_progress" ? "all" : "new";
+      const tailChunkStream = await streamBuffer.createTailStream(
         taskId,
-        organization.id,
-        getPodId(),
+        c.req.raw.signal,
+        { deliverPolicy },
       );
-      if (!claimed) {
+      if (!tailChunkStream) {
         return c.body(null, 204);
       }
 
-      // Resume the run — identity from auth context, NOT stored config
-      const result = await streamCore(
-        {
-          messages: [],
-          models: toModelsConfig(config.models),
-          agent: config.agent,
-          temperature: config.temperature,
-          toolApprovalLevel: config.toolApprovalLevel,
-          mode: config.mode,
-          organizationId: organization.id,
-          userId,
-          taskId,
-          windowSize: config.windowSize,
-          isResume: true,
+      const tailStream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          const reader = tailChunkStream.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              writer.write(value);
+            }
+          } finally {
+            reader.releaseLock();
+          }
         },
-        ctx,
-        { runRegistry, streamBuffer, cancelBroadcast },
-      );
+      });
 
-      return createUIMessageStreamResponse({
-        stream: result.stream,
+      const baseResponse = createUIMessageStreamResponse({
+        stream: tailStream,
         consumeSseStream: consumeStream,
       });
+
+      return wrapWithSseKeepalive(baseResponse);
     } catch (err) {
       if (err instanceof HTTPException) throw err;
-      console.error("[decopilot:attach] Error", err);
+      console.error("[decopilot:stream] Error", err);
       return c.body(null, 500);
     }
   });

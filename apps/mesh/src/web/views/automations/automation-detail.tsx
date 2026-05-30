@@ -5,10 +5,9 @@
  */
 
 import {
-  useAiProviderModels,
-  type AiProviderModel,
-} from "@/web/hooks/collections/use-ai-providers.ts";
-import { ModelSelector } from "@/web/components/chat/select-model.tsx";
+  SimpleModeTierDropdown,
+  type SimpleModeTier,
+} from "@/web/components/chat/simple-mode-tier-dropdown";
 import { User } from "@/web/components/user/user.tsx";
 import {
   useAutomation,
@@ -16,7 +15,11 @@ import {
   useTriggerList,
   type TriggerDefinition,
 } from "@/web/hooks/use-automations";
-import { useChatTask, useChatPrefs } from "@/web/components/chat/context";
+import {
+  useChatTask,
+  useChatPrefs,
+  useChatStream,
+} from "@/web/components/chat/context";
 import { usePreferences } from "@/web/hooks/use-preferences";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -27,10 +30,12 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import {
-  getDecopilotId,
+  StudioPackAgentId,
   useConnections,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import { usePanelActions } from "@/web/layouts/shell-layout";
+import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improve-prompt-doc";
 import {
   ArrowLeft,
   ArrowUp,
@@ -41,8 +46,9 @@ import {
   XClose,
   Zap,
 } from "@untitledui/icons";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useEffect, useReducer, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
+import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
 import type { Metadata } from "@/web/components/chat/types.ts";
 import {
@@ -61,8 +67,37 @@ import {
 interface SettingsFormData {
   name: string;
   active: boolean;
-  credential_id: string;
-  model_id: string;
+  tier: SimpleModeTier;
+}
+
+type EditSession = {
+  start: number;
+  fields: Set<string>;
+  saveCount: number;
+};
+
+type EditSessionAction =
+  | { type: "accumulate"; now: number; fields: string[] }
+  | { type: "reset" };
+
+function editSessionReducer(
+  state: EditSession | null,
+  action: EditSessionAction,
+): EditSession | null {
+  switch (action.type) {
+    case "accumulate": {
+      const base: EditSession = state ?? {
+        start: action.now,
+        fields: new Set(),
+        saveCount: 0,
+      };
+      const fields = new Set(base.fields);
+      for (const f of action.fields) fields.add(f);
+      return { ...base, fields, saveCount: base.saveCount + 1 };
+    }
+    case "reset":
+      return null;
+  }
 }
 
 // ============================================================================
@@ -72,6 +107,7 @@ interface SettingsFormData {
 import { isValidCron } from "@/web/lib/cron-utils.ts";
 import { AddStarterPopover } from "@/web/components/automations/add-starter-popover.tsx";
 import { TriggerCard } from "@/web/components/automations/trigger-card.tsx";
+import { WebhookSecretDialog } from "@/web/components/automations/webhook-secret-dialog.tsx";
 import {
   Select,
   SelectContent,
@@ -280,17 +316,15 @@ function EventTriggerForm({
 export function SettingsTab({
   automationId,
   automation,
-  virtualMcpId,
   onBack,
   onDelete,
 }: {
   automationId: string;
   automation: NonNullable<ReturnType<typeof useAutomation>["data"]>;
-  virtualMcpId: string;
   onBack?: () => void;
   onDelete?: () => void;
 }) {
-  const agentId = automation.agent?.id ?? virtualMcpId;
+  const agentId = automation.virtual_mcp_id;
   const { org } = useProjectContext();
   const { update: updateMutation, triggerAdd: addTrigger } =
     useAutomationActions();
@@ -299,12 +333,9 @@ export function SettingsTab({
 
   // Chat hooks for running the automation
   const { createTaskWithMessage } = useChatTask();
-  const {
-    setModel,
-    credentialId: chatCredentialId,
-    selectedModel: chatModel,
-    setChatMode,
-  } = useChatPrefs();
+  const { setSimpleModeTier } = useChatPrefs();
+  const { setChatOpen } = usePanelActions();
+  const { sendMessage } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
   const initialTiptapDoc =
     (automation.messages?.[0] as { metadata?: Metadata } | undefined)?.metadata
@@ -315,11 +346,22 @@ export function SettingsTab({
   const [showCustomCron, setShowCustomCron] = useState(false);
   const [cronInput, setCronInput] = useState("");
   const [showEventForm, setShowEventForm] = useState(false);
-  const editorInitializedRef = useRef(false);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tiptapDirtyRef = useRef(false);
+  const [webhookSecret, setWebhookSecret] = useState<{
+    url: string;
+    token: string;
+  } | null>(null);
+  const [isImproving, setIsImproving] = useState(false);
+  // The editor's first setTiptapDoc call is the mount-time normalization,
+  // not a user edit — we skip it so it doesn't mark dirty / autosave.
+  const [editorInitialized, setEditorInitialized] = useState(false);
+  // Tiptap is not in the RHF form (mount normalization would mark dirty
+  // before the user has typed anything). We track tiptap-dirty here and
+  // mix it into saveForm's "should we send?" decision alongside RHF's
+  // dirtyFields.
+  const [tiptapDirty, setTiptapDirty] = useState(false);
 
-  const handleImprovePrompt = () => {
+  const handleImprovePrompt = async () => {
+    if (isImproving) return;
     const parts = derivePartsFromTiptapDoc(tiptapDoc);
     const instructionsText = parts
       .filter((p): p is { type: "text"; text: string } => p.type === "text")
@@ -327,178 +369,159 @@ export function SettingsTab({
       .join("\n");
     if (!instructionsText.trim()) return;
 
-    flushEditSession();
-    track("automation_improve_clicked", {
-      automation_id: automationId,
-      agent_id: agentId,
-      instructions_length: instructionsText.length,
-    });
+    setIsImproving(true);
+    try {
+      forceSessionFlush();
+      track("automation_improve_clicked", {
+        automation_id: automationId,
+        agent_id: agentId,
+        instructions_length: instructionsText.length,
+      });
 
-    setChatMode("plan");
+      setChatOpen(true);
 
-    createTaskWithMessage({
-      virtualMcpId: getDecopilotId(org.id),
-      message: {
-        parts: [
-          {
-            type: "text",
-            text: `/writing-prompts for automation with id ${automationId}. The current message is\n\n<message>\n${instructionsText}\n</message>`,
-          },
-        ],
-      },
-    });
+      await sendMessage({
+        tiptapDoc: buildImprovePromptDoc({
+          managerAgentId: StudioPackAgentId.AUTOMATION_MANAGER(org.id),
+          managerName: "Automation Manager",
+          kind: "automation",
+          id: automationId,
+          instructions: instructionsText,
+        }),
+      });
+    } finally {
+      setIsImproving(false);
+    }
   };
 
-  const defaultCredentialId =
-    automation.models?.credentialId || chatCredentialId || "";
-  const defaultModelId =
-    automation.models?.thinking?.id || chatModel?.modelId || "";
+  const defaultTier: SimpleModeTier = automation.models?.tier ?? "smart";
 
   const form = useForm<SettingsFormData>({
     defaultValues: {
       name: automation.name,
       active: automation.active,
-      credential_id: defaultCredentialId,
-      model_id: defaultModelId,
+      tier: defaultTier,
     },
   });
 
   const watchActive = form.watch("active");
-  const watchConnectionId = form.watch("credential_id");
-  const watchModelId = form.watch("model_id");
-
-  const { models, isLoading: isModelsLoading } = useAiProviderModels(
-    watchConnectionId || undefined,
-  );
-  const selectedModel: AiProviderModel | null =
-    models.find((m) => m.modelId === watchModelId) ?? null;
 
   // Session-based tracking for automation_updated. Auto-saves persist every
   // ~1s but we only emit one PostHog event per edit-session (aggregated
   // fields + save_count + edit_duration_ms). A session ends after 30s of
   // quiet, or on explicit flush (tab-leave, improve, test).
-  const editSessionStartRef = useRef<number | null>(null);
-  const editSessionFieldsRef = useRef<Set<string>>(new Set());
-  const editSessionSaveCountRef = useRef(0);
-  const editSessionFlushRef = useRef<ReturnType<typeof setTimeout> | null>(
+  const [editSession, dispatchEditSession] = useReducer(
+    editSessionReducer,
     null,
   );
-  const EDIT_SESSION_QUIET_MS = 30_000;
 
   const flushEditSession = () => {
-    if (editSessionFlushRef.current) {
-      clearTimeout(editSessionFlushRef.current);
-      editSessionFlushRef.current = null;
-    }
-    if (editSessionStartRef.current === null) return;
+    if (editSession === null) return;
     track("automation_updated", {
       automation_id: automationId,
       agent_id: agentId,
-      fields: Array.from(editSessionFieldsRef.current),
-      save_count: editSessionSaveCountRef.current,
-      edit_duration_ms: Date.now() - editSessionStartRef.current,
+      fields: Array.from(editSession.fields),
+      save_count: editSession.saveCount,
+      edit_duration_ms: Date.now() - editSession.start,
     });
-    editSessionStartRef.current = null;
-    editSessionFieldsRef.current = new Set();
-    editSessionSaveCountRef.current = 0;
+    dispatchEditSession({ type: "reset" });
   };
 
   const saveForm = async (): Promise<boolean> => {
-    const hasDirtyFields = Object.keys(form.formState.dirtyFields).length > 0;
-    if (!hasDirtyFields && !tiptapDirtyRef.current) return true;
-    const dirtyFormKeys = Object.keys(form.formState.dirtyFields);
-    const tiptapWasDirty = tiptapDirtyRef.current;
-    tiptapDirtyRef.current = false;
+    // form.formState is a Proxy over React state. When saveForm runs
+    // synchronously after setValue (e.g. via flushAndSave), React hasn't
+    // processed the batched update yet and form.formState.dirtyFields
+    // returns the previous render's snapshot — empty on the first edit — so
+    // the save would bail. Read control._formState.dirtyFields for the live
+    // value. Same gotcha as virtual-mcp.
+    const liveDirtyFields = (
+      form.control as unknown as {
+        _formState: { dirtyFields: Record<string, unknown> };
+      }
+    )._formState.dirtyFields;
+    const dirtyKeys = Object.keys(liveDirtyFields);
+    if (dirtyKeys.length === 0 && !tiptapDirty) return true;
 
-    const values = form.getValues();
+    const formData = form.getValues();
+    const previousDefaults = (
+      form.control as unknown as { _defaultValues: SettingsFormData }
+    )._defaultValues;
+
+    // Rebase the dirty baseline pre-mutate so an edit during the in-flight
+    // save that returns a value to its pre-save default still registers as
+    // dirty. keepValues preserves user view; only _defaultValues advances.
+    form.reset(formData, { keepValues: true });
+    const tiptapWasDirty = tiptapDirty;
+    setTiptapDirty(false);
+
+    const updatePayload = {
+      id: automationId,
+      name: formData.name,
+      active: formData.active,
+      models: { tier: formData.tier },
+      messages: tiptapDocToMessages(tiptapDoc),
+      temperature: 0,
+    };
+
     try {
-      const coercedCredentialId =
-        values.credential_id && values.model_id ? values.credential_id : "";
-      const coercedModelId =
-        values.credential_id && values.model_id ? values.model_id : "";
-
-      const updatePayload = {
-        id: automationId,
-        name: values.name,
-        active: values.active,
-        agent: {
-          id: agentId,
-        },
-        models: {
-          credentialId: coercedCredentialId,
-          thinking: {
-            id: coercedModelId,
-          },
-        },
-        messages: tiptapDocToMessages(tiptapDoc),
-        temperature: 0,
-      };
       await updateMutation.mutateAsync(updatePayload);
-
-      // Accumulate into the edit session.
-      if (editSessionStartRef.current === null) {
-        editSessionStartRef.current = Date.now();
-      }
-      for (const k of dirtyFormKeys) editSessionFieldsRef.current.add(k);
-      if (tiptapWasDirty) editSessionFieldsRef.current.add("messages");
-      editSessionSaveCountRef.current += 1;
-      if (editSessionFlushRef.current) {
-        clearTimeout(editSessionFlushRef.current);
-      }
-      editSessionFlushRef.current = setTimeout(
-        flushEditSession,
-        EDIT_SESSION_QUIET_MS,
-      );
-
-      form.reset({
-        ...values,
-        credential_id: coercedCredentialId,
-        model_id: coercedModelId,
-      });
-      return true;
     } catch {
-      tiptapDirtyRef.current = true;
+      // Roll back the rebase so user edits remain dirty for the next attempt.
+      form.reset(previousDefaults, { keepValues: true });
+      if (tiptapWasDirty) setTiptapDirty(true);
       return false;
     }
+
+    const fields = [...dirtyKeys];
+    if (tiptapWasDirty) fields.push("messages");
+    dispatchEditSession({ type: "accumulate", now: Date.now(), fields });
+    scheduleSessionFlush();
+    return true;
   };
 
-  const debouncedSave = () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveForm();
-    }, 1000);
-  };
+  const { schedule: scheduleSave, flush: flushAndSave } = useDebouncedAutosave({
+    save: saveForm,
+  });
 
-  const flushAndSave = async () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    return saveForm();
-  };
+  const { schedule: scheduleSessionFlush, flush: forceSessionFlush } =
+    useDebouncedAutosave({
+      delayMs: 30_000,
+      save: async () => flushEditSession(),
+    });
+
+  // form.watch(callback) fires on value changes via setValue, but not on
+  // form.reset({ keepValues: true }) (which only emits state, no `values`
+  // key) — so saveForm's pre-mutate rebase does NOT loop. Edit handlers can
+  // just call form.setValue with shouldDirty:true and trust this
+  // subscription to schedule the save. flushAndSave remains for explicit
+  // "save NOW" semantics.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const sub = form.watch(() => scheduleSave());
+    return () => sub.unsubscribe();
+    // scheduleSave is stable for our purpose: its closure mediates through
+    // stable refs inside useDebouncedAutosave.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setTiptapDoc = (doc: Metadata["tiptapDoc"]) => {
     setTiptapDocRaw(doc);
-    if (!editorInitializedRef.current) {
-      editorInitializedRef.current = true;
+    if (!editorInitialized) {
+      setEditorInitialized(true);
       return;
     }
-    tiptapDirtyRef.current = true;
-    debouncedSave();
+    setTiptapDirty(true);
+    scheduleSave();
   };
-
-  const watchSubscribedRef = useRef(false);
-  if (!watchSubscribedRef.current) {
-    watchSubscribedRef.current = true;
-    form.watch(() => {
-      debouncedSave();
-    });
-  }
 
   const handleRunClick = async () => {
     track("automation_test_clicked", {
       automation_id: automationId,
       agent_id: agentId,
     });
+
     const saved = await flushAndSave();
-    flushEditSession();
+    forceSessionFlush();
     if (!saved) return;
 
     if (!tiptapDoc) {
@@ -506,10 +529,9 @@ export function SettingsTab({
       return;
     }
 
-    if (selectedModel && watchConnectionId) {
-      setModel({ ...selectedModel, keyId: watchConnectionId });
-    }
+    setSimpleModeTier(form.getValues("tier"));
 
+    setChatOpen(true);
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
 
     const parts = derivePartsFromTiptapDoc(tiptapDoc);
@@ -534,11 +556,17 @@ export function SettingsTab({
         {/* Header: Name + Status + Creator */}
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-4">
-            <Input
-              {...form.register("name")}
-              placeholder="Automation name"
-              className="border border-transparent shadow-none px-0 text-lg font-medium h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent flex-1"
-              style={{ boxShadow: "none" }}
+            <Controller
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <Input
+                  {...field}
+                  placeholder="Automation name"
+                  className="border border-transparent shadow-none px-0 text-lg font-medium h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent flex-1"
+                  style={{ boxShadow: "none" }}
+                />
+              )}
             />
             {onDelete && (
               <Button
@@ -560,7 +588,7 @@ export function SettingsTab({
                   checked={field.value}
                   onCheckedChange={(checked) => {
                     field.onChange(checked);
-                    setTimeout(() => flushAndSave(), 0);
+                    flushAndSave();
                   }}
                   className="cursor-pointer"
                 />
@@ -596,6 +624,13 @@ export function SettingsTab({
               onEventSelect={() => {
                 setShowEventForm(true);
                 setShowCustomCron(false);
+              }}
+              onWebhookCreated={(secret) => {
+                track("automation_trigger_added", {
+                  automation_id: automationId,
+                  trigger_type: "webhook",
+                });
+                setWebhookSecret(secret);
               }}
             />
           </div>
@@ -716,6 +751,15 @@ export function SettingsTab({
               />
             </Suspense>
           )}
+
+          <WebhookSecretDialog
+            open={webhookSecret !== null}
+            onOpenChange={(open) => {
+              if (!open) setWebhookSecret(null);
+            }}
+            url={webhookSecret?.url ?? null}
+            token={webhookSecret?.token ?? null}
+          />
         </div>
 
         {/* Section: Instructions */}
@@ -728,7 +772,7 @@ export function SettingsTab({
               variant="outline"
               size="sm"
               className="h-7 gap-1.5 px-2 text-xs"
-              disabled={!tiptapDoc}
+              disabled={isImproving || !tiptapDoc}
               onClick={handleImprovePrompt}
             >
               <Stars01 size={13} />
@@ -746,23 +790,12 @@ export function SettingsTab({
                 className="max-h-[45vh]"
               />
 
-              <div className="flex items-center justify-end gap-1.5 p-2.5">
-                <ModelSelector
-                  model={selectedModel}
-                  isLoading={isModelsLoading}
-                  credentialId={watchConnectionId || null}
-                  onCredentialChange={(id) => {
-                    form.setValue("credential_id", id ?? "", {
-                      shouldDirty: true,
-                    });
-                    form.setValue("model_id", "", { shouldDirty: true });
-                  }}
-                  onModelChange={(model) =>
-                    form.setValue("model_id", model.modelId, {
-                      shouldDirty: true,
-                    })
+              <div className="@container/chat-bottom flex items-center justify-end gap-1.5 p-2.5">
+                <SimpleModeTierDropdown
+                  tier={form.watch("tier")}
+                  onSelect={(tier) =>
+                    form.setValue("tier", tier, { shouldDirty: true })
                   }
-                  placeholder="Model"
                 />
                 <Tooltip>
                   <TooltipTrigger asChild>

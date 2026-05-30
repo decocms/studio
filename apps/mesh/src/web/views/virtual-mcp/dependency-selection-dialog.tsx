@@ -186,7 +186,11 @@ function ToolsTab({
   disabled?: boolean;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({ connectionId, orgId: org.id });
+  const client = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
   const { data } = useMCPToolsList({ client });
 
   const items: SelectableItem[] = data.tools.map((tool) => ({
@@ -225,7 +229,11 @@ function ResourcesTab({
   disabled?: boolean;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({ connectionId, orgId: org.id });
+  const client = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
   const { data } = useMCPResourcesList({ client });
 
   const items: SelectableItem[] = data.resources.map((resource) => ({
@@ -258,7 +266,11 @@ function PromptsTab({
   disabled?: boolean;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({ connectionId, orgId: org.id });
+  const client = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
   const { data } = useMCPPromptsList({ client });
 
   const items: SelectableItem[] = data.prompts.map((prompt) => ({

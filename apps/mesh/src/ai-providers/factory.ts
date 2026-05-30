@@ -1,7 +1,12 @@
 import type { ModelCapability } from "@decocms/mesh-sdk";
 import type { AIProviderKeyStorage } from "../storage/ai-provider-keys";
 import type { ModelListCache } from "./model-list-cache";
-import type { MeshProvider, ModelInfo, OpenRouterAPIModel } from "./types";
+import type {
+  MeshProvider,
+  ModelInfo,
+  OpenRouterAPIModel,
+  ProviderAdapter,
+} from "./types";
 import { getProviders } from "./registry";
 
 // Sentinel org ID for the shared OpenRouter metadata cache (not org-specific)
@@ -161,14 +166,19 @@ export class AIProviderFactory {
       organizationId,
     );
     const providerId = keyInfo.providerId;
+    const adapter = getProviders()[providerId];
+    if (!adapter) throw new Error(`Unknown provider: ${providerId}`);
 
     if (this.cache) {
       const cached = await this.cache.get(organizationId, providerId);
-      if (cached) return cached;
+      if (cached) {
+        // Re-apply per-request flags (e.g. asyncResearch) on the cached
+        // payload — entries cached before the flag existed otherwise leak
+        // through stale.
+        return applyProviderFlags(cached, adapter, apiKey);
+      }
     }
 
-    const adapter = getProviders()[providerId];
-    if (!adapter) throw new Error(`Unknown provider: ${providerId}`);
     const provider = adapter.create(apiKey);
     const rawModels = await provider.listModels();
 
@@ -198,6 +208,26 @@ export class AIProviderFactory {
       await this.cache.set(organizationId, providerId, result);
     }
 
-    return result;
+    return applyProviderFlags(result, adapter, apiKey);
   }
+}
+
+/**
+ * Stamp request-time flags onto a model list. Lets us ship new flags
+ * (currently `asyncResearch`) without forcing a cache invalidation.
+ *
+ * Creates a provider once and reuses it across all models — `adapter.create`
+ * is cheap (just closure construction) but worth not repeating per model.
+ */
+function applyProviderFlags(
+  models: ModelInfo[],
+  adapter: ProviderAdapter,
+  apiKey: string,
+): ModelInfo[] {
+  const provider = adapter.create(apiKey);
+  const asyncResearch = provider.asyncResearch;
+  if (!asyncResearch) return models;
+  return models.map((m) =>
+    asyncResearch.canHandle(m.modelId) ? { ...m, asyncResearch: true } : m,
+  );
 }

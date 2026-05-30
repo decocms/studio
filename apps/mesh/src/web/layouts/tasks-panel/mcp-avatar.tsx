@@ -12,7 +12,7 @@ export function McpAvatar({
   showAutomationBadge,
 }: {
   virtualMcpId: string | null | undefined;
-  size?: "sm" | "md";
+  size?: "xs" | "sm" | "md";
   showAutomationBadge?: boolean;
 }) {
   return (
@@ -39,7 +39,7 @@ function McpAvatarInner({
   size,
 }: {
   virtualMcpId: string;
-  size: "sm" | "md";
+  size: "xs" | "sm" | "md";
 }) {
   const entity = useVirtualMCP(virtualMcpId);
   if (!entity) return <AgentAvatar icon={null} name="?" size={size} />;

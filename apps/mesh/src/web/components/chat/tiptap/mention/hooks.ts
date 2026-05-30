@@ -128,12 +128,17 @@ function useMenuNavigation<T>({
   // Attach keyboard listener to editor
   // eslint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
-    const dom = editor.view.dom;
+    if (editor?.isDestroyed) return undefined;
 
-    // Guard against editor being destroyed
-    if (editor?.isDestroyed || !dom) {
+    let dom: HTMLElement;
+    try {
+      dom = editor.view.dom;
+    } catch {
+      // Editor view not mounted yet (or already torn down). Bail; the effect
+      // will re-run when the editor reference changes.
       return undefined;
     }
+    if (!dom) return undefined;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const currentItems = itemsRef.current;
@@ -358,6 +363,7 @@ export function useMentionState({
 
   // Ref for onOpenChange to avoid stale closures in the plugin
   const onOpenChangeRef = useRef(onOpenChange);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onOpenChangeRef.current = onOpenChange;
 
   // Register the suggestion plugin here at the top level

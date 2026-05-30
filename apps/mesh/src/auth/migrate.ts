@@ -35,10 +35,17 @@ export async function migrateBetterAuth(databaseUrl?: string): Promise<string> {
 
   // Minimal options — only needs plugins to discover which tables to create.
   // Does not need auth config, rate limiting, hooks, etc.
+  //
+  // Plugin options that change which tables get created (e.g. organization's
+  // dynamicAccessControl, which gates the organizationRole and
+  // organizationResource tables) must mirror the real auth config in
+  // ../auth/index.ts so the in-process migration matches the CLI migration.
   const options = {
     database: freshDatabase,
     plugins: [
-      organization(),
+      organization({
+        dynamicAccessControl: { enabled: true, enableCustomResources: true },
+      }),
       adminPlugin(),
       apiKey(),
       jwt(),

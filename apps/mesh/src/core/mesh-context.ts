@@ -13,9 +13,12 @@
 
 import type { Meter, Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
+import type { LinkClaim } from "../links/link-claim-registry";
+import type { LinkClaimRegistry } from "@/links/link-claim-registry";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { Database, Permission } from "../storage/types";
 import type { AccessControl } from "./access-control";
+import type { HarnessContext } from "./harness-context";
 export type { BetterAuthInstance } from "@/auth";
 // Re-export for consumers
 export type { AccessControl, CredentialVault };
@@ -72,8 +75,16 @@ export interface BoundAuthClient {
   /**
    * Check if the authenticated user has the specified permission
    * Delegates to Better Auth's Organization plugin hasPermission API
+   *
+   * @param permission - Permission to check
+   * @param options.organizationId - Override the session-based active org.
+   *   When set, Better Auth uses this org for the permission check instead
+   *   of the user's session-active org. Used by path-resolved org middleware.
    */
-  hasPermission(permission: Permission): Promise<boolean>;
+  hasPermission(
+    permission: Permission,
+    options?: { organizationId?: string },
+  ): Promise<boolean>;
 
   // Organization APIs (bound with headers)
   organization: {
@@ -172,6 +183,7 @@ export interface MeshAuth {
     email?: string;
     emailVerified?: boolean;
     name?: string;
+    image?: string;
     role?: string; // From Better Auth organization plugin
   };
 
@@ -197,6 +209,14 @@ export interface OrganizationScope {
   id: string;
   slug?: string;
   name?: string;
+  /**
+   * Caller's role within this organization (e.g. "owner", "admin", "member").
+   * Set by `resolveOrgFromPath` when the org is resolved from the URL slug,
+   * so downstream code (notably AuthTransport, which constructs a fresh
+   * AccessControl per proxied tool call) can use the path-resolved role
+   * instead of the session's active-org role — they may differ.
+   */
+  role?: string;
 }
 
 // ============================================================================
@@ -225,6 +245,7 @@ export interface RequestMetadata {
 import type { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import type { BetterAuthInstance } from "@/auth";
 import type { OrgScopedThreadStorage } from "@/storage/threads";
+import type { OrgScopedAsyncResearchJobStorage } from "@/storage/async-research-jobs";
 import type { EventBus } from "../event-bus/interface";
 import type { ConnectionStorage } from "../storage/connection";
 import type {
@@ -245,9 +266,11 @@ import type { RegistryStorage } from "../storage/registry";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
+import { SecretStorage } from "@/storage/secrets";
+import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
-import type { FireAutomationResult } from "../automations/fire";
+import type { FireAutomationOutcome } from "../automations/dbos-workflow";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 
 // Better Auth instance type - flexible for testing
@@ -270,8 +293,11 @@ export interface MeshStorage {
   virtualMcps: VirtualMCPStorage;
   users: UserStorage;
   threads: OrgScopedThreadStorage;
+  asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
   aiProviderKeys: AIProviderKeyStorage;
+  secrets: SecretStorage;
+  orgFileConfigs: OrgFileConfigStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   automations: AutomationsStorage;
   triggerCallbackTokens: TriggerCallbackTokenStorage;
@@ -297,7 +323,7 @@ export interface Timings {
  * This provides access to all necessary services without coupling
  * to implementation details.
  */
-export interface MeshContext {
+export interface MeshContext extends HarnessContext {
   // Connection ID (from url)
   connectionId?: string;
 
@@ -373,7 +399,39 @@ export interface MeshContext {
     automationId: string,
     orgId: string,
     userId: string,
-  ) => Promise<FireAutomationResult>;
+  ) => Promise<FireAutomationOutcome>;
+
+  /**
+   * Sandbox dispatch preference for the in-flight run, populated by
+   * `prepareRun` from the resolved `DispatchTarget`:
+   *   - `"cluster-default"` — use whichever sandbox kind `STUDIO_SANDBOX_PROVIDER`
+   *     resolves to on this cluster (could be `local-docker`, `cluster`, or
+   *     `user-desktop` depending on the env).
+   *   - `"user-desktop"` — decopilot still runs in the cluster, but its
+   *     Code Sandbox tool calls are forwarded to the user's link daemon.
+   * Unset for non-decopilot harnesses (`remote-cli` runs never enter the
+   * sandbox tool path on the cluster side).
+   */
+  sandboxPreference?: "cluster-default" | "user-desktop";
+
+  /**
+   * Link claim for the user this run is dispatched on behalf of, if any.
+   * Set by `prepareRun` when the resolved `DispatchTarget` references a
+   * link (either `local/desktop` or `remote-cli`). The desktop sandbox
+   * provider reads this to know which daemon is connected without re-querying
+   * the registry. Unset for `local/default` runs.
+   */
+  linkForCurrentRun?: LinkClaim;
+
+  /**
+   * Cluster-wide LinkClaimRegistry, injected by the context factory. Tools
+   * that touch the sandbox provider outside the decopilot dispatch path (e.g.
+   * `SANDBOX_START`, the always-on sandbox auto-provisioner) read this to
+   * resolve the acting user's link on demand — there is no `prepareRun` to
+   * pre-populate `linkForCurrentRun` for them. Undefined in test contexts
+   * that don't supply a registry.
+   */
+  linkClaimRegistry?: LinkClaimRegistry;
 }
 
 // ============================================================================

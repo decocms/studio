@@ -1,101 +1,101 @@
 ---
 title: Agents
-description: Single-purpose virtual MCPs designed for specific tasks
+description: The working surface of Studio — one agent, one job, its own thread history and tools
 icon: Bot
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-<Callout type="info">
-  This page documents the **planned architecture** for agents in deco Studio. The implementation is in development.
-</Callout>
+## What is an agent?
 
-## What Are Agents?
+An **agent** is an AI configured for a specific job: a focused set of tools, clear instructions, and a single purpose. Agents are the working surface of Studio — almost everything you do in the product happens inside one.
 
-**Agents** are single-purpose virtual MCPs optimized for specific tasks. While [Projects](/en/studio/projects) provide general-purpose work environments, agents focus narrowly on accomplishing one thing well.
+An agent has:
 
-Agents provide:
+- **A clear goal** — what it does and when to use it
+- **The right tools** — only what it needs, attached from your [connections](/en/studio/connections)
+- **Detailed instructions** — how to behave, what to prioritize, what to avoid
+- **A thread history** — every past conversation with it, saved and resumable
+- **A layout** — what the user sees when they open the agent, plus any pinned views surfaced from its connected tools
+- **An optional sandbox** — an isolated runtime where the agent can run code from a linked repo (its own MCP server, a dev server, etc.)
+- **Optional automations** — schedules or event triggers that run the agent unattended
 
-- **Focused capabilities** - Curated tools for specific tasks
-- **Task-specific context** - Resources and guidelines tailored to the agent's purpose
-- **Single-purpose design** - Clear objective with no unnecessary complexity
+Agents live in the left sidebar of Studio. Click one and the whole screen becomes that agent.
 
-Agents are organization-wide configurations available in the sidebar under the **Agents** section. Each agent can be spawned in any scope (tasks, subtasks, projects) with fresh execution context, providing a focused workspace for its specific task.
+## The agent screen
 
-The key distinction: projects organize capabilities for broad work contexts, while agents optimize for single-purpose execution.
+When you open an agent, the layout is:
 
-## How Agents Work
+- **Left** — the list of threads (conversations) you've had with this agent. Click any to resume it. Start a new one with the chat input.
+- **Center / bottom** — the chat surface. Talk to the agent in natural language; it uses its attached tools to do the work.
+- **Right** — the agent panel, with three tabs:
+  - **Settings** — name, description, icon, instructions, attached connections, **layout** (the default view users see when they open the agent, plus pinned views from any tools that expose an interactive UI), and **sandbox** options (a GitHub repo to run the agent's code, package manager, dev port)
+  - **Automations** — schedules and event triggers attached to this agent
+  - **Git** — branch/PR view if the agent is linked to a GitHub repo
 
-Agents follow the same pattern as standard agent skills (`SKILL.md` files), making them familiar and easy to understand:
+Everything about a single agent lives on this one screen.
 
-**Like SKILL.md skills:**
-- **Description** - Brief explanation of what the agent does and when to use it (like the `description:` field in `SKILL.md`)
-- **Instructions** - Detailed guidelines for how the agent operates (like the body of a `SKILL.md` file)
+### Layout and pinned views
 
-**Plus Virtual MCP capabilities:**
-- **Name** - Identifies the agent (e.g., "Deployment Agent", "Research Agent")
-- **Tools** - Actions the agent can take (select from [connections](/en/studio/connections) or define inline)
-- **Resources** - Additional context and documentation
-- **Prompts** - Workflow templates
+Some connections expose more than tools — they ship an interactive UI (a dashboard, a form, a data explorer) alongside their MCP endpoint. In the agent's **Layout** settings, you can pin any of those views so they appear as top-level tabs inside the agent. This is how an agent turns into a small purpose-built app, not just a chat.
 
-[decopilot](/en/studio/decopilot/overview) uses the **description** field to understand when to spawn each agent—just like it uses skill descriptions to know when to invoke skills. This makes agents discoverable and automatically available when relevant to the task at hand.
+These views come from **MCP apps**.
 
-Since agents are [Virtual MCPs](/en/studio/virtual-mcps), you can compose them from existing connections, define capabilities inline, or mix both approaches.
+### MCP apps: extending Studio with tools + UI
 
-## Example: Order Fulfillment Agent
+An **MCP app** is the way to extend Studio today. It's a regular MCP server that bundles two things in one package:
 
-An order fulfillment agent might aggregate Shopify tools for order management, ShipStation tools for shipping label generation, and Slack tools for fulfillment team notifications. The agent handles order fulfillment with a focused toolset—fetch pending orders, check inventory, generate shipping labels, send tracking notifications—all within its single-purpose scope.
+- **Tools** — the actions an agent can take
+- **Views** — React UIs (a page, a panel, a dashboard) shipped as resources, linked to specific tools via `_meta.ui.resourceUri`
 
-## Built-in Agents
+When an MCP app is installed as a connection, Studio knows which views belong to which tools. Pin a view in the agent's Layout and it surfaces as a tab in the agent — clicking a relevant tool result, or opening the tab directly, loads the view inline. Two-way communication between the chat and the view is handled by Studio.
 
-deco Studio includes built-in agents for common mesh operations. These agents use the **Management MCP**—a self-referential MCP that exposes mesh management capabilities through the MCP protocol.
+Authoring an MCP app uses the `@decocms/runtime` framework (React 19 + Tailwind + shadcn, built to a single HTML file with Vite). The reference template — including project structure, build setup, and examples of tools-with-views — lives at [github.com/decocms/mcp-app](https://github.com/decocms/mcp-app).
 
-Built-in agents available out-of-the-box:
+In a future release, Studio will let you build simple views directly inside the agent UI, without scaffolding a repo. For anything custom or production-grade today, start from the template repo above.
 
-- **Agent Management** - Create, edit, and delete agents
-- **Connection Management** - Manage MCP server connections
-- **Permission Management** - Control access and authorization
-- **MCP Store** - Browse and install MCPs from the store
-- **User Management** - Invite and manage organization members
+### Sandbox
 
-These agents operate at organization level and leverage Management MCP tools for platform configuration.
+An agent can be backed by code. Link it to a GitHub repository in **Settings → Sandbox** and Studio will run the repo as an isolated dev environment scoped to that agent — typically the agent's own MCP server, but it can be any service the agent needs. The sandbox starts on demand, lives only as long as the agent needs it, and never leaks across agents.
 
-## Agent Design Principles
+## An agent is a virtual MCP
 
-**Single-purpose focus**: Each agent should do one thing well. Narrow scope improves clarity, reliability, and maintainability.
+Each agent in Studio is exposed as its own **MCP endpoint**: a curated bundle of tools, resources, and instructions that any MCP-compatible client can connect to. You can think of an agent as a "virtual MCP server" that you assemble visually — pick a few tools from your connections, layer on instructions, and you've published a focused MCP endpoint your team (or your other agents) can use.
 
-**Clear description**: Write descriptions that help decopilot understand when to spawn the agent. Use `[Verb] + [Object] + [Context]` pattern:
-- "Fulfill customer orders and generate shipping labels"
-- "Analyze sales data for inventory optimization"
-- "Process customer refunds and returns"
+This is why the same agent can be used three different ways:
 
-**Detailed instructions**: Provide clear guidelines in the instructions field—just like you would in a `SKILL.md` file. Include constraints, workflow steps, and behavioral guidelines.
+- **From the Studio chat** — open the agent and talk to it
+- **From an external client** — point Cursor, Claude Desktop, or any MCP client at the agent's endpoint
+- **From another agent or tool** — call it programmatically over MCP
 
-**Tool selection**: Choose tools that align with the agent's description. A customer service agent needs order lookup and refund tools; an inventory agent needs stock checking and alert tools. Overly broad tool access dilutes focus.
+When two attached connections expose a tool with the same name, the one from the connection listed first wins; the duplicate is dropped silently.
 
-**Good**: "Order Fulfillment Agent" (processes and ships orders)
-**Too broad**: "Ecommerce Operations Agent" (fulfillment, customer service, inventory, marketing, analytics...)
+## Attaching connections
 
-## Using Agents
+Connections live in **Settings → Connections** at the org level. Inside an agent's **Settings** tab, you choose which connections (and which specific tools from each) the agent can use. Pick narrow. An agent with three well-chosen tools behaves more predictably than one with thirty.
 
-Agents can be used in several ways:
+## Built-in agents
 
-- **Spawned by decopilot** - Agents created on-demand with fresh context for specific tasks
-- **Built-in agents** - Pre-configured agents for mesh operations, ready immediately
-- **Custom agents** - Domain-specific agents for your team's unique workflows
+Studio ships with agents for managing the platform itself — creating other agents, configuring connections, managing members, browsing the store. They're available immediately without setup.
 
-When working with an agent, you'll only see the tools, resources, and prompts configured for that agent's specific purpose. This focused view helps you stay on task without distraction.
+## Designing a good agent
 
-## Benefits Summary
+**Keep the scope tight.** An agent that does one thing well is more reliable and easier to maintain than one that tries to do everything. If you find yourself attaching unrelated tools, make a second agent.
 
-Agents provide focused capabilities with clear advantages:
+**Write instructions like a handoff.** Step-by-step workflow, edge cases to watch for, what to do when something goes wrong. The instructions field is where the agent's personality and judgment live.
 
-- **Focused capabilities** - Single-purpose design ensures clarity and reliability
-- **Fresh context** - Spawned agents start with clean context for their task
-- **Reusable patterns** - Define once, use across projects and workflows
-- **Built-in operations** - Pre-configured agents for common mesh tasks
-- **Self-referential management** - Management MCP enables agents to manage mesh itself
+**Choose tools deliberately.** A customer service agent needs order lookup and refund tools — not inventory or marketing tools.
+
+**Good**: "Order Fulfillment Agent" — processes and ships orders
+**Too broad**: "Ecommerce Operations Agent" — fulfillment, customer service, inventory, marketing, analytics…
+
+## Ways to run an agent
+
+- **Interactively** — open the agent and chat
+- **Unattended** — attach an [automation](/en/studio/automations) that runs it on a schedule or event
+- **From decopilot** — decopilot can hand a task to a specialist agent in a subtask (see [Decopilot](/en/studio/decopilot/overview))
+- **From your own code** — call its MCP endpoint directly
 
 ---
 
-**Next steps**: Learn about [Virtual MCPs](/en/studio/virtual-mcps) to understand the foundation, explore [decopilot](/en/studio/decopilot/overview) to see how agents are spawned dynamically, or set up [Automations](/en/studio/automations) for unattended agent execution on schedules and events.
+**Next:** Attach tools via [Connections](/en/studio/connections), run agents unattended with [Automations](/en/studio/automations), or see [Decopilot](/en/studio/decopilot/overview) for how Studio's built-in assistant uses agents.

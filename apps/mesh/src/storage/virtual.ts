@@ -13,8 +13,11 @@
 import type { Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import {
+  getWellKnownBrandContextSetupVirtualMCP,
   getWellKnownDecopilotVirtualMCP,
+  isBrandContextSetup,
   isDecopilot,
+  normalizeSandboxMap,
 } from "@decocms/mesh-sdk";
 import type {
   VirtualMCPCreateData,
@@ -129,30 +132,31 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     id: string,
     organizationId?: string,
   ): Promise<VirtualMCPEntity | null> {
-    // Handle Decopilot ID - return Decopilot agent with all org connections
+    // Handle Decopilot ID — Decopilot is a pure orchestrator with no
+    // aggregated tools. Every platform action goes through a Studio Pack
+    // manager (Agent / Automation / Connection / Store) via `subtask`,
+    // and every product action goes to a custom org agent the same way.
+    // The model uses the <available-agents> catalog as its routing table.
     const decopilotOrgId = isDecopilot(id);
     if (decopilotOrgId) {
       const resolvedOrgId = organizationId ?? decopilotOrgId;
-
-      // Get all active connections for the organization
-      const connections = await this.db
-        .selectFrom("connections")
-        .selectAll()
-        .where("organization_id", "=", resolvedOrgId)
-        .where("status", "!=", "inactive")
-        .where("status", "!=", "error")
-        .execute();
-
-      // Return Decopilot agent with connections populated
       return {
         ...getWellKnownDecopilotVirtualMCP(resolvedOrgId),
         pinned: false,
-        connections: connections.map((c) => ({
-          connection_id: c.id,
-          selected_tools: null, // null = all tools
-          selected_resources: null, // null = all resources
-          selected_prompts: null, // null = all prompts
-        })),
+        connections: [],
+      };
+    }
+
+    // Well-known guided-onboarding agent for the brand-context preset.
+    // System prompt lives in `metadata.instructions`; the matching
+    // built-in tool is injected by dispatchRun based on this id.
+    const bcsOrgId = isBrandContextSetup(id);
+    if (bcsOrgId) {
+      const resolvedOrgId = organizationId ?? bcsOrgId;
+      return {
+        ...getWellKnownBrandContextSetupVirtualMCP(resolvedOrgId),
+        pinned: false,
+        connections: [],
       };
     }
 
@@ -220,6 +224,46 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       .execute();
 
     // Group aggregations by parent_connection_id
+    const aggregationsByParent = new Map<string, RawAggregationRow[]>();
+    for (const agg of aggregationRows as RawAggregationRow[]) {
+      const existing = aggregationsByParent.get(agg.parent_connection_id) ?? [];
+      existing.push(agg);
+      aggregationsByParent.set(agg.parent_connection_id, existing);
+    }
+
+    return rows.map((row) =>
+      this.deserializeVirtualMCPEntity(
+        row as unknown as RawConnectionRow,
+        aggregationsByParent.get(row.id) ?? [],
+      ),
+    );
+  }
+
+  async listByIds(
+    organizationId: string,
+    ids: string[],
+  ): Promise<VirtualMCPEntity[]> {
+    if (ids.length === 0) return [];
+
+    const rows = await this.db
+      .selectFrom("connections")
+      .selectAll()
+      .where("id", "in", ids)
+      .where("organization_id", "=", organizationId)
+      .where("connection_type", "=", "VIRTUAL")
+      .execute();
+
+    if (rows.length === 0) return [];
+
+    const virtualMcpIds = rows.map((r) => r.id);
+
+    const aggregationRows = await this.db
+      .selectFrom("connection_aggregations")
+      .selectAll()
+      .where("parent_connection_id", "in", virtualMcpIds)
+      .where("dependency_mode", "=", "direct")
+      .execute();
+
     const aggregationsByParent = new Map<string, RawAggregationRow[]>();
     for (const agg of aggregationRows as RawAggregationRow[]) {
       const existing = aggregationsByParent.get(agg.parent_connection_id) ?? [];
@@ -395,18 +439,27 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
   }
 
   async delete(id: string): Promise<void> {
-    // First delete aggregations (no cascade since it's a different relationship)
-    await this.db
-      .deleteFrom("connection_aggregations")
-      .where("parent_connection_id", "=", id)
-      .execute();
+    await this.db.transaction().execute(async (trx) => {
+      // Delete threads initiated with this agent. virtual_mcp_id has no DB FK,
+      // so there's no automatic cascade; thread_messages cascade via threads.id.
+      await trx
+        .deleteFrom("threads")
+        .where("virtual_mcp_id", "=", id)
+        .execute();
 
-    // Then delete the connection
-    await this.db
-      .deleteFrom("connections")
-      .where("id", "=", id)
-      .where("connection_type", "=", "VIRTUAL")
-      .execute();
+      // Delete aggregations (no cascade since it's a different relationship)
+      await trx
+        .deleteFrom("connection_aggregations")
+        .where("parent_connection_id", "=", id)
+        .execute();
+
+      // Then delete the connection
+      await trx
+        .deleteFrom("connections")
+        .where("id", "=", id)
+        .where("connection_type", "=", "VIRTUAL")
+        .execute();
+    });
   }
 
   async removeConnectionReferences(connectionId: string): Promise<void> {
@@ -504,7 +557,19 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     const status: "active" | "inactive" =
       row.status === "active" ? "active" : "inactive";
 
-    const metadata = this.parseJson<{ instructions?: string }>(row.metadata);
+    const rawMetadata = this.parseJson<{
+      instructions?: string;
+      sandboxMap?: unknown;
+    }>(row.metadata);
+
+    // Migration 091 rewrote every row to the canonical `sandboxMap` key with
+    // the strict 3-level shape; we still run it through `normalizeSandboxMap`
+    // to defend against per-row corruption without crashing the read path.
+    const { sandboxMap: rawSandboxMap, ...metadataRest } = rawMetadata ?? {};
+    const normalizedSandboxMap =
+      rawSandboxMap !== undefined
+        ? normalizeSandboxMap(rawSandboxMap)
+        : undefined;
 
     return {
       id: row.id,
@@ -519,8 +584,11 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       created_by: row.created_by,
       updated_by: row.updated_by ?? undefined,
       metadata: {
-        ...metadata,
-        instructions: metadata?.instructions ?? null,
+        ...metadataRest,
+        instructions: rawMetadata?.instructions ?? null,
+        ...(normalizedSandboxMap !== undefined
+          ? { sandboxMap: normalizedSandboxMap }
+          : {}),
       },
       connections: aggregationRows.map((agg) => ({
         connection_id: agg.child_connection_id,

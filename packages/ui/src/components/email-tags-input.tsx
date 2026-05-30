@@ -161,6 +161,7 @@ export const EmailTagsInput = forwardRef<
   );
 
   // Keep ref updated with current addEmail function
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   addEmailRef.current = addEmail;
 
   // Expose imperative handle for parent to flush pending input

@@ -1,0 +1,4 @@
+{{- /*
+Chart-level validations. Renders no resources.
+*/ -}}
+{{- include "sandbox-operator.validateNamespace" . -}}

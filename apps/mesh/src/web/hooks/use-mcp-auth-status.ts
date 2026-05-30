@@ -3,6 +3,7 @@ import {
   type McpAuthStatus,
 } from "@/web/lib/mcp-oauth";
 import { KEYS } from "@/web/lib/query-keys";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
 
 /**
@@ -16,13 +17,18 @@ export function useMCPAuthStatus({
 }: {
   connectionId: string;
 }): McpAuthStatus {
-  const mcpProxyUrl = new URL(`/mcp/${connectionId}`, window.location.origin);
+  const { org } = useProjectContext();
+  const mcpProxyUrl = new URL(
+    `/api/${org.slug}/mcp/${connectionId}`,
+    window.location.origin,
+  );
   const { data: authStatus } = useSuspenseQuery({
     queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
     queryFn: () =>
       isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       }),
   });
 

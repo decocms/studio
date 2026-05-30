@@ -1,0 +1,139 @@
+import {
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
+import { KEYS } from "../lib/query-keys";
+import { unwrapToolResult } from "../lib/unwrap-tool-result";
+
+export interface FileConfigInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  bucket: string;
+  region: string;
+  endpoint: string | null;
+  forcePathStyle: boolean;
+  prefix: string | null;
+  publicUrlBase: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export function useFileConfigs() {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  const { data } = useSuspenseQuery({
+    queryKey: KEYS.fileConfigs(org.id),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const result = await client.callTool({
+        name: "FILE_CONFIG_LIST",
+        arguments: {},
+      });
+      return unwrapToolResult<{ configs: FileConfigInfo[] }>(result);
+    },
+  });
+
+  return data.configs;
+}
+
+/**
+ * Non-suspense variant: returns `undefined` while loading instead of
+ * suspending the caller. Use this in field-level UI (ImageField,
+ * FileField) that wants to make decisions based on the configs count
+ * (1 config → drop-upload directly; 2+ → open the picker) without
+ * blocking the form render. Shares the cache key with useFileConfigs.
+ */
+export function useFileConfigsQuery() {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  return useQuery({
+    queryKey: KEYS.fileConfigs(org.id),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const result = await client.callTool({
+        name: "FILE_CONFIG_LIST",
+        arguments: {},
+      });
+      return unwrapToolResult<{ configs: FileConfigInfo[] }>(result);
+    },
+  });
+}
+
+export interface CreateFileConfigInput {
+  name: string;
+  description?: string;
+  bucket: string;
+  region: string;
+  endpoint?: string;
+  forcePathStyle?: boolean;
+  prefix?: string;
+  publicUrlBase?: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+}
+
+export function useCreateFileConfig() {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: CreateFileConfigInput) => {
+      const result = await client.callTool({
+        name: "FILE_CONFIG_CREATE",
+        arguments: { ...input },
+      });
+      return unwrapToolResult<FileConfigInfo>(result);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.fileConfigs(org.id) });
+    },
+  });
+}
+
+export function useDeleteFileConfig() {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const result = await client.callTool({
+        name: "FILE_CONFIG_DELETE",
+        arguments: { id },
+      });
+      return unwrapToolResult<{ success: true }>(result);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KEYS.fileConfigs(org.id) });
+    },
+  });
+}

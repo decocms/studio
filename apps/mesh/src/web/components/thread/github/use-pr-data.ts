@@ -15,6 +15,7 @@
 
 import { useMCPClient, useMCPToolCallQuery } from "@decocms/mesh-sdk";
 
+import { extractPullRequestList } from "./github-pr-api.ts";
 import { extractToolJson } from "./extract-tool-json.ts";
 
 export interface PrSummary {
@@ -37,6 +38,7 @@ const STALE = 30_000;
 
 interface RepoArgs {
   orgId: string;
+  orgSlug: string;
   connectionId: string;
   owner: string;
   repo: string;
@@ -90,6 +92,7 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
   const client = useMCPClient({
     connectionId: args.connectionId,
     orgId: args.orgId,
+    orgSlug: args.orgSlug,
   });
 
   return useMCPToolCallQuery<PrSummary | null>({
@@ -99,16 +102,17 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
       owner: args.owner,
       repo: args.repo,
       state: "all",
-      head: args.branch ? `${args.owner}:${args.branch}` : undefined,
+      ...(args.branch ? { head: `${args.owner}:${args.branch}` } : {}),
       perPage: 1,
     },
-    enabled: !!args.branch,
+    enabled:
+      !!args.branch && !!args.connectionId && !!args.owner && !!args.repo,
     refetchInterval: POLL,
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
-      const arr = extractToolJson<Record<string, unknown>[]>(r);
-      if (!arr || !Array.isArray(arr) || arr.length === 0) return null;
+      const arr = extractPullRequestList(r);
+      if (arr.length === 0) return null;
       const p = arr[0]!;
       const base = p.base as Record<string, unknown> | undefined;
       const head = p.head as Record<string, unknown> | undefined;
@@ -131,52 +135,6 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
 }
 
 /**
- * Fetches the file list for a PR via pull_request_read(get_files).
- * Server returns `changes = additions + deletions`; we derive deletions.
- */
-export function usePrFiles(
-  args: RepoArgs & { prNumber: number | null | undefined },
-) {
-  const client = useMCPClient({
-    connectionId: args.connectionId,
-    orgId: args.orgId,
-  });
-
-  return useMCPToolCallQuery<PrFile[]>({
-    client,
-    toolName: "pull_request_read",
-    toolArguments: {
-      method: "get_files",
-      owner: args.owner,
-      repo: args.repo,
-      pullNumber: args.prNumber ?? 0,
-    },
-    enabled: !!args.prNumber,
-    refetchInterval: POLL,
-    refetchIntervalInBackground: false,
-    staleTime: STALE,
-    select: (r) => {
-      const arr = extractToolJson<Record<string, unknown>[]>(r);
-      if (!Array.isArray(arr)) return [];
-      return arr.map((f): PrFile => {
-        const additions = Number(f.additions ?? 0);
-        const changes = Number(f.changes ?? additions);
-        const deletions = Number(
-          f.deletions ?? Math.max(0, changes - additions),
-        );
-        return {
-          filename: String(f.filename ?? ""),
-          status: (f.status as PrFile["status"] | undefined) ?? "modified",
-          additions,
-          deletions,
-          blobUrl: typeof f.blob_url === "string" ? f.blob_url : null,
-        };
-      });
-    },
-  });
-}
-
-/**
  * Fetches CI check runs for a PR's head commit via
  * pull_request_read(get_check_runs).
  */
@@ -186,6 +144,7 @@ export function useChecks(
   const client = useMCPClient({
     connectionId: args.connectionId,
     orgId: args.orgId,
+    orgSlug: args.orgSlug,
   });
 
   return useMCPToolCallQuery<CheckRun[]>({
@@ -243,6 +202,7 @@ export function usePrComments(
   const client = useMCPClient({
     connectionId: args.connectionId,
     orgId: args.orgId,
+    orgSlug: args.orgSlug,
   });
 
   return useMCPToolCallQuery<PrComment[]>({

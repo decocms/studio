@@ -1,6 +1,4 @@
-import { authClient } from "@/web/lib/auth-client";
 import { AccountPopover } from "@/web/components/account-popover";
-import { Button } from "@deco/ui/components/button.tsx";
 import {
   Popover,
   PopoverContent,
@@ -11,242 +9,182 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import {
-  Check,
-  Coins04,
-  ZapSquare,
-  Inbox01,
-  Settings02,
-  XClose,
-} from "@untitledui/icons";
-import { AuthUIContext } from "@daveyplate/better-auth-ui";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Component, Suspense, useContext, useState } from "react";
-import type { ErrorInfo, ReactNode } from "react";
-import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useMCPToolCallQuery,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
-import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
+import { ArrowLeft, Inbox01, Settings02, ZapSquare } from "@untitledui/icons";
+import { useState, type ReactNode } from "react";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { track } from "@/web/lib/posthog-client";
+import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
+import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
+import { ReleaseCard } from "@/web/components/release-channel/release-card";
+import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
+import {
+  SidebarTopActions,
+  SidebarTopActionsInline,
+} from "@/web/components/sidebar/top-actions";
 
-interface Invitation {
-  id: string;
-  organizationId: string;
-  organizationName?: string;
-  email: string;
-  role: string;
-  status: string;
-  expiresAt: Date;
-}
+function InboxPopover({ children }: { children: ReactNode }) {
+  const { items, markReleaseSeen } = useInboxFeed();
+  const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(
+    null,
+  );
 
-function InvitationItem({ invitation }: { invitation: Invitation }) {
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [isRejecting, setIsRejecting] = useState(false);
-  const queryClient = useQueryClient();
+  const selectedRelease = items.find(
+    (item) => item.type === "release" && item.release.id === selectedReleaseId,
+  );
+  const selectedReleaseData =
+    selectedRelease?.type === "release" ? selectedRelease.release : null;
 
-  const handleAccept = async () => {
-    setIsAccepting(true);
-    try {
-      const result = await authClient.organization.acceptInvitation({
-        invitationId: invitation.id,
-      });
-      if (result.error) {
-        toast.error(result.error.message);
-        setIsAccepting(false);
-      } else {
-        const setActiveResult = await authClient.organization.setActive({
-          organizationId: invitation.organizationId,
-        });
-        toast.success("Invitation accepted!");
-        const slug = setActiveResult?.data?.slug;
-        window.location.href = slug ? `/${slug}` : "/";
-      }
-    } catch {
-      toast.error("Failed to accept invitation");
-      setIsAccepting(false);
-    }
-  };
-
-  const handleReject = async () => {
-    setIsRejecting(true);
-    try {
-      const result = await authClient.organization.rejectInvitation({
-        invitationId: invitation.id,
-      });
-      if (result.error) {
-        toast.error(result.error.message);
-        setIsRejecting(false);
-      } else {
-        toast.success("Invitation declined");
-        queryClient.invalidateQueries();
-      }
-    } catch {
-      toast.error("Failed to decline invitation");
-      setIsRejecting(false);
-    }
+  const handleSelectRelease = (releaseId: string) => {
+    setSelectedReleaseId(releaseId);
+    markReleaseSeen(releaseId);
   };
 
   return (
-    <div className="flex items-center gap-3 px-5 py-4 border-b border-border last:border-0 hover:bg-muted/25 transition-colors">
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-muted-foreground">
-          You&apos;ve been invited to join
-        </p>
-        <p className="text-sm font-medium truncate">
-          {invitation.organizationName ?? "Unknown organization"}
-        </p>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-          onClick={handleAccept}
-          disabled={isAccepting || isRejecting}
-          aria-label="Accept invitation"
-        >
-          <Check size={14} />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          onClick={handleReject}
-          disabled={isAccepting || isRejecting}
-          aria-label="Decline invitation"
-        >
-          <XClose size={14} />
-        </Button>
-      </div>
-    </div>
+    <Popover
+      onOpenChange={(open) => {
+        if (!open) setSelectedReleaseId(null);
+      }}
+    >
+      {children}
+      <PopoverContent
+        side="right"
+        align="start"
+        sideOffset={16}
+        collisionPadding={16}
+        className="w-[min(400px,calc(100vw-2rem))] p-0 h-[min(650px,calc(100dvh-4rem))] flex flex-col"
+      >
+        {selectedReleaseData ? (
+          <>
+            <div className="flex items-center gap-2 px-3 py-3 border-b border-border shrink-0">
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Back to inbox"
+                className="size-7 text-muted-foreground"
+                onClick={() => setSelectedReleaseId(null)}
+              >
+                <ArrowLeft size={16} />
+              </Button>
+              <h3 className="text-sm font-medium truncate">
+                {selectedReleaseData.title}
+              </h3>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              <ReleaseCard release={selectedReleaseData} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="px-4 py-3 border-b border-border shrink-0">
+              <h3 className="text-sm font-medium">Inbox</h3>
+            </div>
+            {items.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+                <Inbox01 size={24} className="text-muted-foreground/50" />
+                <p className="text-sm font-medium text-foreground">
+                  Nothing here yet
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Invitations and release updates will appear here
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-y-auto flex-1">
+                {items.map((item) =>
+                  item.type === "invitation" ? (
+                    <InvitationItem
+                      key={`inv-${item.invitation.id}`}
+                      invitation={item.invitation}
+                    />
+                  ) : (
+                    <InboxReleaseItem
+                      key={`rel-${item.release.id}`}
+                      release={item.release}
+                      isSeen={item.isSeen}
+                      onSelect={() => handleSelectRelease(item.release.id)}
+                    />
+                  ),
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
-function usePendingInvitations() {
-  const authUi = useContext(AuthUIContext);
-  const { data } = authUi.hooks.useListUserInvitations();
-  const invitations = (data ?? []) as Invitation[];
-  return invitations.filter(
-    (inv) => inv.status === "pending" && new Date(inv.expiresAt) > new Date(),
-  );
+function useHasUnreadInbox() {
+  const { redDotCount } = useInboxFeed();
+  return redDotCount > 0;
 }
 
-class SilentErrorBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(): { hasError: boolean } {
-    return { hasError: true };
-  }
-
-  override componentDidCatch(_error: Error, _info: ErrorInfo): void {
-    // Silently catch errors in the credit chip
-  }
-
-  override render(): ReactNode {
-    if (this.state.hasError) return null;
-    return this.props.children;
-  }
-}
-
-function creditColor(balanceDollars: number): string {
-  if (balanceDollars <= 1) return "text-destructive";
-  if (balanceDollars <= 5) return "text-amber-500 dark:text-amber-400";
-  return "text-foreground/70";
-}
-
-function CreditChip() {
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
-
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-  });
-
-  const { data, isPending, isError } = useMCPToolCallQuery<
-    { balanceCents: number } | undefined
-  >({
-    client,
-    toolName: "AI_PROVIDER_CREDITS",
-    toolArguments: { providerId: "deco" },
-    staleTime: 60_000,
-    select: (result) =>
-      (result as { structuredContent?: { balanceCents: number } })
-        .structuredContent,
-  });
-
-  const balanceDollars =
-    data?.balanceCents != null ? data.balanceCents / 100 : null;
-
-  const tooltipLabel =
-    isPending || isError || balanceDollars == null
-      ? "Credits"
-      : `Credits: $${balanceDollars.toFixed(2)}`;
-
+function InboxFullButton() {
+  const hasUnread = useHasUnreadInbox();
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          tooltip={tooltipLabel}
-          className={cn(balanceDollars != null && creditColor(balanceDollars))}
-          onClick={() =>
-            navigate({
-              to: "/$org/settings/ai-providers",
-              params: { org: org.slug },
-            })
-          }
-        >
-          <Coins04 size={24} />
+    <InboxPopover>
+      <PopoverTrigger asChild>
+        <SidebarMenuButton tooltip="Inbox" className="relative">
+          <Inbox01 />
+          {hasUnread && (
+            <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
+          )}
+          <span>Inbox</span>
         </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
+      </PopoverTrigger>
+    </InboxPopover>
   );
 }
 
-function CreditChipConditional() {
-  const keys = useAiProviderKeys();
-  const hasDecoKey = keys.some((k) => k.providerId === "deco");
-
-  if (!hasDecoKey) return null;
-
-  return <CreditChip />;
+function InboxIconButton() {
+  const hasUnread = useHasUnreadInbox();
+  return (
+    <InboxPopover>
+      <Tooltip delayDuration={300}>
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton aria-label="Inbox">
+              <Inbox01 className="size-4" />
+              {hasUnread && (
+                <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 pointer-events-none" />
+              )}
+            </ToolbarIconButton>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent side="top">Inbox</TooltipContent>
+      </Tooltip>
+    </InboxPopover>
+  );
 }
 
-function ConnectionsButton() {
+function ConnectionsFullButton() {
   const [open, setOpen] = useState(false);
-
   return (
     <>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Connections"
-            onClick={() => {
-              track("connections_dialog_opened", {
-                source: "sidebar_footer",
-                mode: "browse",
-              });
-              setOpen(true);
-            }}
-          >
-            <ZapSquare size={24} />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <SidebarMenuButton
+        tooltip="Connections"
+        onClick={() => {
+          track("connections_dialog_opened", {
+            source: "sidebar_footer",
+            mode: "browse",
+          });
+          setOpen(true);
+        }}
+      >
+        <ZapSquare />
+        <span>Connections</span>
+      </SidebarMenuButton>
       <AddConnectionDialog
         mode="browse"
         open={open}
@@ -257,64 +195,64 @@ function ConnectionsButton() {
   );
 }
 
-function InboxButton() {
-  const pendingInvitations = usePendingInvitations();
-
+function ConnectionsIconButton() {
+  const [open, setOpen] = useState(false);
   return (
-    <Popover>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <PopoverTrigger asChild>
-            <SidebarMenuButton tooltip="Inbox" className="relative">
-              <Inbox01 size={24} />
-              {pendingInvitations.length > 0 && (
-                <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500 pointer-events-none" />
-              )}
-            </SidebarMenuButton>
-          </PopoverTrigger>
-        </SidebarMenuItem>
-      </SidebarMenu>
-      <PopoverContent
-        side="right"
-        align="start"
-        sideOffset={16}
-        collisionPadding={16}
-        className="w-[min(400px,calc(100vw-2rem))] p-0 h-[min(650px,calc(100dvh-4rem))] flex flex-col"
-      >
-        <div className="px-4 py-3 border-b border-border shrink-0">
-          <h3 className="text-sm font-medium">Inbox</h3>
-        </div>
-        {pendingInvitations.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-            <Inbox01 size={24} className="text-muted-foreground/50" />
-            <p className="text-sm font-medium text-foreground">
-              No invites pending
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Organization invitations will appear here
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-y-auto flex-1">
-            {pendingInvitations.map((inv) => (
-              <InvitationItem key={inv.id} invitation={inv} />
-            ))}
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
+    <>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <ToolbarIconButton
+            aria-label="Connections"
+            onClick={() => {
+              track("connections_dialog_opened", {
+                source: "sidebar_footer",
+                mode: "browse",
+              });
+              setOpen(true);
+            }}
+          >
+            <ZapSquare className="size-4" />
+          </ToolbarIconButton>
+        </TooltipTrigger>
+        <TooltipContent side="top">Connections</TooltipContent>
+      </Tooltip>
+      <AddConnectionDialog
+        mode="browse"
+        open={open}
+        onOpenChange={setOpen}
+        defaultTab="all"
+      />
+    </>
   );
 }
 
-function SettingsButton() {
+function SettingsFullButton() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
-
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          tooltip="Settings"
+    <SidebarMenuButton
+      tooltip="Settings"
+      onClick={() =>
+        navigate({
+          to: "/$org/settings",
+          params: { org: org.slug },
+        })
+      }
+    >
+      <Settings02 />
+      <span>Settings</span>
+    </SidebarMenuButton>
+  );
+}
+
+function SettingsIconButton() {
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <ToolbarIconButton
+          aria-label="Settings"
           onClick={() =>
             navigate({
               to: "/$org/settings",
@@ -322,29 +260,55 @@ function SettingsButton() {
             })
           }
         >
-          <Settings02 size={24} />
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
+          <Settings02 className="size-4" />
+        </ToolbarIconButton>
+      </TooltipTrigger>
+      <TooltipContent side="top">Settings</TooltipContent>
+    </Tooltip>
   );
 }
 
 export function SidebarInboxFooter() {
+  const { state } = useSidebar();
+  const isCollapsed = state === "collapsed";
+
+  if (isCollapsed) {
+    return (
+      <SidebarFooter className="px-2 pb-3 gap-1">
+        <SidebarTopActions />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <ConnectionsFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <InboxFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SettingsFullButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <AccountPopover />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    );
+  }
+
   return (
-    <SidebarFooter className="px-2 pb-3 gap-1">
-      <SilentErrorBoundary>
-        <Suspense fallback={null}>
-          <CreditChipConditional />
-        </Suspense>
-      </SilentErrorBoundary>
-      <ConnectionsButton />
-      <InboxButton />
-      <SettingsButton />
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <AccountPopover />
-        </SidebarMenuItem>
-      </SidebarMenu>
+    <SidebarFooter className="px-2 pb-3">
+      <div className="flex items-center gap-1">
+        <div className="flex-1 min-w-0">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <AccountPopover />
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </div>
+        <SettingsIconButton />
+        <InboxIconButton />
+        <ConnectionsIconButton />
+        <SidebarTopActionsInline />
+      </div>
     </SidebarFooter>
   );
 }

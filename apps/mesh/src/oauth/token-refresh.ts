@@ -33,7 +33,14 @@ export async function refreshAndStore(
 ): Promise<string | null> {
   const result = await refreshAccessToken(token);
   if (!result.success || !result.accessToken) {
-    await tokenStorage.delete(token.connectionId);
+    // Only delete the cached row when the OAuth server told us the
+    // refresh_token is permanently invalid (RFC 6749: 400 invalid_grant).
+    // Transient failures (5xx, network, parse errors, non-spec status codes)
+    // must not nuke the user's auth — that turns every blip in the upstream
+    // OAuth server into a forced manual reconnect.
+    if (result.permanent === true) {
+      await tokenStorage.delete(token.connectionId);
+    }
     return null;
   }
   await tokenStorage.upsert({

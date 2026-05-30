@@ -1,7 +1,8 @@
 /**
  * ORGANIZATION_DELETE Tool
  *
- * Delete an organization
+ * Soft-deletes an organization by flagging it as archived in metadata.
+ * Archived organizations are invisible to all API and UI surfaces.
  */
 
 import { z } from "zod";
@@ -10,7 +11,7 @@ import { requireAuth } from "../../core/mesh-context";
 
 export const ORGANIZATION_DELETE = defineTool({
   name: "ORGANIZATION_DELETE",
-  description: "Delete an organization.",
+  description: "Archive an organization (soft delete).",
   annotations: {
     title: "Delete Organization",
     readOnlyHint: false,
@@ -28,14 +29,18 @@ export const ORGANIZATION_DELETE = defineTool({
   }),
 
   handler: async (input, ctx) => {
-    // Require authentication
     requireAuth(ctx);
-
-    // Check authorization
     await ctx.access.check();
 
-    // Delete organization via Better Auth
-    await ctx.boundAuth.organization.delete(input.id);
+    await ctx.boundAuth.organization.update({
+      organizationId: input.id,
+      data: {
+        metadata: {
+          archived: true,
+          archivedAt: new Date().toISOString(),
+        },
+      },
+    });
 
     return {
       success: true,

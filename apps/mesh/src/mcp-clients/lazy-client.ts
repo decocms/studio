@@ -11,12 +11,14 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
+  GetPromptResult,
   ListPromptsRequest,
   ListPromptsResult,
   ListResourcesRequest,
   ListResourcesResult,
   ListToolsRequest,
   ListToolsResult,
+  ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { MeshContext } from "../core/mesh-context";
 import type { ConnectionEntity } from "../tools/connection/schema";
@@ -26,7 +28,12 @@ import {
   recordSuccess,
 } from "./circuit-breaker";
 import { clientFromConnection } from "./client";
-import { fetchWithCache, type McpListCache } from "./mcp-list-cache";
+import {
+  fetchWithCache,
+  type McpListCache,
+  REVALIDATE_MIN_INTERVAL_MS,
+} from "./mcp-list-cache";
+import { getMcpReadCache } from "./mcp-read-cache";
 
 /**
  * Create a lazy-connecting client wrapper for a connection.
@@ -110,6 +117,7 @@ export function createLazyClient(
         },
         cache,
         (p) => ctx.pendingRevalidations.push(p),
+        REVALIDATE_MIN_INTERVAL_MS,
       );
 
       return buildCachedResult(result ?? []);
@@ -152,14 +160,35 @@ export function createLazyClient(
     return real.callTool(params, resultSchema, options);
   };
 
+  // Read-content cache (resources/read, prompts/get): per-pod TTL+LRU, shared
+  // across org members. VIRTUAL connections bypass (they compose other conns).
+  const readCache = getMcpReadCache();
+  const cacheReads = connection.connection_type !== "VIRTUAL";
+
   placeholder.getPrompt = async (params, options) => {
+    if (cacheReads) {
+      const hit = readCache.get("prompts/get", connection.id, params);
+      if (hit !== null) return hit as GetPromptResult;
+    }
     const real = await getRealClient();
-    return real.getPrompt(params, options);
+    const result = await real.getPrompt(params, options);
+    if (cacheReads) {
+      readCache.set("prompts/get", connection.id, params, result);
+    }
+    return result;
   };
 
   placeholder.readResource = async (params, options) => {
+    if (cacheReads) {
+      const hit = readCache.get("resources/read", connection.id, params);
+      if (hit !== null) return hit as ReadResourceResult;
+    }
     const real = await getRealClient();
-    return real.readResource(params, options);
+    const result = await real.readResource(params, options);
+    if (cacheReads) {
+      readCache.set("resources/read", connection.id, params, result);
+    }
+    return result;
   };
 
   placeholder.listResourceTemplates = async (params, options) => {

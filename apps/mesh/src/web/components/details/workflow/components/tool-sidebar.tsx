@@ -33,6 +33,7 @@ function useVirtualMCPTools() {
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const toolsQuery = useMCPToolsListQuery({ client });

@@ -1,6 +1,11 @@
 FROM oven/bun:1-slim
 
-RUN apt-get update && apt-get install -y unzip bash && rm -rf /var/lib/apt/lists/*
+# unzip + bash are runtime deps; python3/make/g++ are needed because node-pty
+# (used by @decocms/sandbox) ships prebuilds only for darwin/win32 — on Linux it
+# falls back to building from source via node-gyp.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends unzip bash python3 make g++ && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -16,9 +21,7 @@ WORKDIR /app/apps/mesh
 RUN mkdir -p /app/data
 
 # Create entrypoint that runs migrations then starts server via CLI
-# The CLI handles --num-threads for multi-process SO_REUSEPORT support on Linux.
-# NUM_THREADS defaults to 1 (single process) unless overridden in docker-compose.
-RUN printf '#!/bin/bash\nset -e\ncd /app/apps/mesh\necho "Running migrations..."\nbun run migrate 2>&1\necho "Starting server..."\nexec bun run src/cli.ts --no-tui --num-threads ${NUM_THREADS:-1}\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+RUN printf '#!/bin/bash\nset -e\ncd /app/apps/mesh\necho "Running migrations..."\nbun run migrate 2>&1\necho "Starting server..."\nexec bun run src/cli.ts --no-tui\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 EXPOSE 3000
 

@@ -8,7 +8,7 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ## What is a connection?
 
-A **Connection** in the Mesh is a configured upstream MCP endpoint (typically HTTP). The Mesh stores its configuration and (optionally) credentials, and can then proxy MCP requests to it.
+A **Connection** in Studio is a configured upstream MCP endpoint (typically HTTP). Studio stores its configuration and (optionally) credentials, and can then proxy MCP requests to it.
 
 ## In the UI
 
@@ -24,7 +24,7 @@ Once you have a connection ID, clients can call tools via:
 
 - `POST /mcp/:connectionId`
 
-The Mesh will:
+Studio will:
 
 1. authenticate the caller
 2. authorize the tool call

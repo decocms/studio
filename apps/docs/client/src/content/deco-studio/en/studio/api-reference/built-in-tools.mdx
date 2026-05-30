@@ -14,66 +14,59 @@ Decopilot provides built-in tools that are always available (subject to task/sub
 
 ### Discovery & Enablement
 
-Tools for activating capabilities:
-
-- [**tool_enable**](/en/studio/api-reference/built-in-tools/tool-enable) - Activate a tool for use in current task
-
-### Agent Management
-
-Tools for working with agents:
-
-- [**agent_search**](/en/studio/api-reference/built-in-tools/agent-search) - Find agents configured in the organization
+- [**enable_tool**](/en/studio/api-reference/built-in-tools/enable-tool) — Activate one or more scope tools so they can be called in subsequent steps
 
 ### Task Management
 
-Tools for spawning and managing work:
-
-- [**subtask**](/en/studio/api-reference/built-in-tools/subtask-run) - Spawn subtask with isolated context
+- [**subtask**](/en/studio/api-reference/built-in-tools/subtask-run) — Spawn a subtask with isolated context, optionally bound to a specific agent
 
 ### User Interaction
 
-Tools for gathering user input:
-
-- [**user_ask**](/en/studio/api-reference/built-in-tools/user-ask) - Ask user for input or clarification
+- [**user_ask**](/en/studio/api-reference/built-in-tools/user-ask) — Ask the user a question when input or clarification is needed
 
 ### Context Access
 
-Tools for reading resources and prompts:
+- [**read_resource**](/en/studio/api-reference/built-in-tools/resource-read) — Read documentation or guidelines from the current scope
+- [**read_prompt**](/en/studio/api-reference/built-in-tools/prompt-read) — Read a reusable prompt template
 
-- [**read_resource**](/en/studio/api-reference/built-in-tools/resource-read) - Read documentation/guidelines from current scope
-- [**read_prompt**](/en/studio/api-reference/built-in-tools/prompt-read) - Read prompt templates from current scope
+### Working with Tool Output
 
-### Code Execution & Output
+- [**read_tool_output**](/en/studio/api-reference/built-in-tools/read-tool-output) — Re-read a large tool result that was offloaded to storage
 
-Tools for running code and processing results:
+### Research and Media
 
-- [**sandbox**](/en/studio/api-reference/built-in-tools/sandbox) - Execute JavaScript code with access to MCP tools
-- [**read_tool_output**](/en/studio/api-reference/built-in-tools/read-tool-output) - Filter large tool outputs using regex patterns
+These tools are registered conditionally based on the organization's configured default models:
+
+- **web_search** — Stream a deep web-research pass (requires a web-research model)
+- **generate_image** — Generate an image (requires an image model)
 
 ### Planning
 
-Tools for structured execution:
+- [**propose_plan**](/en/studio/api-reference/built-in-tools/propose-plan) — Propose a plan for approval. Only registered when chat mode is `plan`.
 
-- [**propose_plan**](/en/studio/api-reference/built-in-tools/propose-plan) - Propose execution plans for user approval
+### Sandbox (VM) tools
+
+When an agent is backed by a sandbox (a linked GitHub repo), decopilot also exposes six VM tools — `bash`, `read`, `write`, `edit`, `grep`, `glob` — that operate inside that sandbox. They're provisioned lazily on first use.
 
 ## Availability Matrix
 
-| Tool | Task | Subtask | Description |
-|------|:----:|:-------:|-------------|
-| `tool_enable` | ✓ | ✓ | Activate a tool for use in current task |
-| `agent_search` | ✓ | ✗ | Find agents configured in the organization |
-| `subtask` | ✓ | ✗ | Spawn subtask with fresh context |
-| `user_ask` | ✓ | ✗ | Ask user for input or clarification |
-| `read_resource` | ✓ | ✓ | Read documentation/guidelines from current scope |
-| `read_prompt` | ✓ | ✓ | Read prompt templates from current scope |
-| `sandbox` | ✓ | ✓ | Execute JavaScript code with MCP tool access |
-| `read_tool_output` | ✓ | ✓ | Filter large tool outputs using regex |
-| `propose_plan` | ✓ | ✓ | Propose execution plans for approval |
+| Tool | Task | Subtask | Notes |
+|------|:----:|:-------:|-------|
+| `enable_tool` | ✓ | ✓ | Activates a scope tool for the next step |
+| `subtask` | ✓ | ✗ | Prevents infinite delegation |
+| `user_ask` | ✓ | ✗ | Subtasks can't interrupt the user |
+| `read_resource` | ✓ | ✓ | |
+| `read_prompt` | ✓ | ✓ | |
+| `read_tool_output` | ✓ | ✓ | |
+| `web_search` | ✓ | ✓ | Conditional on web-research model |
+| `generate_image` | ✓ | ✓ | Conditional on image model |
+| `propose_plan` | ✓ | ✗ | Plan mode only |
+| VM tools (`bash`, `read`, `write`, `edit`, `grep`, `glob`) | ✓ | ✓ | Only when agent has a sandbox |
 
 <Callout type="info">
   **Tasks** are user-initiated and have full access to all built-in tools. **Subtasks** are spawned by decopilot and have restricted access to prevent infinite delegation and blocking user interactions. Subtasks have a step limit of 15 (vs 30 for tasks) and must return a summary.
 </Callout>
 
 <Callout type="tip">
-  **Tool discovery**: Available scope tools from connected MCP servers are discovered implicitly via the connections listed in the current scope's Virtual MCP — there is no explicit search tool.
+  **Tool discovery**: Available scope tools from connected MCP servers are discovered implicitly via the connections listed in the current scope's Virtual MCP — there is no explicit search tool. Use `enable_tool` to activate a tool before calling it.
 </Callout>

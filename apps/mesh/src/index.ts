@@ -8,6 +8,7 @@
 
 import { getSettings } from "./settings";
 import { initObservability } from "./observability";
+import type { WsAttachData } from "./api/app";
 
 const settings = getSettings();
 
@@ -19,31 +20,47 @@ const settings = getSettings();
 // ensures every `meter.createX()` call hits the real MeterProvider.
 initObservability();
 
-const { createApp } = await import("./api/app");
+// DBOS shares mesh's Postgres database and owns the `dbos` schema. Sharing
+// the DB (vs. a sibling one) is what lets future workflow-ified CRUD
+// commit mesh writes and DBOS step-output records in a single transaction
+// via a DBOS data source. The `dbos` schema is auto-created on launch.
+// setConfig must run before any module registers workflows; launch happens
+// after the app graph is loaded so all DBOS.registerWorkflow calls are in.
+const { DBOS } = await import("@dbos-inc/dbos-sdk");
+// DBOS uses its own pg client (separate from mesh's pool), so the `sslmode`
+// must travel in the URL. RDS's pg_hba.conf rejects unencrypted connections
+// with `no pg_hba.conf entry for host ... no encryption` when this is missing.
+// Use `verify-full` explicitly: pg-connection-string v2 silently upgrades
+// `require` to `verify-full`, but v3 / pg v9 will drop that upgrade and treat
+// `require` as encrypt-without-verification (libpq semantics).
+function withSslmode(url: string, ssl: boolean): string {
+  if (!ssl) return url;
+  const u = new URL(url);
+  if (!u.searchParams.has("sslmode")) {
+    u.searchParams.set("sslmode", "verify-full");
+  }
+  return u.toString();
+}
+DBOS.setConfig({
+  name: "decocms",
+  systemDatabaseUrl: withSslmode(settings.databaseUrl, settings.databasePgSsl),
+  systemDatabaseSchemaName: "dbos",
+  // SDK default is 10. Cap lower so N replicas don't exhaust RDS slots —
+  // bump via `DBOS_POOL_SIZE` if the workflow workload demands more in-flight
+  // steps per pod.
+  systemDatabasePoolSize: Number(process.env.DBOS_POOL_SIZE ?? 5),
+  // N workers all call DBOS.launch(); the admin server would otherwise fight
+  // over port 3001. Re-enable per-process once we need workflow admin HTTP.
+  runAdminServer: false,
+});
+
+const { createApp, gatewayWsHandlers } = await import("./api/app");
 const { isServerPath } = await import("./api/utils/paths");
 const { createAssetHandler, resolveClientDir } = await import(
   "@decocms/runtime/asset-server"
 );
-const { red } = await import("./fmt");
 
 const port = settings.port;
-
-// Refuse local mode in production — it disables authentication
-if (
-  settings.localMode &&
-  settings.nodeEnv === "production" &&
-  !settings.allowLocalProd
-) {
-  console.error(
-    red(
-      "Error: Local mode is not allowed in production (NODE_ENV=production).",
-    ),
-  );
-  console.error(
-    "Set DECOCMS_ALLOW_LOCAL_PROD=true to override (not recommended).",
-  );
-  process.exit(1);
-}
 
 // Create asset handler - handles both dev proxy and production static files
 // When running from source (src/index.ts), the "../client" relative path
@@ -78,88 +95,225 @@ function withSecurityHeaders(res: Response): Response {
 // Closed early in gracefulShutdown so the port frees before the Hono drain.
 let ingressServers: import("node:net").Server[] = [];
 
-// Docker-only boot/dev wiring. Both hooks (boot sweep + local ingress) are
-// intimate with Docker-specific primitives (labels, host-port mappings);
-// other runners manage their own VM/ingress lifecycle.
-const { tryResolveRunnerKindFromEnv } = await import("@decocms/sandbox/runner");
-if (tryResolveRunnerKindFromEnv() === "docker") {
-  const { sweepDockerOrphansOnBoot, startLocalSandboxIngress } = await import(
-    "@decocms/sandbox/runner"
+// Sandbox preview reverse-proxy (agent-sandbox only). The base domain is parsed at
+// boot from STUDIO_SANDBOX_PREVIEW_URL_PATTERN; null disables the proxy and
+// preview-host requests fall through to the normal mesh routing (which 404s
+// because nothing matches). The Bun-level WS handler is registered
+// unconditionally — when previewBaseDomain is null, no upgrade path runs it.
+const {
+  parsePreviewBaseDomain,
+  tryHandlePreviewHttp,
+  tryUpgradePreviewWs,
+  previewWebSocketHandler,
+  isPreviewWsData,
+} = await import("./sandbox/preview-proxy");
+const { getOrInitSharedRunner: getOrInitRunnerForPreview } = await import(
+  "./sandbox/lifecycle"
+);
+const previewBaseDomain = parsePreviewBaseDomain(
+  process.env.STUDIO_SANDBOX_PREVIEW_URL_PATTERN,
+);
+const previewProxyDeps = {
+  baseDomain: previewBaseDomain ?? "",
+  getRunner: async () => {
+    const runner = await getOrInitRunnerForPreview();
+    if (!runner || runner.kind !== "cluster") return null;
+    // The cluster (agent-sandbox) runner is the only one that exposes proxyPreviewRequest /
+    // resolvePreviewUpstreamUrl; cast is safe after the kind check.
+    return runner as unknown as import("@decocms/sandbox/provider/agent-sandbox").AgentSandboxProvider;
+  },
+};
+
+// Boot/dev wiring for the Docker runner. The boot sweep + local ingress
+// are local-docker-only — other runners (cluster, user-desktop)
+// either don't run on this machine or expose previews via their own
+// publicly-reachable URLs.
+const { resolveSandboxProviderKindFromEnv } = await import(
+  "@decocms/sandbox/provider"
+);
+const sandboxProviderKind = resolveSandboxProviderKindFromEnv();
+const ingressEligible = sandboxProviderKind === "local-docker";
+
+if (ingressEligible) {
+  const { startLocalSandboxIngress } = await import(
+    "@decocms/sandbox/provider"
   );
-  const { asDockerRunner, getSharedRunnerIfInit } = await import(
-    "./sandbox/lifecycle"
-  );
+  const { getSharedSandboxProviderIfInit, getOrInitSharedRunner } =
+    await import("./sandbox/lifecycle");
 
   // Boot sweep (best-effort). Shutdown cleanup can't cover crashes —
   // SIGTERM races with the parent killing postgres — so the boot sweep is
   // what actually keeps `docker ps` empty between sessions.
+  const { sweepDockerOrphansOnBoot } = await import(
+    "@decocms/sandbox/provider"
+  );
   await sweepDockerOrphansOnBoot();
 
   // Port 7070 default: macOS AirPlay Receiver owns `*:7000` on v4+v6, so a
-  // Chrome Happy-Eyeballs race would hit Apple. Enabled by default in dev;
-  // opt in elsewhere via MESH_LOCAL_SANDBOX_INGRESS=1.
-  const ingressDevEnabled =
-    settings.nodeEnv !== "production" ||
-    process.env.MESH_LOCAL_SANDBOX_INGRESS === "1";
-  if (ingressDevEnabled) {
-    const ingressPort = Number(process.env.SANDBOX_INGRESS_PORT ?? 7070);
-    ingressServers = startLocalSandboxIngress(
-      () => asDockerRunner(getSharedRunnerIfInit()),
-      ingressPort,
-    );
+  // Chrome Happy-Eyeballs race would hit Apple. The ingress is part of the
+  // Docker runner contract — Docker exposes user dev servers through
+  // `<handle>.localhost:7070`, so the gate is the runner kind, not
+  // NODE_ENV. Set `SANDBOX_INGRESS_PORT=0` to skip binding entirely.
+  const ingressPort = Number(process.env.SANDBOX_INGRESS_PORT ?? 7070);
+  if (ingressPort > 0) {
+    ingressServers = startLocalSandboxIngress(() => {
+      const r = getSharedSandboxProviderIfInit();
+      if (!r) return null;
+      if (r.kind !== "local-docker") return null;
+      // DockerSandboxProvider exposes resolveDaemonPort; the structural
+      // cast is safe after the kind check.
+      return r as unknown as {
+        resolveDaemonPort(handle: string): Promise<number | null>;
+      };
+    }, ingressPort);
+
+    // Construct the provider up-front. The first preview-iframe request
+    // typically arrives on a page reload with a warm sandboxMap, before either
+    // SANDBOX_START or `/api/vm-events` has touched the provider — without this
+    // eager init the ingress would 503 with "Sandbox Runner Not Initialized".
+    await getOrInitSharedRunner();
   }
 }
 
-// Create the Hono app
+// Create the Hono app (any DBOS.registerWorkflow calls happen during this
+// import chain). Launch DBOS afterwards so the registry is sealed before
+// the executor starts dequeueing workflows.
 const app = await createApp();
+// Conductor opt-in via env (SDK defaults conductorURL to wss://cloud.dbos.dev/...).
+const conductorKey = process.env.DBOS_CONDUCTOR_KEY?.trim();
+const conductorURL = process.env.DBOS_CONDUCTOR_URL?.trim();
+await DBOS.launch({
+  ...(conductorKey ? { conductorKey } : {}),
+  ...(conductorKey && conductorURL ? { conductorURL } : {}),
+});
+// Post-launch DBOS setup (queue registration, schedule reconciliation).
+// Must run after launch because registerQueue / listSchedules require an
+// initialized executor.
+await app.initDbos();
 
 // When running via CLI, the calling script handles its own banner/config output
 if (!settings.isCli) {
-  const { ASCII_ART } = await import("./fmt");
+  const { bannerLines } = await import("./cli/banner-art");
   console.log("");
-  for (const line of ASCII_ART) {
+  for (const line of bannerLines()) {
     console.log(line);
   }
 }
 
-// REUSE_PORT is an internal coordination signal set by serve.ts when
-// numThreads > 1 on Linux. It intentionally bypasses the Settings pipeline
-// because it is not a user-facing config — it is set programmatically by the
-// CLI layer immediately before importing this module.
-const reusePort =
-  process.platform === "linux" && process.env.REUSE_PORT === "true";
-
-// DECOCMS_IS_WORKER is set by serve.ts on spawned worker processes.
-// Workers skip local-mode seeding to avoid concurrent DB races.
-const isWorker = process.env.DECOCMS_IS_WORKER === "1";
+function isGatewayWsData(data: unknown): data is WsAttachData {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    (data as { kind?: unknown }).kind === "gateway"
+  );
+}
 
 const server = Bun.serve({
   // This was necessary because MCP has SSE endpoints (like notification) that disconnects after 10 seconds (default bun idle timeout)
   idleTimeout: 0,
   port,
   hostname: "0.0.0.0", // Listen on all network interfaces (required for K8s)
-  reusePort,
   fetch: async (request, server) => {
+    // Sandbox preview proxy: matched by Host header. Runs *before* assets
+    // and the Hono app so a `<handle>.preview.<base>` request never hits
+    // mesh's static-file handler (which would 404 on the dev server's
+    // bundle paths). WS upgrades short-circuit Bun.serve's fetch by
+    // returning undefined; HTTP returns a Response.
+    if (previewBaseDomain) {
+      // Bun's Server type defaults T=undefined for upgrade<T>(); cast widens
+      // to our PreviewWsData carrier so the WS handler can stash it. Bun
+      // doesn't enforce data-type consistency at runtime, only via generics.
+      const upgradeRes = await tryUpgradePreviewWs(
+        request,
+        server as unknown as Parameters<typeof tryUpgradePreviewWs>[1],
+        previewProxyDeps,
+      );
+      if (upgradeRes === undefined) return; // upgraded
+      if (upgradeRes) return upgradeRes; // pre-upgrade error
+      const httpRes = await tryHandlePreviewHttp(request, previewProxyDeps);
+      if (httpRes) return httpRes;
+    }
+
     // Try assets first (static files or dev proxy), then API
     // Pass server as env so Hono's getConnInfo can access requestIP
     const assetRes = await handleAssets(request);
     if (assetRes) return withSecurityHeaders(assetRes);
     return app.fetch(request, { server });
   },
-  development: settings.nodeEnv !== "production",
+  // Multiplexed WebSocket handler. `ws.data.kind` discriminates preview
+  // connections; `ws.data.userSub` discriminates gateway link connections.
+  // New upgraders should add a tagged field and a branch here.
+  websocket: {
+    open(ws) {
+      if (isPreviewWsData(ws.data)) {
+        previewWebSocketHandler.open(ws);
+      } else if (isGatewayWsData(ws.data)) {
+        gatewayWsHandlers.open(
+          ws as unknown as Parameters<typeof gatewayWsHandlers.open>[0],
+        );
+      }
+    },
+    message(ws, message) {
+      if (isPreviewWsData(ws.data)) {
+        previewWebSocketHandler.message(ws, message);
+      } else if (isGatewayWsData(ws.data)) {
+        void gatewayWsHandlers.message(
+          ws as unknown as Parameters<typeof gatewayWsHandlers.message>[0],
+          message,
+        );
+      }
+    },
+    close(ws, code, reason) {
+      if (isPreviewWsData(ws.data)) {
+        previewWebSocketHandler.close(ws);
+      } else if (isGatewayWsData(ws.data)) {
+        gatewayWsHandlers.close(
+          ws as unknown as Parameters<typeof gatewayWsHandlers.close>[0],
+          code,
+          reason,
+        );
+      }
+    },
+  },
+  development: false,
 });
 
 // Local mode: seed admin user + organization after server is listening
 // This must run after Bun.serve() so that the org seed can fetch tools
 // from the self MCP endpoint (http://localhost:PORT/mcp/self).
-// Worker processes skip seeding — only the primary process seeds to avoid
-// concurrent DB races across workers.
-if (settings.localMode && !isWorker) {
+if (settings.localMode) {
   import("./auth/local-mode")
     .then(async ({ seedLocalMode, markSeedComplete }) => {
       try {
         const seeded = await seedLocalMode();
         void seeded;
+        // Dev-only: mint an API-key-backed session file for the
+        // auto-spawned `deco link` daemon when the dev CLI asked us to.
+        // Gated on DEV_LINK_SESSION_PATH so production never touches it.
+        if (process.env.DEV_LINK_SESSION_PATH) {
+          try {
+            const { bootstrapDevLinkSession } = await import(
+              "./auth/dev-link-session"
+            );
+            const clusterBaseUrl =
+              settings.baseUrl ?? `http://localhost:${settings.port}`;
+            const result = await bootstrapDevLinkSession(
+              settings.dataDir,
+              clusterBaseUrl,
+            );
+            if (result) {
+              console.log(
+                `[dev-link] session ready at ${result.path} (userSub=${result.userSub})`,
+              );
+            } else {
+              console.warn(
+                "[dev-link] no admin user yet — skipping session bootstrap. The auto-spawned link will refuse to start until an admin exists.",
+              );
+            }
+          } catch (err) {
+            console.error("[dev-link] bootstrap failed:", err);
+          }
+        }
       } catch (error) {
         console.error("Failed to seed local mode:", error);
       } finally {
@@ -205,17 +359,15 @@ async function gracefulShutdown(signal: string) {
     //    shouldn't have to wait out our drain.
     for (const s of ingressServers) s.close();
 
-    // 3. Let K8s notice the 503 before we close connections. Skipped in dev
-    //    — no LB draining, and the 2s delay causes "port still in use" on
-    //    rapid restart.
-    if (settings.nodeEnv === "production") {
-      await new Promise((r) => setTimeout(r, 2_000));
-    }
+    // 3. Let K8s notice the 503 before we close connections.
+    await new Promise((r) => setTimeout(r, 2_000));
 
     // 4. Force-close connections (SSE streams are long-lived and would block
     //    graceful drain indefinitely).
     await server.stop(true);
 
+    // Drain DBOS before app.shutdown closes mesh's pg pool — in-flight steps use it.
+    await DBOS.shutdown();
     await app.shutdown();
   } catch (err) {
     console.error("[shutdown] Error during shutdown:", err);
@@ -232,14 +384,11 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 // accumulate zombies still holding port 7070.
 process.on("SIGHUP", () => gracefulShutdown("SIGHUP"));
 
-// Dev-only orphan detection. Prod containers legitimately run with PID 1
-// parentage, so this must stay NODE_ENV-guarded.
-if (settings.nodeEnv !== "production") {
-  const initialPpid = process.ppid;
-  setInterval(() => {
-    if (process.ppid !== initialPpid && process.ppid <= 1) {
-      console.error("[shutdown] Orphaned (ppid=1), force-exiting.");
-      process.exit(130);
-    }
-  }, 2_000).unref();
-}
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] Unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[process] Uncaught exception:", err);
+  gracefulShutdown("uncaughtException");
+});

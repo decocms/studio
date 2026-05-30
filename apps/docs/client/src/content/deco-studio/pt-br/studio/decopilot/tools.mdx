@@ -1,113 +1,75 @@
 ---
-title: Ferramentas
-description: Entendendo como o decopilot descobre e habilita capacidades para manter o foco no que importa
+title: Tools
+description: O que o Decopilot pode fazer e os dois tipos de ferramentas a que ele tem acesso
 icon: Wrench
 ---
 
-import Callout from "../../../../../components/ui/Callout.astro";
+## Dois tipos de ferramentas
 
-<Callout type="info">
-  Esta pagina documenta a **arquitetura planejada** para as ferramentas do decopilot. A especificacao serve como guia de implementacao para o modulo decopilot.
-</Callout>
+O Decopilot tem acesso a dois tipos de ferramentas:
 
-## Visao Geral
+**Ferramentas built-in** — sempre disponíveis, usadas para gerenciar trabalho, delegar tarefas e ler contexto. As mesmas independentemente do escopo.
 
-O decopilot usa dois tipos de ferramentas: **ferramentas integradas** para descobrir capacidades e gerenciar trabalho, e **ferramentas de escopo** do [escopo](/pt-br/studio/decopilot/scopes) atual para acoes especificas de dominio. As ferramentas de escopo sao disponibilizadas com base nas conexoes configuradas no MCP Virtual do escopo atual.
-
-## Referencia de Ferramentas
-
-### Ferramentas Integradas
-
-Todas as ferramentas integradas estao disponiveis em todos os escopos. A disponibilidade varia entre tarefas e subtarefas.
-
-| Ferramenta | Tarefa | Subtarefa | Descricao |
-|------------|:------:|:---------:|-----------|
-| **Descoberta** |
-| `agent_search` | ✓ | ✓ | Encontrar agentes configurados na organizacao |
-| **Execucao** |
-| `subtask` | ✓ | ✗ | Criar subtarefa com contexto novo, opcionalmente especificando um agente |
-| `user_ask` | ✓ | ✗ | Pedir entrada ou esclarecimento ao usuario |
-| `sandbox` | ✓ | ✓ | Executar codigo JavaScript com acesso a ferramentas MCP |
-| **Contexto** |
-| `read_resource` | ✓ | ✓ | Ler documentacao/diretrizes do escopo atual (suporta intervalos de linhas) |
-| `read_prompt` | ✓ | ✓ | Ler templates de prompt do escopo atual |
-| `read_tool_output` | ✓ | ✓ | Filtrar saidas grandes de ferramentas usando padroes regex |
-| `propose_plan` | ✓ | ✗ | Propor planos de execucao para aprovacao do usuario (no modo "plan") |
-
-### Ferramentas de Escopo
-
-As ferramentas de escopo vem do escopo atual — capacidades especificas de dominio como Shopify, sistemas de inventario ou ferramentas de envio. Sao disponibilizadas com base nas conexoes configuradas no MCP Virtual do escopo.
-
-**Exemplo**: Um projeto com conexoes Shopify e ShipStation pode expor:
-- `GET_ORDERS` - Buscar pedidos de clientes
-- `UPDATE_INVENTORY` - Atualizar niveis de estoque de produtos
-- `CREATE_SHIPPING_LABEL` - Gerar etiquetas de envio
-- `GET_PRODUCTS` - Listar catalogo de produtos
-
-A disponibilidade de ferramentas de escopo em tarefas vs subtarefas depende da configuracao da ferramenta.
-
-#### Anotacoes de Ferramentas
-
-Todas as ferramentas (tanto integradas quanto de escopo) usam [anotacoes padrao do MCP](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/f385c94cbd5857ac17b611edc823a37606bdb1cc/schema/2025-03-26/schema.ts#L737) para declarar suas capacidades e restricoes:
-
-- **`readOnlyHint`** - A ferramenta nao modifica seu ambiente (padrao: false)
-- **`destructiveHint`** - A ferramenta pode realizar atualizacoes destrutivas vs. apenas aditivas (padrao: true, so relevante quando `readOnlyHint` e false)
-- **`idempotentHint`** - Chamar repetidamente com os mesmos argumentos nao tem efeito adicional (padrao: false, so relevante quando `readOnlyHint` e false)
-- **`openWorldHint`** - A ferramenta pode interagir com entidades externas; false significa dominio fechado (padrao: true)
-
-Essas anotacoes permitem que o decopilot respeite restricoes de ferramentas automaticamente. Por exemplo, um agente somente leitura ira apenas descobrir e habilitar ferramentas marcadas como `readOnlyHint: true`, garantindo que nunca execute acoes destrutivas.
-
-## Entendendo a Disponibilidade
-
-### Tarefas vs Subtarefas
-
-**Tarefas** sao iniciadas pelo usuario e sao de nivel superior. Elas tem acesso completo a todas as ferramentas integradas, podem criar subtarefas e podem fazer perguntas ao usuario.
-
-**Subtarefas** sao criadas pelo decopilot para trabalho paralelo, execucao especializada ou contexto isolado. Elas tem acesso restrito:
-- **Nao podem criar subtarefas adicionais** - Previne delegacao infinita
-- **Nao podem fazer perguntas ao usuario** - Subtarefas rodam autonomamente sem bloqueio
-- **Limite de 15 passos** (vs 30 da tarefa pai) - Garante que subtarefas mantenham o foco
-- **Devem retornar um resumo** - Resultados fluem de volta para a tarefa pai
-
-Essas restricoes garantem que as subtarefas completem independentemente e nao criem dependencias bloqueantes.
-
-## Fluxo de Descoberta de Ferramentas
-
-O decopilot inicia cada tarefa apenas com ferramentas integradas e depois descobre e habilita capacidades conforme necessario:
-
-1. **Explorar** - Ferramentas de escopo sao listadas no system prompt com base no MCP Virtual atual
-2. **Executar** - Usar ferramentas disponiveis para realizar o trabalho
-3. **Delegar** - Criar subtarefas via `subtask` para trabalho paralelo ou especializado
-4. **Ler contexto** - Usar `read_resource` e `read_prompt` para carregar conhecimento de dominio
-
-## Fluxos de Trabalho Comuns
-
-### Executar Ferramentas de Escopo
-
-O padrao mais comum para usar ferramentas de escopo:
-
-1. Revisar ferramentas disponiveis do escopo atual
-2. Usar ferramentas para realizar o trabalho solicitado
-3. Ler recursos/prompts para contexto de dominio quando necessario
-
-### Delegar a Especialistas
-
-Para trabalho que requer expertise especializada:
-
-1. Buscar agentes com `agent_search`
-2. Criar uma subtarefa com `subtask` e agente especifico
-3. Continuar a tarefa principal enquanto a subtarefa roda em paralelo
-
-### Execucao Orientada por Contexto
-
-Para tarefas que requerem conhecimento de dominio:
-
-1. Ler recursos relevantes com `read_resource`
-2. Ler templates de fluxo de trabalho com `read_prompt`
-3. Usar o contexto para informar a selecao e execucao de ferramentas
+**Ferramentas de escopo** — vêm das conexões anexadas no seu escopo atual. No escopo de organização, são as built-ins de toda a organização. No escopo de agente, são as ferramentas anexadas ao agente aberto.
 
 ---
 
-**Proximos passos**: Aprenda sobre [Tarefas e Criacao](/pt-br/studio/decopilot/tasks-and-spawning) para entender como o decopilot gerencia trabalho, ou explore [Contexto](/pt-br/studio/decopilot/context) para ver como recursos e prompts fornecem orientacao.
+## Ferramentas built-in
 
-Para documentacao tecnica de ferramentas, veja [Referencia de Ferramentas Integradas](/pt-br/studio/api-reference/built-in-tools).
+| Ferramenta | Disponível em subtarefas | O que faz |
+|---|:---:|---|
+| `subtask` | Não | Inicia uma subtarefa, opcionalmente com um agente específico |
+| `user_ask` | Não | Pergunta a você quando precisa de input |
+| `enable_tool` | Sim | Ativa uma ferramenta de escopo para que ela possa ser chamada no próximo passo |
+| `read_resource` | Sim | Lê documentação ou diretrizes do escopo atual |
+| `read_prompt` | Sim | Lê um template de prompt reutilizável |
+| `read_tool_output` | Sim | Relê um resultado grande de ferramenta que foi descarregado para armazenamento |
+| `web_search` | Sim | Executa uma pesquisa web profunda e transmite o resultado (requer um modelo de pesquisa web) |
+| `generate_image` | Sim | Gera uma imagem com o modelo de imagem configurado |
+| `propose_plan` | Não | Propõe um plano para aprovação (registrada apenas no modo plan) |
+
+Subtarefas têm acesso restrito — não podem iniciar subtarefas adicionais nem fazer perguntas a você, já que são feitas para executar e reportar de volta sem interrupção.
+
+### Agentes apoiados por sandbox recebem VM tools
+
+Quando um agente tem um sandbox (um repositório do GitHub vinculado, veja [Agents](/pt-br/studio/agents)), o Decopilot também recebe seis **VM tools** que operam dentro desse sandbox:
+
+| Ferramenta | O que faz |
+|---|---|
+| `bash` | Executa um comando de shell no sandbox |
+| `read` | Lê um arquivo do sandbox |
+| `write` | Escreve um arquivo no sandbox |
+| `edit` | Aplica uma edição direcionada a um arquivo existente |
+| `grep` | Pesquisa conteúdo de arquivos com ripgrep |
+| `glob` | Lista arquivos que correspondem a um padrão de caminho |
+
+Essas ferramentas são provisionadas de forma preguiçosa — o sandbox só inicia na primeira chamada de VM tool.
+
+---
+
+## Ferramentas de escopo
+
+Ferramentas de escopo são as capacidades específicas de domínio atreladas ao seu contexto atual. Abra um agente e você verá as ferramentas anexadas a ele — ferramentas Shopify se o agente tiver a conexão Shopify, ferramentas de envio se tiver ShipStation, e assim por diante.
+
+**Exemplo**: um agente de fulfillment de pedidos pode expor:
+
+- `GET_ORDERS` — busca pedidos de clientes
+- `UPDATE_INVENTORY` — atualiza níveis de estoque
+- `CREATE_SHIPPING_LABEL` — gera etiquetas de envio
+- `GET_PRODUCTS` — lista o catálogo de produtos
+
+Quais ferramentas estão disponíveis depende das conexões anexadas ao agente atual. Veja [Agents](/pt-br/studio/agents) para saber como organizar isso.
+
+---
+
+## Como o Decopilot usa ferramentas
+
+O Decopilot começa cada tarefa apenas com suas ferramentas built-in. Ele vê as ferramentas de escopo listadas em suas instruções e as utiliza conforme necessário para completar sua solicitação.
+
+Para trabalhos complexos, pode delegar a uma subtarefa (usando `subtask`) ou carregar contexto adicional primeiro (usando `read_resource` ou `read_prompt`) antes de agir.
+
+---
+
+**A seguir:** veja [Contexto e tarefas](/pt-br/studio/decopilot/context-and-tasks) para entender como o Decopilot gerencia memória.
+
+Para a referência técnica completa, veja [Built-in Tools](/pt-br/studio/api-reference/built-in-tools).

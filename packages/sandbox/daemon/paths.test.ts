@@ -2,27 +2,41 @@ import { describe, expect, it } from "bun:test";
 import { safePath } from "./paths";
 
 describe("safePath", () => {
-  const root = "/app";
+  const workspace = "/workspace";
+  const repo = "/workspace/app";
 
-  it("resolves relative paths under root", () => {
-    expect(safePath(root, "src/index.ts")).toBe("/app/src/index.ts");
+  it("resolves relative paths against the repo (matching bash cwd)", () => {
+    expect(safePath(workspace, repo, "src/index.ts")).toBe(
+      "/workspace/app/src/index.ts",
+    );
   });
 
-  it("returns root itself", () => {
-    expect(safePath(root, "")).toBe("/app");
-    expect(safePath(root, ".")).toBe("/app");
+  it("returns the repo for empty / dot paths", () => {
+    expect(safePath(workspace, repo, "")).toBe("/workspace/app");
+    expect(safePath(workspace, repo, ".")).toBe("/workspace/app");
   });
 
-  it("rejects paths that escape via ..", () => {
-    expect(safePath(root, "../etc/passwd")).toBeNull();
-    expect(safePath(root, "a/../../../etc")).toBeNull();
+  it("allows escaping the repo into workspace siblings (logs)", () => {
+    expect(safePath(workspace, repo, "../tmp/app/dev")).toBe(
+      "/workspace/tmp/app/dev",
+    );
   });
 
-  it("rejects absolute paths outside root", () => {
-    expect(safePath(root, "/etc/passwd")).toBeNull();
+  it("rejects paths that escape the workspace", () => {
+    expect(safePath(workspace, repo, "../../etc/passwd")).toBeNull();
+    expect(safePath(workspace, repo, "a/../../../etc")).toBeNull();
   });
 
-  it("allows absolute paths inside root", () => {
-    expect(safePath(root, "/app/src/x.ts")).toBe("/app/src/x.ts");
+  it("rejects absolute paths outside the workspace", () => {
+    expect(safePath(workspace, repo, "/etc/passwd")).toBeNull();
+  });
+
+  it("allows absolute paths inside the workspace", () => {
+    expect(safePath(workspace, repo, "/workspace/app/src/x.ts")).toBe(
+      "/workspace/app/src/x.ts",
+    );
+    expect(safePath(workspace, repo, "/workspace/tmp/app/dev")).toBe(
+      "/workspace/tmp/app/dev",
+    );
   });
 });

@@ -5,6 +5,10 @@
  * and attribute keys (connection.id / tool.name) as recordToolExecutionMetrics
  * so that the NDJSONMetricExporter stores them under connection_id = "decopilot"
  * and the existing MONITORING_STATS query (filtering by connectionIds) works.
+ *
+ * Cache tokens are emitted on a separate counter (`tool.execution.cache_tokens`)
+ * with attribute `kind` ∈ {"read", "write"} so dashboards can compute
+ * cost savings and hit ratios. A counter is only emitted for non-zero kinds.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
@@ -19,6 +23,8 @@ export function recordLlmCallMetrics(params: {
   errorType?: string;
   inputTokens?: number;
   outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }): void {
   const {
     ctx,
@@ -28,12 +34,12 @@ export function recordLlmCallMetrics(params: {
     isError,
     inputTokens,
     outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
   } = params;
 
   if (!organizationId || !modelId) return;
 
-  // Use the attribute keys the NDJSONMetricExporter reads:
-  // "connection.id" → connection_id column, "tool.name" → tool_name column.
   const attributes = {
     "connection.id": DECOPILOT_CONNECTION_ID,
     "tool.name": modelId,
@@ -56,11 +62,25 @@ export function recordLlmCallMetrics(params: {
     .add(1, attributes);
 
   if (inputTokens != null || outputTokens != null) {
-    const tokenAttributes = { ...attributes };
     ctx.meter
       .createCounter("tool.execution.tokens", {
         description: "Number of tokens used by LLM calls",
       })
-      .add((inputTokens ?? 0) + (outputTokens ?? 0), tokenAttributes);
+      .add((inputTokens ?? 0) + (outputTokens ?? 0), attributes);
+  }
+
+  if ((cacheReadTokens ?? 0) > 0) {
+    ctx.meter
+      .createCounter("tool.execution.cache_tokens", {
+        description: "LLM cache tokens by kind (read/write)",
+      })
+      .add(cacheReadTokens!, { ...attributes, kind: "read" });
+  }
+  if ((cacheWriteTokens ?? 0) > 0) {
+    ctx.meter
+      .createCounter("tool.execution.cache_tokens", {
+        description: "LLM cache tokens by kind (read/write)",
+      })
+      .add(cacheWriteTokens!, { ...attributes, kind: "write" });
   }
 }

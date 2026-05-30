@@ -37,10 +37,6 @@ export const RegistryConfigSchema = z.object({
 
 export type RegistryConfig = z.infer<typeof RegistryConfigSchema>;
 
-/**
- * Model slot schema — a concrete model selection (provider key + model).
- * Matches SimpleModeModelSlot interface from storage/types.ts.
- */
 const ModelSlotSchema = z
   .object({
     keyId: z.string(),
@@ -49,26 +45,54 @@ const ModelSlotSchema = z
   })
   .nullable();
 
+export const SimpleModeTierSchema = z.enum([
+  "fast",
+  "smart",
+  "thinking",
+  "image",
+  "web_research",
+]);
+
+export type SimpleModeTier = z.infer<typeof SimpleModeTierSchema>;
+
 /**
- * Simple Model Mode configuration schema.
- * Matches SimpleModeConfig interface from storage/types.ts.
- *
- * When the org enables Simple Mode, members see a Fast/Smart/Thinking
- * toggle instead of the full model picker, and image/webResearch default
- * to the models picked here.
+ * Chat-only tier subset used by automations.
+ * Automations only need to pick between the three chat tiers
+ * (fast/smart/thinking) — image and web_research are not applicable.
  */
+export const ChatTierSchema = z.enum(["fast", "smart", "thinking"]);
+
+export type ChatTier = z.infer<typeof ChatTierSchema>;
+
 export const SimpleModeConfigSchema = z.object({
-  enabled: z.boolean(),
-  chat: z.object({
+  tiers: z.object({
     fast: ModelSlotSchema,
     smart: ModelSlotSchema,
     thinking: ModelSlotSchema,
+    image: ModelSlotSchema,
+    web_research: ModelSlotSchema,
   }),
-  image: ModelSlotSchema,
-  webResearch: ModelSlotSchema,
 });
 
 export type SimpleModeConfig = z.infer<typeof SimpleModeConfigSchema>;
+
+/**
+ * Default home agents config schema - matches DefaultHomeAgentsConfig from storage/types.ts.
+ *
+ * Each entry is a custom virtual MCP agent id (UUID). The home view renders
+ * these tiles in order, capped at the home view's display limit.
+ */
+export const DefaultHomeAgentsConfigSchema = z.object({
+  ids: z
+    .array(z.string())
+    .describe(
+      "Ordered list of custom virtual MCP agent ids to show on the home view.",
+    ),
+});
+
+export type DefaultHomeAgentsConfig = z.infer<
+  typeof DefaultHomeAgentsConfigSchema
+>;
 
 /**
  * Brand context schema - org-scoped company profile

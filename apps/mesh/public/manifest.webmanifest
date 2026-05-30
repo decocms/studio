@@ -1,0 +1,19 @@
+{
+  "name": "deco CMS",
+  "short_name": "deco CMS",
+  "description": "Hire specialized agents, give them access to your tools, and let them deliver real projects — with planning, verification, and observability built in.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay"],
+  "background_color": "#ffffff",
+  "theme_color": "#f6f4ed",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

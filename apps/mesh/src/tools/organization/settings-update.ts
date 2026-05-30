@@ -5,12 +5,13 @@ import {
   SidebarItemSchema,
   RegistryConfigSchema,
   SimpleModeConfigSchema,
+  DefaultHomeAgentsConfigSchema,
 } from "./schema.ts";
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   name: "ORGANIZATION_SETTINGS_UPDATE",
   description:
-    "Update organization-level settings such as sidebar configuration, store registry settings, and simple model mode.",
+    "Update organization-level settings such as sidebar configuration, store registry settings, simple model mode, and default home agents.",
   annotations: {
     title: "Update Organization Settings",
     readOnlyHint: false,
@@ -24,6 +25,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     enabled_plugins: z.array(z.string()).optional(),
     registry_config: RegistryConfigSchema.optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
+    default_home_agents: DefaultHomeAgentsConfigSchema.optional(),
   }),
 
   outputSchema: z.object({
@@ -32,6 +34,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     enabled_plugins: z.array(z.string()).nullable().optional(),
     registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
+    default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),
@@ -51,6 +54,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         enabled_plugins: input.enabled_plugins,
         registry_config: input.registry_config,
         simple_mode: input.simple_mode,
+        default_home_agents: input.default_home_agents,
       },
     );
 

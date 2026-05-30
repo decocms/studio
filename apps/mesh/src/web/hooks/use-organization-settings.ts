@@ -15,6 +15,9 @@ import {
 } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 
+export type { SimpleModeTier } from "@/tools/organization/schema";
+import type { SimpleModeTier } from "@/tools/organization/schema";
+
 export interface ModelSlot {
   keyId: string;
   modelId: string;
@@ -22,19 +25,16 @@ export interface ModelSlot {
 }
 
 export interface SimpleModeConfig {
-  enabled: boolean;
-  chat: {
-    fast: ModelSlot | null;
-    smart: ModelSlot | null;
-    thinking: ModelSlot | null;
-  };
-  image: ModelSlot | null;
-  webResearch: ModelSlot | null;
+  tiers: Record<SimpleModeTier, ModelSlot | null>;
 }
 
 export interface RegistryConfig {
   registries: Record<string, { enabled: boolean }>;
   blockedMcps: string[];
+}
+
+export interface DefaultHomeAgentsConfig {
+  ids: string[];
 }
 
 export interface OrganizationSettings {
@@ -43,6 +43,7 @@ export interface OrganizationSettings {
   enabled_plugins: string[] | null;
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
+  default_home_agents: DefaultHomeAgentsConfig | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -53,13 +54,17 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   enabled_plugins: null,
   registry_config: null,
   simple_mode: null,
+  default_home_agents: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
-  enabled: false,
-  chat: { fast: null, smart: null, thinking: null },
-  image: null,
-  webResearch: null,
+  tiers: {
+    fast: null,
+    smart: null,
+    thinking: null,
+    image: null,
+    web_research: null,
+  },
 };
 
 /**
@@ -74,6 +79,7 @@ function useOrganizationSettings<T = OrganizationSettings>(
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -105,10 +111,12 @@ function useOrganizationSettings<T = OrganizationSettings>(
  */
 export function useOrganizationSettingsSuspense(
   orgId: string,
+  orgSlug: string,
 ): OrganizationSettings {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId,
+    orgSlug,
   });
 
   const { data } = useSuspenseQuery({
@@ -134,7 +142,11 @@ export function useOrganizationSettingsSuspense(
 type OrgSettingsUpdateInput = Partial<
   Pick<
     OrganizationSettings,
-    "sidebar_items" | "enabled_plugins" | "registry_config" | "simple_mode"
+    | "sidebar_items"
+    | "enabled_plugins"
+    | "registry_config"
+    | "simple_mode"
+    | "default_home_agents"
   >
 >;
 
@@ -157,6 +169,7 @@ export function useUpdateOrganizationSettings(): UseMutationResult<
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
 
@@ -200,16 +213,15 @@ export function useUpdateOrganizationSettings(): UseMutationResult<
 // ---------------------------------------------------------------------------
 
 function normalizeSimpleMode(cfg: SimpleModeConfig | null): SimpleModeConfig {
-  if (!cfg) return EMPTY_SIMPLE_MODE;
+  if (!cfg?.tiers) return EMPTY_SIMPLE_MODE;
   return {
-    enabled: cfg.enabled ?? false,
-    chat: {
-      fast: cfg.chat?.fast ?? null,
-      smart: cfg.chat?.smart ?? null,
-      thinking: cfg.chat?.thinking ?? null,
+    tiers: {
+      fast: cfg.tiers.fast ?? null,
+      smart: cfg.tiers.smart ?? null,
+      thinking: cfg.tiers.thinking ?? null,
+      image: cfg.tiers.image ?? null,
+      web_research: cfg.tiers.web_research ?? null,
     },
-    image: cfg.image ?? null,
-    webResearch: cfg.webResearch ?? null,
   };
 }
 
@@ -260,6 +272,26 @@ export function useUpdateRegistryConfig() {
  * registry. Falls back to "Deco Store is the default" when no registry_config
  * is set.
  */
+export function useDefaultHomeAgents(): DefaultHomeAgentsConfig | null {
+  const { data } = useOrganizationSettings((s) => s.default_home_agents);
+  return data ?? null;
+}
+
+export function useUpdateDefaultHomeAgents() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutate: (
+      config: DefaultHomeAgentsConfig,
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutate({ default_home_agents: config }, options),
+    mutateAsync: (
+      config: DefaultHomeAgentsConfig,
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutateAsync({ default_home_agents: config }, options),
+  };
+}
+
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {
   const { org } = useProjectContext();
   const registryConfig = useRegistryConfig();

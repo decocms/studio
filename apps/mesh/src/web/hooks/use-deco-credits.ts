@@ -27,6 +27,7 @@ export function useDecoCredits() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const keys = useAiProviderKeys();
 
@@ -61,6 +62,7 @@ export function useDecoCredits() {
   const firstSeenRef = useRef<Map<string, boolean>>(new Map());
   if (balanceCents != null) {
     const previous = lastSeenBalance.get(org.id);
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     const hasSeenBefore = firstSeenRef.current.get(org.id);
     if (hasSeenBefore && previous != null && balanceCents > previous) {
       track("credits_topped_up_detected", {
@@ -71,6 +73,7 @@ export function useDecoCredits() {
       });
     }
     lastSeenBalance.set(org.id, balanceCents);
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     firstSeenRef.current.set(org.id, true);
   }
   const hasDecoKey = !!decoKey;

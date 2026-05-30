@@ -1,51 +1,71 @@
 import { CollectionListInputSchema } from "@decocms/bindings/collections";
 import { z } from "zod";
 
-const RegistryServerSchema = z.object({
-  name: z.string(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-  version: z.string().optional(),
-  websiteUrl: z.string().optional(),
-  icons: z
-    .array(
-      z.object({
-        src: z.string(),
-      }),
-    )
-    .optional(),
-  remotes: z
-    .array(
-      z.object({
-        type: z.string().optional(),
+// IMPORTANT: every object below is "open" (`.catchall(z.unknown())`), so its
+// JSON Schema advertises `additionalProperties: {}` rather than the default
+// `additionalProperties: false`.
+//
+// Why this matters: the registry response is built by spreading the stored
+// `server_json`/`meta_json` verbatim, and those mirror a full MCP `server.json`
+// (carrying many fields this schema does not model — `$schema`, `status`,
+// package transport details, etc.). The deco store validates output with Zod
+// (which strips unknown keys and passes), but MCP clients — e.g. the mesh proxy
+// via `client.callTool` — re-validate the structuredContent with Ajv, which
+// enforces `additionalProperties: false` and rejects the extra fields with
+// `-32602: Structured content does not match the tool's output schema`.
+// A closed schema therefore breaks LIST/GET; SEARCH is unaffected because it
+// returns a slim, exactly-projected object. Keeping these objects open is the
+// fix (and matches the open `[key: string]: unknown` storage entity types).
+const RegistryServerSchema = z
+  .object({
+    name: z.string(),
+    title: z.string().optional(),
+    description: z.string().optional(),
+    version: z.string().optional(),
+    websiteUrl: z.string().optional(),
+    icons: z
+      .array(z.object({ src: z.string() }).catchall(z.unknown()))
+      .optional(),
+    remotes: z
+      .array(
+        z
+          .object({
+            type: z.string().optional(),
+            url: z.string().optional(),
+            name: z.string().optional(),
+            title: z.string().optional(),
+            description: z.string().optional(),
+          })
+          .catchall(z.unknown()),
+      )
+      .optional(),
+    packages: z
+      .array(
+        z
+          .object({
+            identifier: z.string(),
+            version: z.string().optional(),
+          })
+          .catchall(z.unknown()),
+      )
+      .optional(),
+    repository: z
+      .object({
         url: z.string().optional(),
-        name: z.string().optional(),
-        title: z.string().optional(),
-        description: z.string().optional(),
-      }),
-    )
-    .optional(),
-  packages: z
-    .array(
-      z.object({
-        identifier: z.string(),
-        version: z.string().optional(),
-      }),
-    )
-    .optional(),
-  repository: z
-    .object({
-      url: z.string().optional(),
-      source: z.string().optional(),
-      subfolder: z.string().optional(),
-    })
-    .optional(),
-});
+        source: z.string().optional(),
+        subfolder: z.string().optional(),
+      })
+      .catchall(z.unknown())
+      .optional(),
+  })
+  .catchall(z.unknown());
 
-const RegistryToolSchema = z.object({
-  name: z.string(),
-  description: z.string().nullable().optional(),
-});
+const RegistryToolSchema = z
+  .object({
+    name: z.string(),
+    description: z.string().nullable().optional(),
+  })
+  .catchall(z.unknown());
 
 const RegistryItemMetaSchema = z
   .object({
@@ -59,27 +79,38 @@ const RegistryItemMetaSchema = z
         short_description: z.string().max(160).nullable().optional(),
         owner: z.string().nullable().optional(),
         readme: z.string().max(50000).nullable().optional(),
-        readme_url: z.string().url().nullable().optional(),
+        // Plain string (not `.url()`): `.url()` advertises JSON Schema
+        // `format: "uri"`, which Ajv (in MCP clients) enforces more strictly
+        // than Zod's `new URL()` — rejecting otherwise-valid URLs with spaces
+        // or non-ASCII chars. Matches every other URL field in this schema.
+        readme_url: z.string().nullable().optional(),
         has_remote: z.boolean().optional(),
         has_oauth: z.boolean().optional(),
         tools: z.array(RegistryToolSchema).optional(),
       })
+      .catchall(z.unknown())
       .optional(),
   })
   .catchall(z.unknown());
 
-export const RegistryItemSchema = z.object({
-  id: z.string(),
-  name: z.string().optional(),
-  title: z.string(),
-  description: z.string().nullable().optional(),
-  _meta: RegistryItemMetaSchema.optional(),
-  server: RegistryServerSchema,
-  is_public: z.boolean().optional(),
-  created_at: z.string(),
-  updated_at: z.string(),
-  created_by: z.string().optional(),
-});
+export const RegistryItemSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    title: z.string(),
+    description: z.string().nullable().optional(),
+    _meta: RegistryItemMetaSchema.optional(),
+    server: RegistryServerSchema,
+    is_public: z.boolean().optional(),
+    // Always emitted by the storage layer's `deserialize`.
+    is_unlisted: z.boolean().optional(),
+    created_at: z.string(),
+    updated_at: z.string(),
+    created_by: z.string().optional(),
+  })
+  // Open the item object itself (no `additionalProperties: false`) so any
+  // field the backend returns that is not modeled above does not trigger -32602.
+  .catchall(z.unknown());
 
 const RegistryCreateSchema = z.object({
   id: z.string(),

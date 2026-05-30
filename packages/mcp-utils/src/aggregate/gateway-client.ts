@@ -111,7 +111,7 @@ export function displayToolName(
 
 /**
  * Convert a kebab/snake-case prompt name to a human-readable Title Case string.
- * e.g. "writing-prompts" → "Writing Prompts"
+ * e.g. "agents-create" → "Agents Create"
  */
 function titleFromName(name: string): string {
   return name

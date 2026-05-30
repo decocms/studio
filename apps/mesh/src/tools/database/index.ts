@@ -231,6 +231,15 @@ export const DATABASES_RUN_SQL = defineTool({
       throw new Error("Connection context required for database access");
     }
 
+    // Usage probe — evaluating whether to deprecate this tool. Filter on
+    // `tool.deprecation_probe = "DATABASES_RUN_SQL"` in OTLP logs.
+    console.warn("DATABASES_RUN_SQL invoked", {
+      "tool.deprecation_probe": "DATABASES_RUN_SQL",
+      "connection.id": ctx.connectionId,
+      "organization.id": ctx.organization?.id ?? null,
+      "user.id": ctx.auth.user?.id ?? null,
+    });
+
     const schemaName = getSchemaName(ctx.connectionId);
     const roleName = getRoleName(ctx.connectionId);
 

@@ -16,7 +16,7 @@
     "@modelcontextprotocol/sdk": ">=1.27.0"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "1.27.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "quickjs-emscripten-core": "0.31.0",
     "@jitl/quickjs-wasmfile-release-sync": "0.31.0"
   },

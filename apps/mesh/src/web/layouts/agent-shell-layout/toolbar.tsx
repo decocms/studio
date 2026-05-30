@@ -14,9 +14,12 @@
  * <Toolbar.Toggles> / <Toolbar.Right> (createPortal). Never suspends itself.
  */
 
-import { createContext, use, useState, type ReactNode } from "react";
+import { createContext, Suspense, use, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Link, useParams } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "@untitledui/icons";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 
 type ToolbarCtx = {
   togglesEl: HTMLDivElement | null;
@@ -37,7 +40,7 @@ function useToolbarCtx(): ToolbarCtx {
   return ctx;
 }
 
-export function Toolbar({ children }: { children?: ReactNode }) {
+function ToolbarProviderImpl({ children }: { children?: ReactNode }) {
   const [togglesEl, setTogglesEl] = useState<HTMLDivElement | null>(null);
   const [tabsEl, setTabsEl] = useState<HTMLDivElement | null>(null);
   const [centerEl, setCenterEl] = useState<HTMLDivElement | null>(null);
@@ -55,14 +58,28 @@ export function Toolbar({ children }: { children?: ReactNode }) {
         setRightEl,
       }}
     >
-      <div className="flex flex-col h-full min-h-0">{children}</div>
+      {children}
     </ToolbarContext>
   );
 }
 
+export function Toolbar({ children }: { children?: ReactNode }) {
+  return (
+    <ToolbarProviderImpl>
+      <div className="flex flex-col h-full min-h-0">{children}</div>
+    </ToolbarProviderImpl>
+  );
+}
+
+/**
+ * The header occupies the WCO title-bar strip when the app is installed as a
+ * PWA. `env(titlebar-area-*)` resolves to non-zero values only inside that
+ * mode; in a regular browser tab the fallbacks (0 left/right, 3rem height)
+ * give the standard h-12 toolbar.
+ */
 function ToolbarHeader({ children }: { children?: ReactNode }) {
   return (
-    <div className="shrink-0 grid grid-cols-3 items-center pl-1 pr-2 pt-0.25 h-12">
+    <div className="app-titlebar wco-drag shrink-0 grid grid-cols-3 items-center pl-1 pr-2 pt-0.25 h-12 bg-sidebar">
       {children}
     </div>
   );
@@ -87,23 +104,69 @@ function ToolbarRightColumn({ children }: { children?: ReactNode }) {
 function ToolbarNav() {
   return (
     <>
-      <button
-        type="button"
+      <ToolbarIconButton
         onClick={() => window.history.back()}
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+        aria-label="Go back"
         title="Go back"
       >
         <ChevronLeft size={16} />
-      </button>
-      <button
-        type="button"
+      </ToolbarIconButton>
+      <ToolbarIconButton
         onClick={() => window.history.forward()}
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+        aria-label="Go forward"
         title="Go forward"
       >
         <ChevronRight size={16} />
-      </button>
+      </ToolbarIconButton>
     </>
+  );
+}
+
+function ToolbarLogoInner() {
+  const config = usePublicConfig();
+  const logo = config.logo ?? DEFAULT_LOGO;
+  const lightSrc = typeof logo === "string" ? logo : logo.light;
+  const darkSrc = typeof logo === "string" ? logo : logo.dark;
+  return (
+    <span className="wco-hide flex items-center shrink-0 px-2">
+      <img
+        src={lightSrc}
+        alt="Logo"
+        className="size-6 object-contain dark:hidden"
+      />
+      <img
+        src={darkSrc}
+        alt="Logo"
+        className="size-6 object-contain hidden dark:block"
+      />
+    </span>
+  );
+}
+
+function ToolbarLogo() {
+  return (
+    <Suspense fallback={<span className="wco-hide shrink-0 size-6 mx-2" />}>
+      <ToolbarLogoInner />
+    </Suspense>
+  );
+}
+
+/**
+ * The logo wrapped in a link back to the org home (`/$org`). Used as the
+ * "home" affordance in the shell headers.
+ */
+function ToolbarLogoLink() {
+  const { org } = useParams({ from: "/shell/$org" });
+  return (
+    <Link
+      to="/$org"
+      params={{ org }}
+      aria-label="Back to home"
+      title="Back to home"
+      className="wco-no-drag flex items-center shrink-0 cursor-pointer pl-1"
+    >
+      <ToolbarLogo />
+    </Link>
   );
 }
 
@@ -125,12 +188,7 @@ function ToolbarCenter({ children }: { children: ReactNode }) {
 
 function ToolbarTabsSlot() {
   const { setTabsEl } = useToolbarCtx();
-  return (
-    <div
-      ref={setTabsEl}
-      className="shrink-0 flex items-center overflow-x-auto"
-    />
-  );
+  return <div ref={setTabsEl} className="shrink-0 flex items-center" />;
 }
 
 function ToolbarTabs({ children }: { children: ReactNode }) {
@@ -141,12 +199,10 @@ function ToolbarTabs({ children }: { children: ReactNode }) {
 
 function ToolbarTogglesSlot() {
   const { setTogglesEl } = useToolbarCtx();
-  return (
-    <div
-      ref={setTogglesEl}
-      className="flex items-center gap-0.5 shrink-0 ml-0.5"
-    />
-  );
+  // `display: contents` keeps the div as a portal target (we need the
+  // ref) but produces no layout box, so the toggle buttons become direct
+  // flex children of Toolbar.LeftColumn and inherit its gap.
+  return <div ref={setTogglesEl} className="contents" />;
 }
 
 function ToolbarToggles({ children }: { children: ReactNode }) {
@@ -171,10 +227,13 @@ function ToolbarRight({ children }: { children: ReactNode }) {
   return createPortal(children, rightEl);
 }
 
+Toolbar.Provider = ToolbarProviderImpl;
 Toolbar.Header = ToolbarHeader;
 Toolbar.LeftColumn = ToolbarLeftColumn;
 Toolbar.RightColumn = ToolbarRightColumn;
 Toolbar.Nav = ToolbarNav;
+Toolbar.Logo = ToolbarLogo;
+Toolbar.LogoLink = ToolbarLogoLink;
 Toolbar.CenterSlot = ToolbarCenterSlot;
 Toolbar.Center = ToolbarCenter;
 Toolbar.TabsSlot = ToolbarTabsSlot;

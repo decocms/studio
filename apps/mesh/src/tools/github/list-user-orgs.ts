@@ -74,9 +74,14 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
     let res = await fetchRepos(accessToken);
 
     if (res.status === 401) {
+      // Reactive refresh: GitHub rejected the token (revoked, rotated, or
+      // expired before our clock said so). Try one refresh + retry before
+      // giving up.
+      // Deletion of the cached row is delegated to `refreshAndStore`, which
+      // only deletes on a definitive `400 invalid_grant`. Transient OAuth
+      // failures leave the row intact so a later request can recover.
       const current = await tokenStorage.get(input.connectionId);
       if (!current || !canRefresh(current)) {
-        await tokenStorage.delete(input.connectionId);
         throw new Error(RECONNECT_ERROR);
       }
       const refreshed = await refreshAndStore(current, tokenStorage);
@@ -86,7 +91,6 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
       accessToken = refreshed;
       res = await fetchRepos(accessToken);
       if (res.status === 401) {
-        await tokenStorage.delete(input.connectionId);
         throw new Error(RECONNECT_ERROR);
       }
     }

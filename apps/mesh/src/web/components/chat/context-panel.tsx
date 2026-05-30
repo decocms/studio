@@ -12,7 +12,7 @@ import { calculateUsageStats } from "@/web/lib/usage-utils";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useChatStream, useChatTask, useChatPrefs } from "./context";
 import type { ChatMessage, SubtaskToolPart } from "./types";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
 // ============================================================================
 // Helpers
@@ -141,21 +141,18 @@ function ContextBreakdownBar({
 // SubtaskRow — resolves agent via single-item fetch
 // ============================================================================
 
-function SubtaskRow({ part }: { part: SubtaskToolPart }) {
-  const agentId = part.input?.agent_id;
+function SubtaskAgentInfo({
+  agentId,
+  isError,
+}: {
+  agentId: string | undefined;
+  isError: boolean;
+}) {
   const agent = useVirtualMCP(agentId);
   const agentTitle = agent?.title ?? "Subtask";
   const agentIcon = agent?.icon ?? null;
-  const isRunning =
-    part.state === "input-streaming" ||
-    part.state === "input-available" ||
-    (part.state === "output-available" &&
-      (part as { preliminary?: boolean }).preliminary === true);
-  const isError = part.state === "output-error";
-  const isApproval = part.state === "approval-requested";
-
   return (
-    <div className="flex items-center gap-2 text-xs min-w-0">
+    <>
       <IntegrationIcon
         icon={agentIcon}
         name={agentTitle}
@@ -170,6 +167,46 @@ function SubtaskRow({ part }: { part: SubtaskToolPart }) {
       >
         {agentTitle}
       </span>
+    </>
+  );
+}
+
+function SubtaskAgentInfoFallback({ isError }: { isError: boolean }) {
+  return (
+    <>
+      <IntegrationIcon
+        icon={null}
+        name="Subtask"
+        size="xs"
+        className="size-6 rounded-md shrink-0"
+      />
+      <span
+        className={cn(
+          "shrink-0 font-medium",
+          isError ? "text-destructive" : "text-foreground",
+        )}
+      >
+        Subtask
+      </span>
+    </>
+  );
+}
+
+function SubtaskRow({ part }: { part: SubtaskToolPart }) {
+  const agentId = part.input?.agent_id;
+  const isRunning =
+    part.state === "input-streaming" ||
+    part.state === "input-available" ||
+    (part.state === "output-available" &&
+      (part as { preliminary?: boolean }).preliminary === true);
+  const isError = part.state === "output-error";
+  const isApproval = part.state === "approval-requested";
+
+  return (
+    <div className="flex items-center gap-2 text-xs min-w-0">
+      <Suspense fallback={<SubtaskAgentInfoFallback isError={isError} />}>
+        <SubtaskAgentInfo agentId={agentId} isError={isError} />
+      </Suspense>
       {part.input?.prompt && (
         <>
           <span className="text-muted-foreground/50">·</span>
@@ -214,10 +251,8 @@ export function ChatContextPanel({
   );
 
   const { messages } = useChatStream();
-  const { tasks, taskId } = useChatTask();
+  const { activeTask } = useChatTask();
   const { selectedModel, selectedVirtualMcp } = useChatPrefs();
-
-  const activeTask = tasks.find((t) => t.id === taskId);
 
   const stats = calculateUsageStats(
     messages as Array<{
@@ -242,8 +277,9 @@ export function ChatContextPanel({
     lastAssistantMessage?.metadata?.modelLimits?.contextWindow ??
     selectedModel?.limits?.contextWindow ??
     null;
-  const contextFillTokens =
-    lastAssistantUsage?.contextTokens ?? lastAssistantUsage?.totalTokens ?? 0;
+  // Per-turn context size only — cumulative `totalTokens` would read as
+  // if the model's window is far fuller than it actually is.
+  const contextFillTokens = lastAssistantUsage?.contextTokens ?? 0;
 
   const usagePct =
     contextWindow && contextWindow > 0
@@ -469,9 +505,88 @@ export function ChatContextPanel({
                       )}
                     </button>
                     {isExpanded && (
-                      <pre className="text-xs font-mono bg-muted px-3 py-2 overflow-auto whitespace-pre-wrap break-all border-t border-border/50 max-h-64">
-                        {JSON.stringify(m, null, 2)}
-                      </pre>
+                      <>
+                        {m.role === "assistant" &&
+                          (() => {
+                            const req = (
+                              m.metadata as {
+                                _request?: {
+                                  systemSections?: {
+                                    chars: number;
+                                    preview: string;
+                                  }[];
+                                  tools?: number;
+                                  activeTools?: number;
+                                };
+                              }
+                            )?._request;
+                            if (!req) return null;
+                            const sections = req.systemSections ?? [];
+                            const maxChars = Math.max(
+                              1,
+                              ...sections.map((s) => s.chars),
+                            );
+                            const totalChars = sections.reduce(
+                              (sum, s) => sum + s.chars,
+                              0,
+                            );
+                            return (
+                              <div className="border-t border-border/50 px-3 py-2.5 text-xs space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium text-foreground">
+                                    Request
+                                  </span>
+                                  <span className="text-muted-foreground tabular-nums">
+                                    {req.activeTools ?? 0} / {req.tools ?? 0}{" "}
+                                    tools active
+                                  </span>
+                                </div>
+                                {sections.length > 0 && (
+                                  <div className="space-y-1.5">
+                                    <div className="text-muted-foreground">
+                                      System prompt{" "}
+                                      <span className="tabular-nums">
+                                        ~
+                                        {Math.round(
+                                          totalChars / 4,
+                                        ).toLocaleString()}{" "}
+                                        tok
+                                      </span>
+                                    </div>
+                                    {sections.map((s, i) => {
+                                      const tag =
+                                        s.preview.match(/^<([a-z-]+)/i)?.[1] ??
+                                        `section ${i}`;
+                                      const pct = (s.chars / maxChars) * 100;
+                                      const tok = Math.round(s.chars / 4);
+                                      return (
+                                        <div key={i} className="space-y-0.5">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="font-mono text-foreground truncate">
+                                              {tag}
+                                            </span>
+                                            <span className="text-muted-foreground tabular-nums shrink-0">
+                                              ~{tok.toLocaleString()} tok
+                                            </span>
+                                          </div>
+                                          <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
+                                            <div
+                                              className="h-full rounded-full bg-chart-3"
+                                              style={{ width: `${pct}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        <pre className="text-xs font-mono bg-muted px-3 py-2 overflow-auto whitespace-pre-wrap break-all border-t border-border/50 max-h-64">
+                          {JSON.stringify(m, null, 2)}
+                        </pre>
+                      </>
                     )}
                   </div>
                 );

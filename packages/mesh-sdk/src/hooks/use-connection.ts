@@ -81,6 +81,7 @@ export function useConnections(options: UseConnectionsOptions = {}) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   return useCollectionList<ConnectionEntity>(
     org.id,
@@ -101,6 +102,7 @@ export function useConnection(connectionId: string | undefined) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   return useCollectionItem<ConnectionEntity>(
     org.id,
@@ -120,6 +122,7 @@ export function useConnectionActions() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   return useCollectionActions<ConnectionEntity>(org.id, "CONNECTIONS", client);
 }

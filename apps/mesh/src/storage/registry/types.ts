@@ -114,6 +114,7 @@ export interface PrivateRegistryDatabase {
 export interface RegistryToolMeta {
   name: string;
   description?: string | null;
+  [key: string]: unknown;
 }
 
 export interface MeshRegistryMeta {
@@ -143,6 +144,7 @@ export interface RegistryRemote {
   name?: string;
   title?: string;
   description?: string;
+  [key: string]: unknown;
 }
 
 export interface RegistryPackage {
@@ -158,13 +160,14 @@ export interface RegistryServerDefinition {
   description?: string;
   version?: string;
   websiteUrl?: string;
-  icons?: Array<{ src: string }>;
+  icons?: Array<{ src: string; [key: string]: unknown }>;
   remotes?: RegistryRemote[];
   packages?: RegistryPackage[];
   repository?: {
     url?: string;
     source?: string;
     subfolder?: string;
+    [key: string]: unknown;
   };
   [key: string]: unknown;
 }
@@ -181,6 +184,7 @@ export interface PrivateRegistryItemEntity {
   created_at: string;
   updated_at: string;
   created_by?: string;
+  [key: string]: unknown;
 }
 
 export interface PrivateRegistryCreateInput {

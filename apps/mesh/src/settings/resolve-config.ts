@@ -61,26 +61,22 @@ export function resolveConfig(
 
     // Database (url resolved after services start)
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),
-    databasePoolMax: Number(envVars.DATABASE_POOL_MAX) || 3,
+    databasePoolMax: Number(envVars.DATABASE_POOL_MAX) || 5,
 
     // Auth & Secrets
     betterAuthSecret: envVars.BETTER_AUTH_SECRET || "",
     encryptionKey: envVars.ENCRYPTION_KEY || "",
     meshJwtSecret: envVars.MESH_JWT_SECRET,
     localMode,
-    allowLocalProd: localMode || toBool(envVars.DECOCMS_ALLOW_LOCAL_PROD),
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,
-    otelServiceName: envVars.OTEL_SERVICE_NAME || "mesh",
+    otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
     // Config files
     configPath: envVars.CONFIG_PATH || "./config.json",
-
-    // Transport
-    unsafeAllowStdioTransport: toBool(envVars.UNSAFE_ALLOW_STDIO_TRANSPORT),
 
     // AI Gateway
     aiGatewayEnabled: toBool(envVars.DECO_AI_GATEWAY_ENABLED),

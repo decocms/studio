@@ -7,6 +7,7 @@ import {
   useAutomationActions,
   type AutomationTrigger,
 } from "@/web/hooks/use-automations";
+import { WebhookSecretDialog } from "@/web/components/automations/webhook-secret-dialog";
 import {
   buildCronFromInterval,
   humanReadableCron,
@@ -25,7 +26,15 @@ import {
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Clock, Edit01, Loading01, XClose, Zap } from "@untitledui/icons";
+import {
+  Clock,
+  Edit01,
+  Globe01,
+  Loading01,
+  RefreshCw01,
+  XClose,
+  Zap,
+} from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -38,9 +47,17 @@ export function TriggerCard({
   automationId: string;
   connectionName?: string;
 }) {
-  const { triggerAdd: addTrigger, triggerRemove: removeTrigger } =
-    useAutomationActions();
+  const {
+    triggerAdd: addTrigger,
+    triggerRemove: removeTrigger,
+    triggerRotateToken: rotateToken,
+  } = useAutomationActions();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
+  const [rotatedSecret, setRotatedSecret] = useState<{
+    url: string;
+    token: string;
+  } | null>(null);
 
   const interval = trigger.cron_expression
     ? parseCronToInterval(trigger.cron_expression)
@@ -49,8 +66,10 @@ export function TriggerCard({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(trigger.cron_expression ?? "");
 
-  const isSaving = removeTrigger.isPending || addTrigger.isPending;
+  const isSaving =
+    removeTrigger.isPending || addTrigger.isPending || rotateToken.isPending;
   const isCron = trigger.type === "cron";
+  const isWebhook = trigger.type === "webhook";
 
   const handleRemove = async () => {
     try {
@@ -90,9 +109,26 @@ export function TriggerCard({
     }
   };
 
+  const handleRotate = async () => {
+    setConfirmRotate(false);
+    try {
+      const result = await rotateToken.mutateAsync({
+        trigger_id: trigger.id,
+        automation_id: automationId,
+      });
+      setRotatedSecret({ url: result.url, token: result.token });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to rotate token";
+      toast.error(message);
+    }
+  };
+
   const handleCountSave = async (newCount: number) => {
     if (!interval) return;
-    const clamped = Math.max(1, newCount);
+    const minCount = interval.unit === "minutes" ? 5 : 1;
+    const clamped = Math.max(minCount, newCount);
+    if (clamped !== newCount) setCount(clamped);
     const newCron = buildCronFromInterval(clamped, interval.unit);
     if (newCron === trigger.cron_expression) return;
     try {
@@ -116,6 +152,8 @@ export function TriggerCard({
       <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border bg-background group">
         {isCron ? (
           <Clock size={14} className="text-muted-foreground shrink-0" />
+        ) : isWebhook ? (
+          <Globe01 size={14} className="text-muted-foreground shrink-0" />
         ) : (
           <Zap size={14} className="text-muted-foreground shrink-0" />
         )}
@@ -125,7 +163,7 @@ export function TriggerCard({
             <span className="text-sm text-muted-foreground">Every</span>
             <input
               type="number"
-              min={1}
+              min={interval.unit === "minutes" ? 5 : 1}
               value={count}
               onChange={(e) => setCount(parseInt(e.target.value) || 1)}
               onBlur={() => handleCountSave(count)}
@@ -166,9 +204,12 @@ export function TriggerCard({
             <span className="text-sm font-mono text-xs text-muted-foreground truncate">
               {isCron
                 ? humanReadableCron(trigger.cron_expression ?? "")
-                : `${trigger.event_type}${connectionName ? ` · ${connectionName}` : ""}`}
+                : isWebhook
+                  ? "Webhook · POST to fire"
+                  : `${trigger.event_type}${connectionName ? ` · ${connectionName}` : ""}`}
             </span>
             {!isCron &&
+              !isWebhook &&
               trigger.params &&
               Object.keys(trigger.params).length > 0 && (
                 <span className="text-xs text-muted-foreground/60 truncate">
@@ -198,6 +239,17 @@ export function TriggerCard({
               }}
             >
               <Edit01 size={13} className="text-muted-foreground" />
+            </Button>
+          )}
+          {isWebhook && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Rotate token"
+              onClick={() => setConfirmRotate(true)}
+            >
+              <RefreshCw01 size={13} className="text-muted-foreground" />
             </Button>
           )}
           <Button
@@ -230,6 +282,33 @@ export function TriggerCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={confirmRotate} onOpenChange={setConfirmRotate}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rotate webhook token</AlertDialogTitle>
+            <AlertDialogDescription>
+              A new token will be generated and the current token will stop
+              working. Any senders using the old token must be updated.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRotate}>Rotate</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <WebhookSecretDialog
+        open={rotatedSecret !== null}
+        onOpenChange={(open) => {
+          if (!open) setRotatedSecret(null);
+        }}
+        url={rotatedSecret?.url ?? null}
+        token={rotatedSecret?.token ?? null}
+        title="New webhook token"
+        description="The previous token has been revoked. Copy the new token now — it will not be shown again."
+      />
     </>
   );
 }

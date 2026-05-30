@@ -26,7 +26,7 @@ import {
   MAX_RESULT_TOKENS,
   createOutputPreview,
   estimateJsonTokens,
-} from "./built-in-tools/read-tool-output";
+} from "@/harnesses/decopilot/built-in-tools/read-tool-output";
 
 /**
  * Tool approval levels determine which tools require user approval before executing
@@ -78,7 +78,7 @@ export function ensureOrganization(
  * only [a-zA-Z0-9_.\-:], and be at most 128 characters.
  */
 export function sanitizeToolName(name: string): string {
-  // Replace any character outside the allowed set with an underscore
+  // Replace any character outside the allowed set with an underscore.
   let safe = name.replace(/[^a-zA-Z0-9_.\-:]/g, "_");
   // Ensure it starts with a letter or underscore
   if (safe.length === 0 || !/^[a-zA-Z_]/.test(safe)) {
@@ -102,8 +102,7 @@ export function buildSanitizedNameMap(names: string[]): Map<string, string> {
   for (const name of names) {
     let safeName = sanitizeToolName(name);
     if (usedNames.has(safeName)) {
-      // Reserve room for the suffix (up to "_999") within the 128-char limit
-      const maxBase = 128 - 4; // "_" + up to 3 digits
+      const maxBase = 128 - 4;
       const base =
         safeName.length > maxBase ? safeName.slice(0, maxBase) : safeName;
       let i = 2;
@@ -117,13 +116,93 @@ export function buildSanitizedNameMap(names: string[]): Map<string, string> {
 }
 
 /**
+ * Strip the GatewayClient namespace prefix (`slugify(clientId) + "_"`) from a tool name.
+ */
+function stripGatewayPrefix(
+  namespacedName: string,
+  gatewayClientId: string,
+): string {
+  const slug = gatewayClientId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const prefix = `${slug}_`;
+  return namespacedName.startsWith(prefix)
+    ? namespacedName.slice(prefix.length)
+    : namespacedName;
+}
+
+/**
+ * Sanitize a tool name for LLM use: same as sanitizeToolName but also
+ * converts hyphens to underscores, since many LLMs normalize hyphens when
+ * invoking tool names, causing "tool not found" errors.
+ */
+function sanitizeForLlm(name: string): string {
+  return sanitizeToolName(name).replace(/-/g, "_");
+}
+
+/**
+ * Build a collision-aware name map from MCP tools.
+ * Uses the short (un-namespaced) tool name when it's unique across all
+ * connections; only prepends the connection prefix when two connections
+ * expose a tool with the same base name.
+ *
+ * Examples (no collision): "search_repositories", "list_objects"
+ * Examples (collision):    "conn_togsm0_search_code", "conn_abc_search_code"
+ */
+function buildShortNameMap(
+  tools: Array<{ name: string; _meta?: Record<string, unknown> }>,
+): Map<string, string> {
+  // Pass 1: count how many tools share each sanitized short name
+  const shortCount = new Map<string, number>();
+  for (const t of tools) {
+    const connId =
+      typeof t._meta?.gatewayClientId === "string"
+        ? t._meta.gatewayClientId
+        : "";
+    const short = connId ? stripGatewayPrefix(t.name, connId) : t.name;
+    const safe = sanitizeForLlm(short);
+    shortCount.set(safe, (shortCount.get(safe) ?? 0) + 1);
+  }
+
+  // Pass 2: assign safe names, prefixing only on collision
+  const used = new Set<string>();
+  const map = new Map<string, string>();
+  for (const t of tools) {
+    const connId =
+      typeof t._meta?.gatewayClientId === "string"
+        ? t._meta.gatewayClientId
+        : "";
+    const short = connId ? stripGatewayPrefix(t.name, connId) : t.name;
+    const safeShort = sanitizeForLlm(short);
+    const unique = (shortCount.get(safeShort) ?? 0) <= 1;
+
+    // For the collision prefix, normalize the connId too so hyphens in
+    // connection IDs don't produce names the LLM will mangle.
+    let safeName = unique ? safeShort : sanitizeForLlm(`${connId}_${short}`);
+
+    // Suffix for any remaining collision (same conn + same tool name)
+    if (used.has(safeName)) {
+      const base = safeName.slice(0, 124);
+      let i = 2;
+      while (used.has(`${base}_${i}`)) i++;
+      safeName = `${base}_${i}`;
+    }
+
+    used.add(safeName);
+    map.set(t.name, safeName);
+  }
+  return map;
+}
+
+/**
  * Convert MCP tools to AI SDK ToolSet
  */
 /**
  * Check if a tool should be visible to the LLM based on MCP Apps visibility metadata.
  * Default (no visibility set) = visible to model.
  */
-export function isToolVisibleToModel(tool: {
+function isToolVisibleToModel(tool: {
   _meta?: Record<string, unknown>;
 }): boolean {
   const ui = tool._meta?.ui as { visibility?: string | string[] } | undefined;
@@ -150,7 +229,7 @@ export async function toolsFromMCP(
   const list = await client.listTools();
   const visibleTools = list.tools.filter(isToolVisibleToModel);
 
-  const nameMap = buildSanitizedNameMap(visibleTools.map((t) => t.name));
+  const nameMap = buildShortNameMap(visibleTools);
   const toolEntries = visibleTools.map((t) => {
     const { name, title, description, inputSchema, annotations, _meta } = t;
     const safeName = nameMap.get(name)!;
@@ -169,6 +248,7 @@ export async function toolsFromMCP(
         execute: async (input, callOptions) => {
           const startTime = performance.now();
           let isError = false;
+          let outputBytes: number | undefined;
           try {
             // Resolve any mesh-storage: URIs in tool arguments to fresh
             // presigned URLs before forwarding to the MCP client.
@@ -190,6 +270,14 @@ export async function toolsFromMCP(
               },
             );
             isError = Boolean((result as { isError?: boolean })?.isError);
+            // Measure the size of what the model will see as the tool
+            // result. JSON.stringify can throw on circular refs; swallow
+            // and leave outputBytes undefined in that case.
+            try {
+              outputBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
+            } catch {
+              outputBytes = undefined;
+            }
             return result as unknown as CallToolResult;
           } catch (err) {
             isError = true;
@@ -204,6 +292,7 @@ export async function toolsFromMCP(
                   _meta,
                   annotations,
                   latencyMs,
+                  outputBytes,
                 },
               });
             }
@@ -291,7 +380,7 @@ export async function toolsFromMCP(
 /**
  * Validate that a thread exists and belongs to the org.
  * Does NOT enforce ownership — any authenticated org member can access.
- * Use this for read-only / observability endpoints (e.g. attach).
+ * Use this for read-only / observability endpoints (e.g. stream).
  */
 export async function validateThreadAccess(
   c: Context<{ Variables: { meshContext: MeshContext } }>,

@@ -1,6 +1,4 @@
 import { anthropicAdapter } from "./adapters/anthropic";
-import { claudeCodeAdapter } from "./adapters/claude-code";
-import { codexAdapter } from "./adapters/codex";
 import { googleAdapter } from "./adapters/google";
 import { openaiCompatibleAdapter } from "./adapters/openai-compatible";
 import { openrouterAdapter } from "./adapters/openrouter";
@@ -13,10 +11,6 @@ export function getProviders(): Partial<Record<ProviderId, ProviderAdapter>> {
   const settings = getSettings();
   return {
     ...(settings.aiGatewayEnabled && { deco: decoAiGatewayAdapter }),
-    ...(settings.localMode && {
-      "claude-code": claudeCodeAdapter,
-      codex: codexAdapter,
-    }),
     anthropic: anthropicAdapter,
     google: googleAdapter,
     openrouter: openrouterAdapter,

@@ -7,9 +7,9 @@
  *
  * Route: GET /api/:org/files/:key
  *
- * This endpoint is the stable public URL stored in chat history as
- * the text annotation for uploaded files. Clients (UI <img> tags,
- * MCP tools) can use it instead of presigned URLs and it always works.
+ * This endpoint is the stable URL stored in chat history as the text
+ * annotation for uploaded files. Authenticated clients (UI <img> tags) can use
+ * it instead of presigned URLs and it always works.
  *
  * Requires an authenticated session (MeshContext) — the org ID in the
  * URL is only used to extract the file key, not to bypass auth.
@@ -19,7 +19,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { MeshContext } from "@/core/mesh-context";
 import { generatePresignedGetUrl } from "./decopilot/file-materializer";
-import { isDevMode } from "@/tools/connection/dev-assets";
+import { usesLocalObjectStorage } from "@/tools/connection/dev-assets";
 
 type Variables = { meshContext: MeshContext };
 
@@ -29,6 +29,10 @@ app.get("/:org/files/*", async (c) => {
   const ctx = c.get("meshContext");
 
   const orgId = ctx.organization?.id;
+
+  if (!ctx.auth?.user?.id) {
+    throw new HTTPException(401, { message: "Authentication required" });
+  }
 
   if (!orgId) {
     throw new HTTPException(401, { message: "Organization context required" });
@@ -48,9 +52,9 @@ app.get("/:org/files/*", async (c) => {
     throw new HTTPException(503, { message: "Object storage not configured" });
   }
 
-  // In dev mode, DevObjectStorage returns data: URIs which browsers can't
-  // follow as 302 redirects. Serve the bytes inline instead.
-  if (presignedUrl.startsWith("data:") && isDevMode()) {
+  // DevObjectStorage returns data: URIs which browsers can't follow as 302
+  // redirects. Serve the bytes inline instead.
+  if (presignedUrl.startsWith("data:") && usesLocalObjectStorage()) {
     const match = presignedUrl.match(/^data:([^;]+);base64,(.+)$/s);
     if (!match) {
       throw new HTTPException(500, {

@@ -2,12 +2,13 @@
  * Pure helpers for the `?main=<tabId>|0` URL model.
  *
  * Tab id grammar:
- *   - Fixed system: "settings" | "automations" | "env" | "preview" | "git"
+ *   - Fixed system: "settings" | "automations" | "preview" | "git"
  *   - Legacy fixed system (redirected to "settings"): "instructions" | "connections" | "layout"
  *   - Agent-declared: <agentTab.id> (from virtualMcp.metadata.ui.layout.tabs)
  *   - Expanded-from-chat: <toolName> (from task.metadata.expanded_tools)
  *   - Pinned view: "app:<connectionId>:<toolName>" (from metadata.ui.pinnedViews)
  *   - Ephemeral automation: "automation:<id>"
+ *   - Ephemeral web page: "web-page:<slug>" (web-developer agent preview)
  *   - "0" = closed sentinel (not an actual tab id)
  *
  * The "settings" tab bundles what used to be separate instructions,
@@ -67,11 +68,24 @@ export function parsePinnedViewTabId(
   return { connectionId, toolName };
 }
 
+export interface WebPageTabParsed {
+  slug: string;
+}
+
+export function parseWebPageTabId(
+  tabId: string | undefined,
+): WebPageTabParsed | null {
+  if (!tabId || !tabId.startsWith("web-page:")) return null;
+  const slug = tabId.slice("web-page:".length);
+  if (!slug) return null;
+  return { slug };
+}
+
 export const FIXED_SYSTEM_TABS = [
   "settings",
   "automations",
-  "env",
   "preview",
+  "content",
   "git",
 ] as const;
 

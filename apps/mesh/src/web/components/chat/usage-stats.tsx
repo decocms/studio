@@ -43,6 +43,16 @@ export function MessageUsageStats({ usage }: UsageStatsProps) {
           <span className="text-right tabular-nums">
             {(outputTokens - (usage.reasoningTokens ?? 0)).toLocaleString()}
           </span>
+          {(usage.cacheReadTokens > 0 || usage.cacheWriteTokens > 0) && (
+            <>
+              <span className="text-muted">cache hit</span>
+              <span className="text-right tabular-nums">
+                {inputTokens > 0
+                  ? `${((usage.cacheReadTokens / inputTokens) * 100).toFixed(0)}%`
+                  : "0%"}
+              </span>
+            </>
+          )}
           {cost > 0 && (
             <>
               <span className="text-muted">cost</span>
@@ -126,6 +136,17 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
                   </span>
                 </>
               )}
+              {((usage?.cacheReadTokens ?? 0) > 0 ||
+                (usage?.cacheWriteTokens ?? 0) > 0) && (
+                <>
+                  <span className="opacity-60">cache hit</span>
+                  <span className="text-right tabular-nums">
+                    {(usage?.inputTokens ?? 0) > 0
+                      ? `${(((usage?.cacheReadTokens ?? 0) / usage!.inputTokens) * 100).toFixed(0)}%`
+                      : "0%"}
+                  </span>
+                </>
+              )}
             </div>
           </TooltipContent>
         </Tooltip>
@@ -159,6 +180,7 @@ export function SessionStats({
         <button
           type="button"
           onClick={onOpenContextPanel}
+          aria-label={`Context usage: ${pct.toFixed(0)}%${cost > 0 ? `, $${cost.toFixed(2)}` : ""}`}
           className={cn(
             "flex items-center gap-1.5 text-muted-foreground hover:text-foreground h-6 px-1 shrink-0",
             onOpenContextPanel ? "cursor-pointer" : "cursor-default",
@@ -193,7 +215,7 @@ export function SessionStats({
               )}
             />
           </svg>
-          <span className="text-[11px] font-mono tabular-nums">
+          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100 text-[11px] font-mono tabular-nums">
             {pct.toFixed(0)}%{cost > 0 ? ` · $${cost.toFixed(2)}` : ""}
           </span>
         </button>
@@ -201,10 +223,9 @@ export function SessionStats({
       <TooltipContent side="top" className="font-mono text-[11px]">
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <span className="text-muted">context</span>
-          <span className="text-right tabular-nums">{pct.toFixed(1)}%</span>
-          <span className="text-muted">tokens</span>
           <span className="text-right tabular-nums">
-            {totalTokens.toLocaleString()}
+            {totalTokens.toLocaleString()} / {contextWindow.toLocaleString()} (
+            {pct.toFixed(1)}%)
           </span>
           {cost > 0 && (
             <>
@@ -219,6 +240,17 @@ export function SessionStats({
               <span className="text-muted">out</span>
               <span className="text-right tabular-nums">
                 {outputTokens.toLocaleString()}
+              </span>
+            </>
+          )}
+          {((usage?.cacheReadTokens ?? 0) > 0 ||
+            (usage?.cacheWriteTokens ?? 0) > 0) && (
+            <>
+              <span className="text-muted">cache hit</span>
+              <span className="text-right tabular-nums">
+                {inputTokens > 0
+                  ? `${(((usage?.cacheReadTokens ?? 0) / inputTokens) * 100).toFixed(0)}%`
+                  : "0%"}
               </span>
             </>
           )}

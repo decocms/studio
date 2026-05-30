@@ -33,8 +33,8 @@ interface DecoSitesResponse {
   sites: DecoSite[];
 }
 
-async function loadDecoSites(): Promise<DecoSitesResponse> {
-  const res = await fetch("/api/deco-sites");
+async function loadDecoSites(orgSlug: string): Promise<DecoSitesResponse> {
+  const res = await fetch(`/api/${orgSlug}/deco-sites`);
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Failed to load sites (${res.status})`);
@@ -75,6 +75,7 @@ export function ImportFromDecoDialog({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const {
@@ -83,7 +84,7 @@ export function ImportFromDecoDialog({
     error: sitesError,
   } = useQuery({
     queryKey: KEYS.decoSites(session?.user?.email),
-    queryFn: loadDecoSites,
+    queryFn: () => loadDecoSites(org.slug),
     enabled: open && Boolean(session?.user?.email),
     staleTime: 60_000,
     retry: false,
@@ -113,7 +114,7 @@ export function ImportFromDecoDialog({
       track("deco_site_import_started", { site_name: siteName });
       // 1. Create the connection server-side so the deco.cx API key never
       //    reaches the browser — the backend fetches and encrypts it directly.
-      const connRes = await fetch("/api/deco-sites/connection", {
+      const connRes = await fetch(`/api/${org.slug}/deco-sites/connection`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ siteName, orgId: org.id }),
@@ -194,6 +195,7 @@ export function ImportFromDecoDialog({
                     id: connId,
                     toolName: "file_explorer",
                   },
+                  chatDefaultOpen: true,
                 },
               },
             },

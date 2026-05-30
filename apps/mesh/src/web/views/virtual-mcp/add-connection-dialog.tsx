@@ -29,6 +29,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   type ConnectionEntity,
@@ -117,7 +122,7 @@ function ConnectionDialogContent({
   const { org } = useProjectContext();
   const deferredSearch = useDeferredValue(search);
   const isSearchStale = search !== deferredSearch;
-  const searchLower = deferredSearch.toLowerCase();
+  const searchLower = deferredSearch.trim().toLowerCase();
 
   const [activeTab, setActiveTab] = useLocalStorage<ConnectionTab>(
     LOCALSTORAGE_KEYS.connectionsTab(org.slug) +
@@ -137,6 +142,7 @@ function ConnectionDialogContent({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const where = deferredSearch?.trim()
@@ -237,11 +243,32 @@ function ConnectionDialogContent({
 
   const showCatalog = activeTab === "all" || !!searchLower;
 
-  // Catalog items, excluding apps already shown as connected cards
+  // Catalog items, excluding apps already shown as connected cards.
+  // The client-side search filter is a safety net: `useMergedStoreDiscovery`
+  // uses `keepPreviousData`, so the previous query's results (sorted with
+  // verified items first) stay visible while a new search request is in
+  // flight. Without this filter, the user sees unrelated items that happened
+  // to be in the previous page.
   const catalogItems = showCatalog
     ? mergedDiscovery.items.filter((item: RegistryItem) => {
         const appName = getRegistryItemAppName(item);
-        return !(appName && connectedAppNames.has(appName));
+        if (appName && connectedAppNames.has(appName)) return false;
+        if (!searchLower) return true;
+        const meshMeta = item._meta?.["mcp.mesh"];
+        const haystack = [
+          item.title,
+          item.description,
+          item.name,
+          item.server?.title,
+          item.server?.description,
+          item.server?.name,
+          meshMeta?.friendly_name,
+          meshMeta?.friendlyName,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(searchLower);
       })
     : [];
 
@@ -363,9 +390,7 @@ function ConnectionDialogContent({
 
   // Render a catalog item card — no instances yet
   const renderCatalogItem = (item: RegistryItem) => {
-    const meshMeta = item._meta?.["mcp.mesh"] as
-      | Record<string, string>
-      | undefined;
+    const meshMeta = item._meta?.["mcp.mesh"];
     const title =
       meshMeta?.friendlyName ||
       meshMeta?.friendly_name ||
@@ -380,6 +405,9 @@ function ConnectionDialogContent({
       item.server?.icons?.[0]?.src ||
       getGitHubAvatarUrl(item.server?.repository) ||
       null;
+    const isOfficial = meshMeta?.official === true;
+    const isVerified = meshMeta?.verified === true;
+    const isMadeByDeco = meshMeta?.owner === "deco";
 
     return (
       <ConnectionCard
@@ -388,37 +416,71 @@ function ConnectionDialogContent({
         fallbackIcon={<Container />}
         headerActionsAlwaysVisible
         headerActions={
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 px-3 text-xs font-medium"
-            disabled={connectingItemId !== null}
-            onClick={(e) => {
-              e.stopPropagation();
-              track("connection_add_clicked", {
-                action: "connect_new",
-                registry_item_id: item.id,
-                app_name:
-                  (
-                    item._meta?.["mcp.mesh"] as
-                      | Record<string, string>
-                      | undefined
-                  )?.friendlyName ||
-                  item.server?.name ||
-                  item.name ||
-                  null,
-              });
-              onConnectAndAdd(item);
-            }}
-          >
-            {connectingItemId === item.id ? (
-              <Loading01 size={14} className="animate-spin" />
-            ) : mode === "browse" ? (
-              "Connect"
-            ) : (
-              "Add"
+          <div className="flex items-center gap-1.5">
+            {isMadeByDeco && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center justify-center size-5 rounded-md bg-muted shrink-0">
+                    <img
+                      src="/logos/deco logo.svg"
+                      alt="Made by Deco"
+                      className="size-3"
+                    />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Built and maintained by Deco</TooltipContent>
+              </Tooltip>
             )}
-          </Button>
+            {!isMadeByDeco && isOfficial && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" size="icon">
+                    <CheckVerified02 />
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Built and maintained by the official vendor
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {!isMadeByDeco && !isOfficial && isVerified && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" size="icon">
+                    <CheckVerified02 />
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>Verified by the Deco team</TooltipContent>
+              </Tooltip>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-3 text-xs font-medium"
+              disabled={connectingItemId !== null}
+              onClick={(e) => {
+                e.stopPropagation();
+                track("connection_add_clicked", {
+                  action: "connect_new",
+                  registry_item_id: item.id,
+                  app_name:
+                    meshMeta?.friendlyName ||
+                    item.server?.name ||
+                    item.name ||
+                    null,
+                });
+                onConnectAndAdd(item);
+              }}
+            >
+              {connectingItemId === item.id ? (
+                <Loading01 size={14} className="animate-spin" />
+              ) : mode === "browse" ? (
+                "Connect"
+              ) : (
+                "Add"
+              )}
+            </Button>
+          </div>
         }
       />
     );
@@ -621,15 +683,20 @@ export function AddConnectionDialog({
       const id = created.id;
 
       // Handle OAuth if needed
-      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+      const mcpProxyUrl = new URL(
+        `/api/${org.slug}/mcp/${id}`,
+        window.location.origin,
+      );
       const authStatus = await isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       });
 
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
         const { token, tokenInfo, error } = await authenticateMcp({
           connectionId: id,
+          orgSlug: org.slug,
           scope: "offline_access",
         });
         if (error || !token) {
@@ -649,20 +716,25 @@ export function AddConnectionDialog({
         });
         if (tokenInfo) {
           try {
-            const response = await fetch(`/api/connections/${id}/oauth-token`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                accessToken: tokenInfo.accessToken,
-                refreshToken: tokenInfo.refreshToken,
-                expiresIn: tokenInfo.expiresIn,
-                scope: tokenInfo.scope,
-                clientId: tokenInfo.clientId,
-                clientSecret: tokenInfo.clientSecret,
-                tokenEndpoint: tokenInfo.tokenEndpoint,
-              }),
-            });
+            const response = await fetch(
+              `/api/${org.slug}/connections/${id}/oauth-token`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                  accessToken: tokenInfo.accessToken,
+                  refreshToken: tokenInfo.refreshToken,
+                  expiresIn: tokenInfo.expiresIn,
+                  scope: tokenInfo.scope,
+                  clientId: tokenInfo.clientId,
+                  clientSecret: tokenInfo.clientSecret,
+                  tokenEndpoint: tokenInfo.tokenEndpoint,
+                }),
+              },
+            );
             if (!response.ok) {
               await connectionActions.update.mutateAsync({
                 id,
@@ -730,15 +802,20 @@ export function AddConnectionDialog({
       const { id } = await connectionActions.create.mutateAsync(connectionData);
 
       // Handle OAuth flow
-      const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+      const mcpProxyUrl = new URL(
+        `/api/${org.slug}/mcp/${id}`,
+        window.location.origin,
+      );
       const authStatus = await isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       });
 
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
         const { token, tokenInfo, error } = await authenticateMcp({
           connectionId: id,
+          orgSlug: org.slug,
           scope: "offline_access",
         });
         if (error || !token) {
@@ -747,7 +824,9 @@ export function AddConnectionDialog({
             flow: "connect_new",
             error: error ?? "no_token",
           });
-          toast.error(`Authentication failed: ${error ?? "no token received"}`);
+          toast.warning("Couldn't sign in to this connection", {
+            description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${error ?? "no token received"})`,
+          });
           trackAttach(id, connectionData.app_name ?? null, "new");
           onAdd(id);
           return;
@@ -759,20 +838,25 @@ export function AddConnectionDialog({
 
         if (tokenInfo) {
           try {
-            const response = await fetch(`/api/connections/${id}/oauth-token`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                accessToken: tokenInfo.accessToken,
-                refreshToken: tokenInfo.refreshToken,
-                expiresIn: tokenInfo.expiresIn,
-                scope: tokenInfo.scope,
-                clientId: tokenInfo.clientId,
-                clientSecret: tokenInfo.clientSecret,
-                tokenEndpoint: tokenInfo.tokenEndpoint,
-              }),
-            });
+            const response = await fetch(
+              `/api/${org.slug}/connections/${id}/oauth-token`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                  accessToken: tokenInfo.accessToken,
+                  refreshToken: tokenInfo.refreshToken,
+                  expiresIn: tokenInfo.expiresIn,
+                  scope: tokenInfo.scope,
+                  clientId: tokenInfo.clientId,
+                  clientSecret: tokenInfo.clientSecret,
+                  tokenEndpoint: tokenInfo.tokenEndpoint,
+                }),
+              },
+            );
             if (!response.ok) {
               await connectionActions.update.mutateAsync({
                 id,
@@ -862,15 +946,20 @@ export function AddConnectionDialog({
           setCreateOpen(false);
 
           // Handle OAuth if needed (same flow as handleConnectAndAdd)
-          const mcpProxyUrl = new URL(`/mcp/${id}`, window.location.origin);
+          const mcpProxyUrl = new URL(
+            `/api/${org.slug}/mcp/${id}`,
+            window.location.origin,
+          );
           const authStatus = await isConnectionAuthenticated({
             url: mcpProxyUrl.href,
             token: null,
+            orgId: org.id,
           });
 
           if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
             const { token, tokenInfo, error } = await authenticateMcp({
               connectionId: id,
+              orgSlug: org.slug,
               scope: "offline_access",
             });
             if (error || !token) {
@@ -879,10 +968,12 @@ export function AddConnectionDialog({
                 flow: "custom_create",
                 error: error ?? "no_token",
               });
-              toast.error(
-                `Authentication failed: ${error ?? "no token received"}`,
-              );
-              await connectionActions.delete.mutateAsync(id);
+              toast.warning("Couldn't sign in to this connection", {
+                description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${error ?? "no token received"})`,
+              });
+              trackAttach(id, null, "custom");
+              onAdd(id);
+              onOpenChange(false);
               return;
             }
             track("connection_oauth_succeeded", {
@@ -892,10 +983,12 @@ export function AddConnectionDialog({
             if (tokenInfo) {
               try {
                 const response = await fetch(
-                  `/api/connections/${id}/oauth-token`,
+                  `/api/${org.slug}/connections/${id}/oauth-token`,
                   {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
                     credentials: "include",
                     body: JSON.stringify({
                       accessToken: tokenInfo.accessToken,

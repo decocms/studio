@@ -1,7 +1,12 @@
 import { ReplayBuffer } from "./replay";
 import { sseFormat } from "./sse-format";
+import type { DaemonEventMap, DaemonEventName } from "./types";
 
 type Controller = ReadableStreamDefaultController<Uint8Array>;
+
+// Force tee for every chunk regardless of caller opt-out. Lets an operator
+// crank a pod up to the full firehose without a code change.
+const VERBOSE = process.env.DAEMON_LOG_VERBOSE === "1";
 
 export class Broadcaster {
   readonly replay: ReplayBuffer;
@@ -23,15 +28,22 @@ export class Broadcaster {
     return this.clients.size;
   }
 
-  broadcastChunk(source: string, data: string): void {
+  broadcastChunk(source: string, data: string, opts?: { tee?: boolean }): void {
     if (!data) return;
     this.replay.append(source, data);
+    // Tee to stdout so `kubectl logs` / k9s see control-plane messages
+    // (orchestrator status, daemon, lifecycle). Raw subprocess streams pass
+    // `tee: false` to keep pod logs readable — they remain on SSE + replay
+    // + the per-task LogTee on disk.
+    if (VERBOSE || opts?.tee !== false) {
+      process.stdout.write(`[${source}] ${data}`);
+    }
     const bytes = sseFormat("log", JSON.stringify({ source, data }));
     this.fan(bytes);
   }
 
-  broadcastEvent(event: string, data: unknown): void {
-    const bytes = sseFormat(event, JSON.stringify(data));
+  emit<K extends DaemonEventName>(name: K, payload: DaemonEventMap[K]): void {
+    const bytes = sseFormat(name, JSON.stringify(payload));
     this.fan(bytes);
   }
 

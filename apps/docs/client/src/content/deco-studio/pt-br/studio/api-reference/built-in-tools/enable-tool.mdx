@@ -1,0 +1,60 @@
+---
+title: enable_tool
+description: Ativa uma ou mais tools do escopo para uso em etapas subsequentes
+icon: ToggleRight
+---
+
+import Callout from "../../../../../../components/ui/Callout.astro";
+
+## Visão geral
+
+Ativa tools do escopo atual (as conexões do agente aberto, ou as tools de toda a organização quando nenhum agente está aberto) para que o modelo possa chamá-las na próxima etapa. O catálogo apresentado ao modelo usa nomes curtos de tool como `send_email`; quando um nome curto corresponde a mais de uma conexão, a chamada retorna uma linha `ambiguous` e o modelo precisa tentar novamente com o id totalmente qualificado.
+
+## Disponibilidade
+
+- **Tasks**: ✓ Disponível
+- **Subtasks**: ✓ Disponível
+
+## Assinatura
+
+```typescript
+enable_tool({ tools: string[] })
+```
+
+## Parâmetros
+
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|-----------|------|-------------|-----------|
+| `tools` | `string[]` | Obrigatório | Ids das tools a serem ativadas. Nomes curtos são aceitos; nomes ambíguos retornam candidatos em vez de ativar. |
+
+## Retorno
+
+```typescript
+{
+  enabled: string[];               // fully-qualified names that were enabled
+  not_found?: string[];            // names that don't exist in the current scope
+  blocked?: string[];              // tools blocked by plan mode (have side effects)
+  blocked_reason?: string;         // explanation for `blocked`
+  ambiguous?: Array<{              // short names matched by multiple tools
+    name: string;
+    candidates: string[];
+  }>;
+}
+```
+
+## Comportamento
+
+- Tools ativadas na etapa N tornam-se chamáveis na etapa N+1.
+- Tools integradas (`user_ask`, `subtask`, `read_tool_output`, `read_prompt`, `read_resource`, etc.) estão sempre disponíveis e não precisam ser ativadas.
+- No [modo plan](/pt-br/studio/decopilot/overview), apenas tools anotadas como somente leitura podem ser ativadas — tools destrutivas são retornadas em `blocked`.
+
+## Exemplo
+
+```typescript
+enable_tool({ tools: ["send_email", "create_invoice"] })
+```
+
+## Relacionados
+
+- [Visão geral das Tools Integradas](/pt-br/studio/api-reference/built-in-tools)
+- [Tools](/pt-br/studio/decopilot/tools)

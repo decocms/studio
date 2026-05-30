@@ -14,29 +14,6 @@ export const KEYS = {
   // Auth-related queries
   session: () => ["session"] as const,
 
-  // Task queries (filters scope the cache entry)
-  // userId is included when owner is "me" to prevent cross-user cache pollution
-  tasks: (
-    locator: string,
-    filters: {
-      owner: "me" | "automation" | "all";
-      status: "open" | "archived";
-      virtualMcpId?: string;
-      userId?: string | null;
-      hasTrigger?: boolean | null;
-    },
-  ) =>
-    [
-      "tasks",
-      locator,
-      filters.owner,
-      filters.status,
-      filters.virtualMcpId ?? null,
-      filters.userId ?? null,
-      filters.hasTrigger ?? null,
-    ] as const,
-  // Prefix for broad invalidation of all task queries for a locator
-  tasksPrefix: (locator: string) => ["tasks", locator] as const,
   messages: (locator: string) => ["messages", locator] as const,
 
   // Organizations list
@@ -72,6 +49,13 @@ export const KEYS = {
   mcpTools: (url: string, token?: string | null) =>
     ["mcp", "tools", url, token] as const,
 
+  // Prefix for all mesh-sdk mcp-client queries (mcpClient, mcpToolsList,
+  // mcpResourcesList, mcpPromptsList, mcpReadResource, mcpGetPrompt,
+  // mcpToolCall — all start with ["mcp", "client", ...]). Use with
+  // invalidateQueries to blow away every cached client query at once,
+  // e.g. after an MCP connection re-authenticates.
+  mcpClientPrefix: () => ["mcp", "client"] as const,
+
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
 
@@ -79,8 +63,14 @@ export const KEYS = {
   activeOrganization: (org: string | undefined) =>
     ["activeOrganization", org] as const,
 
+  // Org access status (for /:org gate — pending invite / auto-join / no access)
+  orgAccessStatus: (slug: string) => ["org-access-status", slug] as const,
+
   // Models list (scoped by organization)
   modelsList: (orgId: string) => ["models-list", orgId] as const,
+
+  // Home next-actions — agent prompts under Chat.Input.
+  homeNextActions: (orgSlug: string) => ["home-next-actions", orgSlug] as const,
 
   // Allowed models for current user (scoped by organization)
   allowedModels: (locator: ProjectLocator) =>
@@ -167,6 +157,10 @@ export const KEYS = {
   ensureTask: (orgId: string, id: string) =>
     ["ensure-task", orgId, id] as const,
 
+  // Global search (server-side, scoped by org)
+  globalSearch: (orgId: string, query: string) =>
+    ["global-search", orgId, query] as const,
+
   // Thread queries (scoped by locator)
   threadsInfinite: (locator: string, paramsKey: string) =>
     ["threads", "list-infinite", locator, paramsKey] as const,
@@ -174,10 +168,9 @@ export const KEYS = {
     ["threads", "messages", locator, threadId] as const,
   threadModelLogs: (locator: string, dateKey: string) =>
     ["threads", "model-logs", locator, dateKey] as const,
-  threadMetadata: (threadId: string) =>
-    ["threads", "metadata", threadId] as const,
   threadSandbox: (orgKey: string, taskId: string | undefined) =>
     ["thread-sandbox", "v2", orgKey, taskId] as const,
+  threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
 
   // Virtual MCP tools (for tool definition lookup in chat)
   // null virtualMcpId means default virtual MCP
@@ -295,6 +288,16 @@ export const KEYS = {
   // AI provider stored keys (scoped by org)
   aiProviderKeys: (orgId: string) => ["ai-provider-keys", orgId] as const,
 
+  // Secrets (scoped by org; user-scope filtering happens server-side)
+  secrets: (orgId: string) => ["secrets", orgId] as const,
+
+  // Org-scoped S3 bucket file configurations
+  fileConfigs: (orgId: string) => ["file-configs", orgId] as const,
+
+  // File picker — objects listed from a configured bucket
+  filePickerObjects: (orgId: string, configId: string | null) =>
+    ["file-picker-objects", orgId, configId] as const,
+
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>
     ["ai-provider-credits", orgId, keyId] as const,
@@ -308,10 +311,6 @@ export const KEYS = {
   // Store discovery (per-registry infinite query)
   storeDiscovery: (orgId: string, registryId: string) =>
     ["store-discovery", orgId, registryId] as const,
-
-  // Prompt → connection map (scoped by org + connections)
-  promptConnectionMap: (orgId: string, connectionIds: string[]) =>
-    ["prompt-connection-map", orgId, ...connectionIds] as const,
 
   // Organization domain (scoped by organization)
   organizationDomain: (organizationId: string) =>
@@ -335,6 +334,17 @@ export const KEYS = {
   // Web search blob content (fetched from object storage)
   webSearchBlob: (url: string) => ["web-search-blob", url] as const,
 
+  // Deco sections editor (sandbox preview)
+  decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
+  liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
+
+  // Link daemon status (user-scoped; the cluster derives the userSub
+  // from the bearer session, so we don't include it in the key).
+  linkStatus: () => ["link-status"] as const,
+
+  // Current link info (org-scoped; includes capabilities, machineId, cliVersion).
+  currentLink: (orgId: string) => ["current-link", orgId] as const,
+
   // GitHub integration
   githubUserOrgs: (orgId: string, connectionId: string) =>
     ["github-user-orgs", orgId, connectionId] as const,
@@ -351,6 +361,8 @@ export const KEYS = {
       installationLogin,
       query,
     ] as const,
+  vmEnv: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["vm-env", orgSlug, virtualMcpId, branch] as const,
 } as const;
 
 export function invalidateVirtualMcpQueries(

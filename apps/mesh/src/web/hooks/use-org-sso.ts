@@ -14,31 +14,37 @@ interface SsoConfigResponse {
   config?: OrgSsoConfigPublic;
 }
 
-export function useOrgSsoStatus(orgId: string | undefined) {
+export function useOrgSsoStatus(
+  orgId: string | undefined,
+  orgSlug: string | undefined,
+) {
   return useQuery({
     queryKey: KEYS.orgSsoStatus(orgId ?? ""),
     queryFn: async (): Promise<SsoStatusResponse> => {
-      const response = await fetch("/api/org-sso/status");
+      const response = await fetch(`/api/${orgSlug}/sso/status`);
       if (!response.ok) throw new Error("Failed to check SSO status");
       return response.json();
     },
-    enabled: !!orgId,
+    enabled: !!orgId && !!orgSlug,
   });
 }
 
-export function useOrgSsoConfig(orgId: string | undefined) {
+export function useOrgSsoConfig(
+  orgId: string | undefined,
+  orgSlug: string | undefined,
+) {
   return useQuery({
     queryKey: KEYS.orgSsoConfig(orgId ?? ""),
     queryFn: async (): Promise<SsoConfigResponse> => {
-      const response = await fetch("/api/org-sso/config");
+      const response = await fetch(`/api/${orgSlug}/sso/config`);
       if (!response.ok) throw new Error("Failed to fetch SSO config");
       return response.json();
     },
-    enabled: !!orgId,
+    enabled: !!orgId && !!orgSlug,
   });
 }
 
-export function useSaveOrgSsoConfig(orgId: string) {
+export function useSaveOrgSsoConfig(orgId: string, orgSlug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -51,7 +57,7 @@ export function useSaveOrgSsoConfig(orgId: string) {
       domain: string;
       enforced?: boolean;
     }) => {
-      const response = await fetch("/api/org-sso/config", {
+      const response = await fetch(`/api/${orgSlug}/sso/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -69,12 +75,12 @@ export function useSaveOrgSsoConfig(orgId: string) {
   });
 }
 
-export function useDeleteOrgSsoConfig(orgId: string) {
+export function useDeleteOrgSsoConfig(orgId: string, orgSlug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/org-sso/config", {
+      const response = await fetch(`/api/${orgSlug}/sso/config`, {
         method: "DELETE",
       });
       if (!response.ok) throw new Error("Failed to delete SSO config");
@@ -87,12 +93,12 @@ export function useDeleteOrgSsoConfig(orgId: string) {
   });
 }
 
-export function useToggleSsoEnforcement(orgId: string) {
+export function useToggleSsoEnforcement(orgId: string, orgSlug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (enforced: boolean) => {
-      const response = await fetch("/api/org-sso/config/enforce", {
+      const response = await fetch(`/api/${orgSlug}/sso/config/enforce`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enforced }),

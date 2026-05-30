@@ -1,7 +1,16 @@
 /**
  * Authenticated clone URL + bot git identity from a connection's downstream
- * App installation token. Makes no GitHub API call — the committer is the
- * Mesh GitHub App bot.
+ * App installation token. The token is baked into the URL — `git clone`
+ * then stores it on the remote so subsequent fetch/pull/push from inside
+ * the sandbox keep working with no further plumbing.
+ *
+ * The token is set once per sandbox. If it expires or is revoked, the
+ * sandbox must be destroyed and recreated — studio does not push token
+ * updates to running daemons.
+ *
+ * `buildCloneInfo` makes no GitHub API call: the committer is the Mesh
+ * GitHub App bot. `buildAnonymousCloneInfo` covers public-repo clones
+ * (no token) and uses a generic identity.
  */
 
 import type { Kysely } from "kysely";
@@ -22,6 +31,22 @@ export interface GitHubCloneInfo {
   cloneUrl: string;
   gitUserName: string;
   gitUserEmail: string;
+}
+
+/**
+ * Public-repo clone (no token, no /user lookup). Anonymous HTTPS clone works
+ * for any public GitHub repo; push back will fail (no creds) but that's the
+ * documented constraint of public-clone mode.
+ */
+export function buildAnonymousCloneInfo(
+  owner: string,
+  name: string,
+): GitHubCloneInfo {
+  return {
+    cloneUrl: `https://github.com/${owner}/${name}.git`,
+    gitUserName: "Deco Studio",
+    gitUserEmail: "studio@deco.cx",
+  };
 }
 
 export async function buildCloneInfo(

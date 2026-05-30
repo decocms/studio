@@ -41,9 +41,18 @@ export const ORGANIZATION_GET = defineTool({
     // Check authorization
     await ctx.access.check();
 
-    // Get full organization via Better Auth
-    // This uses the active organization from session
-    const organization = await ctx.boundAuth.organization.get();
+    // Resolve org from the URL-path context, not the session's active org.
+    // Better Auth's session row holds a single activeOrganizationId shared
+    // across tabs, so falling back to it leaks invitations/members from
+    // whichever org "won" the last setActiveOrganization call.
+    const organizationId = ctx.organization?.id;
+    if (!organizationId) {
+      throw new Error(
+        "Organization ID required (no active organization in context)",
+      );
+    }
+
+    const organization = await ctx.boundAuth.organization.get(organizationId);
 
     if (!organization) {
       throw new Error("No active organization found");

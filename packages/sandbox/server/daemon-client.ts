@@ -1,30 +1,35 @@
 /**
  * Pure helpers for the unified daemon's HTTP API. Daemon endpoints live
- * under `/_decopilot_vm/*` (except `/health` at root, which is unauth).
- * POST bodies are base64-encoded JSON — the daemon decodes on its side.
+ * under `/_sandbox/*` (except `/health` at root, which is unauth).
  */
 
+import type { ConfigPatch } from "../daemon/config-store/types";
+import type { TenantConfig } from "../daemon/types";
 import { sleep } from "../shared";
-import type { ExecInput, ExecOutput } from "./runner/types";
+import type { ExecInput, ExecOutput } from "./provider/types";
+
+export type { ConfigPatch };
 
 const DEFAULT_EXEC_TIMEOUT_MS = 60_000;
 const HEALTH_PROBE_TIMEOUT_MS = 500;
+const CONFIG_TIMEOUT_MS = 10_000;
 const READY_ATTEMPTS = 25;
 const READY_INTERVAL_MS = 200;
-const READY_JITTER_MS = 50; // ±50ms around READY_INTERVAL_MS
+const READY_JITTER_MS = 50;
+
+export interface ConfigResponse {
+  bootId: string;
+  transition: string;
+  config: TenantConfig;
+}
 
 export interface DaemonHealth {
   ready: boolean;
   bootId: string;
+  configured: boolean;
   setup: { running: boolean; done: boolean };
 }
 
-/**
- * Returns the parsed /health response, or null if unreachable or the
- * shape is wrong (e.g. an old daemon that predates bootId). Null is
- * the signal to the runner that the container is incompatible and
- * should be force-recreated.
- */
 export async function probeDaemonHealth(
   daemonUrl: string,
 ): Promise<DaemonHealth | null> {
@@ -65,32 +70,94 @@ export async function waitForDaemonReady(daemonUrl: string): Promise<void> {
   );
 }
 
+/**
+ * Optional bootstrap-time fields that travel alongside the tenant patch.
+ * Stripped from the persisted config daemon-side; consumed only as
+ * side-effects on the request itself.
+ */
+export interface ConfigAuthPatch {
+  /**
+   * Replace the daemon's in-memory bearer token. Authorized via the
+   * *current* token (i.e. the `token` argument to `postConfig`); on
+   * success, subsequent calls must use `rotateToken`. Used by the
+   * agent-sandbox runner's warm-pool bootstrap to swap the
+   * SandboxTemplate-baked sentinel for a per-claim secret without
+   * needing a separate endpoint.
+   */
+  rotateToken?: string;
+}
+
+/**
+ * POST /_sandbox/config — set initial tenant config (or patch via
+ * the same payload semantics; deep-merge happens daemon-side).
+ *
+ * `/config` is the trust boundary endpoint; the daemon's NetworkPolicy is
+ * the auth on its port. 200 = applied (or no-op); 400 = invalid;
+ * 409 = identity conflict (e.g., cloneUrl mismatch).
+ *
+ * `auth.rotateToken` is applied *before* the tenant patch — see
+ * `ConfigAuthPatch.rotateToken`.
+ */
+export async function postConfig(
+  daemonUrl: string,
+  token: string,
+  payload: ConfigPatch,
+  auth?: ConfigAuthPatch,
+): Promise<ConfigResponse> {
+  return configRequest(daemonUrl, token, "POST", payload, auth);
+}
+
+async function configRequest(
+  daemonUrl: string,
+  token: string,
+  method: "POST" | "PUT",
+  payload: ConfigPatch,
+  auth?: ConfigAuthPatch,
+): Promise<ConfigResponse> {
+  const wire: Record<string, unknown> = { ...payload };
+  if (auth && auth.rotateToken !== undefined) wire.auth = auth;
+  const res = await fetch(`${daemonUrl}/_sandbox/config`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(wire),
+    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    throw new Error(
+      `sandbox daemon /_sandbox/config returned ${res.status}: ${body}`,
+    );
+  }
+  return JSON.parse(body) as ConfigResponse;
+}
+
 export async function daemonBash(
   daemonUrl: string,
   token: string,
   input: ExecInput,
 ): Promise<ExecOutput> {
   const timeoutMs = input.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
-  const rawBody = JSON.stringify({
-    command: input.command,
-    timeout: timeoutMs,
-    cwd: input.cwd,
-    env: input.env,
-  });
-  const b64Body = Buffer.from(rawBody, "utf-8").toString("base64");
-  const response = await fetch(`${daemonUrl}/_decopilot_vm/bash`, {
+  const response = await fetch(`${daemonUrl}/_sandbox/bash`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: b64Body,
+    body: JSON.stringify({
+      command: input.command,
+      timeout: timeoutMs,
+      cwd: input.cwd,
+      env: input.env,
+    }),
     signal: AbortSignal.timeout(timeoutMs + 5_000),
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
-      `sandbox daemon /_decopilot_vm/bash returned ${response.status}${body ? `: ${body}` : ""}`,
+      `sandbox daemon /_sandbox/bash returned ${response.status}${body ? `: ${body}` : ""}`,
     );
   }
   const json = (await response.json()) as {
@@ -107,8 +174,6 @@ export async function daemonBash(
   };
 }
 
-// Dropped before proxying: session cookies (user code must not see the
-// caller's session) + hop-by-hop headers per RFC 7230.
 const STRIP_REQUEST_HEADERS = [
   "cookie",
   "host",
@@ -123,11 +188,6 @@ const STRIP_REQUEST_HEADERS = [
   "content-length",
 ];
 
-/**
- * HTTP passthrough to the daemon. Returns the native Response (streamed, not
- * buffered). `signal` must be the client's AbortSignal — closing the browser
- * connection must cascade to the daemon so SSE subscribers are dropped.
- */
 export async function proxyDaemonRequest(
   daemonUrl: string,
   token: string,

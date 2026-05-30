@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { navigate } from "astro:transitions/client";
-import { Logo } from "../../components/atoms/Logo";
 import { Icon } from "../../components/atoms/Icon";
 import { Select } from "../../components/atoms/Select";
 import { LanguageSelector } from "./LanguageSelector";
+import { ProductSwitcher } from "./ProductSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
 import { versions, VERSION_IDS, LATEST_VERSION } from "../../config/versions";
 
@@ -253,7 +253,12 @@ function TreeItem({
   return (
     <li>
       {isCollapsible ? (
-        <div className={`${sharedClasses} cursor-pointer`}>
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          onClick={() => onToggle(node.id)}
+          className={`${sharedClasses} w-full text-left cursor-pointer`}
+        >
           {/* Indentation spacer for nested items */}
           {node.depth > 0 && (
             <div
@@ -266,23 +271,17 @@ function TreeItem({
           {renderIcon()}
 
           {/* Content */}
-          <button
-            type="button"
-            className="flex items-center justify-between w-full text-left"
-            onClick={() => onToggle(node.id)}
-          >
-            <span className="flex-1">
-              {node.doc?.data?.title ||
-                translations[`sidebar.section.${node.name}`] ||
-                node.name}
-            </span>
-            <Icon
-              name={isExpanded ? "ChevronDown" : "ChevronRight"}
-              size={16}
-              className={`shrink-0 ${active ? "text-primary" : ""}`}
-            />
-          </button>
-        </div>
+          <span className="flex-1">
+            {node.doc?.data?.title ||
+              translations[`sidebar.section.${node.name}`] ||
+              node.name}
+          </span>
+          <Icon
+            name={isExpanded ? "ChevronDown" : "ChevronRight"}
+            size={16}
+            className={`shrink-0 ${active ? "text-primary" : ""}`}
+          />
+        </button>
       ) : (
         <a
           href={href ?? `/${locale}/${node.path.join("/")}`}
@@ -416,11 +415,28 @@ export default function Sidebar({
         : null;
     };
 
-    // Save scroll position before the DOM swap so we can restore it after
-    let savedScrollTop = 0;
+    const SCROLL_KEY = "sidebar-scroll-top";
+
+    // Restore scroll position on mount (survives remounts via sessionStorage).
+    requestAnimationFrame(() => {
+      const container = getScrollContainer();
+      if (!container) return;
+      try {
+        const saved = sessionStorage.getItem(SCROLL_KEY);
+        if (saved !== null) container.scrollTop = Number(saved) || 0;
+      } catch {
+        /* ignore */
+      }
+    });
+
     const handleBeforeSwap = () => {
       const container = getScrollContainer();
-      if (container) savedScrollTop = container.scrollTop;
+      if (!container) return;
+      try {
+        sessionStorage.setItem(SCROLL_KEY, String(container.scrollTop));
+      } catch {
+        /* ignore */
+      }
     };
 
     const handlePageLoad = () => {
@@ -434,7 +450,13 @@ export default function Sidebar({
       // Restore scroll after React finishes re-rendering (rAF fires after paint)
       requestAnimationFrame(() => {
         const container = getScrollContainer();
-        if (container) container.scrollTop = savedScrollTop;
+        if (!container) return;
+        try {
+          const saved = sessionStorage.getItem(SCROLL_KEY);
+          if (saved !== null) container.scrollTop = Number(saved) || 0;
+        } catch {
+          /* ignore */
+        }
       });
     };
 
@@ -482,11 +504,15 @@ export default function Sidebar({
           window.localStorage.getItem("sidebar-tree-state") || "{}",
         );
 
-        const relativePath = currentPath.replace(`/${locale}/`, "");
-        const parts = relativePath.split("/").filter(Boolean);
+        // currentPath looks like `/<version>/<locale>/studio/.../page`.
+        // Tree node IDs are anchored at `studio/...`, so strip both prefixes
+        // before computing ancestor IDs.
+        const parts = currentPath.split("/").filter(Boolean);
+        const localeIdx = parts.indexOf(locale);
+        const slugParts = localeIdx >= 0 ? parts.slice(localeIdx + 1) : parts;
         const expandedAncestors = new Set<string>();
-        for (let i = 1; i <= parts.length - 1; i++) {
-          expandedAncestors.add(parts.slice(0, i).join("/"));
+        for (let i = 1; i <= slugParts.length - 1; i++) {
+          expandedAncestors.add(slugParts.slice(0, i).join("/"));
         }
 
         // Build new state with saved values and expanded ancestors
@@ -553,7 +579,7 @@ export default function Sidebar({
     <div className="flex flex-col h-screen bg-app-background border-r border-border w-[19rem] lg:w-[19rem] w-full max-w-[19rem]">
       {/* Header - hidden on mobile */}
       <div className="hidden lg:flex items-center justify-between px-4 lg:px-6 py-3 shrink-0 border-b border-border">
-        <Logo width={67} height={28} />
+        <ProductSwitcher />
         <div className="flex items-center gap-1.5">
           <LanguageSelector locale={locale} compact />
           <ThemeToggle />

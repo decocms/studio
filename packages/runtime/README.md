@@ -39,7 +39,7 @@ const greetTool = createTool({
 
 // Create the MCP server
 export default withRuntime({
-  tools: [() => greetTool],
+  tools: [greetTool],
 });
 ```
 
@@ -154,21 +154,11 @@ const getUserDataTool = createPrivateTool({
 
 ### Registering Tools
 
-Tools can be registered in multiple ways:
+Pass an array of tool instances created with `createTool()` / `createPrivateTool()`:
 
 ```typescript
 export default withRuntime({
-  // Option 1: Array of tool factories
-  tools: [
-    () => greetTool,
-    () => calculateTool,
-    (env) => createDynamicTool(env),
-  ],
-  
-  // Option 2: Single function returning array
-  tools: async (env) => {
-    return [greetTool, calculateTool];
-  },
+  tools: [greetTool, calculateTool],
 });
 ```
 
@@ -358,10 +348,10 @@ export default withRuntime({
   },
   
   tools: [
-    (env) => createTool({
+    createTool({
       id: "query",
       inputSchema: z.object({ sql: z.string() }),
-      execute: async ({ runtimeContext }) => {
+      execute: async ({ context, runtimeContext }) => {
         // Access resolved bindings from state
         const { database } = runtimeContext.env.MESH_REQUEST_CONTEXT.state;
         return database.QUERY({ sql: context.sql });
@@ -451,7 +441,7 @@ const channelTools = impl(WellKnownBindings.Channel, [
 ]);
 
 export default withRuntime({
-  tools: [() => channelTools].flat(),
+  tools: channelTools,
 });
 ```
 
@@ -648,16 +638,9 @@ const statusResource = createResource({
 
 // Export the MCP server
 export default withRuntime({
-  tools: [
-    () => echoTool,
-    () => getProfileTool,
-  ],
-  prompts: [
-    () => analyzePrompt,
-  ],
-  resources: [
-    () => statusResource,
-  ],
+  tools: [echoTool, getProfileTool],
+  prompts: [analyzePrompt],
+  resources: [statusResource],
   cors: {
     origin: "*",
     credentials: true,

@@ -1,0 +1,16 @@
+{{- /*
+Chart-level validations. Renders no resources.
+
+Note: this chart pins all sandbox-side resources to `agent-sandbox-system`
+explicitly (rather than `.Release.Namespace`) because the operator's RBAC
+watches that namespace by default — splitting them across two namespaces
+breaks reconciliation. So unlike sandbox-operator, this chart does NOT
+fail if installed under a different release namespace; the resources
+still land in agent-sandbox-system regardless. The release namespace
+only really matters for Helm's own bookkeeping.
+*/ -}}
+{{- include "sandbox-env.validatePreviewGateway" . -}}
+{{- /* Force envName validation to run at template time even when no
+resource references it directly (pure-validation render). Discard the
+return value into a local so it doesn't leak into the rendered YAML. */ -}}
+{{- $_ := include "sandbox-env.envName" . -}}

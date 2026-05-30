@@ -17,7 +17,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { contentBlocksToTiptapDoc } from "@/mcp-apps/content-blocks.ts";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
-import { useChatBridge, useChatPrefs } from "@/web/components/chat/context.tsx";
+import { useChatStream, useChatPrefs } from "@/web/components/chat/context.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
@@ -28,6 +28,7 @@ function AppRenderer({
   tool,
   connectionId,
   orgId,
+  args,
 }: {
   client: ReturnType<typeof useMCPClient>;
   resourceURI: string;
@@ -39,8 +40,9 @@ function AppRenderer({
   };
   connectionId: string;
   orgId?: string;
+  args?: Record<string, unknown>;
 }) {
-  const { sendMessage } = useChatBridge();
+  const { sendMessage } = useChatStream();
   const { setAppContext, clearAppContext } = useChatPrefs();
   const { setChatOpen, openTab } = usePanelActions();
   const sourceId = `${connectionId}:${tool.name}`;
@@ -54,10 +56,11 @@ function AppRenderer({
     }
     return "fullscreen";
   };
+  const toolInput = args ?? EMPTY_TOOL_INPUT;
   const { data: toolResult } = useMCPToolCall({
     client,
     toolName: tool.name,
-    toolArguments: EMPTY_TOOL_INPUT,
+    toolArguments: toolInput,
   });
 
   const clientId = getGatewayClientId(tool._meta);
@@ -83,7 +86,7 @@ function AppRenderer({
       resourceURI={resourceURI}
       orgId={orgId}
       toolInfo={{ tool: strippedTool }}
-      toolInput={EMPTY_TOOL_INPUT}
+      toolInput={toolInput}
       toolResult={toolResult}
       displayMode="fullscreen"
       minHeight={MCP_APP_DISPLAY_MODES.fullscreen.minHeight}
@@ -101,17 +104,40 @@ function AppRenderer({
 export function AppViewContent({
   connectionId,
   toolName,
+  args,
 }: {
   connectionId: string;
   toolName: string;
+  args?: Record<string, unknown>;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({ connectionId, orgId: org.id });
+  const client = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
   const { data: toolsResult } = useMCPToolsList({ client });
 
   const decodedToolName = stripMcpServerPrefix(decodeURIComponent(toolName));
 
-  const tool = toolsResult.tools.find((t) => t.name === decodedToolName);
+  // Try exact match first. If that fails, the decoded name may be the original
+  // (un-namespaced) tool name while the tools list has gateway-namespaced names
+  // (e.g. "render_html" vs "conn-abc_render_html"), or vice versa. Fall back to
+  // matching by the base name with the gateway namespace stripped from both sides.
+  const tool =
+    toolsResult.tools.find((t) => t.name === decodedToolName) ??
+    toolsResult.tools.find((t) => {
+      const clientId = getGatewayClientId(t._meta);
+      if (!clientId) return false;
+      // Case 1: decoded name is the base name, tool list has namespaced names
+      const baseName = stripToolNamespace(t.name, clientId);
+      if (baseName === decodedToolName) return true;
+      // Case 2: decoded name has namespace prefix, tool list has base names
+      const decodedBase = stripToolNamespace(decodedToolName, clientId);
+      if (decodedBase !== decodedToolName && t.name === decodedBase)
+        return true;
+      return false;
+    });
 
   const resourceURI = tool?._meta ? getUIResourceUri(tool._meta) : undefined;
 
@@ -132,6 +158,7 @@ export function AppViewContent({
       tool={tool}
       connectionId={connectionId}
       orgId={org.id}
+      args={args}
     />
   );
 }

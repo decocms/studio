@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'deploy/helm/Chart.yaml'
+      - 'deploy/helm/studio/Chart.yaml'
 
 jobs:
   publish:
@@ -22,13 +22,13 @@ jobs:
 
       - name: Get chart version
         id: chart
-        run: echo "version=$(grep '^version:' deploy/helm/Chart.yaml | awk '{print $2}')" >> $GITHUB_OUTPUT
+        run: echo "version=$(grep '^version:' deploy/helm/studio/Chart.yaml | awk '{print $2}')" >> $GITHUB_OUTPUT
 
       - name: Login to GHCR
         run: helm registry login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
 
       - name: Package chart
-        run: helm package deploy/helm/ --dependency-update
+        run: helm package deploy/helm/studio/ --dependency-update
 
       - name: Push chart to GHCR
         run: helm push chart-deco-studio-${{ steps.chart.outputs.version }}.tgz oci://ghcr.io/decocms

@@ -1,0 +1,21 @@
+# Helm conventional ignores
+.DS_Store
+.git/
+.gitignore
+.bzr/
+.hg/
+.svn/
+*.tmproj
+.vscode/
+.idea/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+
+# Re-vendor script — not part of the published chart
+vendor.sh
+
+# Examples folder is for documentation in-tree only
+examples/

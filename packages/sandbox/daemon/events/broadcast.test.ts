@@ -25,7 +25,7 @@ describe("Broadcaster", () => {
       },
     } as unknown as ReadableStreamDefaultController<Uint8Array>);
     // Must not throw.
-    b.broadcastEvent("status", { ready: true });
+    b.emit("intent", { state: "running" });
   });
 
   it("records chunks into its replay buffer", () => {

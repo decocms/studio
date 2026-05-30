@@ -25,14 +25,12 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@electric-sql/pglite": "^0.3.15",
-    "kysely-pglite": "^0.6.1",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
     "@tanstack/react-query": ">=5.0.0",
     "lucide-react": "*",
-    "react": "^19.2.0",
+    "react": "^19.2.6",
     "sonner": ">=2.0.0"
   }
 }

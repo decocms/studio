@@ -8,6 +8,7 @@ import {
 } from "./bindings.ts";
 import { type CORSOptions, handlePreflight, withCORS } from "./cors.ts";
 import { createOAuthHandlers } from "./oauth.ts";
+export { OAuthInvalidGrantError } from "./oauth.ts";
 import { State } from "./state.ts";
 import {
   createMCPServer,

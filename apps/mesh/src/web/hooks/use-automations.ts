@@ -83,6 +83,7 @@ export function useTriggerList(connectionId: string | undefined) {
   const client = useMCPClient({
     connectionId: connectionId ?? SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -113,19 +114,20 @@ export interface AutomationListItem {
   created_by: string;
   created_at: string;
   trigger_count: number;
-  agent: { id: string } | null;
+  virtual_mcp_id: string;
   nearest_next_run_at: string | null;
 }
 
 export interface AutomationTrigger {
   id: string;
-  type: "cron" | "event";
+  type: "cron" | "event" | "webhook";
   cron_expression: string | null;
   connection_id: string | null;
   event_type: string | null;
   params: Record<string, string> | null;
   last_run_at: string | null;
   next_run_at: string | null;
+  api_key_id: string | null;
   created_at: string;
 }
 
@@ -136,11 +138,10 @@ export interface AutomationDetail {
   created_by: string;
   created_at: string;
   updated_at: string;
-  agent: { id: string };
+  virtual_mcp_id: string;
   messages: unknown[];
   models: {
-    credentialId: string;
-    thinking: { id: string; [key: string]: unknown };
+    tier?: "fast" | "smart" | "thinking";
     [key: string]: unknown;
   };
   temperature: number;
@@ -158,6 +159,7 @@ export function useAutomations(virtualMcpId?: string | null) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -186,6 +188,7 @@ export function useAutomation(id: string) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -208,12 +211,11 @@ export function useAutomation(id: string) {
 // Helpers
 // ============================================================================
 
-export function buildDefaultAutomationInput(virtualMcpId?: string) {
+export function buildDefaultAutomationInput(virtualMcpId: string) {
   return {
     name: "New Automation",
-    agent: virtualMcpId ? { id: virtualMcpId } : undefined,
     messages: [],
-    models: { credentialId: "", thinking: { id: "" } },
+    models: { tier: "smart" as const },
     temperature: 0.5,
     active: true,
     virtual_mcp_id: virtualMcpId,
@@ -229,6 +231,7 @@ export function useAutomationActions() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
 
@@ -251,11 +254,11 @@ export function useAutomationActions() {
     },
     onSuccess: () => {
       invalidateAll();
+      toast.success("Automation created successfully");
     },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create automation",
-      );
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to create automation: ${message}`);
     },
   });
 
@@ -272,11 +275,11 @@ export function useAutomationActions() {
       if (typeof variables.id === "string") {
         invalidateOne(variables.id);
       }
+      toast.success("Automation updated successfully");
     },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update automation",
-      );
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to update automation: ${message}`);
     },
   });
 
@@ -291,11 +294,11 @@ export function useAutomationActions() {
     onSuccess: (_data, id) => {
       queryClient.removeQueries({ queryKey: KEYS.automation(org.id, id) });
       invalidateAll();
+      toast.success("Automation deleted successfully");
     },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to delete automation",
-      );
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to delete automation: ${message}`);
     },
   });
 
@@ -316,11 +319,42 @@ export function useAutomationActions() {
       return (result.structuredContent ?? result) as {
         id: string;
         automation_id: string;
+        // Only set for webhook triggers. Plaintext token is shown only once.
+        webhook?: { url: string; token: string } | null;
       };
     },
     onSuccess: (data) => {
       invalidateAll();
       invalidateOne(data.automation_id);
+    },
+  });
+
+  const triggerRotateToken = useMutation({
+    mutationFn: async (input: {
+      trigger_id: string;
+      automation_id: string;
+    }) => {
+      const result = (await client.callTool({
+        name: "AUTOMATION_TRIGGER_ROTATE_TOKEN",
+        arguments: { trigger_id: input.trigger_id },
+      })) as {
+        structuredContent?: unknown;
+        isError?: boolean;
+        content?: Array<{ text?: string }>;
+      };
+      if (result.isError) {
+        const message = result.content?.[0]?.text ?? "Failed to rotate token";
+        throw new Error(message);
+      }
+      return (result.structuredContent ?? result) as {
+        trigger_id: string;
+        url: string;
+        token: string;
+      };
+    },
+    onSuccess: (_data, variables) => {
+      invalidateAll();
+      invalidateOne(variables.automation_id);
     },
   });
 
@@ -341,5 +375,48 @@ export function useAutomationActions() {
     },
   });
 
-  return { create, update, remove, triggerAdd, triggerRemove };
+  const run = useMutation({
+    mutationFn: async (id: string) => {
+      const result = (await client.callTool({
+        name: "AUTOMATION_RUN",
+        arguments: { id },
+      })) as {
+        structuredContent?: unknown;
+        isError?: boolean;
+        content?: Array<{ text?: string }>;
+      };
+      if (result.isError) {
+        const message = result.content?.[0]?.text ?? "Failed to run automation";
+        throw new Error(message);
+      }
+      return (result.structuredContent ?? result) as {
+        threadId?: string;
+        error?: string;
+        skipped?: string;
+      };
+    },
+    onSuccess: (data) => {
+      if (data.skipped) {
+        toast.info(`Automation skipped: ${data.skipped}`);
+      } else if (data.error) {
+        toast.error(`Automation failed: ${data.error}`);
+      } else {
+        toast.success("Automation triggered");
+      }
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to run automation: ${message}`);
+    },
+  });
+
+  return {
+    create,
+    update,
+    remove,
+    triggerAdd,
+    triggerRemove,
+    triggerRotateToken,
+    run,
+  };
 }

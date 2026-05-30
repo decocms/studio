@@ -1,14 +1,5 @@
 import type { ThreadDisplayStatus } from "@decocms/mesh-sdk";
-
-// Constants
-export const TASK_CONSTANTS = {
-  /** Page size for task messages queries */
-  TASK_MESSAGES_PAGE_SIZE: 100,
-  /** Page size for tasks list queries */
-  TASKS_PAGE_SIZE: 50,
-  /** Stale time for React Query queries (30 seconds) */
-  QUERY_STALE_TIME: 30_000,
-} as const;
+import type { ThreadMetadata } from "@/storage/types";
 
 // Types
 export interface Task {
@@ -22,16 +13,40 @@ export interface Task {
   status?: ThreadDisplayStatus;
   /** Virtual MCP (agent) this task was initiated with */
   virtual_mcp_id?: string;
-  /** True when this task was triggered by an automation */
-  fromAutomation?: boolean;
+  /**
+   * Automation trigger that created this thread, when applicable.
+   * `null` (or absent) ⇒ human-initiated. Use `Boolean(task.trigger_id)`
+   * to ask "is this an automation?".
+   */
+  trigger_id?: string | null;
   /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
   branch?: string | null;
+  /** Sandbox provider kind pinned on first message (e.g. "local-docker", "cluster", "user-desktop"). */
+  sandbox_provider_kind?: string | null;
+  /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot"). */
+  harness_id?: string | null;
+  /** Per-thread metadata — layout tabs, expanded tools, etc. Loaded by COLLECTION_THREADS_GET. */
+  metadata?: ThreadMetadata;
 }
 
 export type { ChatMessage } from "../types.ts";
 
-export type TasksQueryData = {
-  items: Task[];
-  hasMore: boolean;
-  totalCount?: number;
-};
+/**
+ * Partial Task patch — every store update goes through one of these. `id`
+ * pins the row; the rest are optional overrides applied via spread.
+ */
+export type RowPatch = Pick<Task, "id"> &
+  Partial<
+    Pick<
+      Task,
+      | "status"
+      | "created_at"
+      | "updated_at"
+      | "title"
+      | "branch"
+      | "created_by"
+      | "trigger_id"
+      | "virtual_mcp_id"
+      | "metadata"
+    >
+  >;

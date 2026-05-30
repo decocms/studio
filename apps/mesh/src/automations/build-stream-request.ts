@@ -1,19 +1,46 @@
 /**
  * Build Stream Request
  *
- * Converts a stored Automation row into a StreamCoreInput suitable
- * for passing to streamCore(). JSON columns are parsed back into objects.
+ * Converts a stored Automation row into a DispatchRunInput suitable for passing
+ * to dispatchRunAndWait(). The caller is expected to resolve the automation's tier via
+ * resolveTier() first; the resolved model is passed in here. The automation's
+ * stored `models` JSON is no longer read for credential or model info — after
+ * migration 077 it carries only `{ tier }`.
  */
 
-import type { StreamCoreInput } from "@/api/routes/decopilot/stream-core";
+import type { DispatchRunInput } from "@/api/routes/decopilot/dispatch-run";
 import type { Automation } from "@/storage/types";
-import { getDecopilotId } from "@decocms/mesh-sdk";
+
+type ModelShape = {
+  id: string;
+  title?: string;
+  provider?: string | null;
+  capabilities?: {
+    vision?: boolean;
+    text?: boolean;
+    reasoning?: boolean;
+    file?: boolean;
+  };
+  limits?: {
+    contextWindow?: number;
+    maxOutputTokens?: number;
+  };
+  [key: string]: unknown;
+};
+
+export interface ResolvedAutomationModel {
+  credentialId: string;
+  thinking: ModelShape;
+  image?: ModelShape & { credentialId: string };
+  deepResearch?: ModelShape & { credentialId: string };
+}
 
 export function buildStreamRequest(
   automation: Automation,
   triggerId: string | null,
   taskId: string,
-): StreamCoreInput {
+  resolved: ResolvedAutomationModel,
+): DispatchRunInput {
   const rawMessages = JSON.parse(automation.messages);
   // Generate fresh ids for each run so concurrent automation runs don't
   // collide on the same message id (ON CONFLICT in saveMessages would
@@ -23,14 +50,19 @@ export function buildStreamRequest(
     ...m,
     id: crypto.randomUUID(),
   }));
-  const request: StreamCoreInput = {
+
+  const request: DispatchRunInput = {
     messages,
-    models: JSON.parse(automation.models),
-    agent: (() => {
-      const parsed = JSON.parse(automation.agent);
-      const id = parsed.id || getDecopilotId(automation.organization_id);
-      return { id };
-    })(),
+    models: {
+      credentialId: resolved.credentialId,
+      thinking: resolved.thinking,
+      ...(resolved.image ? { image: resolved.image } : {}),
+      ...(resolved.deepResearch ? { deepResearch: resolved.deepResearch } : {}),
+    },
+    // Caller guarantees `automation.kind === "agent"` (the workflow only
+    // takes the agent branch when this invariant holds), so virtual_mcp_id
+    // is non-null. The `!` is the cheapest way to express that here.
+    agent: { id: automation.virtual_mcp_id! },
     temperature: automation.temperature ?? 0.5,
     toolApprovalLevel: "auto",
     mode: "default",

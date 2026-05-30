@@ -5,12 +5,13 @@ import {
   SidebarItemSchema,
   RegistryConfigSchema,
   SimpleModeConfigSchema,
+  DefaultHomeAgentsConfigSchema,
 } from "./schema.ts";
 
 export const ORGANIZATION_SETTINGS_GET = defineTool({
   name: "ORGANIZATION_SETTINGS_GET",
   description:
-    "Get organization-level settings including sidebar configuration, store registry settings, and simple model mode.",
+    "Get organization-level settings including sidebar configuration, store registry settings, simple model mode, and default home agents.",
   annotations: {
     title: "Get Organization Settings",
     readOnlyHint: true,
@@ -26,6 +27,7 @@ export const ORGANIZATION_SETTINGS_GET = defineTool({
     enabled_plugins: z.array(z.string()).nullable().optional(),
     registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
+    default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     createdAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
   }),

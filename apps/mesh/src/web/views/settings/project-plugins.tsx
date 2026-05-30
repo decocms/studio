@@ -1,15 +1,16 @@
 import { Page } from "@/web/components/page";
 import { ProjectPluginsForm } from "@/web/components/settings/project-plugins-form";
+import { SettingsPage } from "@/web/components/settings/settings-section";
 
 export function ProjectPluginsPage() {
   return (
     <Page>
       <Page.Content>
         <Page.Body>
-          <div className="flex flex-col gap-6">
+          <SettingsPage>
             <Page.Title>Plugins</Page.Title>
             <ProjectPluginsForm />
-          </div>
+          </SettingsPage>
         </Page.Body>
       </Page.Content>
     </Page>

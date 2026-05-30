@@ -6,13 +6,7 @@ import { Loading01 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { Suspense } from "react";
 
-export function AutomationTab({
-  tabId,
-  virtualMcpId,
-}: {
-  tabId: string;
-  virtualMcpId: string;
-}) {
+export function AutomationTab({ tabId }: { tabId: string }) {
   const parsed = parseAutomationTabId(tabId);
   if (!parsed) return null;
 
@@ -30,7 +24,7 @@ export function AutomationTab({
               </div>
             }
           >
-            <AutomationTabInner id={parsed.id} virtualMcpId={virtualMcpId} />
+            <AutomationTabInner id={parsed.id} />
           </Suspense>
         </Page.Body>
       </Page.Content>
@@ -38,17 +32,11 @@ export function AutomationTab({
   );
 }
 
-function AutomationTabInner({
-  id,
-  virtualMcpId,
-}: {
-  id: string;
-  virtualMcpId: string;
-}) {
+function AutomationTabInner({ id }: { id: string }) {
   const navigate = useNavigate();
   const { data: automation, isLoading } = useAutomation(id);
 
-  const onBack = () =>
+  const onBack = () => {
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) => ({
@@ -57,6 +45,7 @@ function AutomationTabInner({
       }),
       replace: true,
     });
+  };
 
   if (isLoading) {
     return (
@@ -78,7 +67,6 @@ function AutomationTabInner({
     <AutomationInlineDetail
       automationId={id}
       automation={automation}
-      virtualMcpId={virtualMcpId}
       onBack={onBack}
     />
   );

@@ -10,7 +10,6 @@ import type { ThreadStatus } from "@/storage/types";
 type ResponsePart = {
   type: string;
   text?: string;
-  toolName?: string;
   state?: string;
 };
 

@@ -15,6 +15,7 @@
 import { parseArgs } from "util";
 import { homedir } from "os";
 import { join } from "path";
+import { resolveTui } from "./cli/resolve-tui";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -56,14 +57,19 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
-    "num-threads": {
-      type: "string",
-      default: "1",
-    },
-    vibe: {
+    "local-sandbox-provider": {
       type: "boolean",
       default: false,
     },
+    target: { type: "string" },
+    env: { type: "string", short: "e" },
+    "dry-run": {
+      type: "boolean",
+      default: false,
+    },
+    batch: { type: "string" },
+    limit: { type: "string" },
+    org: { type: "string" },
   },
   allowPositionals: true,
 });
@@ -74,11 +80,14 @@ if (values.help) {
 Deco CMS — Open-source control plane for your AI agents
 
 Usage:
-  deco [options]                  Start server with Ink UI
-  deco dev [options]              Start dev server (Vite + hot reload)
-  deco services <up|down|status>  Manage services (Postgres, NATS)
-  deco init <directory>           Scaffold a new MCP app
-  deco completion [shell]         Install shell completions
+  deco [options]                     Start server with Ink UI
+  deco dev [options]                 Start dev server (Vite + hot reload)
+  deco services <up|down|status>     Manage services (Postgres, NATS)
+  deco init <directory>              Scaffold a new MCP app
+  deco auth <login|whoami|logout>    Manage CLI authentication
+  deco link [studio-url] [options]   Start the desktop-side link daemon
+  deco backfill-assets               Hoist legacy inline media out of threads + connections
+  deco completion [shell]            Install shell completions
 
 Server Options:
   -p, --port <port>     Port to listen on (default: 3000, or PORT env var)
@@ -86,14 +95,28 @@ Server Options:
   --no-local-mode       Disable auto-login (use cloud/SSO auth)
   --skip-migrations     Skip database migrations on startup
   --no-tui              Disable Ink UI, plain stdout (CI mode)
-  --num-threads <n>     Worker threads (default: 1; Linux only for n>1)
-  --vibe                Play synthwave soundtrack while running
   -h, --help            Show this help message
   -v, --version         Show version
 
 Dev Options:
-  --vite-port <port>    Vite dev server port (default: 4000)
-  --base-url <url>      Base URL for the server
+  --vite-port <port>            Vite dev server port (default: 4000)
+  --base-url <url>              Base URL for the server
+  --local-sandbox-provider      Auto-spawn the local link daemon (desktop sandbox provider)
+
+Auth Options:
+  --target <url>        Decocms target (default: https://studio.decocms.com)
+
+Link Options:
+  [studio-url]      Studio to link against (default: https://studio.decocms.com)
+  --port <port>     Local port for the daemon (default: 5174)
+
+Backfill Options (backfill-assets):
+  --target <t>          all | threads | connections (default: all)
+  --org <slug|id>       Restrict to a single organization
+  --dry-run             Report what would change without uploading or writing
+  --batch <n>           Rows scanned per page (default: 500)
+  --limit <n>           Cap total rows scanned per target (default: all)
+  --base-url <url>      Public origin for stored URLs (default: BASE_URL env)
 
 Environment Variables:
   PORT                  Port to listen on (default: 3000)
@@ -106,15 +129,11 @@ Environment Variables:
 Examples:
   deco                            Start with defaults (~/deco/)
   deco -p 8080                    Start on port 8080
-  deco --home ~/my-project        Custom data directory
-  deco --no-local-mode             Disable auto-login (production)
   deco dev                        Start dev server
-  deco dev --vite-port 5000       Dev server with custom Vite port
-  deco services up                Start Postgres and NATS
-  deco services status            Show service status
-  deco services down              Stop services
   deco init my-app                Scaffold a new MCP app
-  deco --no-tui                   Start without terminal UI
+  deco auth login                 Log in to studio.decocms.com
+  deco auth whoami                Show current session
+  deco link https://studio.decocms.com   Link this machine to a studio
 
 Documentation:
   https://decocms.com/studio
@@ -185,6 +204,115 @@ if (command === "services") {
   process.exit(0);
 }
 
+// ── Backfill: hoist legacy inline media out of stored rows ──────────────
+if (command === "backfill-assets") {
+  const { backfillThreadAssetsCommand } = await import(
+    "./cli/commands/backfill-assets"
+  );
+  const targetArg = (values.target as string | undefined) ?? "all";
+  if (!["all", "threads", "connections"].includes(targetArg)) {
+    console.error(
+      `Invalid --target "${targetArg}". Use: all | threads | connections`,
+    );
+    process.exit(1);
+  }
+  const code = await backfillThreadAssetsCommand({
+    dryRun: values["dry-run"] === true,
+    batch: values.batch ? Number(values.batch) : 500,
+    limit: values.limit ? Number(values.limit) : undefined,
+    baseUrl: values["base-url"],
+    org: values.org as string | undefined,
+    target: targetArg as "all" | "threads" | "connections",
+  });
+  process.exit(code);
+}
+
+// ── Auth / Link helpers ────────────────────────────────────────────────
+function resolveDataDir(): string {
+  return (
+    values.home ||
+    process.env.DATA_DIR ||
+    process.env.DECOCMS_HOME ||
+    join(homedir(), "deco")
+  );
+}
+
+// ── Auth command ───────────────────────────────────────────────────────
+if (command === "auth") {
+  const sub = positionals[1];
+  const dataDir = resolveDataDir();
+
+  if (sub === "login") {
+    const { loginCommand } = await import("./cli/commands/auth/login");
+    const code = await loginCommand({
+      dataDir,
+      target: values.target,
+    });
+    process.exit(code);
+  }
+  if (sub === "whoami") {
+    const { whoamiCommand } = await import("./cli/commands/auth/whoami");
+    const code = await whoamiCommand({ dataDir });
+    process.exit(code);
+  }
+  if (sub === "logout") {
+    const { logoutCommand } = await import("./cli/commands/auth/logout");
+    const code = await logoutCommand({ dataDir });
+    process.exit(code);
+  }
+  console.error(`Usage: decocms auth <login|whoami|logout>`);
+  process.exit(1);
+}
+
+// ── Link command ───────────────────────────────────────────────────────
+if (command === "link") {
+  const { runLinkCommand } = await import("./cli/commands/link");
+  // Optional positional: the studio to link against (auth target + cluster
+  // websocket), e.g. https://studio-stg.decocms.com. When omitted, falls back
+  // to MESH_CLUSTER_URL / https://studio.decocms.com (resolved in runLinkCommand).
+  const studioArg = positionals[1];
+  let studioUrl: string | undefined;
+  if (studioArg !== undefined) {
+    try {
+      const parsed = new URL(studioArg);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error("must be http(s)");
+      }
+      studioUrl = studioArg.replace(/\/$/, "");
+    } catch {
+      console.error(
+        `Invalid studio URL: "${studioArg}". Example: https://studio.decocms.com`,
+      );
+      process.exit(1);
+    }
+  }
+  // The top-level `parseArgs` declares `--port` with a default of 3000
+  // (for the server command). Only honor it for `deco link` if the user
+  // actually passed `--port`/`-p` on the command line — otherwise
+  // `runLinkCommand` falls back to the daemon's own default of 5174.
+  const portExplicit = process.argv.some(
+    (a) =>
+      a === "--port" ||
+      a === "-p" ||
+      a.startsWith("--port=") ||
+      a.startsWith("-p="),
+  );
+  const tui = resolveTui({
+    noTui: values["no-tui"] === true,
+    isTty: process.stdout.isTTY,
+  });
+  const code = await runLinkCommand({
+    port: portExplicit ? Number(values.port) : undefined,
+    clusterBaseUrl: studioUrl,
+    tui,
+    version: await getVersion(),
+    // Managed daemons (dev / npx --local-sandbox-provider) suppress the
+    // banner — the parent dev/serve process already renders one.
+    banner: process.env.DECOCMS_LINK_MANAGED !== "1",
+  });
+  process.exit(code);
+}
+
 // ── Dev command (Ink TUI + dev servers) ─────────────────────────────────
 if (command === "dev") {
   const decoHome =
@@ -193,8 +321,12 @@ if (command === "dev") {
     process.env.DECOCMS_HOME ||
     join(process.cwd(), ".deco");
 
-  const noTui = values["no-tui"] === true || !process.stdout.isTTY;
+  const noTui = !resolveTui({
+    noTui: values["no-tui"] === true,
+    isTty: process.stdout.isTTY,
+  });
 
+  const localSandboxProvider = values["local-sandbox-provider"] === true;
   const devOptions = {
     port: values.port!,
     vitePort: values["vite-port"]!,
@@ -203,24 +335,12 @@ if (command === "dev") {
     skipMigrations: values["skip-migrations"] === true,
     noTui,
     localMode: values["no-local-mode"] !== true,
+    localSandboxProvider,
   };
 
   if (noTui) {
-    const { ASCII_ART, dim } = await import("./fmt");
-    console.log("");
-    for (const line of ASCII_ART) {
-      console.log(line);
-    }
-    console.log(dim(`  v${await getVersion()}`));
-    console.log("");
-
-    if (values.vibe === true) {
-      const { startVibe } = await import("./cli/vibe/vibe-player");
-      startVibe(decoHome);
-    }
-
-    const { kickoffSandboxImageBuild } = await import("./cli/sandbox-image");
-    void kickoffSandboxImageBuild({ noTui: true });
+    const { printBanner } = await import("./cli/banner-art");
+    printBanner(await getVersion());
 
     const { startDevServer } = await import("./cli/commands/dev");
     const result = await startDevServer(devOptions);
@@ -231,23 +351,13 @@ if (command === "dev") {
     const { createElement } = await import("react");
     const { App } = await import("./cli/app");
     const { startDevServer } = await import("./cli/commands/dev");
-    const { setDevMode, setVibe, setDataDir } = await import("./cli/cli-store");
+    const { setDevMode } = await import("./cli/cli-store");
 
     const displayHome = decoHome.replace(homedir(), "~");
-    setDevMode();
-    setDataDir(decoHome);
+    setDevMode({ localSandboxProvider });
     render(createElement(App, { home: displayHome }), {
       patchConsole: false,
     });
-
-    if (values.vibe === true) {
-      const { startVibe } = await import("./cli/vibe/vibe-player");
-      setVibe(true);
-      startVibe(decoHome);
-    }
-
-    const { kickoffSandboxImageBuild } = await import("./cli/sandbox-image");
-    void kickoffSandboxImageBuild({ noTui: false });
 
     const result = await startDevServer(devOptions);
     const code = await result.process.exited;
@@ -255,7 +365,18 @@ if (command === "dev") {
   }
 }
 
-if (command && !["init", "completion", "dev", "services"].includes(command)) {
+if (
+  command &&
+  ![
+    "init",
+    "completion",
+    "dev",
+    "services",
+    "auth",
+    "link",
+    "backfill-assets",
+  ].includes(command)
+) {
   console.error(`Unknown command: ${command}`);
   process.exit(1);
 }
@@ -272,31 +393,17 @@ const serveOptions = {
   home: decoHome,
   skipMigrations: values["skip-migrations"] === true,
   localMode: values["no-local-mode"] !== true,
-  numThreads: (() => {
-    const n = Number(values["num-threads"]);
-    return Number.isInteger(n) && n > 0 ? n : 1;
-  })(),
 };
 
-const noTui = values["no-tui"] === true || !process.stdout.isTTY;
+const noTui = !resolveTui({
+  noTui: values["no-tui"] === true,
+  isTty: process.stdout.isTTY,
+});
 
 if (noTui) {
   // Plain stdout mode — no Ink, just console.log (CI-friendly)
-  const { ASCII_ART, dim } = await import("./fmt");
-  console.log("");
-  for (const line of ASCII_ART) {
-    console.log(line);
-  }
-  console.log(dim(`  v${await getVersion()}`));
-  console.log("");
-
-  if (values.vibe === true) {
-    const { startVibe } = await import("./cli/vibe/vibe-player");
-    startVibe(decoHome);
-  }
-
-  const { kickoffSandboxImageBuild } = await import("./cli/sandbox-image");
-  void kickoffSandboxImageBuild({ noTui: true });
+  const { printBanner } = await import("./cli/banner-art");
+  printBanner(await getVersion());
 
   const { startServer } = await import("./cli/commands/serve");
   await startServer({ ...serveOptions, noTui: true });
@@ -314,21 +421,6 @@ if (noTui) {
   render(createElement(App, { home: displayHome }), {
     patchConsole: false,
   });
-
-  {
-    const { setDataDir } = await import("./cli/cli-store");
-    setDataDir(decoHome);
-  }
-
-  if (values.vibe === true) {
-    const { startVibe } = await import("./cli/vibe/vibe-player");
-    const { setVibe } = await import("./cli/cli-store");
-    setVibe(true);
-    startVibe(decoHome);
-  }
-
-  const { kickoffSandboxImageBuild } = await import("./cli/sandbox-image");
-  void kickoffSandboxImageBuild({ noTui: false });
 
   await startServer(serveOptions);
 }

@@ -86,6 +86,7 @@ export function useInstallFromRegistry(): UseInstallFromRegistryResult {
           const result = await callRegistryTool(
             registryConnection.id,
             org.id,
+            org.slug,
             listToolName,
             {
               where: { appName: parsedServerName },

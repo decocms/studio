@@ -1,45 +1,46 @@
-import { spawn } from "node:child_process";
-import {
-  DECO_UID,
-  DECO_GID,
-  PACKAGE_MANAGER_DAEMON_CONFIG,
-} from "../constants";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { PACKAGE_MANAGER_DAEMON_CONFIG } from "../constants";
+import { resolvePmRoot } from "../paths";
 import type { Config } from "../types";
+import { spawnSetupStep } from "./spawn-step";
 
 export interface InstallDeps {
   config: Config;
   dropPrivileges?: boolean;
+  env?: Readonly<Record<string, string>>;
   onChunk: (source: "setup", data: string) => void;
 }
 
 export function spawnInstall(deps: InstallDeps): Promise<number> | null {
   const { config } = deps;
-  if (!config.packageManager) return null;
-  const pmConfig = PACKAGE_MANAGER_DAEMON_CONFIG[config.packageManager];
+  const pm = config.application?.packageManager?.name;
+  if (!pm) return null;
+  const pmConfig = PACKAGE_MANAGER_DAEMON_CONFIG[pm];
   if (!pmConfig) return null;
+  // No install command (e.g. deno) — runtime fetches deps lazily on first
+  // task. Caller treats null as "nothing to do" and proceeds to start.
+  if (!pmConfig.install) return null;
+  const installRoot = resolvePmRoot(
+    config.repoDir,
+    config.application?.packageManager?.path,
+  );
+  const hasManifest = pmConfig.manifests.some((file) =>
+    existsSync(join(installRoot, file)),
+  );
+  if (!hasManifest) {
+    deps.onChunk(
+      "setup",
+      `\r\n[install] no package manifest (${pmConfig.manifests.join(" or ")}) found at ${installRoot} — skipping install\r\n`,
+    );
+    return null;
+  }
   const corepack =
-    "export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 && corepack enable && ";
-  const cmd = `${config.pathPrefix}cd ${config.appRoot} && ${corepack}${pmConfig.install}`;
-  deps.onChunk("setup", `\r\n$ ${pmConfig.install}\r\n`);
-  return new Promise((resolve) => {
-    const opts: Parameters<typeof spawn>[2] = {
-      stdio: ["ignore", "pipe", "pipe"],
-    };
-    if (deps.dropPrivileges) {
-      (opts as { uid: number; gid: number }).uid = DECO_UID;
-      (opts as { uid: number; gid: number }).gid = DECO_GID;
-    }
-    const child = spawn("script", ["-q", "-c", cmd, "/dev/null"], opts);
-    child.stdout?.on("data", (c: Buffer) =>
-      deps.onChunk("setup", c.toString("utf-8")),
-    );
-    child.stderr?.on("data", (c: Buffer) =>
-      deps.onChunk("setup", c.toString("utf-8")),
-    );
-    child.on("error", (err) => {
-      deps.onChunk("setup", `\r\nSpawn failed: ${err.message}\r\n`);
-      resolve(-1);
-    });
-    child.on("close", (code) => resolve(code ?? -1));
+    "export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 && (corepack enable 2>/dev/null || true) && ";
+  const cmd = `${config.runtimePathPrefix}cd ${installRoot} && ${corepack}${pmConfig.install}`;
+  deps.onChunk("setup", `\r\n$ ${cmd}\r\n`);
+  return spawnSetupStep(cmd, deps.onChunk, {
+    dropPrivileges: deps.dropPrivileges,
+    env: deps.env,
   });
 }

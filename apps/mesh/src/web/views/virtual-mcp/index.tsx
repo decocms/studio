@@ -1,11 +1,13 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
-import { useChatPrefs, useChatTask } from "@/web/components/chat/context";
+import { useChatStream } from "@/web/components/chat/context";
+import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improve-prompt-doc";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { User } from "@/web/components/user/user";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
 
 import {
@@ -52,8 +54,9 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   type ConnectionEntity,
-  getDecopilotId,
+  ENV_VAR_KEY_RE,
   SELF_MCP_ALIAS_ID,
+  StudioPackAgentId,
   useConnection,
   useConnectionActions,
   useConnections,
@@ -75,8 +78,9 @@ import {
   Trash01,
   XClose,
 } from "@untitledui/icons";
-import { Suspense, useReducer, useRef, useState } from "react";
+import { Suspense, useEffect, useReducer, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
 import { IconPicker } from "../../components/icon-picker";
 import { SimpleIconPicker } from "../../components/simple-icon-picker";
@@ -85,10 +89,22 @@ import { AddConnectionDialog } from "./add-connection-dialog";
 import { track } from "@/web/lib/posthog-client";
 import { DependencySelectionDialog } from "./dependency-selection-dialog";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
-import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
+import {
+  VirtualMcpFormSchema,
+  type VirtualMcpFormData,
+  type VirtualMcpFormReturn,
+} from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import {
+  agentHasClonableSource,
+  agentHasConnectedGithub,
+} from "@/web/lib/agent-capabilities";
 import { FIXED_SYSTEM_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
+import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
+import { EnvVarsField } from "@/web/components/sandbox/runtime-card/env-vars-field";
+import { RepoRow } from "@/web/components/sandbox/runtime-card/repo-row";
+import { RuntimeFields } from "@/web/components/sandbox/runtime-card/runtime-fields";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -124,6 +140,85 @@ function dialogReducer(state: DialogState, action: DialogAction): DialogState {
     default:
       return state;
   }
+}
+
+type EditSession = {
+  start: number;
+  fields: Set<string>;
+  saveCount: number;
+  instructionsLength: number | null;
+};
+
+type EditSessionAction =
+  | {
+      type: "accumulate";
+      now: number;
+      fields: string[];
+      instructionsLength: number | null;
+    }
+  | { type: "reset" };
+
+function editSessionReducer(
+  state: EditSession | null,
+  action: EditSessionAction,
+): EditSession | null {
+  switch (action.type) {
+    case "accumulate": {
+      const base: EditSession = state ?? {
+        start: action.now,
+        fields: new Set(),
+        saveCount: 0,
+        instructionsLength: null,
+      };
+      const fields = new Set(base.fields);
+      for (const f of action.fields) fields.add(f);
+      return {
+        ...base,
+        fields,
+        saveCount: base.saveCount + 1,
+        instructionsLength:
+          action.instructionsLength ?? base.instructionsLength,
+      };
+    }
+    case "reset":
+      return null;
+  }
+}
+
+/**
+ * Drops in-progress / invalid env rows from the autosave payload. A row is
+ * stripped when: key is empty, key fails the shell-portable regex, or it's a
+ * secret-kind row with no secretId. The partial/invalid row stays in form
+ * state so the user can keep editing; the server-side Zod schema would
+ * reject these anyway and we'd surface a noisy validation error on every
+ * keystroke without this filter.
+ */
+function stripIncompleteEnvEntries(
+  data: VirtualMcpFormData,
+): VirtualMcpFormData {
+  const env = data.metadata?.runtime?.env;
+  if (!env || env.length === 0) return data;
+  const cleaned = env.filter((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const key = ((entry as { key?: string }).key ?? "").trim();
+    if (!key || !ENV_VAR_KEY_RE.test(key)) return false;
+    if (entry.kind === "literal") return true;
+    if (entry.kind === "secret") {
+      return Boolean((entry as { secretId?: string }).secretId);
+    }
+    return false;
+  });
+  if (cleaned.length === env.length) return data;
+  return {
+    ...data,
+    metadata: {
+      ...data.metadata,
+      runtime: {
+        ...(data.metadata?.runtime ?? {}),
+        env: cleaned,
+      },
+    },
+  };
 }
 
 /**
@@ -504,13 +599,14 @@ function ConnectionItemSkeleton() {
 interface UITool {
   name: string;
   description?: string;
+  resourceUri: string;
 }
 
 interface PinnedView {
   connectionId: string;
   toolName: string;
   label: string;
-  icon: string | null;
+  icon?: string | null;
 }
 
 interface ConnectionWithTools {
@@ -521,13 +617,21 @@ interface ConnectionWithTools {
   uiTools: UITool[];
 }
 
-function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
+function LayoutTabContent({
+  virtualMcpId,
+  form,
+  flushAndSave,
+}: {
+  virtualMcpId: string;
+  form: VirtualMcpFormReturn;
+  flushAndSave: () => Promise<unknown>;
+}) {
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
-  const queryClient = useQueryClient();
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
 
@@ -557,9 +661,13 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
                 }> | null;
               } | null;
             }>(result);
-            const uiTools: UITool[] = (item?.tools ?? [])
-              .filter((t) => !!getUIResourceUri(t._meta))
-              .map((t) => ({ name: t.name, description: t.description }));
+            const uiTools: UITool[] = (item?.tools ?? []).flatMap((t) => {
+              const resourceUri = getUIResourceUri(t._meta);
+              if (!resourceUri) return [];
+              return [
+                { name: t.name, description: t.description, resourceUri },
+              ];
+            });
             return {
               fetchOk: true,
               id: connId,
@@ -589,47 +697,34 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const fixedTabTypeSet = new Set<string>(FIXED_SYSTEM_TABS);
 
-  // Current pinned views from virtual MCP metadata
-  const uiMeta = virtualMcp?.metadata?.ui as
-    | {
-        pinnedViews?: PinnedView[] | null;
-        layout?: {
-          defaultMainView?: {
-            type: string;
-            id?: string;
-            toolName?: string;
-          } | null;
-          chatDefaultOpen?: boolean | null;
-        } | null;
-      }
-    | null
-    | undefined;
+  // Layout state lives in the parent form under metadata.ui.{pinnedViews, layout}.
+  // form.watch subscribes the component to changes from any source — direct user
+  // edits, the orphan-pin reconciliation below, or a server refetch.
+  const pinnedViews = form.watch("metadata.ui.pinnedViews") ?? [];
+  const layoutMeta = form.watch("metadata.ui.layout") ?? null;
+  const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
+  const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  const homeTile = form.watch("metadata.ui.homeTile") ?? null;
 
-  const serverPinned: PinnedView[] = uiMeta?.pinnedViews ?? [];
-  const serverDefaultMain = uiMeta?.layout?.defaultMainView ?? null;
-  const serverChatDefaultOpen = uiMeta?.layout?.chatDefaultOpen ?? false;
-
-  const serverDefaultMainKey = (() => {
-    if (!serverDefaultMain || serverDefaultMain.type === "chat") return "chat";
-    // Legacy: "settings" used to be its own tab; map onto Layout.
-    if (serverDefaultMain.type === "settings") return "layout";
-    if (fixedTabTypeSet.has(serverDefaultMain.type)) {
-      return serverDefaultMain.type;
+  // Convert the stored {type, id, toolName} object into the string composite
+  // key used by the <Select> UI. Legacy tab types fold into "settings".
+  const defaultMainView = (() => {
+    if (!currentDefaultMain || currentDefaultMain.type === "chat")
+      return "chat";
+    if (
+      currentDefaultMain.type === "instructions" ||
+      currentDefaultMain.type === "connections" ||
+      currentDefaultMain.type === "layout"
+    ) {
+      return "settings";
     }
-    return `${serverDefaultMain.type}:${serverDefaultMain.id ?? ""}:${serverDefaultMain.toolName ?? ""}`;
+    if (fixedTabTypeSet.has(currentDefaultMain.type)) {
+      return currentDefaultMain.type;
+    }
+    return `${currentDefaultMain.type}:${currentDefaultMain.id ?? ""}:${currentDefaultMain.toolName ?? ""}`;
   })();
 
-  const [pinnedViews, setPinnedViews] = useState<PinnedView[]>(serverPinned);
-  const [defaultMainView, setDefaultMainView] =
-    useState<string>(serverDefaultMainKey);
-  const [chatDefaultOpen, setChatDefaultOpen] = useState<boolean>(
-    serverChatDefaultOpen,
-  );
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Parse default main view from composite key.
-  // Plain fixed-system tab ids round-trip as { type: "<id>" }.
-  // ext-apps uses "ext-apps:<connectionId>:<toolName>".
+  // Inverse — converts the string composite key back to the stored object form.
   const parseDefaultMainView = (value: string) => {
     const [type, id, toolName] = value.split(":");
     if (!type) return null;
@@ -642,6 +737,21 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     return null;
   };
 
+  const writePinned = (next: PinnedView[]) => {
+    form.setValue("metadata.ui.pinnedViews", next, { shouldDirty: true });
+  };
+
+  const writeLayout = (next: {
+    defaultMainView?: { type: string; id?: string; toolName?: string } | null;
+    chatDefaultOpen?: boolean | null;
+  }) => {
+    form.setValue(
+      "metadata.ui.layout",
+      { ...layoutMeta, ...next },
+      { shouldDirty: true },
+    );
+  };
+
   // Reconcile orphaned pinned views once tool data is available.
   // Only remove pins whose connection was successfully fetched but no longer
   // exposes the pinned tool. Pins for connections that failed to fetch are
@@ -650,13 +760,12 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
   if (
     connectionsWithTools &&
     connectionsWithTools.length > 0 &&
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     !reconciledRef.current
   ) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     reconciledRef.current = true;
 
-    // Build set of connection IDs that were successfully fetched.
-    // Pins for connections that failed to fetch are kept to avoid
-    // permanent deletion from transient errors.
     const fetchedOkIds = new Set(
       (connectionsWithTools ?? []).filter((c) => c.fetchOk).map((c) => c.id),
     );
@@ -664,129 +773,55 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
       connectionsData.flatMap((c) => c.uiTools.map((t) => `${c.id}:${t.name}`)),
     );
 
-    // Only filter pins for connections we successfully got data for
-    const validPinned = serverPinned.filter(
+    const validPinned = pinnedViews.filter(
       (pv) =>
         !fetchedOkIds.has(pv.connectionId) ||
         validKeys.has(`${pv.connectionId}:${pv.toolName}`),
     );
 
-    if (validPinned.length !== serverPinned.length) {
-      setPinnedViews(validPinned);
+    if (validPinned.length !== pinnedViews.length) {
+      writePinned(validPinned);
 
       // If the default view was an ext-app that got removed, reset to chat
-      let nextDefault = defaultMainView;
       if (
-        serverDefaultMain?.type === "ext-apps" &&
+        currentDefaultMain?.type === "ext-apps" &&
         !validPinned.some(
           (pv) =>
-            pv.connectionId === serverDefaultMain.id &&
-            pv.toolName === serverDefaultMain.toolName,
+            pv.connectionId === currentDefaultMain.id &&
+            pv.toolName === currentDefaultMain.toolName,
         )
       ) {
-        nextDefault = "chat";
-        setDefaultMainView(nextDefault);
+        writeLayout({ defaultMainView: { type: "chat" } });
       }
-
-      // Persist cleaned pins; revert local state on failure
-      client
-        .callTool({
-          name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
-          arguments: {
-            virtualMcpId,
-            pinnedViews: validPinned,
-            layout: {
-              defaultMainView: parseDefaultMainView(nextDefault),
-              chatDefaultOpen,
-            },
-          },
-        })
-        .then((result) => {
-          unwrapToolResult(result);
-          queryClient.invalidateQueries({
-            predicate: (query) =>
-              Array.isArray(query.queryKey) &&
-              query.queryKey.includes("collection") &&
-              query.queryKey.includes("VIRTUAL_MCP"),
-          });
-        })
-        .catch(() => {
-          // Revert to server state so UI stays consistent
-          setPinnedViews(serverPinned);
-          setDefaultMainView(serverDefaultMainKey);
-        });
     }
   }
-
-  // Auto-save helper that persists given state
-  const saveLayout = (
-    nextPinned: PinnedView[],
-    nextDefaultMain: string,
-    nextChatDefaultOpen?: boolean,
-  ) => {
-    setIsSaving(true);
-    const doSave = async () => {
-      try {
-        const result = await client.callTool({
-          name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
-          arguments: {
-            virtualMcpId,
-            pinnedViews: nextPinned,
-            layout: {
-              defaultMainView: parseDefaultMainView(nextDefaultMain),
-              chatDefaultOpen: nextChatDefaultOpen ?? chatDefaultOpen,
-            },
-          },
-        });
-        unwrapToolResult(result);
-        queryClient.invalidateQueries({
-          predicate: (query) =>
-            Array.isArray(query.queryKey) &&
-            query.queryKey.includes("collection") &&
-            query.queryKey.includes("VIRTUAL_MCP"),
-        });
-        toast.success("Layout updated");
-      } catch (error) {
-        toast.error(
-          "Failed to update layout: " +
-            (error instanceof Error ? error.message : "Unknown error"),
-        );
-      } finally {
-        setIsSaving(false);
-      }
-    };
-    doSave();
-  };
 
   const handleTogglePin = (connectionId: string, toolName: string) => {
     const pinned = pinnedViews.some(
       (v) => v.connectionId === connectionId && v.toolName === toolName,
     );
-    let nextPinned: PinnedView[];
-    let nextDefault = defaultMainView;
     if (pinned) {
-      nextPinned = pinnedViews.filter(
+      const nextPinned = pinnedViews.filter(
         (v) => !(v.connectionId === connectionId && v.toolName === toolName),
       );
+      writePinned(nextPinned);
       // If the unpinned view was the default, reset to chat
       const unpinnedKey = `ext-apps:${connectionId}:${toolName}`;
       if (defaultMainView === unpinnedKey) {
-        nextDefault = "chat";
-        setDefaultMainView(nextDefault);
+        writeLayout({ defaultMainView: { type: "chat" } });
       }
     } else {
-      nextPinned = [
+      writePinned([
         ...pinnedViews,
         {
           connectionId,
           toolName,
-          label: toolName.replace(/_/g, " "),
+          label: toTitleCase(toolName),
           icon: null,
         },
-      ];
+      ]);
     }
-    setPinnedViews(nextPinned);
-    saveLayout(nextPinned, nextDefault);
+    flushAndSave();
   };
 
   const handleLabelChange = (
@@ -794,8 +829,8 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     toolName: string,
     label: string,
   ) => {
-    setPinnedViews((prev) =>
-      prev.map((v) =>
+    writePinned(
+      pinnedViews.map((v) =>
         v.connectionId === connectionId && v.toolName === toolName
           ? { ...v, label }
           : v,
@@ -804,7 +839,7 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const handleLabelBlur = () => {
-    saveLayout(pinnedViews, defaultMainView);
+    flushAndSave();
   };
 
   const handleIconChange = (
@@ -812,46 +847,66 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
     toolName: string,
     icon: string | null,
   ) => {
-    setPinnedViews((prev) =>
-      prev.map((v) =>
+    writePinned(
+      pinnedViews.map((v) =>
         v.connectionId === connectionId && v.toolName === toolName
           ? { ...v, icon }
           : v,
       ),
     );
-    const nextPinned = pinnedViews.map((v) =>
-      v.connectionId === connectionId && v.toolName === toolName
-        ? { ...v, icon }
-        : v,
-    );
-    saveLayout(nextPinned, defaultMainView);
+    flushAndSave();
   };
 
   const handleDefaultMainViewChange = (value: string) => {
-    setDefaultMainView(value);
-    saveLayout(pinnedViews, value);
+    writeLayout({ defaultMainView: parseDefaultMainView(value) });
+    flushAndSave();
+  };
+
+  // Flatten UI tools across connections so the home-tile picker can offer a
+  // single Select. We key by resourceUri (unique per ui:// URI) but also
+  // capture the owning connection — the home page opens a direct client to
+  // that connection so iframe tool calls hit bare tool names.
+  const homeTileOptions = connectionsData.flatMap((conn) =>
+    conn.uiTools.map((tool) => ({
+      resourceUri: tool.resourceUri,
+      connectionId: conn.id,
+      label: `${conn.title} — ${toTitleCase(tool.name)}`,
+    })),
+  );
+
+  const handleHomeTileChange = (value: string) => {
+    if (value === "none") {
+      form.setValue("metadata.ui.homeTile", null, { shouldDirty: true });
+    } else {
+      const opt = homeTileOptions.find((o) => o.resourceUri === value);
+      if (!opt) return;
+      form.setValue(
+        "metadata.ui.homeTile",
+        { resourceUri: opt.resourceUri, connectionId: opt.connectionId },
+        { shouldDirty: true },
+      );
+    }
+    flushAndSave();
   };
 
   const noConnections = connectionIds.length === 0;
   const noInteractiveTools =
     connectionsWithTools && connectionsData.length === 0;
 
-  // Check if virtual MCP has an active GitHub repo (enables preview)
-  const hasGithubRepo = !!getActiveGithubRepo(virtualMcp);
+  // Preview is available whenever the agent has a clonable source —
+  // either a Start Website template or a connected GitHub repo — matching
+  // the gating in `use-main-panel-tabs.ts`.
+  const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
 
   // Build options for the default main view selector.
   // Order mirrors the right-panel tab order in the unified chat layout:
   // Chat (no main panel), then fixed system tabs, then pinned ext-apps.
-  // Terminal and Preview are gated behind an active GitHub repo,
-  // matching the gating in main-panel-tabs/index.tsx.
   const defaultMainOptions: { value: string; label: string }[] = [
     { value: "chat", label: "Chat" },
-    { value: "instructions", label: "Instructions" },
-    { value: "connections", label: "Connections" },
-    { value: "layout", label: "Layout" },
+    { value: "settings", label: "Settings" },
+    { value: "automations", label: "Automations" },
   ];
-  if (hasGithubRepo) {
-    defaultMainOptions.push({ value: "env", label: "Terminal" });
+  if (hasClonableSource) {
     defaultMainOptions.push({ value: "preview", label: "Preview" });
   }
   for (const pv of pinnedViews) {
@@ -913,10 +968,10 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
                     checked={
                       defaultMainView === "chat" ? true : chatDefaultOpen
                     }
-                    disabled={defaultMainView === "chat" || isSaving}
+                    disabled={defaultMainView === "chat"}
                     onCheckedChange={(checked) => {
-                      setChatDefaultOpen(checked);
-                      saveLayout(pinnedViews, defaultMainView, checked);
+                      writeLayout({ chatDefaultOpen: checked });
+                      flushAndSave();
                     }}
                   />
                 </span>
@@ -927,6 +982,40 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
                 </TooltipContent>
               )}
             </Tooltip>
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5 min-w-0">
+              <Label className="font-normal text-foreground">Home tile</Label>
+              <p className="text-xs text-muted-foreground">
+                Render an interactive tool UI inside this agent's tile on the
+                org home page. Only takes effect when the agent is in the org's
+                default home agents.
+              </p>
+            </div>
+            <Select
+              value={homeTile?.resourceUri ?? "none"}
+              onValueChange={handleHomeTileChange}
+              disabled={homeTileOptions.length === 0}
+            >
+              <SelectTrigger className="w-56 h-8 text-sm shrink-0">
+                <SelectValue
+                  placeholder={
+                    homeTileOptions.length === 0
+                      ? "No interactive tools"
+                      : "None"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {homeTileOptions.map((opt) => (
+                  <SelectItem key={opt.resourceUri} value={opt.resourceUri}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
 
@@ -1000,13 +1089,13 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
                                   onChange={(icon) =>
                                     handleIconChange(conn.id, tool.name, icon)
                                   }
-                                  disabled={!pinned || isSaving}
+                                  disabled={!pinned}
                                 />
                                 <Input
                                   value={
                                     pinned && pinnedView
                                       ? pinnedView.label
-                                      : tool.name.replace(/_/g, " ")
+                                      : toTitleCase(tool.name)
                                   }
                                   onChange={(e) =>
                                     handleLabelChange(
@@ -1016,8 +1105,8 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
                                     )
                                   }
                                   onBlur={handleLabelBlur}
-                                  className="h-7 text-sm w-40 capitalize"
-                                  disabled={!pinned || isSaving}
+                                  className="h-7 text-sm w-40"
+                                  disabled={!pinned}
                                   readOnly={!pinned}
                                 />
                               </div>
@@ -1026,7 +1115,6 @@ function LayoutTabContent({ virtualMcpId }: { virtualMcpId: string }) {
                                 onCheckedChange={() =>
                                   handleTogglePin(conn.id, tool.name)
                                 }
-                                disabled={isSaving}
                               />
                             </div>
                           );
@@ -1063,6 +1151,7 @@ function VirtualMcpDetailViewWithData({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   // Form setup
@@ -1074,8 +1163,18 @@ function VirtualMcpDetailViewWithData({
   // Watch connections for reactive UI
   const connections = form.watch("connections");
 
-  // GitHub repo connected — instructions become read-only
-  const hasGithubRepo = !!getActiveGithubRepo(virtualMcp);
+  // GitHub repo connected (real auth) — instructions become read-only
+  const hasGithubRepo = agentHasConnectedGithub(virtualMcp);
+
+  // Repo info for the Runtime card (display-only — loose check is intentional)
+  const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
+  const runtimeCardRepo = githubRepoForRuntimeCard
+    ? {
+        owner: githubRepoForRuntimeCard.owner,
+        name: githubRepoForRuntimeCard.name,
+        url: githubRepoForRuntimeCard.url,
+      }
+    : null;
 
   // Dialog states
   const [dialogState, dispatch] = useReducer(dialogReducer, {
@@ -1086,125 +1185,137 @@ function VirtualMcpDetailViewWithData({
   });
 
   const [instructionsFullscreen, setInstructionsFullscreen] = useState(false);
-  const { createTaskWithMessage } = useChatTask();
-  const { setChatMode } = useChatPrefs();
-  const { createNewTask } = usePanelActions();
+  const [isImproving, setIsImproving] = useState(false);
+  const { createNewTask, setChatOpen } = usePanelActions();
+  const { sendMessage } = useChatStream();
 
-  const handleImprovePrompt = () => {
+  const handleImprovePrompt = async () => {
+    if (isImproving) return;
     const currentInstructions = form.getValues("metadata.instructions");
     if (!currentInstructions?.trim()) return;
 
-    flushEditSession();
-    track("agent_instructions_improve_clicked", {
-      agent_id: virtualMcp.id,
-      instructions_length: currentInstructions.length,
-    });
+    setIsImproving(true);
+    try {
+      forceSessionFlush();
+      track("agent_instructions_improve_clicked", {
+        agent_id: virtualMcp.id,
+        instructions_length: currentInstructions.length,
+      });
 
-    setChatMode("plan");
+      setChatOpen(true);
 
-    createTaskWithMessage({
-      virtualMcpId: getDecopilotId(org.id),
-      message: {
-        parts: [
-          {
-            type: "text",
-            text: `/writing-prompts ${virtualMcp.id}\n\n<instructions>\n${currentInstructions}\n</instructions>`,
-          },
-        ],
-      },
-    });
+      await sendMessage({
+        tiptapDoc: buildImprovePromptDoc({
+          managerAgentId: StudioPackAgentId.AGENT_MANAGER(org.id),
+          managerName: "Agent Manager",
+          kind: "agent",
+          id: virtualMcp.id,
+          instructions: currentInstructions,
+        }),
+      });
+    } finally {
+      setIsImproving(false);
+    }
   };
 
   const handleTestAgent = () => {
-    flushEditSession();
+    forceSessionFlush();
     track("agent_test_clicked", { agent_id: virtualMcp.id });
     createNewTask();
   };
 
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // Session-based tracking for agent_updated. Auto-saves persist every ~1s but
   // we only emit one PostHog event per edit-session (aggregated fields +
   // save_count + edit_duration_ms). A session ends after 30s of quiet.
-  const editSessionStartRef = useRef<number | null>(null);
-  const editSessionFieldsRef = useRef<Set<string>>(new Set());
-  const editSessionSaveCountRef = useRef(0);
-  const editSessionInstructionsLengthRef = useRef<number | null>(null);
-  const editSessionFlushRef = useRef<ReturnType<typeof setTimeout> | null>(
+  const [editSession, dispatchEditSession] = useReducer(
+    editSessionReducer,
     null,
   );
-  const EDIT_SESSION_QUIET_MS = 30_000;
 
   const flushEditSession = () => {
-    if (editSessionFlushRef.current) {
-      clearTimeout(editSessionFlushRef.current);
-      editSessionFlushRef.current = null;
-    }
-    if (editSessionStartRef.current === null) return;
+    if (editSession === null) return;
     track("agent_updated", {
       agent_id: virtualMcp.id,
-      fields: Array.from(editSessionFieldsRef.current),
-      instructions_length: editSessionInstructionsLengthRef.current,
-      save_count: editSessionSaveCountRef.current,
-      edit_duration_ms: Date.now() - editSessionStartRef.current,
+      fields: Array.from(editSession.fields),
+      instructions_length: editSession.instructionsLength,
+      save_count: editSession.saveCount,
+      edit_duration_ms: Date.now() - editSession.start,
     });
-    editSessionStartRef.current = null;
-    editSessionFieldsRef.current = new Set();
-    editSessionSaveCountRef.current = 0;
-    editSessionInstructionsLengthRef.current = null;
+    dispatchEditSession({ type: "reset" });
   };
 
-  const saveForm = async () => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
+  const { schedule: scheduleSessionFlush, flush: forceSessionFlush } =
+    useDebouncedAutosave({
+      delayMs: 30_000,
+      save: async () => flushEditSession(),
+    });
 
-    const dirtyKeys = Object.keys(form.formState.dirtyFields);
+  const saveForm = async () => {
+    // form.formState is a Proxy over React state. When saveForm runs
+    // synchronously after setValue (e.g. via flushAndSave), React hasn't
+    // processed the batched state update yet and form.formState.dirtyFields
+    // returns the previous render's snapshot — empty on the first edit — so
+    // the save would bail. Read control._formState.dirtyFields for the live,
+    // synchronously-updated value.
+    const dirtyKeys = Object.keys(
+      (
+        form.control as unknown as {
+          _formState: { dirtyFields: Record<string, unknown> };
+        }
+      )._formState.dirtyFields,
+    );
     if (dirtyKeys.length === 0) return;
     const instructionsDirty = dirtyKeys.includes("metadata");
 
     const formData = form.getValues();
-    const data = await actions.update.mutateAsync({
+    // Rebase the dirty baseline to the snapshot we're about to send so that
+    // an edit during the in-flight save that returns a value to its pre-save
+    // default still registers as dirty. keepValues preserves the user's
+    // current form values; only _defaultValues advances.
+    form.reset(formData, { keepValues: true });
+
+    // Strip in-progress env rows (no key, or kind=secret with no secretId).
+    // The partial row stays in the form state so the user keeps editing it,
+    // but the request body only carries entries the server schema accepts.
+    const payload = stripIncompleteEnvEntries(formData);
+
+    await actions.update.mutateAsync({
       id: virtualMcp.id,
-      data: formData,
+      data: payload,
     });
 
-    // Accumulate into the current edit session.
-    if (editSessionStartRef.current === null) {
-      editSessionStartRef.current = Date.now();
-    }
-    for (const k of dirtyKeys) editSessionFieldsRef.current.add(k);
-    editSessionSaveCountRef.current += 1;
-    if (instructionsDirty) {
-      editSessionInstructionsLengthRef.current =
-        formData.metadata?.instructions?.length ?? 0;
-    }
-    if (editSessionFlushRef.current) {
-      clearTimeout(editSessionFlushRef.current);
-    }
-    editSessionFlushRef.current = setTimeout(
-      flushEditSession,
-      EDIT_SESSION_QUIET_MS,
-    );
-
-    form.reset(data);
-  };
-
-  const debouncedSave = () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveForm();
-    }, 1000);
-  };
-
-  const watchSubscribedRef = useRef(false);
-  if (!watchSubscribedRef.current) {
-    watchSubscribedRef.current = true;
-    form.watch(() => {
-      debouncedSave();
+    // Accumulate into the current edit session and (re)schedule a flush
+    // 30s after the last save.
+    dispatchEditSession({
+      type: "accumulate",
+      now: Date.now(),
+      fields: dirtyKeys,
+      instructionsLength: instructionsDirty
+        ? (formData.metadata?.instructions?.length ?? 0)
+        : null,
     });
-  }
+    scheduleSessionFlush();
+  };
+
+  const { schedule: debouncedSave, flush: flushAndSave } = useDebouncedAutosave(
+    { save: saveForm },
+  );
+
+  // form.watch(callback) fires whenever a value changes via setValue, but not
+  // on form.reset({ keepValues: true }) (which only emits state, no `values`
+  // key) — so saveForm's pre-mutate rebase does NOT loop. Edit handlers
+  // can just call form.setValue and trust this subscription to schedule the
+  // save. flushAndSave remains for explicit "save NOW" semantics (blurs,
+  // toggles).
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect
+  useEffect(() => {
+    const sub = form.watch(() => debouncedSave());
+    return () => sub.unsubscribe();
+    // debouncedSave is stable for our purpose: its closure only mediates
+    // through stable refs inside useDebouncedAutosave, so the mount-time
+    // reference stays valid for the component's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleOpenAddDialog = () => {
     track("connections_dialog_opened", {
@@ -1235,10 +1346,14 @@ function VirtualMcpDetailViewWithData({
     dispatch({ type: "SET_ADD_DIALOG_OPEN", payload: false });
 
     // Auto-trigger OAuth if the connection needs authorization
-    const mcpProxyUrl = new URL(`/mcp/${connectionId}`, window.location.origin);
+    const mcpProxyUrl = new URL(
+      `/api/${org.slug}/mcp/${connectionId}`,
+      window.location.origin,
+    );
     const authStatus = await isConnectionAuthenticated({
       url: mcpProxyUrl.href,
       token: null,
+      orgId: org.id,
     });
     if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
       await handleAuthenticate(connectionId);
@@ -1303,10 +1418,14 @@ function VirtualMcpDetailViewWithData({
       });
 
       // Handle OAuth if needed
-      const mcpProxyUrl = new URL(`/mcp/${newId}`, window.location.origin);
+      const mcpProxyUrl = new URL(
+        `/api/${org.slug}/mcp/${newId}`,
+        window.location.origin,
+      );
       const authStatus = await isConnectionAuthenticated({
         url: mcpProxyUrl.href,
         token: null,
+        orgId: org.id,
       });
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
         const email = await handleAuthenticate(newId);
@@ -1339,6 +1458,7 @@ function VirtualMcpDetailViewWithData({
   ): Promise<string | null> => {
     const { token, tokenInfo, error } = await authenticateMcp({
       connectionId,
+      orgSlug: org.slug,
       scope: "offline_access",
     });
     if (error || !token) {
@@ -1349,10 +1469,12 @@ function VirtualMcpDetailViewWithData({
     if (tokenInfo) {
       try {
         const response = await fetch(
-          `/api/connections/${connectionId}/oauth-token`,
+          `/api/${org.slug}/connections/${connectionId}/oauth-token`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+            },
             credentials: "include",
             body: JSON.stringify({
               accessToken: tokenInfo.accessToken,
@@ -1398,7 +1520,10 @@ function VirtualMcpDetailViewWithData({
       });
     }
 
-    const mcpProxyUrl = new URL(`/mcp/${connectionId}`, window.location.origin);
+    const mcpProxyUrl = new URL(
+      `/api/${org.slug}/mcp/${connectionId}`,
+      window.location.origin,
+    );
     await queryClient.invalidateQueries({
       queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
     });
@@ -1445,7 +1570,7 @@ Define step-by-step how the agent should handle requests.
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const handleDelete = async () => {
-    flushEditSession();
+    forceSessionFlush();
     try {
       await actions.delete.mutateAsync(virtualMcp.id);
       track("agent_deleted", {
@@ -1473,7 +1598,7 @@ Define step-by-step how the agent should handle requests.
                       size="sm"
                       onClick={handleTestAgent}
                     >
-                      <Play size={14} className="!size-[14px]" />
+                      <Play size={14} className="size-[14px]!" />
                       Test Agent
                     </Button>
                     <Button
@@ -1501,13 +1626,13 @@ Define step-by-step how the agent should handle requests.
                     value={field.value ?? null}
                     onChange={(icon) => {
                       field.onChange(icon);
-                      saveForm();
+                      flushAndSave();
                     }}
                     onColorChange={(color) => {
                       form.setValue("metadata.ui.themeColor", color, {
                         shouldDirty: true,
                       });
-                      saveForm();
+                      flushAndSave();
                     }}
                     name={form.watch("title") || "Agent"}
                     size="md"
@@ -1526,9 +1651,12 @@ Define step-by-step how the agent should handle requests.
                       {...field}
                       type="text"
                       value={field.value ?? ""}
+                      onChange={(e) => {
+                        field.onChange(e);
+                      }}
                       onBlur={() => {
                         field.onBlur();
-                        saveForm();
+                        flushAndSave();
                       }}
                       disabled={hasGithubRepo}
                       placeholder="Agent name"
@@ -1544,9 +1672,12 @@ Define step-by-step how the agent should handle requests.
                       {...field}
                       type="text"
                       value={field.value ?? ""}
+                      onChange={(e) => {
+                        field.onChange(e);
+                      }}
                       onBlur={() => {
                         field.onBlur();
-                        saveForm();
+                        flushAndSave();
                       }}
                       disabled={hasGithubRepo}
                       placeholder="Add a description..."
@@ -1590,6 +1721,23 @@ Define step-by-step how the agent should handle requests.
                 </span>
                 Connect
               </Button>
+            </div>
+
+            {/* Creator metadata */}
+            <div className="flex items-center gap-2 -mt-6 text-muted-foreground">
+              <User
+                id={virtualMcp.created_by}
+                size="2xs"
+                className="text-sm text-muted-foreground"
+              />
+              <span className="text-muted-foreground/50 text-sm">·</span>
+              <span className="text-sm">
+                {new Date(virtualMcp.created_at).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
             </div>
 
             {/* Connections section */}
@@ -1672,7 +1820,10 @@ Define step-by-step how the agent should handle requests.
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={!form.watch("metadata.instructions")?.trim()}
+                      disabled={
+                        isImproving ||
+                        !form.watch("metadata.instructions")?.trim()
+                      }
                       onClick={handleImprovePrompt}
                     >
                       <Stars01 size={13} />
@@ -1689,9 +1840,12 @@ Define step-by-step how the agent should handle requests.
                     <Textarea
                       {...field}
                       value={field.value ?? ""}
+                      onChange={(e) => {
+                        field.onChange(e);
+                      }}
                       onBlur={() => {
                         field.onBlur();
-                        saveForm();
+                        flushAndSave();
                       }}
                       disabled={hasGithubRepo}
                       placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."
@@ -1719,7 +1873,30 @@ Define step-by-step how the agent should handle requests.
             </section>
 
             {/* Layout section */}
-            <LayoutTabContent virtualMcpId={virtualMcp.id} />
+            <LayoutTabContent
+              virtualMcpId={virtualMcp.id}
+              form={form}
+              flushAndSave={flushAndSave}
+            />
+
+            {/* Sandbox section */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-medium text-foreground">Sandbox</h2>
+              </div>
+              <Card className="p-6 gap-5">
+                <CardContent className="p-0 space-y-5">
+                  <RepoRow repo={runtimeCardRepo} />
+                  <RuntimeFields control={form.control} />
+                  <EnvVarsField
+                    control={form.control}
+                    form={form}
+                    virtualMcpId={virtualMcp.id}
+                    orgSlug={org.slug}
+                  />
+                </CardContent>
+              </Card>
+            </div>
 
             {/* Danger zone */}
             <section className="flex items-center justify-between border-t border-border pt-6">
@@ -1815,9 +1992,12 @@ Define step-by-step how the agent should handle requests.
                 <Textarea
                   {...field}
                   value={field.value ?? ""}
+                  onChange={(e) => {
+                    field.onChange(e);
+                  }}
                   onBlur={() => {
                     field.onBlur();
-                    saveForm();
+                    flushAndSave();
                   }}
                   disabled={hasGithubRepo}
                   placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."

@@ -4,10 +4,20 @@ on:
   push:
     branches:
       - main
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need this heavy suite re-run.
+    paths-ignore:
+      - "apps/mesh/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
   workflow_dispatch:
 
 jobs:
   resilience:
+    # Skip the [release]: version-bump commit — it only changes the version
+    # string and would otherwise re-run this heavy suite on every release.
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, '[release]:')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -18,7 +28,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.5"
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: bun install

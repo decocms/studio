@@ -257,6 +257,12 @@ function hashString(input: string): number {
 // ---------------------------------------------------------------------------
 
 const SIZES = {
+  "2xs": {
+    container: "w-5 h-5",
+    icon: 12,
+    text: "text-[9px]",
+    radius: "rounded-md",
+  },
   xs: { container: "w-6 h-6", icon: 14, text: "text-xs", radius: "rounded-md" },
   sm: { container: "w-8 h-8", icon: 16, text: "text-sm", radius: "rounded-lg" },
   "sm+": {
@@ -342,6 +348,7 @@ export function AgentAvatar({
     return (
       <AgentAvatarImage
         url={parsed.url}
+        color={parsed.color}
         name={name}
         size={size}
         className={className}
@@ -377,19 +384,26 @@ export function AgentAvatar({
 // Image sub-component (handles load errors)
 // ---------------------------------------------------------------------------
 
+const URL_COLOR_BG: Record<string, string> = {
+  "brand-green": "bg-[var(--brand-green-light)]",
+};
+
 function AgentAvatarImage({
   url,
+  color,
   name,
   size = "md",
   className,
 }: {
   url: string;
+  color?: string;
   name: string;
   size?: AgentAvatarSize;
   className?: string;
 }) {
   const [errored, setErrored] = useState(false);
   const sizeConfig = SIZES[size];
+  const bgClass = color ? (URL_COLOR_BG[color] ?? "") : "";
 
   if (errored) {
     const { IconComp: FallbackIcon, color: fallbackColor } =
@@ -420,6 +434,7 @@ function AgentAvatarImage({
       className={cn(
         sizeConfig.container,
         sizeConfig.radius,
+        bgClass,
         "shrink-0 overflow-hidden",
         className,
       )}
@@ -431,7 +446,10 @@ function AgentAvatarImage({
       <img
         src={url}
         alt={name}
-        className="h-full w-full object-cover"
+        className={cn(
+          "h-full w-full",
+          bgClass ? "object-contain p-3" : "object-cover",
+        )}
         onError={() => setErrored(true)}
       />
     </div>

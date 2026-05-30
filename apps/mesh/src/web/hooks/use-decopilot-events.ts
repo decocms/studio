@@ -1,7 +1,7 @@
 /**
  * useDecopilotEvents — Subscribe to typed decopilot SSE events
  *
- * Connects to the /org/:orgId/watch SSE endpoint, parses incoming events
+ * Connects to the /api/:org/watch SSE endpoint, parses incoming events
  * into the discriminated DecopilotSSEEvent union, filters by taskId when
  * provided, and dispatches to typed handlers.
  *
@@ -12,26 +12,13 @@
 
 import {
   DECOPILOT_EVENTS,
-  ALL_DECOPILOT_EVENT_TYPES,
   type DecopilotSSEEvent,
   type DecopilotStepEvent,
   type DecopilotFinishEvent,
   type DecopilotThreadStatusEvent,
 } from "@decocms/mesh-sdk";
 import { useRef, useSyncExternalStore } from "react";
-import { createSSESubscription } from "./create-sse-subscription";
-
-// ============================================================================
-// Shared connection pool
-// ============================================================================
-
-const decopilotSSE = createSSESubscription({
-  buildUrl: (orgId) => {
-    const typesParam = ALL_DECOPILOT_EVENT_TYPES.join(",");
-    return `/org/${orgId}/watch?types=${typesParam}`;
-  },
-  eventTypes: [...ALL_DECOPILOT_EVENT_TYPES],
-});
+import { decopilotSSE } from "./decopilot-sse-pool";
 
 const getSnapshot = () => 0;
 
@@ -40,8 +27,8 @@ const getSnapshot = () => 0;
 // ============================================================================
 
 export interface UseDecopilotEventsOptions {
-  /** Organization ID for the SSE endpoint */
-  orgId: string;
+  /** Organization slug for the SSE endpoint */
+  orgSlug: string;
   /** Only fire handlers for events matching this task (omit for all tasks) */
   taskId?: string;
   /** Disable the SSE connection (default: true) */
@@ -73,7 +60,7 @@ interface CallbacksRef {
  */
 export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
   const {
-    orgId,
+    orgSlug,
     taskId,
     enabled = true,
     onStep,
@@ -87,27 +74,34 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
     onFinish,
     onTaskStatus,
   });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   callbacksRef.current = { taskId, onStep, onFinish, onTaskStatus };
 
-  // `subscribe` only depends on `enabled` and `orgId` so the EventSource
+  // `subscribe` only depends on `enabled` and `orgSlug` so the EventSource
   // connection is not torn down when callbacks or taskId change.
   const subscribeRef = useRef<
     ((onStoreChange: () => void) => () => void) | null
   >(null);
 
   const prevEnabled = useRef(enabled);
-  const prevOrgId = useRef(orgId);
+  const prevOrgSlug = useRef(orgSlug);
 
   if (
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     !subscribeRef.current ||
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevEnabled.current !== enabled ||
-    prevOrgId.current !== orgId
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
+    prevOrgSlug.current !== orgSlug
   ) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevEnabled.current = enabled;
-    prevOrgId.current = orgId;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
+    prevOrgSlug.current = orgSlug;
 
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     subscribeRef.current = (onStoreChange: () => void) => {
-      if (!enabled || !orgId) {
+      if (!enabled || !orgSlug) {
         return () => {};
       }
 
@@ -137,9 +131,10 @@ export function useDecopilotEvents(options: UseDecopilotEventsOptions): void {
         onStoreChange();
       };
 
-      return decopilotSSE.subscribe(orgId, handler);
+      return decopilotSSE.subscribe(orgSlug, handler);
     };
   }
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   useSyncExternalStore(subscribeRef.current, getSnapshot, getSnapshot);
 }

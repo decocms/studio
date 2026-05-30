@@ -116,10 +116,17 @@ export {
   type VirtualMCPConnection,
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
-  VmMapSchema,
-  type VmMap,
-  VmMapEntrySchema,
-  type VmMapEntry,
+  SandboxMapSchema,
+  type SandboxMap,
+  SandboxRecordSchema,
+  type SandboxRecord,
+  type RuntimeMetadata,
+  type RuntimeEnvEntry,
+  ENV_VAR_KEY_RE,
+  parseSandboxRecord,
+  parseBranchMap,
+  normalizeSandboxMap,
+  type SandboxProviderKind,
   type GithubRepo,
   // Decopilot event types
   THREAD_STATUSES,
@@ -221,10 +228,11 @@ export {
   // Site Diagnostics utilities
   isSiteDiagnostics,
   getSiteDiagnosticsId,
+  // Brand-Context Setup utilities
+  isBrandContextSetup,
+  getBrandContextSetupId,
+  getWellKnownBrandContextSetupVirtualMCP,
   // Studio Pack utilities
   StudioPackAgentId,
   isStudioPackAgent,
-  // Well-known agent templates (display data + registry appId)
-  WELL_KNOWN_AGENT_TEMPLATES,
-  type WellKnownAgentTemplate,
 } from "./lib/constants";

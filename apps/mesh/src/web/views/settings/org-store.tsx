@@ -4,7 +4,6 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { AlertCircle, ChevronRight, Plus, Trash01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Card } from "@deco/ui/components/card.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
@@ -28,6 +27,12 @@ import {
   useUpdateRegistryConfig,
 } from "@/web/hooks/use-organization-settings";
 import { track } from "@/web/lib/posthog-client";
+import {
+  SettingsCard,
+  SettingsCardItem,
+  SettingsPage,
+  SettingsSection,
+} from "@/web/components/settings/settings-section";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -85,42 +90,43 @@ function AddPrivateRegistryForm({
   });
 
   return (
-    <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Name
-        </label>
-        <Input
-          placeholder="e.g. Acme Corp Registry"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="h-8 text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Registry URL
-        </label>
-        <Input
-          placeholder="https://registry.example.com/mcp"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="h-8 text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Auth Token (optional)
-        </label>
-        <Input
-          type="password"
-          placeholder="Bearer token..."
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          className="h-8 text-sm"
-        />
-      </div>
-      <div className="flex justify-end gap-2 pt-1">
+    <SettingsCard>
+      <SettingsCardItem
+        title="Name"
+        action={
+          <Input
+            placeholder="e.g. Acme Corp Registry"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-[280px]"
+          />
+        }
+      />
+      <SettingsCardItem
+        title="Registry URL"
+        action={
+          <Input
+            placeholder="https://registry.example.com/mcp"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="w-[280px]"
+          />
+        }
+      />
+      <SettingsCardItem
+        title="Auth Token"
+        description="Optional"
+        action={
+          <Input
+            type="password"
+            placeholder="Bearer token..."
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            className="w-[280px]"
+          />
+        }
+      />
+      <div className="px-5 py-4 flex justify-end gap-2">
         <Button
           variant="ghost"
           size="sm"
@@ -137,11 +143,11 @@ function AddPrivateRegistryForm({
           {isPending ? "Adding..." : "Add Registry"}
         </Button>
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 
-function RegistryCard({
+function RegistryItem({
   name,
   description,
   icon,
@@ -169,77 +175,65 @@ function RegistryCard({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.currentTarget === e.target && (e.key === "Enter" || e.key === " ")) {
-      e.preventDefault();
-      handleClick();
-    }
-  };
-
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/30 transition-colors"
+    <SettingsCardItem
+      title={name}
+      description={description}
       onClick={handleClick}
-      onKeyDown={handleKeyDown}
-    >
-      {icon ? (
-        <img
-          src={icon}
-          alt={name}
-          className="size-8 rounded-md object-contain shrink-0"
-        />
-      ) : (
-        <Avatar
-          fallback={name.charAt(0)}
-          className="size-8 bg-primary/10 text-primary shrink-0"
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <h3 className="font-medium text-sm truncate">{name}</h3>
-        <p className="text-xs text-muted-foreground line-clamp-1">
-          {description}
-        </p>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {onDelete && (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Trash01 size={14} />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-2" align="end">
-              <div className="flex flex-col gap-2">
-                <p className="text-xs font-medium">Remove this registry?</p>
+      icon={
+        icon ? (
+          <img
+            src={icon}
+            alt={name}
+            className="size-8 rounded-md object-contain"
+          />
+        ) : (
+          <Avatar
+            fallback={name.charAt(0)}
+            className="size-8 bg-primary/10 text-primary"
+          />
+        )
+      }
+      action={
+        <div className="flex items-center gap-2">
+          {onDelete && (
+            <Popover>
+              <PopoverTrigger asChild>
                 <Button
-                  variant="destructive"
-                  size="xs"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  Remove
+                  <Trash01 size={14} />
                 </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
-        )}
-        <Switch
-          checked={enabled}
-          onClick={(e) => e.stopPropagation()}
-          onCheckedChange={(checked) => onToggle(checked)}
-        />
-        {href && <ChevronRight size={14} className="text-muted-foreground" />}
-      </div>
-    </div>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-2" align="end">
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-medium">Remove this registry?</p>
+                  <Button
+                    variant="destructive"
+                    size="xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          <Switch
+            checked={enabled}
+            onClick={(e) => e.stopPropagation()}
+            onCheckedChange={(checked) => onToggle(checked)}
+          />
+          {href && <ChevronRight size={14} className="text-muted-foreground" />}
+        </div>
+      }
+    />
   );
 }
 
@@ -282,17 +276,11 @@ function OrgStoreContent() {
   );
 
   const handleToggle = async (connectionId: string, enabled: boolean) => {
-    track("store_registry_toggled", {
-      connection_id: connectionId,
-      enabled,
-    });
+    track("store_registry_toggled", { connection_id: connectionId, enabled });
     const current = registryConfig ?? { registries: {}, blockedMcps: [] };
     await updateRegistryConfig({
       ...current,
-      registries: {
-        ...current.registries,
-        [connectionId]: { enabled },
-      },
+      registries: { ...current.registries, [connectionId]: { enabled } },
     });
   };
 
@@ -309,106 +297,104 @@ function OrgStoreContent() {
     const current = registryConfig ?? { registries: {}, blockedMcps: [] };
     await updateRegistryConfig({
       ...current,
-      registries: {
-        ...current.registries,
-        [connectionId]: { enabled: true },
-      },
+      registries: { ...current.registries, [connectionId]: { enabled: true } },
     });
   };
 
   return (
-    <div className="space-y-6">
-      {/* Deco Store */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium text-muted-foreground">
-          Deco Store
-        </h3>
-        {decoStoreConnection ? (
-          <RegistryCard
-            name="Deco Store"
-            description="Official deco MCP registry with curated integrations"
-            icon={decoStoreConnection.icon}
-            enabled={isRegistryEnabled(decoStoreId)}
-            onToggle={(enabled) => handleToggle(decoStoreId, enabled)}
-          />
-        ) : (
-          <Card className="p-4">
-            <p className="text-sm text-muted-foreground">
-              Deco Store connection not found. It will be created automatically.
-            </p>
-          </Card>
-        )}
-      </div>
+    <>
+      <SettingsSection title="Deco Store">
+        <SettingsCard>
+          {decoStoreConnection ? (
+            <RegistryItem
+              name="Deco Store"
+              description="Official deco MCP registry with curated integrations"
+              icon={decoStoreConnection.icon}
+              enabled={isRegistryEnabled(decoStoreId)}
+              onToggle={(enabled) => handleToggle(decoStoreId, enabled)}
+            />
+          ) : (
+            <SettingsCardItem
+              title="Deco Store"
+              description="Connection not found — will be created automatically."
+            />
+          )}
+        </SettingsCard>
+      </SettingsSection>
 
-      {/* Private Registries */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium text-muted-foreground">
-          Private Registries
-        </h3>
-        <RegistryCard
-          name="Private Registry"
-          description="Your organization's private MCP registry"
-          enabled={isRegistryEnabled("self")}
-          onToggle={(enabled) => handleToggle("self", enabled)}
-          href="/$org/settings/store/registry"
-        />
-        {privateRegistries.map((registry) => (
-          <RegistryCard
-            key={registry.id}
-            name={registry.title}
-            description={registry.description ?? "Private MCP registry"}
-            icon={registry.icon}
-            enabled={isRegistryEnabled(registry.id)}
-            onToggle={(enabled) => handleToggle(registry.id, enabled)}
-            onDelete={() => handleDelete(registry.id)}
-          />
-        ))}
-        {showAddForm ? (
+      <SettingsSection
+        title="Private Registries"
+        actions={
+          !showAddForm ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAddForm(true)}
+            >
+              <Plus size={14} />
+              Add registry
+            </Button>
+          ) : undefined
+        }
+      >
+        {showAddForm && (
           <AddPrivateRegistryForm
             onCancel={() => setShowAddForm(false)}
             onSuccess={handleAddSuccess}
           />
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => setShowAddForm(true)}
-          >
-            <Plus size={14} />
-            Add Private Registry
-          </Button>
         )}
-      </div>
-
-      {/* Community Registry */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium text-muted-foreground">Community</h3>
-        {communityConnection ? (
-          <RegistryCard
-            name="MCP Registry"
-            description="Community MCP registry with thousands of handy MCPs"
-            icon={communityConnection.icon}
-            enabled={isRegistryEnabled(effectiveCommunityId)}
-            onToggle={(enabled) => handleToggle(effectiveCommunityId, enabled)}
+        <SettingsCard>
+          <RegistryItem
+            name="Private Registry"
+            description="Your organization's private MCP registry"
+            enabled={isRegistryEnabled("self")}
+            onToggle={(enabled) => handleToggle("self", enabled)}
+            href="/$org/settings/store/registry"
           />
-        ) : (
-          <div className="flex items-center gap-3 p-3 rounded-md bg-muted/30">
-            <Avatar
-              fallback="M"
-              className="size-8 bg-primary/10 text-primary shrink-0"
+          {privateRegistries.map((registry) => (
+            <RegistryItem
+              key={registry.id}
+              name={registry.title}
+              description={registry.description ?? "Private MCP registry"}
+              icon={registry.icon}
+              enabled={isRegistryEnabled(registry.id)}
+              onToggle={(enabled) => handleToggle(registry.id, enabled)}
+              onDelete={() => handleDelete(registry.id)}
             />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">MCP Registry</p>
-              <p className="text-xs text-muted-foreground">
-                Community MCP registry — not yet added
-              </p>
-            </div>
-            <Switch checked={false} disabled onCheckedChange={() => {}} />
-          </div>
-        )}
-      </div>
-    </div>
+          ))}
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection title="Community">
+        <SettingsCard>
+          {communityConnection ? (
+            <RegistryItem
+              name="MCP Registry"
+              description="Community MCP registry with thousands of handy MCPs"
+              icon={communityConnection.icon}
+              enabled={isRegistryEnabled(effectiveCommunityId)}
+              onToggle={(enabled) =>
+                handleToggle(effectiveCommunityId, enabled)
+              }
+            />
+          ) : (
+            <SettingsCardItem
+              title="MCP Registry"
+              description="Community MCP registry — not yet added"
+              icon={
+                <Avatar
+                  fallback="M"
+                  className="size-8 bg-primary/10 text-primary"
+                />
+              }
+              action={
+                <Switch checked={false} disabled onCheckedChange={() => {}} />
+              }
+            />
+          )}
+        </SettingsCard>
+      </SettingsSection>
+    </>
   );
 }
 
@@ -425,12 +411,10 @@ export function OrgStorePage() {
         <Page>
           <Page.Content>
             <Page.Body>
-              <div className="flex flex-col gap-6">
-                <div>
-                  <Page.Title>Store</Page.Title>
-                </div>
+              <SettingsPage>
+                <Page.Title>Store</Page.Title>
                 <OrgStoreContent />
-              </div>
+              </SettingsPage>
             </Page.Body>
           </Page.Content>
         </Page>

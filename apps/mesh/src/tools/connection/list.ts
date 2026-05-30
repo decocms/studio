@@ -36,7 +36,10 @@ import {
   fetchWithCache,
 } from "../../mcp-clients/mcp-list-cache";
 import { clientFromConnection } from "../../mcp-clients";
-import { createDevAssetsConnectionEntity, isDevMode } from "./dev-assets";
+import {
+  createDevAssetsConnectionEntity,
+  usesLocalObjectStorage,
+} from "./dev-assets";
 import { type ConnectionEntity, ConnectionEntitySchema } from "./schema";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 
@@ -199,9 +202,10 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
       );
     }
 
-    // In dev mode, inject the dev-assets connection for local file storage
-    // This provides object storage functionality without requiring an external S3 bucket
-    if (isDevMode()) {
+    // When no external S3 bucket is configured, inject the dev-assets
+    // connection so the OBJECT_STORAGE binding is satisfied by the local
+    // DevObjectStorage filesystem fallback.
+    if (usesLocalObjectStorage()) {
       const baseUrl = getBaseUrl();
       const devAssetsId = WellKnownOrgMCPId.DEV_ASSETS(organization.id);
 

@@ -73,12 +73,35 @@ studio-demo/
 .worktrees
 .claude/worktrees
 
+# Claude runtime state (loop schedule lock, etc.)
+.claude/*.lock
+
 # Playwright
 apps/mesh/test-results/
 apps/mesh/playwright-report/
+apps/mesh/screenshots/
 
-# Generated docs (root-level only, not apps/docs/)
-/docs
+# Generated docs (root-level only, not apps/docs/). Use /docs/* not /docs
+# so we can un-ignore specific subdirs below — git won't traverse into an
+# ignored directory.
+/docs/*
+# Hand-written specs/plans (superpowers brainstorming + writing-plans output)
+# are first-class engineering artifacts and should be tracked.
+!/docs/superpowers/
 
 # Local dev data directory
 .deco
+
+# `helm package deploy/helm/sandbox-operator` (and …/sandbox-env) produces a
+# .tgz that is published to ghcr.io as an OCI artifact by
+# .github/workflows/release-sandbox-charts.yaml. The unpacked trees under
+# deploy/helm/sandbox-{operator,env}/ are the source of truth; the packaged
+# .tgz is redundant in-repo and would just drift.
+deploy/helm/sandbox-operator-*.tgz
+deploy/helm/sandbox-operator/charts/
+deploy/helm/sandbox-env-*.tgz
+deploy/helm/sandbox-env/charts/
+# `helm dependency update` for the studio chart caches remote subcharts
+# (nats, opentelemetry-collector) as .tgz under charts/. They stay tracked
+# because the chart pins specific versions and offline installs depend on
+# them being present.

@@ -11,7 +11,7 @@ import type { LanguageModelV2 } from "@ai-sdk/provider";
 import type { InferUITool, UIMessage } from "ai";
 import type { ToolDefinition, UsageStats } from "@decocms/mesh-sdk";
 import type { Metadata } from "@/web/components/chat/types";
-import type { BuiltInToolSet } from "./built-in-tools";
+import type { BuiltInToolSet } from "@/harnesses/decopilot/built-in-tools";
 
 // ============================================================================
 // Stream API Message Types
@@ -29,6 +29,8 @@ export type ChatMessage = UIMessage<
     "tool-metadata": {
       annotations?: NonNullable<ToolDefinition["annotations"]>;
       latencyMs?: number;
+      /** UTF-8 byte length of the JSON-serialized tool result. */
+      outputBytes?: number;
     };
     "tool-subtask-metadata": {
       usage: UsageStats;
@@ -75,8 +77,8 @@ export interface ModelsConfig {
   thinking: ModelInfo;
   coding?: ModelInfo;
   fast?: ModelInfo;
-  image?: ModelInfo;
-  deepResearch?: ModelInfo;
+  image?: ModelInfo & { credentialId: string };
+  deepResearch?: ModelInfo & { credentialId: string };
 }
 
 // ============================================================================

@@ -1,0 +1,154 @@
+{{- if .Values.s3Sync.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-s3-sync
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+data:
+  sync.sh: |
+    #!/bin/sh
+    set -eu
+
+    BUCKET={{ required "s3Sync.bucket is required when s3Sync.enabled=true" .Values.s3Sync.bucket | quote }}
+    REGION={{ .Values.s3Sync.region | quote }}
+    PREFIX={{ .Values.s3Sync.prefix | quote }}
+    DATA_DIR={{ .Values.configMap.meshConfig.DATA_DIR | default "/app/data" | quote }}
+    DIRS={{ join " " .Values.s3Sync.syncDirs | quote }}
+    POLL_INTERVAL={{ .Values.s3Sync.interval | default 60 }}
+
+    export HOME="/tmp"
+
+    S3_HOST="${BUCKET}.s3.${REGION}.amazonaws.com"
+    CREDS_FILE="/tmp/s3-sync-creds.$$"
+
+    # ── AWS IRSA credentials ──────────────────────────────────────────
+    # Creds are written to a file by a single background refresher so all
+    # subshells (find|while, inotify|while) share them. Ash runs pipe stages
+    # in subshells, so updating shell vars in upload_file wouldn't propagate.
+    refresh_credentials() {
+      TOKEN=$(cat "$AWS_WEB_IDENTITY_TOKEN_FILE")
+      RESP=$(curl -sf "https://sts.${REGION}.amazonaws.com/" \
+        --data-urlencode "Action=AssumeRoleWithWebIdentity" \
+        --data-urlencode "RoleArn=${AWS_ROLE_ARN}" \
+        --data-urlencode "RoleSessionName=s3-sync-$$" \
+        --data-urlencode "WebIdentityToken=${TOKEN}" \
+        --data-urlencode "Version=2011-06-15" \
+        --data-urlencode "DurationSeconds=3600")
+
+      AK=$(echo "$RESP" | sed -n 's/.*<AccessKeyId>\(.*\)<\/AccessKeyId>.*/\1/p')
+      SK=$(echo "$RESP" | sed -n 's/.*<SecretAccessKey>\(.*\)<\/SecretAccessKey>.*/\1/p')
+      ST=$(echo "$RESP" | sed -n 's/.*<SessionToken>\(.*\)<\/SessionToken>.*/\1/p')
+
+      if [ -z "$AK" ]; then
+        echo "s3-sync: ERROR failed to get credentials from STS"
+        return 1
+      fi
+
+      umask 077
+      printf '%s\n%s\n%s\n' "$AK" "$SK" "$ST" > "${CREDS_FILE}.tmp"
+      mv "${CREDS_FILE}.tmp" "$CREDS_FILE"
+      echo "s3-sync: credentials refreshed"
+    }
+
+    load_credentials() {
+      AWS_ACCESS_KEY_ID=$(sed -n '1p' "$CREDS_FILE")
+      AWS_SECRET_ACCESS_KEY=$(sed -n '2p' "$CREDS_FILE")
+      AWS_SESSION_TOKEN=$(sed -n '3p' "$CREDS_FILE")
+    }
+
+    # ── Upload a single file to S3 ───────────────────────────────────
+    upload_file() {
+      FILE="$1"
+      [ -f "$FILE" ] || return 0
+
+      RELATIVE="${FILE#${DATA_DIR}/}"
+      if [ -n "$PREFIX" ]; then
+        S3_KEY="${PREFIX}/${RELATIVE}"
+      else
+        S3_KEY="$RELATIVE"
+      fi
+
+      load_credentials
+
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        --aws-sigv4 "aws:amz:${REGION}:s3" \
+        --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+        -H "x-amz-security-token: ${AWS_SESSION_TOKEN}" \
+        -H "Content-Type: application/x-ndjson" \
+        -T "$FILE" \
+        "https://${S3_HOST}/${S3_KEY}")
+
+      case "$HTTP_CODE" in
+        2*)
+          rm -f "$FILE"
+          return 0
+          ;;
+        *)
+          echo "s3-sync: upload failed ${RELATIVE} (HTTP ${HTTP_CODE})"
+          return 1
+          ;;
+      esac
+    }
+
+    # ── Scan and upload all existing .ndjson files ────────────────────
+    scan_and_upload() {
+      for dir in $DIRS; do
+        TARGET="${DATA_DIR}/${dir}"
+        [ -d "$TARGET" ] || continue
+        find "$TARGET" -name '*.ndjson' -type f 2>/dev/null | while read -r f; do
+          upload_file "$f" || true
+        done
+      done
+    }
+
+    # ── Shutdown handler ──────────────────────────────────────────────
+    INOTIFY_PID=""
+    REFRESHER_PID=""
+    SLEEP_PID=""
+
+    cleanup() {
+      echo "s3-sync: shutting down, final upload..."
+      [ -n "$INOTIFY_PID" ] && kill "$INOTIFY_PID" 2>/dev/null || true
+      [ -n "$REFRESHER_PID" ] && kill "$REFRESHER_PID" 2>/dev/null || true
+      [ -n "$SLEEP_PID" ] && kill "$SLEEP_PID" 2>/dev/null || true
+      scan_and_upload
+      rm -f "$CREDS_FILE" "${CREDS_FILE}.tmp"
+      echo "s3-sync: done"
+      exit 0
+    }
+    trap cleanup TERM INT
+
+    # ── Main ──────────────────────────────────────────────────────────
+    echo "s3-sync: starting (inotify + curl) to s3://${BUCKET}${PREFIX:+/${PREFIX}}"
+
+    refresh_credentials
+
+    # Single background refresher (~50min, well under 1h STS expiry)
+    (
+      while true; do
+        sleep 3000
+        refresh_credentials || true
+      done
+    ) &
+    REFRESHER_PID=$!
+
+    # Upload any files that already exist
+    scan_and_upload
+
+    # Watch for new .ndjson files (MOVED_TO = atomic rename from .tmp)
+    inotifywait -m -r -q --include '\.ndjson$' -e moved_to $DATA_DIR 2>/dev/null | \
+    while read -r dir event file; do
+      upload_file "${dir}${file}" || true
+    done &
+    INOTIFY_PID=$!
+
+    # Safety-net poll for files inotify might miss (new subdirectories)
+    while true; do
+      sleep "$POLL_INTERVAL" &
+      SLEEP_PID=$!
+      wait "$SLEEP_PID" 2>/dev/null || true
+      SLEEP_PID=""
+      scan_and_upload
+    done
+{{- end }}

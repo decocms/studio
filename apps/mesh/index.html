@@ -1,30 +1,38 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <meta name="theme-color" content="#f6f4ed" />
     <script>
       // Apply dark mode class before first paint to prevent flash
       (function() {
         try {
           var p = JSON.parse(localStorage.getItem("mesh:user:preferences") || "{}");
           var theme = p.theme || "system";
-          if (theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+          var isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (isDark) {
             document.documentElement.classList.add("dark");
+            // Also pre-set <meta name="theme-color"> so the PWA title-bar (WCO)
+            // doesn't flash light before the React runtime syncs it from --sidebar.
+            // Value approximates dark --sidebar: oklch(0.155 0.005 60).
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute("content", "#272524");
           }
         } catch(e) {}
       })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>deco Studio</title>
+    <title>deco CMS</title>
     <meta name="description" content="Hire specialized agents, give them access to your tools, and let them deliver real projects — with planning, verification, and observability built in." />
-    <meta property="og:title" content="deco Studio" />
+    <meta property="og:title" content="deco CMS" />
     <meta property="og:description" content="Hire specialized agents, give them access to your tools, and let them deliver real projects — with planning, verification, and observability built in." />
     <meta property="og:image" content="/og-image.png" />
-    <meta property="og:site_name" content="deco Studio" />
+    <meta property="og:site_name" content="deco CMS" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="deco Studio" />
+    <meta name="twitter:title" content="deco CMS" />
     <meta name="twitter:description" content="Hire specialized agents, give them access to your tools, and let them deliver real projects — with planning, verification, and observability built in." />
     <meta name="twitter:image" content="/og-image.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
   </head>
   <body>
     <div id="root"></div>

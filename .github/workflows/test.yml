@@ -1,15 +1,72 @@
-name: Tests
+name: Checks & Unit Tests
 
 on:
   push:
     branches:
       - main
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need the suite re-run (PRs already validated them, and the
+    # [release] bump is owned by release-mesh).
+    paths-ignore:
+      - "apps/mesh/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
   pull_request:
     branches:
       - main
 
 jobs:
+  # Gate: skip the (required) check jobs when a PR only touches workflow YAML,
+  # docs, or markdown. Required checks can't be skipped via workflow-level
+  # `paths` filters — a never-scheduled required check blocks the merge forever.
+  # A job skipped via `if`, by contrast, reports as passed. So we keep the
+  # trigger broad and skip at the job level. Pushes to main always run.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Detect relevant changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Push to main runs everything — except the [release]: version-bump
+            # commit, which only touches the version string. release-mesh picks
+            # that commit up on its own push trigger and cuts the release.
+            case "$HEAD_MSG" in
+              '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
+              *) echo "relevant=true" >> "$GITHUB_OUTPUT" ;;
+            esac
+            exit 0
+          fi
+          set +e
+          FILES=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename')
+          if [ $? -ne 0 ]; then
+            echo "Could not list PR files — running to be safe."
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changed files:"; echo "$FILES"
+          # Run unless every changed file is workflow/docs/markdown.
+          relevant=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .github/*|apps/docs/*|*.md) ;;
+              *) relevant=true; break ;;
+            esac
+          done <<< "$FILES"
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+
   format:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -18,7 +75,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.5"
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: bun install
@@ -27,6 +84,8 @@ jobs:
         run: bun run fmt:check
 
   lint:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -35,7 +94,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.5"
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: bun install
@@ -44,15 +103,22 @@ jobs:
         run: bun run lint
 
   typecheck:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.5"
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: bun install
@@ -61,14 +127,9 @@ jobs:
         run: bun run check:ci
 
   test:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
-    env:
-      NATS_URL: nats://localhost:4222
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3]
-        total_shards: [4]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -76,44 +137,37 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.5"
-
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: bun install
 
-      - name: Build daemon bundle
-        run: bun run --cwd=packages/sandbox build
-
-      - name: Start NATS with JetStream
+      - name: Run tests
         run: |
-          docker run -d --name nats -p 4222:4222 nats:2.10 -js
-          for i in $(seq 1 10); do nc -z localhost 4222 && break || sleep 1; done
-          nc -z localhost 4222
-
-      - name: Run tests (shard ${{ matrix.shard }}/${{ matrix.total_shards }})
-        run: |
-          files=$(find apps/mesh/src packages -name '*.test.ts' -o -name '*.test.tsx' | sort | awk "NR % ${{ matrix.total_shards }} == ${{ matrix.shard }}")
-          echo "Running $(echo "$files" | wc -l) test files"
-          echo "$files"
-          # Bun 1.3.5 has a known WASM cleanup bug that causes SIGILL (exit 132)
-          # after all tests complete. Capture output and check test results directly.
-          set +e
-          bun test $files 2>&1 | tee /tmp/test-output.txt
-          exit_code=${PIPESTATUS[0]}
+          # Tests are split by filename convention:
+          #   *.test.ts             → unit (here)
+          #   *.integration.test.ts → .github/workflows/storage-integration.yml
+          #   *.e2e.test.ts         → reserved for the sandbox-daemon workflow
+          # See TESTING.md for the decision tree.
+          #
+          # One bun process per file: cleanest isolation, doesn't share
+          # ports/sockets/DB pools between files. Bun 1.3.14's teardown
+          # fixes mean we no longer need the signal-tolerance branches
+          # we had on 1.3.5 — a real test failure is now the only way
+          # bun exits non-zero.
           set -e
-          if [ $exit_code -eq 0 ]; then
-            exit 0
-          elif [ $exit_code -eq 132 ] && ! grep -q '[1-9][0-9]* fail' /tmp/test-output.txt; then
-            echo "⚠️  Bun exited with SIGILL (known WASM cleanup bug) but all tests passed"
-            exit 0
-          else
-            exit $exit_code
-          fi
+          while IFS= read -r f; do
+            echo "::group::$f"
+            bun test "$f"
+            echo "::endgroup::"
+          done < <(find apps/mesh/src packages \
+            \( -name '*.test.ts' -o -name '*.test.tsx' \) \
+            ! -name '*.integration.test.ts' \
+            ! -name '*.e2e.test.ts')
 
   build:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -122,7 +176,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.5"
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: bun install
@@ -140,6 +194,8 @@ jobs:
         run: bun run knip
 
   docker-smoke:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -148,7 +204,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.5"
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: bun install
@@ -159,7 +215,7 @@ jobs:
       - name: Build sandbox image
         run: |
           docker build \
-            -t mesh-sandbox:ci \
+            -t studio-sandbox:ci \
             -f packages/sandbox/image/Dockerfile \
             packages/sandbox
 
@@ -171,7 +227,7 @@ jobs:
             -e APP_ROOT=/app \
             -e PROXY_PORT=9000 \
             -e DAEMON_NO_AUTOSTART=1 \
-            mesh-sandbox:ci
+            studio-sandbox:ci
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:19999/health | grep -q '"bootId":"ci-smoke"'; then
               echo "ok"

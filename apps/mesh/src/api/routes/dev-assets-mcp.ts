@@ -7,7 +7,7 @@
  * This enables testing the object-storage plugin locally without needing
  * an actual S3 bucket.
  *
- * Only available when NODE_ENV !== "production"
+ * Only mounted when DevObjectStorage is the active backend (no S3 configured)
  */
 
 import { getSettings } from "../../settings";

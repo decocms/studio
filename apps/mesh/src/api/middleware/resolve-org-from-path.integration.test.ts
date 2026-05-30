@@ -1,0 +1,234 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { Hono } from "hono";
+import type { MeshContext } from "../../core/mesh-context";
+import {
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+} from "../../database/test-db-pg";
+import type { MeshDatabase } from "../../database";
+import { resolveOrgFromPath } from "./resolve-org-from-path";
+
+type Variables = { meshContext: MeshContext };
+
+interface FakeAuth {
+  user?: { id: string };
+  apiKey?: { id: string; name: string; userId: string };
+}
+
+interface BuildAppOptions {
+  // Pre-seed ctx.objectStorage so we can verify cross-org rebinding.
+  preboundObjectStorage?: unknown;
+}
+
+const buildApp = (
+  db: MeshDatabase,
+  auth: FakeAuth,
+  opts: BuildAppOptions = {},
+) => {
+  const app = new Hono<{ Variables: Variables }>();
+  app.use("*", async (c, next) => {
+    // Track the organization id forwarded into AccessControl so tests can
+    // assert that path-resolved org propagates through to permission checks.
+    const accessOrgIds: (string | undefined)[] = [];
+    // Track threads.setOrganizationId calls so tests can assert that the
+    // path-resolved org also rebinds OrgScopedThreadStorage. Without this
+    // rebind, any thread-touching route on the new path family throws
+    // "OrgScopedThreadStorage: thread operations require an authenticated organization".
+    const threadOrgIds: (string | undefined)[] = [];
+    c.set("meshContext", {
+      auth,
+      db: db.db,
+      baseUrl: "http://test",
+      access: {
+        setOrganizationId: (id: string | undefined) => {
+          accessOrgIds.push(id);
+        },
+        setRole: (_role: string | undefined) => {
+          /* no-op for tests; covered by dedicated AccessControl tests */
+        },
+        // Expose the captured ids for tests via a non-standard field
+        _orgIds: accessOrgIds,
+      },
+      storage: {
+        threads: {
+          setOrganizationId: (id: string | undefined) => {
+            threadOrgIds.push(id);
+          },
+          _orgIds: threadOrgIds,
+        },
+        asyncResearchJobs: { setOrganizationId: () => {} },
+      },
+      objectStorage: opts.preboundObjectStorage ?? null,
+    } as unknown as MeshContext);
+    await next();
+  });
+  app.use("/api/:org/*", resolveOrgFromPath);
+  app.get("/api/:org/probe", (c) => {
+    const ctx = c.get("meshContext");
+    return c.json({
+      orgId: ctx.organization?.id,
+      orgSlug: ctx.organization?.slug,
+      // Surface the rebound storage org ids so tests can assert middleware
+      // propagated the org into MeshStorage.
+      threadOrgIds: (
+        ctx.storage.threads as unknown as { _orgIds: (string | undefined)[] }
+      )._orgIds,
+      objectStorageBound: ctx.objectStorage !== null,
+      objectStorageIsPrebound:
+        ctx.objectStorage === (opts.preboundObjectStorage ?? null),
+    });
+  });
+  return app;
+};
+
+describe("resolveOrgFromPath", () => {
+  let db: MeshDatabase;
+
+  beforeEach(async () => {
+    db = await connectTestPgDatabase();
+    await resetTestPgDatabase(db);
+
+    // Seed org/user/member via raw SQL — `emailVerified` is BOOLEAN in
+    // real Postgres but the Database schema type still says `number`.
+    const { sql } = await import("kysely");
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "organization" (id, slug, name, "createdAt")
+      VALUES ('org-1', 'acme', 'Acme', ${now})
+    `.execute(db.db);
+    await sql`
+      INSERT INTO "user" (id, email, name, "emailVerified", "createdAt", "updatedAt")
+      VALUES ('user-1', 'u@acme.test', 'U', false, ${now}, ${now})
+    `.execute(db.db);
+    await sql`
+      INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+      VALUES ('mem-1', 'user-1', 'org-1', 'member', ${now})
+    `.execute(db.db);
+  });
+
+  afterEach(async () => {
+    await closeTestPgDatabase(db);
+  });
+
+  it("returns 404 when slug does not exist", async () => {
+    const app = buildApp(db, { user: { id: "user-1" } });
+    const res = await app.request("/api/nope/probe");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 403 when user is not a member", async () => {
+    await db.db
+      .insertInto("organization")
+      .values({
+        id: "org-2",
+        slug: "other",
+        name: "Other",
+        createdAt: new Date().toISOString(),
+      })
+      .execute();
+    const app = buildApp(db, { user: { id: "user-1" } });
+    const res = await app.request("/api/other/probe");
+    expect(res.status).toBe(403);
+  });
+
+  it("sets ctx.organization on success", async () => {
+    const app = buildApp(db, { user: { id: "user-1" } });
+    const res = await app.request("/api/acme/probe");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.orgId).toBe("org-1");
+    expect(body.orgSlug).toBe("acme");
+  });
+
+  it("exposes the caller's path-resolved role on ctx.organization", async () => {
+    // AuthTransport constructs a fresh AccessControl per proxied tool call
+    // and reads the role from ctx.organization?.role to decide the
+    // admin/owner bypass — without this, owners 403 on every proxied tool
+    // when the session's active org differs from the URL org.
+    const app = new Hono<{ Variables: Variables }>();
+    app.use("*", async (c, next) => {
+      c.set("meshContext", {
+        auth: { user: { id: "user-1" } },
+        db: db.db,
+        baseUrl: "http://test",
+        access: {
+          setOrganizationId: () => {},
+          setRole: () => {},
+        },
+        storage: {
+          threads: { setOrganizationId: () => {} },
+          asyncResearchJobs: { setOrganizationId: () => {} },
+        },
+        objectStorage: null,
+      } as unknown as MeshContext);
+      await next();
+    });
+    app.use("/api/:org/*", resolveOrgFromPath);
+    app.get("/api/:org/role", (c) => {
+      const ctx = c.get("meshContext");
+      return c.json({ role: ctx.organization?.role });
+    });
+    const res = await app.request("/api/acme/role");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ role: "member" });
+  });
+
+  it("passes unauthenticated requests through with org set (so MCP OAuth discovery works)", async () => {
+    // Cursor/Claude rely on mcpAuth returning 401 with a WWW-Authenticate header
+    // pointing at the protected-resource metadata URL. If this middleware blocks
+    // unauthenticated callers with 403, OAuth discovery never starts.
+    const app = buildApp(db, { user: undefined });
+    const res = await app.request("/api/acme/probe");
+    expect(res.status).toBe(200); // probe handler doesn't enforce auth
+    const body = await res.json();
+    expect(body.orgId).toBe("org-1"); // org is set so downstream handlers can use it
+  });
+
+  it("rebinds storage.threads + objectStorage to the path-resolved org", async () => {
+    // Regression: when the new /api/:org path is hit without an x-org-id
+    // header, meshContext is created with org=undefined, so OrgScopedThreadStorage
+    // and objectStorage start out unbound. resolveOrgFromPath must rebind both
+    // after looking up the org from the slug, otherwise thread routes throw
+    // "thread operations require an authenticated organization".
+    const app = buildApp(db, { user: { id: "user-1" } });
+    const res = await app.request("/api/acme/probe");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.threadOrgIds).toEqual(["org-1"]);
+    expect(body.objectStorageBound).toBe(true);
+  });
+
+  it("rebinds objectStorage even when it was prebound to a stale org", async () => {
+    // Regression: meshContext is built eagerly from the session's
+    // activeOrganizationId. When the URL targets a different org (e.g. session
+    // active=A, path=B), the eagerly-bound objectStorage points at A. The
+    // middleware must replace it so /api/:org/files/* reads from B's tenant
+    // scope — otherwise files 404 in B's storage and surface as a misleading
+    // "Object storage not configured" 503.
+    const staleStorage = { __sentinel: "stale-org-binding" };
+    const app = buildApp(
+      db,
+      { user: { id: "user-1" } },
+      { preboundObjectStorage: staleStorage },
+    );
+    const res = await app.request("/api/acme/probe");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.objectStorageBound).toBe(true);
+    expect(body.objectStorageIsPrebound).toBe(false);
+  });
+
+  it("authorizes api-key principals via the same membership check", async () => {
+    // For api-key auth, the context-factory populates ctx.auth.user.id from
+    // the api key's userId, so a single membership check covers both flows.
+    const app = buildApp(db, {
+      user: { id: "user-1" },
+      apiKey: { id: "key-1", name: "test-key", userId: "" },
+    });
+    const res = await app.request("/api/acme/probe");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.orgId).toBe("org-1");
+  });
+});

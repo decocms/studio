@@ -1,29 +1,22 @@
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { calculateUsageStats } from "@/web/lib/usage-utils.ts";
+import { AUTOSEND_QUERY_VALUE, writeStoredAutosend } from "@/web/lib/autosend";
 import { Button } from "@deco/ui/components/button.tsx";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
+  useVirtualMCP,
 } from "@decocms/mesh-sdk";
+import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
-  Atom01,
   BookOpen01,
   Check,
   Globe02,
   Image01,
-  Lightning01,
   Lock01,
   Microphone01,
-  Plus,
-  Stars01,
   Stop,
   Upload01,
   X,
@@ -31,13 +24,19 @@ import {
 import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { Metadata } from "./types.ts";
-import { useChatStream, useChatTask, useChatPrefs } from "./context";
+import {
+  useChatPrefs,
+  useOptionalChatStream,
+  useOptionalChatTask,
+} from "./context";
+import { useThreadActions } from "./store/hooks";
+import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
-import { ModelSelector } from "./select-model";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
+import { ChatModeRow } from "./pills/chat-mode-row";
+import { TierTrigger } from "./tier-trigger";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
-  FileUploadButton,
   UnsupportedFileDialog,
   useUnsupportedFileDialog,
   processFile,
@@ -60,76 +59,6 @@ import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dial
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/web/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
-
-// ============================================================================
-// SimpleModeTierDropdown
-// ============================================================================
-
-const TIER_OPTIONS = [
-  {
-    value: "fast" as const,
-    label: "Fast",
-    Icon: Lightning01,
-    description: "Quicker responses",
-  },
-  {
-    value: "smart" as const,
-    label: "Smart",
-    Icon: Stars01,
-    description: "Balanced quality",
-  },
-  {
-    value: "thinking" as const,
-    label: "Thinking",
-    Icon: Atom01,
-    description: "Deeper reasoning",
-  },
-] as const;
-
-function SimpleModeTierDropdown({
-  tier,
-  onSelect,
-}: {
-  tier: "fast" | "smart" | "thinking";
-  onSelect: (t: "fast" | "smart" | "thinking") => void;
-}) {
-  const current =
-    TIER_OPTIONS.find((o) => o.value === tier) ?? TIER_OPTIONS[1]!;
-  const Icon = current.Icon;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="default"
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <Icon size={14} />
-          <span className="hidden sm:inline">{current.label}</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52 p-1.5">
-        {TIER_OPTIONS.map(({ value, label, Icon: TierIcon, description }) => (
-          <DropdownMenuItem key={value} onSelect={() => onSelect(value)}>
-            <TierIcon size={16} className="text-muted-foreground" />
-            <div className="flex flex-col gap-0.5 flex-1">
-              <span>{label}</span>
-              <span className="text-xs text-muted-foreground font-normal">
-                {description}
-              </span>
-            </div>
-            {tier === value && (
-              <span className="text-xs text-muted-foreground font-medium">
-                On
-              </span>
-            )}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -197,7 +126,7 @@ function useWindowFileDrop(
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
-  }, [editor, selectedModel]);
+  }, [editor, selectedModel, onUnsupportedFile]);
 
   return isDraggingOver;
 }
@@ -250,6 +179,50 @@ function FileDropZone({
 // ChatInput - Merged component with virtual MCP wrapper, banners, and selectors
 // ============================================================================
 
+/**
+ * Submit handler for the home composer. No active task exists; we create
+ * the thread synchronously via ThreadManagerStore so the row is in the
+ * manager's `threads` list BEFORE navigation. The new task page's
+ * `useEnsureTask` then resolves the localHit fast path on first render,
+ * skipping its own CREATE (which would otherwise duplicate against React
+ * 19 Strict Mode's intentional re-mount of the effect). Tiptap doc is
+ * written to sessionStorage and ActiveTaskProvider's autosend consumer
+ * fires sendMessage on mount.
+ */
+function useHomeSubmit() {
+  const navigate = useNavigate();
+  const { org, locator } = useProjectContext();
+  const { create } = useThreadActions();
+
+  return async ({
+    tiptapDoc,
+    virtualMcp,
+  }: {
+    tiptapDoc: Metadata["tiptapDoc"];
+    virtualMcp: VirtualMCPInfo | null;
+  }) => {
+    const newId = crypto.randomUUID();
+    const targetVmcp =
+      virtualMcp?.id ?? getWellKnownDecopilotVirtualMCP(org.id).id;
+    writeStoredAutosend(sessionStorage, locator, newId, { tiptapDoc });
+    try {
+      await create({ id: newId, virtual_mcp_id: targetVmcp });
+    } catch {
+      // Toast already surfaced by the store; navigate anyway — the route's
+      // ensure-fallback will retry if the row is missing.
+    }
+    const search: Record<string, string> = {
+      virtualmcpid: targetVmcp,
+      autosend: AUTOSEND_QUERY_VALUE,
+    };
+    navigate({
+      to: "/$org/$taskId",
+      params: { org: org.slug, taskId: newId },
+      search,
+    });
+  };
+}
+
 export function ChatInput({
   onOpenContextPanel,
   showConnectionsBanner = false,
@@ -257,9 +230,14 @@ export function ChatInput({
   onOpenContextPanel?: () => void;
   showConnectionsBanner?: boolean;
 }) {
-  const { messages, isStreaming, isRunInProgress, sendMessage, stop } =
-    useChatStream();
-  const { taskId, tasks } = useChatTask();
+  const stream = useOptionalChatStream();
+  const taskCtx = useOptionalChatTask();
+  const messages = stream?.messages ?? [];
+  const isStreaming = stream?.isStreaming ?? false;
+  const isRunInProgress = stream?.isRunInProgress ?? false;
+  const stop = stream?.stop ?? (() => {});
+  const taskId = taskCtx?.taskId ?? "";
+  const homeSubmit = useHomeSubmit();
   const {
     selectedModel,
     selectedVirtualMcp,
@@ -269,15 +247,13 @@ export function ChatInput({
     deepResearchModel,
     chatMode,
     setChatMode,
-    simpleModeEnabled,
-    simpleModeTier,
-    setSimpleModeTier,
   } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const fullVm = useVirtualMCP(selectedVirtualMcp?.id ?? decopilotId);
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -328,7 +304,7 @@ export function ChatInput({
     tiptapRef.current?.syncVoiceText(voiceBaselineDocRef.current, voiceText);
   }, [voice.transcript, voice.interimTranscript, voice.status]);
 
-  const task = tasks.find((task) => task.id === taskId);
+  const task = taskCtx?.activeTask ?? null;
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.
@@ -342,9 +318,12 @@ export function ChatInput({
 
   // Reset input when switching tasks (TiptapProvider also remounts via key)
   const prevTaskRef = useRef(taskId);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (prevTaskRef.current !== taskId) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevTaskRef.current = taskId;
     setTiptapDocLocal(undefined);
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     tiptapDocRef.current = undefined;
   }
 
@@ -382,18 +361,16 @@ export function ChatInput({
   const lastUsage = [...messages]
     .reverse()
     .find((m) => m.role === "assistant" && m.metadata?.usage)?.metadata?.usage;
-  // Prefer per-turn context size; fall back to cumulative for legacy messages.
-  const lastTotalTokens =
-    lastUsage?.contextTokens ??
-    (lastUsage?.totalTokens ?? 0) - (lastUsage?.reasoningTokens ?? 0);
+  // Per-turn context size (size of the prompt the model saw on the LATEST
+  // step). Sibling `inputTokens`/`totalTokens` are cumulative across the
+  // turn's steps — DO NOT fall back to them here; they read as if the
+  // model's context is much fuller than it actually is.
+  const lastTotalTokens = lastUsage?.contextTokens ?? 0;
 
   const playClickSound = useSound(question004Sound);
 
   const canSubmit =
-    !isStreaming &&
-    !!selectedModel &&
-    !isModelsLoading &&
-    !isTiptapDocEmpty(tiptapDoc);
+    !isStreaming && !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
 
   const showStopOrCancel = isStreaming || isRunInProgress;
 
@@ -407,7 +384,7 @@ export function ChatInput({
       stop();
     } else if (canSubmit && tiptapDoc) {
       track("chat_message_sent", {
-        thread_id: taskId,
+        thread_id: taskId || null,
         mode: chatMode,
         model_id: selectedModel?.modelId ?? null,
         model_provider: selectedModel?.providerId ?? null,
@@ -415,7 +392,11 @@ export function ChatInput({
         submission: e ? "button_or_enter" : "programmatic",
       });
       playClickSound();
-      void sendMessage(tiptapDoc);
+      if (stream) {
+        void stream.sendMessage(tiptapDoc);
+      } else {
+        homeSubmit({ tiptapDoc, virtualMcp: selectedVirtualMcp });
+      }
       setTiptapDoc(undefined);
     }
   };
@@ -440,21 +421,23 @@ export function ChatInput({
             <div className="absolute inset-0 rounded-2xl pointer-events-none bg-muted/50" />
           )}
 
-          {/* Highlight floats above the form area */}
-          <ChatHighlight />
+          {/* Highlight floats above the form area. Only renders when there's
+              an active task — it depends on useChatStream + useChatTask, both
+              absent on the home composer. */}
+          {stream && taskCtx && <ChatHighlight />}
 
           <TiptapProvider
             key={taskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            disabled={isStreaming || !selectedModel}
+            disabled={isStreaming}
             enterToSubmit={true}
             onSubmit={handleSubmit}
           >
             <form
               onSubmit={handleSubmit}
               className={cn(
-                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-background dark:bg-muted card-shadow",
+                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-background dark:bg-muted card-shadow overflow-hidden",
               )}
             >
               <FileDropZone
@@ -465,11 +448,7 @@ export function ChatInput({
               <div className="group/input relative flex flex-col gap-2 flex-1">
                 <TiptapInput
                   ref={tiptapRef}
-                  disabled={
-                    isStreaming ||
-                    !selectedModel ||
-                    voice.status === "recording"
-                  }
+                  disabled={isStreaming || voice.status === "recording"}
                   virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
                   showFileUploader={true}
                   selectedModel={selectedModel}
@@ -478,7 +457,7 @@ export function ChatInput({
               </div>
 
               {/* Bottom Actions Row */}
-              <div className="flex items-center justify-between p-2.5 gap-1">
+              <div className="@container/chat-bottom flex items-center justify-between p-2.5 gap-1">
                 {voice.status === "recording" ? (
                   <>
                     {/* Spacer */}
@@ -508,13 +487,7 @@ export function ChatInput({
                 ) : (
                   <>
                     {/* Left Actions (+, Tools, active tool pills, stats) */}
-                    <div className="flex items-center gap-1.5 min-w-0 shrink-0">
-                      <FileUploadButton
-                        selectedModel={selectedModel}
-                        isStreaming={isStreaming}
-                        icon={<Plus size={16} />}
-                        onUnsupportedFile={onUnsupportedFile}
-                      />
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <ToolsPopover
                         disabled={isStreaming}
                         onOpenConnections={() => {
@@ -525,6 +498,9 @@ export function ChatInput({
                           setConnectionsOpen(true);
                         }}
                         virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
+                        selectedModel={selectedModel}
+                        isStreaming={isStreaming}
+                        onUnsupportedFile={onUnsupportedFile}
                       />
                       {isPlanMode && (
                         <button
@@ -538,19 +514,24 @@ export function ChatInput({
                             });
                             setChatMode("default");
                           }}
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group whitespace-nowrap animate-in fade-in duration-200"
+                          title="Plan mode"
+                          aria-label="Plan mode"
+                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group min-w-0 shrink animate-in fade-in duration-200"
                         >
                           <BookOpen01 size={14} className="shrink-0" />
-                          Plan mode
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100">
+                            Plan mode
+                          </span>
                           <X
                             size={14}
-                            className="shrink-0 hidden group-hover:block"
+                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
                           />
                         </button>
                       )}
                       {chatMode === "gen-image" && imageModel && (
                         <button
                           type="button"
+                          disabled={isStreaming}
                           onClick={() => {
                             playSwitchSound();
                             track("chat_mode_changed", {
@@ -560,28 +541,24 @@ export function ChatInput({
                             });
                             setChatMode("default");
                           }}
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group whitespace-nowrap animate-in fade-in duration-200"
+                          title="Create image"
+                          aria-label="Create image"
+                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Image01 size={14} className="shrink-0" />
-                          <span className="max-w-[120px] truncate">
-                            {simpleModeEnabled
-                              ? "Create image"
-                              : imageModel.title.includes(": ")
-                                ? imageModel.title
-                                    .split(": ")
-                                    .slice(1)
-                                    .join(": ")
-                                : imageModel.title}
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
+                            Create image
                           </span>
                           <X
                             size={14}
-                            className="shrink-0 hidden group-hover:block"
+                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
                           />
                         </button>
                       )}
                       {chatMode === "web-search" && deepResearchModel && (
                         <button
                           type="button"
+                          disabled={isStreaming}
                           onClick={() => {
                             playSwitchSound();
                             track("chat_mode_changed", {
@@ -591,22 +568,17 @@ export function ChatInput({
                             });
                             setChatMode("default");
                           }}
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group whitespace-nowrap animate-in fade-in duration-200"
+                          title="Web search"
+                          aria-label="Web search"
+                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Globe02 size={14} className="shrink-0" />
-                          <span className="max-w-[120px] truncate">
-                            {simpleModeEnabled
-                              ? "Web search"
-                              : deepResearchModel.title.includes(": ")
-                                ? deepResearchModel.title
-                                    .split(": ")
-                                    .slice(1)
-                                    .join(": ")
-                                : deepResearchModel.title}
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
+                            Web search
                           </span>
                           <X
                             size={14}
-                            className="shrink-0 hidden group-hover:block"
+                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
                           />
                         </button>
                       )}
@@ -620,45 +592,39 @@ export function ChatInput({
                       )}
                     </div>
 
-                    {/* Right Actions (mic, model, send) */}
+                    {/* Right Actions (branch/mode, model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      {simpleModeEnabled ? (
-                        <SimpleModeTierDropdown
-                          tier={simpleModeTier}
-                          onSelect={setSimpleModeTier}
-                        />
-                      ) : (
-                        <ModelSelector
-                          placeholder="Model"
-                          variant="borderless"
-                          className="h-8 text-sm py-2 min-w-0"
-                        />
-                      )}
+                      <ChatModeRow
+                        virtualMcp={fullVm}
+                        currentBranch={taskCtx?.currentBranch ?? null}
+                      />
+                      <TierTrigger />
 
-                      {/* Microphone button — only shown when not streaming and speech is supported */}
-                      {voice.isSupported &&
-                        !isStreaming &&
-                        !isRunInProgress && (
-                          <Button
-                            type="button"
-                            onClick={handleVoiceStart}
-                            variant="ghost"
-                            size="icon"
-                            className={cn(
-                              "size-8 rounded-lg transition-colors",
-                              voice.status === "permission-denied"
-                                ? "text-destructive hover:text-destructive hover:bg-destructive/10"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                            title={
-                              voice.status === "permission-denied"
-                                ? "Microphone access denied — click to try again"
-                                : "Voice input"
-                            }
-                          >
-                            <Microphone01 size={18} />
-                          </Button>
-                        )}
+                      {/* Microphone button — kept mounted (and disabled)
+                          during streaming/run to avoid layout shift when
+                          the send button morphs into stop/cancel. */}
+                      {voice.isSupported && (
+                        <Button
+                          type="button"
+                          onClick={handleVoiceStart}
+                          disabled={isStreaming || isRunInProgress}
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "size-8 rounded-lg transition-colors",
+                            voice.status === "permission-denied"
+                              ? "text-destructive hover:text-destructive hover:bg-destructive/10"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                          title={
+                            voice.status === "permission-denied"
+                              ? "Microphone access denied — click to try again"
+                              : "Voice input"
+                          }
+                        >
+                          <Microphone01 size={18} />
+                        </Button>
+                      )}
 
                       <Button
                         type={showStopOrCancel ? "button" : "submit"}

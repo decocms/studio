@@ -84,9 +84,17 @@ export const COLLECTION_THREAD_MESSAGES_LIST = defineTool({
     const offset = input.offset ?? 0;
     const limit = input.limit ?? 100;
 
+    // Translate the first orderBy direction into storage's sort param.
+    // The storage layer only supports created_at ordering, so we look at
+    // the first orderBy entry's direction (typically `created_at desc`
+    // for chat pagination). Default asc preserves the prior behavior
+    // when no orderBy is supplied.
+    const sort: "asc" | "desc" = input.orderBy?.[0]?.direction ?? "asc";
+
     const { messages, total } = await ctx.storage.threads.listMessages(taskId, {
       limit,
       offset,
+      sort,
     });
 
     const hasMore = offset + limit < total;

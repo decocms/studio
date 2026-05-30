@@ -1,6 +1,6 @@
 # Workflows Plugin
 
-Server + client plugin for MCP Mesh that provides workflow creation, management, and execution for platform end-users.
+Server + client plugin for Studio that provides workflow creation, management, and execution for platform end-users.
 
 ## Overview
 
@@ -313,7 +313,7 @@ How the type magic works:
 - **Tool output schemas are auto-injected** — when a referenced tool has an `outputSchema`, the builder writes it into the step's `outputSchema` field so fingerprint changes propagate correctly
 - **Code steps** work too: `{ action: { code: "export default function(stepInput) { ... }" } }`
 
-### `Workflow.sync()` — Automatic Sync to Mesh
+### `Workflow.sync()` — Automatic Sync to Studio
 
 Called during `ON_MCP_CONFIGURATION`, this syncs declared `WorkflowDefinition[]` to the mesh as `workflow_collection` entries. The sync is declarative and convergent:
 

@@ -26,7 +26,11 @@ export function ConnectionUiTab({
 }: ConnectionUiTabProps) {
   const navigate = useNavigate();
   const { org: projectOrg } = useProjectContext();
-  const client = useMCPClient({ connectionId, orgId: projectOrg.id });
+  const client = useMCPClient({
+    connectionId,
+    orgId: projectOrg.id,
+    orgSlug: projectOrg.slug,
+  });
   const connectionData = useConnection(connectionId);
   const appSlug = connectionData
     ? getConnectionSlug(connectionData)

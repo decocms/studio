@@ -14,7 +14,7 @@ export const openrouterAdapter: ProviderAdapter = {
   info: {
     id: "openrouter",
     name: "OpenRouter",
-    description: "Unified API for multiple AI providers",
+    description: "One account, hundreds of AI models",
     logo: OPENROUTER_ICON_URL,
   },
 

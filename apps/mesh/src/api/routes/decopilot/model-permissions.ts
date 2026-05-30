@@ -64,6 +64,50 @@ export function checkModelPermission(
 }
 
 /**
+ * Strip per-tool tier slots (image, deepResearch) when the caller's role
+ * does not have permission to use the underlying (keyId, modelId) pair.
+ *
+ * The image and web_research tier slots are configured at the org level and
+ * may reference a credential the current user's role cannot access. Silently
+ * dropping the slot disables the corresponding built-in tool for this user
+ * rather than failing the whole request — failing would block every chat
+ * turn for a restricted role just because the admin paired the web_search
+ * tier with a key that role can't touch.
+ *
+ * Chat (thinking) is intentionally NOT filtered here — chat must error out
+ * loudly via `checkModelPermission` at the caller. Only optional tool tiers
+ * are silently downgraded.
+ */
+export function filterToolTiersByPermission<
+  M extends {
+    image?: { credentialId: string; id: string } | undefined;
+    deepResearch?: { credentialId: string; id: string } | undefined;
+  },
+>(allowedModels: string[] | undefined, models: M): M {
+  if (allowedModels === undefined) return models;
+  let next = models;
+  if (
+    next.image &&
+    !checkModelPermission(allowedModels, next.image.credentialId, next.image.id)
+  ) {
+    const { image: _image, ...rest } = next;
+    next = rest as M;
+  }
+  if (
+    next.deepResearch &&
+    !checkModelPermission(
+      allowedModels,
+      next.deepResearch.credentialId,
+      next.deepResearch.id,
+    )
+  ) {
+    const { deepResearch: _deepResearch, ...rest } = next;
+    next = rest as M;
+  }
+  return next;
+}
+
+/**
  * Parse the models array into a key-scoped map.
  * Used by the allowed-models API endpoint to return structured data to the client.
  *

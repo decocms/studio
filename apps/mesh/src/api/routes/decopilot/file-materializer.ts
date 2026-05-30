@@ -19,6 +19,7 @@
  */
 
 import type { MeshContext } from "@/core/mesh-context";
+import { toFilesUrl } from "@/object-storage/key-utils";
 import type { ChatMessage } from "./types";
 import {
   toMeshStorageUri,
@@ -26,13 +27,31 @@ import {
   meshStorageRegex,
 } from "./mesh-storage-uri";
 
-/** Build the stable redirect URL the UI / tools use to access a file. */
-function toFileRedirectUrl(
-  baseUrl: string,
-  orgId: string,
-  key: string,
-): string {
-  return `${baseUrl}/api/${orgId}/files/${key}`;
+/**
+ * MIME types we never hand to providers as native file parts.
+ * Provider support for Office formats is uneven (Anthropic chokes with
+ * "Failed to parse [file://...]", others silently ignore the file), and
+ * the sandbox skills (pptx-extract, docx, xlsx) consistently produce
+ * better results than any provider's native parser. The model picks
+ * these up from the annotation text emitted by uploadFileParts and
+ * pulls them in via copy_to_sandbox.
+ *
+ * PDFs stay on the native path — every provider with a `file` capability
+ * handles them fine and going through the sandbox would be a regression.
+ */
+const SANDBOX_ONLY_MIME_TYPES = new Set([
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+
+function isSandboxOnlyFilePart(part: { type: string }): boolean {
+  return (
+    part.type === "file" &&
+    "mediaType" in part &&
+    typeof (part as { mediaType?: unknown }).mediaType === "string" &&
+    SANDBOX_ONLY_MIME_TYPES.has((part as { mediaType: string }).mediaType)
+  );
 }
 
 // ============================================================================
@@ -142,7 +161,8 @@ export async function uploadFileParts(
   ctx: MeshContext,
 ): Promise<ChatMessage[]> {
   if (!ctx.organization) return messages;
-  const orgId = ctx.organization.id;
+  const orgSlug = ctx.organization.slug;
+  if (!orgSlug) return messages;
 
   const lastUserIdx = messages.findLastIndex((m) => m.role === "user");
   if (lastUserIdx === -1) return messages;
@@ -189,7 +209,7 @@ export async function uploadFileParts(
       return {
         dataUrl: part.url,
         meshStorageUrl: toMeshStorageUri(uploadedKey),
-        redirectUrl: toFileRedirectUrl(ctx.baseUrl, orgId, uploadedKey),
+        redirectUrl: toFilesUrl(ctx.baseUrl, orgSlug, uploadedKey),
         filename,
       };
     }),
@@ -268,9 +288,21 @@ export async function resolveStorageRefs(
 ): Promise<ChatMessage[]> {
   if (!ctx.organization) return messages;
 
-  // Collect unique mesh-storage: keys from file parts only (not text)
+  // First pass: drop sandbox-only file parts (Office formats). The model
+  // reads these via copy_to_sandbox using the mesh-storage URI in the
+  // annotation text emitted by uploadFileParts.
+  const filtered = messages.map((msg) => {
+    const filteredParts = msg.parts.filter(
+      (part) => !isSandboxOnlyFilePart(part),
+    );
+    return filteredParts.length === msg.parts.length
+      ? msg
+      : { ...msg, parts: filteredParts };
+  });
+
+  // Collect unique mesh-storage: keys from remaining file parts (not text)
   const keysToResolve = new Set<string>();
-  for (const msg of messages) {
+  for (const msg of filtered) {
     for (const part of msg.parts) {
       if (
         part.type === "file" &&
@@ -293,12 +325,12 @@ export async function resolveStorageRefs(
   );
 
   if (keyToPresigned.size === 0) {
-    // No mesh-storage: refs in file parts — safety net for legacy data: URLs
-    return legacyMaterialize(messages, ctx);
+    // No mesh-storage: refs in remaining file parts — safety net for legacy data: URLs
+    return legacyMaterialize(filtered, ctx);
   }
 
   // Replace mesh-storage: in file part URLs only; leave text parts untouched
-  const resolved = messages.map((msg) => {
+  const resolved = filtered.map((msg) => {
     const newParts = msg.parts.map((part) => {
       if (
         part.type === "file" &&

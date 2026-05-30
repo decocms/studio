@@ -1,17 +1,17 @@
 ---
 title: Automações
-description: Execuções autônomas de agentes IA disparadas por agendamentos ou eventos
+description: Execuções autônomas de agentes IA disparadas por schedules ou eventos
 icon: Zap
 ---
 
 ## O Que São Automações?
 
-Automações são **execuções autônomas de agentes** — agentes de IA que executam em um agendamento ou em resposta a eventos, sem intervenção humana. Cada automação configura:
+Automações são **execuções autônomas de agentes** — agentes de IA que executam em um schedule ou em resposta a eventos, sem intervenção humana. Cada automação configura:
 
 - **Agente** — qual [MCP Virtual](/pt-br/studio/virtual-mcps) (agente) executar
 - **Mensagens** — o prompt/instruções que o agente recebe em cada execução
 - **Modelo** — qual modelo de IA e credenciais usar
-- **Gatilhos** — quando a automação dispara (agendamento cron, evento de conexão ou manual)
+- **Gatilhos** — quando a automação dispara (schedule cron, evento de conexão ou manual)
 
 Automações executam em **modo passthrough**, o que significa que todas as chamadas de ferramentas são auto-aprovadas. É isso que as torna autônomas — mas também significa que você deve definir cuidadosamente o escopo das ferramentas do agente.
 
@@ -38,9 +38,9 @@ Automações executam em **modo passthrough**, o que significa que todas as cham
 
 ### Gatilhos Cron
 
-Gatilhos cron executam a automação em um agendamento recorrente usando sintaxe padrão de expressão cron. Todos os horários são em **UTC**.
+Gatilhos cron executam a automação em um schedule recorrente usando sintaxe padrão de expressão cron. Todos os horários são em **UTC**.
 
-| Expressão | Agendamento |
+| Expressão | Schedule |
 |---|---|
 | `0 9 * * *` | Diariamente às 9:00 UTC |
 | `0 */6 * * *` | A cada 6 horas |
@@ -49,7 +49,7 @@ Gatilhos cron executam a automação em um agendamento recorrente usando sintaxe
 
 **Intervalo mínimo**: 60 segundos. Expressões que resultam em intervalos menores que 60 segundos são rejeitadas.
 
-**Agendamento à prova de falhas**: O sistema registra `last_run_at` para cada gatilho. Se o servidor reiniciar, execuções perdidas são detectadas e disparadas no próximo ciclo de verificação (a cada 30 segundos).
+**Schedule à prova de falhas**: O sistema registra `last_run_at` para cada gatilho. Se o servidor reiniciar, execuções perdidas são detectadas e disparadas no próximo ciclo de verificação (a cada 30 segundos).
 
 ### Gatilhos de Evento
 

@@ -43,6 +43,7 @@ import {
   RefreshCw01,
   XClose,
 } from "@untitledui/icons";
+import { TOOL_DISPLAY_MAP } from "./tool-display-map.ts";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import type React from "react";
 import { Suspense } from "react";
@@ -61,6 +62,8 @@ interface GenericToolCallPartProps {
   annotations?: ToolDefinition["annotations"];
   /** Latency in seconds from data-tool-metadata part */
   latency?: number;
+  /** UTF-8 byte length of the JSON-serialized tool result. */
+  outputBytes?: number;
   /** Whether this part belongs to the last (most recent) assistant message */
   isLastMessage?: boolean;
   /** Tool _meta from data-tool-metadata part */
@@ -125,6 +128,43 @@ function AnnotationBadges({
   );
 }
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) {
+    const kb = n / 1024;
+    return kb < 10 ? `${kb.toFixed(1)} KB` : `${Math.round(kb)} KB`;
+  }
+  const mb = n / (1024 * 1024);
+  return mb < 10 ? `${mb.toFixed(1)} MB` : `${Math.round(mb)} MB`;
+}
+
+function formatLatency(seconds: number): string {
+  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
+  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+  return `${Math.round(seconds)}s`;
+}
+
+function LatencyBytesBadge({
+  latency,
+  outputBytes,
+}: {
+  latency?: number;
+  outputBytes?: number;
+}) {
+  const hasLatency = typeof latency === "number" && latency > 0;
+  const hasBytes = typeof outputBytes === "number" && outputBytes >= 0;
+  if (!hasLatency && !hasBytes) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-mono tabular-nums text-muted-foreground/60 px-1 leading-none">
+      {hasLatency && <span>{formatLatency(latency!)}</span>}
+      {hasLatency && hasBytes && (
+        <span className="text-muted-foreground/30">·</span>
+      )}
+      {hasBytes && <span>{formatBytes(outputBytes!)}</span>}
+    </span>
+  );
+}
+
 /** Returns a short status hint shown on the summary line */
 function getSummary(
   state: string,
@@ -171,6 +211,7 @@ export function GenericToolCallPart({
   part,
   annotations,
   latency,
+  outputBytes,
   isLastMessage,
   toolMeta,
 }: GenericToolCallPartProps) {
@@ -190,7 +231,7 @@ export function GenericToolCallPart({
 
   const { setChatOpen } = usePanelActions();
   const { taskId } = useChatTask();
-  const { addOrReplace } = useTaskExpandedTools(taskId);
+  const { addOrReplaceEager } = useTaskExpandedTools(taskId);
   const navigate = useNavigate();
 
   const connectionId =
@@ -209,11 +250,14 @@ export function GenericToolCallPart({
     connectionId ? rawToolName : null,
     connectionId,
     org.id,
+    org.slug,
   );
   const meta = toolDef?._meta ?? toolMeta;
   const gatewayClientId = getGatewayClientId(meta);
   const toolName = stripToolNamespace(mcpStrippedName, gatewayClientId);
-  const friendlyName = toolDef?.title ?? toTitleCase(toolName);
+  const toolDisplay = TOOL_DISPLAY_MAP[toolName];
+  const friendlyName =
+    toolDef?.title ?? toolDisplay?.label ?? toTitleCase(toolName);
   const uiResourceUri = getUIResourceUri(meta);
 
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
@@ -227,7 +271,7 @@ export function GenericToolCallPart({
       "input" in part && part.input && typeof part.input === "object"
         ? (part.input as Record<string, unknown>)
         : {};
-    addOrReplace({
+    addOrReplaceEager({
       toolName: rawToolName,
       appId: connectionId,
       args,
@@ -313,18 +357,21 @@ export function GenericToolCallPart({
   return (
     <div>
       <ToolCallShell
-        icon={
-          isCancelled ? (
-            <XClose />
-          ) : hasMCPApp ? (
-            <LayersTwo01 className="size-4 text-muted-foreground" />
-          ) : (
-            <Atom02 className="size-4 text-muted-foreground" />
-          )
-        }
+        icon={(() => {
+          if (isCancelled) return <XClose />;
+          if (hasMCPApp)
+            return <LayersTwo01 className="size-4 text-muted-foreground" />;
+          const MappedIcon = toolDisplay?.icon;
+          if (MappedIcon)
+            return <MappedIcon className="size-4 text-muted-foreground" />;
+          return <Atom02 className="size-4 text-muted-foreground" />;
+        })()}
         iconDestructive={isCancelled}
         trailing={
-          <AnnotationBadges annotations={annotations} toolMeta={toolMeta} />
+          <>
+            <AnnotationBadges annotations={annotations} toolMeta={toolMeta} />
+            <LatencyBytesBadge latency={latency} outputBytes={outputBytes} />
+          </>
         }
         title={friendlyName}
         latency={latency}
@@ -380,6 +427,7 @@ export function GenericToolCallPart({
                 uiResourceUri={uiResourceUri}
                 connectionId={connectionId}
                 orgId={org.id}
+                orgSlug={org.slug}
                 toolName={toolName}
                 toolInput={part.input}
                 toolResult={part.output}
@@ -411,6 +459,7 @@ interface MCPAppRendererProps {
   uiResourceUri: string;
   connectionId: string;
   orgId: string;
+  orgSlug: string;
   toolName: string;
   toolInput: unknown;
   toolResult: unknown;
@@ -502,6 +551,7 @@ function MCPAppRenderer({
   uiResourceUri,
   connectionId,
   orgId,
+  orgSlug,
   toolName,
   toolInput,
   toolResult,
@@ -511,7 +561,7 @@ function MCPAppRenderer({
   onTeardown,
   onRequestDisplayMode,
 }: MCPAppRendererProps) {
-  const client = useMCPClient({ connectionId, orgId });
+  const client = useMCPClient({ connectionId, orgId, orgSlug });
 
   const toolDef: Tool = {
     name: toolName,

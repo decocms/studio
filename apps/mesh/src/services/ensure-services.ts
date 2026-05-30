@@ -130,8 +130,21 @@ function isProcessAlive(pid: number): boolean {
  * Verify that a PID belongs to the expected service by checking the process
  * command line. This guards against PID reuse: if the OS recycled the PID for
  * an unrelated process, we must not signal it.
+ *
+ * `mode: "comm"` matches against the executable name (`ps -o comm=`). Use this
+ * for services launched as their own binary (postgres, nats-server).
+ *
+ * `mode: "args"` matches against the full argv (`ps -o args=`). Use this when
+ * the parent process is a generic interpreter (e.g. `bun run …`) and the
+ * marker is a script path — `expectedName` is matched as a substring of the
+ * full command line, so callers can pass distinctive arg fragments like
+ * `cli.ts link`.
  */
-function isOwnedProcess(pid: number, expectedName: string): boolean {
+function isOwnedProcess(
+  pid: number,
+  expectedName: string,
+  mode: "comm" | "args" = "comm",
+): boolean {
   if (!isProcessAlive(pid)) return false;
 
   try {
@@ -148,8 +161,13 @@ function isOwnedProcess(pid: number, expectedName: string): boolean {
       return output.toLowerCase().includes(expectedName.toLowerCase());
     }
 
-    // Unix: read /proc or use ps
-    const proc = Bun.spawnSync(["ps", "-p", String(pid), "-o", "comm="]);
+    const proc = Bun.spawnSync([
+      "ps",
+      "-p",
+      String(pid),
+      "-o",
+      mode === "args" ? "args=" : "comm=",
+    ]);
     const output = new TextDecoder().decode(proc.stdout).trim().toLowerCase();
     return output.includes(expectedName.toLowerCase());
   } catch {
@@ -664,8 +682,195 @@ async function stopNats(home: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Link daemon (deco link, spawned via `bun run --cwd=apps/mesh src/cli.ts link`)
+// ---------------------------------------------------------------------------
+
+/**
+ * The link daemon runs as `bun run … src/cli.ts link …`, so `ps -o comm=`
+ * just shows `bun`. We match against the full argv instead — `cli.ts link`
+ * is distinctive enough to avoid PID-reuse collisions with the user's other
+ * bun processes.
+ */
+const LINK_ARGS_MARKER = "cli.ts link";
+
+export interface EnsureLinkInputs {
+  home: string;
+  /** Cluster base URL the link daemon registers against. */
+  clusterUrl: string;
+  /** DATA_DIR / DECOCMS_HOME the link inherits (sandbox clones live under here). */
+  linkDataDir: string;
+  /** Repo root — `cwd` for the spawned `bun run --cwd=apps/mesh …`. */
+  repoRoot: string;
+  /**
+   * Called only when a fresh link daemon needs to be spawned (i.e. not when
+   * an existing managed link is reused). Use this to await prerequisites
+   * like the cluster port and the dev-link session file.
+   */
+  beforeSpawn?: () => Promise<void>;
+  /**
+   * Called synchronously after `Bun.spawn` returns and before `ensureLink`
+   * begins waiting for the port. Use this to drain `proc.stdout`/`proc.stderr`
+   * — if the link is spawned with "pipe" stdio and nothing reads from the
+   * pipes, the OS buffer fills (~16-64KB) and the daemon blocks on write
+   * before it can bind its port.
+   */
+  onSpawn?: (proc: ReturnType<typeof Bun.spawn>) => void;
+  /** Stdio config forwarded to `Bun.spawn`. Defaults to "inherit". */
+  stdio?: Parameters<typeof Bun.spawn>[1] extends infer O
+    ? O extends { stdio?: infer S }
+      ? S
+      : never
+    : never;
+}
+
+export interface EnsureLinkResult {
+  info: ServiceInfo;
+  /** The spawned subprocess, or null when reusing an existing managed link. */
+  proc: ReturnType<typeof Bun.spawn> | null;
+}
+
+async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
+  const info: ServiceInfo = {
+    name: "Link",
+    state: "stopped",
+    pid: null,
+    port: 0,
+    owner: "none",
+  };
+
+  const existing = readState(inputs.home, "link");
+  if (existing !== null) {
+    if (isOwnedProcess(existing.pid, LINK_ARGS_MARKER, "args")) {
+      info.state = "running";
+      info.pid = existing.pid;
+      info.port = existing.port;
+      info.owner = "managed";
+      return { info, proc: null };
+    }
+    await removeState(inputs.home, "link");
+  }
+
+  if (inputs.beforeSpawn) await inputs.beforeSpawn();
+
+  const port = await findAvailablePort();
+  info.port = port;
+
+  const proc = Bun.spawn(
+    [
+      "bun",
+      "run",
+      "--cwd=apps/mesh",
+      "src/cli.ts",
+      "link",
+      // Required positional: the studio to link against.
+      inputs.clusterUrl,
+      "--port",
+      String(port),
+      // Managed background daemon: never render the Ink TUI (it would paint
+      // over the parent dev/serve terminal when stdio is inherited).
+      "--no-tui",
+    ],
+    {
+      cwd: inputs.repoRoot,
+      env: {
+        ...process.env,
+        MESH_CLUSTER_URL: inputs.clusterUrl,
+        DATA_DIR: inputs.linkDataDir,
+        DECOCMS_HOME: inputs.linkDataDir,
+        // Suppress the plain banner — the parent dev/serve already shows one.
+        DECOCMS_LINK_MANAGED: "1",
+      },
+      stdio: inputs.stdio ?? ["inherit", "inherit", "inherit"],
+    },
+  );
+
+  writeState(inputs.home, "link", {
+    pid: proc.pid,
+    port,
+    startedAt: new Date().toISOString(),
+  });
+
+  // Drain stdio BEFORE waiting on the port — otherwise piped stdout/stderr
+  // fill the OS pipe buffer and block the daemon's writes before it binds.
+  inputs.onSpawn?.(proc);
+
+  try {
+    await waitForPort(port);
+  } catch (err) {
+    // The daemon spawned but never bound its HTTP port. Leaving the process
+    // alive would leak it (caller has no handle once we throw), and leaving
+    // the state file would cause the next ensureLink to match the still-
+    // running-but-unbound process via isOwnedProcess and reuse it as
+    // "healthy", pinning Sandbox forever on the next startup.
+    try {
+      proc.kill();
+    } catch {
+      /* already gone */
+    }
+    await removeState(inputs.home, "link");
+    throw err;
+  }
+
+  info.state = "running";
+  info.pid = proc.pid;
+  info.owner = "managed";
+  return { info, proc };
+}
+
+async function stopLink(home: string): Promise<void> {
+  const state = readState(home, "link");
+  if (state === null) {
+    console.log("Link: not running");
+    return;
+  }
+
+  const { pid } = state;
+
+  if (!isProcessAlive(pid)) {
+    console.log("Link: process already dead, cleaning up state");
+    await removeState(home, "link");
+    return;
+  }
+
+  if (!isOwnedProcess(pid, LINK_ARGS_MARKER, "args")) {
+    console.log(
+      `Link: PID ${pid} no longer belongs to the link daemon (possible PID reuse), cleaning up state`,
+    );
+    await removeState(home, "link");
+    return;
+  }
+
+  console.log(`Link: stopping (PID ${pid})...`);
+
+  if (IS_WINDOWS) {
+    Bun.spawn(["taskkill", "/PID", String(pid)]);
+  } else {
+    process.kill(pid, "SIGTERM");
+  }
+
+  const start = Date.now();
+  while (Date.now() - start < 5000 && isProcessAlive(pid)) {
+    await Bun.sleep(200);
+  }
+
+  if (isProcessAlive(pid) && isOwnedProcess(pid, LINK_ARGS_MARKER, "args")) {
+    console.log("Link: force killing...");
+    if (IS_WINDOWS) {
+      Bun.spawn(["taskkill", "/PID", String(pid), "/F"]);
+    } else {
+      process.kill(pid, "SIGKILL");
+    }
+  }
+
+  await removeState(home, "link");
+  console.log("Link stopped");
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+export { ensureLink, stopLink };
 
 function portFromUrl(url: string, fallback: number): number {
   try {
@@ -723,6 +928,9 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
 }
 
 export async function stopServices(home: string): Promise<void> {
+  // Stop the link first — it talks to the cluster (DELETE /api/links/me) on
+  // shutdown, so give it a window before pg/nats go away.
+  await stopLink(home);
   await stopPostgres(home);
   await stopNats(home);
   console.log("\nAll managed services stopped.");
@@ -764,6 +972,26 @@ async function serviceStatus(home: string): Promise<ServiceInfo[]> {
     if (natsState !== null) await removeState(home, "nats");
     services.push({
       name: "NATS",
+      state: "stopped",
+      pid: null,
+      port: 0,
+      owner: "none",
+    });
+  }
+
+  const linkState = readState(home, "link");
+  if (linkState !== null && isProcessAlive(linkState.pid)) {
+    services.push({
+      name: "Link",
+      state: "running",
+      pid: linkState.pid,
+      port: linkState.port,
+      owner: "managed",
+    });
+  } else {
+    if (linkState !== null) await removeState(home, "link");
+    services.push({
+      name: "Link",
       state: "stopped",
       pid: null,
       port: 0,

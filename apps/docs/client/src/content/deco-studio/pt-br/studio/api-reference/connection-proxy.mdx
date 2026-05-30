@@ -1,62 +1,69 @@
 ---
-title: Endpoint de Proxy de Conexão
-description: Conectar clientes MCP diretamente a servidores MCP upstream através do deco Studio
+title: Endpoint Connection Proxy
+description: Conecte clientes MCP diretamente a servidores MCP upstream através do deco Studio
 icon: Network
 ---
 
 import Callout from "../../../../../components/ui/Callout.astro";
 
-## Visão Geral
+## Visão geral
 
-O endpoint de **Proxy de Conexão** (`/mcp/:connectionId`) permite que clientes MCP (como Cursor, Claude Desktop ou aplicações customizadas) se conectem diretamente a um servidor MCP upstream específico através do deco Studio. Este endpoint atua como um proxy seguro e observável que gerencia autenticação, autorização, gerenciamento de credenciais e monitoramento.
+O endpoint **Connection Proxy** permite que clientes MCP (como Cursor, Claude Desktop ou aplicações customizadas) se conectem diretamente a um servidor MCP upstream específico através do deco Studio. Esse endpoint atua como um proxy seguro e observável que lida com autenticação, autorização, gerenciamento de credenciais e monitoramento.
 
 ## Endpoint
 
+O caminho canônico é escopado por organização:
+
 ```
-POST https://sua-instancia-mesh.com/mcp/:connectionId
+POST https://your-mesh-instance.com/api/:org/mcp/:connectionId
 ```
 
-### Parâmetros de Caminho
+<Callout type="warning">
+  A forma legada sem escopo `POST /mcp/:connectionId` ainda funciona, mas emite um log de deprecação a cada requisição e será removida. Atualize os clientes para o caminho `/api/:org/...`.
+</Callout>
+
+### Parâmetros de path
 
 | Parâmetro | Tipo | Obrigatório | Descrição |
 |-----------|------|----------|-------------|
-| `connectionId` | `string` (UUID) | Obrigatório | O identificador único da conexão para onde as requisições serão encaminhadas |
+| `org` | `string` | Obrigatório | Slug da organização — imutável durante toda a vida da org |
+| `connectionId` | `string` (UUID) | Obrigatório | Identificador único da connection para a qual as requisições serão encaminhadas |
 
 ## Autenticação
 
-O Proxy de Conexão requer autenticação usando um dos métodos:
+O Connection Proxy requer autenticação usando uma das opções:
 
-- **Token OAuth Bearer**: `Authorization: Bearer <token>`
-- **Chave de API**: `Authorization: Bearer <api_key>`
+- **OAuth Bearer Token**: `Authorization: Bearer <token>`
+- **API Key**: `Authorization: Bearer <api_key>`
 
-Quando não autenticado, o endpoint retorna uma resposta `401` com um cabeçalho `WWW-Authenticate` contendo metadados de descoberta OAuth:
+Quando não autenticado, o endpoint retorna uma resposta `401` com um header `WWW-Authenticate` contendo metadados de descoberta OAuth:
 
 ```http
 HTTP/1.1 401 Unauthorized
-WWW-Authenticate: Bearer realm="mcp",resource_metadata="https://sua-instancia-mesh.com/mcp/:connectionId/.well-known/oauth-protected-resource"
+WWW-Authenticate: Bearer realm="mcp",resource_metadata="https://your-mesh-instance.com/api/:org/mcp/:connectionId/.well-known/oauth-protected-resource"
 ```
 
 <Callout type="info">
-  Clientes com suporte a OAuth 2.1 podem usar a URL de metadados do recurso para descobrir endpoints de autorização e completar o fluxo OAuth automaticamente.
+  Clientes que suportam OAuth 2.1 podem usar a URL de resource metadata para descobrir endpoints de autorização e completar o fluxo OAuth automaticamente.
 </Callout>
 
-## Como Funciona
+## Como funciona
 
-Quando um cliente envia uma requisição MCP através do Proxy de Conexão:
+Quando um cliente envia uma requisição MCP através do Connection Proxy:
 
-1. **Autenticação**: o deco Studio verifica as credenciais do cliente (token OAuth ou chave de API)
-2. **Busca da Conexão**: o deco Studio recupera a configuração da conexão e verifica se está ativa
-3. **Autorização**: o deco Studio verifica se o cliente tem permissão para invocar a ferramenta solicitada
-4. **Injeção de Credenciais**: o deco Studio descriptografa credenciais armazenadas e as injeta na requisição upstream
-5. **Encaminhamento da Requisição**: o deco Studio encaminha a requisição MCP ao servidor upstream
+1. **Autenticação**: o deco Studio verifica as credenciais do cliente (token OAuth ou API key)
+2. **Busca da connection**: o deco Studio recupera a configuração da connection e verifica se está ativa
+3. **Autorização**: o deco Studio verifica se o cliente tem permissão para invocar a tool solicitada
+4. **Injeção de credenciais**: o deco Studio descriptografa as credenciais armazenadas e as injeta na requisição upstream
+5. **Encaminhamento da requisição**: o deco Studio encaminha a requisição MCP para o servidor upstream
 6. **Monitoramento**: o deco Studio registra métricas (duração, status, erros) para observabilidade
-7. **Retorno da Resposta**: o deco Studio retorna a resposta do servidor upstream ao cliente
+7. **Retorno da resposta**: o deco Studio retorna a resposta do servidor upstream ao cliente
 
-## Formato da Requisição
+## Formato da requisição
 
-O Proxy de Conexão aceita requisições do protocolo MCP padrão. O corpo da requisição deve ser uma mensagem JSON-RPC 2.0 seguindo a especificação MCP.
+O Connection Proxy aceita requisições padrão do protocolo MCP. O corpo da requisição deve ser uma mensagem JSON-RPC 2.0 seguindo a especificação MCP.
 
-### Exemplo: Listar Ferramentas
+### Exemplo: listar tools
 
 ```json
 {
@@ -66,7 +73,7 @@ O Proxy de Conexão aceita requisições do protocolo MCP padrão. O corpo da re
 }
 ```
 
-### Exemplo: Chamar Ferramenta
+### Exemplo: chamar tool
 
 ```json
 {
@@ -84,11 +91,11 @@ O Proxy de Conexão aceita requisições do protocolo MCP padrão. O corpo da re
 }
 ```
 
-## Formato da Resposta
+## Formato da resposta
 
-Respostas seguem o formato padrão do protocolo MCP:
+As respostas seguem o formato padrão do protocolo MCP:
 
-### Resposta de Sucesso
+### Resposta de sucesso
 
 ```json
 {
@@ -105,7 +112,7 @@ Respostas seguem o formato padrão do protocolo MCP:
 }
 ```
 
-### Resposta de Erro
+### Resposta de erro
 
 ```json
 {
@@ -120,15 +127,15 @@ Respostas seguem o formato padrão do protocolo MCP:
 
 ## Autorização
 
-O Proxy de Conexão aplica autorização granular usando o sistema de permissões do deco Studio:
+O Connection Proxy aplica autorização granular usando o sistema de permissões do deco Studio:
 
-- **Permissões por Ferramenta**: Usuários devem ter permissão explícita para cada ferramenta que invocam
-- **Escopo de Conexão**: Permissões são limitadas à conexão específica
-- **Baseado em Funções**: Permissões são herdadas das funções do usuário e configurações da organização
+- **Permissões por tool**: usuários precisam ter permissão explícita para cada tool que invocam
+- **Escopo por connection**: as permissões são escopadas para a connection específica
+- **Baseadas em papéis**: as permissões são herdadas dos papéis do usuário e das configurações da organização
 
-### Formato de Permissão
+### Formato das permissões
 
-Permissões são armazenadas no formato:
+As permissões são armazenadas no formato:
 
 ```json
 {
@@ -136,9 +143,9 @@ Permissões são armazenadas no formato:
 }
 ```
 
-### Ferramentas Públicas
+### Tools públicas
 
-Ferramentas podem ser marcadas como públicas usando metadados:
+Tools podem ser marcadas como públicas usando metadados:
 
 ```json
 {
@@ -150,71 +157,71 @@ Ferramentas podem ser marcadas como públicas usando metadados:
 }
 ```
 
-Ferramentas públicas permitem acesso não autenticado e ignoram verificações de autorização.
+Tools públicas permitem acesso não autenticado e ignoram as verificações de autorização.
 
-## Respostas de Erro
+## Respostas de erro
 
-| Código de Status | Descrição | Cenário de Exemplo |
+| Código de status | Descrição | Cenário de exemplo |
 |-------------|-------------|------------------|
-| `401` | Não Autorizado | Token OAuth ou chave de API válida não fornecidos |
-| `403` | Proibido | Usuário não tem permissão para invocar a ferramenta solicitada |
-| `404` | Não Encontrado | ID da conexão não existe ou usuário não tem acesso |
-| `500` | Erro Interno do Servidor | Erro inesperado durante o processamento da requisição |
-| `503` | Serviço Indisponível | Conexão está inativa ou servidor upstream está inacessível |
+| `401` | Unauthorized | Nenhum token OAuth ou API key válido fornecido |
+| `403` | Forbidden | O usuário não tem permissão para invocar a tool solicitada |
+| `404` | Not Found | O Connection ID não existe ou o usuário não tem acesso |
+| `500` | Internal Server Error | Erro inesperado durante o processamento da requisição |
+| `503` | Service Unavailable | A connection está inativa ou o servidor upstream está inacessível |
 
-## Suporte a Streaming
+## Suporte a streaming
 
-O Proxy de Conexão suporta **respostas de ferramentas com streaming** para conexões baseadas em HTTP:
+O Connection Proxy suporta **respostas de tool em streaming** para connections baseadas em HTTP:
 
-### Endpoint de Ferramenta com Streaming
+### Endpoint de tool streamable
 
 ```
-POST https://sua-instancia-mesh.com/mcp/:connectionId/call-tool/:toolName
+POST https://your-mesh-instance.com/api/:org/mcp/:connectionId/call-tool/:toolName
 ```
 
-Este endpoint permite que ferramentas transmitam respostas de volta ao cliente, útil para operações de longa duração ou grandes transferências de dados.
+Esse endpoint permite que tools enviem respostas em streaming ao cliente, útil para operações de longa duração ou transferências grandes de dados.
 
 <Callout type="warning">
-  Streaming é suportado apenas para conexões HTTP. Conexões STDIO e VIRTUAL utilizam chamadas de ferramenta regulares.
+  Streaming só é suportado em connections HTTP. Connections STDIO e VIRTUAL fazem fallback para chamadas de tool regulares.
 </Callout>
 
-## Monitoramento e Observabilidade
+## Monitoramento e observabilidade
 
-Cada requisição através do Proxy de Conexão gera:
+Cada requisição pelo Connection Proxy gera:
 
 ### Métricas
 
-- **Histogramas de Duração**: `connection.proxy.duration` e `connection.proxy.streamable.duration`
-- **Contadores de Requisições**: `connection.proxy.requests` e `connection.proxy.streamable.requests`
-- **Contadores de Erros**: `connection.proxy.errors` e `connection.proxy.streamable.errors`
+- **Histogramas de duração**: `connection.proxy.duration` e `connection.proxy.streamable.duration`
+- **Contadores de requisição**: `connection.proxy.requests` e `connection.proxy.streamable.requests`
+- **Contadores de erro**: `connection.proxy.errors` e `connection.proxy.streamable.errors`
 
 Todas as métricas incluem labels:
-- `connection.id`: O UUID da conexão
-- `tool.name`: A ferramenta sendo invocada
-- `status`: sucesso ou erro
+- `connection.id`: o UUID da connection
+- `tool.name`: a tool sendo invocada
+- `status`: success ou error
 
 ### Traces
 
-Spans do OpenTelemetry são criados para:
-- `mcp.proxy.callTool`: Invocações regulares de ferramentas
-- `mcp.proxy.callStreamableTool`: Invocações de ferramentas com streaming
+Spans OpenTelemetry são criados para:
+- `mcp.proxy.callTool`: invocações regulares de tool
+- `mcp.proxy.callStreamableTool`: invocações de tool em streaming
 
-Traces incluem atributos:
-- `connection.id`: Identificador da conexão
-- `tool.name`: Nome da ferramenta
-- `request.id`: Identificador único da requisição
+Os traces incluem atributos:
+- `connection.id`: identificador da connection
+- `tool.name`: nome da tool
+- `request.id`: identificador único da requisição
 
-## Opções de Configuração
+## Opções de configuração
 
-Conexões podem ser configuradas com:
+Connections podem ser configuradas com:
 
-### Configurações de Timeout
+### Timeout
 
-O timeout padrão para chamadas de ferramentas é de **5 minutos** (300.000ms). Isso pode ser ajustado por conexão baseado nas características de execução das ferramentas.
+O timeout padrão para chamadas de tool é de **5 minutos** (300.000ms). Pode ser ajustado por connection com base nas características de execução da tool.
 
-### Cabeçalhos Customizados
+### Headers customizados
 
-Conexões podem incluir cabeçalhos HTTP customizados para autenticação ou roteamento:
+Connections podem incluir headers HTTP customizados para autenticação ou roteamento:
 
 ```json
 {
@@ -226,18 +233,18 @@ Conexões podem incluir cabeçalhos HTTP customizados para autenticação ou rot
 }
 ```
 
-## Casos de Uso
+## Casos de uso
 
-### Acesso MCP Direto
+### Acesso direto via MCP
 
-Conectar Cursor ou Claude Desktop diretamente a um MCP upstream específico:
+Conecte o Cursor ou o Claude Desktop diretamente a um MCP upstream específico:
 
-**Configuração do Cursor:**
+**Configuração no Cursor:**
 ```json
 {
   "mcpServers": {
     "github-production": {
-      "url": "https://mesh.example.com/mcp/conn_abc123",
+      "url": "https://studio.example.com/api/my-org/mcp/conn_abc123",
       "headers": {
         "Authorization": "Bearer YOUR_API_KEY"
       }
@@ -246,12 +253,12 @@ Conectar Cursor ou Claude Desktop diretamente a um MCP upstream específico:
 }
 ```
 
-### Clientes Específicos de Ferramentas
+### Clientes específicos por tool
 
-Construir clientes customizados que precisam de acesso às ferramentas de um servidor MCP específico sem composição de MCP Virtual:
+Construa clientes customizados que precisam acessar as tools de um servidor MCP específico sem passar por um agent:
 
 ```typescript
-const response = await fetch('https://mesh.example.com/mcp/conn_abc123', {
+const response = await fetch('https://studio.example.com/api/my-org/mcp/conn_abc123', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -269,58 +276,58 @@ const response = await fetch('https://mesh.example.com/mcp/conn_abc123', {
 });
 ```
 
-### Isolamento Multi-Tenant
+### Isolamento multi-tenant
 
-Cada conexão é limitada à organização, fornecendo isolamento natural de tenants:
+Cada connection é escopada por organização, fornecendo isolamento natural entre tenants:
 
 ```
-Organização A → conn_123 (GitHub Org A) → GitHub Tools (apenas Org A)
-Organização B → conn_456 (GitHub Org B) → GitHub Tools (apenas Org B)
+Organization A → conn_123 (GitHub Org A) → GitHub Tools (Org A only)
+Organization B → conn_456 (GitHub Org B) → GitHub Tools (Org B only)
 ```
 
-## Estados de Conexão
+## Estados da connection
 
-Conexões possuem um campo `status` que afeta o comportamento do proxy:
+Connections têm um campo `status` que afeta o comportamento do proxy:
 
-- **`active`**: Conexão está pronta para encaminhar requisições
-- **`inactive`**: Conexão está desabilitada; proxy retorna erro `503`
-- **`error`**: Conexão tem problemas de configuração; proxy pode falhar
+- **`active`**: a connection está pronta para encaminhar requisições
+- **`inactive`**: a connection está desabilitada; o proxy retorna erro `503`
+- **`error`**: a connection tem problemas de configuração; o proxy pode falhar
 
-## Considerações de Segurança
+## Considerações de segurança
 
-### Tratamento de Credenciais
+### Tratamento de credenciais
 
-- **Criptografadas em Repouso**: Credenciais são armazenadas criptografadas usando AES-256-GCM
-- **Descriptografadas Just-in-Time**: Credenciais só são descriptografadas ao encaminhar requisições
-- **Nunca Expostas aos Clientes**: Clientes nunca recebem credenciais upstream
+- **Criptografadas em repouso**: credenciais são armazenadas criptografadas usando AES-256-GCM
+- **Descriptografadas just-in-time**: credenciais só são descriptografadas no momento do proxy da requisição
+- **Nunca expostas aos clientes**: clientes nunca recebem as credenciais upstream
 
-### Validação de Requisições
+### Validação de requisição
 
-- **Validação de Schema**: Argumentos de ferramentas são validados contra schemas de entrada
-- **Limite de Taxa**: (Planejado) Limites de taxa por conexão e por usuário
-- **Log de Auditoria**: Todas as invocações de ferramentas são registradas com identidade do usuário
+- **Validação de schema**: argumentos de tool são validados contra schemas de entrada
+- **Rate limiting**: (Planejado) limites de taxa por connection e por usuário
+- **Audit logging**: todas as invocações de tool são registradas com a identidade do usuário
 
-### Segurança de Rede
+### Segurança de rede
 
-- **TLS Obrigatório**: Todas as conexões com servidores upstream usam HTTPS
-- **Validação de Certificado**: Certificados SSL são validados por padrão
-- **Cabeçalhos de Proxy**: Servidores upstream recebem requisições autenticadas com credenciais
+- **TLS obrigatório**: todas as conexões com servidores upstream usam HTTPS
+- **Validação de certificado**: certificados SSL são validados por padrão
+- **Proxy headers**: servidores upstream recebem requisições autenticadas com credenciais
 
-## Comparação com Outros Endpoints
+## Comparação com outros endpoints
 
-| Endpoint | Caso de Uso | Ferramentas Disponíveis |
+| Endpoint | Caso de uso | Tools disponíveis |
 |----------|----------|-----------------|
-| `/mcp/:connectionId` | Acesso direto a um MCP upstream | Todas as ferramentas apenas daquela conexão |
-| `/mcp/gateway/:agentId` | Superfície curada de ferramentas (agente/MCP virtual) | Ferramentas de múltiplas conexões, compostas |
-| `/mcp/self` | Operações de gerenciamento | Apenas ferramentas de gerenciamento do deco Studio |
+| `/api/:org/mcp/:connectionId` | Acesso direto a um MCP upstream | Apenas tools daquela connection |
+| `/api/:org/mcp/gateway/:virtualMcpId` | Conjunto curado de tools para um agent (também conhecido como virtual MCP) | Tools de múltiplas connections, compostas |
+| `/api/:org/mcp/self` | Operações de gerenciamento | Apenas tools de gerenciamento do deco Studio |
 
 <Callout type="tip">
-  Para a maioria dos casos de uso em produção, use **Agentes** (`/mcp/gateway/:agentId`) ao invés de proxies de conexão direta. Agentes fornecem melhor controle sobre exposição de ferramentas, suportam contexto e recursos, e permitem composição de múltiplas conexões.
+  Para a maioria dos casos de uso em produção, use **Agents** (`/api/:org/mcp/gateway/:virtualMcpId`) em vez de connection proxies diretos. Agents permitem controlar quais tools são expostas e compor tools de múltiplas connections atrás de um único endpoint.
 </Callout>
 
 ## Relacionados
 
-- [**Conexões**](/pt-br/studio/connections) - Entendendo a abstração de Conexão
-- [**MCPs Virtuais**](/pt-br/studio/virtual-mcps) - Compor múltiplas conexões em agentes
-- [**Chaves de API**](/pt-br/studio/api-keys) - Configuração de autenticação
-- [**Monitoramento**](/pt-br/studio/monitoring) - Observabilidade e métricas
+- [**Connections**](/pt-br/studio/connections) - Entendendo a abstração Connection
+- [**Agents**](/pt-br/studio/agents) - Componha tools de múltiplas connections em um único endpoint
+- [**API Keys**](/pt-br/studio/api-keys) - Configuração de autenticação
+- [**Monitoring**](/pt-br/studio/monitoring) - Observabilidade e métricas

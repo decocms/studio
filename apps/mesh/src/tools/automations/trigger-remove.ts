@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { syncTriggerDeleted } from "../../automations/dbos-sync";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
@@ -69,6 +70,24 @@ export const AUTOMATION_TRIGGER_REMOVE = defineTool({
       trigger.id,
       trigger.automation_id,
     );
+
+    if (trigger.type === "cron") {
+      await syncTriggerDeleted(trigger.id);
+    }
+
+    // Webhook triggers own a Better Auth API key — revoke it so a leaked
+    // token can't keep firing the now-deleted webhook. Best-effort: if the
+    // delete fails the trigger row is already gone, so the URL is dead.
+    if (trigger.type === "webhook" && trigger.api_key_id) {
+      try {
+        await ctx.boundAuth.apiKey.delete(trigger.api_key_id);
+      } catch (err) {
+        console.warn(
+          `[trigger-remove] failed to delete api key ${trigger.api_key_id} for trigger ${trigger.id}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
 
     return { success };
   },

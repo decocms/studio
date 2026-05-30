@@ -1,0 +1,94 @@
+import { performInteractiveLogin } from "../commands/auth/login";
+import { getValidSession } from "./get-valid-session";
+import { RefreshFailedError } from "./refresh-session";
+import { type Session, writeSession } from "./session";
+
+export interface EnsureSessionOptions {
+  dataDir: string;
+  /** Human-readable name of the action requiring auth, e.g. "Link". */
+  intent: string;
+  /** Studio to authenticate against for interactive login (defaults to prod). */
+  target?: string;
+  /** Defaults to `process.stdout.isTTY`. */
+  isInteractive?: boolean;
+  // Injectables (all default to real implementations):
+  openBrowser?: (url: string) => Promise<void>;
+  fetch?: typeof fetch;
+  now?: () => number;
+}
+
+/**
+ * Returns a known-valid session, running interactive login when needed.
+ *
+ * Behavior:
+ *  - Valid session on disk → returned as-is.
+ *  - Expired session, refresh succeeds → returned (and rewritten to disk).
+ *  - No session or refresh rejected, and TTY is interactive → runs OAuth
+ *    login, persists the result, and returns it.
+ *  - No session or refresh rejected, and TTY is non-interactive → throws
+ *    the standard "No session found" error.
+ *  - Transient refresh failure (network/5xx) → throws a user-facing
+ *    `Could not refresh session: <reason>...` error. A browser-login
+ *    attempt would likely fail the same way; surface the diagnostic instead.
+ */
+export async function ensureSession(
+  opts: EnsureSessionOptions,
+): Promise<Session> {
+  const isInteractive = opts.isInteractive ?? Boolean(process.stdout.isTTY);
+
+  let existing: Session | null;
+  try {
+    existing = await getValidSession({
+      dataDir: opts.dataDir,
+      target: opts.target,
+      fetch: opts.fetch,
+      now: opts.now,
+    });
+  } catch (err) {
+    if (err instanceof RefreshFailedError && err.kind === "transient") {
+      throw new Error(
+        `Could not refresh session: ${err.message}. Run \`decocms auth login\` to sign in again.`,
+      );
+    }
+    throw err;
+  }
+  // A cached session for a *different* studio (e.g. prod token while linking to
+  // staging) would be rejected by the target. When we can re-auth interactively,
+  // discard it and log in against the requested studio; otherwise keep it (the
+  // caller's own auth check surfaces a clear error).
+  if (
+    existing &&
+    opts.target &&
+    isInteractive &&
+    !sameStudio(existing.target, opts.target)
+  ) {
+    existing = null;
+  }
+  if (existing) return existing;
+
+  if (!isInteractive) {
+    throw new Error(
+      "No session found. Run `decocms auth login` first, then re-run the command.",
+    );
+  }
+
+  console.log(`Not logged in — opening browser to sign in to ${opts.intent}.`);
+
+  const session = await performInteractiveLogin({
+    target: opts.target,
+    openBrowser: opts.openBrowser,
+    fetch: opts.fetch,
+  });
+  await writeSession(opts.dataDir, session);
+  console.log(`Logged in as ${session.user.email ?? session.user.sub}.`);
+  return session;
+}
+
+/** Two studio URLs are "the same" when their hosts match (tolerates path/slash). */
+function sameStudio(a: string, b: string): boolean {
+  try {
+    return new URL(a).host === new URL(b).host;
+  } catch {
+    return a === b;
+  }
+}

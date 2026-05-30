@@ -12,26 +12,50 @@ import type { DownstreamToken } from "../storage/types";
 
 export interface TokenRefreshResult {
   success: boolean;
+  /**
+   * `true` only when the OAuth server told us the refresh_token itself is
+   * permanently invalid (RFC 6749 §5.2: `400 invalid_grant`). Callers use
+   * this to decide whether to delete the cached token: deleting on transient
+   * failures (5xx, network blips, non-spec status codes) silently logs users
+   * out and forces a manual reconnect, so we only delete when we're certain.
+   */
+  permanent?: boolean;
   accessToken?: string;
   refreshToken?: string;
   expiresIn?: number;
   scope?: string;
   error?: string;
+  /** HTTP status of the OAuth response, when there was one. */
+  status?: number;
+  /** OAuth error code from the response body, when present. */
+  errorCode?: string;
 }
 
 export async function refreshAccessToken(
   token: DownstreamToken,
 ): Promise<TokenRefreshResult> {
   if (!token.refreshToken) {
-    return { success: false, error: "No refresh token available" };
+    return {
+      success: false,
+      permanent: false,
+      error: "No refresh token available",
+    };
   }
 
   if (!token.tokenEndpoint) {
-    return { success: false, error: "No token endpoint available" };
+    return {
+      success: false,
+      permanent: false,
+      error: "No token endpoint available",
+    };
   }
 
   if (!token.clientId) {
-    return { success: false, error: "No client ID available" };
+    return {
+      success: false,
+      permanent: false,
+      error: "No client ID available",
+    };
   }
 
   try {
@@ -60,26 +84,41 @@ export async function refreshAccessToken(
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(
-        `[TokenRefresh] Failed to refresh token: ${response.status}`,
-        errorBody,
-      );
-
+      let errorCode: string | undefined;
+      let errorDescription: string | undefined;
       try {
         const errorJson = JSON.parse(errorBody);
-        return {
-          success: false,
-          error:
-            errorJson.error_description ||
-            errorJson.error ||
-            `Token refresh failed: ${response.status}`,
-        };
+        errorCode = errorJson.error;
+        errorDescription = errorJson.error_description;
       } catch {
-        return {
-          success: false,
-          error: `Token refresh failed: ${response.status}`,
-        };
+        // body wasn't JSON — fall through with undefined codes
       }
+
+      // Only `400 invalid_grant` means the refresh_token is permanently dead.
+      // Everything else (5xx, network blips, non-spec status codes) is treated
+      // as transient — the cached token should not be deleted.
+      const permanent =
+        response.status === 400 && errorCode === "invalid_grant";
+
+      console.error("[TokenRefresh] refresh failed", {
+        connectionId: token.connectionId,
+        tokenEndpoint: token.tokenEndpoint,
+        status: response.status,
+        errorCode,
+        errorDescription,
+        permanent,
+      });
+
+      return {
+        success: false,
+        permanent,
+        status: response.status,
+        errorCode,
+        error:
+          errorDescription ||
+          errorCode ||
+          `Token refresh failed: ${response.status}`,
+      };
     }
 
     const data = (await response.json()) as {
@@ -98,9 +137,14 @@ export async function refreshAccessToken(
       scope: data.scope,
     };
   } catch (error) {
-    console.error("[TokenRefresh] Error refreshing token:", error);
+    console.error("[TokenRefresh] network/parse error", {
+      connectionId: token.connectionId,
+      tokenEndpoint: token.tokenEndpoint,
+      message: error instanceof Error ? error.message : String(error),
+    });
     return {
       success: false,
+      permanent: false,
       error: error instanceof Error ? error.message : "Token refresh failed",
     };
   }

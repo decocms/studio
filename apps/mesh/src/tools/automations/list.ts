@@ -31,9 +31,8 @@ export const AUTOMATION_LIST = defineTool({
         created_by: z.string(),
         created_at: z.string(),
         trigger_count: z.number(),
-        agent: z.object({ id: z.string() }).nullable(),
         nearest_next_run_at: z.string().nullable(),
-        virtual_mcp_id: z.string().nullable(),
+        virtual_mcp_id: z.string(),
       }),
     ),
   }),
@@ -47,28 +46,16 @@ export const AUTOMATION_LIST = defineTool({
       input.virtual_mcp_id,
     );
 
-    const results = automations.map((automation) => {
-      let agent: { id: string } | null = null;
-      try {
-        if (automation.agent) {
-          agent = JSON.parse(automation.agent);
-        }
-      } catch {
-        agent = null;
-      }
-
-      return {
-        id: automation.id,
-        name: automation.name,
-        active: automation.active,
-        created_by: automation.created_by,
-        created_at: automation.created_at,
-        trigger_count: automation.trigger_count,
-        agent,
-        nearest_next_run_at: automation.nearest_next_run_at,
-        virtual_mcp_id: automation.virtual_mcp_id,
-      };
-    });
+    const results = automations.map((automation) => ({
+      id: automation.id,
+      name: automation.name,
+      active: automation.active,
+      created_by: automation.created_by,
+      created_at: automation.created_at,
+      trigger_count: automation.trigger_count,
+      nearest_next_run_at: automation.nearest_next_run_at,
+      virtual_mcp_id: automation.virtual_mcp_id,
+    }));
 
     return { automations: results };
   },

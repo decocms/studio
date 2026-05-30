@@ -1,0 +1,20 @@
+# Local kind dev overlay: warm pool ON, housekeeper OFF.
+#
+# Layer on top of values-kind.yaml — the housekeeper's aggressive idle
+# reap (we ran with idleTtlSeconds=60 + schedule="*/1 * * * *") fights
+# with active dev sessions: claim gets reaped during a coffee break,
+# warm pool replenishes a fresh pod, the next VM_START provisions
+# against a different pod, and mesh's in-memory K8sRecord points at
+# the deleted one until restart. Disabling the housekeeper takes
+# eviction out of the loop so warm-pool adoption is the only moving
+# part during normal dev.
+#
+# Re-enable explicitly when testing reap behavior:
+#   helm upgrade --reuse-values --set housekeeper.enabled=true sandbox-env-kind ./deploy/helm/sandbox-env
+
+warmPool:
+  enabled: true
+  size: 1
+
+housekeeper:
+  enabled: false

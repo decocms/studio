@@ -3,9 +3,7 @@
  * Runs production migrations for testing
  */
 
-import { Migrator, sql, type Kysely } from "kysely";
-import migrations from "../../migrations";
-import { collectPluginMigrations } from "../core/plugin-loader";
+import type { Kysely } from "kysely";
 import type { Database } from "./types";
 
 /**
@@ -128,6 +126,31 @@ export async function createBetterAuthTables(
     .addColumn("createdAt", "text", (col) => col.notNull())
     .execute();
 
+  // organizationRole / organizationResource (Better Auth organization plugin
+  // with dynamicAccessControl enabled). Mirrors the schema produced by
+  // `getMigrations()` so tests can query custom roles like prod.
+  await db.schema
+    .createTable("organizationRole")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("organizationId", "text", (col) => col.notNull())
+    .addColumn("role", "text", (col) => col.notNull())
+    .addColumn("permission", "text", (col) => col.notNull())
+    .addColumn("createdAt", "text", (col) => col.notNull())
+    .addColumn("updatedAt", "text")
+    .execute();
+
+  await db.schema
+    .createTable("organizationResource")
+    .ifNotExists()
+    .addColumn("id", "text", (col) => col.primaryKey())
+    .addColumn("organizationId", "text", (col) => col.notNull())
+    .addColumn("resource", "text", (col) => col.notNull())
+    .addColumn("permissions", "text", (col) => col.notNull())
+    .addColumn("createdAt", "text", (col) => col.notNull())
+    .addColumn("updatedAt", "text")
+    .execute();
+
   // API Key table (Better Auth API key plugin)
   await db.schema
     .createTable("apiKey")
@@ -204,67 +227,11 @@ export async function createBetterAuthTables(
     .execute();
 }
 
-/**
- * Create test schema by running production migrations
- * This ensures tests use the same schema as production
- */
-export async function createTestSchema(db: Kysely<Database>): Promise<void> {
-  console.log("Running migrations for test schema...");
-
-  // First create Better Auth tables (they're not in Kysely migrations)
-  await createBetterAuthTables(db);
-
-  // Then run Kysely migrations
-  const migrator = new Migrator({
-    db,
-    provider: { getMigrations: () => Promise.resolve(migrations) },
-  });
-
-  const { error, results } = await migrator.migrateToLatest();
-
-  if (error) {
-    console.error("Migration failed:", error);
-    throw error;
-  }
-
-  const successCount =
-    results?.filter((r) => r.status === "Success").length ?? 0;
-  console.log(`✅ ${successCount} migrations applied`);
-
-  // Run plugin migrations (e.g., workflows) so plugin tables exist
-  // when createApp() triggers plugin startup hooks
-  const pluginMigrations = collectPluginMigrations();
-  for (const { migration } of pluginMigrations) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await migration.up(db as any);
-  }
-}
-
-/**
- * Seed common parent records required by FK constraints.
- * PostgreSQL enforces FK constraints, so tests that insert into
- * FK-constrained tables (e.g. connections) need parent records to exist first.
- */
-export async function seedCommonTestFixtures(
-  db: Kysely<Database>,
-): Promise<void> {
-  const now = new Date().toISOString();
-
-  // Create test users
-  for (const userId of ["user_1", "user_123", "user_test", "test_user"]) {
-    await sql`
-      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
-      VALUES (${userId}, ${userId + "@test.com"}, 0, ${"Test " + userId}, ${now}, ${now})
-      ON CONFLICT (id) DO NOTHING
-    `.execute(db);
-  }
-
-  // Create test organizations
-  for (const orgId of ["org_1", "org_123", "org_456", "org_test"]) {
-    await sql`
-      INSERT INTO "organization" (id, name, slug, "createdAt")
-      VALUES (${orgId}, ${orgId}, ${orgId}, ${now})
-      ON CONFLICT (id) DO NOTHING
-    `.execute(db);
-  }
-}
+// `createTestSchema` and `seedCommonTestFixtures` lived here for the PGlite
+// era — they hand-rolled Better Auth tables + ran migrations + seeded
+// users/orgs against an in-process WASM database. All app/storage tests
+// now use the real-Postgres helpers in `src/database/test-db-pg.ts`, where
+// equivalents (`resetTestPgDatabase` + `seedCommonTestPgFixtures`) live
+// alongside the connection. `createBetterAuthTables` above is kept because
+// `migrations/seeds/benchmark.ts` calls it — the benchmark's auth
+// configuration doesn't run Better Auth's own migrations.

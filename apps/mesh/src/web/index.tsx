@@ -18,7 +18,7 @@ import type { ReactNode } from "react";
 
 import "../../index.css";
 
-import { authClient } from "@/web/lib/auth-client";
+import { listOrganizationsCached } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 
 import { sourcePlugins } from "./plugins.ts";
@@ -61,6 +61,12 @@ const loginRoute = createRoute({
       code_challenge_method: z.string().optional(),
     }),
   ),
+});
+
+const cliAuthSuccessRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/cli/auth-success",
+  component: lazyRouteComponent(() => import("./routes/cli-auth-success.tsx")),
 });
 
 const resetPasswordRoute = createRoute({
@@ -113,32 +119,36 @@ const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
   beforeLoad: async () => {
-    // Fetch org list once — used for both slug validation and redirect
-    const { data: orgs } = await authClient.organization.list();
-
-    // If the list call failed, skip redirect logic to avoid clearing a
-    // valid cached slug due to a transient API failure.
-    if (!orgs) return;
-
-    // Fast path: validate cached slug against current membership before redirecting.
-    // If stale (org deleted or user removed), clear it to prevent a redirect loop.
+    // Fast path: redirect returning users immediately from the cached slug,
+    // WITHOUT awaiting the org-list network call. This is what keeps a cold
+    // load from blocking on a round-trip (the previous blank/white screen).
+    // The org layout validates membership via getFullOrganization, and a stale
+    // slug self-heals in OrgAccessGate (clears the slug + bounces back to "/").
     const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
     if (lastOrgSlug) {
-      const slugIsValid = orgs.some(
-        (o: NonNullable<typeof orgs>[number]) => o.slug === lastOrgSlug,
-      );
-      if (slugIsValid) {
-        throw redirect({
-          to: "/$org",
-          params: { org: lastOrgSlug },
-        });
-      }
-      // Stale — remove so future visits don't loop
-      localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+      throw redirect({
+        to: "/$org",
+        params: { org: lastOrgSlug },
+      });
     }
 
+    // No cached slug — fetch the list (cached) to pick a destination.
+    const { data: orgs } = await listOrganizationsCached();
+
+    // If the list call failed, skip redirect logic to avoid a misfire on a
+    // transient API failure.
+    if (!orgs) return;
+
+    // Filter out archived organizations — they are soft-deleted and invisible to the UI
+    type OrgWithMeta = (typeof orgs)[number] & {
+      metadata?: { archived?: boolean } | null;
+    };
+    const activeOrgs = (orgs as OrgWithMeta[]).filter(
+      (o) => !o.metadata?.archived,
+    );
+
     // Redirect to first available org (every user gets a default org on signup)
-    const firstOrg = orgs[0];
+    const firstOrg = activeOrgs[0];
     if (firstOrg) {
       throw redirect({
         to: "/$org",
@@ -156,8 +166,14 @@ const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/onboarding",
   beforeLoad: async () => {
-    const { data: orgs } = await authClient.organization.list();
-    if (orgs && orgs.length > 0) {
+    const { data: orgs } = await listOrganizationsCached();
+    type OrgWithMeta = NonNullable<typeof orgs>[number] & {
+      metadata?: { archived?: boolean } | null;
+    };
+    const activeOrgs = (orgs as OrgWithMeta[] | undefined)?.filter(
+      (o) => !o.metadata?.archived,
+    );
+    if (activeOrgs && activeOrgs.length > 0) {
       throw redirect({ to: "/" });
     }
   },
@@ -175,11 +191,23 @@ const orgLayout = createRoute({
 });
 
 // ============================================
-// AGENT SHELL LAYOUT (pathless — wraps agent/org-home routes with sidebar + 3-panel)
+// ORG SHELL LAYOUT (pathless — sidebar + Toolbar + ChatPrefsProvider for / and /$taskId)
+// ============================================
+
+const orgShellLayout = createRoute({
+  getParentRoute: () => orgLayout,
+  id: "org-shell",
+  component: lazyRouteComponent(
+    () => import("./layouts/org-shell-layout/index.tsx"),
+  ),
+});
+
+// ============================================
+// AGENT SHELL LAYOUT (pathless — per-task chrome under orgShellLayout)
 // ============================================
 
 const agentShellLayout = createRoute({
-  getParentRoute: () => orgLayout,
+  getParentRoute: () => orgShellLayout,
   id: "agent-shell",
   component: lazyRouteComponent(
     () => import("./layouts/agent-shell-layout/index.tsx"),
@@ -199,6 +227,11 @@ const unifiedChatSearchSchema = z.object({
   tasks: z.number().optional(),
   mainOpen: z.number().optional(),
   chat: z.number().optional(),
+  autosend: z.string().optional(),
+  /** Carried from the homepage composer so the new thread's first send
+   *  inherits the "Run locally" toggle state. ChatPrefsProvider seeds
+   *  runLocally from this on mount. */
+  runLocally: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({
@@ -208,18 +241,12 @@ const unifiedChatRoute = createRoute({
   component: () => null,
 });
 
-// Org index redirects to a fresh decopilot task
+// Org index renders the home landing page (single-panel + HomePage), no
+// agent shell.
 const orgIndexRoute = createRoute({
-  getParentRoute: () => agentShellLayout,
+  getParentRoute: () => orgShellLayout,
   path: "/",
-  beforeLoad: ({ params }) => {
-    const taskId = crypto.randomUUID();
-    throw redirect({
-      to: "/$org/$taskId",
-      params: { org: params.org, taskId },
-    });
-  },
-  component: () => null,
+  component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
 });
 
 // ============================================
@@ -342,11 +369,40 @@ const settingsAiProvidersRoute = createRoute({
   ),
 });
 
+const settingsSecretsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/secrets",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/secrets.tsx"),
+  ),
+});
+
+const settingsFilesRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/files",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/files.tsx"),
+  ),
+});
+
 const settingsMembersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/members",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/members.tsx"),
+  ),
+});
+
+const settingsRolesRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/roles",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/roles.tsx"),
+  ),
+  validateSearch: z.lazy(() =>
+    z.object({
+      role: z.string().optional(),
+    }),
   ),
 });
 
@@ -511,7 +567,10 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsFeaturesRoute,
   settingsBrandContextRoute,
   settingsAiProvidersRoute,
+  settingsSecretsRoute,
+  settingsFilesRoute,
   settingsMembersRoute,
+  settingsRolesRoute,
   settingsSsoRoute,
   settingsProfileRoute,
   settingsStoreRoute,
@@ -526,13 +585,17 @@ const unifiedChatWithChildren = unifiedChatRoute.addChildren([
 ]);
 
 const agentShellWithChildren = agentShellLayout.addChildren([
-  orgIndexRoute,
   unifiedChatWithChildren,
   orgPluginRoute,
 ]);
 
-const orgLayoutWithChildren = orgLayout.addChildren([
+const orgShellWithChildren = orgShellLayout.addChildren([
+  orgIndexRoute,
   agentShellWithChildren,
+]);
+
+const orgLayoutWithChildren = orgLayout.addChildren([
+  orgShellWithChildren,
   settingsWithChildren,
 ]);
 
@@ -545,6 +608,7 @@ const routeTree = rootRoute.addChildren([
   shellRouteTree,
   onboardingRoute,
   loginRoute,
+  cliAuthSuccessRoute,
   resetPasswordRoute,
   betterAuthRoutes,
   oauthCallbackRoute,
@@ -553,6 +617,11 @@ const routeTree = rootRoute.addChildren([
 
 const router = createRouter({
   routeTree,
+  // Show the splash (not a blank screen) while a route loader/beforeLoad is
+  // awaiting — e.g. the new-user org-list fetch. 200ms delay avoids a flash on
+  // instant (synchronous) redirects like the returning-user fast path.
+  defaultPendingComponent: SplashScreen,
+  defaultPendingMs: 200,
   defaultNotFoundComponent: () => (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-4 p-8">

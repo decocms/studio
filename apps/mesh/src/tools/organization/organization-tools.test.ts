@@ -108,8 +108,10 @@ const createMockBoundAuth = (
         headers: new Headers(),
       });
     }),
-    get: vi.fn(async () => {
-      return mockAuth.api.getFullOrganization();
+    get: vi.fn(async (organizationId?: string) => {
+      return mockAuth.api.getFullOrganization({
+        query: organizationId ? { organizationId } : undefined,
+      });
     }),
     list: vi.fn(async (userId) => {
       return mockAuth.api.listOrganizations({
@@ -191,9 +193,12 @@ const createMockContext = (
       virtualMcps: null as never,
       users: null as never,
       threads: null as never,
+      asyncResearchJobs: null as never,
       tags: null as never,
       virtualMcpPluginConfigs: null as never,
       aiProviderKeys: null as never,
+      secrets: null as never,
+      orgFileConfigs: null as never,
       oauthPkceStates: null as never,
       automations: null as never,
       orgSsoConfig: null as never,
@@ -323,18 +328,33 @@ describe("Organization Tools", () => {
   });
 
   describe("ORGANIZATION_GET", () => {
-    it("should get active organization", async () => {
+    it("should forward the path-resolved org id to Better Auth", async () => {
       const mockAuth = createMockAuth();
       const ctx = createMockContext(mockAuth);
 
       const result = await ORGANIZATION_GET.execute({}, ctx);
 
-      expect(mockAuth.api.getFullOrganization).toHaveBeenCalled();
+      // Must pass organizationId — falling back to session.activeOrganizationId
+      // leaks the wrong org across tabs.
+      expect(mockAuth.api.getFullOrganization).toHaveBeenCalledWith({
+        query: { organizationId: "org_123" },
+      });
       expect(result.id).toBe("org_123");
       expect(result.slug).toBe("test-org");
     });
 
-    it("should throw when no active organization", async () => {
+    it("should throw when ctx.organization is missing", async () => {
+      const mockAuth = createMockAuth();
+      const ctx = createMockContext(mockAuth);
+      ctx.organization = undefined;
+
+      await expect(ORGANIZATION_GET.execute({}, ctx)).rejects.toThrow(
+        "Organization ID required",
+      );
+      expect(mockAuth.api.getFullOrganization).not.toHaveBeenCalled();
+    });
+
+    it("should throw when Better Auth returns null", async () => {
       const mockAuth = createMockAuth();
       mockAuth.api.getFullOrganization.mockResolvedValue(null);
       const ctx = createMockContext(mockAuth);
@@ -346,7 +366,7 @@ describe("Organization Tools", () => {
   });
 
   describe("ORGANIZATION_UPDATE", () => {
-    it("should update organization", async () => {
+    it("should update organization name and description", async () => {
       const mockAuth = createMockAuth();
       const ctx = createMockContext(mockAuth);
 
@@ -354,7 +374,7 @@ describe("Organization Tools", () => {
         {
           id: "org_123",
           name: "Updated Name",
-          slug: "updated-slug",
+          description: "Updated description",
         },
         ctx,
       );
@@ -364,7 +384,7 @@ describe("Organization Tools", () => {
           organizationId: "org_123",
           data: expect.objectContaining({
             name: "Updated Name",
-            slug: "updated-slug",
+            metadata: { description: "Updated description" },
           }),
         },
         headers: expect.any(Headers),
@@ -372,10 +392,31 @@ describe("Organization Tools", () => {
 
       expect(result.slug).toBe("updated-org");
     });
+
+    it("should not propagate slug to updateOrganization (slug is immutable)", async () => {
+      const mockAuth = createMockAuth();
+      const ctx = createMockContext(mockAuth);
+
+      await ORGANIZATION_UPDATE.execute(
+        // Cast through unknown because slug is no longer in the input schema
+        // but a misbehaving caller could still pass it at runtime.
+        {
+          id: "org_123",
+          name: "Updated Name",
+          slug: "should-be-ignored",
+        } as unknown as { id: string; name: string },
+        ctx,
+      );
+
+      const call = mockAuth.api.updateOrganization.mock.calls[0]?.[0];
+      expect(call?.body?.data).toBeDefined();
+      expect(call?.body?.data?.slug).toBeUndefined();
+      expect(call?.body?.data?.name).toBe("Updated Name");
+    });
   });
 
   describe("ORGANIZATION_DELETE", () => {
-    it("should delete organization", async () => {
+    it("should soft-delete organization by archiving via metadata", async () => {
       const mockAuth = createMockAuth();
       const ctx = createMockContext(mockAuth);
 
@@ -386,10 +427,19 @@ describe("Organization Tools", () => {
         ctx,
       );
 
-      expect(mockAuth.api.deleteOrganization).toHaveBeenCalledWith({
-        body: { organizationId: "org_123" },
+      expect(mockAuth.api.updateOrganization).toHaveBeenCalledWith({
+        body: {
+          organizationId: "org_123",
+          data: {
+            metadata: expect.objectContaining({
+              archived: true,
+              archivedAt: expect.any(String),
+            }),
+          },
+        },
         headers: expect.any(Headers),
       });
+      expect(mockAuth.api.deleteOrganization).not.toHaveBeenCalled();
 
       expect(result.success).toBe(true);
       expect(result.id).toBe("org_123");

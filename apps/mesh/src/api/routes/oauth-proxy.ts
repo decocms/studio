@@ -23,8 +23,6 @@ type Variables = {
 
 type HonoEnv = { Variables: Variables };
 
-const app = new Hono<HonoEnv>();
-
 // ============================================================================
 // Constants
 // ============================================================================
@@ -43,14 +41,20 @@ const NO_METADATA_STATUSES = [404, 401, 406];
 // ============================================================================
 
 /**
- * Get connection URL from storage by connection ID
- * Does not require organization ID - connections are globally unique
+ * Get connection URL from storage by connection ID, optionally scoped to an
+ * organization. Connection IDs are globally unique, but callers that have an
+ * org slug in scope should pass `organizationId` so cross-org lookups return
+ * null instead of a connection from another org.
  */
 async function getConnectionUrl(
   connectionId: string,
   ctx: MeshContext,
+  organizationId?: string,
 ): Promise<string | null> {
-  const connection = await ctx.storage.connections.findById(connectionId);
+  const connection = await ctx.storage.connections.findById(
+    connectionId,
+    organizationId,
+  );
   return connection?.connection_url ?? null;
 }
 
@@ -75,7 +79,7 @@ async function checkOriginSupportsOAuth(
   headers: Record<string, string> = {},
 ): Promise<string | null> {
   try {
-    const response = await fetch(connectionUrl, {
+    const response = await fetchWithTimeout(connectionUrl, {
       method: "POST",
       headers: {
         ...headers,
@@ -131,7 +135,7 @@ async function checkHasOAuthMetadata(connectionUrl: string): Promise<boolean> {
       "/.well-known/oauth-authorization-server",
       connUrl.origin,
     );
-    const authServerRes = await fetch(authServerUrl.toString(), {
+    const authServerRes = await fetchWithTimeout(authServerUrl.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -168,11 +172,13 @@ export async function fetchProtectedResourceMetadata(
     resourcePath = resourcePath.slice(0, -1);
   }
 
-  // Try format 1 first (most common)
+  // Try format 1 first (most common). Each format fetch is timeout-bounded and
+  // retried for transient failures so a slow/hung upstream can't stall discovery
+  // (see fetchMetadataWithRetry).
   const format1Url = new URL(connectionUrl);
   format1Url.pathname = `${resourcePath}/.well-known/oauth-protected-resource`;
 
-  let response = await fetch(format1Url.toString(), {
+  let response = await fetchMetadataWithRetry(format1Url.toString(), {
     method: "GET",
     headers: { Accept: "application/json" },
   });
@@ -186,7 +192,7 @@ export async function fetchProtectedResourceMetadata(
   const format2Url = new URL(connectionUrl);
   format2Url.pathname = `/.well-known/oauth-protected-resource${resourcePath}`;
 
-  response = await fetch(format2Url.toString(), {
+  response = await fetchMetadataWithRetry(format2Url.toString(), {
     method: "GET",
     headers: { Accept: "application/json" },
   });
@@ -196,7 +202,7 @@ export async function fetchProtectedResourceMetadata(
   const format3Url = new URL(connectionUrl);
   format3Url.pathname = `/.well-known/oauth-protected-resource`;
 
-  response = await fetch(format3Url.toString(), {
+  response = await fetchMetadataWithRetry(format3Url.toString(), {
     method: "GET",
     headers: { Accept: "application/json" },
   });
@@ -210,12 +216,8 @@ export async function fetchProtectedResourceMetadata(
  * since many servers (like Apify) expose /.well-known/oauth-authorization-server at the root.
  */
 async function getOriginAuthServer(
-  connectionId: string,
-  ctx: MeshContext,
+  connectionUrl: string,
 ): Promise<string | null> {
-  const connectionUrl = await getConnectionUrl(connectionId, ctx);
-  if (!connectionUrl) return null;
-
   // Parse URL upfront - if invalid, bail early
   let origin: string;
   try {
@@ -275,6 +277,24 @@ export interface HandleAuthErrorOptions {
   connectionUrl: string;
   /** Headers to use when checking the origin server */
   headers: Record<string, string>;
+  /**
+   * Optional org slug. When set, the WWW-Authenticate `resource_metadata`
+   * URL is built under `/api/:orgSlug/mcp/...` instead of the legacy
+   * `/mcp/...`. Set this when the request was served via the new
+   * `/api/:org/mcp/...` mount so OAuth clients discover the correct
+   * metadata URL.
+   */
+  orgSlug?: string;
+}
+
+/**
+ * Build the URL prefix for OAuth-related URLs based on org slug.
+ * - With slug: `/api/${slug}` (new path shape)
+ * - Without slug: `` (legacy path shape — `/mcp/...` and `/oauth-proxy/...`
+ *   live at the root)
+ */
+function buildPathPrefix(orgSlug: string | undefined): string {
+  return orgSlug ? `/api/${orgSlug}` : "";
 }
 
 /**
@@ -291,6 +311,7 @@ export async function handleAuthError({
   connectionId,
   connectionUrl,
   headers,
+  orgSlug,
 }: HandleAuthErrorOptions): Promise<Response | null> {
   const message = error.message?.toLowerCase() ?? "";
   const isAuthError =
@@ -313,10 +334,11 @@ export async function handleAuthError({
   );
 
   if (originSupportsOAuth) {
+    const prefix = buildPathPrefix(orgSlug);
     return new Response(null, {
       status: 401,
       headers: {
-        "WWW-Authenticate": `Bearer realm="mcp",resource_metadata="${reqUrl.origin}/mcp/${connectionId}/.well-known/oauth-protected-resource"`,
+        "WWW-Authenticate": `Bearer realm="mcp",resource_metadata="${reqUrl.origin}${prefix}/mcp/${connectionId}/.well-known/oauth-protected-resource"`,
       },
     });
   }
@@ -353,8 +375,13 @@ const fixProtocol = (url: URL) => {
  * to our OAuth proxy. This enables OAuth flows for servers like Apify that use WWW-Authenticate
  * but don't expose .well-known/oauth-protected-resource.
  */
-const protectedResourceMetadataHandler = async (c: {
-  req: { param: (key: string) => string; raw: Request; url: string };
+export const protectedResourceMetadataHandler = async (c: {
+  req: {
+    param: ((key: "connectionId") => string) &
+      ((key: "org") => string | undefined);
+    raw: Request;
+    url: string;
+  };
   get: (key: "meshContext") => MeshContext | undefined;
   set: (key: "meshContext", value: MeshContext) => void;
   json: (data: unknown, status?: number) => Response;
@@ -362,13 +389,66 @@ const protectedResourceMetadataHandler = async (c: {
   const connectionId = c.req.param("connectionId");
   const ctx = await ensureContext(c);
 
-  const connectionUrl = await getConnectionUrl(connectionId, ctx);
+  const requestUrl = fixProtocol(new URL(c.req.url));
+  // Org slug sources (in priority order):
+  // 1. `c.req.param("org")` — present on the top-level well-known prefix
+  //    route `/.well-known/oauth-protected-resource/api/:org/mcp/:id` and
+  //    on the `/api/:org`-mounted variant. The path slug is the source of
+  //    truth: the URL literally names which org's connection the SDK is
+  //    asking metadata for. The path-mounted variant lives outside the
+  //    sub-app so `resolveOrgFromPath` never runs there — without honoring
+  //    the path param first, `ctx.organization` falls back to the session's
+  //    `activeOrganizationId`, and multi-org users hitting another org's URL
+  //    silently lookup against their active org and 404.
+  // 2. `ctx.organization?.slug` — set by `resolveOrgFromPath` for routes
+  //    inside the `/api/:org` sub-app, or by the meshContext factory from
+  //    the session's active org. Used only when the path doesn't carry a
+  //    slug (legacy `/mcp/:id/.well-known/...` mount).
+  // 3. undefined — legacy routes have no slug; the prefix is empty and
+  //    we issue legacy-shape metadata URLs.
+  const orgSlug = c.req.param("org") ?? ctx.organization?.slug;
+
+  // When :org is in scope, the connection MUST belong to that org. Resolve
+  // the slug to an org id so the connection lookup filters on it; otherwise
+  // we'd hand back metadata claiming the connection is served at a path it
+  // doesn't actually resolve from. `resolveOrgFromPath` already cached the id
+  // for the sub-app mount; the top-level well-known prefix route resolves
+  // the slug here. Unknown slug or cross-org connection → 404 (we don't
+  // distinguish, to avoid leaking which slugs exist).
+  let scopedOrgId: string | undefined;
+  if (orgSlug) {
+    if (ctx.organization?.id && ctx.organization.slug === orgSlug) {
+      scopedOrgId = ctx.organization.id;
+    } else {
+      const org = await ctx.db
+        .selectFrom("organization")
+        .select("id")
+        .where("slug", "=", orgSlug)
+        .executeTakeFirst();
+      if (!org) {
+        return c.json({ error: "Connection not found" }, 404);
+      }
+      scopedOrgId = org.id;
+    }
+  }
+
+  const connectionUrl = await getConnectionUrl(connectionId, ctx, scopedOrgId);
   if (!connectionUrl) {
     return c.json({ error: "Connection not found" }, 404);
   }
 
-  const requestUrl = fixProtocol(new URL(c.req.url));
-  const proxyResourceUrl = `${requestUrl.origin}/mcp/${connectionId}`;
+  const prefix = buildPathPrefix(orgSlug);
+  const proxyResourceUrl = `${requestUrl.origin}${prefix}/mcp/${connectionId}`;
+  // Auth-server URL (the value advertised in `authorization_servers`) stays on
+  // the legacy `/oauth-proxy/:connectionId` path regardless of the resource
+  // path family. The well-known auth-server metadata route
+  // (`createWellKnownAuthServerRoutes`) only exists at the legacy URL, and
+  // moving it to `/api/:org/...` would land the SDK on Better Auth's catch-all
+  // metadata handler (which returns Better Auth's own MCP gateway endpoints)
+  // and break DCR with `invalid_client`. The OAuth endpoint URLs *inside*
+  // that metadata document (authorize/token/register) are emitted under the
+  // org-scoped mount by `authServerMetadataHandler` so they benefit from
+  // `resolveOrgFromPath` membership enforcement.
   const proxyAuthServer = `${requestUrl.origin}/oauth-proxy/${connectionId}`;
 
   try {
@@ -474,15 +554,50 @@ const protectedResourceMetadataHandler = async (c: {
   }
 };
 
-// Route 1: /.well-known/oauth-protected-resource/mcp/:connectionId
-app.get("/.well-known/oauth-protected-resource/mcp/:connectionId", (c) =>
-  protectedResourceMetadataHandler(c),
-);
+/**
+ * Legacy `.well-known/oauth-protected-resource` routes for the pre-org-scoped
+ * server URL shape (`/mcp/:id`). Mounted at the URL root with a deprecation
+ * log; will be removed once the deprecation window closes.
+ *
+ * Two URL shapes are served (both probed by MCP clients in the wild):
+ *  1. `/.well-known/oauth-protected-resource/mcp/:connectionId` — RFC 9728
+ *     Format 2 (well-known prefix), what `@modelcontextprotocol/sdk` probes.
+ *  2. `/mcp/:connectionId/.well-known/oauth-protected-resource` — RFC 9728
+ *     Format 1 (resource-relative), what the proxy's WWW-Authenticate
+ *     `resource_metadata` header points to.
+ */
+export const createLegacyWellKnownProtectedResourceRoutes = () => {
+  const app = new Hono<HonoEnv>();
+  app.get("/.well-known/oauth-protected-resource/mcp/:connectionId", (c) =>
+    protectedResourceMetadataHandler(c),
+  );
+  app.get("/mcp/:connectionId/.well-known/oauth-protected-resource", (c) =>
+    protectedResourceMetadataHandler(c),
+  );
+  return app;
+};
 
-// Route 2: /mcp/:connectionId/.well-known/oauth-protected-resource
-app.get("/mcp/:connectionId/.well-known/oauth-protected-resource", (c) =>
-  protectedResourceMetadataHandler(c),
-);
+/**
+ * Org-scoped resource-relative `.well-known/oauth-protected-resource` route.
+ * Mounted inside the `/api/:org` sub-app; expands to
+ * `/api/:org/mcp/:connectionId/.well-known/oauth-protected-resource`. This is
+ * the URL the proxy's WWW-Authenticate `resource_metadata` points to under
+ * the new path family — `resolveOrgFromPath` runs first, so the handler picks
+ * up `ctx.organization?.slug` directly.
+ *
+ * The well-known *prefix* shape for org-scoped server URLs
+ * (`/.well-known/oauth-protected-resource/api/:org/mcp/:connectionId`) is
+ * registered separately at the URL root in `app.ts` — RFC 9728 Format 2
+ * anchors the well-known prefix at the origin, so it must live outside any
+ * `/api/:org` sub-app.
+ */
+export const createOrgScopedWellKnownProtectedResourceRoutes = () => {
+  const app = new Hono<HonoEnv>();
+  app.get("/mcp/:connectionId/.well-known/oauth-protected-resource", (c) =>
+    protectedResourceMetadataHandler(c),
+  );
+  return app;
+};
 
 // ============================================================================
 // Authorization Server Metadata Proxy
@@ -507,6 +622,68 @@ app.get("/mcp/:connectionId/.well-known/oauth-protected-resource", (c) =>
  *
  * Returns the response (even if error) so caller can handle/pass-through error status
  */
+/**
+ * Per-attempt timeout for third-party OAuth discovery fetches. A slow upstream
+ * (observed: a ~15s hang on a cold CDN edge for OpenRouter's protected-resource
+ * endpoint) must not stall discovery for the full socket lifetime. 4s is ample
+ * headroom for a healthy metadata endpoint (real ones answer well under 1s)
+ * while aborting a true hang fast enough that 3 attempts stay comfortably under
+ * the OAuth-proxy E2E suite's 15s budget.
+ */
+const METADATA_FETCH_TIMEOUT_MS = 4000;
+
+/**
+ * GET/POST a third-party endpoint with a bounded per-attempt timeout. Discovery
+ * endpoints occasionally hang; without a deadline a single slow upstream stalls
+ * OAuth discovery indefinitely (and tipped the protected-resource E2E test past
+ * its 15s timeout). Returns the fetch Response; aborts (and throws) after
+ * `timeoutMs`. Callers that swallow errors to a fallback (null/false) pass no
+ * retry; callers that want transient-failure resilience use
+ * `fetchMetadataWithRetry`.
+ */
+function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = METADATA_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+}
+
+/**
+ * GET with a bounded per-attempt timeout and bounded retry for transient
+ * failures. The metadata endpoints are third-party; a momentary 5xx, network
+ * blip, or slow/hung response otherwise surfaces to the client as a hard 502 or
+ * a stalled request (and made the OAuth-proxy E2E suite flaky against live
+ * providers like Supabase and OpenRouter). Aborts each attempt after
+ * `timeoutMs`, retries network errors / timeouts / 5xx responses with short
+ * backoff; 4xx (incl. 404/401, which drive well-known format fallback) is
+ * returned as-is so the caller's discovery logic is unchanged.
+ */
+async function fetchMetadataWithRetry(
+  url: string,
+  init: RequestInit,
+  {
+    attempts = 3,
+    timeoutMs = METADATA_FETCH_TIMEOUT_MS,
+  }: { attempts?: number; timeoutMs?: number } = {},
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    const isLast = i === attempts - 1;
+    try {
+      const res = await fetchWithTimeout(url, init, timeoutMs);
+      if (res.status < 500 || isLast) return res;
+    } catch (err) {
+      lastErr = err;
+      if (isLast) throw err;
+    }
+    // Backoff before the next attempt: 150ms, then 300ms.
+    await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+  }
+  // Unreachable (the loop returns or throws on the last attempt).
+  throw lastErr ?? new Error("fetchMetadataWithRetry: retries exhausted");
+}
+
 export async function fetchAuthorizationServerMetadata(
   authServerUrl: string,
 ): Promise<Response> {
@@ -553,7 +730,7 @@ export async function fetchAuthorizationServerMetadata(
   // Try each URL in order
   let response: Response | null = null;
   for (const tryUrl of urlsToTry) {
-    response = await fetch(tryUrl.toString(), {
+    response = await fetchMetadataWithRetry(tryUrl.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -576,62 +753,122 @@ export async function fetchAuthorizationServerMetadata(
  * Proxy authorization server metadata to avoid CORS issues
  * Rewrites OAuth endpoint URLs to go through our proxy
  */
-app.get(
-  "/.well-known/oauth-authorization-server/oauth-proxy/:connectionId",
-  async (c) => {
-    const connectionId = c.req.param("connectionId");
-    const ctx = await ensureContext(c);
+const authServerMetadataHandler = async (c: {
+  req: { param: (key: string) => string; raw: Request; url: string };
+  get: (key: "meshContext") => MeshContext | undefined;
+  set: (key: "meshContext", value: MeshContext) => void;
+  json: (data: unknown, status?: number) => Response;
+}) => {
+  const connectionId = c.req.param("connectionId");
+  const ctx = await ensureContext(c);
 
-    const originAuthServer = await getOriginAuthServer(connectionId, ctx);
-    if (!originAuthServer) {
-      return c.json({ error: "Connection not found or no auth server" }, 404);
-    }
+  // Fetch the connection (unscoped — connection IDs are globally unique) so we
+  // can derive both the origin auth server and the owning org slug for
+  // org-scoped endpoint URLs.
+  const connection = await ctx.storage.connections.findById(connectionId);
+  if (!connection?.connection_url) {
+    return c.json({ error: "Connection not found or no auth server" }, 404);
+  }
 
-    try {
-      // Fetch auth server metadata, trying all well-known URL formats
-      const response = await fetchAuthorizationServerMetadata(originAuthServer);
+  const originAuthServer = await getOriginAuthServer(connection.connection_url);
+  if (!originAuthServer) {
+    return c.json({ error: "Connection not found or no auth server" }, 404);
+  }
 
-      if (!response.ok) {
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
+  // Look up the connection's owning org slug. The endpoints inside this
+  // metadata document route through the canonical `/api/:org/oauth-proxy/...`
+  // mount — `resolveOrgFromPath` runs there and enforces cross-org access via
+  // membership. The legacy `/oauth-proxy/:connectionId/*` mount can't tell the
+  // path-resolved org apart from the session's `activeOrganizationId` and
+  // silently 404s multi-org users on DCR (`POST /register`).
+  const org = await ctx.db
+    .selectFrom("organization")
+    .select("slug")
+    .where("id", "=", connection.organization_id)
+    .executeTakeFirst();
 
-      // Parse and rewrite URLs to point to our proxy
-      const data = (await response.json()) as Record<string, unknown>;
-      const requestUrl = fixProtocol(new URL(c.req.url));
-      const proxyBase = `${requestUrl.origin}/oauth-proxy/${connectionId}`;
+  try {
+    // Fetch auth server metadata, trying all well-known URL formats
+    const response = await fetchAuthorizationServerMetadata(originAuthServer);
 
-      // Rewrite OAuth endpoint URLs to go through our proxy
-      const rewrittenData = {
-        ...data,
-        authorization_endpoint: data.authorization_endpoint
-          ? `${proxyBase}/authorize`
-          : undefined,
-        token_endpoint: data.token_endpoint ? `${proxyBase}/token` : undefined,
-        registration_endpoint: data.registration_endpoint
-          ? `${proxyBase}/register`
-          : undefined,
-      };
-
-      return new Response(JSON.stringify(rewrittenData), {
-        status: 200,
+    if (!response.ok) {
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
         headers: { "Content-Type": "application/json" },
       });
-    } catch (error) {
-      const err = error as Error;
-      console.error("[oauth-proxy] Failed to proxy auth server metadata:", err);
-      return c.json(
-        { error: "Failed to proxy auth server metadata", message: err.message },
-        502,
-      );
     }
-  },
-);
+
+    // Parse and rewrite URLs to point to our proxy
+    const data = (await response.json()) as Record<string, unknown>;
+    const requestUrl = fixProtocol(new URL(c.req.url));
+    // The AS metadata route itself stays at the legacy global path
+    // (`/.well-known/oauth-authorization-server/oauth-proxy/:connectionId`)
+    // because the SDK derives it from the `authorization_servers` value in the
+    // protected-resource metadata, which we keep legacy for cache stability
+    // and to avoid landing on Better Auth's catch-all metadata handler.
+    // The endpoint URLs *inside* this metadata, however, move to the canonical
+    // org-scoped mount so DCR/token/authorize benefit from `resolveOrgFromPath`
+    // membership enforcement. Connections without a resolvable org slug
+    // (orphaned data) fall back to the legacy proxy path.
+    const proxyBase = org?.slug
+      ? `${requestUrl.origin}/api/${org.slug}/oauth-proxy/${connectionId}`
+      : `${requestUrl.origin}/oauth-proxy/${connectionId}`;
+
+    // Rewrite OAuth endpoint URLs to go through our proxy
+    const rewrittenData = {
+      ...data,
+      authorization_endpoint: data.authorization_endpoint
+        ? `${proxyBase}/authorize`
+        : undefined,
+      token_endpoint: data.token_endpoint ? `${proxyBase}/token` : undefined,
+      registration_endpoint: data.registration_endpoint
+        ? `${proxyBase}/register`
+        : undefined,
+    };
+
+    return new Response(JSON.stringify(rewrittenData), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    const err = error as Error;
+    console.error("[oauth-proxy] Failed to proxy auth server metadata:", err);
+    return c.json(
+      { error: "Failed to proxy auth server metadata", message: err.message },
+      502,
+    );
+  }
+};
+
+/**
+ * Factory for the auth-server metadata route. This stays at the legacy
+ * RFC-mandated path `/.well-known/oauth-authorization-server/oauth-proxy/:connectionId`
+ * — third-party OAuth providers may have this URL registered as a
+ * redirect_uri base, so we keep it global indefinitely.
+ */
+export const createWellKnownAuthServerRoutes = () => {
+  const app = new Hono<HonoEnv>();
+  app.get(
+    "/.well-known/oauth-authorization-server/oauth-proxy/:connectionId",
+    authServerMetadataHandler,
+  );
+  return app;
+};
 
 // Note: The /oauth-proxy/:connectionId/:endpoint route is defined directly in app.ts
 // because app.route() doesn't properly register routes with dynamic segments at root level
 
+/**
+ * Default export: a Hono app that mounts every route in this file.
+ *
+ * Kept for backward compatibility with `oauth-proxy.test.ts` (which mounts
+ * the whole module under `/`) and as an escape hatch for any other caller
+ * that wants the full surface in one go. Production code (`app.ts`) uses
+ * the individual factories so it can apply `logDeprecatedRoute` to the
+ * legacy mounts and dual-mount under `/api/:org/...`.
+ */
+const app = new Hono<HonoEnv>();
+app.route("/", createLegacyWellKnownProtectedResourceRoutes());
+app.route("/", createWellKnownAuthServerRoutes());
 export default app;

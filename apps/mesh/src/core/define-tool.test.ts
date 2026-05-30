@@ -37,6 +37,7 @@ const createMockContext = (): MeshContext => ({
       upsert: vi.fn(),
     } as never,
     threads: null as never,
+    asyncResearchJobs: null as never,
     monitoring: {
       log: vi.fn().mockResolvedValue(undefined),
       logBatch: vi.fn().mockResolvedValue(undefined),
@@ -52,6 +53,8 @@ const createMockContext = (): MeshContext => ({
     tags: null as never,
     virtualMcpPluginConfigs: null as never,
     aiProviderKeys: null as never,
+    secrets: null as never,
+    orgFileConfigs: null as never,
     oauthPkceStates: null as never,
     automations: null as never,
     orgSsoConfig: null as never,

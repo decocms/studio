@@ -1,15 +1,20 @@
 import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { AlertCircle, AlertTriangle, X } from "@untitledui/icons";
-import { usePreferences } from "@/web/hooks/use-preferences.ts";
-import { useChatStream, useChatTask } from "../context";
+import { AlertCircle, AlertTriangle, Copy01 } from "@untitledui/icons";
+import { toast } from "sonner";
+import {
+  readToolApprovalLevel,
+  usePreferences,
+  type ToolApprovalLevel,
+} from "@/web/hooks/use-preferences.ts";
+import { useChatPrefs, useChatStream, useChatTask } from "../context";
+import type { RequestOptions } from "../store/thread-connection";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
 import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
-import {
-  CreditsExhaustedBanner,
-  isCreditError,
-} from "../credits-exhausted-banner";
+import { TodosHighlight } from "./todos";
+import { CollapsibleHighlight } from "./collapsible-highlight";
+import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
+import { useHighlightFlags } from "./use-highlight-count";
 import type { UserAskToolPart } from "../types";
 
 // ============================================================================
@@ -23,6 +28,53 @@ const WARNING_DESCRIPTIONS: Record<string, string> = {
   "tool-calls":
     "Response paused after tool execution to prevent infinite loops and save costs. Click continue to keep working.",
 };
+
+// Raw error.message strings can be anything: a clean string, an HTML page
+// from an upstream proxy (Cloudflare 5xx), a JSON blob, a network failure.
+// Classify to pick a human summary + recovery hint; preserve the original
+// payload so devs can still inspect it under "Show technical details".
+function parseErrorMessage(message: string): {
+  summary: string;
+  rawDetails: string | null;
+} {
+  const trimmed = message.trim();
+  const looksLikeHtml =
+    trimmed.startsWith("<") && /<[a-z][\s\S]*>/i.test(trimmed);
+  const isCloudflare =
+    /cloudflare|cf-[a-z-]+|error[\s_-]?code[\s_-]?5\d\d/i.test(trimmed);
+  const isNetwork = /failed to fetch|networkerror|load failed|offline/i.test(
+    trimmed,
+  );
+  const isTimeout = /timeout|timed out|aborted|deadline/i.test(trimmed);
+  const isTooLong = trimmed.length > 240;
+
+  if (isCloudflare || (looksLikeHtml && isTooLong)) {
+    return {
+      summary:
+        "Our servers are having a moment. Try sending again in a few seconds.",
+      rawDetails: message,
+    };
+  }
+  if (isNetwork) {
+    return {
+      summary: "Lost connection. Check your network and try again.",
+      rawDetails: message,
+    };
+  }
+  if (isTimeout) {
+    return {
+      summary: "That took longer than expected. Try again.",
+      rawDetails: message,
+    };
+  }
+  if (looksLikeHtml || isTooLong) {
+    return {
+      summary: "Something unexpected came back from the server. Try again.",
+      rawDetails: message,
+    };
+  }
+  return { summary: message, rawDetails: null };
+}
 
 type StatusHighlightProps =
   | {
@@ -42,80 +94,90 @@ function StatusHighlight(props: StatusHighlightProps) {
   const { variant, onDismiss } = props;
   const isError = variant === "error";
 
-  const title = isError ? "Error occurred" : "Response incomplete";
-  const description = isError
+  const label = isError ? "Error occurred" : "Response incomplete";
+  const Icon = isError ? AlertCircle : AlertTriangle;
+
+  const rawMessage = isError
     ? props.error.message
     : (WARNING_DESCRIPTIONS[props.finishReason] ??
       `Response stopped unexpectedly: ${props.finishReason}`);
 
-  const variantStyles = isError
-    ? "border-destructive/30 bg-destructive/5"
-    : "border-amber-500/30 bg-amber-500/5";
-  const iconStyles = isError
-    ? "text-destructive"
-    : "text-amber-600 dark:text-amber-500";
-  const Icon = isError ? AlertCircle : AlertTriangle;
+  const { summary, rawDetails } = isError
+    ? parseErrorMessage(rawMessage)
+    : { summary: rawMessage, rawDetails: null };
 
   return (
-    <div className="px-0.5">
-      <div
-        className={cn(
-          "flex items-start gap-2 px-3 py-2.5 rounded-lg border border-dashed text-sm w-full mb-2 shadow",
-          variantStyles,
-        )}
-      >
-        <div className={cn("mt-0.5 shrink-0", iconStyles)}>
-          <Icon size={16} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className={cn("text-xs mb-1 font-medium", iconStyles)}>
-            {title}
+    <CollapsibleHighlight
+      icon={<Icon size={14} />}
+      label={label}
+      title={summary}
+      defaultExpanded={true}
+      variant={variant}
+      onClose={onDismiss}
+      footerRight={
+        isError ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={props.onFixInChat}
+            className="h-7 text-xs"
+          >
+            Fix in chat
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={props.onContinue}
+            className="h-7 text-xs"
+          >
+            Continue
+          </Button>
+        )
+      }
+    >
+      {rawDetails ? (
+        <details className="group mx-4">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <svg
+              aria-hidden="true"
+              className="size-3 transition-transform group-open:rotate-90"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m4.5 3 3 3-3 3" />
+            </svg>
+            <span className="group-open:hidden">Show technical details</span>
+            <span className="hidden group-open:inline">
+              Hide technical details
+            </span>
+          </summary>
+          <div className="relative mt-2">
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(rawDetails)
+                  .then(() => toast.success("Copied to clipboard"))
+                  .catch(() => toast.error("Could not copy"));
+              }}
+              aria-label="Copy error details"
+              title="Copy"
+              className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-md bg-background/80 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
+            >
+              <Copy01 className="size-3.5" />
+            </button>
+            <pre className="max-h-40 overflow-auto rounded-md border border-border/60 bg-background px-3 py-2 pr-8 font-mono text-xs text-foreground/80 whitespace-pre-wrap break-all">
+              {rawDetails}
+            </pre>
           </div>
-          <div className="text-xs line-clamp-2 text-muted-foreground mb-2">
-            {description}
-          </div>
-          <div className="flex gap-2">
-            {isError ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={props.onFixInChat}
-                  className="h-7 text-xs"
-                >
-                  Fix in chat
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled
-                  className="h-7 text-xs"
-                >
-                  Report
-                </Button>
-              </>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={props.onContinue}
-                className="h-7 text-xs"
-              >
-                Continue
-              </Button>
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          title="Dismiss"
-        >
-          <X size={14} />
-        </button>
-      </div>
-    </div>
+        </details>
+      ) : null}
+    </CollapsibleHighlight>
   );
 }
 
@@ -131,45 +193,48 @@ export function ChatHighlight() {
     clearFinishReason,
     messages,
     isStreaming,
-    isWaitingForApprovals,
-    addToolOutput,
-    addToolApprovalResponse,
+    submit,
     sendMessage,
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
+  const { chatMode, simpleModeTier } = useChatPrefs();
+
+  // Build a fresh RequestOptions at call time so tier/mode reflect the
+  // user's current selection. `toolApprovalLevel` is passed in explicitly:
+  // the approval dropdown flips it to "auto" and triggers Accept-All in
+  // the same handler, so reading React state here would see the stale
+  // pre-change value.
+  const buildRequestOptions = (
+    toolApprovalLevel: ToolApprovalLevel,
+  ): RequestOptions => ({
+    tier: simpleModeTier,
+    mode: chatMode,
+    toolApprovalLevel,
+    agent: virtualMcpId ? { id: virtualMcpId } : undefined,
+  });
+
+  const currentApprovalLevel: ToolApprovalLevel =
+    preferences.toolApprovalLevel ?? readToolApprovalLevel();
 
   const lastMessage = messages.at(-1);
+  const assistantParts =
+    lastMessage?.role === "assistant" ? lastMessage.parts : [];
 
-  const userAskParts =
-    lastMessage?.role === "assistant"
-      ? lastMessage.parts.filter((part) => part.type === "tool-user_ask")
-      : null;
-
-  const isWaitingForUserInput = userAskParts?.filter(
-    (p) => p.state !== "output-available",
-  )?.length;
-
-  // Collect pending plan proposals from the last assistant message
-  const pendingPlans =
-    lastMessage?.role === "assistant"
-      ? extractPendingPlans(lastMessage.parts)
-      : [];
-
-  // Collect pending approval parts from the last assistant message
-  const pendingApprovals =
-    lastMessage?.role === "assistant"
-      ? extractPendingApprovals(
-          lastMessage.parts as Array<{
-            type: string;
-            state?: string;
-            approval?: { id: string };
-            toolCallId?: string;
-            toolName?: string;
-            input?: unknown;
-          }>,
-        )
-      : [];
+  const userAskParts = assistantParts.filter(
+    (part) => part.type === "tool-user_ask",
+  );
+  const pendingPlans = extractPendingPlans(assistantParts);
+  const pendingApprovals = extractPendingApprovals(
+    assistantParts as Array<{
+      type: string;
+      state?: string;
+      approval?: { id: string };
+      toolCallId?: string;
+      toolName?: string;
+      input?: unknown;
+    }>,
+  );
 
   const handleFixInChat = () => {
     if (error) {
@@ -196,11 +261,14 @@ export function ChatHighlight() {
   };
 
   const handleUserAskSubmit = (part: UserAskToolPart, response: string) => {
-    addToolOutput({
-      tool: "user_ask",
-      toolCallId: part.toolCallId,
-      output: { response },
-    });
+    void submit(
+      {
+        kind: "toolOutput",
+        toolCallId: part.toolCallId,
+        output: { response },
+      },
+      buildRequestOptions(currentApprovalLevel),
+    );
   };
 
   const handlePlanApprove = (planText: string) => {
@@ -224,89 +292,82 @@ export function ChatHighlight() {
   const handleApprovalRespond = (
     approvalId: string,
     approved: boolean,
-    reason?: string,
+    reason: string | undefined,
+    toolApprovalLevel: ToolApprovalLevel,
   ) => {
-    addToolApprovalResponse({
-      id: approvalId,
-      approved,
-      ...(reason ? { reason } : {}),
-    });
+    void submit(
+      {
+        kind: "approval",
+        approvalId,
+        approved,
+        ...(reason ? { reason } : {}),
+      },
+      buildRequestOptions(toolApprovalLevel),
+    );
   };
 
-  // Priority: user_ask > propose_plan > approval > error > warning
-  if (isWaitingForUserInput) {
-    return (
-      <div className="absolute bottom-full left-0 right-0">
-        <UserAskQuestionHighlight
-          userAskParts={userAskParts}
-          isStreaming={isStreaming}
-          onSubmit={handleUserAskSubmit}
-        />
-      </div>
-    );
+  // Each banner condition is evaluated independently; all that match
+  // render. Stack order is severity-descending — the last child sits
+  // closest to the chat input. Credit-exhausted errors are a modal,
+  // handled by an early return outside the stack.
+
+  const flags = useHighlightFlags();
+
+  if (flags.isCreditExhausted) {
+    return <CreditsExhaustedBanner onDismiss={clearError} />;
   }
 
-  if (pendingPlans.length > 0) {
-    return (
-      <div className="absolute bottom-full left-0 right-0">
+  const { showError, showWarning, hasApprovals } = flags;
+  const userAskKey = userAskParts.map((p) => p.toolCallId).join("|");
+  const planKey = pendingPlans[0]?.toolCallId ?? "";
+  const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
+
+  return (
+    <div className="absolute bottom-full left-0 right-0">
+      <TodosHighlight />
+      {showError && (
+        <StatusHighlight
+          variant="error"
+          error={error as Error}
+          onDismiss={clearError}
+          onFixInChat={handleFixInChat}
+        />
+      )}
+      {showWarning && (
+        <StatusHighlight
+          variant="warning"
+          finishReason={finishReason as string}
+          onDismiss={clearFinishReason}
+          onContinue={handleContinue}
+        />
+      )}
+      {hasApprovals && (
+        <ApprovalHighlight
+          key={approvalKey}
+          approvals={pendingApprovals}
+          isStreaming={isStreaming}
+          onRespond={handleApprovalRespond}
+        />
+      )}
+      {flags.hasPlans && (
         <ProposePlanHighlight
+          key={planKey}
           plans={pendingPlans}
           isStreaming={isStreaming}
           onApprove={handlePlanApprove}
           onDismiss={handlePlanDismiss}
         />
-      </div>
-    );
-  }
-
-  if (pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals)) {
-    return (
-      <div className="absolute bottom-full left-0 right-0">
-        <ApprovalHighlight
-          approvals={pendingApprovals}
+      )}
+      {flags.isWaitingForUserInput && (
+        <UserAskQuestionHighlight
+          key={userAskKey}
+          userAskParts={userAskParts}
           isStreaming={isStreaming}
-          onRespond={handleApprovalRespond}
+          onSubmit={handleUserAskSubmit}
         />
-      </div>
-    );
-  }
-
-  if (!isStreaming && error) {
-    // Credit/quota errors get a dedicated modal with inline top-up
-    if (isCreditError(error)) {
-      return <CreditsExhaustedBanner onDismiss={clearError} />;
-    }
-    return (
-      <div className="absolute bottom-full left-0 right-0 bg-background">
-        <StatusHighlight
-          variant="error"
-          error={error}
-          onDismiss={clearError}
-          onFixInChat={handleFixInChat}
-        />
-      </div>
-    );
-  }
-
-  if (
-    !isStreaming &&
-    finishReason &&
-    finishReason !== "stop" &&
-    !isWaitingForApprovals
-  ) {
-    return (
-      <div className="absolute bottom-full left-0 right-0 bg-background">
-        <StatusHighlight
-          variant="warning"
-          finishReason={finishReason}
-          onDismiss={clearFinishReason}
-          onContinue={handleContinue}
-        />
-      </div>
-    );
-  }
-
-  return null;
+      )}
+    </div>
+  );
 }
 
 ChatHighlight.Error = function ErrorHighlight(props: {

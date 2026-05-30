@@ -123,7 +123,19 @@ kubectl apply -f examples/secrets-example.yaml -n deco-mcp-mesh
 
 The Secrets file contains:
 - **Main Secret** (`deco-mcp-mesh-secrets`): Contains `BETTER_AUTH_SECRET` and `DATABASE_URL`
-- **Auth Config Secret** (`deco-mcp-mesh-auth-secrets`): Contains OAuth client IDs/secrets and API keys
+- **Auth Config Secret** (`deco-mcp-mesh-auth-secrets`): Contains OAuth client IDs/secrets, API keys, and deployment-wide SSO env vars (`AUTH_SSO_DOMAIN`, `AUTH_SSO_MS_*`, `AUTH_SSO_GOOGLE_*`)
+
+For deployment-wide enforced SSO (single IdP for the whole instance), pass the
+SSO envs through the auth-config Secret. See
+[Authentication → Deployment-wide SSO](/deco-studio/self-hosting/authentication)
+for the full env reference.
+
+```bash
+helm install deco-mcp-mesh . -n deco-mcp-mesh --create-namespace \
+  --set secret.AUTH_SSO_DOMAIN="acme.com" \
+  --set secret.AUTH_SSO_GOOGLE_CLIENT_ID="<client-id>" \
+  --set secret.AUTH_SSO_GOOGLE_CLIENT_SECRET="<client-secret>"
+```
 
 #### Step 2: Configure values.yaml to Use Secrets
 
@@ -213,7 +225,7 @@ service:
 
 database:
   engine: postgresql
-  url: "postgresql://mesh_user:mesh_password@mesh.example.com:5432/mesh_db"  
+  url: "postgresql://mesh_user:mesh_password@postgres.example.com:5432/mesh_db"  
   caCert: |
     -----BEGIN CERTIFICATE-----
     aaaaaaaabbbbbbcccccccccddddddd

@@ -20,6 +20,7 @@ import {
   requireOrganization,
 } from "../../core/mesh-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
+import { getMcpReadCache } from "../../mcp-clients/mcp-read-cache";
 import { fetchToolsFromMCP } from "./fetch-tools";
 import { prop } from "./json-path";
 import {
@@ -291,6 +292,9 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
         ?.set("tools", id, tools as Tool[])
         .catch(() => {});
     }
+    // Config/auth/url may have changed — drop cached read content so stale
+    // (possibly long-TTL) responses aren't served against the new config.
+    getMcpReadCache().invalidate(id);
 
     // Invoke ON_MCP_CONFIGURATION callback if configuration was updated
     // Ignore errors but await for the response before responding

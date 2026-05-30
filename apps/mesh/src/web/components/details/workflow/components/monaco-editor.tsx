@@ -21,8 +21,11 @@ interface MonacoCodeEditorProps {
   ) => void;
   readOnly?: boolean;
   height?: string | number;
-  language?: "typescript" | "json";
+  language?: "typescript" | "json" | "shell";
   foldOnMount?: boolean;
+  // Suppresses TS error squiggles. Useful when displaying snippets
+  // (e.g. top-level `await`) that aren't valid programs on their own.
+  disableDiagnostics?: boolean;
 }
 
 // Internal component that receives mountKey from error boundary
@@ -162,15 +165,18 @@ const InternalMonacoEditor = memo(function InternalMonacoEditor({
   height = 300,
   language = "typescript",
   foldOnMount = false,
+  disableDiagnostics = false,
   mountKey = 0,
 }: InternalEditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const onSaveRef = useRef(onSave);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onSaveRef.current = onSave;
 
   // Store language in ref to avoid stale closures in editor callbacks
   const languageRef = useRef(language);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   languageRef.current = language;
 
   // Unique path so Monaco treats this as a TypeScript file
@@ -262,8 +268,8 @@ const InternalMonacoEditor = memo(function InternalMonacoEditor({
       });
 
       monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-        noSemanticValidation: false,
-        noSyntaxValidation: false,
+        noSemanticValidation: disableDiagnostics,
+        noSyntaxValidation: disableDiagnostics,
       });
     }
 

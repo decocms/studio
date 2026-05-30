@@ -16,6 +16,7 @@ import type {
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
   fetchWithCache,
+  isRevalidationStale,
   type McpListCache,
   type McpListType,
 } from "./mcp-list-cache";
@@ -257,6 +258,91 @@ describe("fetchWithCache", () => {
     expect(revalidations).toHaveLength(0);
   });
 
+  it("throttles background revalidation within the min interval", async () => {
+    // Unique connection id so the module-level throttle map isn't shared with
+    // other tests in this file.
+    const conn = "conn_throttle_within";
+    const cache = new TestMcpListCache();
+    await cache.set("tools", conn, [makeTool("stale")]);
+
+    let callCount = 0;
+    const fetchLive = async () => {
+      callCount++;
+      return [makeTool("fresh")];
+    };
+
+    // First hit: nothing revalidated yet → revalidates and starts the clock.
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 10_000);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(callCount).toBe(1);
+
+    // Second hit immediately after: within the 10s window → throttled, no fetch.
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 10_000);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(callCount).toBe(1);
+  });
+
+  it("revalidates again once the min interval has elapsed", async () => {
+    const conn = "conn_throttle_elapsed";
+    const cache = new TestMcpListCache();
+    await cache.set("tools", conn, [makeTool("stale")]);
+
+    let callCount = 0;
+    const fetchLive = async () => {
+      callCount++;
+      return [makeTool("fresh")];
+    };
+
+    // Tiny interval so the window lapses between calls.
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 20);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(callCount).toBe(1);
+
+    await new Promise((r) => setTimeout(r, 30)); // exceed the 20ms window
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 20);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(callCount).toBe(2);
+  });
+
+  it("a cache miss starts the throttle clock (immediate hit is throttled)", async () => {
+    const conn = "conn_throttle_miss";
+    const cache = new TestMcpListCache();
+
+    let callCount = 0;
+    const fetchLive = async () => {
+      callCount++;
+      return [makeTool("t")];
+    };
+
+    // Miss → live fetch (counts) and seeds the throttle timestamp.
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 10_000);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(callCount).toBe(1);
+
+    // Immediate hit → throttled, no background revalidation.
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 10_000);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(callCount).toBe(1);
+  });
+
+  it("interval <= 0 disables throttling (revalidates every hit)", async () => {
+    const conn = "conn_throttle_off";
+    const cache = new TestMcpListCache();
+    await cache.set("tools", conn, [makeTool("stale")]);
+
+    let callCount = 0;
+    const fetchLive = async () => {
+      callCount++;
+      return [makeTool("fresh")];
+    };
+
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 0);
+    await new Promise((r) => setTimeout(r, 5));
+    await fetchWithCache("tools", conn, fetchLive, cache, undefined, 0);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(callCount).toBe(2);
+  });
+
   it("silently handles connection closed errors during revalidation", async () => {
     const cache = new TestMcpListCache();
     const stale = [makeTool("stale")];
@@ -279,6 +365,28 @@ describe("fetchWithCache", () => {
     await Promise.allSettled(revalidations);
     // Cache should still have stale data (revalidation failed silently)
     expect(await cache.get("tools", "conn1")).toEqual(stale);
+  });
+});
+
+// ============================================================================
+// isRevalidationStale (pure throttle predicate)
+// ============================================================================
+
+describe("isRevalidationStale", () => {
+  it("is always stale when interval <= 0 (throttle disabled)", () => {
+    expect(isRevalidationStale(undefined, 1000, 0)).toBe(true);
+    expect(isRevalidationStale(1000, 1000, 0)).toBe(true);
+    expect(isRevalidationStale(1000, 1000, -5)).toBe(true);
+  });
+
+  it("is stale when never revalidated", () => {
+    expect(isRevalidationStale(undefined, 1000, 30_000)).toBe(true);
+  });
+
+  it("is fresh within the interval and stale once it elapses", () => {
+    expect(isRevalidationStale(1000, 1000 + 29_999, 30_000)).toBe(false);
+    expect(isRevalidationStale(1000, 1000 + 30_000, 30_000)).toBe(true);
+    expect(isRevalidationStale(1000, 1000 + 60_000, 30_000)).toBe(true);
   });
 });
 

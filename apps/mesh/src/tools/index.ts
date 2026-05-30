@@ -30,11 +30,15 @@ import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
+import * as SecretsTools from "./secrets";
+import * as FileConfigTools from "./file-configs";
 import { getPrompts, getResources } from "./guides";
 import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
-import * as VmTools from "./vm";
+import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
+import * as LinkTools from "./links";
+import * as SearchTools from "./search";
 import { ToolName } from "./registry-metadata";
 // Core tools - always available
 const CORE_TOOLS = [
@@ -126,6 +130,7 @@ const CORE_TOOLS = [
   AutomationTools.AUTOMATION_DELETE,
   AutomationTools.AUTOMATION_TRIGGER_ADD,
   AutomationTools.AUTOMATION_TRIGGER_REMOVE,
+  AutomationTools.AUTOMATION_TRIGGER_ROTATE_TOKEN,
   AutomationTools.AUTOMATION_RUN,
 
   // Virtual MCP plugin config tools
@@ -139,13 +144,24 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDERS_ACTIVE,
   AiProvidersTools.AI_PROVIDER_KEY_CREATE,
   AiProvidersTools.AI_PROVIDER_KEY_DELETE,
+  AiProvidersTools.AI_PROVIDER_KEY_UPDATE,
+  AiProvidersTools.AI_PROVIDER_KEY_PREVIEW,
   AiProvidersTools.AI_PROVIDER_KEY_LIST,
   AiProvidersTools.AI_PROVIDER_OAUTH_URL,
   AiProvidersTools.AI_PROVIDER_OAUTH_EXCHANGE,
   AiProvidersTools.AI_PROVIDER_PROVISION_KEY,
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
-  AiProvidersTools.AI_PROVIDER_CLI_ACTIVATE,
+  // Secrets tools
+  SecretsTools.SECRET_CREATE,
+  SecretsTools.SECRET_LIST,
+
+  // File config tools (org-scoped S3 bucket configurations)
+  FileConfigTools.FILE_CONFIG_CREATE,
+  FileConfigTools.FILE_CONFIG_LIST,
+  FileConfigTools.FILE_CONFIG_UPDATE,
+  FileConfigTools.FILE_CONFIG_DELETE,
+  FileConfigTools.FILE_OBJECTS_LIST,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,
@@ -159,11 +175,17 @@ const CORE_TOOLS = [
   ...RegistryTools.tools,
 
   // VM tools (app-only)
-  VmTools.VM_START,
-  VmTools.VM_DELETE,
+  SandboxTools.SANDBOX_START,
+  SandboxTools.SANDBOX_DELETE,
 
   // GitHub tools (app-only)
   GitHubTools.GITHUB_LIST_USER_ORGS,
+
+  // Link tools
+  LinkTools.LINK_CURRENT_GET,
+
+  // Search tools
+  SearchTools.GLOBAL_SEARCH,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime
@@ -177,6 +199,7 @@ interface CombinedTool {
   outputSchema: unknown;
   annotations?: ToolAnnotations;
   _meta?: Record<string, unknown>;
+  modelSummary?: (result: unknown) => string;
   handler: (input: unknown, ctx: MeshContext) => Promise<unknown>;
   execute: (input: unknown, ctx: MeshContext) => Promise<unknown>;
 }
@@ -256,8 +279,11 @@ export const managementMCP = async (ctx: MeshContext) => {
         ctx.access.setToolName(tool.name);
         try {
           const result = await tool.execute(args, ctx);
+          const modelText = tool.modelSummary
+            ? tool.modelSummary(result)
+            : JSON.stringify(result);
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result) }],
+            content: [{ type: "text" as const, text: modelText }],
             structuredContent: result as { [x: string]: unknown },
           };
         } catch (error) {
@@ -274,17 +300,39 @@ export const managementMCP = async (ctx: MeshContext) => {
   // Register action prompts
   const prompts = getPrompts();
   for (const prompt of prompts) {
+    const argsSchema = prompt.arguments?.length
+      ? Object.fromEntries(
+          prompt.arguments.map((a) => {
+            const base = a.required ? z.string() : z.string().optional();
+            return [
+              a.name,
+              a.description ? base.describe(a.description) : base,
+            ];
+          }),
+        )
+      : undefined;
+
     server.registerPrompt(
       prompt.name,
-      { title: prompt.title, description: prompt.description },
-      () => ({
-        messages: [
-          {
-            role: "user" as const,
-            content: { type: "text" as const, text: prompt.text },
-          },
-        ],
-      }),
+      {
+        title: prompt.title,
+        description: prompt.description,
+        ...(argsSchema ? { argsSchema } : {}),
+      },
+      (args) => {
+        const text =
+          typeof prompt.text === "function"
+            ? prompt.text((args ?? {}) as Record<string, string | undefined>)
+            : prompt.text;
+        return {
+          messages: [
+            {
+              role: "user" as const,
+              content: { type: "text" as const, text },
+            },
+          ],
+        };
+      },
     );
   }
 

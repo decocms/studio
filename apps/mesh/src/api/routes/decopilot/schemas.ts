@@ -4,6 +4,7 @@
  * Zod validation schemas for Decopilot API requests.
  */
 
+import { SimpleModeTierSchema } from "@/tools/organization/schema";
 import { z } from "zod";
 import { DEFAULT_WINDOW_SIZE } from "./constants";
 
@@ -19,61 +20,7 @@ const MemoryConfigSchema = z.object({
   thread_id: z.string(),
 });
 
-const ProviderEnum = z.enum([
-  "openai",
-  "anthropic",
-  "google",
-  "xai",
-  "deepseek",
-  "openrouter",
-  "openai-compatible",
-  "deco",
-  "claude-code",
-  "codex",
-]);
-
-const ProviderSchema = ProviderEnum.optional().nullable();
-
-const ModelInfoSchema = z.object({
-  id: z.string(),
-  title: z.string().optional(),
-  capabilities: z
-    .object({
-      vision: z.boolean().optional(),
-      text: z.boolean().optional(),
-      tools: z.boolean().optional(),
-      reasoning: z.boolean().optional(),
-    })
-    .optional(),
-  provider: ProviderSchema,
-  limits: z
-    .object({
-      contextWindow: z.number().optional(),
-      maxOutputTokens: z.number().optional(),
-    })
-    .optional(),
-});
-
-const ThinkingModelSchema = ModelInfoSchema.extend({
-  provider: ProviderSchema,
-});
-
-const ModelsSchema = z
-  .object({
-    credentialId: z.string(),
-    thinking: ThinkingModelSchema.describe(
-      "Backbone model for the agentic loop",
-    ),
-    coding: ModelInfoSchema.optional().describe("Good coding model"),
-    fast: ModelInfoSchema.optional().describe("Cheap model for simple tasks"),
-    image: ModelInfoSchema.optional().describe("Image generation model"),
-    deepResearch: ModelInfoSchema.optional().describe(
-      "Deep research model (e.g. Perplexity Sonar) for web_search tool",
-    ),
-  })
-  .loose();
-
-export const StreamRequestSchema = z.object({
+const baseStreamRequestSchema = z.object({
   messages: z
     .array(UIMessageSchema)
     .min(1)
@@ -81,7 +28,7 @@ export const StreamRequestSchema = z.object({
       message: "Expected exactly one non-system message",
     }),
   memory: MemoryConfigSchema.optional(),
-  models: ModelsSchema.optional(),
+  tier: SimpleModeTierSchema.optional(),
   agent: z
     .object({
       id: z.string(),
@@ -96,9 +43,40 @@ export const StreamRequestSchema = z.object({
    */
   branch: z.string().nullish(),
   toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
+  // Canonical-only. Migration 091 swept persisted legacy values; clients
+  // ship canonical strings after the SDK narrowed its union in Task 15.
+  sandboxProviderKind: z
+    .enum(["local-docker", "cluster", "user-desktop"])
+    .nullish()
+    .describe(
+      "Pinned on first message. Subsequent messages ignore this field (the thread row carries the pinned value).",
+    ),
+  harnessId: z
+    .enum(["claude-code", "codex", "decopilot"])
+    .nullish()
+    .describe(
+      "Pinned on first message. Subsequent messages ignore this field.",
+    ),
   mode: z
     .enum(["default", "plan", "web-search", "gen-image"])
     .default("default"),
 });
+
+// TODO(2026-06-20): remove this preprocessor once all clients have shipped
+// without the runLocally field. See spec
+// docs/superpowers/specs/2026-05-20-vm-as-runtime-identity-design.md.
+export const StreamRequestSchema = z.preprocess((raw) => {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    if ("runLocally" in obj) {
+      console.log("deprecated field runLocally", {
+        thread_id: obj.thread_id,
+      });
+      const { runLocally: _drop, ...rest } = obj;
+      return rest;
+    }
+  }
+  return raw;
+}, baseStreamRequestSchema);
 
 export type StreamRequest = z.infer<typeof StreamRequestSchema>;

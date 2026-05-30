@@ -7,7 +7,7 @@ import {
   Tool02,
 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
 import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
@@ -15,19 +15,27 @@ import { MessageTextPart } from "./parts/text-part.tsx";
 import {
   GenericToolCallPart,
   GenerateImagePart,
+  TakeScreenshotPart,
   WebSearchPart,
   ProposePlanPart,
   SubtaskPart,
+  SubtaskPartFallback,
   UserAskPart,
+  BrandContextPart,
+  BrandContextGetPart,
+  BrandContextListPart,
 } from "./parts/tool-call-part/index.ts";
+import { NextActionChip } from "./next-action-chip.tsx";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
+import { ThreadHtmlPreviews } from "./thread-html-previews.tsx";
+import { ThreadOutputs } from "./thread-outputs.tsx";
 import {
   type DataParts,
   type RenderItem,
   useFilterParts,
 } from "./use-filter-parts.ts";
 import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
-import { useOptionalChatStream } from "../context.tsx";
+import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
 import { GridLoader } from "../../grid-loader.tsx";
 import { formatDuration } from "../../../lib/format-time.ts";
@@ -211,7 +219,10 @@ function collapsedCounts(
       const type = parts[item.index]?.type;
       if (type === "text") {
         messages++;
-      } else if (type === "dynamic-tool" || type?.startsWith("tool-")) {
+      } else if (
+        (type === "dynamic-tool" || type?.startsWith("tool-")) &&
+        type !== "tool-todo_write"
+      ) {
         toolCalls++;
       }
     }
@@ -409,10 +420,13 @@ function MessagePart({
           part={part}
           annotations={getMeta(part.toolCallId)?.annotations}
           latency={getMeta(part.toolCallId)?.latencySeconds}
+          outputBytes={getMeta(part.toolCallId)?.outputBytes}
           isLastMessage={isLastMessage}
           toolMeta={getMeta(part.toolCallId)?._meta}
         />
       );
+    case "tool-todo_write":
+      return null;
     case "tool-user_ask":
       return (
         <UserAskPart
@@ -429,6 +443,13 @@ function MessagePart({
           latency={getMeta(part.toolCallId)?.latencySeconds}
         />
       );
+    case "tool-take_screenshot":
+      return (
+        <TakeScreenshotPart
+          part={part}
+          latency={getMeta(part.toolCallId)?.latencySeconds}
+        />
+      );
     case "tool-web_search":
       return (
         <WebSearchPart
@@ -437,15 +458,19 @@ function MessagePart({
           streamingText={dataParts.webSearchStreaming.get(part.toolCallId)}
         />
       );
-    case "tool-subtask":
+    case "tool-subtask": {
+      const subtaskProps = {
+        part,
+        subtaskMeta: getSubtaskMeta(part.toolCallId),
+        annotations: getMeta(part.toolCallId)?.annotations,
+        latency: getMeta(part.toolCallId)?.latencySeconds,
+      };
       return (
-        <SubtaskPart
-          part={part}
-          subtaskMeta={getSubtaskMeta(part.toolCallId)}
-          annotations={getMeta(part.toolCallId)?.annotations}
-          latency={getMeta(part.toolCallId)?.latencySeconds}
-        />
+        <Suspense fallback={<SubtaskPartFallback {...subtaskProps} />}>
+          <SubtaskPart {...subtaskProps} />
+        </Suspense>
       );
+    }
     case "text":
       return (
         <MessageTextPart
@@ -470,6 +495,33 @@ function MessagePart({
       return null;
     default: {
       const fallback = part as ToolUIPart;
+      if (
+        fallback.type === "tool-brand_context_setup" ||
+        fallback.type === "tool-BRAND_CONTEXT_EXTRACT"
+      ) {
+        return (
+          <BrandContextPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (fallback.type === "tool-BRAND_CONTEXT_GET") {
+        return (
+          <BrandContextGetPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (fallback.type === "tool-BRAND_CONTEXT_LIST") {
+        return (
+          <BrandContextListPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
       if (fallback.type.startsWith("tool-")) {
         const toolCallId = (fallback as ToolUIPart).toolCallId;
         const meta = dataParts.toolMetadata.get(toolCallId);
@@ -478,6 +530,7 @@ function MessagePart({
             part={fallback}
             annotations={meta?.annotations}
             latency={meta?.latencySeconds}
+            outputBytes={meta?.outputBytes}
             isLastMessage={isLastMessage}
             toolMeta={meta?._meta}
           />
@@ -549,6 +602,7 @@ export function MessageAssistant({
   isLast = false,
 }: MessageAssistantProps) {
   const { isRunInProgress = false } = useOptionalChatStream() ?? {};
+  const taskId = useOptionalChatTask()?.taskId ?? null;
   const isStreaming = status === "streaming";
   const isSubmitted = status === "submitted";
   const isLoading = isStreaming || isSubmitted;
@@ -596,9 +650,28 @@ export function MessageAssistant({
 
   // Determine whether to collapse intermediate parts.
   // Only collapse when not streaming and there are enough tool calls.
+  // For the last message, also require the turn not to be paused on a
+  // pending tool call (awaiting approval / user_ask / propose_plan / still
+  // executing) — collapsing now would hide work about to grow further.
+  // Derived from the message's parts rather than the session-scoped
+  // `finishReason`, so server-loaded threads collapse too.
+  const isTerminallyDone =
+    !isLast ||
+    !message ||
+    !message.parts.some((part) => {
+      const type = part.type;
+      if (type !== "dynamic-tool" && !type?.startsWith("tool-")) return false;
+      const state = (part as { state?: string }).state;
+      return (
+        state === "input-streaming" ||
+        state === "input-available" ||
+        state === "approval-requested"
+      );
+    });
   const shouldCollapse =
     !isLoading &&
     hasContent &&
+    isTerminallyDone &&
     (() => {
       let toolCallCount = 0;
       for (const item of renderOrder) {
@@ -652,6 +725,13 @@ export function MessageAssistant({
           })}
           {isLast && isLoading && startedAt !== null && (
             <GeneratingFooter startedAt={startedAt} />
+          )}
+          {isLast && !isLoading && taskId && (
+            <>
+              <ThreadHtmlPreviews />
+              <ThreadOutputs threadId={taskId} />
+              {isTerminallyDone && <NextActionChip />}
+            </>
           )}
         </div>
       ) : isLoading ? (

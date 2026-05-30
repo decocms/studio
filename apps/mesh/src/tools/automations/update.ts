@@ -6,8 +6,10 @@
  */
 
 import { z } from "zod";
+import { syncAutomationActiveChanged } from "../../automations/dbos-sync";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { ChatTierSchema } from "../organization/schema";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { normalizeMessages } from "./normalize-messages";
 
@@ -26,11 +28,6 @@ export const AUTOMATION_UPDATE = defineTool({
     id: z.string(),
     name: z.string().min(1).max(255).optional(),
     active: z.boolean().optional(),
-    agent: z
-      .object({
-        id: z.string(),
-      })
-      .optional(),
     messages: z
       .union([
         z.string(),
@@ -46,39 +43,8 @@ export const AUTOMATION_UPDATE = defineTool({
       .optional(),
     models: z
       .object({
-        credentialId: z.string(),
-        thinking: z.object({
-          id: z.string(),
-          capabilities: z
-            .object({
-              vision: z.boolean().optional(),
-              text: z.boolean().optional(),
-              tools: z.boolean().optional(),
-            })
-            .optional(),
-          provider: z
-            .enum([
-              "openai",
-              "anthropic",
-              "google",
-              "xai",
-              "deepseek",
-              "openrouter",
-              "openai-compatible",
-            ])
-            .optional()
-            .nullable(),
-          limits: z
-            .object({
-              contextWindow: z.number().optional(),
-              maxOutputTokens: z.number().optional(),
-            })
-            .optional(),
-        }),
-        coding: z.object({ id: z.string() }).optional(),
-        fast: z.object({ id: z.string() }).optional(),
+        tier: ChatTierSchema,
       })
-      .loose()
       .optional(),
     temperature: z.number().optional(),
   }),
@@ -106,8 +72,6 @@ export const AUTOMATION_UPDATE = defineTool({
     const updateData: Record<string, unknown> = {};
     if (input.name !== undefined) updateData.name = input.name;
     if (input.active !== undefined) updateData.active = input.active;
-    if (input.agent !== undefined)
-      updateData.agent = JSON.stringify(input.agent);
     if (input.messages !== undefined) {
       const normalizedMessages = normalizeMessages(input.messages);
       updateData.messages = JSON.stringify(normalizedMessages);
@@ -122,7 +86,10 @@ export const AUTOMATION_UPDATE = defineTool({
       updateData,
     );
 
-    // When active state changes, configure event triggers
+    // When active state changes, configure event triggers AND pause/resume
+    // the DBOS schedules tied to cron triggers — DBOS schedules fire even
+    // when the workflow body would short-circuit on active=false, so we
+    // pause to avoid wasting workflow records.
     if (input.active !== undefined && input.active !== existing.active) {
       const triggers = await ctx.storage.automations.listTriggers(
         automation.id,
@@ -143,6 +110,8 @@ export const AUTOMATION_UPDATE = defineTool({
           }
         }),
       );
+
+      await syncAutomationActiveChanged(triggers, input.active);
     }
 
     return {

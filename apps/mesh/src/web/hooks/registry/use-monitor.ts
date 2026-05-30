@@ -53,6 +53,7 @@ export function useMonitorRunStart() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useMutation({
@@ -75,6 +76,7 @@ export function useMonitorRunCancel() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useMutation({
@@ -96,6 +98,7 @@ export function useMonitorRuns(status?: MonitorRunStatus) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -114,6 +117,7 @@ export function useMonitorRun(runId?: string) {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -139,6 +143,7 @@ export function useMonitorResults(
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -165,6 +170,7 @@ export function useMonitorConnections() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useQuery({
@@ -185,6 +191,7 @@ export function useSyncMonitorConnections() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useMutation({
@@ -208,6 +215,7 @@ export function useUpdateMonitorConnectionAuth() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useMutation({
@@ -257,6 +265,7 @@ export function useRegistryMonitorConfig() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
   const queryClient = useQueryClient();
 
@@ -350,6 +359,7 @@ export function useMonitorScheduleSet() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useMutation({
@@ -374,6 +384,7 @@ export function useMonitorScheduleCancel() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useMutation({

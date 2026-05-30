@@ -1,30 +1,30 @@
 ---
 title: Quickstart
-description: Get started with deco Studio in 5 minutes
+description: From zero to a working agent in 5 minutes
 icon: Rocket
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## Get Started in 5 Minutes
+## Get Studio running
 
-There are two ways to get started with deco Studio:
+There are two ways to start.
 
-### Option A: Managed Cloud
+### Option A — Managed cloud
 
-The fastest way. Sign up at [studio.decocms.com](https://studio.decocms.com) and you're ready to go.
+Sign up at [studio.decocms.com](https://studio.decocms.com) and you're ready to go.
 
-1. Create your account (email, GitHub, or Google OAuth)
-2. Create an organization — your top-level boundary for connections, agents, and team members
-3. You're in. Start adding connections and hiring agents.
+1. Create your account (email, GitHub, or Google)
+2. Create an organization — your top-level workspace
+3. You're in.
 
-### Option B: Run Locally
+### Option B — Run locally
 
 ```bash
-bunx decocms
+bunx -p decocms deco
 ```
 
-This spins up a local instance with embedded PostgreSQL. Fully private — everything stays on your machine. Or clone and run from source:
+This spins up a local instance with embedded PostgreSQL. Fully private — everything stays on your machine. The package is published as `decocms`; the binary it ships is `deco`. Or clone and run from source:
 
 ```bash
 git clone https://github.com/decocms/studio.git
@@ -35,41 +35,65 @@ bun run dev
 
 ---
 
-## Add Your First Connection
+## AI provider (already set up for you)
 
-Connections are tools and services you want your agents to use. Studio comes with a built-in store of popular integrations.
+New organizations start with credits on the **Deco AI Gateway**, so you can begin chatting with agents right away — no setup required.
 
-1. Navigate to **Connections** in the sidebar
-2. Click **Add from Store**
-3. Browse available connections (Shopify, GitHub, Slack, Stripe, OpenRouter, and more)
-4. Select a connection and click **Install**
-5. Provide required credentials:
-   - For OAuth connections: follow the OAuth flow to authorize
-   - For API key connections: paste your API key
+When you want to use your own keys (Anthropic, Google, OpenRouter, etc.) or check your remaining gateway credit, head to **Settings → AI Providers**. See [AI Providers](/en/studio/ai-providers) for the full list.
 
-Your connection is now registered and credentials are encrypted in Studio's vault.
+---
 
-## Start Using Chat
+## Create or open an agent
 
-Once you've connected at least one tool, you can use the built-in chat interface:
+The sidebar shows your agents. Click an existing one or create a new one from the **+** button.
 
-1. Navigate to **Chat** in the sidebar
-2. Your connected tools are automatically available to the AI assistant
-3. Try asking questions or requesting actions:
-   - "Show me today's orders from Shopify"
-   - "Create an issue on GitHub for the checkout bug"
-   - "Send a Slack message to the team channel"
-   - "Generate a sales report for the last 30 days"
+When you're inside an agent, the screen has three parts:
 
-The AI will automatically invoke the right tools from your connections.
+- **Left** — the list of threads (past conversations with this agent)
+- **Center / bottom** — the chat input
+- **Right** — the agent's panel: **Settings** (instructions, connections), **Automations**, and **Git** (if linked)
 
-<Callout type="success">
-  You're set up! From here, you can add more connections, hire specialized agents, organize work into projects, invite team members, and monitor all tool invocations in the **Monitoring** tab.
+Open the **Settings** tab on the right and write a one-line instruction describing what this agent should do.
+
+---
+
+## Attach a connection
+
+Connections are the tools your agent can use — GitHub, Slack, Shopify, your database, your own MCP server. You can add them directly from the agent you just created:
+
+1. In the agent's right-panel **Settings**, open the **Connections** section
+2. Click **Add connection**
+3. Search the catalog (e.g., Gmail), or pick **Custom Connection** to add an unlisted MCP server
+4. Click **Connect** and follow the sign-in or paste-a-key flow
+5. Pick which of the connection's tools this agent should have
+
+Credentials are encrypted and never exposed to your team. Connections you add this way are stored at the **org level** — they show up under **Settings → Connections** and can be attached to other agents too.
+
+<Callout type="tip">
+  You can also start from **Settings → Connections** and install a connection ahead of time, then attach it to agents later. Same outcome — pick whichever order feels natural.
 </Callout>
 
-## Next Steps
+The catalog is populated by the registries enabled under **Settings → Store**.
 
-- **[Learn core concepts](./concepts)** — Understand connections, Virtual MCPs, projects, and agents
-- **[Create agents](./agents)** — Use your connections with Claude Desktop, Cursor, or custom AI agents
-- **[Monitor tool invocations](./monitoring)** — Track usage, debug issues, and audit activity
-- **[Self-host](./self-hosting/quickstart)** — Deploy on Docker Compose or Kubernetes
+---
+
+## Talk to it
+
+Just type. The agent uses the tools you attached.
+
+```
+Send an email to me@example.com with a poem about MCP.
+```
+
+Watch the chat run. Each tool call is logged in **Settings → Monitor**.
+
+<Callout type="success">
+  You're set up! From here, set up [Automations](/en/studio/automations) to run agents on a schedule or event, invite team [members](/en/studio/user-management), or build more agents.
+</Callout>
+
+## Next steps
+
+- **[Key concepts](./concepts)** — Anatomy of Studio: the agent shell vs. Settings
+- **[Agents](./agents)** — How to design and configure agents
+- **[Decopilot](./decopilot/overview)** — The AI assistant built into Studio
+- **[Self-hosting](./self-hosting/quickstart)** — Deploy on Docker Compose or Kubernetes

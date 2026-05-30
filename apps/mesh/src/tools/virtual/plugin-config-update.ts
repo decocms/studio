@@ -10,7 +10,7 @@ import { getUserId, requireAuth } from "../../core/mesh-context";
 import {
   createDevAssetsConnectionEntity,
   isDevAssetsConnection,
-  isDevMode,
+  usesLocalObjectStorage,
 } from "../connection/dev-assets";
 import { getBaseUrl } from "../../core/server-constants";
 
@@ -78,7 +78,7 @@ export const VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE = defineTool({
       connectionId &&
       parentConnection.organization_id &&
       !connectionExists &&
-      isDevMode()
+      usesLocalObjectStorage()
     ) {
       if (
         isDevAssetsConnection(connectionId, parentConnection.organization_id)

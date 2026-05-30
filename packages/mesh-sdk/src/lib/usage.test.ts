@@ -160,4 +160,70 @@ describe("addUsage", () => {
     const result = addUsage(acc, null);
     expect(result).toBe(acc);
   });
+
+  test("accumulates cache tokens from inputTokenDetails", () => {
+    const acc = emptyUsageStats();
+    const step = {
+      inputTokens: 1000,
+      outputTokens: 50,
+      inputTokenDetails: {
+        cacheReadTokens: 800,
+        cacheWriteTokens: 100,
+      },
+    };
+    const result = addUsage(acc, step);
+    expect(result.cacheReadTokens).toBe(800);
+    expect(result.cacheWriteTokens).toBe(100);
+  });
+
+  test("falls back to cachedInputTokens when inputTokenDetails is absent", () => {
+    const acc = emptyUsageStats();
+    const step = {
+      inputTokens: 1000,
+      outputTokens: 50,
+      cachedInputTokens: 600,
+    };
+    const result = addUsage(acc, step);
+    expect(result.cacheReadTokens).toBe(600);
+    expect(result.cacheWriteTokens).toBe(0);
+  });
+
+  test("inputTokenDetails takes precedence over cachedInputTokens", () => {
+    const acc = emptyUsageStats();
+    const step = {
+      inputTokens: 1000,
+      cachedInputTokens: 999, // would be wrong
+      inputTokenDetails: { cacheReadTokens: 800, cacheWriteTokens: 0 },
+    };
+    const result = addUsage(acc, step);
+    expect(result.cacheReadTokens).toBe(800);
+  });
+});
+
+describe("calculateUsageStats — cache fields", () => {
+  test("sums cache read/write across messages", () => {
+    const messages = [
+      {
+        metadata: {
+          usage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            inputTokenDetails: { cacheReadTokens: 80, cacheWriteTokens: 10 },
+          },
+        },
+      },
+      {
+        metadata: {
+          usage: {
+            inputTokens: 200,
+            outputTokens: 25,
+            inputTokenDetails: { cacheReadTokens: 150 },
+          },
+        },
+      },
+    ];
+    const result = calculateUsageStats(messages);
+    expect(result.cacheReadTokens).toBe(230);
+    expect(result.cacheWriteTokens).toBe(10);
+  });
 });

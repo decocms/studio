@@ -1,5 +1,5 @@
 ---
-title: Visão Geral
+title: Visão geral
 description: Control plane open-source para seus agentes de IA
 icon: Info
 ---
@@ -8,60 +8,71 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ![deco](https://assets.decocache.com/mcp/9a3facd8-1199-4635-becc-bdc3f5ee7ab1/deco-banner-capy.png)
 
-## Control plane open-source para seus agentes de IA.
+## A casa dos seus agentes de IA
 
-deco Studio é onde você contrata agentes, conecta ferramentas, organiza tudo em projetos e acompanha cada token e cada real. Self-host ou use a nuvem. Construído sobre o [Model Context Protocol](https://modelcontextprotocol.io).
+O deco Studio é onde você constrói agents, conecta-os a tools, executa em schedules ou eventos e vê exatamente o que estão fazendo. Self-host ou use a cloud. Construído sobre o [Model Context Protocol](https://modelcontextprotocol.io).
 
-### Agentes
+### Agents
 
-Navegue e contrate agentes de IA na loja integrada. Cada agente vem com skills específicas e prompts testados. Agentes se compõem — podem chamar uns aos outros. Toda ação é rastreada com atribuição de custos.
+Um agent é uma IA configurada para um trabalho específico: um conjunto focado de tools, instruções claras e seu próprio histórico de thread. Agents são a superfície de trabalho do Studio — você passa a maior parte do tempo dentro de um. Cada agent também é seu próprio endpoint MCP, então clients externos como Cursor e Claude Desktop podem usá-lo diretamente.
 
-### Conexões
+### Connections
 
-Configure conexões MCP pela interface web com OAuth em um clique. Monitore latência, erros e custos por conexão. Compartilhe ferramentas com sua equipe sem compartilhar credenciais.
+Plugue qualquer tool ou serviço — GitHub, Slack, bancos de dados, sua própria API, qualquer coisa compatível com MCP. Configure as credenciais uma vez no nível da org, depois anexe as tools que quiser a cada agent. As credenciais nunca saem do Studio.
 
+### Automations
 
-### Projetos
+Execute um agent sem supervisão em um schedule ou em resposta a um evento. Anexado a um agent específico, então o escopo do que a execução pode fazer é o que você configurou para aquele agent.
 
-Projetos agrupam agentes e conexões em torno de um objetivo. A UI do projeto se adapta ao que está dentro — adicione um agente de conteúdo e uma conexão CMS, a sidebar mostra gestão de conteúdo; adicione um agente de analytics e um banco de dados, mostra dashboards e queries.
+### Observability
 
-### Observabilidade
+Cada chamada de tool feita pelos seus agents é registrada automaticamente — quem chamou, quando, o que retornou e quanto tempo levou. Um único lugar para debugar, auditar e acompanhar performance.
 
-Gastos com tokens por conexão. Latência, erros, gargalos. Toda invocação de ferramenta registrada com identidade do chamador, entradas, saídas e timing. Um dashboard.
+### Extensibilidade
+
+O Studio é aberto em todas as camadas:
+
+- **MCP apps** — empacote tools com views em React em um único pacote, e o Studio renderiza essas views diretamente dentro do agent. Comece pelo [template repo](https://github.com/decocms/mcp-app).
+- **Sandboxes** — vincule um agent a um repositório do GitHub e o Studio o executa como um ambiente de dev isolado com escopo daquele agent (tipicamente o próprio MCP server do agent).
+- **Git-native** — agents baseados em código vivem em um repo real com branches e PRs, exibidos na aba **Git** do agent. Seu controle de versão continua sendo sua fonte da verdade.
+- **MCP em todos os lugares** — cada agent é exposto como seu próprio endpoint MCP, chamável a partir do Cursor, Claude Desktop, seu próprio código ou outro agent.
+
+### Solutions: suítes de agents prontas
+
+Para times que gerenciam storefronts e experiências digitais ricas em conteúdo, a deco oferece **suítes de agents empacotadas** construídas sobre o Studio — a mais completa disponível hoje é o **[Agentic CMS](./solutions/agentic-cms)**, a evolução do [deco.cx](https://docs.deco.cx). Veja [Solutions](./solutions/overview) para a lista completa.
 
 ---
 
-### Capacidades Principais
-
-| Capacidade | Descrição |
-|---|---|
-| **Agentes** | Navegue, contrate e componha agentes de IA com atribuição de custos |
-| **Conexões** | Roteie tráfego MCP por um endpoint governado com auth, proxy e token vault |
-| **Projetos** | Organize agentes e conexões em torno de objetivos com UI adaptativa |
-| **MCPs Virtuais** | Componha e exponha conjuntos governados de ferramentas como endpoints MCP |
-| **Observabilidade** | Traces, custos, erros e latência por conexão |
-| **Controle de Acesso** | RBAC — OAuth 2.1 + API keys por workspace/projeto |
-| **Multi-tenancy** | Isolamento por workspace/projeto para config, credenciais, políticas e audit logs |
-| **Event Bus** | Pub/sub entre conexões com entrega agendada/cron e garantias at-least-once |
-
-### Opções de Deploy
+### O que você pode fazer com o Studio
 
 | | |
 |---|---|
-| **Local** | `bunx decocms` — PostgreSQL embutido, totalmente privado |
-| **Cloud** | [studio.decocms.com](https://studio.decocms.com) — controle projetos de qualquer navegador |
-| **Equipe** | Conexões compartilhadas, papéis, atribuição de custos |
-| **Enterprise** | Self-hosted na sua infraestrutura |
+| **Construir agents** | Componha workers de IA focados a partir das suas tools conectadas, instruções e resources |
+| **Conectar tools** | Adicione GitHub, Slack, bancos de dados ou qualquer MCP server — as credenciais ficam seguras |
+| **Rodar hands-free** | Dispare agents em schedules ou eventos com automations |
+| **Ver tudo** | Logs, custos e traces de cada ação de agent, em um único dashboard |
+| **Estender com código** | Publique MCP apps (tools + UI) e vincule agents a repos Git em seus próprios sandboxes |
+| **Controlar acesso** | Gerencie quem pode usar quais tools com roles e permissões de time |
+| **Rodar do seu jeito** | Self-host na sua própria infraestrutura ou use nossa cloud |
+
+### Opções de deployment
+
+| | |
+|---|---|
+| **Local** | `bunx -p decocms deco` — roda inteiramente na sua máquina, totalmente privado |
+| **Cloud** | [studio.decocms.com](https://studio.decocms.com) — gerencie tudo pelo navegador |
+| **Team** | Connections, roles e tracking de custos compartilhados em toda a organização |
+| **Self-hosted** | Faça deploy na sua própria infraestrutura com Docker ou Kubernetes |
 
 ---
 
-## Começando
+## Comece por aqui
 
-**[Quickstart](./quickstart)** — Comece em 5 minutos (cloud ou local)
+**[Quickstart](./quickstart)** — Rode em 5 minutos (cloud ou local)
 
-**[Conceitos](./concepts)** — Conexões, MCPs Virtuais, projetos e agentes
+**[Conceitos-chave](./concepts)** — Anatomia da UI do Studio, e como as peças se encaixam
 
-**[Self-Hosting](./self-hosting/quickstart)** — Docker Compose ou Kubernetes
+**[Self-hosting](./self-hosting/quickstart)** — Docker Compose ou Kubernetes
 
 ## Links
 
@@ -71,5 +82,5 @@ Gastos com tokens por conexão. Latência, erros, gargalos. Toda invocação de 
 - **Discord**: [decocms.com/discord](https://decocms.com/discord)
 
 <Callout type="info">
-  Procurando a documentação do **deco.chat** (nossa plataforma admin legada)? Selecione **deco.chat - legacy admin** no dropdown de versão na barra lateral.
+  Procurando docs do **deco.chat** (nossa plataforma de admin legada)? Selecione **deco.chat - legacy admin** no dropdown de versão na sidebar.
 </Callout>

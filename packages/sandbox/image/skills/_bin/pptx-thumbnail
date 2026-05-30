@@ -1,0 +1,2 @@
+#!/bin/sh
+exec python3 /mnt/skills/public/pptx/thumbnail.py "$@"

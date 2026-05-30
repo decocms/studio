@@ -8,6 +8,7 @@ export const providerKeyOutputSchema = z.object({
   id: z.string(),
   providerId: z.string(),
   label: z.string(),
+  presetId: z.string().nullable(),
   createdAt: z.string(),
 });
 
@@ -19,6 +20,7 @@ export const AI_PROVIDER_KEY_CREATE = defineTool({
     providerId: z.enum(PROVIDER_IDS),
     label: z.string().min(1).max(100),
     apiKey: z.string().min(1),
+    presetId: z.string().min(1).max(64).optional(),
   }),
   outputSchema: providerKeyOutputSchema,
   handler: async (input, ctx) => {
@@ -32,6 +34,7 @@ export const AI_PROVIDER_KEY_CREATE = defineTool({
       apiKey: input.apiKey,
       organizationId: org.id,
       createdBy: ctx.auth.user!.id,
+      presetId: input.presetId ?? null,
     });
 
     posthog.capture({
@@ -41,6 +44,7 @@ export const AI_PROVIDER_KEY_CREATE = defineTool({
       properties: {
         organization_id: org.id,
         provider_id: key.providerId,
+        preset_id: key.presetId,
         key_id: key.id,
         label: key.label,
       },
@@ -50,6 +54,7 @@ export const AI_PROVIDER_KEY_CREATE = defineTool({
       id: key.id,
       providerId: key.providerId,
       label: key.label,
+      presetId: key.presetId,
       createdAt: key.createdAt,
     };
   },

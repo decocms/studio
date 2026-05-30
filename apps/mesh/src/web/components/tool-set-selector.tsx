@@ -22,6 +22,8 @@ export interface ToolSetSelectorProps {
   onToolSetChange: (toolSet: Record<string, string[]>) => void;
   /** Virtual MCP ID to exclude from selection (prevents self-reference) */
   excludeVirtualMcpId?: string;
+  /** Controlled search query — if provided, hides the internal search bar */
+  searchQuery?: string;
 }
 
 interface ConnectionItemProps {
@@ -140,8 +142,13 @@ export function ToolSetSelector({
   toolSet,
   onToolSetChange,
   excludeVirtualMcpId,
+  searchQuery: controlledSearchQuery,
 }: ToolSetSelectorProps) {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [internalSearchQuery, setInternalSearchQuery] = useState("");
+  const searchQuery =
+    controlledSearchQuery !== undefined
+      ? controlledSearchQuery
+      : internalSearchQuery;
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [showMobileDetail, setShowMobileDetail] = useState(false);
@@ -151,6 +158,7 @@ export function ToolSetSelector({
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const PAGE_SIZE = 100;
@@ -244,6 +252,7 @@ export function ToolSetSelector({
       })
     : allConnections;
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   const initialOrderSet = initialOrder.current;
 
   // selected first
@@ -358,12 +367,14 @@ export function ToolSetSelector({
           showMobileDetail && "hidden md:flex",
         )}
       >
-        {/* Search Input */}
-        <CollectionSearch
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search MCP Servers..."
-        />
+        {/* Search Input — hidden when controlled from outside */}
+        {controlledSearchQuery === undefined && (
+          <CollectionSearch
+            value={internalSearchQuery}
+            onChange={setInternalSearchQuery}
+            placeholder="Search MCP Servers..."
+          />
+        )}
 
         {/* Filter Buttons */}
         <div className="flex gap-1 p-2 border-b border-border">

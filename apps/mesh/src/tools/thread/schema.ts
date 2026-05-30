@@ -74,11 +74,32 @@ export const ThreadEntitySchema = z.object({
     .string()
     .optional()
     .describe("Virtual MCP (agent) this thread was initiated with"),
+  trigger_id: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Automation trigger that created this thread; null/absent for human-initiated threads.",
+    ),
   branch: z
     .string()
     .nullable()
     .optional()
     .describe("Git branch this thread is pinned to (GitHub-linked vms only)"),
+  sandbox_provider_kind: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Pinned on first message; identifies which sandbox provider to dispatch to (e.g. 'local-docker', 'cluster', 'user-desktop').",
+    ),
+  harness_id: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Pinned on first message; selects which harness runs the thread (e.g. 'claude-code', 'codex', 'decopilot').",
+    ),
   metadata: ThreadMetadataSchema.optional().describe(
     "Free-form per-thread UI state (e.g. expanded_tools)",
   ),
@@ -110,7 +131,7 @@ export const ThreadCreateDataSchema = z.object({
     .min(1)
     .optional()
     .describe(
-      "Preferred branch. Used only when the vMCP has a githubRepo; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's vmMap, falling back to a freshly generated name.",
+      "Preferred branch. Used only when the vMCP has a githubRepo; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's sandboxMap, falling back to a freshly generated name.",
     ),
 });
 

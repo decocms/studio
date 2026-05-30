@@ -11,6 +11,7 @@ import {
   type McpListCache,
   getMcpListCache,
   fetchWithCache,
+  REVALIDATE_MIN_INTERVAL_MS,
 } from "@/mcp-clients/mcp-list-cache";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { AccessControl } from "@/core/access-control";
@@ -100,6 +101,7 @@ export class AuthTransport extends WrapperTransport {
       },
       cache,
       (p) => this.options.ctx.pendingRevalidations.push(p),
+      REVALIDATE_MIN_INTERVAL_MS,
     );
 
     if (!tools) {
@@ -159,14 +161,20 @@ export class AuthTransport extends WrapperTransport {
 
     // Create AccessControl with connectionId set
     // This checks: does user have permission for this TOOL on this CONNECTION?
+    //
+    // Prefer the path-resolved org+role (set by resolveOrgFromPath) over the
+    // session-derived ones. The session's active-org role may not match the
+    // org in the URL — e.g. owner of /api/foo with no/different active org
+    // would otherwise lose the admin/owner bypass and 403 on every tool call.
     const connectionAccessControl = new AccessControl(
       ctx.authInstance,
       ctx.auth.user?.id ?? ctx.auth.apiKey?.userId,
       toolName, // Tool being called
       ctx.boundAuth, // Bound auth client (encapsulates headers)
-      ctx.auth.user?.role, // Role for built-in role bypass
+      ctx.organization?.role ?? ctx.auth.user?.role, // Role for built-in role bypass
       connection.id, // Connection ID for permission check
       getToolMeta, // Callback for public tool check
+      ctx.organization?.id, // Path-resolved org for permission checks
     );
 
     await connectionAccessControl.check(toolName);

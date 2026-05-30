@@ -69,6 +69,7 @@ export function useCollectionWorkflow({
   const client = useMCPClient({
     connectionId: connectionId ?? null,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const item = useCollectionItem<Workflow>(
@@ -416,6 +417,7 @@ function useCollectionWorkflowExecution({
   const client = useMCPClient({
     connectionId: connectionId ?? null,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const item = useCollectionItem<WorkflowExecution>(

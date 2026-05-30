@@ -13,6 +13,125 @@
   }
 }
 
+/* Window Controls Overlay (installed PWA on Chromium):
+   The toolbar header is already the top element of the flex shell, so all
+   we need to do is (1) make its background act as the OS drag region,
+   (2) inset its content to clear the OS title-bar controls on the left
+   and right, (3) hide elements that duplicate the chrome (e.g. app logo),
+   and (4) opt buttons back to clickable.
+
+   Lives outside @layer base so it wins against Tailwind utilities like
+   h-12, pl-1, pr-2 that would otherwise cascade later. */
+@media (display-mode: window-controls-overlay) {
+  .app-titlebar {
+    padding-left: env(titlebar-area-x, 0);
+    padding-right: calc(
+      100vw -
+      env(titlebar-area-x, 0) -
+      env(titlebar-area-width, 100vw)
+    );
+    /* Match the OS title-bar strip height so close/min/max buttons line up
+       vertically with the header's icon buttons. Overrides Tailwind's h-12
+       (3rem) for the WCO case only. */
+    height: env(titlebar-area-height, 3rem);
+  }
+  .wco-drag {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  .wco-drag button,
+  .wco-drag a,
+  .wco-drag input,
+  .wco-drag [role="button"],
+  .wco-no-drag {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+  .wco-hide {
+    display: none !important;
+  }
+}
+
+@layer components {
+  /* Animated todo checkbox — stroke-dasharray technique from checkbox source */
+  .todo-cb {
+    --ts1: 300ms;
+    --ts2: 600ms;
+    --size: 15px;
+    --tick: var(--primary-foreground);
+    --border-col: var(--border);
+    --active-col: var(--primary);
+    position: relative;
+    pointer-events: none;
+    width: var(--size);
+    height: var(--size);
+    flex-shrink: 0;
+    border-radius: 3px;
+    transition:
+      box-shadow var(--ts1),
+      background var(--ts1);
+    box-shadow: inset 0 0 0 1.5px var(--b, var(--border-col));
+  }
+
+  .todo-cb svg {
+    fill: none;
+    stroke: var(--active-col);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    stroke-dasharray: var(--a, 86.12);
+    stroke-dashoffset: var(--o, 86.12);
+    transition:
+      stroke-dasharray var(--ts2),
+      stroke-dashoffset var(--ts2);
+  }
+
+  .todo-cb[data-checked="true"] {
+    background: var(--active-col);
+    --b: var(--active-col);
+    transition-delay: 0.4s;
+  }
+
+  .todo-cb[data-checked="true"] svg {
+    --a: 16 86.12;
+    --o: 102.22;
+    animation-name: todo-cb-fill;
+    animation-delay: var(--ts1);
+    animation-fill-mode: forwards;
+    animation-timing-function: ease;
+    animation-duration: var(--ts2);
+  }
+
+  .todo-cb[data-progress="true"] {
+    --b: var(--active-col);
+    animation: todo-cb-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes todo-cb-fill {
+    0% {
+      stroke: var(--active-col);
+    }
+    100% {
+      stroke: var(--tick);
+    }
+  }
+
+  @keyframes todo-cb-pulse {
+    0%,
+    100% {
+      box-shadow: inset 0 0 0 1.5px var(--active-col);
+    }
+    50% {
+      box-shadow: inset 0 0 0 1.5px
+        color-mix(in oklch, var(--active-col) 30%, transparent);
+    }
+  }
+}
+
 @layer utilities {
   .shimmer {
     background-image: linear-gradient(

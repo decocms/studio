@@ -1,0 +1,90 @@
+name: Sandbox Daemon E2E
+
+# packages/sandbox/daemon/daemon.e2e.test.ts spawns the built daemon binary
+# and exercises real HTTP/SSE endpoints — it's an integration test that
+# runs under `bun test` purely because of where it lives in the tree.
+# Split into its own workflow so the unit-test job stays infrastructure-free
+# (no daemon-bundle build, no per-test process spawning) per TESTING.md.
+
+on:
+  push:
+    branches:
+      - main
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need the suite re-run (PRs already validated them, and the
+    # [release] bump is owned by release-mesh).
+    paths-ignore:
+      - "apps/mesh/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # See test.yml for why this gate exists: skip the (required) check on
+  # workflow/docs/markdown-only PRs without leaving the required check
+  # stuck pending. Pushes to main always run.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Detect relevant changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Push to main runs everything — except the [release]: version-bump
+            # commit, which only touches the version string. release-mesh picks
+            # that commit up on its own push trigger and cuts the release.
+            case "$HEAD_MSG" in
+              '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
+              *) echo "relevant=true" >> "$GITHUB_OUTPUT" ;;
+            esac
+            exit 0
+          fi
+          set +e
+          FILES=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename')
+          if [ $? -ne 0 ]; then
+            echo "Could not list PR files — running to be safe."
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changed files:"; echo "$FILES"
+          relevant=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .github/*|apps/docs/*|*.md) ;;
+              *) relevant=true; break ;;
+            esac
+          done <<< "$FILES"
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+
+  daemon-e2e:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build daemon bundle
+        run: bun run --cwd=packages/sandbox build
+
+      - name: Run daemon e2e tests
+        run: bun test packages/sandbox/daemon/daemon.e2e.test.ts

@@ -5,10 +5,11 @@ import { makeSseStream } from "./sse";
 describe("makeSseStream", () => {
   const mkDeps = (b: Broadcaster) => ({
     broadcaster: b,
-    getLastStatus: () => ({ ready: false, htmlSupport: false }),
+    getLifecycle: () => ({ phase: "idle" as const }),
     getDiscoveredScripts: () => null,
-    getActiveProcesses: () => [],
-    getLastBranchStatus: () => null,
+    getActiveTasks: () => [],
+    getStatus: () => ({ state: "running" as const }),
+    getBranchMeta: () => ({ kind: "unknown" as const }),
     maxClients: 10,
   });
 
@@ -22,13 +23,30 @@ describe("makeSseStream", () => {
     expect(makeSseStream(mkDeps(b))).toBeNull();
   });
 
-  it("emits status event on connect", async () => {
+  it("emits lifecycle event on connect", async () => {
     const b = new Broadcaster(100);
     const stream = makeSseStream(mkDeps(b))!;
     const reader = stream.getReader();
     const first = await reader.read();
     const text = new TextDecoder().decode(first.value);
-    expect(text).toContain("event: status");
+    expect(text).toContain("event: lifecycle");
+    await reader.cancel();
+  });
+
+  it("emits status event in handshake", async () => {
+    const b = new Broadcaster(100);
+    const stream = makeSseStream(mkDeps(b))!;
+    const reader = stream.getReader();
+    // Read until we see status or run out of buffered events.
+    let combined = "";
+    for (let i = 0; i < 20; i++) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      combined += new TextDecoder().decode(chunk.value);
+      if (combined.includes("event: status")) break;
+    }
+    expect(combined).toContain("event: status");
+    expect(combined).toContain('"state":"running"');
     await reader.cancel();
   });
 });

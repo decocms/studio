@@ -6,12 +6,14 @@ on:
     paths:
       - "apps/mesh/**"
       - "packages/mesh-plugin-*/**"
+      - "packages/sandbox/**"
   push:
     branches:
       - main
     paths:
       - "apps/mesh/**"
       - "packages/mesh-plugin-*/**"
+      - "packages/sandbox/**"
 
 permissions:
   contents: write
@@ -77,7 +79,7 @@ jobs:
           echo "major_version=$NEW_MAJOR_VERSION" >> $GITHUB_OUTPUT
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Auto-suggest version bump from PR title
+      - name: Auto-suggest version bump from PR title 
         id: suggest_bump
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -136,16 +138,27 @@ jobs:
             > **Note**: If multiple reactions exist, the smallest bump wins. If no reactions, the suggested bump is used (default: patch).
 
   determine-tag:
-    if: github.event_name == 'push'
+    # Skip release-bump commits so the bot's own push (made with the GitHub App
+    # token, which — unlike GITHUB_TOKEN — re-triggers workflows) does not loop.
+    if: >-
+      github.event_name == 'push' &&
+      !startsWith(github.event.head_commit.message, '[release]:')
     runs-on: ubuntu-latest
     outputs:
       new_version: ${{ steps.determine_version.outputs.new_version }}
       deploy_to_production: ${{ steps.determine_version.outputs.deploy_to_production }}
     steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Find the Merged Pull Request
         id: find_pr
@@ -304,6 +317,7 @@ jobs:
           echo "Updated apps/mesh/package.json to version $NEW_VERSION"
 
       - name: Commit and push version bump
+        id: commit
         if: steps.determine_version.outputs.new_version != ''
         run: |
           git config user.name "github-actions[bot]"
@@ -311,14 +325,9 @@ jobs:
           git add apps/mesh/package.json
           git commit -m "[release]: bump to ${{ steps.determine_version.outputs.new_version }}"
           git push origin main
-
-      - name: Trigger Release Workflow
-        if: steps.determine_version.outputs.new_version != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.everest-preview+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/release-mesh.yaml/dispatches" \
-            -d '{"ref":"main", "inputs":{"deploy_to_production":"${{ steps.determine_version.outputs.deploy_to_production }}"}}'
+          # No [skip ci], no API dispatch: this push (made with the App token,
+          # which re-triggers workflows) is itself what kicks off release-mesh.
+          # release-mesh runs on this exact commit, so it always reads the
+          # version it's releasing — no HEAD race, and no cross-workflow
+          # dispatch token/permission to silently 403. The heavy
+          # test/multi-pod/resilience suites skip [release]: commits via guards.

@@ -16,7 +16,7 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { authClient } from "@/web/lib/auth-client";
+import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { toast } from "sonner";
 
 interface Invitation {
@@ -46,6 +46,7 @@ export function useInvitations() {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   return useSuspenseQuery({
@@ -68,11 +69,12 @@ export function useInvitations() {
  */
 export function useInvitationActions() {
   const { locator } = useProjectContext();
+  const orgAuth = useOrgAuthClient();
   const queryClient = useQueryClient();
 
   const cancelMutation = useMutation({
     mutationFn: async (invitationId: string) => {
-      const result = await authClient.organization.cancelInvitation({
+      const result = await orgAuth.organization.cancelInvitation({
         invitationId,
       });
 

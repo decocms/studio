@@ -7,6 +7,11 @@ import { useState } from "react";
 import type { useConnections } from "@decocms/mesh-sdk";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@deco/ui/components/alert.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import {
   Select,
@@ -16,7 +21,7 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Container } from "@untitledui/icons";
+import { AlertTriangle, Container } from "@untitledui/icons";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import {
   KPIChart,
@@ -230,7 +235,7 @@ export function OverviewTabContent({
   const interval = getIntervalFromRange(displayDateRange);
   const refetchInterval = isStreaming ? streamingRefetchInterval : false;
 
-  const { data: serverStats } = useMonitoringStats(
+  const { data: serverStats, isError: serverStatsError } = useMonitoringStats(
     {
       interval,
       startDate: displayDateRange.startDate.toISOString(),
@@ -243,7 +248,7 @@ export function OverviewTabContent({
     { refetchInterval },
   );
 
-  const { data: llmStats } = useMonitoringLlmStats(
+  const { data: llmStats, isError: llmStatsError } = useMonitoringLlmStats(
     {
       interval,
       startDate: displayDateRange.startDate.toISOString(),
@@ -251,6 +256,8 @@ export function OverviewTabContent({
     },
     { refetchInterval },
   );
+
+  const hasError = serverStatsError || llmStatsError;
 
   const stats: MonitoringStatsData = serverStats
     ? {
@@ -299,6 +306,19 @@ export function OverviewTabContent({
 
   return (
     <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full overflow-auto">
+      {hasError && (
+        <Alert variant="destructive">
+          <AlertTriangle />
+          <div className="flex flex-col gap-1">
+            <AlertTitle>Failed to load monitoring data</AlertTitle>
+            <AlertDescription>
+              We couldn't fetch your monitoring stats right now. Please try
+              again later.
+            </AlertDescription>
+          </div>
+        </Alert>
+      )}
+
       {/* Row 1: Tool Calls — full width */}
       <MonitoringMetricCard
         title="Tool Calls"

@@ -307,7 +307,7 @@ function ThreadRow({
   return (
     <TableRow
       ref={lastRowRef}
-      className="h-14 md:h-16 cursor-pointer hover:bg-muted/40 transition-colors"
+      className="h-14 md:h-16 cursor-pointer hover:bg-muted/40 transition-colors border-b-0"
       onClick={onClick}
     >
       <TableCell className="min-w-0 pr-2 pl-4 md:pr-4">
@@ -455,7 +455,7 @@ function ThreadConversationPanel({
           <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
             {messagePairs.map((pair, idx) => (
               <div
-                key={pair.user.id}
+                key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
                 ref={
                   idx === messagePairs.length - 1
                     ? (lastMsgRef as (node: HTMLDivElement | null) => void)
@@ -814,79 +814,83 @@ export function ThreadsTabContent({
     );
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div className="flex-1 flex flex-col overflow-auto min-w-0">
       <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
-        <div className="flex-1 overflow-auto">
-          {isLoading ? (
-            <div className="flex flex-1 items-center justify-center py-20">
-              <span className="text-sm text-muted-foreground">
-                Loading\u2026
-              </span>
-            </div>
-          ) : visibleThreads.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center py-20">
-              <EmptyState
-                title={
-                  hasActiveFilters
-                    ? "No matching threads"
-                    : "No threads in this time range"
-                }
-                description={
-                  hasActiveFilters
-                    ? "Try adjusting your filters or search query."
-                    : "Try expanding the time range to see older threads."
-                }
-              />
-            </div>
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                      Title
-                    </TableHead>
-                    <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                      Agent
-                    </TableHead>
-                    <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                      User
-                    </TableHead>
-                    <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                      Status
-                    </TableHead>
-                    <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                      Date
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {visibleThreads.map((thread, idx) => (
-                    <ThreadRow
-                      key={thread.id}
-                      thread={thread}
-                      members={membersData}
-                      connections={allConnections}
-                      virtualMcps={allVirtualMcps}
-                      onClick={() => setSelectedThreadIndex(idx)}
-                      lastRowRef={
-                        idx === visibleThreads.length - 1
-                          ? (lastRowRef as (
-                              node: HTMLTableRowElement | null,
-                            ) => void)
-                          : undefined
-                      }
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-              {isFetchingNextPage && (
-                <div className="py-4 text-center text-sm text-muted-foreground">
-                  Loading more...
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 min-w-0 pt-1">
+            <div className="min-w-0">
+              {isLoading ? (
+                <div className="flex flex-1 items-center justify-center py-20">
+                  <span className="text-sm text-muted-foreground">
+                    Loading\u2026
+                  </span>
                 </div>
+              ) : visibleThreads.length === 0 ? (
+                <div className="flex flex-1 items-center justify-center py-20">
+                  <EmptyState
+                    title={
+                      hasActiveFilters
+                        ? "No matching threads"
+                        : "No threads in this time range"
+                    }
+                    description={
+                      hasActiveFilters
+                        ? "Try adjusting your filters or search query."
+                        : "Try expanding the time range to see older threads."
+                    }
+                  />
+                </div>
+              ) : (
+                <>
+                  <Table className="w-full border-collapse">
+                    <TableHeader className="border-b-0 z-20">
+                      <TableRow className="h-9 hover:bg-transparent border-b border-border">
+                        <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                          Title
+                        </TableHead>
+                        <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                          Agent
+                        </TableHead>
+                        <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                          User
+                        </TableHead>
+                        <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                          Status
+                        </TableHead>
+                        <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
+                          Date
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {visibleThreads.map((thread, idx) => (
+                        <ThreadRow
+                          key={thread.id}
+                          thread={thread}
+                          members={membersData}
+                          connections={allConnections}
+                          virtualMcps={allVirtualMcps}
+                          onClick={() => setSelectedThreadIndex(idx)}
+                          lastRowRef={
+                            idx === visibleThreads.length - 1
+                              ? (lastRowRef as (
+                                  node: HTMLTableRowElement | null,
+                                ) => void)
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {isFetchingNextPage && (
+                    <div className="py-4 text-center text-sm text-muted-foreground">
+                      Loading more...
+                    </div>
+                  )}
+                </>
               )}
-            </>
-          )}
+            </div>
+          </div>
         </div>
       </div>
 

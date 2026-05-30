@@ -66,7 +66,28 @@ export interface DecopilotFinishEvent extends BaseDecopilotEvent {
 
 export interface DecopilotThreadStatusEvent extends BaseDecopilotEvent {
   type: typeof DECOPILOT_EVENTS.THREAD_STATUS;
-  data: { status: ThreadStatus; virtual_mcp_id?: string };
+  data: {
+    status: ThreadStatus;
+    virtual_mcp_id?: string;
+    /** User who created the thread; needed to populate filter-complete cache rows on the client. */
+    created_by?: string;
+    /** Automation trigger id; null for human-initiated, omitted when unknown. */
+    trigger_id?: string | null;
+    /** Thread title at emit time. Absent if caller didn't load the row. */
+    title?: string;
+    /** Branch this thread is pinned to (null when unpinned). Absent if caller didn't load the row. */
+    branch?: string | null;
+    /** Thread creation timestamp. Absent if caller didn't load the row. */
+    created_at?: string;
+    /** Last update timestamp; useful for the client to sort/dedupe. Absent if caller didn't load the row. */
+    updated_at?: string;
+    /** Free-form thread metadata snapshot. The chat UI keys off
+     *  metadata.kind to switch between agent-thread and tool_call_run
+     *  renderings (avatar, message-renderer), so the workflow that
+     *  spawns those threads must include it on the first event or the
+     *  row renders with the wrong icon until a refetch. */
+    metadata?: Record<string, unknown>;
+  };
 }
 
 export type DecopilotSSEEvent =
@@ -116,7 +137,16 @@ export function createDecopilotFinishEvent(
 export function createDecopilotThreadStatusEvent(
   taskId: string,
   status: ThreadStatus,
-  virtualMcpId?: string,
+  opts?: {
+    virtualMcpId?: string;
+    createdBy?: string;
+    triggerId?: string | null;
+    title?: string;
+    branch?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
+    metadata?: Record<string, unknown>;
+  },
 ): DecopilotThreadStatusEvent {
   return {
     id: crypto.randomUUID(),
@@ -125,7 +155,16 @@ export function createDecopilotThreadStatusEvent(
     subject: taskId,
     data: {
       status,
-      ...(virtualMcpId && { virtual_mcp_id: virtualMcpId }),
+      ...(opts?.virtualMcpId !== undefined && {
+        virtual_mcp_id: opts.virtualMcpId,
+      }),
+      ...(opts?.createdBy !== undefined && { created_by: opts.createdBy }),
+      ...(opts?.triggerId !== undefined && { trigger_id: opts.triggerId }),
+      ...(opts?.title !== undefined && { title: opts.title }),
+      ...(opts?.branch !== undefined && { branch: opts.branch }),
+      ...(opts?.createdAt !== undefined && { created_at: opts.createdAt }),
+      ...(opts?.updatedAt !== undefined && { updated_at: opts.updatedAt }),
+      ...(opts?.metadata !== undefined && { metadata: opts.metadata }),
     },
     time: new Date().toISOString(),
   };

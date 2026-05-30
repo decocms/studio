@@ -30,6 +30,7 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { track } from "@/web/lib/posthog-client";
 import { authClient } from "@/web/lib/auth-client";
+import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { useOrganizationRoles } from "@/web/hooks/use-organization-roles";
@@ -62,6 +63,7 @@ function parseEmails(text: string): string[] {
 export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
   const [open, setOpen] = useState(false);
   const { locator } = useProjectContext();
+  const orgAuth = useOrgAuthClient();
   const queryClient = useQueryClient();
 
   // Get the active organization from session
@@ -110,7 +112,7 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
       // Invite each valid email with the selected role
       const results = await Promise.allSettled(
         emails.map(async (email) => {
-          const result = await authClient.organization.inviteMember({
+          const result = await orgAuth.organization.inviteMember({
             email,
             role: role as "admin" | "owner",
           });

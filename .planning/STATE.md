@@ -4,7 +4,7 @@
 
 See: .planning/PROJECT.md (updated 2026-02-20)
 
-**Core value:** Developers can connect any MCP server to Mesh and get auth, routing, observability, and a visual site editor for Deco sites.
+**Core value:** Developers can connect any MCP server to Studio and get auth, routing, observability, and a visual site editor for Deco sites.
 **Current focus:** Milestone v1.3 — Phase 15: local-dev daemon (ready to plan)
 
 ## Current Position
@@ -45,7 +45,7 @@ Recent decisions affecting current work:
 - site-editor checks connection capabilities at runtime — does not directly depend on local-dev package
 - **AMENDED**: Git tools removed from local-dev — bash tool (unrestricted) covers git + dev server + everything
 - **AMENDED**: Entry point is `deco link` in packages/cli (deco-cli), not `npx @decocms/mesh`
-- **AMENDED**: CLI is portable/separate from Mesh — Mesh can be local or remote (tunnel = v1.4)
+- **AMENDED**: CLI is portable/separate from Studio — Studio can be local or remote (tunnel = v1.4)
 - **AMENDED**: Projects as virtual MCPs with local proxy deferred to v1.4
 - Bash tool is unrestricted, scoped to project folder — like Claude Code's bash
 - deco-cli (packages/cli) already exists with login; `deco link` is a new command added to it

@@ -1,12 +1,12 @@
-# MCP Mesh
+# Studio
 
 ## What This Is
 
-MCP Mesh is an open-source control plane for Model Context Protocol (MCP) traffic. It provides a unified layer for authentication, routing, and observability between MCP clients (Cursor, Claude, VS Code) and MCP servers. The system is a monorepo using Bun workspaces with TypeScript, Hono (API), and React 19 (UI), with a plugin system where each plugin exposes sidebar navigation, server tools, and client UI.
+Studio is an open-source control plane for Model Context Protocol (MCP) traffic. It provides a unified layer for authentication, routing, and observability between MCP clients (Cursor, Claude, VS Code) and MCP servers. The system is a monorepo using Bun workspaces with TypeScript, Hono (API), and React 19 (UI), with a plugin system where each plugin exposes sidebar navigation, server tools, and client UI.
 
 ## Core Value
 
-Developers can connect any MCP server to Mesh and immediately get auth, routing, observability, and a polished admin UI — including a full visual site editor for Deco-compatible sites.
+Developers can connect any MCP server to Studio and immediately get auth, routing, observability, and a polished admin UI — including a full visual site editor for Deco-compatible sites.
 
 ## Current Milestone: v1.3 — Local-First Development
 
@@ -42,7 +42,7 @@ Developers can connect any MCP server to Mesh and immediately get auth, routing,
 
 - Remote hosting / Kubernetes daemon — local-first only for this milestone
 - GitHub integration for projects — deferred to v1.4
-- Tunnel / deco link for remote Mesh — deferred to v1.4
+- Tunnel / deco link for remote Studio — deferred to v1.4
 - Multi-user local setup — single developer workflow only
 
 ## Context

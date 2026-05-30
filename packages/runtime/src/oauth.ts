@@ -1,6 +1,29 @@
 import type { OAuthClient, OAuthConfig, OAuthParams } from "./tools.ts";
 
 /**
+ * Thrown by `OAuthConfig.refreshToken` (or `exchangeCode`) implementations
+ * when the upstream OAuth provider says the grant itself is permanently
+ * invalid — e.g. GitHub returns `400 invalid_grant` because the user
+ * revoked the app or the refresh_token was rotated out from under us.
+ *
+ * The `/token` handler maps this to an RFC-6749-compliant
+ * `400 {"error":"invalid_grant",...}` response, so callers can tell apart
+ * "the user needs to reconnect" from a transient upstream 5xx (which the
+ * outer catch maps to a 500). Throwing a plain `Error` from `refreshToken`
+ * will be treated as transient and surface as 500.
+ */
+export class OAuthInvalidGrantError extends Error {
+  readonly error: string;
+  readonly errorDescription?: string;
+  constructor(error = "invalid_grant", errorDescription?: string) {
+    super(errorDescription ?? error);
+    this.name = "OAuthInvalidGrantError";
+    this.error = error;
+    this.errorDescription = errorDescription;
+  }
+}
+
+/**
  * Generate a cryptographically secure random token
  */
 function generateRandomToken(length = 32): string {
@@ -338,8 +361,30 @@ export function createOAuthHandlers(oauth: OAuthConfig) {
           );
         }
 
-        // Call the external provider to refresh the token
-        const newTokenResponse = await oauth.refreshToken(refresh_token);
+        // Call the external provider to refresh the token. We catch
+        // `OAuthInvalidGrantError` here (not in the outer catch) so we can
+        // map it to a spec-compliant 400 instead of letting all errors fall
+        // through to a generic 500. Any other thrown error is treated as
+        // transient and surfaces from the outer catch as 500.
+        let newTokenResponse: Awaited<
+          ReturnType<NonNullable<OAuthConfig["refreshToken"]>>
+        >;
+        try {
+          newTokenResponse = await oauth.refreshToken(refresh_token);
+        } catch (err) {
+          if (err instanceof OAuthInvalidGrantError) {
+            return Response.json(
+              {
+                error: err.error,
+                ...(err.errorDescription
+                  ? { error_description: err.errorDescription }
+                  : {}),
+              },
+              { status: 400 },
+            );
+          }
+          throw err;
+        }
 
         const tokenResponse: Record<string, unknown> = {
           access_token: newTokenResponse.access_token,

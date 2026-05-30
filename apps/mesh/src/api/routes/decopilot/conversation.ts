@@ -16,6 +16,7 @@ import {
 import type { ChatMessage } from "./types";
 import type { Memory } from "./memory";
 import { ThreadMessage } from "@/storage/types";
+import { keepLastTodoWrite } from "./todo-write-context";
 
 /**
  * Split request messages into system and the single request message.
@@ -162,6 +163,13 @@ export async function processConversation(
     messages: nonSystemModelMessages,
   } = splitMessages(modelMessages);
 
+  // Keep only the most recent `todo_write` tool-call/result pair. The
+  // agent reads its current todo state directly from its own most-recent
+  // tool call in the visible stream; older calls are pure context bloat
+  // and are pruned here. The intra-loop strip+inject is gone — the agent
+  // loop sees its own todo_write calls live, with no manipulation.
+  const todoTrimmedMessages = keepLastTodoWrite(nonSystemModelMessages);
+
   // Strip reasoning from all previous assistant messages.
   // pruneMessages removes reasoning content parts, but leaves message-level
   // and part-level providerOptions/providerMetadata intact. The AI SDK's
@@ -172,7 +180,7 @@ export async function processConversation(
   // We strip both reasoning parts AND all provider metadata from assistant
   // messages to prevent this.
   const prunedModelMessages = pruneMessages({
-    messages: nonSystemModelMessages,
+    messages: todoTrimmedMessages,
     reasoning: "all",
     emptyMessages: "remove",
     toolCalls: "none",

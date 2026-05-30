@@ -12,6 +12,7 @@
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
 import {
   SELF_MCP_ALIAS_ID,
   useConnections,
@@ -20,16 +21,28 @@ import {
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
-import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import {
+  agentHasClonableSource,
+  agentHasConnectedGithub,
+} from "@/web/lib/agent-capabilities";
 import { useChatTask } from "@/web/components/chat/index";
+import { useThreadManager } from "@/web/components/chat/store/hooks";
+import { getActiveGithubRepo } from "@/web/lib/github-repo.ts";
+import { usePrByBranch } from "@/web/components/thread/github/use-pr-data.ts";
+import { useDecofile } from "@/web/components/sections-editor/use-decofile";
+import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
+import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
+import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
 } from "../../../storage/types";
+import type { Task } from "@/web/components/chat/task/types";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
   resolveActiveTabAndOpen,
+  resolveDefaultTabId,
   resolveTabClickTarget,
   type AutomationTabParsed,
 } from "./tab-id";
@@ -68,27 +81,49 @@ function useTaskMetadata(taskId: string): ThreadMetadata | null {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
-  const { data } = useSuspenseQuery({
-    queryKey: KEYS.threadMetadata(taskId),
+  const manager = useThreadManager();
+  // Subscribe to the store so a row that lands AFTER first render (snapshot
+  // arrives late, manager.create prepends, etc.) re-renders this hook with
+  // fresh metadata. Reading via the queryFn alone would pin a stale null in
+  // the React Query cache.
+  const threads = useSyncExternalStore(
+    manager.threads.subscribe,
+    manager.threads.get,
+  );
+  const localHit = taskId
+    ? (threads.find((t) => t.id === taskId) ?? null)
+    : null;
+  // Suspense fallback for the archived-thread / cold-load case — not in the
+  // open-list snapshot, so the store can't help. Result is cached per
+  // `KEYS.ensureTask(orgId, taskId)`; localHit always wins when present, so a
+  // stale-null cache entry is harmless once the store catches up.
+  const { data: fetchedMetadata } = useSuspenseQuery<
+    Task | null,
+    Error,
+    ThreadMetadata | null
+  >({
+    queryKey: KEYS.ensureTask(org.id, taskId),
     queryFn: async () => {
-      if (!client || !taskId) return null;
+      if (!taskId || !client) return null;
       try {
         const result = (await client.callTool({
           name: "COLLECTION_THREADS_GET",
           arguments: { id: taskId },
         })) as { structuredContent?: unknown };
         const payload = (result.structuredContent ?? result) as {
-          item?: { metadata?: ThreadMetadata } | null;
+          item?: Task | null;
         };
-        return payload.item?.metadata ?? null;
+        return payload.item ?? null;
       } catch {
         return null;
       }
     },
+    select: (task) => task?.metadata ?? null,
     staleTime: 30_000,
   });
-  return data;
+  return localHit?.metadata ?? fetchedMetadata ?? null;
 }
 
 export function useMainPanelTabs(ctx: {
@@ -101,7 +136,19 @@ export function useMainPanelTabs(ctx: {
   };
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
+  const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
+
+  const githubRepo = getActiveGithubRepo(entity);
+  const prQuery = usePrByBranch({
+    orgId: org.id,
+    orgSlug: org.slug,
+    connectionId: githubRepo?.connectionId ?? "",
+    owner: githubRepo?.owner ?? "",
+    repo: githubRepo?.name ?? "",
+    branch: githubRepo ? currentBranch : null,
+  });
+  const hasOpenPr = prQuery.data?.state === "open";
 
   const entityUI =
     (
@@ -129,30 +176,76 @@ export function useMainPanelTabs(ctx: {
   const layoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
   const pinnedViews = entityUI?.pinnedViews ?? [];
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
-  const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
+  const hasActiveGithubRepo = agentHasConnectedGithub(entity);
+  const hasClonableSource = agentHasClonableSource(entity?.metadata);
   const connections = useConnections({ includeVirtual: true });
 
-  const { activeTab, mainOpen } = resolveActiveTabAndOpen({
-    mainParam: search.main,
-    metadata: entityLayout
-      ? {
-          defaultMainView: entityLayout.defaultMainView ?? null,
-          tabs: layoutTabs.map((t) => ({ id: t.id })),
-        }
-      : null,
+  // Show "Content" only when decofile/meta confirm editable pages or sections
+  // — same rule as Preview's Sections editor toggle. Fetch only after the dev
+  // server is up (shared query keys with Preview / Content). Requires
+  // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
+  const vmEvents = useSandboxEvents();
+  const devServerReady = vmEvents.lifecycle.phase === "running";
+  const decofileFetchParams =
+    hasClonableSource && entity?.id && currentBranch
+      ? { orgSlug: org.slug, virtualMcpId: entity.id, branch: currentBranch }
+      : null;
+  // Subscribe to the same query keys as Preview; only fetch after the dev
+  // server is running, but still re-render when Preview warms the cache.
+  const { data: decofile } = useDecofile(decofileFetchParams, {
+    fetchEnabled: devServerReady,
   });
+  const { data: meta } = useLiveMeta(decofileFetchParams, {
+    fetchEnabled: devServerReady,
+  });
+  const showContentTab = hasEditableDecoContent(decofile, meta);
+
+  const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
+    resolveActiveTabAndOpen({
+      mainParam: search.main,
+      metadata: entityLayout
+        ? {
+            defaultMainView: entityLayout.defaultMainView ?? null,
+            tabs: layoutTabs.map((t) => ({ id: t.id })),
+          }
+        : null,
+    });
+
+  const gitTabVisible =
+    hasActiveGithubRepo &&
+    (hasOpenPr || (prQuery.isPending && rawActiveTab === "git"));
+  const layoutForDefault = entityLayout
+    ? {
+        defaultMainView: entityLayout.defaultMainView ?? null,
+        tabs: layoutTabs.map((t) => ({ id: t.id })),
+      }
+    : null;
+  const activeTab =
+    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+      ? resolveDefaultTabId(layoutForDefault)
+      : rawActiveTab === "content" && !showContentTab
+        ? resolveDefaultTabId(layoutForDefault)
+        : rawActiveTab;
+  const mainOpen =
+    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+      ? false
+      : rawMainOpen;
 
   const automationTabParsed = parseAutomationTabId(activeTab);
 
   // Unified "settings" tab bundles instructions, connections, and layout
   // into a single detail view. On GitHub-linked vMCPs the contextual
-  // work tabs (Preview, Terminal, git) come first so they're closest
-  // to the panel; Settings + Automations stay anchored at the right.
+  // work tabs (Preview, git) come first so they're closest to the panel;
+  // Settings + Automations stay anchored at the right.
   const systemTabs: Array<{ id: string; title: string }> = [];
-  if (hasActiveGithubRepo) {
+  if (hasClonableSource) {
     systemTabs.push({ id: "preview", title: "Preview" });
-    systemTabs.push({ id: "env", title: "Terminal" });
-    systemTabs.push({ id: "git", title: currentBranch ?? "git" });
+    if (showContentTab) {
+      systemTabs.push({ id: "content", title: "Content" });
+    }
+  }
+  if (gitTabVisible) {
+    systemTabs.push({ id: "git", title: "Review changes" });
   }
   systemTabs.push({ id: "settings", title: "Settings" });
   systemTabs.push({ id: "automations", title: "Automations" });

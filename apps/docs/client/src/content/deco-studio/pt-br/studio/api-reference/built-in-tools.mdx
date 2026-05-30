@@ -1,79 +1,72 @@
 ---
-title: Ferramentas Integradas
-description: Ferramentas principais fornecidas pelo decopilot para descobrir capacidades e gerenciar trabalho
+title: Tools Integradas
+description: Tools essenciais fornecidas pelo decopilot para descobrir capacidades e gerenciar trabalho
 icon: Wrench
 ---
 
 import Callout from "../../../../../components/ui/Callout.astro";
 
-## Visão Geral
+## Visão geral
 
-O Decopilot fornece ferramentas integradas que estão sempre disponíveis (sujeitas a restrições de tarefas/subtarefas). Essas ferramentas permitem gerenciamento de trabalho, acesso ao contexto e coordenação de agentes.
+O Decopilot fornece tools integradas que estão sempre disponíveis (sujeitas a restrições de task/subtask). Essas tools permitem gerenciamento de trabalho, acesso ao contexto e coordenação de agentes.
 
-## Categorias de Ferramentas
+## Categorias de tools
 
-### Descoberta e Habilitação
+### Descoberta e ativação
 
-Ferramentas para ativar capacidades:
+- [**enable_tool**](/pt-br/studio/api-reference/built-in-tools/enable-tool) — Ativa uma ou mais tools do escopo para que possam ser chamadas em etapas subsequentes
 
-- [**tool_enable**](/pt-br/studio/api-reference/built-in-tools/tool-enable) - Ativar uma ferramenta para uso na tarefa atual
+### Gerenciamento de tasks
 
-### Gerenciamento de Agentes
+- [**subtask**](/pt-br/studio/api-reference/built-in-tools/subtask-run) — Inicia uma subtask com contexto isolado, opcionalmente vinculada a um agente específico
 
-Ferramentas para trabalhar com agentes:
+### Interação com o usuário
 
-- [**agent_search**](/pt-br/studio/api-reference/built-in-tools/agent-search) - Encontrar agentes configurados na organização
+- [**user_ask**](/pt-br/studio/api-reference/built-in-tools/user-ask) — Faz uma pergunta ao usuário quando uma entrada ou esclarecimento for necessário
 
-### Gerenciamento de Tarefas
+### Acesso ao contexto
 
-Ferramentas para criar e gerenciar trabalho:
+- [**read_resource**](/pt-br/studio/api-reference/built-in-tools/resource-read) — Lê documentação ou diretrizes do escopo atual
+- [**read_prompt**](/pt-br/studio/api-reference/built-in-tools/prompt-read) — Lê um template de prompt reutilizável
 
-- [**subtask**](/pt-br/studio/api-reference/built-in-tools/subtask-run) - Criar subtarefa com contexto isolado
+### Trabalhando com a saída de tools
 
-### Interação com o Usuário
+- [**read_tool_output**](/pt-br/studio/api-reference/built-in-tools/read-tool-output) — Relê um resultado grande de tool que foi descarregado para o armazenamento
 
-Ferramentas para coletar entrada do usuário:
+### Pesquisa e mídia
 
-- [**user_ask**](/pt-br/studio/api-reference/built-in-tools/user-ask) - Perguntar ao usuário por entrada ou esclarecimento
+Essas tools são registradas condicionalmente com base nos modelos padrão configurados pela organização:
 
-### Acesso ao Contexto
-
-Ferramentas para ler recursos e prompts:
-
-- [**read_resource**](/pt-br/studio/api-reference/built-in-tools/resource-read) - Ler documentação/diretrizes do escopo atual
-- [**read_prompt**](/pt-br/studio/api-reference/built-in-tools/prompt-read) - Ler templates de prompt do escopo atual
-
-### Execução de Código e Saída
-
-Ferramentas para executar código e processar resultados:
-
-- [**sandbox**](/pt-br/studio/api-reference/built-in-tools/sandbox) - Executar código JavaScript com acesso a ferramentas MCP
-- [**read_tool_output**](/pt-br/studio/api-reference/built-in-tools/read-tool-output) - Filtrar saídas grandes de ferramentas usando padrões regex
+- **web_search** — Executa um passo de pesquisa web aprofundada em streaming (requer um modelo de web-research)
+- **generate_image** — Gera uma imagem (requer um modelo de imagem)
 
 ### Planejamento
 
-Ferramentas para execução estruturada:
+- [**propose_plan**](/pt-br/studio/api-reference/built-in-tools/propose-plan) — Propõe um plano para aprovação. Registrada apenas quando o modo de chat é `plan`.
 
-- [**propose_plan**](/pt-br/studio/api-reference/built-in-tools/propose-plan) - Propor planos de execução para aprovação do usuário
+### Tools de sandbox (VM)
 
-## Matriz de Disponibilidade
+Quando um agente é suportado por uma sandbox (um repositório do GitHub vinculado), o decopilot também expõe seis tools de VM — `bash`, `read`, `write`, `edit`, `grep`, `glob` — que operam dentro dessa sandbox. Elas são provisionadas de forma preguiçosa no primeiro uso.
 
-| Ferramenta | Tarefa | Subtarefa | Descrição |
-|------|:----:|:-------:|-------------|
-| `tool_enable` | ✓ | ✓ | Ativar uma ferramenta para uso na tarefa atual |
-| `agent_search` | ✓ | ✗ | Encontrar agentes configurados na organização |
-| `subtask` | ✓ | ✗ | Criar subtarefa com contexto limpo |
-| `user_ask` | ✓ | ✗ | Perguntar ao usuário por entrada ou esclarecimento |
-| `read_resource` | ✓ | ✓ | Ler documentação/diretrizes do escopo atual |
-| `read_prompt` | ✓ | ✓ | Ler templates de prompt do escopo atual |
-| `sandbox` | ✓ | ✓ | Executar código JavaScript com acesso a ferramentas MCP |
-| `read_tool_output` | ✓ | ✓ | Filtrar saídas grandes de ferramentas usando regex |
-| `propose_plan` | ✓ | ✓ | Propor planos de execução para aprovação |
+## Matriz de disponibilidade
+
+| Tool | Task | Subtask | Notas |
+|------|:----:|:-------:|-------|
+| `enable_tool` | ✓ | ✓ | Ativa uma tool do escopo para a próxima etapa |
+| `subtask` | ✓ | ✗ | Evita delegação infinita |
+| `user_ask` | ✓ | ✗ | Subtasks não podem interromper o usuário |
+| `read_resource` | ✓ | ✓ | |
+| `read_prompt` | ✓ | ✓ | |
+| `read_tool_output` | ✓ | ✓ | |
+| `web_search` | ✓ | ✓ | Condicional ao modelo de web-research |
+| `generate_image` | ✓ | ✓ | Condicional ao modelo de imagem |
+| `propose_plan` | ✓ | ✗ | Apenas no modo plan |
+| Tools de VM (`bash`, `read`, `write`, `edit`, `grep`, `glob`) | ✓ | ✓ | Apenas quando o agente possui uma sandbox |
 
 <Callout type="info">
-  **Tarefas** são iniciadas pelo usuário e têm acesso completo a todas as ferramentas integradas. **Subtarefas** são criadas pelo decopilot e têm acesso restrito para evitar delegação infinita e bloqueio de interações com o usuário. Subtarefas têm um limite de 15 passos (vs 30 para tarefas) e devem retornar um resumo.
+  **Tasks** são iniciadas pelo usuário e têm acesso total a todas as tools integradas. **Subtasks** são iniciadas pelo decopilot e têm acesso restrito para evitar delegação infinita e bloqueio de interações com o usuário. Subtasks têm um limite de 15 etapas (vs. 30 para tasks) e precisam retornar um resumo.
 </Callout>
 
 <Callout type="tip">
-  **Descoberta de ferramentas**: As ferramentas de escopo dos servidores MCP conectados são descobertas implicitamente através das conexões listadas no MCP Virtual do escopo atual — não há uma ferramenta explícita de busca.
+  **Descoberta de tools**: As tools de escopo disponíveis vindas de servidores MCP conectados são descobertas implicitamente por meio das conexões listadas no Virtual MCP do escopo atual — não existe uma tool de busca explícita. Use `enable_tool` para ativar uma tool antes de chamá-la.
 </Callout>

@@ -117,6 +117,7 @@ export function PluginLayout({
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   const { data: pluginConfig, isLoading: isLoadingConfig } = useQuery({
@@ -145,6 +146,7 @@ export function PluginLayout({
   const configuredClient = useMCPClientOptional({
     connectionId: configuredConnection?.id,
     orgId: org.id,
+    orgSlug: org.slug,
   });
 
   // Build session for context (always available)
