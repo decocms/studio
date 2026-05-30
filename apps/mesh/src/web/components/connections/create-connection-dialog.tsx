@@ -69,8 +69,8 @@ import {
 interface CreateConnectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Called with the new connection id after successful creation. */
-  onCreated?: (id: string) => void;
+  /** Called with the new connection id and title after successful creation. */
+  onCreated?: (id: string, title: string) => void;
 }
 
 export function CreateConnectionDialog({
@@ -271,7 +271,7 @@ export function CreateConnectionDialog({
 
       form.reset();
       onOpenChange(false);
-      onCreated?.(newId);
+      onCreated?.(newId, data.title);
     } catch {
       toast.error("Failed to create connection");
     }

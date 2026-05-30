@@ -304,7 +304,10 @@ function ConnectionInspectorViewWithConnection({
     form.reset(connectionToFormValues(configureInstance ?? connection));
   };
 
-  const handleAuthenticateForId = async (connId: string) => {
+  const handleAuthenticateForId = async (
+    connId: string,
+    currentTitle?: string | null,
+  ) => {
     const { token, tokenInfo, error } = await authenticateMcp({
       connectionId: connId,
       orgSlug: projectOrg.slug,
@@ -321,6 +324,7 @@ function ConnectionInspectorViewWithConnection({
       token,
       tokenInfo,
       connectionActions,
+      currentTitle,
     });
 
     const mcpProxyUrl = new URL(
@@ -337,7 +341,8 @@ function ConnectionInspectorViewWithConnection({
     toast.success("Authentication successful");
   };
 
-  const handleAuthenticate = () => handleAuthenticateForId(connection.id);
+  const handleAuthenticate = () =>
+    handleAuthenticateForId(connection.id, connection.title);
 
   const handleRemoveOAuth = async () => {
     try {
@@ -514,7 +519,9 @@ function ConnectionInspectorViewWithConnection({
                 <ConnectionInstancesPanel
                   instances={siblings}
                   onConfigure={(inst) => setConfigureInstance(inst)}
-                  onAuthenticate={(inst) => handleAuthenticateForId(inst.id)}
+                  onAuthenticate={(inst) =>
+                    handleAuthenticateForId(inst.id, inst.title)
+                  }
                   onDelete={(inst) => deleteConnection.requestDelete(inst)}
                   isAdding={isAddingInstance}
                   onAdd={async () => {
@@ -560,7 +567,7 @@ function ConnectionInspectorViewWithConnection({
                         authStatus.supportsOAuth &&
                         !authStatus.isAuthenticated
                       ) {
-                        await handleAuthenticateForId(newId);
+                        await handleAuthenticateForId(newId, newTitle);
                       }
                       // New instance shares the same app slug — no navigation needed
                       // The page will re-render with the new sibling

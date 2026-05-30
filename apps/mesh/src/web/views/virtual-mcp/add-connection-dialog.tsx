@@ -748,6 +748,7 @@ export function AddConnectionDialog({
           token,
           tokenInfo,
           connectionActions,
+          currentTitle: newTitle,
         });
         await queryClient.invalidateQueries({
           queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
@@ -872,7 +873,7 @@ export function AddConnectionDialog({
       <CreateConnectionDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={async (id) => {
+        onCreated={async (id, title) => {
           setCreateOpen(false);
 
           // Handle OAuth if needed (same flow as handleConnectAndAdd)
@@ -916,6 +917,7 @@ export function AddConnectionDialog({
               token,
               tokenInfo,
               connectionActions,
+              currentTitle: title,
             });
             await queryClient.invalidateQueries({
               queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),

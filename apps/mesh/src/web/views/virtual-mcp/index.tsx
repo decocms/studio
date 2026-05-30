@@ -270,67 +270,6 @@ function ConnectionItem({
 
 const NEW_INSTANCE_VALUE = "__new_instance__";
 
-async function extractEmailFromTokenInfo(
-  tokenInfo: {
-    idToken: string | null;
-    userinfoEndpoint: string | null;
-    accessToken: string;
-  } | null,
-  accessToken: string,
-): Promise<string | null> {
-  // 1. Try to decode the OIDC id_token JWT (fastest, no extra request)
-  const jwtToTry = tokenInfo?.idToken ?? null;
-  if (jwtToTry) {
-    const email = decodeJwtEmail(jwtToTry);
-    if (email) return email;
-  }
-
-  // 2. Call the OIDC userinfo endpoint if available (works for Google Drive which returns opaque access tokens)
-  const userinfoEndpoint = tokenInfo?.userinfoEndpoint ?? null;
-  if (userinfoEndpoint) {
-    try {
-      const res = await fetch(userinfoEndpoint, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (res.ok) {
-        const userinfo = (await res.json()) as Record<string, unknown>;
-        const email =
-          typeof userinfo.email === "string"
-            ? userinfo.email
-            : typeof userinfo.upn === "string"
-              ? userinfo.upn
-              : typeof userinfo.preferred_username === "string"
-                ? userinfo.preferred_username
-                : null;
-        if (email) return email;
-      }
-    } catch {
-      // Ignore — userinfo endpoint unavailable or CORS blocked
-    }
-  }
-
-  // 3. Last resort: try to decode the access token itself as a JWT
-  return decodeJwtEmail(accessToken);
-}
-
-function decodeJwtEmail(token: string): string | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length === 3 && parts[1]) {
-      const payload = JSON.parse(
-        atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
-      ) as Record<string, unknown>;
-      if (typeof payload.email === "string") return payload.email;
-      if (typeof payload.upn === "string") return payload.upn;
-      if (typeof payload.preferred_username === "string")
-        return payload.preferred_username;
-    }
-  } catch {
-    // Not a decodable JWT
-  }
-  return null;
-}
-
 function SiblingInstanceSelector({
   appName,
   connectionId,
@@ -1391,7 +1330,7 @@ function VirtualMcpDetailViewWithData({
       orgId: org.id,
     });
     if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-      await handleAuthenticate(connectionId);
+      await handleAuthenticate(connectionId, conn?.title);
     }
   };
 
@@ -1445,7 +1384,8 @@ function VirtualMcpDetailViewWithData({
 
       const baseName = base.title.replace(/\s*\(.*?\)\s*$/, "");
       const newId = generatePrefixedId("conn");
-      // Temporary title — will be updated with email suffix after OAuth if available
+      // Temporary title — replaced with the email suffix after OAuth when an
+      // identity can be derived; otherwise the random suffix disambiguates.
       const tempTitle = `${baseName} (${Date.now().toString(36).slice(-4)})`;
 
       await connectionActions.create.mutateAsync({
@@ -1472,16 +1412,14 @@ function VirtualMcpDetailViewWithData({
         orgId: org.id,
       });
       if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-        const email = await handleAuthenticate(newId);
-        if (!email) {
-          // Auth failed or cancelled — clean up the orphaned connection
+        const ok = await handleAuthenticate(newId, tempTitle);
+        if (!ok) {
+          // Auth failed or cancelled — clean up the orphaned connection.
+          // (The email decoration, when derivable, is applied inside
+          // handleAuthenticate via persistDownstreamToken.)
           await connectionActions.delete.mutateAsync(newId);
           return;
         }
-        await connectionActions.update.mutateAsync({
-          id: newId,
-          data: { title: `${baseName} (${email})` },
-        });
       }
 
       // Switch to the new instance
@@ -1519,7 +1457,8 @@ function VirtualMcpDetailViewWithData({
 
   const handleAuthenticate = async (
     connectionId: string,
-  ): Promise<string | null> => {
+    currentTitle?: string | null,
+  ): Promise<boolean> => {
     const { token, tokenInfo, error } = await authenticateMcp({
       connectionId,
       orgSlug: org.slug,
@@ -1527,7 +1466,7 @@ function VirtualMcpDetailViewWithData({
     });
     if (error || !token) {
       toast.error(`Authentication failed: ${error}`);
-      return null;
+      return false;
     }
 
     await persistDownstreamToken({
@@ -1536,6 +1475,7 @@ function VirtualMcpDetailViewWithData({
       token,
       tokenInfo,
       connectionActions,
+      currentTitle,
     });
 
     const mcpProxyUrl = new URL(
@@ -1548,7 +1488,7 @@ function VirtualMcpDetailViewWithData({
 
     toast.success("Authentication successful");
 
-    return extractEmailFromTokenInfo(tokenInfo, token);
+    return true;
   };
 
   const handleInsertTemplate = () => {

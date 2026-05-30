@@ -851,6 +851,7 @@ function ConnectionResults({
             token,
             tokenInfo,
             connectionActions: actions,
+            currentTitle: connectionData.title,
           });
           await queryClient.invalidateQueries({
             queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),

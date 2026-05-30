@@ -12,6 +12,10 @@ import {
   isConnectionAuthenticated,
   type OAuthTokenInfo,
 } from "@/web/lib/mcp-oauth";
+import {
+  applyEmailToTitle,
+  extractEmailFromTokenInfo,
+} from "@/web/lib/oauth-identity";
 import { KEYS } from "@/web/lib/query-keys";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
 
@@ -43,6 +47,12 @@ export interface ConnectAppResult {
  * the raw token on the connection so it still works. On success an empty update
  * triggers the mutation's cache invalidation / tool refresh. Never throws —
  * every failure degrades to the fallback path.
+ *
+ * When `currentTitle` is provided and the remote account identity (email) can
+ * be derived from the token, the connection title is decorated with it
+ * (`"<base> (<email>)"`) so multiple instances of the same app are
+ * distinguishable. The decoration rides along the same update that already
+ * fires, so it costs no extra round-trip and is best-effort/cosmetic.
  */
 export async function persistDownstreamToken(deps: {
   orgSlug: string;
@@ -50,13 +60,35 @@ export async function persistDownstreamToken(deps: {
   token: string;
   tokenInfo: OAuthTokenInfo | null;
   connectionActions: ReturnType<typeof useConnectionActions>;
+  /** Current connection title; enables the email-decoration of the title. */
+  currentTitle?: string | null;
 }): Promise<void> {
-  const { orgSlug, connectionId, token, tokenInfo, connectionActions } = deps;
+  const {
+    orgSlug,
+    connectionId,
+    token,
+    tokenInfo,
+    connectionActions,
+    currentTitle,
+  } = deps;
+
+  // Derive the email-decorated title up front (best-effort, never throws).
+  let titlePatch: { title?: string } = {};
+  if (tokenInfo && currentTitle) {
+    try {
+      const email = await extractEmailFromTokenInfo(tokenInfo, token);
+      if (email?.trim()) {
+        titlePatch = { title: applyEmailToTitle(currentTitle, email) };
+      }
+    } catch {
+      // non-fatal — identity is decorative
+    }
+  }
 
   const storeRawToken = () =>
     connectionActions.update.mutateAsync({
       id: connectionId,
-      data: { connection_token: token },
+      data: { connection_token: token, ...titlePatch },
     });
 
   if (!tokenInfo) {
@@ -86,13 +118,14 @@ export async function persistDownstreamToken(deps: {
       await storeRawToken();
       return;
     }
-    // Server persisted the token; the empty update just kicks the mutation's
-    // cache invalidation / tool refresh. Best-effort — the token is already
-    // saved, so a refresh failure must not surface as an auth failure.
+    // Server persisted the token; this update applies the (optional) title
+    // decoration and kicks the mutation's cache invalidation / tool refresh.
+    // Best-effort — the token is already saved, so a refresh failure must not
+    // surface as an auth failure.
     try {
       await connectionActions.update.mutateAsync({
         id: connectionId,
-        data: {},
+        data: titlePatch,
       });
     } catch {
       // non-fatal
@@ -157,6 +190,7 @@ export async function connectApp(
     token,
     tokenInfo,
     connectionActions,
+    currentTitle: connectionData.title,
   });
 
   await queryClient.invalidateQueries({

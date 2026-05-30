@@ -131,6 +131,7 @@ export function useAutoInstallGitHub(opts: {
           token,
           tokenInfo,
           connectionActions: actions,
+          currentTitle: connectionData.title,
         });
       }
 
