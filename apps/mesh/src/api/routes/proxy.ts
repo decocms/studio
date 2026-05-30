@@ -293,6 +293,7 @@ export const createProxyRoutes = () => {
       const connection = await ctx.storage.connections.findById(
         connectionId,
         ctx.organization?.id,
+        ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null,
       );
       if (connection?.connection_url) {
         const authResponse = await handleAuthError({
