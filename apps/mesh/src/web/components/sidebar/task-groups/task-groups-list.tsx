@@ -89,7 +89,7 @@ export function TaskGroupsList() {
   const [groupBy, setGroupBy] = useState<GroupBy>("agent");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
-  const { state: sidebarState } = useSidebar();
+  const { state: sidebarState, isMobile } = useSidebar();
 
   const groups = stabilizeGroupOrder(
     org.id,
@@ -147,7 +147,12 @@ export function TaskGroupsList() {
 
   const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
 
-  const isCollapsed = sidebarState === "collapsed";
+  // On mobile the sidebar renders inside a full-width drawer that is always
+  // visually expanded (the wrapper hardcodes data-state="expanded"). The context
+  // `state` stays "collapsed" on mobile because the drawer toggles `openMobile`,
+  // not `open` — so without this guard the agent groups would render icon-only
+  // and hide their names. Mirror the wrapper: never collapse on mobile.
+  const isCollapsed = sidebarState === "collapsed" && !isMobile;
 
   const filters: SidebarFilters = {
     type: typeFilter,
