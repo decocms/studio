@@ -431,7 +431,7 @@ function AgentInsetProvider() {
 
     return (
       <InsetContext value={insetContextValue}>
-        <div className="flex flex-col flex-1 bg-background min-h-0">
+        <div className="flex flex-col flex-1 min-w-0 bg-background min-h-0">
           <Chat.Provider
             key={chatVirtualMcpId}
             virtualMcpId={chatVirtualMcpId}
