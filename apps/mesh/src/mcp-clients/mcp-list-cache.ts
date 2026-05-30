@@ -95,6 +95,32 @@ export class JetStreamKVMcpListCache implements McpListCache {
 // Module-level revalidation tracking (prevents thundering herd)
 const revalidating = new Set<string>();
 
+// Per-(type,connection) timestamp of the last revalidation we scheduled, used to
+// throttle background revalidation. Without it, every cache hit reconnects
+// downstream — so a UI polling tools/list every few seconds hammers the upstream
+// server with one MCP handshake + list per poll, forever. The connection
+// create/update path eagerly repopulates this cache (see tools/connection/*),
+// so config-driven changes stay instant; only autonomous downstream tool
+// changes lag, by at most the throttle interval.
+const lastRevalidatedAt = new Map<string, number>();
+
+/** Default minimum gap between background revalidations of the same list. */
+export const REVALIDATE_MIN_INTERVAL_MS = 30_000;
+
+/**
+ * Pure throttle predicate: is a list due for background revalidation?
+ * `minIntervalMs <= 0` disables throttling (always stale → always revalidate).
+ */
+export function isRevalidationStale(
+  lastMs: number | undefined,
+  nowMs: number,
+  minIntervalMs: number,
+): boolean {
+  if (minIntervalMs <= 0) return true; // throttle disabled
+  if (lastMs === undefined) return true; // never revalidated → always stale
+  return nowMs - lastMs >= minIntervalMs;
+}
+
 function isMethodNotFound(err: unknown): boolean {
   return err instanceof McpError && err.code === ErrorCode.MethodNotFound;
 }
@@ -117,6 +143,7 @@ export async function fetchWithCache(
   fetchLive: () => Promise<unknown[]>,
   cache: McpListCache | null,
   onRevalidation?: (promise: Promise<void>) => void,
+  minRevalidateIntervalMs = 0,
 ): Promise<unknown[] | null> {
   if (!cache) {
     try {
@@ -132,6 +159,8 @@ export async function fetchWithCache(
     }
   }
 
+  const revalKey = `${type}:${connectionId}`;
+
   // Check cache first
   const cached = await cache.get(type, connectionId);
 
@@ -140,6 +169,9 @@ export async function fetchWithCache(
     try {
       const data = await fetchLive();
       cache.set(type, connectionId, data).catch(() => {});
+      // A live fetch just refreshed the data — start the throttle clock so an
+      // immediate subsequent hit doesn't redundantly revalidate.
+      lastRevalidatedAt.set(revalKey, Date.now());
       cacheCounter.add(1, { type, outcome: "miss", stage: "miss" });
       return data;
     } catch (err) {
@@ -157,10 +189,16 @@ export async function fetchWithCache(
   }
 
   cacheCounter.add(1, { type, outcome: "hit", stage: "hit" });
-  // Cache hit: return immediately, revalidate in background
-  const revalKey = `${type}:${connectionId}`;
-  if (!revalidating.has(revalKey)) {
+  // Cache hit: return immediately, revalidate in background — but only if the
+  // list is stale enough (throttle) and no revalidation is already in flight.
+  const isStale = isRevalidationStale(
+    lastRevalidatedAt.get(revalKey),
+    Date.now(),
+    minRevalidateIntervalMs,
+  );
+  if (isStale && !revalidating.has(revalKey)) {
     revalidating.add(revalKey);
+    lastRevalidatedAt.set(revalKey, Date.now());
     const revalPromise = fetchLive()
       .then((data) => cache.set(type, connectionId, data))
       .catch((err) => {

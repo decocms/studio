@@ -16,6 +16,7 @@ import { getBaseUrl } from "../../core/server-constants";
 import {
   getMcpListCache,
   fetchWithCache,
+  REVALIDATE_MIN_INTERVAL_MS,
 } from "../../mcp-clients/mcp-list-cache";
 import { clientFromConnection } from "../../mcp-clients";
 import {
@@ -95,6 +96,7 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
         fetchLive,
         getMcpListCache(),
         (p) => ctx.pendingRevalidations.push(p),
+        REVALIDATE_MIN_INTERVAL_MS,
       );
       if (tools !== null) {
         connection.tools = tools as Tool[];
