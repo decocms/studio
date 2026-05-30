@@ -28,7 +28,11 @@ import {
   recordSuccess,
 } from "./circuit-breaker";
 import { clientFromConnection } from "./client";
-import { fetchWithCache, type McpListCache } from "./mcp-list-cache";
+import {
+  fetchWithCache,
+  type McpListCache,
+  REVALIDATE_MIN_INTERVAL_MS,
+} from "./mcp-list-cache";
 import { getMcpReadCache } from "./mcp-read-cache";
 
 /**
@@ -113,6 +117,7 @@ export function createLazyClient(
         },
         cache,
         (p) => ctx.pendingRevalidations.push(p),
+        REVALIDATE_MIN_INTERVAL_MS,
       );
 
       return buildCachedResult(result ?? []);
