@@ -116,8 +116,9 @@ export function isRevalidationStale(
   nowMs: number,
   minIntervalMs: number,
 ): boolean {
-  if (minIntervalMs <= 0) return true;
-  return nowMs - (lastMs ?? 0) >= minIntervalMs;
+  if (minIntervalMs <= 0) return true; // throttle disabled
+  if (lastMs === undefined) return true; // never revalidated → always stale
+  return nowMs - lastMs >= minIntervalMs;
 }
 
 function isMethodNotFound(err: unknown): boolean {
