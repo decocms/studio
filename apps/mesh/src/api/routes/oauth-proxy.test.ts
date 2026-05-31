@@ -1,3 +1,16 @@
+/**
+ * Handler-wiring tests for the OAuth proxy.
+ *
+ * The pure metadata transforms (URL-format probe order, rewriting, synthesis,
+ * classification) now live in oauth-proxy-metadata.ts and are tested without
+ * mocks in oauth-proxy-metadata.test.ts. What's left here exercises the
+ * fetch-orchestration + connection-lookup wiring, which still mocks the origin
+ * `fetch` and the connection store. Per TESTING.md that wiring belongs in an
+ * e2e against a real origin server (extend e2e/fixtures/test-mcp-server.ts to
+ * serve the well-known endpoints) — tracked as a follow-up; kept here meanwhile
+ * so the orchestration stays covered during the transition.
+ */
+
 import {
   describe,
   expect,
@@ -746,37 +759,11 @@ describe("OAuth Proxy Routes", () => {
   });
 });
 
-describe("OAuth URL Path Construction", () => {
-  test("root path results in no suffix", () => {
-    const authServerUrl = new URL("https://example.com/");
-    const authServerPath =
-      authServerUrl.pathname === "/" ? "" : authServerUrl.pathname;
-    const result = `/.well-known/oauth-authorization-server${authServerPath}`;
-
-    expect(result).toBe("/.well-known/oauth-authorization-server");
-    expect(result).not.toEndWith("/");
-  });
-
-  test("non-root path is appended correctly", () => {
-    const authServerUrl = new URL("https://example.com/oauth");
-    const authServerPath =
-      authServerUrl.pathname === "/" ? "" : authServerUrl.pathname;
-    const result = `/.well-known/oauth-authorization-server${authServerPath}`;
-
-    expect(result).toBe("/.well-known/oauth-authorization-server/oauth");
-  });
-
-  test("deep path is appended correctly", () => {
-    const authServerUrl = new URL("https://example.com/v1/oauth/server");
-    const authServerPath =
-      authServerUrl.pathname === "/" ? "" : authServerUrl.pathname;
-    const result = `/.well-known/oauth-authorization-server${authServerPath}`;
-
-    expect(result).toBe(
-      "/.well-known/oauth-authorization-server/v1/oauth/server",
-    );
-  });
-});
+// NOTE: the former "OAuth URL Path Construction" suite reimplemented the
+// auth-server well-known URL logic *inline in the test* and asserted against
+// that copy — it never exercised the real code. That logic is now the exported
+// `authorizationServerMetadataUrls`, tested directly (no reimplementation, no
+// mocks) in oauth-proxy-metadata.test.ts.
 
 describe("Deco-Hosted MCP Detection", () => {
   test("DECO_CMS_API_HOST is correct", () => {
