@@ -17,6 +17,7 @@
  * ```
  */
 
+import { retry, RetryError } from "@/shared/async/retry";
 import type { NatsConnectionProvider } from "../nats/connection";
 import type { MeshDatabase } from "../database";
 import { createEventBusStorage } from "../storage/event-bus";
@@ -59,21 +60,19 @@ async function startWithRetry(
   fn: () => Promise<void>,
   maxRetries = 5,
 ): Promise<void> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      await fn();
-      return;
-    } catch (err) {
-      if (attempt === maxRetries) {
-        console.error(`${label} Deferred start failed:`, err);
-        return;
-      }
-      const delay = Math.min(1000 * 2 ** (attempt - 1), 10_000);
-      console.warn(
-        `${label} Start attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`,
-      );
-      await new Promise((r) => setTimeout(r, delay));
-    }
+  try {
+    await retry(fn, {
+      maxAttempts: maxRetries,
+      minTimeout: 1000,
+      maxTimeout: 10_000,
+      jitter: 0,
+    });
+  } catch (err) {
+    // Log and swallow — a deferred start failing must not crash the process.
+    console.error(
+      `${label} Deferred start failed:`,
+      err instanceof RetryError ? err.cause : err,
+    );
   }
 }
 

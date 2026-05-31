@@ -15,6 +15,7 @@
 import { Hono } from "hono";
 import { ContextFactory } from "../../core/context-factory";
 import type { MeshContext } from "../../core/mesh-context";
+import { retry, RetryError } from "@/shared/async/retry";
 import {
   authorizationServerMetadataUrls,
   buildPathPrefix,
@@ -591,6 +592,11 @@ function fetchWithTimeout(
  * backoff; 4xx (incl. 404/401, which drive well-known format fallback) is
  * returned as-is so the caller's discovery logic is unchanged.
  */
+/** Wraps a 5xx response so `retry()` (which retries on throw) re-probes it. */
+class RetriableServerResponse {
+  constructor(readonly response: Response) {}
+}
+
 async function fetchMetadataWithRetry(
   url: string,
   init: RequestInit,
@@ -599,21 +605,26 @@ async function fetchMetadataWithRetry(
     timeoutMs = METADATA_FETCH_TIMEOUT_MS,
   }: { attempts?: number; timeoutMs?: number } = {},
 ): Promise<Response> {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    const isLast = i === attempts - 1;
-    try {
-      const res = await fetchWithTimeout(url, init, timeoutMs);
-      if (res.status < 500 || isLast) return res;
-    } catch (err) {
-      lastErr = err;
-      if (isLast) throw err;
+  try {
+    return await retry(
+      async () => {
+        const res = await fetchWithTimeout(url, init, timeoutMs);
+        if (res.status >= 500) throw new RetriableServerResponse(res);
+        return res;
+      },
+      { maxAttempts: attempts, minTimeout: 150, multiplier: 2, jitter: 0 },
+    );
+  } catch (err) {
+    if (err instanceof RetryError) {
+      // 5xx exhausted → return the last response (caller inspects status);
+      // network error / timeout exhausted → rethrow the cause.
+      if (err.cause instanceof RetriableServerResponse) {
+        return err.cause.response;
+      }
+      throw err.cause;
     }
-    // Backoff before the next attempt: 150ms, then 300ms.
-    await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+    throw err;
   }
-  // Unreachable (the loop returns or throws on the last attempt).
-  throw lastErr ?? new Error("fetchMetadataWithRetry: retries exhausted");
 }
 
 export async function fetchAuthorizationServerMetadata(
