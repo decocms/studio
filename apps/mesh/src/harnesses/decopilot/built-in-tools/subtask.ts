@@ -10,6 +10,7 @@
  */
 
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import { SlotUnresolvedError } from "@/core/slot-resolver";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { UIMessageStreamWriter } from "ai";
 import { tool, zodSchema } from "ai";
@@ -93,12 +94,38 @@ export function createSubtaskTool(
         throw new Error("Agent is not active");
       }
 
-      // 2. Create MCP client for the target.
-      const mcpClient = await createVirtualClientFrom(
-        virtualMcp,
-        ctx,
-        "passthrough",
-      );
+      // 2. Create MCP client for the target. If the target agent has typed
+      //    slots the invoking user hasn't connected, createVirtualClientFrom
+      //    throws SlotUnresolvedError — surface it as a connect card to the
+      //    user (data chunk) and a clear instruction to the model, instead of
+      //    a generic "tool failed".
+      let mcpClient: Awaited<ReturnType<typeof createVirtualClientFrom>>;
+      try {
+        mcpClient = await createVirtualClientFrom(
+          virtualMcp,
+          ctx,
+          "passthrough",
+        );
+      } catch (err) {
+        if (err instanceof SlotUnresolvedError) {
+          writer.write({
+            type: "data-connect-required",
+            id: toolCallId,
+            data: {
+              agentId: err.agentId,
+              agentTitle: err.agentTitle,
+              appIds: err.appIds,
+            },
+          });
+          yield {
+            text: "",
+            error: `Cannot run subagent "${err.agentTitle}": the user must connect ${err.appIds.join(", ")}. A connect card was shown — ask the user to connect, then retry.`,
+            finishReason: "stop",
+          };
+          return;
+        }
+        throw err;
+      }
 
       try {
         // 3. Call runAgentLoop with subagent kind.
