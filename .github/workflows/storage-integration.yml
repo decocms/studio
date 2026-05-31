@@ -91,6 +91,10 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # MinIO, started below — backs the s3-service integration test.
+      S3_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -105,6 +109,18 @@ jobs:
 
       - name: Run migrations
         run: bun run --cwd=apps/mesh migrate
+
+      # MinIO runs the server by default only with an explicit command, which
+      # GitHub `services:` can't override — so start it as a step, mirroring how
+      # e2e.yml brings up NATS.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for i in $(seq 1 15); do nc -z localhost 9000 && break || sleep 1; done
+          nc -z localhost 9000
 
       # Convention: every `*.integration.test.ts` file is picked up here.
       # Adding a new integration test = create a `something.integration.test.ts`
