@@ -110,7 +110,6 @@ export function createSSESubscription(
 
     if (conn.reconnectTimer) return;
 
-    // No jitter — preserves the prior fixed 1s→2s→4s…30s schedule.
     const delay = exponentialBackoffWithJitter(
       MAX_RECONNECT_DELAY_MS,
       BASE_RECONNECT_DELAY_MS,

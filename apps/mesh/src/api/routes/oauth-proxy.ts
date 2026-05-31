@@ -606,8 +606,6 @@ async function fetchMetadataWithRetry(
   }: { attempts?: number; timeoutMs?: number } = {},
 ): Promise<Response> {
   try {
-    // minTimeout 150 + multiplier 2 + jitter 0 reproduces the prior 150ms,
-    // 300ms backoff. 5xx is retried (by throwing); 4xx/2xx is returned as-is.
     return await retry(
       async () => {
         const res = await fetchWithTimeout(url, init, timeoutMs);
@@ -618,8 +616,8 @@ async function fetchMetadataWithRetry(
     );
   } catch (err) {
     if (err instanceof RetryError) {
-      // Exhausted on a 5xx → return that last response (the caller inspects
-      // status). Exhausted on a network error / timeout → rethrow the cause.
+      // 5xx exhausted → return the last response (caller inspects status);
+      // network error / timeout exhausted → rethrow the cause.
       if (err.cause instanceof RetriableServerResponse) {
         return err.cause.response;
       }

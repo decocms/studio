@@ -61,9 +61,6 @@ async function startWithRetry(
   maxRetries = 5,
 ): Promise<void> {
   try {
-    // Exponential backoff 1s→2s→4s→8s, capped at 10s, no jitter (same schedule
-    // as before). On exhaustion, log and swallow — a deferred start failing
-    // must not take the process down.
     await retry(fn, {
       maxAttempts: maxRetries,
       minTimeout: 1000,
@@ -71,6 +68,7 @@ async function startWithRetry(
       jitter: 0,
     });
   } catch (err) {
+    // Log and swallow — a deferred start failing must not crash the process.
     console.error(
       `${label} Deferred start failed:`,
       err instanceof RetryError ? err.cause : err,

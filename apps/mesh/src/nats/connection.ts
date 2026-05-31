@@ -114,7 +114,6 @@ export function createNatsConnectionProvider(
         return;
       } catch {
         attempt++;
-        // Equal jitter ([exp/2, exp]) — see exponentialBackoffWithJitter.
         const jitteredDelay = exponentialBackoffWithJitter(
           MAX_DELAY_MS,
           BASE_DELAY_MS,

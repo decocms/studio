@@ -720,8 +720,6 @@ class KyselyEventBusStorage implements EventBusStorage {
           .where("id", "=", id)
           .execute();
       } else {
-        // Exponential backoff, no jitter (durable delivery — preserves the
-        // prior `retryDelayMs * 2^(attempts-1)` schedule, capped at maxDelayMs).
         const backoffDelay = exponentialBackoffWithJitter(
           maxDelayMs,
           retryDelayMs,

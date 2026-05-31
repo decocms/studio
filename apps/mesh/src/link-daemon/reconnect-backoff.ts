@@ -13,8 +13,6 @@ const CAP_MS = 30_000;
 
 export function computeBackoffMs(attempt: number): number {
   if (attempt < 1) throw new Error("attempt must be >= 1");
-  // Equal jitter ([exp/2, exp]). `attempt` is 1-based here; the primitive's is
-  // 0-based, hence `attempt - 1`.
   return exponentialBackoffWithJitter(CAP_MS, BASE_MS, attempt - 1, 2, 0.5);
 }
 
