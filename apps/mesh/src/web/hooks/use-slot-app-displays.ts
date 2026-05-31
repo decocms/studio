@@ -7,7 +7,10 @@ import {
 import type { RegistryItem } from "@/web/components/store/types";
 import { KEYS } from "@/web/lib/query-keys";
 import { type SlotAppDisplay, slotAppDisplay } from "./slot-app-display";
-import type { SlotLike } from "./unresolved-slots";
+
+export interface SlotLike {
+  slot_app_id: string;
+}
 
 export interface ResolvedSlotAppDisplay extends SlotAppDisplay {
   registryItem: RegistryItem | null;

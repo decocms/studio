@@ -28,9 +28,7 @@ export function ConnectCard({ data }: { data: ConnectCardData }) {
 function ConnectCardFallback({ data }: { data: ConnectCardData }) {
   return (
     <div className="rounded-xl border border-border p-4 my-1.5">
-      <p className="text-sm font-medium">
-        Connect to use "{data.agentTitle}"
-      </p>
+      <p className="text-sm font-medium">Connect to use "{data.agentTitle}"</p>
       <p className="text-xs text-muted-foreground">Loading connections…</p>
     </div>
   );
