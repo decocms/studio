@@ -15,6 +15,20 @@
 import { Hono } from "hono";
 import { ContextFactory } from "../../core/context-factory";
 import type { MeshContext } from "../../core/mesh-context";
+import {
+  authorizationServerMetadataUrls,
+  buildPathPrefix,
+  isAuthError,
+  isAuthServerMetadata,
+  looksLikeOAuthWwwAuthenticate,
+  NO_METADATA_STATUSES,
+  protectedResourceMetadataUrls,
+  resourceMetadataChallenge,
+  rewriteAuthServerMetadata,
+  rewriteProtectedResourceMetadata,
+  scopesFromOrigin,
+  syntheticProtectedResourceMetadata,
+} from "./oauth-proxy-metadata";
 
 // Define Hono variables type
 type Variables = {
@@ -22,19 +36,6 @@ type Variables = {
 };
 
 type HonoEnv = { Variables: Variables };
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-/**
- * HTTP status codes that indicate the server doesn't have OAuth metadata at this path,
- * but might support OAuth via an alternative path or WWW-Authenticate header.
- * - 404: Path not found (most common)
- * - 401: Unauthorized (some servers return this for metadata endpoints)
- * - 406: Not Acceptable (Grain returns this when MCP endpoints don't support .well-known paths)
- */
-const NO_METADATA_STATUSES = [404, 401, 406];
 
 // ============================================================================
 // Helper Functions
@@ -56,22 +57,6 @@ async function getConnectionUrl(
     organizationId,
   );
   return connection?.connection_url ?? null;
-}
-
-/**
- * Check if origin MCP server supports OAuth by looking for WWW-Authenticate header on 401 response.
- * This is useful for servers that support OAuth but don't implement RFC 9728 Protected Resource Metadata.
- * Returns the WWW-Authenticate header value if OAuth is supported, null otherwise.
- */
-function looksLikeOAuthWwwAuthenticate(wwwAuth: string): boolean {
-  const wwwAuthLower = wwwAuth.toLowerCase();
-  // MCP OAuth uses RFC 9728 `resource_metadata=...` (strong signal)
-  // Some servers may not implement RFC 9728 but still include standard OAuth error hints.
-  return (
-    wwwAuthLower.includes("resource_metadata=") ||
-    wwwAuthLower.includes("invalid_token") ||
-    wwwAuthLower.includes("oauth")
-  );
 }
 
 async function checkOriginSupportsOAuth(
@@ -165,45 +150,29 @@ async function checkHasOAuthMetadata(connectionUrl: string): Promise<boolean> {
 export async function fetchProtectedResourceMetadata(
   connectionUrl: string,
 ): Promise<Response> {
-  const connUrl = new URL(connectionUrl);
-  // Normalize: strip trailing slash per RFC 9728
-  let resourcePath = connUrl.pathname;
-  if (resourcePath.endsWith("/")) {
-    resourcePath = resourcePath.slice(0, -1);
+  // URL formats (resource-relative, well-known prefix, root) per RFC 9728 are
+  // built in oauth-proxy-metadata.ts; here we just probe them in order.
+  const urls = protectedResourceMetadataUrls(connectionUrl);
+
+  let response!: Response;
+  for (let i = 0; i < urls.length; i++) {
+    response = await fetch(urls[i]!, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+
+    if (response.ok) return response;
+
+    // Try the next format only on a "no metadata" status. Any other status
+    // (e.g. 500) is a real error — return it to preserve the info. The last
+    // URL's response is returned regardless.
+    if (
+      i < urls.length - 1 &&
+      !NO_METADATA_STATUSES.includes(response.status)
+    ) {
+      return response;
+    }
   }
-
-  // Try format 1 first (most common)
-  const format1Url = new URL(connectionUrl);
-  format1Url.pathname = `${resourcePath}/.well-known/oauth-protected-resource`;
-
-  let response = await fetch(format1Url.toString(), {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
-
-  if (response.ok) return response;
-
-  // If format 1 returns a "no metadata" status, try format 2 (Smithery-style: well-known prefix)
-  // For other errors (500, etc.), return immediately to preserve error info
-  if (!NO_METADATA_STATUSES.includes(response.status)) return response;
-
-  const format2Url = new URL(connectionUrl);
-  format2Url.pathname = `/.well-known/oauth-protected-resource${resourcePath}`;
-
-  response = await fetch(format2Url.toString(), {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
-
-  if (!NO_METADATA_STATUSES.includes(response.status)) return response;
-
-  const format3Url = new URL(connectionUrl);
-  format3Url.pathname = `/.well-known/oauth-protected-resource`;
-
-  response = await fetch(format3Url.toString(), {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
 
   return response;
 }
@@ -286,16 +255,6 @@ export interface HandleAuthErrorOptions {
 }
 
 /**
- * Build the URL prefix for OAuth-related URLs based on org slug.
- * - With slug: `/api/${slug}` (new path shape)
- * - Without slug: `` (legacy path shape — `/mcp/...` and `/oauth-proxy/...`
- *   live at the root)
- */
-function buildPathPrefix(orgSlug: string | undefined): string {
-  return orgSlug ? `/api/${orgSlug}` : "";
-}
-
-/**
  * Handles 401 auth errors from MCP origin servers.
  *
  * Checks if the origin server supports OAuth by looking for WWW-Authenticate header.
@@ -311,17 +270,7 @@ export async function handleAuthError({
   headers,
   orgSlug,
 }: HandleAuthErrorOptions): Promise<Response | null> {
-  const message = error.message?.toLowerCase() ?? "";
-  const isAuthError =
-    error.status === 401 ||
-    error.code === 401 ||
-    error.message?.includes("401") ||
-    message.includes("unauthorized") ||
-    message.includes("invalid_token") ||
-    message.includes("api key required") ||
-    message.includes("api-key required");
-
-  if (!isAuthError) {
+  if (!isAuthError(error)) {
     return null;
   }
 
@@ -332,11 +281,14 @@ export async function handleAuthError({
   );
 
   if (originSupportsOAuth) {
-    const prefix = buildPathPrefix(orgSlug);
     return new Response(null, {
       status: 401,
       headers: {
-        "WWW-Authenticate": `Bearer realm="mcp",resource_metadata="${reqUrl.origin}${prefix}/mcp/${connectionId}/.well-known/oauth-protected-resource"`,
+        "WWW-Authenticate": resourceMetadataChallenge({
+          origin: reqUrl.origin,
+          prefix: buildPathPrefix(orgSlug),
+          connectionId,
+        }),
       },
     });
   }
@@ -458,15 +410,12 @@ export const protectedResourceMetadataHandler = async (c: {
     if (!response.ok && NO_METADATA_STATUSES.includes(response.status)) {
       const wwwAuth = await checkOriginSupportsOAuth(connectionUrl);
       if (wwwAuth) {
-        // Server supports OAuth but doesn't have metadata endpoint
-        // Generate synthetic metadata pointing to our proxy
-        const syntheticData = {
-          resource: proxyResourceUrl,
-          authorization_servers: [proxyAuthServer],
-          // Standard fields per RFC 9728
-          bearer_methods_supported: ["header"],
-          scopes_supported: ["*"],
-        };
+        // Server supports OAuth but doesn't have metadata endpoint —
+        // synthesize metadata pointing to our proxy.
+        const syntheticData = syntheticProtectedResourceMetadata({
+          proxyResourceUrl,
+          proxyAuthServer,
+        });
 
         return new Response(JSON.stringify(syntheticData), {
           status: 200,
@@ -494,32 +443,16 @@ export const protectedResourceMetadataHandler = async (c: {
     // Parse the response and rewrite URLs to point to our proxy
     const data = (await response.json()) as Record<string, unknown>;
 
-    // Detect if origin returned Authorization Server Metadata (RFC 8414) instead of
-    // Protected Resource Metadata (RFC 9728). Some servers like ClickHouse incorrectly
-    // return auth server metadata at the protected resource endpoint.
-    // Auth server metadata has 'issuer' but not 'resource', while protected resource
-    // metadata should have 'resource'.
-    const isAuthServerMetadata =
-      "issuer" in data &&
-      !("resource" in data) &&
-      ("authorization_endpoint" in data || "token_endpoint" in data);
-
-    if (isAuthServerMetadata) {
-      // Server returned auth server metadata instead of protected resource metadata.
-      // Generate clean synthetic protected resource metadata that points to our proxy.
-      // We don't spread the original data to avoid polluting the response with
-      // unexpected fields that could confuse MCP SDK clients.
-      const syntheticData = {
-        resource: proxyResourceUrl,
-        authorization_servers: [proxyAuthServer],
-        bearer_methods_supported: ["header"],
-        scopes_supported:
-          "scopes_supported" in data &&
-          Array.isArray(data.scopes_supported) &&
-          data.scopes_supported.length > 0
-            ? data.scopes_supported
-            : ["*"],
-      };
+    // Some servers (ClickHouse) incorrectly return Authorization Server
+    // Metadata (RFC 8414) at the protected-resource endpoint. Detect that and
+    // emit clean synthetic protected-resource metadata instead — see
+    // isAuthServerMetadata / syntheticProtectedResourceMetadata.
+    if (isAuthServerMetadata(data)) {
+      const syntheticData = syntheticProtectedResourceMetadata({
+        proxyResourceUrl,
+        proxyAuthServer,
+        scopesSupported: scopesFromOrigin(data),
+      });
 
       return new Response(JSON.stringify(syntheticData), {
         status: 200,
@@ -528,11 +461,10 @@ export const protectedResourceMetadataHandler = async (c: {
     }
 
     // Origin returned proper protected resource metadata - rewrite URLs to our proxy
-    const rewrittenData = {
-      ...data,
-      resource: proxyResourceUrl,
-      authorization_servers: [proxyAuthServer],
-    };
+    const rewrittenData = rewriteProtectedResourceMetadata(data, {
+      proxyResourceUrl,
+      proxyAuthServer,
+    });
 
     return new Response(JSON.stringify(rewrittenData), {
       status: response.status,
@@ -653,50 +585,13 @@ async function fetchMetadataWithRetry(
 export async function fetchAuthorizationServerMetadata(
   authServerUrl: string,
 ): Promise<Response> {
-  const url = new URL(authServerUrl);
-  // Normalize: strip trailing slash
-  let authServerPath = url.pathname;
-  if (authServerPath.endsWith("/")) {
-    authServerPath = authServerPath.slice(0, -1);
-  }
+  // URL formats (OAuth 2.0 / OIDC, with/without path component) per RFC 8414
+  // are built in oauth-proxy-metadata.ts; here we just probe them in order.
+  const urlsToTry = authorizationServerMetadataUrls(authServerUrl);
 
-  // Check if URL has a path component
-  const hasPath = authServerPath !== "" && authServerPath !== "/";
-
-  // Build list of URLs to try in priority order
-  const urlsToTry: URL[] = [];
-
-  if (hasPath) {
-    // Format 1: OAuth 2.0 with path insertion
-    const format1 = new URL(authServerUrl);
-    format1.pathname = `/.well-known/oauth-authorization-server${authServerPath}`;
-    urlsToTry.push(format1);
-
-    // Format 2: OpenID Connect with path insertion
-    const format2 = new URL(authServerUrl);
-    format2.pathname = `/.well-known/openid-configuration${authServerPath}`;
-    urlsToTry.push(format2);
-
-    // Format 3: OpenID Connect with path append
-    const format3 = new URL(authServerUrl);
-    format3.pathname = `${authServerPath}/.well-known/openid-configuration`;
-    urlsToTry.push(format3);
-  } else {
-    // Format 1: OAuth 2.0 at root
-    const format1 = new URL(authServerUrl);
-    format1.pathname = "/.well-known/oauth-authorization-server";
-    urlsToTry.push(format1);
-
-    // Format 2: OpenID Connect at root
-    const format2 = new URL(authServerUrl);
-    format2.pathname = "/.well-known/openid-configuration";
-    urlsToTry.push(format2);
-  }
-
-  // Try each URL in order
   let response: Response | null = null;
   for (const tryUrl of urlsToTry) {
-    response = await fetchMetadataWithRetry(tryUrl.toString(), {
+    response = await fetchMetadataWithRetry(tryUrl, {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -782,16 +677,7 @@ const authServerMetadataHandler = async (c: {
       : `${requestUrl.origin}/oauth-proxy/${connectionId}`;
 
     // Rewrite OAuth endpoint URLs to go through our proxy
-    const rewrittenData = {
-      ...data,
-      authorization_endpoint: data.authorization_endpoint
-        ? `${proxyBase}/authorize`
-        : undefined,
-      token_endpoint: data.token_endpoint ? `${proxyBase}/token` : undefined,
-      registration_endpoint: data.registration_endpoint
-        ? `${proxyBase}/register`
-        : undefined,
-    };
+    const rewrittenData = rewriteAuthServerMetadata(data, proxyBase);
 
     return new Response(JSON.stringify(rewrittenData), {
       status: 200,
