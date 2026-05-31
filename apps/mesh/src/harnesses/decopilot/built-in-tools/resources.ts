@@ -9,11 +9,8 @@ import {
 } from "./read-tool-output";
 import { parseMeshStorageKey } from "../../../api/routes/decopilot/mesh-storage-uri";
 
-// read_resource inlines the resource body straight into the model context,
-// which is relayed to the UI over NATS JetStream (~1 MiB max_payload). Past
-// this size we hand back a presigned URL instead of inlining. The budget
-// lives HERE — with the consumer that does the inlining — not in the storage
-// layer, which has no business knowing about NATS or the model context.
+// Above this we return a presigned URL instead of inlining the body, which is
+// relayed to the UI over NATS (~1 MiB max_payload).
 const INLINE_RESOURCE_BYTE_LIMIT = 1_048_576; // 1 MiB
 
 export interface ResourceToolParams {

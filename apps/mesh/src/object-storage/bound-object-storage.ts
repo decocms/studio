@@ -13,21 +13,14 @@ import type {
  */
 export interface BoundObjectStorage {
   /**
-   * Read an object for inlining, capped at a caller-supplied size threshold.
-   * Objects larger than `presignWhenLargerThan` come back as a
-   * `FILE_TOO_LARGE` marker with a presigned URL instead of inline content.
-   * The threshold is the caller's policy (NATS payload / model-context
-   * budget) — pass it explicitly.
+   * Read an object, or return a `FILE_TOO_LARGE` marker with a presigned URL
+   * when it exceeds `presignWhenLargerThan` (the caller's inline budget).
    */
   getBytesOrPresign(
     key: string,
     opts: { presignWhenLargerThan: number; presignExpiresIn?: number },
   ): Promise<GetObjectResult | GetObjectTooLargeResult>;
-  /**
-   * Read an object's raw bytes regardless of size. Unlike `getBytesOrPresign`,
-   * this is not capped — use it for server-side consumers that need the full
-   * content and don't relay it through NATS.
-   */
+  /** Read an object's raw bytes, uncapped. */
   getBytes(key: string): Promise<Uint8Array>;
   put(
     key: string,

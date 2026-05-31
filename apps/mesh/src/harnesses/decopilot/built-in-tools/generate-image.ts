@@ -66,17 +66,9 @@ export type GenerateImageInput = z.infer<typeof GenerateImageInputSchema>;
 /** Pattern to extract the storage key from our own files endpoint URL. */
 const FILES_URL_PATTERN = /\/api\/[^/]+\/files\/([^?#]+)/;
 
-/**
- * Upper bound on a single reference image fetched for image-to-image.
- *
- * Generous enough to cover real phone photos (a 48 MP shot is ~10–20 MB)
- * while bounding the in-memory buffer (uploads themselves allow up to
- * 100 MiB) and roughly tracking the most permissive common provider input
- * limit — Gemini's ~20 MB inline request budget. Stricter providers (OpenAI
- * image edits cap at ~4 MB, Anthropic vision at 5 MB) reject oversize inputs
- * with their own error; this is a sanity guardrail, not a per-provider mirror.
- */
-const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MiB
+// Sanity cap on a reference image read into memory; providers enforce their
+// own (stricter) input limits.
+const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
 
 function assertReferenceImageSize(bytes: number): void {
   if (bytes > MAX_REFERENCE_IMAGE_BYTES) {
@@ -177,19 +169,9 @@ async function readFromObjectStorage(
   if (!ctx.objectStorage) {
     throw new Error("Object storage not available");
   }
-  // Check size via HEAD before reading so we don't buffer a pathologically
-  // large object into memory (uploads allow up to 100 MiB). The reference-size
-  // policy lives here in the consumer; getBytes itself stays a dumb uncapped
-  // primitive (mirrors the getBytesOrPresign vs getBytes split).
+  // HEAD first to reject oversize before buffering the whole object.
   const { size } = await ctx.objectStorage.head(key);
   assertReferenceImageSize(size);
-  // Read raw bytes via getBytes, NOT getBytesOrPresign: the latter is for content
-  // that gets inlined into a size-limited channel (model context / NATS) and
-  // refuses to inline past the caller's threshold. Reference bytes are
-  // consumed server-side and handed straight to the image provider's API —
-  // never relayed through NATS — so no size cap applies. Routing this through
-  // the capped path used to make generation throw for any reference image
-  // above ~1 MiB (e.g. a phone photo).
   return ctx.objectStorage.getBytes(key);
 }
 
