@@ -18,13 +18,13 @@ export interface ResolvedSlotAppDisplay extends SlotAppDisplay {
 
 /**
  * Resolves each unresolved slot's `app_id` to its registry display metadata
- * (icon + friendly name). Suspends (like `useUnresolvedSlots`) so the gate
- * appears fully-formed with no icon/name flash. Each app_id is fetched and
- * cached under its OWN key (via `useSuspenseQueries`), so resolving one slot of
- * a multi-slot agent — which shrinks the slot set the gate renders — does NOT
- * re-suspend the gate for the remaining, already-cached slots. An app the
- * registry doesn't know (synthetic id, or a failed lookup) maps to a `fallback`
- * display. Returns a map keyed by `slot_app_id`.
+ * (icon + friendly name). Suspends until each app_id's registry metadata is
+ * fetched, so the ConnectCard renders fully-formed without an icon/name flash.
+ * Each app_id is fetched and cached under its OWN key (via `useSuspenseQueries`),
+ * so resolving one slot of a multi-slot agent — which shrinks the slot set the
+ * inline card renders — does NOT re-suspend remaining, already-cached slots. An
+ * app the registry doesn't know (synthetic id, or a failed lookup) maps to a
+ * `fallback` display. Returns a map keyed by `slot_app_id`.
  */
 export function useSlotAppDisplays<T extends SlotLike>(
   slots: T[],

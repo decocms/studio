@@ -350,15 +350,9 @@ export const KEYS = {
   connectionResolveForUser: (orgId: string, appId: string) =>
     ["connection-resolve-for-user", orgId, appId] as const,
 
-  // Batched resolution of an agent's typed slots for the calling user
-  // (powers the "connect to use this agent" chat gate). appIds must be sorted
-  // by the caller so the key is stable regardless of slot ordering.
-  unresolvedSlots: (orgId: string, sortedAppIds: string[]) =>
-    ["unresolved-slots", orgId, ...sortedAppIds] as const,
-
-  // Per-app registry display metadata for a connect-gate slot. Keyed per
+  // Per-app registry display metadata for a ConnectCard slot. Keyed per
   // app_id (not per slot set) so resolving one slot of a multi-slot agent does
-  // not re-suspend the gate for the remaining slots.
+  // not re-suspend the ConnectCard for the remaining slots.
   slotAppDisplay: (orgId: string, appId: string) =>
     ["slot-app-display", orgId, appId] as const,
 
