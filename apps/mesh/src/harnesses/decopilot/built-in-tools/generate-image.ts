@@ -151,14 +151,14 @@ async function readFromObjectStorage(
   if (!ctx.objectStorage) {
     throw new Error("Object storage not available");
   }
-  const result = await ctx.objectStorage.get(key);
-  if ("content" in result && typeof result.content === "string") {
-    if (result.encoding === "base64") {
-      return Buffer.from(result.content, "base64");
-    }
-    return new TextEncoder().encode(result.content);
-  }
-  throw new Error(`Failed to read from object storage: ${key}`);
+  // Read raw bytes via getBytes, NOT getBytesOrPresign: the latter is for content
+  // that gets inlined into a size-limited channel (model context / NATS) and
+  // refuses to inline past the caller's threshold. Reference bytes are
+  // consumed server-side and handed straight to the image provider's API —
+  // never relayed through NATS — so no size cap applies. Routing this through
+  // the capped path used to make generation throw for any reference image
+  // above ~1 MiB (e.g. a phone photo).
+  return ctx.objectStorage.getBytes(key);
 }
 
 export function createGenerateImageTool(

@@ -48,10 +48,24 @@ export class DevObjectStorage implements BoundObjectStorage {
     private readonly baseUrl?: string,
   ) {}
 
-  async get(key: string): Promise<GetObjectResult | GetObjectTooLargeResult> {
+  async getBytesOrPresign(
+    key: string,
+    opts: { presignWhenLargerThan: number; presignExpiresIn?: number },
+  ): Promise<GetObjectResult | GetObjectTooLargeResult> {
     const path = filePath(this.orgId, key);
     const info = await stat(path);
     const contentType = detectContentType(key);
+
+    if (info.size > opts.presignWhenLargerThan) {
+      return {
+        error: "FILE_TOO_LARGE",
+        size: info.size,
+        maxInlineSize: opts.presignWhenLargerThan,
+        presignedUrl: await this.presignedGetUrl(key),
+        contentType,
+      };
+    }
+
     const bytes = await readFile(path);
     const isText = isTextContentType(contentType);
 
@@ -64,6 +78,11 @@ export class DevObjectStorage implements BoundObjectStorage {
       size: info.size,
       lastModified: info.mtime,
     };
+  }
+
+  async getBytes(key: string): Promise<Uint8Array> {
+    const bytes = await readFile(filePath(this.orgId, key));
+    return new Uint8Array(bytes);
   }
 
   async put(

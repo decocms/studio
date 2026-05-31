@@ -12,7 +12,23 @@ import type {
  * Bakes in the org ID so callers don't need to pass it on every call.
  */
 export interface BoundObjectStorage {
-  get(key: string): Promise<GetObjectResult | GetObjectTooLargeResult>;
+  /**
+   * Read an object for inlining, capped at a caller-supplied size threshold.
+   * Objects larger than `presignWhenLargerThan` come back as a
+   * `FILE_TOO_LARGE` marker with a presigned URL instead of inline content.
+   * The threshold is the caller's policy (NATS payload / model-context
+   * budget) — pass it explicitly.
+   */
+  getBytesOrPresign(
+    key: string,
+    opts: { presignWhenLargerThan: number; presignExpiresIn?: number },
+  ): Promise<GetObjectResult | GetObjectTooLargeResult>;
+  /**
+   * Read an object's raw bytes regardless of size. Unlike `getBytesOrPresign`,
+   * this is not capped — use it for server-side consumers that need the full
+   * content and don't relay it through NATS.
+   */
+  getBytes(key: string): Promise<Uint8Array>;
   put(
     key: string,
     body: string | Uint8Array,
@@ -44,7 +60,8 @@ export function createBoundObjectStorage(
   orgId: string,
 ): BoundObjectStorage {
   return {
-    get: (key) => s3.get(orgId, key),
+    getBytesOrPresign: (key, opts) => s3.getBytesOrPresign(orgId, key, opts),
+    getBytes: (key) => s3.getBytes(orgId, key),
     put: (key, body, options) => s3.put(orgId, key, body, options),
     list: (options) => s3.list(orgId, options),
     delete: (key) => s3.delete(orgId, key),
