@@ -14,6 +14,7 @@
  */
 
 import { sql, type Kysely, type Selectable } from "kysely";
+import { exponentialBackoffWithJitter } from "@/shared/async/backoff";
 import type {
   Database,
   Event,
@@ -719,11 +720,14 @@ class KyselyEventBusStorage implements EventBusStorage {
           .where("id", "=", id)
           .execute();
       } else {
-        // Calculate exponential backoff: delay = retryDelayMs * 2^(attempts-1)
-        // Cap at maxDelayMs (default 1 hour)
-        const backoffDelay = Math.min(
-          retryDelayMs * Math.pow(2, newAttempts - 1),
+        // Exponential backoff, no jitter (durable delivery — preserves the
+        // prior `retryDelayMs * 2^(attempts-1)` schedule, capped at maxDelayMs).
+        const backoffDelay = exponentialBackoffWithJitter(
           maxDelayMs,
+          retryDelayMs,
+          newAttempts - 1,
+          2,
+          0,
         );
         const nextRetryAt = new Date(Date.now() + backoffDelay).toISOString();
 
