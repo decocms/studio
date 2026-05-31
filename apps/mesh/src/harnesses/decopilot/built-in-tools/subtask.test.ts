@@ -30,6 +30,66 @@ const mockWriter = {
   merge: () => {},
 } as never;
 
+/**
+ * A minimal fake tracer whose startActiveSpan immediately invokes the
+ * callback with a no-op span and returns its result.  The three-argument
+ * overload (name, options, fn) is the one used by createVirtualClientFrom.
+ */
+const fakeTracer = {
+  startActiveSpan: (
+    _name: string,
+    _opts: unknown,
+    fn: (span: unknown) => unknown,
+  ) => {
+    const fakeSpan = {
+      setStatus: () => {},
+      recordException: () => {},
+      end: () => {},
+      setAttribute: () => {},
+    };
+    return fn(fakeSpan);
+  },
+} as never;
+
+/**
+ * A virtualMcp entity that is active and has one typed slot for "app-x".
+ * No concrete connections so the slot block is the only path that matters.
+ */
+const virtualMcpWithSlot = {
+  id: "vmcp_1",
+  organization_id: "org_test",
+  status: "active",
+  title: "My Agent",
+  connections: [],
+  slots: [
+    {
+      slot_app_id: "app-x",
+      selected_tools: null,
+      selected_resources: null,
+      selected_prompts: null,
+    },
+  ],
+} as never;
+
+/**
+ * Context that returns virtualMcpWithSlot and has no authenticated user,
+ * which causes createVirtualClientFrom to treat all slots as unresolved
+ * (invokerUserId === null path) and throw SlotUnresolvedError without
+ * requiring a real database.
+ */
+const mockCtxWithSlots = {
+  auth: {},
+  tracer: fakeTracer,
+  storage: {
+    virtualMcps: {
+      findById: () => Promise.resolve(virtualMcpWithSlot),
+    },
+    connections: {
+      findById: () => Promise.resolve(null),
+    },
+  },
+} as never;
+
 describe("SubtaskInputSchema", () => {
   describe("valid input", () => {
     test("accepts valid prompt and agent_id", () => {
@@ -147,6 +207,62 @@ describe("createSubtaskTool", () => {
     expect(tool.description).toBeDefined();
     expect(tool.description).toContain("Delegate");
     expect(tool.inputSchema).toBeDefined();
+  });
+
+  test("emits data-connect-required chunk and yields error when SlotUnresolvedError is thrown", async () => {
+    const writeCalls: unknown[] = [];
+    const spyWriter = {
+      write: (chunk: unknown) => {
+        writeCalls.push(chunk);
+      },
+      merge: () => {},
+    } as never;
+
+    const toolCallId = "tc_slot_test";
+    const agentId = "vmcp_1";
+
+    const subtaskTool = createSubtaskTool(
+      spyWriter,
+      mockParams,
+      mockCtxWithSlots,
+    );
+
+    // Drive the async generator to completion.
+    const yielded: unknown[] = [];
+    const gen = subtaskTool.execute!(
+      { prompt: "do something", agent_id: agentId },
+      { toolCallId, abortSignal: new AbortController().signal } as never,
+    ) as AsyncGenerator<unknown>;
+
+    for await (const value of gen) {
+      yielded.push(value);
+    }
+
+    // writer.write must have been called with the connect-required chunk.
+    expect(writeCalls).toHaveLength(1);
+    const chunk = writeCalls[0] as {
+      type: string;
+      id: string;
+      data: { agentId: string; agentTitle: string; appIds: string[] };
+    };
+    expect(chunk.type).toBe("data-connect-required");
+    expect(chunk.id).toBe(toolCallId);
+    expect(chunk.data.agentId).toBe(agentId);
+    expect(chunk.data.agentTitle).toBe("My Agent");
+    expect(chunk.data.appIds).toEqual(["app-x"]);
+
+    // The generator must have yielded exactly one value with the error text
+    // and finishReason "stop", then terminated cleanly.
+    expect(yielded).toHaveLength(1);
+    const result = yielded[0] as {
+      text: string;
+      error: string;
+      finishReason: string;
+    };
+    expect(result.text).toBe("");
+    expect(result.error).toContain("connect");
+    expect(result.error).toContain("app-x");
+    expect(result.finishReason).toBe("stop");
   });
 });
 
