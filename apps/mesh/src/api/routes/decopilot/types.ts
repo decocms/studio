@@ -40,6 +40,11 @@ export type ChatMessage = UIMessage<
     "thread-title": {
       title: string;
     };
+    "connect-required": {
+      agentId: string;
+      agentTitle: string;
+      appIds: string[];
+    };
     "generate-image": {
       toolCallId: string;
       images: Array<{ base64: string; mediaType: string }>;
