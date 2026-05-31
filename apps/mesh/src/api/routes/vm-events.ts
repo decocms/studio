@@ -37,6 +37,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
+import { delay } from "@decocms/std";
 import type {
   ClaimPhase,
   SandboxProvider,
@@ -441,7 +442,7 @@ async function proxyDaemonEvents(args: {
       // probe still failing, ...). Same race window as 404 — retry, then
       // surface as failed if the budget elapses.
       if (Date.now() - openedAt < PROXY_OPEN_RETRY_BUDGET_MS) {
-        await sleepAbortable(PROXY_OPEN_RETRY_DELAY_MS, signal);
+        await delay(PROXY_OPEN_RETRY_DELAY_MS, { signal }).catch(() => {});
         continue;
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -465,7 +466,7 @@ async function proxyDaemonEvents(args: {
         /* ignore */
       }
       if (Date.now() - openedAt < PROXY_OPEN_RETRY_BUDGET_MS) {
-        await sleepAbortable(PROXY_OPEN_RETRY_DELAY_MS, signal);
+        await delay(PROXY_OPEN_RETRY_DELAY_MS, { signal }).catch(() => {});
         continue;
       }
       // Budget elapsed and handle still missing — genuine eviction. Emit
@@ -516,23 +517,4 @@ async function proxyDaemonEvents(args: {
       /* ignore */
     }
   }
-}
-
-/** Sleep that resolves immediately when the abort signal fires. */
-function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    const timeout = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timeout);
-      resolve();
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 }

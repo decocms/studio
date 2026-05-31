@@ -17,7 +17,7 @@
  * ```
  */
 
-import { retry, RetryError } from "@/shared/async/retry";
+import { retry, RetryError } from "@decocms/std";
 import type { NatsConnectionProvider } from "../nats/connection";
 import type { MeshDatabase } from "../database";
 import { createEventBusStorage } from "../storage/event-bus";

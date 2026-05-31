@@ -3,6 +3,7 @@ import {
   type Step,
   type StepCondition,
 } from "@decocms/bindings/workflow";
+import { exponentialBackoffWithJitter } from "@decocms/std";
 import type {
   WorkflowExecutionStorage,
   ParsedStepResult,
@@ -50,11 +51,17 @@ function computeRetryBackoffMs(
   backoffMs: number,
   attemptNumber: number,
 ): number {
-  const jitter = Math.random() * 1000;
-  return Math.min(
-    backoffMs * Math.pow(2, attemptNumber - 1) + jitter,
+  // Exponential backoff + cap via the shared primitive, plus a small additive
+  // 0–1000ms jitter (kept additive here, unlike the primitive's multiplicative
+  // jitter, to preserve the prior retry-timing distribution).
+  const base = exponentialBackoffWithJitter(
     MAX_RETRY_BACKOFF_MS,
+    backoffMs,
+    attemptNumber - 1,
+    2,
+    0,
   );
+  return Math.min(base + Math.random() * 1000, MAX_RETRY_BACKOFF_MS);
 }
 
 // ---------------------------------------------------------------------------

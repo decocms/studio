@@ -83,6 +83,7 @@
     "@decocms/mcp-utils": "workspace:*",
     "@decocms/mesh-sdk": "workspace:*",
     "@decocms/runtime": "workspace:*",
+    "@decocms/std": "workspace:*",
     "@decocms/vite-plugin": "workspace:*",
     "@floating-ui/react": "^0.27.16",
     "@happy-dom/global-registrator": "^20.9.0",

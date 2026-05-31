@@ -14,7 +14,7 @@
  */
 
 import { sql, type Kysely, type Selectable } from "kysely";
-import { exponentialBackoffWithJitter } from "@/shared/async/backoff";
+import { exponentialBackoffWithJitter } from "@decocms/std";
 import type {
   Database,
   Event,

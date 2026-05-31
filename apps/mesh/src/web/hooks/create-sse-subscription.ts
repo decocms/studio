@@ -15,7 +15,7 @@
  * connection opens (initial connect does NOT fire `onReconnect`).
  */
 
-import { exponentialBackoffWithJitter } from "@/shared/async/backoff";
+import { exponentialBackoffWithJitter } from "@decocms/std";
 
 /** Max reconnect delay in ms */
 const MAX_RECONNECT_DELAY_MS = 30_000;

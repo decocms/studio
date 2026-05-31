@@ -12,6 +12,9 @@
     "./sandbox": "./src/sandbox/index.ts",
     "./aggregate": "./src/aggregate/index.ts"
   },
+  "dependencies": {
+    "@decocms/std": "workspace:*"
+  },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": ">=1.27.0"
   },
