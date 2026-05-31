@@ -42,6 +42,7 @@ import { DEFAULT_WINDOW_SIZE } from "../../api/routes/decopilot/constants";
 import { assembleDecopilotTools } from "./tools";
 import { assembleDecopilotPrompt } from "./prompt";
 import { runDecopilotStream } from "./run-stream";
+import { SlotUnresolvedError } from "@/core/slot-resolver";
 import type { PendingImage } from "./built-in-tools";
 import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import {
@@ -164,16 +165,35 @@ export const decopilotHarnessFactory: HarnessFactory = {
           };
         }
 
-        const tools = await assembleDecopilotTools(effectiveInput, ctx, {
-          writer: pl.writer,
-          toolOutputMap: pl.toolOutputMap,
-          pendingImages: pl.pendingImages,
-          threadId: pl.threadId,
-          provider: pl.provider,
-          imageProvider: pl.imageProvider ?? pl.provider,
-          deepResearchProvider: pl.deepResearchProvider ?? pl.provider,
-          htmlPageBuffer: pl.htmlPageBuffer,
-        });
+        let tools: Awaited<ReturnType<typeof assembleDecopilotTools>>;
+        try {
+          tools = await assembleDecopilotTools(effectiveInput, ctx, {
+            writer: pl.writer,
+            toolOutputMap: pl.toolOutputMap,
+            pendingImages: pl.pendingImages,
+            threadId: pl.threadId,
+            provider: pl.provider,
+            imageProvider: pl.imageProvider ?? pl.provider,
+            deepResearchProvider: pl.deepResearchProvider ?? pl.provider,
+            htmlPageBuffer: pl.htmlPageBuffer,
+          });
+        } catch (err) {
+          if (err instanceof SlotUnresolvedError) {
+            // The parent agent's own slots are unresolved for this user.
+            // Surface the connect card and end the run cleanly (no model
+            // call happens) instead of a generic stream error.
+            pl.writer.write({
+              type: "data-connect-required",
+              data: {
+                agentId: err.agentId,
+                agentTitle: err.agentTitle,
+                appIds: err.appIds,
+              },
+            });
+            return;
+          }
+          throw err;
+        }
 
         try {
           // Run `processConversation` with the REAL tool set — the AI SDK's
