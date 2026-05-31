@@ -199,4 +199,52 @@ describe("slot resolution at virtual MCP client construction", () => {
     expect(caught).toBeInstanceOf(SlotUnresolvedError);
     expect((caught as SlotUnresolvedError).appIds).toContain("mcp-github");
   });
+
+  it("collects all unresolved slots and reports every missing app_id", async () => {
+    // Agent declares two slots — mcp-github and google-gmail — but the
+    // calling user has connections for neither. The error must list both
+    // app_ids so the UI can show a single card covering all missing apps.
+    await insertConn(database, "conn_github_other", {
+      appId: "mcp-github",
+      access: "user",
+      createdBy: USER_B, // owned by a different user, not the caller
+    });
+
+    const agent = await virtualMcps.create(ORG, USER_A, {
+      title: "multi-slot agent",
+      status: "active",
+      pinned: false,
+      connections: [],
+      slots: [
+        {
+          slot_app_id: "mcp-github",
+          selected_tools: null,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+        {
+          slot_app_id: "google-gmail",
+          selected_tools: null,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+    });
+
+    // USER_A has no connections for either app_id.
+    const ctx = buildContext(database, USER_A, connectionStorage);
+
+    let caught: unknown;
+    try {
+      await createVirtualClientFrom(agent, ctx, "passthrough");
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(SlotUnresolvedError);
+    const err = caught as SlotUnresolvedError;
+    expect(err.appIds).toHaveLength(2);
+    expect(err.appIds).toContain("mcp-github");
+    expect(err.appIds).toContain("google-gmail");
+  });
 });
