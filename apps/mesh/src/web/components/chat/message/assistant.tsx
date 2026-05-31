@@ -38,6 +38,7 @@ import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
 import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
 import { GridLoader } from "../../grid-loader.tsx";
+import { ConnectCard } from "@/web/components/chat/connect-card";
 import { formatDuration } from "../../../lib/format-time.ts";
 
 type ThinkingStage = "planning" | "thinking";
@@ -488,6 +489,8 @@ function MessagePart({
     case "source-url":
     case "source-document":
       return null;
+    case "data-connect-required":
+      return <ConnectCard data={part.data} />;
     case "data-tool-metadata":
     case "data-tool-subtask-metadata":
     case "data-generate-image":
