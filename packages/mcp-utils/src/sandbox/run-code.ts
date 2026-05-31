@@ -4,9 +4,7 @@ import { createSandboxRuntime } from "./runtime.ts";
 import { inspect } from "./utils/error-handling.ts";
 import { PendingPromiseTracker, toQuickJS } from "./utils/to-quickjs.ts";
 import type { IClient } from "../client-like.ts";
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
+import { sleep } from "@decocms/std";
 
 function executePendingJobs(ctx: {
   runtime: { executePendingJobs: Function };

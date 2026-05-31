@@ -288,25 +288,31 @@ Database schema key concepts:
 
 ## Coding Style & Naming Conventions
 
-### Retry & Backoff — use the shared helper, never hand-roll
+### Async primitives — use `@decocms/std`, never hand-roll
 
-There is ONE canonical retry/backoff implementation: `apps/mesh/src/shared/async/`
-(ported from Deno std, isomorphic). It was consolidated from ~9 ad-hoc copies —
-do NOT write another `Math.min(base * 2 ** attempt, cap)` formula, jitter
-expression, or `for`/`while` retry loop.
+`@decocms/std` (`packages/std`) is the ONE canonical home for these — a small,
+zero-dependency, isomorphic (Node / Bun / browser) package ported from Deno std.
+It was consolidated from ~9 ad-hoc backoff copies and ~9 ad-hoc `sleep` copies.
+Do NOT write another `Math.min(base * 2 ** attempt, cap)` formula, jitter
+expression, `for`/`while` retry loop, `new Promise(r => setTimeout(r, ms))`, or
+`Bun.sleep` (Bun-only — defeats portability).
 
-- **`retry(fn, opts)`** (`@/shared/async/retry`) — call a possibly-async function
-  until it succeeds. Supports `maxAttempts`, `minTimeout`/`maxTimeout`,
-  `multiplier`, `jitter` (0–1), an `isRetriable(err)` predicate (e.g. retry only
-  5xx), and an `AbortSignal`. Throws `RetryError` (with `.cause`) on exhaustion.
-- **`exponentialBackoffWithJitter(cap, base, attempt, multiplier, jitter)`**
-  (`@/shared/async/backoff`) — the pure delay calculator, for stateful loops that
-  can't be a single function (WebSocket/SSE reconnect, durable event delivery).
-  `jitter`: `0` = none, `0.5` = equal `[exp/2, exp]`, `1` = full `[0, exp]`.
+- **`sleep(ms, { signal? })`** / **`delay(...)`** (same function) — wait `ms`,
+  optionally cancellable via `AbortSignal` (rejects with the signal's reason on
+  abort; `.catch(() => {})` if you want resolve-on-abort).
+- **`retry(fn, opts)`** — call a possibly-async function until it succeeds.
+  Supports `maxAttempts`, `minTimeout`/`maxTimeout`, `multiplier`, `jitter`
+  (0–1), an `isRetriable(err)` predicate (e.g. retry only 5xx), and an
+  `AbortSignal`. Throws `RetryError` (with `.cause`) on exhaustion.
+- **`exponentialBackoffWithJitter(cap, base, attempt, multiplier, jitter)`** —
+  the pure delay calculator, for stateful loops that can't be a single function
+  (WebSocket/SSE reconnect, durable event delivery). `jitter`: `0` = none,
+  `0.5` = equal `[exp/2, exp]`, `1` = full `[0, exp]`.
 
-If you think you need a new retry mechanism, you don't — extend the options or
-ask. The circuit breaker (`mcp-clients/circuit-breaker.ts`) is a different
-pattern (fault isolation) and is intentionally separate.
+All consumers (`apps/mesh` + packages) import via `@decocms/std`. If you think
+you need a new retry/sleep mechanism, you don't — extend the options or ask. The
+circuit breaker (`mcp-clients/circuit-breaker.ts`) is a different pattern (fault
+isolation) and is intentionally separate.
 
 ### Style & Formatting
 - **Biome** enforces two-space indentation and double quotes

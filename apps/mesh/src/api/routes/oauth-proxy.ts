@@ -15,7 +15,7 @@
 import { Hono } from "hono";
 import { ContextFactory } from "../../core/context-factory";
 import type { MeshContext } from "../../core/mesh-context";
-import { retry, RetryError } from "@/shared/async/retry";
+import { retry, RetryError } from "@decocms/std";
 import {
   authorizationServerMetadataUrls,
   buildPathPrefix,

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { sleep } from "@decocms/std";
 import { NDJSONLogExporter } from "./ndjson-log-exporter";
 import { ExportResultCode } from "@opentelemetry/core";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
@@ -193,7 +194,7 @@ describe("NDJSONLogExporter", () => {
     });
 
     // Wait for timer to fire
-    await Bun.sleep(150);
+    await sleep(150);
 
     const files = await findNDJSONFiles(tmpDir);
     expect(files.length).toBe(1);

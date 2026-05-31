@@ -23,9 +23,9 @@ export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Re-exported from the shared std package so existing importers
+// (`@decocms/sandbox/shared`) keep using the one canonical impl.
+export { sleep } from "@decocms/std";
 
 /** Prepend to any clone script; callers own the clone strategy themselves. */
 export function gitIdentityScript(userName: string, userEmail: string): string {

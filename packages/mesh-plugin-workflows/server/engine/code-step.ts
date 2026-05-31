@@ -9,6 +9,7 @@ import {
   type QuickJSHandle,
 } from "quickjs-emscripten-core";
 
+import { sleep } from "@decocms/std";
 import type { StepResult } from "./tool-step";
 
 let quickJSSingleton: Promise<QuickJSWASMModule> | undefined;
@@ -108,9 +109,6 @@ function executePendingJobs(ctx: {
     }
   }
 }
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function resolvePromiseWithJobPump(
   ctx: QuickJSContext,

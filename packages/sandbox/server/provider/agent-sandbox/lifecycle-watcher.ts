@@ -38,6 +38,7 @@
  */
 
 import { type KubeConfig } from "@kubernetes/client-node";
+import { delay, exponentialBackoffWithJitter } from "@decocms/std";
 import { K8S_CONSTANTS } from "./constants";
 import { kubeFetch, readNdJson } from "./client";
 import type { SandboxResource } from "./client";
@@ -742,26 +743,8 @@ async function runWatch<T>(opts: RunWatchOpts<T>): Promise<void> {
     }
     if (signal.aborted) return;
     // Backoff: 250ms, 500ms, 1s, 2s, capped at 5s.
-    const delayMs = Math.min(250 * 2 ** attempt, 5_000);
+    const delayMs = exponentialBackoffWithJitter(5_000, 250, attempt, 2, 0);
     attempt += 1;
-    await sleep(delayMs, signal);
+    await delay(delayMs, { signal }).catch(() => {});
   }
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    const timeout = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timeout);
-      resolve();
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 }

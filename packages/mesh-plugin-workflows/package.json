@@ -15,6 +15,7 @@
   "dependencies": {
     "@decocms/bindings": "workspace:*",
     "@decocms/mesh-sdk": "workspace:*",
+    "@decocms/std": "workspace:*",
     "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
     "@untitledui/icons": "^0.0.19",
     "kysely": "^0.28.12",

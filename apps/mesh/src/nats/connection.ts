@@ -17,7 +17,7 @@ import {
   type JetStreamClient,
   type NatsConnection,
 } from "nats";
-import { exponentialBackoffWithJitter } from "@/shared/async/backoff";
+import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 
 const BASE_DELAY_MS = 100;
 const MAX_DELAY_MS = 3_000;
@@ -182,8 +182,4 @@ function defaultConnect(opts: {
   maxReconnectAttempts: number;
 }): Promise<NatsConnection> {
   return connect(opts);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

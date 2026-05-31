@@ -5,7 +5,7 @@
  * would just oscillate, so we don't.
  */
 
-import { exponentialBackoffWithJitter } from "@/shared/async/backoff";
+import { exponentialBackoffWithJitter } from "@decocms/std";
 
 export const WS_CLOSE_SUPERSEDED = 4001;
 const BASE_MS = 500;
