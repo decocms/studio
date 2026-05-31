@@ -197,6 +197,6 @@ describe("slot resolution at virtual MCP client construction", () => {
       caught = err;
     }
     expect(caught).toBeInstanceOf(SlotUnresolvedError);
-    expect((caught as SlotUnresolvedError).appId).toBe("mcp-github");
+    expect((caught as SlotUnresolvedError).appIds).toContain("mcp-github");
   });
 });

@@ -150,10 +150,12 @@ export async function createVirtualClientFrom(
     const invokerUserId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null;
     const slotCache = new SlotResolutionCache();
     const activeSpan = trace.getActiveSpan();
+    const unresolvedAppIds: string[] = [];
 
     for (const slot of virtualMcp.slots) {
       if (!invokerUserId) {
-        throw new SlotUnresolvedError(slot.slot_app_id);
+        unresolvedAppIds.push(slot.slot_app_id);
+        continue;
       }
 
       const resolved = await slotCache.resolve(
@@ -167,7 +169,8 @@ export async function createVirtualClientFrom(
           }),
       );
       if (!resolved) {
-        throw new SlotUnresolvedError(slot.slot_app_id);
+        unresolvedAppIds.push(slot.slot_app_id);
+        continue;
       }
 
       // Slot resolver already enforces per-user access by looking up the
@@ -182,7 +185,8 @@ export async function createVirtualClientFrom(
         // Defensive: resolver pointed at a row that disappeared (e.g.
         // deleted between the resolveSlot SELECT and this findById). Treat
         // as unresolved so the UI prompts the user to reconnect.
-        throw new SlotUnresolvedError(slot.slot_app_id);
+        unresolvedAppIds.push(slot.slot_app_id);
+        continue;
       }
 
       resolvedConnections.push(resolvedEntity);
@@ -207,6 +211,16 @@ export async function createVirtualClientFrom(
           resolved.access,
         );
       }
+    }
+
+    if (unresolvedAppIds.length > 0) {
+      // De-dupe in case two slots reference the same app_id.
+      const uniqueAppIds = [...new Set(unresolvedAppIds)];
+      throw new SlotUnresolvedError(
+        uniqueAppIds,
+        virtualMcp.id ?? "",
+        virtualMcp.title,
+      );
     }
   }
 
