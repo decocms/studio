@@ -42,6 +42,7 @@ import {
 } from "./dev-assets";
 import { type ConnectionEntity, ConnectionEntitySchema } from "./schema";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
+import { connectionMatchesWhere } from "./where-match";
 
 /**
  * Registry binding: matches connections that expose COLLECTION_REGISTRY_APP_LIST
@@ -209,7 +210,11 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
       const baseUrl = getBaseUrl();
       const devAssetsId = WellKnownOrgMCPId.DEV_ASSETS(organization.id);
 
-      // Only add if not already in the list and if it matches the slug filter (if any)
+      // Only add it when it isn't already present and when it would satisfy the
+      // caller's filters. The dev-assets row is injected after the SQL query, so
+      // without re-checking the slug and `where` filters here it would bypass
+      // them — e.g. leaking into the agent instance selector's `app_name` filter
+      // and appearing as a selectable instance for every connection.
       if (!connections.some((c) => c.id === devAssetsId)) {
         const devAssetsConnection = createDevAssetsConnectionEntity(
           organization.id,
@@ -217,7 +222,11 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
         );
         const slugMatches =
           !input.slug || getConnectionSlug(devAssetsConnection) === input.slug;
-        if (slugMatches) {
+        const whereMatches = connectionMatchesWhere(
+          devAssetsConnection,
+          input.where,
+        );
+        if (slugMatches && whereMatches) {
           connections.unshift(devAssetsConnection);
         }
       }
