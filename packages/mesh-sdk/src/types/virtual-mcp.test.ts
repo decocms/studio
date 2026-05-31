@@ -123,10 +123,10 @@ test("SandboxRecord.startedWith is optional with nullable packageManager/port/pa
 describe("parseBranchMap", () => {
   test("parses 3-level (kind-keyed) map with canonical kinds", () => {
     const result = parseBranchMap({
-      "local-docker": {
+      cluster: {
         sandboxHandle: "v1",
         previewUrl: null,
-        sandboxProviderKind: "local-docker",
+        sandboxProviderKind: "cluster",
       },
       "user-desktop": {
         sandboxHandle: "v2",
@@ -134,7 +134,7 @@ describe("parseBranchMap", () => {
         sandboxProviderKind: "user-desktop",
       },
     });
-    expect(result["local-docker"]?.sandboxHandle).toBe("v1");
+    expect(result["cluster"]?.sandboxHandle).toBe("v1");
     expect(result["user-desktop"]?.sandboxHandle).toBe("v2");
   });
 
@@ -144,17 +144,22 @@ describe("parseBranchMap", () => {
     expect(parseBranchMap([])).toEqual({});
   });
 
-  test("skips entries under legacy kind keys", () => {
-    // Migration 091 rewrote every legacy key; reader no longer normalizes
-    // unknown keys, it just ignores them.
+  test("skips entries under legacy/retired kind keys", () => {
+    // Migrations 092/097 rewrote/dropped every legacy and retired key; reader
+    // no longer normalizes unknown keys, it just ignores them.
     const result = parseBranchMap({
       docker: {
         sandboxHandle: "v-legacy",
         previewUrl: null,
-        sandboxProviderKind: "local-docker",
+        sandboxProviderKind: "cluster",
+      },
+      "local-docker": {
+        sandboxHandle: "v-retired",
+        previewUrl: null,
+        sandboxProviderKind: "cluster",
       },
     });
-    expect(result["local-docker"]).toBeUndefined();
+    expect(result).toEqual({});
   });
 });
 
@@ -163,17 +168,24 @@ describe("parseSandboxRecord", () => {
     const result = parseSandboxRecord({
       sandboxHandle: "v1",
       previewUrl: null,
-      sandboxProviderKind: "local-docker",
+      sandboxProviderKind: "cluster",
     });
-    expect(result.sandboxProviderKind).toBe("local-docker");
+    expect(result.sandboxProviderKind).toBe("cluster");
   });
 
-  test("rejects legacy kind values", () => {
+  test("rejects legacy/retired kind values", () => {
     expect(() =>
       parseSandboxRecord({
         sandboxHandle: "v1",
         previewUrl: null,
         sandboxProviderKind: "docker",
+      }),
+    ).toThrow();
+    expect(() =>
+      parseSandboxRecord({
+        sandboxHandle: "v1",
+        previewUrl: null,
+        sandboxProviderKind: "local-docker",
       }),
     ).toThrow();
   });
@@ -183,7 +195,7 @@ describe("parseSandboxRecord", () => {
       parseSandboxRecord({
         vmId: "v-pre-rename",
         previewUrl: null,
-        sandboxProviderKind: "local-docker",
+        sandboxProviderKind: "cluster",
       }),
     ).toThrow();
   });

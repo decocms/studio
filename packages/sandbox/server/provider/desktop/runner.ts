@@ -42,7 +42,7 @@ export interface DesktopProviderOptions {
    * in-process tests that don't need cross-instance hydration; the
    * cluster MUST pass one (KyselySandboxProviderStateStore) so a
    * fresh provider per request can still find a previously-ensured
-   * sandbox. Same dependency the docker provider takes.
+   * sandbox. Same dependency the cluster provider takes.
    */
   stateStore?: RunnerStateStoreOps;
 }

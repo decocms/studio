@@ -125,8 +125,8 @@ const DEFAULT_IDLE_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Handle shape: `<slug>-<hash5>` when a branch is supplied, `<hash5>`
- * otherwise — identical to the docker/host runners' default from
- * `composeBranchHandle` (re-exported as `computeHandle`). With
+ * otherwise — the shared default from `composeBranchHandle` (re-exported
+ * as `computeHandle`). With
  * slug(≤24) + 1 + hash(5) = 30 chars max — well under K8s's 63-char DNS
  * label cap.
  */
@@ -1945,7 +1945,7 @@ function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
 /**
  * Convert tenant struct to OTel attribute keys. `runner_kind` is constant for
  * a given runner instance but included on every attrs set so downstream
- * dashboards can pivot across runners (k8s vs docker) without re-aggregating.
+ * dashboards can pivot across runners without re-aggregating.
  */
 function tenantAttrs(tenant: RunnerTenant | null): {
   org_id: string;

@@ -30,7 +30,7 @@ export const SANDBOX_DELETE = defineTool({
         "Branch whose vm should be deleted (sandboxMap[userId][branch])",
       ),
     sandboxProviderKind: z
-      .enum(["local-docker", "cluster", "user-desktop"])
+      .enum(["cluster", "user-desktop"])
       .describe(
         "Kind of sandbox provider the VM was started with. Used to locate the correct 3-level sandboxMap entry.",
       ),

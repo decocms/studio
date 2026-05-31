@@ -839,8 +839,8 @@ async function prepareRun(
         // dispatch runs the harness inside the desktop daemon, where the
         // daemon is spawned with workdir = sandbox path; remote-cli runs
         // claude-code in-process on the user's machine (no resolver
-        // needed). Production runners (docker, agent-sandbox, freestyle)
-        // don't surface a local FS to mesh.
+        // needed). The cluster (agent-sandbox) runner doesn't surface a
+        // local FS to mesh.
 
         // Dispatch through the registry. The harness produces a stream
         // of UIMessageChunk; we adapt it to a ReadableStream so it can

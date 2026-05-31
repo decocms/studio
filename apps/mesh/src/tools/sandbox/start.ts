@@ -74,10 +74,10 @@ export const SANDBOX_START = defineTool({
       .describe(
         "Optional git branch to check out. When omitted the handler generates `deco/<adjective>-<noun>` and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
-    // Canonical-only. Migration 091 swept persisted legacy values; clients
-    // ship canonical strings after the SDK narrowed its union in Task 15.
+    // Canonical-only. Migrations 092/097 swept persisted legacy values;
+    // clients ship canonical strings after the SDK narrowed its union.
     sandboxProviderKind: z
-      .enum(["local-docker", "cluster", "user-desktop"])
+      .enum(["cluster", "user-desktop"])
       .optional()
       .describe(
         "Explicit runtime choice. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the cluster env kind.",
@@ -88,7 +88,7 @@ export const SANDBOX_START = defineTool({
     sandboxHandle: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    sandboxProviderKind: z.enum(["local-docker", "cluster", "user-desktop"]),
+    sandboxProviderKind: z.enum(["cluster", "user-desktop"]),
   }),
 
   handler: async (input, ctx) => {
