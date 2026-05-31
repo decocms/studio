@@ -38,7 +38,10 @@ import type { ChatMessage } from "../../api/routes/decopilot/types";
 import type { ChatMode } from "../../api/routes/decopilot/mode-config";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 import { processConversation } from "../../api/routes/decopilot/conversation";
-import { DEFAULT_WINDOW_SIZE } from "../../api/routes/decopilot/constants";
+import {
+  DEFAULT_WINDOW_SIZE,
+  generateMessageId,
+} from "../../api/routes/decopilot/constants";
 import { assembleDecopilotTools } from "./tools";
 import { assembleDecopilotPrompt } from "./prompt";
 import { runDecopilotStream } from "./run-stream";
@@ -182,14 +185,38 @@ export const decopilotHarnessFactory: HarnessFactory = {
             // The parent agent's own slots are unresolved for this user.
             // Surface the connect card and end the run cleanly (no model
             // call happens) instead of a generic stream error.
-            pl.writer.write({
+            //
+            // We emit a complete UI-message-stream envelope rather than a
+            // bare data chunk so the run is well-formed end-to-end:
+            //  - `start` (with a stable messageId) → the client seeds a real
+            //    assistant message id, so an SSE reconnect dedupes by id
+            //    instead of duplicating the card under id "".
+            //  - a short terminal text part → the turn isn't visually empty
+            //    (the model-facing twin of this text lives in subtask.ts).
+            //  - the `data-connect-required` chunk → renders the connect card.
+            //  - `finish` → the client's foldSubStream sees a `finish` chunk
+            //    and flips status streaming→ready (without it the substream
+            //    never closes and the UI hangs in "streaming" forever).
+            //    `resolveThreadStatus` keys off the `data-connect-required`
+            //    part to resolve `requires_action` (clean, no failure sound).
+            const messageId = generateMessageId();
+            const textId = generateMessageId();
+            const text = `Couldn't run "${err.agentTitle}" — connect ${err.appIds.join(
+              ", ",
+            )}. A connect card was shown.`;
+            yield { type: "start", messageId };
+            yield { type: "text-start", id: textId };
+            yield { type: "text-delta", id: textId, delta: text };
+            yield { type: "text-end", id: textId };
+            yield {
               type: "data-connect-required",
               data: {
                 agentId: err.agentId,
                 agentTitle: err.agentTitle,
                 appIds: err.appIds,
               },
-            });
+            };
+            yield { type: "finish" };
             return;
           }
           throw err;

@@ -122,6 +122,24 @@ describe("resolveThreadStatus", () => {
     expect(resolveThreadStatus("tool-calls", parts)).toBe("completed");
   });
 
+  test("connect-required part with undefined finishReason -> requires_action", () => {
+    // The parent connect-gate (harnesses/decopilot/index.ts) emits a clean
+    // `finish` chunk with no model finishReason. Without the connect-required
+    // special-case this would fall through to "failed" (firing the failure
+    // sound). The `data-connect-required` part must resolve to a clean,
+    // user-actionable status instead.
+    const parts = [
+      { type: "text", text: 'Couldn\'t run "Foo" — connect GitHub.' },
+      { type: "data-connect-required" },
+    ];
+    expect(resolveThreadStatus(undefined, parts)).toBe("requires_action");
+  });
+
+  test("connect-required part with stop finishReason -> requires_action", () => {
+    const parts = [{ type: "data-connect-required" }];
+    expect(resolveThreadStatus("stop", parts)).toBe("requires_action");
+  });
+
   test("length -> failed", () => {
     expect(resolveThreadStatus("length", [])).toBe("failed");
   });

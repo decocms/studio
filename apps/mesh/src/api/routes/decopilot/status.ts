@@ -24,6 +24,15 @@ export function resolveThreadStatus(
   finishReason: string | undefined,
   responseParts: ResponsePart[] = [],
 ): Exclude<ThreadStatus, "in_progress"> {
+  // Connect-gate outcome: when the run terminated cleanly because the user
+  // is missing a required connection, the response carries a
+  // `data-connect-required` part. This is a clean, user-actionable end —
+  // never a failure (no failure sound) — regardless of the finish reason
+  // (the parent connect-gate emits `finish` without a model finishReason).
+  if (responseParts.some((p) => p.type === "data-connect-required")) {
+    return "requires_action";
+  }
+
   if (finishReason === "stop") {
     const text = responseParts
       .filter((p) => p.type === "text" && p.text)
