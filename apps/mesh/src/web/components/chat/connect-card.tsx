@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { ConnectSlotRow } from "@/web/components/chat/connect-slot-row";
-import { useChatStream } from "@/web/components/chat/chat-context";
+import { useOptionalChatStream } from "@/web/components/chat/chat-context";
 import { useSlotAppDisplays } from "@/web/hooks/use-slot-app-displays";
 
 interface ConnectCardData {
@@ -36,13 +36,16 @@ function ConnectCardFallback({ data }: { data: ConnectCardData }) {
 
 function ConnectCardInner({ data }: { data: ConnectCardData }) {
   const { org } = useProjectContext();
-  const { sendMessage, messages } = useChatStream();
+  const stream = useOptionalChatStream();
   const slots = data.appIds.map((appId) => ({ slot_app_id: appId }));
   const displays = useSlotAppDisplays(slots);
 
   const handleRetry = () => {
-    const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    if (lastUser) void sendMessage({ parts: lastUser.parts });
+    if (!stream) return;
+    const lastUser = [...stream.messages]
+      .reverse()
+      .find((m) => m.role === "user");
+    if (lastUser) void stream.sendMessage({ parts: lastUser.parts });
   };
 
   return (
@@ -71,14 +74,16 @@ function ConnectCardInner({ data }: { data: ConnectCardData }) {
           />
         ))}
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs self-start"
-        onClick={handleRetry}
-      >
-        Retry
-      </Button>
+      {stream ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs self-start"
+          onClick={handleRetry}
+        >
+          Retry
+        </Button>
+      ) : null}
     </div>
   );
 }

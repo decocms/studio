@@ -356,10 +356,8 @@ export const KEYS = {
   slotAppDisplay: (orgId: string, appId: string) =>
     ["slot-app-display", orgId, appId] as const,
 
-  // Broad prefixes for invalidating every variant of the slot-resolution
-  // queries at once — used after an inline connect so any mounted connect gate
-  // and slot row re-resolves.
-  unresolvedSlotsPrefix: () => ["unresolved-slots"] as const,
+  // Broad prefix for invalidating every connectionResolveForUser variant at
+  // once — used after an inline connect so ConnectCard slot rows re-resolve.
   connectionResolveForUserPrefix: () =>
     ["connection-resolve-for-user"] as const,
 

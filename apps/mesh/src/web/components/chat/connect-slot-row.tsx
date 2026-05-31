@@ -6,9 +6,9 @@ import { useConnectApp } from "@/web/hooks/use-connect-app";
 import type { ResolvedSlotAppDisplay } from "@/web/hooks/use-slot-app-displays";
 
 /**
- * One row of the connect gate. Registry apps show their icon + friendly name and
- * connect inline (OAuth in place); non-registry / synthetic slots show the raw
- * app_id and deep-link to the connections page.
+ * One row inside a ConnectCard. Registry apps show their icon + friendly name
+ * and connect inline (OAuth in place); non-registry / synthetic slots show the
+ * raw app_id and deep-link to the connections page.
  */
 export function ConnectSlotRow({
   display,

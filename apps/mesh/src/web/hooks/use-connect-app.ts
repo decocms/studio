@@ -14,10 +14,11 @@ export type ConnectAppStatus =
   | "error";
 
 /**
- * Drives inline connect for a single connect-gate row. `connect(item)` runs the
- * shared `connectApp` pipeline and exposes a per-row status/error. On success it
- * invalidates the slot-resolution queries so the gate re-resolves and the row
- * drops (a background refetch on the gate's suspense query — no re-suspend).
+ * Drives inline connect for a single ConnectCard slot row. `connect(item)` runs
+ * the shared `connectApp` pipeline and exposes a per-row status/error. On
+ * success it invalidates `connectionResolveForUser` queries so any mounted
+ * ConnectCard slot rows that resolved the same app reflect the new connection
+ * state. The user then manually clicks Retry to re-run the last turn.
  */
 export function useConnectApp(): {
   connect: (item: RegistryItem) => Promise<void>;
@@ -57,10 +58,7 @@ export function useConnectApp(): {
         );
         return;
       }
-      // Re-resolve the gate (and settings slot rows) so this slot drops.
-      await queryClient.invalidateQueries({
-        queryKey: KEYS.unresolvedSlotsPrefix(),
-      });
+      // Re-resolve slot rows for this app so they reflect the new connection.
       await queryClient.invalidateQueries({
         queryKey: KEYS.connectionResolveForUserPrefix(),
       });
