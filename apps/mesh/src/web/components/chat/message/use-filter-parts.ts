@@ -173,7 +173,9 @@ export function useFilterParts(message: ChatMessage | null) {
       // Including them in renderOrder would let them claim
       // `isLastVisiblePart` and steal the message-bottom usage stats from
       // the real last visible part.
-      if (p.type.startsWith("data-")) {
+      // data-* parts are metadata side-channels and never render — EXCEPT
+      // data-connect-required, which is a visible connect card.
+      if (p.type.startsWith("data-") && p.type !== "data-connect-required") {
         continue;
       }
 
