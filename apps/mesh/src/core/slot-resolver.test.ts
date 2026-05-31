@@ -68,10 +68,18 @@ describe("SlotResolutionCache", () => {
 });
 
 describe("SlotUnresolvedError", () => {
-  it("carries app_id for the UI to surface", () => {
-    const err = new SlotUnresolvedError("mcp-github");
-    expect(err.appId).toBe("mcp-github");
+  it("carries all app_ids and agent identity for the UI to surface", () => {
+    const err = new SlotUnresolvedError(
+      ["mcp-github", "google-gmail"],
+      "vmcp_123",
+      "My Agent",
+    );
+    expect(err.appIds).toEqual(["mcp-github", "google-gmail"]);
+    expect(err.agentId).toBe("vmcp_123");
+    expect(err.agentTitle).toBe("My Agent");
     expect(err.name).toBe("SlotUnresolvedError");
     expect(err.message).toContain("mcp-github");
+    expect(err.message).toContain("google-gmail");
+    expect(err.message).toContain("My Agent");
   });
 });

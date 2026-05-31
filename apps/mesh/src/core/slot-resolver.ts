@@ -34,13 +34,17 @@ export interface ResolvedSlot {
 }
 
 export class SlotUnresolvedError extends Error {
-  readonly appId: string;
-  constructor(appId: string) {
+  readonly appIds: string[];
+  readonly agentId: string;
+  readonly agentTitle: string;
+  constructor(appIds: string[], agentId: string, agentTitle: string) {
     super(
-      `Slot for app_id '${appId}' could not be resolved — the caller has no matching connection.`,
+      `Agent '${agentTitle}' (${agentId}) has unresolved slots for app_ids: ${appIds.join(", ")} — the caller has no matching connection.`,
     );
     this.name = "SlotUnresolvedError";
-    this.appId = appId;
+    this.appIds = appIds;
+    this.agentId = agentId;
+    this.agentTitle = agentTitle;
   }
 }
 
