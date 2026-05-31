@@ -67,6 +67,28 @@ export type GenerateImageInput = z.infer<typeof GenerateImageInputSchema>;
 const FILES_URL_PATTERN = /\/api\/[^/]+\/files\/([^?#]+)/;
 
 /**
+ * Upper bound on a single reference image fetched for image-to-image.
+ *
+ * Generous enough to cover real phone photos (a 48 MP shot is ~10–20 MB)
+ * while bounding the in-memory buffer (uploads themselves allow up to
+ * 100 MiB) and roughly tracking the most permissive common provider input
+ * limit — Gemini's ~20 MB inline request budget. Stricter providers (OpenAI
+ * image edits cap at ~4 MB, Anthropic vision at 5 MB) reject oversize inputs
+ * with their own error; this is a sanity guardrail, not a per-provider mirror.
+ */
+const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MiB
+
+function assertReferenceImageSize(bytes: number): void {
+  if (bytes > MAX_REFERENCE_IMAGE_BYTES) {
+    const mb = (bytes / (1024 * 1024)).toFixed(1);
+    const maxMb = MAX_REFERENCE_IMAGE_BYTES / (1024 * 1024);
+    throw new Error(
+      `Reference image too large: ${mb} MB (max ${maxMb} MB). Use a smaller image.`,
+    );
+  }
+}
+
+/**
  * Resolve an image URL to raw bytes.
  * Handles mesh-storage: URIs, our own /api/:org/files/ URLs,
  * data: URIs, and external HTTP(S) URLs.
@@ -92,7 +114,9 @@ async function fetchImageBytes(
   if (url.startsWith("data:")) {
     const match = url.match(/^data:[^;]+;base64,(.+)$/s);
     if (!match) throw new Error("Invalid data: URI");
-    return Buffer.from(match[1]!, "base64");
+    const bytes = Buffer.from(match[1]!, "base64");
+    assertReferenceImageSize(bytes.byteLength);
+    return bytes;
   }
 
   // External HTTP(S) URL — validate before fetching to prevent SSRF
@@ -101,7 +125,9 @@ async function fetchImageBytes(
   if (!res.ok) {
     throw new Error(`Failed to fetch image from ${url}: ${res.status}`);
   }
-  return new Uint8Array(await res.arrayBuffer());
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  assertReferenceImageSize(bytes.byteLength);
+  return bytes;
 }
 
 const PRIVATE_HOST_PATTERNS = [
@@ -151,6 +177,12 @@ async function readFromObjectStorage(
   if (!ctx.objectStorage) {
     throw new Error("Object storage not available");
   }
+  // Check size via HEAD before reading so we don't buffer a pathologically
+  // large object into memory (uploads allow up to 100 MiB). The reference-size
+  // policy lives here in the consumer; getBytes itself stays a dumb uncapped
+  // primitive (mirrors the getBytesOrPresign vs getBytes split).
+  const { size } = await ctx.objectStorage.head(key);
+  assertReferenceImageSize(size);
   // Read raw bytes via getBytes, NOT getBytesOrPresign: the latter is for content
   // that gets inlined into a size-limited channel (model context / NATS) and
   // refuses to inline past the caller's threshold. Reference bytes are
