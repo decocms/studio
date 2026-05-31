@@ -15,9 +15,6 @@ import {
   stripOrgPrefix,
 } from "./key-utils";
 
-/** 1 MB inline read limit */
-const MAX_INLINE_SIZE = 1_048_576;
-
 export interface S3ServiceConfig {
   endpoint: string;
   bucket: string;
@@ -88,9 +85,15 @@ export class S3Service {
     });
   }
 
-  async get(
+  /**
+   * Read an object, or — when larger than `presignWhenLargerThan` — return a
+   * `FILE_TOO_LARGE` marker with a presigned URL instead of its content. The
+   * threshold is the caller's policy. For raw uncapped reads, use `getBytes`.
+   */
+  async getBytesOrPresign(
     orgId: string,
     key: string,
+    opts: { presignWhenLargerThan: number; presignExpiresIn?: number },
   ): Promise<GetObjectResult | GetObjectTooLargeResult> {
     const s3Key = buildS3Key(orgId, key);
 
@@ -102,17 +105,17 @@ export class S3Service {
     const size = headResult.ContentLength ?? 0;
     const contentType = headResult.ContentType ?? detectContentType(key);
 
-    if (size > MAX_INLINE_SIZE) {
+    if (size > opts.presignWhenLargerThan) {
       const presignedUrl = await getSignedUrl(
         this.client,
         new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
-        { expiresIn: 3600 },
+        { expiresIn: opts.presignExpiresIn ?? 3600 },
       );
 
       return {
         error: "FILE_TOO_LARGE",
         size,
-        maxInlineSize: MAX_INLINE_SIZE,
+        maxInlineSize: opts.presignWhenLargerThan,
         presignedUrl,
         contentType,
       };
@@ -135,6 +138,15 @@ export class S3Service {
       lastModified: headResult.LastModified,
       etag: headResult.ETag,
     };
+  }
+
+  /** Read an object's raw bytes, uncapped. */
+  async getBytes(orgId: string, key: string): Promise<Uint8Array> {
+    const s3Key = buildS3Key(orgId, key);
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+    );
+    return response.Body!.transformToByteArray();
   }
 
   async put(
