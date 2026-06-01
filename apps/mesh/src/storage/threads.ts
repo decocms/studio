@@ -21,6 +21,10 @@ function toIsoString(v: Date | string): string {
   return typeof v === "string" ? v : v.toISOString();
 }
 
+// `message_parts` rows have 4 columns; cap rows/INSERT well under Postgres'
+// 65535 bind-parameter ceiling so a large saveMessages batch can't overflow it.
+const MAX_PART_ROWS_PER_INSERT = 10_000;
+
 // ============================================================================
 // Org-Scoped Thread Storage (repository pattern)
 // ============================================================================
@@ -583,10 +587,11 @@ export class SqlThreadStorage implements ThreadStoragePort {
           content: JSON.stringify(part),
         })),
       );
-      if (partRows.length > 0) {
+      // Chunk under the bind-parameter limit; usually a single iteration.
+      for (let i = 0; i < partRows.length; i += MAX_PART_ROWS_PER_INSERT) {
         await trx
           .insertInto("message_parts")
-          .values(partRows)
+          .values(partRows.slice(i, i + MAX_PART_ROWS_PER_INSERT))
           .onConflict((oc) =>
             oc.columns(["message_id", "idx"]).doUpdateSet((eb) => ({
               type: eb.ref("excluded.type"),
