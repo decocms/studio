@@ -1,11 +1,69 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { Socket } from "node:net";
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import pkg from "./package.json" with { type: "json" };
 
 const STUDIO_API_PORT = process.env.STUDIO_API_PORT ?? "3001";
 const studioApiTarget = `http://127.0.0.1:${STUDIO_API_PORT}`;
+
+// ── Bun socket `destroySoon` polyfill ────────────────────────────────
+// Vite's bundled http-proxy calls `socket.destroySoon()` on the `end`
+// event of a proxied chunked / streaming response (notably long-running
+// MCP POSTs and SSE on /api, /mcp). Bun's node:http polyfill does not
+// expose `destroySoon` on the sockets it hands the HTTP layer (as of
+// v1.3.14), so the first such response crashes Vite with
+//   TypeError: socket.destroySoon is not a function
+// and the cross-linked-children kill in dev.ts then drops the studio
+// API child too. We polyfill at two layers — `net.Socket.prototype`
+// (covers anything inheriting from the canonical class) and
+// per-incoming HTTP connection (covers Bun's own socket class if it
+// differs) — using end-then-destroy-on-finish semantics that mirror
+// Node. Both checks become no-ops the moment Bun ships a native
+// implementation.
+interface SocketLike {
+  writable?: boolean;
+  end?: () => void;
+  destroy?: () => void;
+  once?: (ev: string, cb: () => void) => void;
+}
+
+function destroySoonPolyfill(this: SocketLike) {
+  if (this.writable && typeof this.end === "function") {
+    this.end();
+    if (typeof this.once === "function" && typeof this.destroy === "function") {
+      this.once("finish", () => this.destroy?.());
+      return;
+    }
+  }
+  this.destroy?.();
+}
+
+{
+  const proto = Socket.prototype as unknown as {
+    destroySoon?: typeof destroySoonPolyfill;
+  };
+  if (typeof proto.destroySoon !== "function") {
+    proto.destroySoon = destroySoonPolyfill;
+  }
+}
+
+function bunSocketDestroySoonPolyfill(): Plugin {
+  return {
+    name: "bun-destroysoon-polyfill",
+    configureServer(server) {
+      server.httpServer?.on("connection", (socket: unknown) => {
+        const s = socket as SocketLike & {
+          destroySoon?: typeof destroySoonPolyfill;
+        };
+        if (typeof s.destroySoon !== "function") {
+          s.destroySoon = destroySoonPolyfill;
+        }
+      });
+    },
+  };
+}
 
 export default defineConfig({
   define: {
@@ -48,6 +106,10 @@ export default defineConfig({
   clearScreen: false,
   logLevel: "warn",
   plugins: [
+    // Must come before any plugin that may handle HTTP — runs first in
+    // `configureServer` to wire the `connection` listener before the
+    // first incoming request.
+    bunSocketDestroySoonPolyfill(),
     react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
     tailwindcss(),
     tsconfigPaths({ root: "." }),
