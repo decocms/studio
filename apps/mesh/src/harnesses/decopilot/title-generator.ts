@@ -5,9 +5,14 @@
  */
 
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-import { generateText } from "ai";
+import { generateObject } from "ai";
+import { z } from "zod";
 
 import { TITLE_GENERATOR_PROMPT } from "../../api/routes/decopilot/constants";
+
+const TITLE_SCHEMA = z.object({
+  title: z.string().describe("A concise, sentence-case title (3-7 words)"),
+});
 
 /**
  * Generate a short title for the conversation in the background.
@@ -44,44 +49,22 @@ export function genTitle(config: {
 
   const promise = (async (): Promise<string | null> => {
     try {
-      const result = await generateText({
+      const result = await generateObject({
         model,
+        schema: TITLE_SCHEMA,
         system: TITLE_GENERATOR_PROMPT,
         messages: [{ role: "user", content: userMessage }],
-        maxOutputTokens: 60,
         temperature: 0.2,
         abortSignal: titleAbortController.signal,
       });
 
-      // Strip markdown code fences if present, then try JSON parse
-      const cleaned = result.text
-        .trim()
-        .replace(/^```(?:json)?\s*\n?/i, "")
-        .replace(/\n?```\s*$/, "")
-        .trim();
-
-      let title: string;
-
-      try {
-        const parsed = JSON.parse(cleaned);
-        title = typeof parsed.title === "string" ? parsed.title : cleaned;
-      } catch {
-        // Fallback: extract first line and clean up formatting
-        const firstLine = cleaned.split("\n")[0] ?? cleaned;
-        title = firstLine;
-      }
-
-      title = title
-        .replace(/^["']|["']$/g, "") // Remove quotes
-        .replace(/^(Title:|title:)\s*/i, "") // Remove "Title:" prefix
-        .replace(/^```.*$/gm, "") // Remove any remaining fence lines
-        .replace(/[{}[\]]/g, "") // Remove JSON braces/brackets
+      const title = result.object.title
         .replace(/[.!?]$/, "") // Remove trailing punctuation
         .slice(0, 60) // Max 60 chars
         .trim();
 
-      // If cleanup left nothing useful, don't set a broken title
-      if (!title || /^[\s"':{}[\],]+$/.test(title)) return null;
+      // If the model returned nothing useful, don't set a broken title
+      if (!title) return null;
 
       return title;
     } catch (error) {
