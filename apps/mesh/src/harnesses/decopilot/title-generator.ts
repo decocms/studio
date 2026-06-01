@@ -47,8 +47,10 @@ export function genTitle(config: {
     }, POST_STREAM_GRACE_MS);
   };
 
+  // Always resolves to a usable title: first line of the user message, or a
+  // static default if the message is empty/whitespace-only.
   const fallbackTitle =
-    userMessage.split("\n")[0].trim().slice(0, 60) || null;
+    userMessage.split("\n")[0].trim().slice(0, 60) || "New chat";
 
   const promise = (async (): Promise<string | null> => {
     try {
