@@ -7,10 +7,14 @@ interface UseDecofileParams {
   branch: string;
 }
 
-export function useDecofile(params: UseDecofileParams | null) {
+export function useDecofile(
+  params: UseDecofileParams | null,
+  options?: { fetchEnabled?: boolean },
+) {
   const key = params
     ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`
     : "";
+  const fetchEnabled = options?.fetchEnabled ?? true;
   return useQuery({
     queryKey: KEYS.decofile(key),
     queryFn: async () => {
@@ -21,7 +25,7 @@ export function useDecofile(params: UseDecofileParams | null) {
       if (!res.ok) throw new Error(`Failed to fetch decofile: ${res.status}`);
       return (await res.json()) as Record<string, unknown>;
     },
-    enabled: !!params,
+    enabled: !!params && fetchEnabled,
     staleTime: 30_000,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),

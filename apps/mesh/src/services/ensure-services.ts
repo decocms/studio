@@ -15,6 +15,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "fs";
+import { sleep } from "@decocms/std";
 import { chmod, unlink } from "fs/promises";
 import { createRequire } from "module";
 import { createConnection, createServer } from "net";
@@ -198,7 +199,7 @@ async function waitForPort(port: number, timeoutMs = 30_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (await probePort(port)) return;
-    await Bun.sleep(200);
+    await sleep(200);
   }
   throw new Error(`Timed out waiting for port ${port}`);
 }
@@ -476,7 +477,7 @@ async function stopPostgres(home: string): Promise<void> {
         process.kill(pid, "SIGTERM");
         const start = Date.now();
         while (Date.now() - start < 5000 && isProcessAlive(pid)) {
-          await Bun.sleep(200);
+          await sleep(200);
         }
         if (isProcessAlive(pid) && isOwnedProcess(pid, "postgres")) {
           process.kill(pid, "SIGKILL");
@@ -665,7 +666,7 @@ async function stopNats(home: string): Promise<void> {
 
   const start = Date.now();
   while (Date.now() - start < 5000 && isProcessAlive(pid)) {
-    await Bun.sleep(200);
+    await sleep(200);
   }
 
   if (isProcessAlive(pid) && isOwnedProcess(pid, "nats-server")) {
@@ -762,8 +763,13 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
       "--cwd=apps/mesh",
       "src/cli.ts",
       "link",
+      // Required positional: the studio to link against.
+      inputs.clusterUrl,
       "--port",
       String(port),
+      // Managed background daemon: never render the Ink TUI (it would paint
+      // over the parent dev/serve terminal when stdio is inherited).
+      "--no-tui",
     ],
     {
       cwd: inputs.repoRoot,
@@ -772,6 +778,8 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
         MESH_CLUSTER_URL: inputs.clusterUrl,
         DATA_DIR: inputs.linkDataDir,
         DECOCMS_HOME: inputs.linkDataDir,
+        // Suppress the plain banner — the parent dev/serve already shows one.
+        DECOCMS_LINK_MANAGED: "1",
       },
       stdio: inputs.stdio ?? ["inherit", "inherit", "inherit"],
     },
@@ -843,7 +851,7 @@ async function stopLink(home: string): Promise<void> {
 
   const start = Date.now();
   while (Date.now() - start < 5000 && isProcessAlive(pid)) {
-    await Bun.sleep(200);
+    await sleep(200);
   }
 
   if (isProcessAlive(pid) && isOwnedProcess(pid, LINK_ARGS_MARKER, "args")) {

@@ -15,6 +15,8 @@
  * connection opens (initial connect does NOT fire `onReconnect`).
  */
 
+import { exponentialBackoffWithJitter } from "@decocms/std";
+
 /** Max reconnect delay in ms */
 const MAX_RECONNECT_DELAY_MS = 30_000;
 /** Base reconnect delay in ms */
@@ -108,9 +110,12 @@ export function createSSESubscription(
 
     if (conn.reconnectTimer) return;
 
-    const delay = Math.min(
-      BASE_RECONNECT_DELAY_MS * 2 ** conn.reconnectAttempt,
+    const delay = exponentialBackoffWithJitter(
       MAX_RECONNECT_DELAY_MS,
+      BASE_RECONNECT_DELAY_MS,
+      conn.reconnectAttempt,
+      2,
+      0,
     );
     conn.reconnectAttempt++;
 

@@ -66,6 +66,20 @@ export type GenerateImageInput = z.infer<typeof GenerateImageInputSchema>;
 /** Pattern to extract the storage key from our own files endpoint URL. */
 const FILES_URL_PATTERN = /\/api\/[^/]+\/files\/([^?#]+)/;
 
+// Sanity cap on a reference image read into memory; providers enforce their
+// own (stricter) input limits.
+const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
+
+function assertReferenceImageSize(bytes: number): void {
+  if (bytes > MAX_REFERENCE_IMAGE_BYTES) {
+    const mb = (bytes / (1024 * 1024)).toFixed(1);
+    const maxMb = MAX_REFERENCE_IMAGE_BYTES / (1024 * 1024);
+    throw new Error(
+      `Reference image too large: ${mb} MB (max ${maxMb} MB). Use a smaller image.`,
+    );
+  }
+}
+
 /**
  * Resolve an image URL to raw bytes.
  * Handles mesh-storage: URIs, our own /api/:org/files/ URLs,
@@ -92,7 +106,9 @@ async function fetchImageBytes(
   if (url.startsWith("data:")) {
     const match = url.match(/^data:[^;]+;base64,(.+)$/s);
     if (!match) throw new Error("Invalid data: URI");
-    return Buffer.from(match[1]!, "base64");
+    const bytes = Buffer.from(match[1]!, "base64");
+    assertReferenceImageSize(bytes.byteLength);
+    return bytes;
   }
 
   // External HTTP(S) URL — validate before fetching to prevent SSRF
@@ -101,7 +117,9 @@ async function fetchImageBytes(
   if (!res.ok) {
     throw new Error(`Failed to fetch image from ${url}: ${res.status}`);
   }
-  return new Uint8Array(await res.arrayBuffer());
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  assertReferenceImageSize(bytes.byteLength);
+  return bytes;
 }
 
 const PRIVATE_HOST_PATTERNS = [
@@ -151,14 +169,10 @@ async function readFromObjectStorage(
   if (!ctx.objectStorage) {
     throw new Error("Object storage not available");
   }
-  const result = await ctx.objectStorage.get(key);
-  if ("content" in result && typeof result.content === "string") {
-    if (result.encoding === "base64") {
-      return Buffer.from(result.content, "base64");
-    }
-    return new TextEncoder().encode(result.content);
-  }
-  throw new Error(`Failed to read from object storage: ${key}`);
+  // HEAD first to reject oversize before buffering the whole object.
+  const { size } = await ctx.objectStorage.head(key);
+  assertReferenceImageSize(size);
+  return ctx.objectStorage.getBytes(key);
 }
 
 export function createGenerateImageTool(

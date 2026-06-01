@@ -29,6 +29,10 @@ import { useChatTask } from "@/web/components/chat/index";
 import { useThreadManager } from "@/web/components/chat/store/hooks";
 import { getActiveGithubRepo } from "@/web/lib/github-repo.ts";
 import { usePrByBranch } from "@/web/components/thread/github/use-pr-data.ts";
+import { useDecofile } from "@/web/components/sections-editor/use-decofile";
+import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
+import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
+import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -176,6 +180,26 @@ export function useMainPanelTabs(ctx: {
   const hasClonableSource = agentHasClonableSource(entity?.metadata);
   const connections = useConnections({ includeVirtual: true });
 
+  // Show "Content" only when decofile/meta confirm editable pages or sections
+  // — same rule as Preview's Sections editor toggle. Fetch only after the dev
+  // server is up (shared query keys with Preview / Content). Requires
+  // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
+  const vmEvents = useSandboxEvents();
+  const devServerReady = vmEvents.lifecycle.phase === "running";
+  const decofileFetchParams =
+    hasClonableSource && entity?.id && currentBranch
+      ? { orgSlug: org.slug, virtualMcpId: entity.id, branch: currentBranch }
+      : null;
+  // Subscribe to the same query keys as Preview; only fetch after the dev
+  // server is running, but still re-render when Preview warms the cache.
+  const { data: decofile } = useDecofile(decofileFetchParams, {
+    fetchEnabled: devServerReady,
+  });
+  const { data: meta } = useLiveMeta(decofileFetchParams, {
+    fetchEnabled: devServerReady,
+  });
+  const showContentTab = hasEditableDecoContent(decofile, meta);
+
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
       mainParam: search.main,
@@ -190,17 +214,18 @@ export function useMainPanelTabs(ctx: {
   const gitTabVisible =
     hasActiveGithubRepo &&
     (hasOpenPr || (prQuery.isPending && rawActiveTab === "git"));
+  const layoutForDefault = entityLayout
+    ? {
+        defaultMainView: entityLayout.defaultMainView ?? null,
+        tabs: layoutTabs.map((t) => ({ id: t.id })),
+      }
+    : null;
   const activeTab =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
-      ? resolveDefaultTabId(
-          entityLayout
-            ? {
-                defaultMainView: entityLayout.defaultMainView ?? null,
-                tabs: layoutTabs.map((t) => ({ id: t.id })),
-              }
-            : null,
-        )
-      : rawActiveTab;
+      ? resolveDefaultTabId(layoutForDefault)
+      : rawActiveTab === "content" && !showContentTab
+        ? resolveDefaultTabId(layoutForDefault)
+        : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false
@@ -215,6 +240,9 @@ export function useMainPanelTabs(ctx: {
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource) {
     systemTabs.push({ id: "preview", title: "Preview" });
+    if (showContentTab) {
+      systemTabs.push({ id: "content", title: "Content" });
+    }
   }
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });

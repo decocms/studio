@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from "react";
 import {
+  Edit05,
   GitBranch01,
   Globe01,
   LayoutAlt04,
@@ -16,12 +17,18 @@ export type TabIcon =
   | { kind: "url"; src: string }
   | { kind: "fallback" };
 
-export type SystemTabId = "settings" | "automations" | "preview" | "git";
+export type SystemTabId =
+  | "settings"
+  | "automations"
+  | "preview"
+  | "content"
+  | "git";
 
 export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   settings: LayoutAlt04,
   automations: Lightning01,
   preview: Globe01,
+  content: Edit05,
   git: GitBranch01,
 };
 

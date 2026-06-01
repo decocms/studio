@@ -303,26 +303,6 @@ jobs:
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-      - name: Trigger deployment update
-        # Bump the deploy repo on every real release. The release job only runs
-        # for genuine new versions, so a push here is always a release worth
-        # deploying. (Previously gated solely on the workflow_dispatch input,
-        # which silently stopped firing once that dispatch began 403'ing —
-        # freezing prod's desired image tag.) ArgoCD's manual-sync prod gate
-        # still applies: this only updates the desired tag in git.
-        if: inputs.deploy_to_production == 'true' || github.event_name == 'push'
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
-          repository: deco-cx/argo-deploy-mesh
-          event-type: image-update
-          client-payload: '{"image_tag": "${{ needs.prepare.outputs.version }}"}'
-      - name: Deployment summary
-        if: inputs.deploy_to_production == 'true' || github.event_name == 'push'
-        run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment" >> $GITHUB_STEP_SUMMARY
-          echo "Triggered ArgoCD deployment with image tag \`${{ needs.prepare.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
 
   # ---------------------------------------------------------------------------
   # GitOps: tell deco-apps-cd to bump the mesh image. We do NOT write into that

@@ -7,6 +7,8 @@ export interface EnsureSessionOptions {
   dataDir: string;
   /** Human-readable name of the action requiring auth, e.g. "Link". */
   intent: string;
+  /** Studio to authenticate against for interactive login (defaults to prod). */
+  target?: string;
   /** Defaults to `process.stdout.isTTY`. */
   isInteractive?: boolean;
   // Injectables (all default to real implementations):
@@ -38,6 +40,7 @@ export async function ensureSession(
   try {
     existing = await getValidSession({
       dataDir: opts.dataDir,
+      target: opts.target,
       fetch: opts.fetch,
       now: opts.now,
     });
@@ -48,6 +51,18 @@ export async function ensureSession(
       );
     }
     throw err;
+  }
+  // A cached session for a *different* studio (e.g. prod token while linking to
+  // staging) would be rejected by the target. When we can re-auth interactively,
+  // discard it and log in against the requested studio; otherwise keep it (the
+  // caller's own auth check surfaces a clear error).
+  if (
+    existing &&
+    opts.target &&
+    isInteractive &&
+    !sameStudio(existing.target, opts.target)
+  ) {
+    existing = null;
   }
   if (existing) return existing;
 
@@ -60,10 +75,20 @@ export async function ensureSession(
   console.log(`Not logged in — opening browser to sign in to ${opts.intent}.`);
 
   const session = await performInteractiveLogin({
+    target: opts.target,
     openBrowser: opts.openBrowser,
     fetch: opts.fetch,
   });
   await writeSession(opts.dataDir, session);
   console.log(`Logged in as ${session.user.email ?? session.user.sub}.`);
   return session;
+}
+
+/** Two studio URLs are "the same" when their hosts match (tolerates path/slash). */
+function sameStudio(a: string, b: string): boolean {
+  try {
+    return new URL(a).host === new URL(b).host;
+  } catch {
+    return a === b;
+  }
 }

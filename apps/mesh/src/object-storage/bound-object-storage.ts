@@ -12,7 +12,16 @@ import type {
  * Bakes in the org ID so callers don't need to pass it on every call.
  */
 export interface BoundObjectStorage {
-  get(key: string): Promise<GetObjectResult | GetObjectTooLargeResult>;
+  /**
+   * Read an object, or return a `FILE_TOO_LARGE` marker with a presigned URL
+   * when it exceeds `presignWhenLargerThan` (the caller's inline budget).
+   */
+  getBytesOrPresign(
+    key: string,
+    opts: { presignWhenLargerThan: number; presignExpiresIn?: number },
+  ): Promise<GetObjectResult | GetObjectTooLargeResult>;
+  /** Read an object's raw bytes, uncapped. */
+  getBytes(key: string): Promise<Uint8Array>;
   put(
     key: string,
     body: string | Uint8Array,
@@ -44,7 +53,8 @@ export function createBoundObjectStorage(
   orgId: string,
 ): BoundObjectStorage {
   return {
-    get: (key) => s3.get(orgId, key),
+    getBytesOrPresign: (key, opts) => s3.getBytesOrPresign(orgId, key, opts),
+    getBytes: (key) => s3.getBytes(orgId, key),
     put: (key, body, options) => s3.put(orgId, key, body, options),
     list: (options) => s3.list(orgId, options),
     delete: (key) => s3.delete(orgId, key),

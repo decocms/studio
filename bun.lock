@@ -53,7 +53,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.368.0",
+      "version": "2.373.12",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -101,6 +101,7 @@
         "@decocms/mesh-sdk": "workspace:*",
         "@decocms/runtime": "workspace:*",
         "@decocms/sandbox": "workspace:*",
+        "@decocms/std": "workspace:*",
         "@decocms/vite-plugin": "workspace:*",
         "@floating-ui/react": "^0.27.16",
         "@happy-dom/global-registrator": "^20.9.0",
@@ -216,6 +217,9 @@
     "packages/mcp-utils": {
       "name": "@decocms/mcp-utils",
       "version": "1.0.2",
+      "dependencies": {
+        "@decocms/std": "workspace:*",
+      },
       "devDependencies": {
         "@jitl/quickjs-wasmfile-release-sync": "0.31.0",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -231,6 +235,7 @@
       "dependencies": {
         "@decocms/bindings": "workspace:*",
         "@decocms/mesh-sdk": "workspace:*",
+        "@decocms/std": "workspace:*",
         "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
         "@untitledui/icons": "^0.0.19",
         "kysely": "^0.28.12",
@@ -295,6 +300,7 @@
       "name": "@decocms/sandbox",
       "version": "0.5.8",
       "dependencies": {
+        "@decocms/std": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
         "@opentelemetry/api": "^1.9.0",
         "node-pty": "^1.0.0",
@@ -303,6 +309,10 @@
         "@types/bun": "latest",
         "typescript": "^5.8.3",
       },
+    },
+    "packages/std": {
+      "name": "@decocms/std",
+      "version": "0.1.0",
     },
     "packages/typegen": {
       "name": "@decocms/typegen",
@@ -671,6 +681,8 @@
     "@decocms/runtime": ["@decocms/runtime@workspace:packages/runtime"],
 
     "@decocms/sandbox": ["@decocms/sandbox@workspace:packages/sandbox"],
+
+    "@decocms/std": ["@decocms/std@workspace:packages/std"],
 
     "@decocms/typegen": ["@decocms/typegen@workspace:packages/typegen"],
 

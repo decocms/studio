@@ -6,6 +6,8 @@ const EXPIRY_SKEW_SECONDS = 60;
 
 export interface GetValidSessionOptions {
   dataDir: string;
+  /** Studio to read the session for (host-keyed). Omit for any session. */
+  target?: string;
   fetch?: typeof fetch;
   /** Returns the current time in milliseconds. Defaults to Date.now. */
   now?: () => number;
@@ -28,7 +30,7 @@ export interface GetValidSessionOptions {
 export async function getValidSession(
   opts: GetValidSessionOptions,
 ): Promise<Session | null> {
-  const session = await readSession(opts.dataDir);
+  const session = await readSession(opts.dataDir, opts.target);
   if (!session) return null;
 
   const now = opts.now ?? Date.now;

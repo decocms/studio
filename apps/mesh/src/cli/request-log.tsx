@@ -1,8 +1,5 @@
 import { Box, Text } from "ink";
-import { useSyncExternalStore } from "react";
-import { getCliState, subscribeCliState } from "./cli-store";
 import type { LogEntry } from "./log-emitter";
-import { useTerminalSize } from "./use-terminal-size";
 
 function statusColor(status: number): string {
   if (status >= 500) return "red";
@@ -11,20 +8,10 @@ function statusColor(status: number): string {
   return "green";
 }
 
-interface RequestLogProps {
-  logs: LogEntry[];
-  headerHeight: number;
-}
-
-export function RequestLog({ logs, headerHeight }: RequestLogProps) {
-  const { rows } = useTerminalSize();
-  const { logFlow } = useSyncExternalStore(subscribeCliState, getCliState);
-  const visibleCount = Math.max(1, rows - headerHeight - 1);
-  const visible = logFlow ? logs : logs.slice(-visibleCount);
-
+export function RequestLog({ logs }: { logs: LogEntry[] }) {
   return (
     <Box flexDirection="column">
-      {visible.map((entry, i) => {
+      {logs.map((entry, i) => {
         if (entry.rawLine) {
           return (
             <Text key={i} dimColor>

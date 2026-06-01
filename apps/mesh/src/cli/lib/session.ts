@@ -1,6 +1,7 @@
 import {
   chmod,
   mkdir,
+  readdir,
   readFile,
   rename,
   rm,
@@ -25,13 +26,31 @@ export interface Session {
   createdAt: string;
 }
 
-export function sessionPath(dataDir: string): string {
-  return join(dataDir, "session.json");
+/**
+ * Path to the session file for a studio. Sessions are keyed by studio host
+ * so multiple studios (prod, staging, …) coexist in one data dir. Omitting
+ * `target` yields the legacy `session.json` — still written by the dev-link
+ * bootstrap and read as a fallback.
+ */
+export function sessionPath(dataDir: string, target?: string): string {
+  if (!target) return join(dataDir, "session.json");
+  return join(dataDir, `session.${sessionKey(target)}.json`);
 }
 
-export async function readSession(dataDir: string): Promise<Session | null> {
+/** Filename-safe key derived from a studio's host (incl. port). */
+function sessionKey(target: string): string {
+  let host = target;
   try {
-    const raw = await readFile(sessionPath(dataDir), "utf8");
+    host = new URL(target).host;
+  } catch {
+    // not a URL — fall through with the raw string
+  }
+  return host.replace(/[^a-zA-Z0-9.-]/g, "_") || "default";
+}
+
+async function readSessionFile(path: string): Promise<Session | null> {
+  try {
+    const raw = await readFile(path, "utf8");
     const parsed = JSON.parse(raw) as unknown;
     if (!isSession(parsed)) return null;
     return parsed;
@@ -40,11 +59,46 @@ export async function readSession(dataDir: string): Promise<Session | null> {
   }
 }
 
+/** All session file paths in `dataDir` (legacy `session.json` + host-keyed). */
+async function listSessionPaths(dataDir: string): Promise<string[]> {
+  try {
+    const names = await readdir(dataDir);
+    return names
+      .filter((n) => /^session(\..+)?\.json$/.test(n))
+      .map((n) => join(dataDir, n));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Reads the session for `target` (host-keyed), falling back to the legacy
+ * `session.json`. With no `target`, returns any session on disk (legacy file
+ * first, then the first host-keyed file) — for target-agnostic callers like
+ * `whoami` / `logout`.
+ */
+export async function readSession(
+  dataDir: string,
+  target?: string,
+): Promise<Session | null> {
+  const primary = await readSessionFile(sessionPath(dataDir, target));
+  if (primary) return primary;
+  if (target) {
+    // Legacy single-file fallback (e.g. the dev-link bootstrap writes this).
+    return readSessionFile(sessionPath(dataDir));
+  }
+  for (const path of await listSessionPaths(dataDir)) {
+    const session = await readSessionFile(path);
+    if (session) return session;
+  }
+  return null;
+}
+
 export async function writeSession(
   dataDir: string,
   session: Session,
 ): Promise<void> {
-  const path = sessionPath(dataDir);
+  const path = sessionPath(dataDir, session.target);
   await mkdir(dirname(path), { recursive: true });
   // Write to a temp path, force mode 0600 (writeFile's `mode` is ignored when
   // overwriting an existing file), then atomically rename into place.
@@ -54,8 +108,21 @@ export async function writeSession(
   await rename(tmp, path);
 }
 
-export async function clearSession(dataDir: string): Promise<void> {
-  await rm(sessionPath(dataDir), { force: true });
+/**
+ * Removes session files. With `target`, removes just that studio's session;
+ * without, removes every session file in the dir (full logout).
+ */
+export async function clearSession(
+  dataDir: string,
+  target?: string,
+): Promise<void> {
+  if (target) {
+    await rm(sessionPath(dataDir, target), { force: true });
+    return;
+  }
+  for (const path of await listSessionPaths(dataDir)) {
+    await rm(path, { force: true });
+  }
 }
 
 function isSession(value: unknown): value is Session {

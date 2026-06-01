@@ -15,6 +15,7 @@ import {
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import { delay } from "@decocms/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { MeshContext } from "../../core/mesh-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
@@ -252,7 +253,7 @@ async function proxyDaemonEvents(args: {
     } catch (err) {
       if (signal.aborted) return;
       if (Date.now() - openedAt < PROXY_OPEN_RETRY_BUDGET_MS) {
-        await sleepAbortable(PROXY_OPEN_RETRY_DELAY_MS, signal);
+        await delay(PROXY_OPEN_RETRY_DELAY_MS, { signal }).catch(() => {});
         continue;
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -276,7 +277,7 @@ async function proxyDaemonEvents(args: {
         /* ignore */
       }
       if (Date.now() - openedAt < PROXY_OPEN_RETRY_BUDGET_MS) {
-        await sleepAbortable(PROXY_OPEN_RETRY_DELAY_MS, signal);
+        await delay(PROXY_OPEN_RETRY_DELAY_MS, { signal }).catch(() => {});
         continue;
       }
       await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
@@ -324,22 +325,4 @@ async function proxyDaemonEvents(args: {
       /* ignore */
     }
   }
-}
-
-function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    const timeout = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timeout);
-      resolve();
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 }

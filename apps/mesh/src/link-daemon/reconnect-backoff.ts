@@ -5,15 +5,15 @@
  * would just oscillate, so we don't.
  */
 
+import { exponentialBackoffWithJitter } from "@decocms/std";
+
 export const WS_CLOSE_SUPERSEDED = 4001;
 const BASE_MS = 500;
 const CAP_MS = 30_000;
 
 export function computeBackoffMs(attempt: number): number {
   if (attempt < 1) throw new Error("attempt must be >= 1");
-  const exp = Math.min(BASE_MS * 2 ** (attempt - 1), CAP_MS);
-  // Full jitter: [exp/2, exp]
-  return exp / 2 + Math.random() * (exp / 2);
+  return exponentialBackoffWithJitter(CAP_MS, BASE_MS, attempt - 1, 2, 0.5);
 }
 
 export function shouldReconnectOnClose(code: number): boolean {

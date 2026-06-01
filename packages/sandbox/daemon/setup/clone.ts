@@ -1,3 +1,4 @@
+import { sleep } from "@decocms/std";
 import { existsSync, readdirSync } from "node:fs";
 import { isSyntheticBranch } from "../constants";
 import type { Config } from "../types";
@@ -63,10 +64,6 @@ const CLONE_RETRY_DELAY_MS = 3000;
 
 function isTransient(output: string): boolean {
   return TRANSIENT_ERRORS.some((e) => output.includes(e));
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function runNetworkStep(cmd: string, deps: CloneDeps): Promise<number> {

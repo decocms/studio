@@ -6,9 +6,10 @@
  */
 
 import {
-  context,
   createContextKey,
   metrics,
+  propagation,
+  ROOT_CONTEXT,
   SpanStatusCode,
   trace,
   type Attributes,
@@ -341,14 +342,24 @@ export function initObservability(): void {
 
   const sdk = new NodeSDK({
     serviceName: _settings.otelServiceName,
-    traceExporter,
     metricReaders: [
       prometheusExporter,
       ...(monitoringMetricReader ? [monitoringMetricReader] : []),
     ],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     sampler: headSampler,
+    // NodeSDK ignores the top-level `traceExporter` option whenever
+    // `spanProcessors` is provided, so the OTLP exporter must be wired in here
+    // explicitly — otherwise spans only reach the local NDJSON file.
     spanProcessors: [
+      ...(traceExporter
+        ? [
+            new BatchSpanProcessor(traceExporter, {
+              scheduledDelayMillis: 60_000,
+              maxExportBatchSize: 1000,
+            }),
+          ]
+        : []),
       ...(monitoringTraceExporter
         ? [
             new BatchSpanProcessor(monitoringTraceExporter, {
@@ -550,10 +561,19 @@ console.debug = (...args: unknown[]) => {
 };
 
 /**
- * Create a context with the request set for sampling decisions
+ * Build the parent context for an inbound request span.
+ *
+ * Starts from ROOT_CONTEXT — never the ambient `context.active()`. Inheriting
+ * the active context is what let spans from unrelated requests chain into one
+ * ever-growing trace (the "infinite trace parent"). If the caller sent a valid
+ * W3C `traceparent`, we continue that trace; otherwise this is a fresh root.
  */
 export const withRequest = (req: Request): Context => {
-  return context.active().setValue(REQUEST_CONTEXT_KEY, req);
+  const extracted = propagation.extract(ROOT_CONTEXT, req.headers, {
+    get: (headers, key) => (headers as Headers).get(key) ?? undefined,
+    keys: (headers) => [...(headers as Headers).keys()],
+  });
+  return extracted.setValue(REQUEST_CONTEXT_KEY, req);
 };
 
 /**

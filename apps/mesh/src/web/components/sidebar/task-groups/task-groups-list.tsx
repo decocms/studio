@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
-import { useSidebar } from "@deco/ui/components/sidebar.tsx";
+import { SidebarMenu, useSidebar } from "@deco/ui/components/sidebar.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
@@ -89,7 +89,7 @@ export function TaskGroupsList() {
   const [groupBy, setGroupBy] = useState<GroupBy>("agent");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
-  const { state: sidebarState } = useSidebar();
+  const { state: sidebarState, isMobile } = useSidebar();
 
   const groups = stabilizeGroupOrder(
     org.id,
@@ -147,7 +147,12 @@ export function TaskGroupsList() {
 
   const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
 
-  const isCollapsed = sidebarState === "collapsed";
+  // On mobile the sidebar renders inside a full-width drawer that is always
+  // visually expanded (the wrapper hardcodes data-state="expanded"). The context
+  // `state` stays "collapsed" on mobile because the drawer toggles `openMobile`,
+  // not `open` — so without this guard the agent groups would render icon-only
+  // and hide their names. Mirror the wrapper: never collapse on mobile.
+  const isCollapsed = sidebarState === "collapsed" && !isMobile;
 
   const filters: SidebarFilters = {
     type: typeFilter,
@@ -157,7 +162,7 @@ export function TaskGroupsList() {
 
   if (isCollapsed) {
     return (
-      <div className="flex flex-col min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {groups.map((group) => {
           const filtered = typeFiltered(memberFiltered(group.threads));
           const dimmed = filtersActive && filtered.length === 0;
@@ -174,7 +179,7 @@ export function TaskGroupsList() {
             />
           );
         })}
-      </div>
+      </SidebarMenu>
     );
   }
 

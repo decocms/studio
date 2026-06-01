@@ -20,6 +20,8 @@ import type { MeshContext } from "../../core/mesh-context";
 import { managementMCP } from "../../tools";
 import { guardResponseStream } from "../utils/stream-guard";
 import { handleAuthError } from "./oauth-proxy";
+import { getMcpListCache } from "@/mcp-clients/mcp-list-cache";
+import { peekRpcMethod, probeDecision } from "./proxy-handshake";
 import { handleVirtualMcpRequest } from "./virtual-mcp";
 export { toServerClient, type MCPProxyClient } from "./mcp-proxy-factory";
 
@@ -145,7 +147,22 @@ export const createProxyRoutes = () => {
         // hiding the 401 the frontend needs to trigger the OAuth popup.
         // On success this also warms the per-request client pool, so the
         // lazy client reuses the same connection instead of double-connecting.
-        if (connection.connection_url) {
+        //
+        // Gated by method: notifications/ping/GET skip the probe entirely, and
+        // a list method skips it only when its list is already cached (warm SWR
+        // path) — so a cached list poll no longer pays a full downstream
+        // handshake. A cold list cache still probes, which surfaces first-load
+        // auth errors and warms the per-request pool. See ./proxy-handshake.
+        const rpcMethod = await peekRpcMethod(c.req.raw);
+        const { decision, listType } = probeDecision(rpcMethod);
+        let probe = decision === "probe";
+        if (decision === "skip-if-list-cached" && listType) {
+          const listCache = getMcpListCache();
+          probe = listCache
+            ? (await listCache.get(listType, connectionId)) === null
+            : true;
+        }
+        if (connection.connection_url && probe) {
           await ctx.tracer.startActiveSpan(
             "studio.connection.handshake",
             {
@@ -267,6 +284,26 @@ export const createProxyRoutes = () => {
         },
       );
     } catch (error) {
+      // Surface upstream OAuth 401s as a WWW-Authenticate response so the
+      // frontend can trigger the OAuth popup — consistent with the main proxy
+      // route. Without this, an expired/missing credential would 500 here.
+      const connection = await ctx.storage.connections.findById(
+        connectionId,
+        ctx.organization?.id,
+      );
+      if (connection?.connection_url) {
+        const authResponse = await handleAuthError({
+          error: error as Error & { status?: number },
+          reqUrl: new URL(c.req.raw.url),
+          connectionId,
+          connectionUrl: connection.connection_url,
+          headers: {},
+          orgSlug: ctx.organization?.slug,
+        });
+        if (authResponse) {
+          return authResponse;
+        }
+      }
       return handleError(error as Error, c);
     }
   });

@@ -193,9 +193,9 @@ await app.initDbos();
 
 // When running via CLI, the calling script handles its own banner/config output
 if (!settings.isCli) {
-  const { ASCII_ART } = await import("./fmt");
+  const { bannerLines } = await import("./cli/banner-art");
   console.log("");
-  for (const line of ASCII_ART) {
+  for (const line of bannerLines()) {
     console.log(line);
   }
 }

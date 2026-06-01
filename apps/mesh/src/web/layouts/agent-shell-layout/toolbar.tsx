@@ -16,6 +16,7 @@
 
 import { createContext, Suspense, use, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Link, useParams } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "@untitledui/icons";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
@@ -150,6 +151,25 @@ function ToolbarLogo() {
   );
 }
 
+/**
+ * The logo wrapped in a link back to the org home (`/$org`). Used as the
+ * "home" affordance in the shell headers.
+ */
+function ToolbarLogoLink() {
+  const { org } = useParams({ from: "/shell/$org" });
+  return (
+    <Link
+      to="/$org"
+      params={{ org }}
+      aria-label="Back to home"
+      title="Back to home"
+      className="wco-no-drag flex items-center shrink-0 cursor-pointer pl-1"
+    >
+      <ToolbarLogo />
+    </Link>
+  );
+}
+
 function ToolbarCenterSlot() {
   const { setCenterEl } = useToolbarCtx();
   return (
@@ -213,6 +233,7 @@ Toolbar.LeftColumn = ToolbarLeftColumn;
 Toolbar.RightColumn = ToolbarRightColumn;
 Toolbar.Nav = ToolbarNav;
 Toolbar.Logo = ToolbarLogo;
+Toolbar.LogoLink = ToolbarLogoLink;
 Toolbar.CenterSlot = ToolbarCenterSlot;
 Toolbar.Center = ToolbarCenter;
 Toolbar.TabsSlot = ToolbarTabsSlot;

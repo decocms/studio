@@ -32,7 +32,6 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { PageContentClassNameProvider } from "@/web/components/page";
 import {
-  ArrowNarrowLeft,
   BarChart10,
   BookOpen01,
   Building02,
@@ -432,7 +431,6 @@ function SettingsInset() {
 
 export default function SettingsLayout() {
   const isMobile = useIsMobile();
-  const { org } = useParams({ from: "/shell/$org" });
 
   return (
     <Toolbar.Provider>
@@ -440,14 +438,7 @@ export default function SettingsLayout() {
         <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
           <Toolbar.Header>
             <Toolbar.LeftColumn>
-              <Link
-                to="/$org"
-                params={{ org }}
-                className="wco-no-drag flex items-center gap-1.5 px-2 h-7 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-              >
-                <ArrowNarrowLeft size={14} className="shrink-0" />
-                <span>Settings</span>
-              </Link>
+              <Toolbar.LogoLink />
               {isMobile && <SidebarTriggerButton />}
               <span className="hidden md:contents">
                 <Toolbar.Nav />

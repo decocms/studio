@@ -4,6 +4,7 @@ export { AI_PROVIDERS_ACTIVE } from "./list-active";
 export { AI_PROVIDER_KEY_CREATE } from "./key-create";
 export { AI_PROVIDER_KEY_DELETE } from "./key-delete";
 export { AI_PROVIDER_KEY_UPDATE } from "./key-update";
+export { AI_PROVIDER_KEY_PREVIEW } from "./key-preview";
 export { AI_PROVIDER_KEY_LIST } from "./key-list";
 export { AI_PROVIDER_OAUTH_URL } from "./oauth-url";
 export { AI_PROVIDER_OAUTH_EXCHANGE } from "./oauth-exchange";

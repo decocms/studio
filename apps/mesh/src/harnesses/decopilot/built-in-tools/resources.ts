@@ -9,6 +9,10 @@ import {
 } from "./read-tool-output";
 import { parseMeshStorageKey } from "../../../api/routes/decopilot/mesh-storage-uri";
 
+// Above this we return a presigned URL instead of inlining the body, which is
+// relayed to the UI over NATS (~1 MiB max_payload).
+const INLINE_RESOURCE_BYTE_LIMIT = 1_048_576; // 1 MiB
+
 export interface ResourceToolParams {
   readonly passthroughClient: VirtualClient;
   readonly toolOutputMap: Map<string, string>;
@@ -38,7 +42,9 @@ export function createReadResourceTool(params: ResourceToolParams) {
           return { result: "Object storage is not configured." };
         }
         try {
-          const data = await ctx.objectStorage.get(key);
+          const data = await ctx.objectStorage.getBytesOrPresign(key, {
+            presignWhenLargerThan: INLINE_RESOURCE_BYTE_LIMIT,
+          });
           if ("error" in data) {
             return {
               result: `Resource too large to inline (${data.size} bytes). Presigned URL: ${data.presignedUrl}`,

@@ -46,6 +46,7 @@ import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
   extractPages,
+  hasEditableDecoContent,
   type GlobalSectionEntry,
 } from "@/web/components/sections-editor/page-list";
 import {
@@ -191,8 +192,12 @@ export function PreviewContent() {
     virtualMcpId && branch && devServerReady
       ? { orgSlug: org.slug, virtualMcpId, branch }
       : null;
-  const { data: decofile } = useDecofile(decofileParams);
-  const { data: meta } = useLiveMeta(decofileParams);
+  const { data: decofile } = useDecofile(decofileParams, {
+    fetchEnabled: devServerReady,
+  });
+  const { data: meta } = useLiveMeta(decofileParams, {
+    fetchEnabled: devServerReady,
+  });
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
   const createPage = useCreatePage(createPageParams);
@@ -751,8 +756,7 @@ export function PreviewContent() {
           },
         ]
       : []),
-    ...(previewState.kind === "iframe" &&
-    (pages.length > 0 || globalSections.length > 0)
+    ...(previewState.kind === "iframe" && hasEditableDecoContent(decofile, meta)
       ? [
           {
             value: "cms" as PreviewViewMode,

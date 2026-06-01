@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   });
   if (!res.ok) {
     console.error(
-      `smoke: /api/links/me returned ${res.status} — start the link with \`bun run dev --local-sandbox-provider\` or \`deco link\``,
+      `smoke: /api/links/me returned ${res.status} — start the link with \`bun run dev --local-sandbox-provider\` or \`deco link <studio-url>\``,
     );
     process.exit(1);
   }
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
   };
   if (body.status !== "online") {
     console.error(
-      "smoke: link is not online; start it with `bun run dev --local-sandbox-provider` or `deco link`",
+      "smoke: link is not online; start it with `bun run dev --local-sandbox-provider` or `deco link <studio-url>`",
     );
     process.exit(1);
   }

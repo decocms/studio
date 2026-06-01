@@ -11,6 +11,7 @@ import {
   type McpListCache,
   getMcpListCache,
   fetchWithCache,
+  REVALIDATE_MIN_INTERVAL_MS,
 } from "@/mcp-clients/mcp-list-cache";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { AccessControl } from "@/core/access-control";
@@ -100,6 +101,7 @@ export class AuthTransport extends WrapperTransport {
       },
       cache,
       (p) => this.options.ctx.pendingRevalidations.push(p),
+      REVALIDATE_MIN_INTERVAL_MS,
     );
 
     if (!tools) {

@@ -85,6 +85,7 @@ export const FIXED_SYSTEM_TABS = [
   "settings",
   "automations",
   "preview",
+  "content",
   "git",
 ] as const;
 
