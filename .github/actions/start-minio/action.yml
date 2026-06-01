@@ -29,5 +29,12 @@ runs:
           -e MINIO_ROOT_USER=${{ inputs.root-user }} \
           -e MINIO_ROOT_PASSWORD=${{ inputs.root-password }} \
           ${{ inputs.image }} server /data
-        for i in $(seq 1 15); do nc -z localhost ${{ inputs.port }} && break || sleep 1; done
-        nc -z localhost ${{ inputs.port }}
+        # Poll MinIO's readiness endpoint, not a bare TCP probe: `nc -z` passes
+        # as soon as the port is listening, but the object layer isn't serving
+        # yet and resets S3 requests (ECONNRESET). /minio/health/ready returns
+        # 200 only once it can actually serve.
+        ready="http://localhost:${{ inputs.port }}/minio/health/ready"
+        for i in $(seq 1 30); do
+          curl -fsS "$ready" >/dev/null 2>&1 && break || sleep 1
+        done
+        curl -fsS "$ready" >/dev/null
