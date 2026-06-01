@@ -20,6 +20,7 @@ import "../../index.css";
 
 import { listOrganizationsCached } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { isOrgArchived } from "@/web/lib/org-archived";
 
 import { sourcePlugins } from "./plugins.ts";
 import type {
@@ -140,11 +141,8 @@ const homeRoute = createRoute({
     if (!orgs) return;
 
     // Filter out archived organizations — they are soft-deleted and invisible to the UI
-    type OrgWithMeta = (typeof orgs)[number] & {
-      metadata?: { archived?: boolean } | null;
-    };
-    const activeOrgs = (orgs as OrgWithMeta[]).filter(
-      (o) => !o.metadata?.archived,
+    const activeOrgs = orgs.filter(
+      (o: { slug: string; metadata?: unknown }) => !isOrgArchived(o),
     );
 
     // Redirect to first available org (every user gets a default org on signup)
@@ -167,11 +165,8 @@ const onboardingRoute = createRoute({
   path: "/onboarding",
   beforeLoad: async () => {
     const { data: orgs } = await listOrganizationsCached();
-    type OrgWithMeta = NonNullable<typeof orgs>[number] & {
-      metadata?: { archived?: boolean } | null;
-    };
-    const activeOrgs = (orgs as OrgWithMeta[] | undefined)?.filter(
-      (o) => !o.metadata?.archived,
+    const activeOrgs = orgs?.filter(
+      (o: { metadata?: unknown }) => !isOrgArchived(o),
     );
     if (activeOrgs && activeOrgs.length > 0) {
       throw redirect({ to: "/" });

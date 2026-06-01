@@ -31,6 +31,7 @@ import { useOrganizationSettingsSuspense } from "../hooks/use-organization-setti
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 import { ArchivedOrgScreen } from "../components/archived-org-screen";
+import { isOrgArchived } from "@/web/lib/org-archived";
 
 // ---------------------------------------------------------------------------
 // ShellProjectProvider — fetches org settings and provides project context.
@@ -251,9 +252,7 @@ function ShellLayoutContent() {
         });
 
       // Don't persist archived orgs — homeRoute would just redirect off them again
-      const isArchived =
-        (data as { metadata?: { archived?: boolean } } | null)?.metadata
-          ?.archived === true;
+      const isArchived = isOrgArchived(data);
 
       // Persist for fast redirect on next login (read by homeRoute beforeLoad)
       // Only write on success and only for active (non-archived) orgs
@@ -298,9 +297,7 @@ function ShellLayoutContent() {
     );
   }
 
-  const isArchivedOrg =
-    (activeOrg as { metadata?: { archived?: boolean } }).metadata?.archived ===
-    true;
+  const isArchivedOrg = isOrgArchived(activeOrg);
   if (isArchivedOrg) {
     // Clear stale slug so /home redirect doesn't bounce the user back here
     if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === org) {

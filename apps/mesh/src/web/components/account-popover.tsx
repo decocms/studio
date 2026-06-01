@@ -43,6 +43,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
+import { isOrgArchived } from "@/web/lib/org-archived";
 import { usePreferences, type ThemeMode } from "@/web/hooks/use-preferences.ts";
 import { toast } from "@deco/ui/components/sonner.js";
 
@@ -543,19 +544,7 @@ export function AccountPopover() {
   );
 
   const sortedOrgs = [...(organizations ?? [])]
-    .filter((o) => {
-      const raw = (o as { metadata?: unknown }).metadata;
-      if (!raw) return true;
-      try {
-        const meta =
-          typeof raw === "string"
-            ? (JSON.parse(raw) as { archived?: boolean })
-            : (raw as { archived?: boolean });
-        return meta.archived !== true;
-      } catch {
-        return true;
-      }
-    })
+    .filter((o) => !isOrgArchived(o))
     .sort((a, b) => {
       if (a.slug === orgParam) return -1;
       if (b.slug === orgParam) return 1;
