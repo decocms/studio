@@ -13,5 +13,10 @@ export const isBrowserNavigation = (c: {
 }) => {
   const dest = c.req.header("sec-fetch-dest");
   if (dest !== undefined) return dest === "document";
-  return (c.req.header("accept") ?? "").includes("text/html");
+  // A client explicitly opting out with q=0 (e.g. `text/html;q=0`) must not
+  // be treated as a browser navigation even though the substring matches.
+  const accept = c.req.header("accept") ?? "";
+  return (
+    accept.includes("text/html") && !/text\/html\s*;\s*q\s*=\s*0/.test(accept)
+  );
 };
