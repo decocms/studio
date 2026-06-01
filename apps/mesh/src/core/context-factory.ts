@@ -667,6 +667,20 @@ async function authenticateRequest(
           const metaName = meshJwtPayload.metadata?.organizationName;
           const metaSlug = meshJwtPayload.metadata?.organizationSlug;
           if (metaName || metaSlug) {
+            // Name/slug are embedded in the JWT, but we still need to verify the
+            // org isn't archived — the token may have been issued before deletion.
+            const orgRow = await timings.measure(
+              "auth_query_org_archived_for_mesh_jwt",
+              () =>
+                db
+                  .selectFrom("organization")
+                  .select(["metadata"])
+                  .where("id", "=", metaOrgId)
+                  .executeTakeFirst(),
+            );
+            if (isOrgArchived(orgRow)) {
+              return { user: undefined };
+            }
             organization = { id: metaOrgId, name: metaName, slug: metaSlug };
           } else {
             const orgRow = await timings.measure(
