@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
+import { isOrgArchived } from "../../core/org-archived";
 import { createBoundObjectStorage } from "../../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../../object-storage/dev-object-storage";
 import { decorateStorageWithAssetHoisting } from "../../object-storage/asset-hoister";
@@ -40,18 +41,11 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // like a missing org: bounce browser navigations into the SPA (the shell
   // shows the branded "Organization unavailable" screen), and return JSON 404
   // to machine clients such as the self-MCP proxy POST.
-  if (org.metadata) {
-    try {
-      const meta = JSON.parse(org.metadata) as Record<string, unknown>;
-      if (meta.archived === true) {
-        if (isBrowserNavigation(c)) {
-          return c.redirect(`/${encodeURIComponent(slug)}`, 302);
-        }
-        return c.json({ error: `organization "${slug}" not found` }, 404);
-      }
-    } catch {
-      // Unparseable metadata — treat as not archived
+  if (isOrgArchived(org)) {
+    if (isBrowserNavigation(c)) {
+      return c.redirect(`/${encodeURIComponent(slug)}`, 302);
     }
+    return c.json({ error: `organization "${slug}" not found` }, 404);
   }
 
   const userId = ctx.auth?.user?.id;

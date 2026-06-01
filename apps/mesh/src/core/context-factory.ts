@@ -47,6 +47,7 @@ import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AccessControl } from "./access-control";
+import { isOrgArchived } from "./org-archived";
 import type {
   BetterAuthInstance,
   BoundAuthClient,
@@ -673,10 +674,13 @@ async function authenticateRequest(
               () =>
                 db
                   .selectFrom("organization")
-                  .select(["id", "slug", "name"])
+                  .select(["id", "slug", "name", "metadata"])
                   .where("id", "=", metaOrgId)
                   .executeTakeFirst(),
             );
+            if (isOrgArchived(orgRow)) {
+              return { user: undefined };
+            }
             organization = orgRow
               ? { id: orgRow.id, slug: orgRow.slug, name: orgRow.name }
               : { id: metaOrgId };
@@ -717,6 +721,22 @@ async function authenticateRequest(
         const orgMetadata = result.key.metadata?.organization as
           | OrganizationContext
           | undefined;
+
+        // Block access if the org has been soft-deleted since the key was issued
+        if (orgMetadata?.id) {
+          const orgRow = await timings.measure(
+            "auth_query_org_for_api_key",
+            () =>
+              db
+                .selectFrom("organization")
+                .select(["metadata"])
+                .where("id", "=", orgMetadata.id)
+                .executeTakeFirst(),
+          );
+          if (isOrgArchived(orgRow)) {
+            return { user: undefined };
+          }
+        }
 
         // API keys have permissions stored directly on them
         const permissions = result.key.permissions as Permission | undefined;
@@ -847,18 +867,8 @@ async function authenticateRequest(
           },
         );
 
-        if (membership?.orgMetadata) {
-          try {
-            const meta = JSON.parse(membership.orgMetadata) as Record<
-              string,
-              unknown
-            >;
-            if (meta.archived === true) {
-              throw new Error("Organization is archived");
-            }
-          } catch (e) {
-            if ((e as Error).message === "Organization is archived") throw e;
-          }
+        if (isOrgArchived({ metadata: membership?.orgMetadata })) {
+          throw new Error("Organization is archived");
         }
 
         if (membership) {

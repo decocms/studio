@@ -6,10 +6,8 @@ import { ArchivedOrgScreen } from "@/web/components/archived-org-screen";
 
 const CHUNK_RELOAD_KEY = "__mesh_chunk_reload_ts";
 
-function isOrgNotFoundError(error: Error | null): boolean {
-  if (!error) return false;
-  const msg = error.message || "";
-  return msg.includes("not found") && msg.includes("organization");
+function isArchivedOrgError(error: Error | null): boolean {
+  return error?.message === "Organization is archived";
 }
 
 /**
@@ -95,7 +93,7 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       // Org deleted / archived — show friendly screen instead of raw error
-      if (isOrgNotFoundError(this.state.error)) {
+      if (isArchivedOrgError(this.state.error)) {
         return <ArchivedOrgScreen />;
       }
 
@@ -179,7 +177,7 @@ export class ChunkErrorBoundary extends Component<
     }
 
     if (this.state.hasError) {
-      if (isOrgNotFoundError(this.state.error)) {
+      if (isArchivedOrgError(this.state.error)) {
         return <ArchivedOrgScreen />;
       }
 

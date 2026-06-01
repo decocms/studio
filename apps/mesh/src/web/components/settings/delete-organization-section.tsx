@@ -67,6 +67,7 @@ export function DeleteOrganizationSection() {
       // back to the just-deleted org.
       invalidateOrganizationListCache();
 
+      toast.success("Organization deleted");
       // Hard redirect — clears Better Auth nanostores atoms (useListOrganizations)
       // which can't be invalidated via TanStack Query. Full reload is fine for
       // a destructive org-delete action.
