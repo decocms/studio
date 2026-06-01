@@ -3,8 +3,8 @@ import {
   useProjectContext,
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
-import { useState } from "react";
-import { LayoutAlt04, Plus, X } from "@untitledui/icons";
+import { type ReactNode, useState } from "react";
+import { Check, LayoutAlt04, Plus, X } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -12,6 +12,10 @@ import { Chat } from "@/web/components/chat";
 import { useChatPrefs } from "@/web/components/chat/context";
 import { NoAiProviderEmptyState } from "@/web/components/chat/no-ai-provider-empty-state";
 import { AddTileDrawer } from "@/web/components/home/add-tile-drawer";
+import {
+  HomeEditProvider,
+  useHomeEdit,
+} from "@/web/components/home/home-edit-context";
 import { HomeGrid, useHomeGridStats } from "@/web/components/home/home-grid";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
@@ -41,8 +45,6 @@ export function HomePage() {
     balanceDollars,
     hasOnlyDecoProvider,
   } = useDecoCredits();
-  const [isEditMode, setEditMode] = useState(false);
-  const [addTileOpen, setAddTileOpen] = useState(false);
   const { hasVisibleTiles } = useHomeGridStats(org.slug);
 
   const isClonableAgent = agentHasClonableSource(fullVm?.metadata);
@@ -70,33 +72,68 @@ export function HomePage() {
     <Chat.NoCreditsEyebrow />
   ) : null;
 
-  if (isMobile) {
-    return (
-      <div className="flex-1 relative flex flex-col items-center overflow-y-auto">
-        <HomeBackground />
-        <div className="relative flex flex-col items-center justify-center w-full pt-28 pb-8 px-4">
-          {eyebrow && <div className="mb-4">{eyebrow}</div>}
-          <p className="text-3xl font-medium text-foreground text-center max-w-[280px]">
-            What's on your mind, {userName}?
-          </p>
-        </div>
-        <div className="relative w-full flex flex-col gap-4 pb-8 px-4">
-          <Chat.Input showConnectionsBanner />
-        </div>
-        <div className="relative w-full px-4 pb-8">
-          <HomeGrid isEditMode={false} />
-        </div>
+  return (
+    <HomeEditProvider>
+      {isMobile ? (
+        <MobileHome eyebrow={eyebrow} userName={userName} />
+      ) : (
+        <DesktopHome
+          eyebrow={eyebrow}
+          userName={userName}
+          hasVisibleTiles={hasVisibleTiles}
+        />
+      )}
+    </HomeEditProvider>
+  );
+}
+
+function MobileHome({
+  eyebrow,
+  userName,
+}: {
+  eyebrow: ReactNode;
+  userName: string;
+}) {
+  return (
+    <div className="flex-1 relative flex flex-col items-center overflow-y-auto">
+      <HomeBackground />
+      <div className="relative flex flex-col items-center justify-center w-full pt-28 pb-8 px-4">
+        {eyebrow && <div className="mb-4">{eyebrow}</div>}
+        <p className="text-3xl font-medium text-foreground text-center max-w-[280px]">
+          What's on your mind, {userName}?
+        </p>
       </div>
-    );
-  }
+      <div className="relative w-full flex flex-col gap-4 pb-8 px-4">
+        <Chat.Input showConnectionsBanner />
+      </div>
+      <div className="relative w-full px-4 pb-8">
+        <HomeGrid isEditMode={false} />
+      </div>
+    </div>
+  );
+}
+
+function DesktopHome({
+  eyebrow,
+  userName,
+  hasVisibleTiles,
+}: {
+  eyebrow: ReactNode;
+  userName: string;
+  hasVisibleTiles: boolean;
+}) {
+  const { isEditMode, enter, save, cancel, hasChanges } = useHomeEdit();
+  const [addTileOpen, setAddTileOpen] = useState(false);
 
   return (
     <>
       <Toolbar.Right>
         <CustomizeToolbar
           isEditMode={isEditMode}
-          onEnter={() => setEditMode(true)}
-          onExit={() => setEditMode(false)}
+          hasChanges={hasChanges}
+          onEnter={enter}
+          onSave={save}
+          onCancel={cancel}
           onAddTile={() => setAddTileOpen(true)}
         />
       </Toolbar.Right>
@@ -134,13 +171,17 @@ export function HomePage() {
 
 function CustomizeToolbar({
   isEditMode,
+  hasChanges,
   onEnter,
-  onExit,
+  onSave,
+  onCancel,
   onAddTile,
 }: {
   isEditMode: boolean;
+  hasChanges: boolean;
   onEnter: () => void;
-  onExit: () => void;
+  onSave: () => void;
+  onCancel: () => void;
   onAddTile: () => void;
 }) {
   if (isEditMode) {
@@ -155,9 +196,23 @@ function CustomizeToolbar({
           <Plus size={14} />
           Add tile
         </button>
-        <Button size="sm" onClick={onExit} className="gap-1.5 h-7 text-xs">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onCancel}
+          className="gap-1.5 h-7 text-xs"
+        >
           <X size={14} />
-          Done
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={onSave}
+          disabled={!hasChanges}
+          className="gap-1.5 h-7 text-xs"
+        >
+          <Check size={14} />
+          Save
         </Button>
       </>
     );

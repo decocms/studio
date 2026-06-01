@@ -421,7 +421,6 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
   const candidatesById = new Map(candidates.map((c) => [c.id, c] as const));
 
   const layout = useBoardLayout(
-    org.slug,
     candidates.map((c) => ({
       id: c.id,
       defaultSize: c.kind === "tile" ? TILE_DEFAULT_SIZE : PROMPT_DEFAULT_SIZE,
@@ -468,7 +467,7 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
     return <PromptTile entry={candidate.data} isEditMode={isEditMode} />;
   };
 
-  if (isLoading) return <PromptChipsRowSkeleton />;
+  if (isLoading || layout.isLoading) return <PromptChipsRowSkeleton />;
 
   const isEmpty = layout.snapshot.visible.length === 0;
   if (isEmpty && !isEditMode) return null;

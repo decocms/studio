@@ -1,32 +1,15 @@
 /**
- * Persisted home-board layout. Caller supplies the candidate tiles;
- * stored positions/sizes/hidden state are scoped to the org slug. New
- * candidates auto-place into the first free slot.
+ * Layout algebra for the home board. Caller supplies the candidate tiles;
+ * positions/sizes/hidden state come from the edit context (`useHomeEdit`)
+ * and new candidates auto-place into the first free slot. This module is
+ * storage-agnostic — in edit mode mutations stage into the draft, outside
+ * it they write through; either way persistence lives behind the context.
  */
 
-import { useLocalStorage } from "@/web/hooks/use-local-storage";
+import { useHomeEdit } from "../home-edit-context";
+import { STORAGE_VERSION } from "./board-layout-store";
 import { DEFAULT_SIZE, GRID_COLS } from "./constants";
 import type { BoardLayout, TileInstance } from "./types";
-
-const STORAGE_VERSION = 1;
-const DEFAULT_LAYOUT: BoardLayout = {
-  version: STORAGE_VERSION,
-  tiles: {},
-  hidden: [],
-};
-
-function storageKey(orgSlug: string): string {
-  return `home-board.layout.v${STORAGE_VERSION}.${orgSlug}`;
-}
-
-function normalize(value: BoardLayout | undefined): BoardLayout {
-  if (!value || value.version !== STORAGE_VERSION) return DEFAULT_LAYOUT;
-  return {
-    version: STORAGE_VERSION,
-    tiles: value.tiles ?? {},
-    hidden: Array.isArray(value.hidden) ? value.hidden : [],
-  };
-}
 
 interface CandidateTile {
   id: string;
@@ -129,20 +112,15 @@ function resolveCollision(
 
 export interface BoardLayoutApi {
   snapshot: BoardSnapshot;
+  /** True until the persisted layout has loaded. */
+  isLoading: boolean;
   moveTile: (id: string, to: { x: number; y: number }) => void;
   resizeTile: (id: string, size: { w: number; h: number }) => void;
   hideTile: (id: string) => void;
 }
 
-export function useBoardLayout(
-  orgSlug: string,
-  candidates: CandidateTile[],
-): BoardLayoutApi {
-  const [raw, setRaw] = useLocalStorage<BoardLayout>(
-    storageKey(orgSlug),
-    DEFAULT_LAYOUT,
-  );
-  const layout = normalize(raw);
+export function useBoardLayout(candidates: CandidateTile[]): BoardLayoutApi {
+  const { layout, isLayoutLoading, commitLayout } = useHomeEdit();
   const hiddenSet = new Set(layout.hidden);
 
   // Build the visible-tile list deterministically from candidates +
@@ -195,7 +173,7 @@ export function useBoardLayout(
     for (const t of next) {
       tiles[t.id] = { x: t.x, y: t.y, w: t.w, h: t.h };
     }
-    setRaw({
+    commitLayout({
       version: STORAGE_VERSION,
       tiles,
       hidden: hidden.filter((id) => candidateIds.has(id)),
@@ -204,6 +182,7 @@ export function useBoardLayout(
 
   return {
     snapshot: { visible: placed },
+    isLoading: isLayoutLoading,
     moveTile: (id, to) => {
       const tile = placed.find((t) => t.id === id);
       if (!tile) return;

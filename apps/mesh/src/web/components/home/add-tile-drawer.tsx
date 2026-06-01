@@ -6,6 +6,7 @@
  */
 
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { sleep } from "@decocms/std";
 import { Suspense, useState } from "react";
 import {
   createMCPClient,
@@ -107,6 +108,7 @@ export function AddTileDrawer({ open, onOpenChange }: AddTileDrawerProps) {
 }
 
 function AgentsList({ search }: { search: string }) {
+  const { org } = useProjectContext();
   const agents = useVirtualMCPs();
   const sorted = [...agents].sort((a, b) =>
     (a.title ?? "").localeCompare(b.title ?? ""),
@@ -115,7 +117,15 @@ function AgentsList({ search }: { search: string }) {
   // Probe each agent's gateway + connections eagerly so we can hide ones
   // with no addable content. Empty agents (no UI tools and no prompts)
   // would just be a row that opens to nothing — pure noise.
-  const summaries = useAgentSummaries(sorted);
+  const { summaries, allSettled } = useAgentSummaries(sorted);
+
+  // Hold the skeleton until every probe lands so the list renders
+  // already-filtered — no flash of all agents collapsing to a subset.
+  // A deadline guards against one hung gateway pinning the whole list:
+  // once it trips we render what we have and let stragglers prune as
+  // they resolve (the lesser of two evils).
+  const deadlineReached = useProbeDeadline(org.id, 2500);
+  const ready = allSettled || deadlineReached;
 
   const lower = search.trim().toLowerCase();
   const filtered = sorted.filter((agent) => {
@@ -136,6 +146,9 @@ function AgentsList({ search }: { search: string }) {
     return true;
   });
 
+  if (!ready) {
+    return <DrawerListSkeleton />;
+  }
   if (filtered.length === 0) {
     return (
       <p className="px-3 py-8 text-center text-sm text-muted-foreground">
@@ -163,9 +176,20 @@ interface AgentSummary {
  * whose gateway `listPrompts` can be empty even when checklist items
  * exist, fall back to the home-next-actions response.
  */
-function useAgentSummaries(
-  agents: VirtualMCPEntity[],
-): Map<string, AgentSummary | undefined> {
+function useProbeDeadline(orgId: string, ms: number): boolean {
+  const { data } = useQuery({
+    queryKey: KEYS.agentSummaryDeadline(orgId, ms),
+    queryFn: () => sleep(ms).then(() => true),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  return data === true;
+}
+
+function useAgentSummaries(agents: VirtualMCPEntity[]): {
+  summaries: Map<string, AgentSummary | undefined>;
+  allSettled: boolean;
+} {
   const { org } = useProjectContext();
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -247,7 +271,10 @@ function useAgentSummaries(
       hasPrompts: raw.hasPrompts || promptedAgentIds.has(agent.id),
     });
   });
-  return out;
+  // `isPending` stays false once a query resolves, including background
+  // refetches of stale data — so a warm cache reports settled instantly.
+  const allSettled = results.every((r) => !r.isPending);
+  return { summaries: out, allSettled };
 }
 
 function AgentRow({ agent }: { agent: VirtualMCPEntity }) {
