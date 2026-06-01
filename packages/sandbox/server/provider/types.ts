@@ -138,6 +138,13 @@ export interface SandboxProvider {
   ): Promise<Response>;
 
   /**
+   * Repopulate in-process routing state from a claim that already exists in
+   * the cluster (preview gateway traffic can outlive mesh's records cache).
+   * Optional — only agent-sandbox implements this today.
+   */
+  adoptLiveClaim?(id: SandboxId, handle: string): Promise<boolean>;
+
+  /**
    * Stream of phase transitions for the pre-Ready lifecycle. Used by mesh's
    * unified `/api/vm-events` SSE so the UI can show meaningful progress
    * between SANDBOX_START and the daemon SSE coming online.

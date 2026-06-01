@@ -1,4 +1,4 @@
-import { useMCPClient } from "@decocms/mesh-sdk";
+import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -31,6 +31,7 @@ import {
   type CreatedPullRequest,
 } from "./github-pr-api.ts";
 import type { PrSummary } from "./use-pr-data.ts";
+import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import {
   countGitChanges,
   discardGitFiles,
@@ -39,6 +40,7 @@ import {
   fetchSuggestCommitMessage,
   hasUnpublishedWork,
   isDecoOnlyDiff,
+  isSandboxUnreachable,
   publishGitChanges,
   PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
   readGitHeadBranch,
@@ -119,6 +121,12 @@ function PublishDialogBody({
     orgId,
     orgSlug,
   });
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId,
+    orgSlug,
+  });
+  const startSandbox = useSandboxStart(selfClient);
 
   const commitToOpenPr = openPullRequest?.state === "open";
 
@@ -138,6 +146,32 @@ function PublishDialogBody({
   const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
 
   const loadStartedRef = useRef(false);
+  const reprovisionAttemptedRef = useRef(false);
+
+  const loadGitState = async () => {
+    const [status, diff] = await Promise.all([
+      fetchGitStatus(orgSlug, virtualMcpId, branch),
+      fetchGitDiff(orgSlug, virtualMcpId, branch),
+    ]);
+    setGitStatus(status);
+    setGitDiff(diff);
+    setPublishTitle(`Changes from ${status.current ?? branch}`);
+
+    setIsGeneratingSuggestion(true);
+    fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch, {
+      status,
+      diff,
+    })
+      .then((commitSuggestion) => {
+        setPublishTitle(commitSuggestion.title);
+        setPublishBody(commitSuggestion.body);
+      })
+      .catch(() => {
+        /* best-effort */
+      })
+      .finally(() => setIsGeneratingSuggestion(false));
+  };
+
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot load on dialog open
   if (!loadStartedRef.current) {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot load on dialog open
@@ -151,28 +185,26 @@ function PublishDialogBody({
       setSubmitForReviewError(undefined);
       setSaveChangesError(undefined);
       try {
-        const [status, diff] = await Promise.all([
-          fetchGitStatus(orgSlug, virtualMcpId, branch),
-          fetchGitDiff(orgSlug, virtualMcpId, branch),
-        ]);
-        setGitStatus(status);
-        setGitDiff(diff);
-        setPublishTitle(`Changes from ${status.current ?? branch}`);
-
-        setIsGeneratingSuggestion(true);
-        fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch, {
-          status,
-          diff,
-        })
-          .then((commitSuggestion) => {
-            setPublishTitle(commitSuggestion.title);
-            setPublishBody(commitSuggestion.body);
-          })
-          .catch(() => {
-            /* best-effort */
-          })
-          .finally(() => setIsGeneratingSuggestion(false));
+        await loadGitState();
       } catch (error) {
+        // Preview can stay live via the gateway while mesh's daemon proxy
+        // still holds a stale handle. Re-provision once, then retry — same
+        // self-heal path as preview.tsx's notFound → SANDBOX_START flow.
+        if (isSandboxUnreachable(error) && !reprovisionAttemptedRef.current) {
+          reprovisionAttemptedRef.current = true;
+          try {
+            await startSandbox.mutateAsync({ virtualMcpId, branch });
+            await loadGitState();
+            return;
+          } catch (retryErr) {
+            setPublishError(
+              retryErr instanceof Error
+                ? retryErr.message
+                : "Failed to load changes after re-provisioning the sandbox.",
+            );
+            return;
+          }
+        }
         setPublishError(
           error instanceof Error ? error.message : "Failed to load changes.",
         );
