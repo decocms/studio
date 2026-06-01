@@ -310,11 +310,11 @@ export function TaskGroupsList() {
           </ToolbarIconButton>
           <Popover>
             <PopoverTrigger asChild>
-              <ToolbarIconButton
-                aria-label="Filter tasks"
-                active={filtersActive}
-              >
+              <ToolbarIconButton aria-label="Filter tasks">
                 <FilterLines size={16} />
+                {filtersActive && (
+                  <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 ring-1 ring-sidebar pointer-events-none" />
+                )}
               </ToolbarIconButton>
             </PopoverTrigger>
             <PopoverContent
@@ -408,9 +408,6 @@ export function TaskGroupsList() {
             onReorder={() => setLocalOrderRevision((n) => n + 1)}
             renderGroup={(group) => ({
               ...buildAgentGroupRenderProps(group),
-              dimmed:
-                filtersActive &&
-                typeFiltered(memberFiltered(group.threads)).length === 0,
             })}
           />
         )}
