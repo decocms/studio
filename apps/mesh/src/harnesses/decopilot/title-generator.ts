@@ -5,9 +5,19 @@
  */
 
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-import { generateText } from "ai";
+import { generateObject } from "ai";
+import { z } from "zod";
 
 import { TITLE_GENERATOR_PROMPT } from "../../api/routes/decopilot/constants";
+
+const TITLE_SCHEMA = z.object({
+  title: z.string().describe("A concise, sentence-case title (3-7 words)"),
+});
+
+// A title is usable only if it contains at least one letter or number in any
+// script. Unicode-aware (\p{L}\p{N}) so non-Latin titles (CJK, Arabic, etc.)
+// aren't rejected the way ASCII-only \w would.
+const hasUsableText = (s: string): boolean => /[\p{L}\p{N}]/u.test(s);
 
 /**
  * Generate a short title for the conversation in the background.
@@ -42,46 +52,35 @@ export function genTitle(config: {
     }, POST_STREAM_GRACE_MS);
   };
 
+  // Always resolves to a usable title: first line of the user message, run
+  // through the same sanitization as the model title, or a static default if
+  // the message is empty or has no usable text.
+  const fallbackTitle = (() => {
+    const candidate = (userMessage.split("\n")[0] ?? "")
+      .replace(/[.!?]$/, "")
+      .slice(0, 60)
+      .trim();
+    return hasUsableText(candidate) ? candidate : "New chat";
+  })();
+
   const promise = (async (): Promise<string | null> => {
     try {
-      const result = await generateText({
+      const result = await generateObject({
         model,
+        schema: TITLE_SCHEMA,
         system: TITLE_GENERATOR_PROMPT,
         messages: [{ role: "user", content: userMessage }],
-        maxOutputTokens: 60,
         temperature: 0.2,
         abortSignal: titleAbortController.signal,
       });
 
-      // Strip markdown code fences if present, then try JSON parse
-      const cleaned = result.text
-        .trim()
-        .replace(/^```(?:json)?\s*\n?/i, "")
-        .replace(/\n?```\s*$/, "")
-        .trim();
-
-      let title: string;
-
-      try {
-        const parsed = JSON.parse(cleaned);
-        title = typeof parsed.title === "string" ? parsed.title : cleaned;
-      } catch {
-        // Fallback: extract first line and clean up formatting
-        const firstLine = cleaned.split("\n")[0] ?? cleaned;
-        title = firstLine;
-      }
-
-      title = title
-        .replace(/^["']|["']$/g, "") // Remove quotes
-        .replace(/^(Title:|title:)\s*/i, "") // Remove "Title:" prefix
-        .replace(/^```.*$/gm, "") // Remove any remaining fence lines
-        .replace(/[{}[\]]/g, "") // Remove JSON braces/brackets
+      const title = result.object.title
         .replace(/[.!?]$/, "") // Remove trailing punctuation
         .slice(0, 60) // Max 60 chars
         .trim();
 
-      // If cleanup left nothing useful, don't set a broken title
-      if (!title || /^[\s"':{}[\],]+$/.test(title)) return null;
+      // Reject empty or all-punctuation strings — fall back to user message
+      if (!hasUsableText(title)) return fallbackTitle;
 
       return title;
     } catch (error) {
@@ -90,13 +89,13 @@ export function genTitle(config: {
         console.warn(
           "[decopilot:title] Title generation aborted (timeout or parent abort)",
         );
-      } else {
-        console.error(
-          "[decopilot:title] ❌ Failed to generate title:",
-          err.message,
-        );
+        return null;
       }
-      return null;
+      console.error(
+        "[decopilot:title] ❌ Failed to generate title:",
+        err.message,
+      );
+      return fallbackTitle;
     } finally {
       clearTimeout(graceTimeoutId);
       abortSignal.removeEventListener("abort", onParentAbort);
