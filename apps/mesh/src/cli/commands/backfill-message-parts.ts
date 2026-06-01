@@ -179,7 +179,9 @@ export async function backfillMessagePartsCommand(
 
   try {
     for (;;) {
-      const remaining = opts.limit ? opts.limit - scanned : Infinity;
+      // `!= null` (not truthiness): `--limit 0` must mean "scan nothing", not
+      // fall through to an unbounded run.
+      const remaining = opts.limit != null ? opts.limit - scanned : Infinity;
       if (remaining <= 0) break;
 
       // Page over PKs only — tiny, no blob transfer.

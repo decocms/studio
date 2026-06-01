@@ -568,36 +568,46 @@ export class SqlThreadStorage implements ThreadStoragePort {
         )
         .execute();
 
-      // Dual-write (migration 098): mirror each message's parts into the
-      // normalized `message_parts` table. Upsert by (message_id, idx) and
-      // delete any trailing rows so a message whose part count shrank doesn't
-      // keep stale tail rows. Idempotent — the backfill uses ON CONFLICT DO
+      // Dual-write (migration 098): mirror parts into the normalized
+      // `message_parts` table. Kept to two statements total (NOT two per
+      // message) so the transaction's lock window doesn't grow with batch size:
+      // one multi-row upsert, then one combined delete of any trailing rows
+      // (handles a message whose part count shrank; idx >= 0 clears one that
+      // dropped to zero parts). Idempotent — the backfill uses ON CONFLICT DO
       // NOTHING, so live writes here always win for active messages.
-      for (const message of unique) {
-        const partRows = message.parts.map((part, idx) => ({
+      const partRows = unique.flatMap((message) =>
+        message.parts.map((part, idx) => ({
           message_id: message.id,
           idx,
           type: String((part as { type?: unknown }).type ?? "unknown"),
           content: JSON.stringify(part),
-        }));
-        if (partRows.length > 0) {
-          await trx
-            .insertInto("message_parts")
-            .values(partRows)
-            .onConflict((oc) =>
-              oc.columns(["message_id", "idx"]).doUpdateSet((eb) => ({
-                type: eb.ref("excluded.type"),
-                content: eb.ref("excluded.content"),
-              })),
-            )
-            .execute();
-        }
+        })),
+      );
+      if (partRows.length > 0) {
         await trx
-          .deleteFrom("message_parts")
-          .where("message_id", "=", message.id)
-          .where("idx", ">=", partRows.length)
+          .insertInto("message_parts")
+          .values(partRows)
+          .onConflict((oc) =>
+            oc.columns(["message_id", "idx"]).doUpdateSet((eb) => ({
+              type: eb.ref("excluded.type"),
+              content: eb.ref("excluded.content"),
+            })),
+          )
           .execute();
       }
+      await trx
+        .deleteFrom("message_parts")
+        .where((eb) =>
+          eb.or(
+            unique.map((message) =>
+              eb.and([
+                eb("message_id", "=", message.id),
+                eb("idx", ">=", message.parts.length),
+              ]),
+            ),
+          ),
+        )
+        .execute();
 
       await trx
         .updateTable("threads")
