@@ -1,6 +1,7 @@
 import fs, { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { computeBranchDivergence } from "../git/branch-divergence";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { rebaseOntoBase } from "../git/rebase-onto-base";
 import {
@@ -59,6 +60,16 @@ export interface GitStatusResult {
   current: string | null;
   tracking: string | null;
   detached: boolean;
+  /** Default branch (e.g. main) from origin/HEAD. */
+  base: string;
+  /** Commits on branch not in origin/<base>. */
+  aheadOfBase: number;
+  /** Commits in origin/<base> not in branch. */
+  behindBase: number;
+  /** Resolved ref for divergence (origin/<branch> or HEAD). */
+  headSha: string;
+  /** Commits on HEAD not in origin/<current branch>. */
+  unpushed: number;
 }
 
 export interface GitDiffEntry {
@@ -120,6 +131,8 @@ function computeStatus(repoDir: string): GitStatusResult {
     }
   }
 
+  const divergence = computeBranchDivergence(repoDir);
+
   return {
     not_added,
     conflicted,
@@ -134,6 +147,11 @@ function computeStatus(repoDir: string): GitStatusResult {
     current: branch,
     tracking,
     detached,
+    base: divergence.base,
+    aheadOfBase: divergence.aheadOfBase,
+    behindBase: divergence.behindBase,
+    headSha: divergence.headSha,
+    unpushed: divergence.unpushed,
   };
 }
 

@@ -53,6 +53,34 @@ describe("mergeBranchMetaWithGitStatus", () => {
       expect(merged.unpushed).toBe(2);
     }
   });
+
+  test("unknown SSE meta + git aheadOfBase → ready with commits vs base", () => {
+    const merged = mergeBranchMetaWithGitStatus(
+      { kind: "unknown" },
+      {
+        ...cleanStatus,
+        aheadOfBase: 3,
+        base: "main",
+        headSha: "abc123",
+      },
+    );
+    expect(merged.kind).toBe("ready");
+    if (merged.kind === "ready") {
+      expect(merged.aheadOfBase).toBe(3);
+      expect(merged.base).toBe("main");
+      expect(merged.headSha).toBe("abc123");
+    }
+  });
+
+  test("raises stale SSE aheadOfBase when git status reports more", () => {
+    const merged = mergeBranchMetaWithGitStatus(
+      { ...readyMeta, aheadOfBase: 0 },
+      { ...cleanStatus, aheadOfBase: 2, base: "main" },
+    );
+    if (merged.kind === "ready") {
+      expect(merged.aheadOfBase).toBe(2);
+    }
+  });
 });
 
 describe("hasUnpublishedWork", () => {

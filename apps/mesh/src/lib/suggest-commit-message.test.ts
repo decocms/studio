@@ -18,6 +18,47 @@ describe("suggest-commit-message", () => {
     expect(result.message).toContain("update src/app.tsx");
   });
 
+  test("fallbackCommitSuggestion uses diff paths when working tree is clean", () => {
+    const result = fallbackCommitSuggestion(
+      {
+        modified: [],
+        created: [],
+        deleted: [],
+        not_added: [],
+      },
+      {
+        diffs: {
+          ".deco/blocks/pages-home.json": { from: "{}", to: "{}" },
+        },
+      },
+    );
+
+    expect(result.title).toBe("Update .deco/blocks/pages-home.json");
+    expect(result.body).toContain(".deco/blocks/pages-home.json");
+  });
+
+  test("buildCommitContextSummary includes diff-only paths vs base", () => {
+    const summary = buildCommitContextSummary(
+      {
+        modified: [],
+        created: [],
+        deleted: [],
+        not_added: [],
+      },
+      {
+        diffs: {
+          ".deco/blocks/pages-home.json": {
+            from: "old",
+            to: "new",
+          },
+        },
+      },
+    );
+
+    expect(summary).toContain("Changed: .deco/blocks/pages-home.json");
+    expect(summary).toContain("+ new");
+  });
+
   test("buildCommitContextSummary includes diff snippets", () => {
     const summary = buildCommitContextSummary(
       {

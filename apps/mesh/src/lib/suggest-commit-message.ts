@@ -29,13 +29,27 @@ function isGeneratedNoise(path: string): boolean {
   return /^static\/.*\.css$/.test(path);
 }
 
-function changedPaths(status: GitStatusLike): string[] {
-  return [
+/** Paths from the working tree plus any keys in a base…head diff (committed PR work). */
+function changedPaths(status: GitStatusLike, diff?: GitDiffLike): string[] {
+  const fromStatus = [
     ...status.modified,
     ...status.created,
     ...status.deleted,
     ...status.not_added,
   ].filter((p) => !isGeneratedNoise(p));
+  const fromDiff = diff
+    ? Object.keys(diff.diffs).filter((p) => !isGeneratedNoise(p))
+    : [];
+  return [...new Set([...fromStatus, ...fromDiff])];
+}
+
+function pathChangeLabel(path: string, status: GitStatusLike): string {
+  if (status.created.includes(path) || status.not_added.includes(path)) {
+    return `Added: ${path}`;
+  }
+  if (status.deleted.includes(path)) return `Deleted: ${path}`;
+  if (status.modified.includes(path)) return `Modified: ${path}`;
+  return `Changed: ${path}`;
 }
 
 function changedLines(
@@ -151,13 +165,8 @@ export function buildCommitContextSummary(
   status: GitStatusLike,
   diff: GitDiffLike,
 ): string {
-  const paths = changedPaths(status);
-  const fileLines = [
-    ...status.modified.map((f) => `Modified: ${f}`),
-    ...status.created.map((f) => `Added: ${f}`),
-    ...status.deleted.map((f) => `Deleted: ${f}`),
-    ...status.not_added.map((f) => `Added: ${f}`),
-  ].join("\n");
+  const paths = changedPaths(status, diff);
+  const fileLines = paths.map((p) => pathChangeLabel(p, status)).join("\n");
 
   const snippets = paths
     .map((path) => {
@@ -173,20 +182,23 @@ export function buildCommitContextSummary(
 
 export function fallbackCommitSuggestion(
   status: GitStatusLike,
+  diff?: GitDiffLike,
 ): CommitSuggestion {
-  const all = [
-    ...status.created.map((f) => `add ${f}`),
-    ...status.modified.map((f) => `update ${f}`),
-    ...status.deleted.map((f) => `delete ${f}`),
-    ...status.not_added.map((f) => `add ${f}`),
-  ].filter((f) => !isGeneratedNoise(f.replace(/^(add|update|delete) /, "")));
+  const paths = changedPaths(status, diff);
+  const all = paths.map((f) => {
+    if (status.created.includes(f) || status.not_added.includes(f)) {
+      return `add ${f}`;
+    }
+    if (status.deleted.includes(f)) return `delete ${f}`;
+    return `update ${f}`;
+  });
 
   const label = all.length > 0 ? all[0] : "Update files";
   const extra = all.length > 1 ? ` and ${all.length - 1} more` : "";
   const message = `${label}${extra}`;
   const title = message.charAt(0).toUpperCase() + message.slice(1);
 
-  const bodyPaths = changedPaths(status).slice(0, 5).join(", ");
+  const bodyPaths = paths.slice(0, 5).join(", ");
   return {
     message,
     title,
@@ -227,13 +239,13 @@ export async function suggestCommitMessageWithLlm(
   status: GitStatusLike,
   diff: GitDiffLike,
 ): Promise<CommitSuggestion> {
-  const paths = changedPaths(status);
+  const paths = changedPaths(status, diff);
   if (paths.length === 0) {
     return { title: "No changes", body: "", message: "No changes" };
   }
 
   const orgId = ctx.organization?.id;
-  if (!orgId) return fallbackCommitSuggestion(status);
+  if (!orgId) return fallbackCommitSuggestion(status, diff);
 
   try {
     const tier = await resolveTier(ctx, "fast");
@@ -255,5 +267,5 @@ export async function suggestCommitMessageWithLlm(
     console.warn("[suggest-commit-message] LLM failed, using fallback", err);
   }
 
-  return fallbackCommitSuggestion(status);
+  return fallbackCommitSuggestion(status, diff);
 }

@@ -65,6 +65,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
   const chat = useChatStream();
   const [publishOpen, setPublishOpen] = useState(false);
+  const [publishDialogIntent, setPublishDialogIntent] = useState<
+    "publish" | "open-pr"
+  >("publish");
   const [githubActionPending, setGithubActionPending] = useState(false);
   const debugKeyRef = useRef("");
 
@@ -248,7 +251,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
     if (!action || !githubHeadBranch) return;
     switch (action) {
       case "commit-and-push":
+        setPublishDialogIntent("publish");
+        setPublishOpen(true);
+        return;
       case "create-pr":
+        setPublishDialogIntent("open-pr");
         setPublishOpen(true);
         return;
       case "reopen":
@@ -336,6 +343,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
           owner={githubRepo.owner}
           repo={githubRepo.name}
           previewUrl={previewUrl}
+          dialogIntent={publishDialogIntent}
+          headSha={
+            effectiveBranchMeta.kind === "ready"
+              ? effectiveBranchMeta.headSha
+              : null
+          }
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={switchToFreshBranch}

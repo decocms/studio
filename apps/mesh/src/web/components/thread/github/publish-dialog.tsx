@@ -58,6 +58,8 @@ class PublishFlowError extends Error {
   }
 }
 
+export type PublishDialogIntent = "publish" | "open-pr";
+
 export interface PublishDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -70,6 +72,13 @@ export interface PublishDialogProps {
   owner: string;
   repo: string;
   previewUrl?: string | null;
+  /**
+   * `open-pr` — commits are already on the branch; open a PR from them.
+   * `publish` — commit/push local changes (default).
+   */
+  dialogIntent?: PublishDialogIntent;
+  /** Branch HEAD for base…head diff when `dialogIntent` is `open-pr`. */
+  headSha?: string | null;
   /** When set, the dialog commits to the branch and updates this open PR. */
   openPullRequest?: PrSummary | null;
   /** Called after commit/push or PR open/merge so the header can refresh. */
@@ -110,6 +119,8 @@ function PublishDialogBody({
   owner,
   repo,
   previewUrl,
+  dialogIntent = "publish",
+  headSha = null,
   openPullRequest = null,
   onPullRequestChanged,
   onPublished,
@@ -121,6 +132,9 @@ function PublishDialogBody({
   });
 
   const commitToOpenPr = openPullRequest?.state === "open";
+  /** Header "Save changes" — commit/push only, no new PR / merge. */
+  const isSaveChangesFlow = dialogIntent === "publish";
+  const openPrFromCommits = dialogIntent === "open-pr" && !commitToOpenPr;
 
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
   const [gitDiff, setGitDiff] = useState<GitDiffResult | null>(null);
@@ -151,9 +165,15 @@ function PublishDialogBody({
       setSubmitForReviewError(undefined);
       setSaveChangesError(undefined);
       try {
+        const diffOpts = openPrFromCommits
+          ? {
+              base: baseBranch,
+              ...(headSha ? { headSha } : {}),
+            }
+          : undefined;
         const [status, diff] = await Promise.all([
           fetchGitStatus(orgSlug, virtualMcpId, branch),
-          fetchGitDiff(orgSlug, virtualMcpId, branch),
+          fetchGitDiff(orgSlug, virtualMcpId, branch, diffOpts),
         ]);
         setGitStatus(status);
         setGitDiff(diff);
@@ -204,7 +224,12 @@ function PublishDialogBody({
   const changesCount = countGitChanges(gitStatus);
   const diffCount = gitDiff ? Object.keys(gitDiff.diffs).length : changesCount;
 
-  const canSubmit = !isLoadingGitDiff && hasUnpublishedWork(gitStatus, gitDiff);
+  const hasLocalUnpublished = hasUnpublishedWork(gitStatus, gitDiff);
+  const canSubmit =
+    !isLoadingGitDiff &&
+    (isSaveChangesFlow
+      ? hasLocalUnpublished
+      : hasLocalUnpublished || openPrFromCommits);
   const canPublish = canSubmit && isDecoOnlyDiff(gitDiff);
   const publishDisabledReason =
     canSubmit && !isDecoOnlyDiff(gitDiff)
@@ -253,13 +278,15 @@ function PublishDialogBody({
       const prBody = publishBody.trim() || undefined;
       const message = commitMessage() || prTitle;
 
-      try {
-        await publishGitChanges(orgSlug, virtualMcpId, branch, message);
-      } catch (error) {
-        throw new PublishFlowError(
-          error instanceof Error ? error.message : "Failed to push changes",
-          "push",
-        );
+      if (hasLocalUnpublished) {
+        try {
+          await publishGitChanges(orgSlug, virtualMcpId, branch, message);
+        } catch (error) {
+          throw new PublishFlowError(
+            error instanceof Error ? error.message : "Failed to push changes",
+            "push",
+          );
+        }
       }
 
       try {
@@ -387,7 +414,9 @@ function PublishDialogBody({
       const prBody = publishBody.trim() || undefined;
       const message = commitMessage() || prTitle;
 
-      await publishGitChanges(orgSlug, virtualMcpId, branch, message);
+      if (hasLocalUnpublished) {
+        await publishGitChanges(orgSlug, virtualMcpId, branch, message);
+      }
 
       const pr = await openPullRequestForBranch(githubClient, {
         owner,
@@ -421,12 +450,20 @@ function PublishDialogBody({
         <div className="shrink-0 space-y-3 px-6 pt-5 pb-4">
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">
-              {commitToOpenPr ? "Save changes" : "Publish"}
+              {isSaveChangesFlow
+                ? "Save changes"
+                : openPrFromCommits
+                  ? "Submit for review"
+                  : "Publish"}
             </p>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-green-500" />
               {diffCount} {diffCount === 1 ? "change" : "changes"}{" "}
-              {commitToOpenPr ? "to save" : "to publish"}
+              {isSaveChangesFlow
+                ? "to save"
+                : openPrFromCommits
+                  ? "in this PR"
+                  : "to publish"}
             </div>
           </div>
           {discardAllConfirm ? (
@@ -468,7 +505,7 @@ function PublishDialogBody({
                   Changes
                 </TabsTrigger>
               </TabsList>
-              {diffCount > 0 && (
+              {diffCount > 0 && !openPrFromCommits && (
                 <button
                   type="button"
                   className="text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
@@ -495,7 +532,9 @@ function PublishDialogBody({
               <TabsContent value="description" className="mt-0 px-6 py-5">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">Commit message</p>
+                    <p className="text-sm font-medium">
+                      {openPrFromCommits ? "Pull request" : "Commit message"}
+                    </p>
                     <button
                       type="button"
                       className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
@@ -566,12 +605,13 @@ function PublishDialogBody({
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Branch: <span className="font-mono">{branch}</span>
-                    {commitToOpenPr ? (
+                    {isSaveChangesFlow ? (
                       <>
                         {" · "}
                         <span className="text-foreground/80">
-                          Commits and pushes to update open PR #
-                          {openPullRequest.number}.
+                          {commitToOpenPr
+                            ? `Commits and pushes to update open PR #${openPullRequest.number}.`
+                            : "Commits and pushes to the branch without opening a pull request."}
                         </span>
                       </>
                     ) : (
@@ -616,7 +656,7 @@ function PublishDialogBody({
         </div>
 
         <div className="shrink-0 border-t px-6 py-3">
-          {commitToOpenPr ? (
+          {isSaveChangesFlow ? (
             <>
               <Button
                 type="button"
