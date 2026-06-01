@@ -1325,6 +1325,52 @@ export function toggleCapabilityInTools(
   return Array.from(toolSet);
 }
 
+/**
+ * Map of gated capability id → granted, for the privileged built-in roles
+ * (owner / admin) which bypass every permission check. The hidden basic-usage
+ * capability is never part of the map — it's always-on and not UI-gated.
+ */
+export function allCapabilitiesGranted(): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const cap of PERMISSION_CAPABILITIES) {
+    if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
+    out[cap.id] = true;
+  }
+  return out;
+}
+
+/**
+ * Resolve which gated capabilities a stored role permission grants, as a
+ * capability id → boolean map. Pure: mirrors the wildcard rules AccessControl
+ * applies, so the UI can gate actions without re-deriving role logic.
+ *
+ * A capability is granted when every tool it lists appears in some resource
+ * bucket of the permission, or when the role holds an org-wide / self wildcard.
+ * The hidden basic-usage capability is excluded (always-on, never gated).
+ */
+export function resolveCapabilities(
+  permission: Record<string, string[]>,
+): Record<string, boolean> {
+  const orgWildcard = permission["*"]?.includes("*") === true;
+  const selfWildcard = permission.self?.includes("*") === true;
+
+  const grantedActions = new Set<string>();
+  if (!orgWildcard && !selfWildcard) {
+    for (const actions of Object.values(permission)) {
+      for (const action of actions) grantedActions.add(action);
+    }
+  }
+  const hasGlobalGrant = orgWildcard || selfWildcard || grantedActions.has("*");
+
+  const out: Record<string, boolean> = {};
+  for (const cap of PERMISSION_CAPABILITIES) {
+    if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
+    out[cap.id] =
+      hasGlobalGrant || cap.tools.every((tool) => grantedActions.has(tool));
+  }
+  return out;
+}
+
 // ============================================================================
 // Exports
 // ============================================================================
