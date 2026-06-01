@@ -31,7 +31,7 @@ import {
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
 import type { MeshDatabase } from "../../database";
-import { SlotUnresolvedError } from "../../core/slot-resolver";
+import { SlotUnresolvedError } from "@/core/slot-resolver";
 import type { MeshContext } from "../../core/mesh-context";
 import { createVirtualClientFrom } from "./index";
 

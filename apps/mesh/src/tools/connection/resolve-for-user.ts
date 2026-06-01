@@ -12,7 +12,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { resolveSlot } from "../../core/slot-resolver";
+import { resolveSlot } from "@/core/slot-resolver";
 
 export const CONNECTION_RESOLVE_FOR_USER = defineTool({
   name: "CONNECTION_RESOLVE_FOR_USER",

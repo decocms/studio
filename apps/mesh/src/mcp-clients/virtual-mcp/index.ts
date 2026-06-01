@@ -14,7 +14,7 @@ import {
   resolveSlot,
   SlotResolutionCache,
   SlotUnresolvedError,
-} from "../../core/slot-resolver";
+} from "@/core/slot-resolver";
 import { INTERNAL_VIEWER } from "../../storage/ports";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type {
