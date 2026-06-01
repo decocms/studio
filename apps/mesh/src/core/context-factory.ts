@@ -1019,10 +1019,11 @@ export async function createMeshContextFactory(
   const metricsBasePath = resolve(getMetricsDir());
 
   // ClickHouse reads the studio_monitoring_logs VIEW (a flat projection of the
-  // OTel-native otel_logs table, created by ensureClickHouseViews); DuckDB reads
-  // the local NDJSON files. Metrics (counts, durations, percentiles) are derived
-  // from the same monitoring log rows — each tool_call log carries duration_ms
-  // and is_error — so there is no separate metrics table to query.
+  // OTel-native otel_logs table — provisioned manually, see
+  // monitoring/clickhouse-setup.md); DuckDB reads the local NDJSON files.
+  // Metrics (counts, durations, percentiles) are derived from the same
+  // monitoring log rows — each tool_call log carries duration_ms and is_error —
+  // so there is no separate metrics table to query.
   const logSourceFactory = isClickHouse
     ? (_orgId: string) => "studio_monitoring_logs"
     : (orgId: string) =>

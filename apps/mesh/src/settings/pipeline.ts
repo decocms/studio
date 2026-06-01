@@ -55,14 +55,9 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
     await migrateToLatest({ keepOpen: true, database, skipBetterAuth: true });
   }
 
-  // 4b. ClickHouse monitoring view over otel_logs (non-blocking — if it can't
-  // be created the dashboard just shows empty state instead of blocking boot).
-  if (config.settings.clickhouseUrl) {
-    const { ensureClickHouseViews } = await import(
-      "../monitoring/clickhouse-schema"
-    );
-    await ensureClickHouseViews(config.settings.clickhouseUrl);
-  }
+  // NOTE: the ClickHouse `studio_monitoring_logs` view the dashboard reads is
+  // NOT created here — it's a one-time manual provisioning step (the app only
+  // needs read access). See apps/mesh/src/monitoring/clickhouse-setup.md.
 
   // 5. Assemble and freeze
   const settings: Settings = {

@@ -6,8 +6,9 @@
  *
  * IMPORTANT: these attribute keys are a contract with the storage backend.
  * In ClickHouse OTel-native mode the queries in storage/monitoring-sql.ts read
- * them as `LogAttributes['studio.monitoring.*']` and the rollup MV in
- * clickhouse-schema.ts groups by them. Renaming a key here means updating both.
+ * them as `LogAttributes['studio.monitoring.*']` via the studio_monitoring_logs
+ * view. Renaming a key here means updating that view's DDL in
+ * monitoring/clickhouse-setup.md.
  * - MonitoringRow type (used by NDJSONLogExporter + SqlMonitoringStorage)
  * - Log-record-to-row conversion (used by NDJSONLogExporter)
  * - Shared constants (span name, default data path)
