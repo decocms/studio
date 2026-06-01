@@ -506,7 +506,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     path: string,
     init: ProxyRequestInit,
   ): Promise<Response> {
-    const rec = await this.getRecord(handle);
+    let rec = await this.getRecord(handle);
 
     // rehydrate failed (port-forward is pod-local); route via in-cluster Service instead.
     if (!rec && this.previewUrlPattern && this.stateStore) {
@@ -518,6 +518,10 @@ export class AgentSandboxProvider implements SandboxProvider {
         const daemonUrl = `http://${adoptedName}.${this.namespace}.svc.cluster.local:${DAEMON_CONTAINER_PORT}`;
         return proxyDaemonRequest(daemonUrl, token, path, init);
       }
+    }
+
+    if (!rec) {
+      rec = await this.resurrectByHandle(handle).catch(() => null);
     }
 
     if (!rec) {
