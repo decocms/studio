@@ -42,7 +42,7 @@ export function useBumpSidebarOrderRevision(): () => void {
 
 export function SyncSidebarAgentGroupsEmpty({ value }: { value: boolean }) {
   const ctx = useContext(SidebarAgentGroupsContext);
-  const [prev, setPrev] = useState(value);
+  const [prev, setPrev] = useState<boolean | null>(null);
   if (ctx && prev !== value) {
     ctx.setEmpty(value);
     setPrev(value);

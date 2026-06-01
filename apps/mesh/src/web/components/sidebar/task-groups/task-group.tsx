@@ -248,7 +248,9 @@ function AgentExpandedBody({
   const [autoLoaded, setAutoLoaded] = useState(false);
   if (!autoLoaded && threads.length === 0 && hasMore && !isFetching) {
     setAutoLoaded(true);
-    void loadMore();
+    queueMicrotask(() => {
+      void loadMore();
+    });
   }
 
   return (

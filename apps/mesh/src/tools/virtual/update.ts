@@ -74,7 +74,7 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
       data.metadata = { ...existing.metadata, ...data.metadata };
     }
 
-    if (data.pinned !== undefined) {
+    if (data.pinned !== undefined && data.pinned !== existing.pinned) {
       requireOrgAdminForPinnedField(ctx);
     }
 

@@ -162,13 +162,15 @@ export function useGroupShowMore(
             isProbing: false,
             serverHasMore:
               totalCount === undefined
-                ? null
+                ? false
                 : groupHasMoreFromTotal(visible, totalCount),
           };
         });
       } catch {
         setState((s) =>
-          s.identity === capturedIdentity ? { ...s, isProbing: false } : s,
+          s.identity === capturedIdentity
+            ? { ...s, isProbing: false, serverHasMore: false }
+            : s,
         );
       }
     })();

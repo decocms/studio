@@ -52,8 +52,14 @@ function readUserOrderRaw(scope: SidebarOrderScope): string[] {
   if (cached) return cached;
 
   const key = LOCALSTORAGE_KEYS.sidebarGroupOrder(scope.orgId, scope.userId);
+  let hasScopedOrder = false;
+  try {
+    hasScopedOrder = localStorage.getItem(key) !== null;
+  } catch {
+    // localStorage unavailable — fall through without legacy migration.
+  }
   let order = readStoredOrder(key);
-  if (order.length === 0 && scope.userId !== "anon") {
+  if (!hasScopedOrder && order.length === 0 && scope.userId !== "anon") {
     const legacy = readStoredOrder(legacyOrderKey(scope.orgId));
     if (legacy.length > 0) {
       order = legacy;

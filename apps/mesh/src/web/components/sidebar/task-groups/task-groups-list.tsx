@@ -42,6 +42,7 @@ import { SortableCollapsedTaskGroups } from "./sortable-collapsed-task-groups";
 import {
   groupThreadsByVirtualMcp,
   groupThreadsByStatus,
+  TOOL_CALL_RUNS_GROUP_KEY,
 } from "./group-threads";
 import { removeGroupFromOrder, syncOrdersOnOrgPinToggle } from "./stable-order";
 import { SortableTaskGroups } from "./sortable-task-groups";
@@ -194,6 +195,7 @@ export function TaskGroupsList() {
 
   const handleToggleOrgPin = async (virtualMcpId: string, pinned: boolean) => {
     if (!canManageOrgPin) return;
+    if (orgPinOverrides[virtualMcpId] !== undefined) return;
     track("sidebar_group_org_pin_toggled", {
       virtual_mcp_id: virtualMcpId,
       pinned,
@@ -220,11 +222,15 @@ export function TaskGroupsList() {
     }
   };
 
-  const groupContextMenuProps = (virtualMcpId: string) => ({
-    isOrgPinned: orgPinnedSet.has(virtualMcpId),
-    canManageOrgPin,
-    onToggleOrgPin: handleToggleOrgPin,
-  });
+  const groupContextMenuProps = (virtualMcpId: string) => {
+    const isNonAgentGroup =
+      virtualMcpId === decopilotId || virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
+    return {
+      isOrgPinned: orgPinnedSet.has(virtualMcpId),
+      canManageOrgPin: isNonAgentGroup ? false : canManageOrgPin,
+      onToggleOrgPin: isNonAgentGroup ? undefined : handleToggleOrgPin,
+    };
+  };
 
   const buildAgentGroupRenderProps = (group: (typeof groups)[number]) => {
     const filtered = typeFiltered(memberFiltered(group.threads));

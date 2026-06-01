@@ -16,8 +16,11 @@ function orderSyncFingerprint(
     scope.orgId,
     scope.userId,
     revision,
-    orgPinnedIds.join(","),
-    threadGroups.map((g) => g.virtualMcpId).join(","),
+    orgPinnedIds.slice().sort().join(","),
+    threadGroups
+      .map((g) => g.virtualMcpId)
+      .sort()
+      .join(","),
   ].join("|");
 }
 
