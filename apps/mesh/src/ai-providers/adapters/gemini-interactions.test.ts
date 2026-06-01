@@ -139,9 +139,16 @@ describe("pollInteraction", () => {
         jsonResponse({
           status: "completed",
           steps: [
+            // user_input carries the prompt in content[] — must NOT leak into
+            // the answer.
+            {
+              type: "user_input",
+              content: [{ type: "text", text: "what is the meaning of life?" }],
+            },
+            // thought exposes thinking in `summary` (a TextContent), not content.
             {
               type: "thought",
-              content: [{ type: "text", text: "Researching…" }],
+              summary: { type: "text", text: "Researching…" },
             },
             { type: "google_search_call" },
             {
@@ -179,12 +186,39 @@ describe("pollInteraction", () => {
     });
 
     expect(result.text).toBe("The answer is 42.");
+    expect(result.text).not.toContain("meaning of life");
     expect(result.citations).toEqual([
       { url: "https://example.com", title: "Example" },
     ]);
     expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 50 });
     expect(progress.at(-1)).toContain("The answer is 42.");
     expect(progress.at(-1)).toContain("Researching");
+  });
+
+  test("a bare-string thought summary still feeds the transcript", async () => {
+    const progress: string[] = [];
+    queueFetch([
+      () =>
+        jsonResponse({
+          status: "completed",
+          steps: [
+            { type: "thought", summary: "Looking into it…" },
+            {
+              type: "model_output",
+              content: [{ type: "text", text: "Done." }],
+            },
+          ],
+          usage: { total_tokens: 10 },
+        }),
+    ]);
+    await pollInteraction({
+      apiKey: "k",
+      interactionId: "i_thought_str",
+      pollIntervalMs: 0,
+      onProgress: (t) => progress.push(t),
+    });
+    expect(progress.at(-1)).toContain("Looking into it");
+    expect(progress.at(-1)).toContain("Done.");
   });
 
   test("usage falls back to total_tokens when only the aggregate is present", async () => {

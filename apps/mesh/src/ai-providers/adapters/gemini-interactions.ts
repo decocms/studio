@@ -261,13 +261,32 @@ function finalize(
 }
 
 /**
+ * Pull the thinking-summary text out of a thought step. New schema: `thought`
+ * step with a `summary` TextContent (`{type:"text", text}`). Legacy: flat
+ * `thought_summary` block carrying `text` directly. Tolerates `summary` being a
+ * bare string too. Feeds the progress transcript only — never the answer.
+ */
+function thoughtText(step: Record<string, unknown>): string {
+  const direct = stringField(step, "text");
+  if (direct) return direct;
+  const summary = step.summary;
+  if (typeof summary === "string") return summary;
+  if (summary && typeof summary === "object") {
+    return stringField(summary as Record<string, unknown>, "text") ?? "";
+  }
+  return "";
+}
+
+/**
  * Flatten an interaction payload into answer/thinking blocks, tolerating both
  * schemas:
  *
- *   New (default 2026-05-26): `steps[]`, where a `model_output` step nests the
- *     answer in `content[]` items (`{type:"text", text, annotations}`) and a
- *     `thought` step carries the thinking summary. Other step types
- *     (google_search_call, function_call, …) carry no answer text.
+ *   New (default 2026-05-26): `steps[]`. A `model_output` step nests the answer
+ *     in `content[]` TextContent items (`{type:"text", text, annotations}`); a
+ *     `thought` step carries thinking in `summary`. Crucially, `user_input`
+ *     ALSO has a `content[]` (the prompt) and search/tool steps carry no answer
+ *     text — only `model_output` content becomes the report, or the prompt
+ *     leaks into it.
  *
  *   Legacy (removed 2026-06-08): flat `outputs[]` blocks with `text` and
  *     `annotations` directly on the block, typed `text` / `thought_summary`.
@@ -282,17 +301,27 @@ function parseSteps(payload: Record<string, unknown>): OutputBlock[] {
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
     const step = r as Record<string, unknown>;
-    const stepType = stringField(step, "type") ?? "text";
-    const isThought = stepType === "thought" || stepType === "thought_summary";
+    const type = stringField(step, "type") ?? "text";
+
+    // Thinking — transcript only, never the answer.
+    if (type === "thought" || type === "thought_summary") {
+      const text = thoughtText(step);
+      if (text) out.push({ type: "thought_summary", text, annotations: [] });
+      continue;
+    }
+
+    // Answer text. New schema nests it in `model_output.content[]`. Skip any
+    // other content-bearing step (notably `user_input`, whose content is the
+    // prompt) so it never bleeds into the report.
     const content = arrayField(step, "content");
     if (content) {
-      // New nested shape: pull text items out of `content[]`.
+      if (type !== "model_output") continue;
       for (const c of content) {
         if (!c || typeof c !== "object") continue;
         const item = c as Record<string, unknown>;
         if ((stringField(item, "type") ?? "text") !== "text") continue;
         out.push({
-          type: isThought ? "thought_summary" : "text",
+          type: "text",
           text: stringField(item, "text") ?? "",
           annotations:
             (arrayField(item, "annotations") as OutputBlock["annotations"]) ??
@@ -301,13 +330,17 @@ function parseSteps(payload: Record<string, unknown>): OutputBlock[] {
       }
       continue;
     }
-    // Legacy flat shape: text + annotations live on the block itself.
-    out.push({
-      type: isThought ? "thought_summary" : stepType,
-      text: stringField(step, "text") ?? "",
-      annotations:
-        (arrayField(step, "annotations") as OutputBlock["annotations"]) ?? [],
-    });
+
+    // Legacy flat answer block (`outputs` schema). Unknown step types with no
+    // content (google_search_call, function_call, …) carry no answer text.
+    if (type === "text") {
+      out.push({
+        type: "text",
+        text: stringField(step, "text") ?? "",
+        annotations:
+          (arrayField(step, "annotations") as OutputBlock["annotations"]) ?? [],
+      });
+    }
   }
   return out;
 }
