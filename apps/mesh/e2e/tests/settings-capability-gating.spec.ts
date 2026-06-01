@@ -19,6 +19,11 @@ import { connectDevDb } from "../fixtures/db";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { expect, newApiContext, test } from "../fixtures/test";
 
+// Better Auth's CSRF guard rejects org-endpoint POSTs without an Origin that
+// matches trustedOrigins (keyed off baseURL). The page's own request context
+// doesn't set one, so we pass it explicitly on those calls.
+const ORIGIN = `http://localhost:${process.env.PORT ?? "3000"}`;
+
 test.describe("settings capability gating", () => {
   let db: Client;
 
@@ -64,6 +69,7 @@ test.describe("settings capability gating", () => {
       .context()
       .request.post("/api/auth/organization/accept-invitation", {
         data: { invitationId },
+        headers: { Origin: ORIGIN },
       });
     expect(
       accept.ok(),
@@ -74,6 +80,7 @@ test.describe("settings capability gating", () => {
     // (signup left their own org active).
     await page.context().request.post("/api/auth/organization/set-active", {
       data: { organizationId: orgId },
+      headers: { Origin: ORIGIN },
     });
 
     // Direct-navigating to a management route renders the no-access panel
