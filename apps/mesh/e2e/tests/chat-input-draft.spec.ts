@@ -12,8 +12,9 @@
  * surface real-world occurrence in production.
  */
 
+import type { APIRequestContext, Page } from "@playwright/test";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
-import type { Page } from "@playwright/test";
 
 const CHAT_INPUT = '[data-chat-input="true"]';
 /**
@@ -31,11 +32,20 @@ async function waitForChatInput(page: Page): Promise<void> {
     .waitFor({ state: "visible", timeout: CHAT_INPUT_TIMEOUT_MS });
 }
 
-/** Focus the chat input and type via the keyboard. Tiptap is contenteditable, so we cannot use `fill`. */
+/**
+ * Focus the chat input and type via the keyboard.
+ *
+ * Tiptap is contenteditable, so `page.fill()` is unsupported — we have to
+ * use real keystrokes. Once typing completes we explicitly wait until the
+ * rendered text matches what we typed, so the caller can safely reload /
+ * navigate immediately after this call without racing the editor's last
+ * onUpdate (which is what persists the draft to sessionStorage).
+ */
 async function typeInComposer(page: Page, text: string): Promise<void> {
   const input = page.locator(CHAT_INPUT);
   await input.click();
   await page.keyboard.type(text);
+  await expect(input).toHaveText(text, { timeout: 5_000 });
 }
 
 /** Read the visible text content of the chat input. */
@@ -52,15 +62,74 @@ async function clearComposer(page: Page): Promise<void> {
   await page.keyboard.press("Delete");
 }
 
-/** Submit by pressing Enter (no Shift). */
+/**
+ * Submit the composer.
+ *
+ * We click the explicit send button rather than pressing Enter because the
+ * one-time "Now Available" announcement that appears on first render of a
+ * fresh user's home page sometimes steals key events — leaving the keystroke
+ * unhandled and the form unsubmitted. The button calls the same handler the
+ * Tiptap Enter binding does, so the user-facing behavior under test (the
+ * draft-clear-on-submit path) is identical either way.
+ *
+ * Title="Send message (Enter)" is set by ChatInput. The composer never
+ * shows two enabled send buttons at once (the home / per-thread composer
+ * variants are mutually exclusive), so a `.first()` keeps the locator safe
+ * across both flows.
+ */
 async function submitComposer(page: Page): Promise<void> {
-  await page.locator(CHAT_INPUT).click();
-  await page.keyboard.press("Enter");
+  await page
+    .getByTitle("Send message (Enter)", { exact: true })
+    .first()
+    .click();
 }
 
 /** UUID v4 shape. Matches the output of `crypto.randomUUID()` used for task ids. */
 const TASK_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Seed an AI provider key for the freshly-signed-up org so the home / thread
+ * routes render the chat composer instead of `NoAiProviderEmptyState`.
+ *
+ * Fresh test users have no provider configured, so `useAiProviderKeys()`
+ * returns an empty list and `HomePage` short-circuits to the
+ * `NoAiProviderEmptyState` view — which doesn't mount the Tiptap input.
+ *
+ * The stored key is never actually exercised: these tests only verify draft
+ * persistence in the editor, never a real chat completion.
+ * `AI_PROVIDER_KEY_CREATE` just stores the value in the vault; it doesn't
+ * validate the credential against the upstream provider.
+ */
+async function seedAiProviderKey(
+  request: APIRequestContext,
+  orgSlug: string,
+): Promise<void> {
+  await callSelfMcpTool(request, orgSlug, "AI_PROVIDER_KEY_CREATE", {
+    providerId: "anthropic",
+    label: "chat-input-draft-e2e",
+    apiKey: "sk-ant-e2e-fake-key-do-not-use",
+  });
+}
+
+/**
+ * Re-navigate to the thread page without the `?autosend=` query string.
+ *
+ * After `openNewThread`, the URL is `/${orgSlug}/${taskId}?autosend=true...`
+ * which puts the chat into a streaming state (autosend fires the seed
+ * message). While streaming, the Tiptap editor is disabled, so typing a
+ * draft would be a no-op. Navigating to the same task without the autosend
+ * query lands on the page with the editor enabled — perfect for testing
+ * draft persistence.
+ */
+async function gotoThreadIdle(
+  page: Page,
+  orgSlug: string,
+  taskId: string,
+): Promise<void> {
+  await page.goto(`/${orgSlug}/${taskId}`);
+  await waitForChatInput(page);
+}
 
 /** Type a message in the home composer, submit, and wait until URL contains a taskId. Returns the taskId. */
 async function openNewThread(
@@ -101,11 +170,23 @@ test.describe("chat input draft persistence", () => {
   // on slow CI / first runs. Match the budget used by sidebar-show-more.
   test.setTimeout(180_000);
 
+  // Seed an AI provider key before every test so the home / thread routes
+  // render the composer instead of `NoAiProviderEmptyState`. Fresh test
+  // users have no provider, so without this the chat input never mounts.
+  test.beforeEach(async ({ authedPage }) => {
+    const { page, orgSlug } = authedPage;
+    await seedAiProviderKey(page.context().request, orgSlug);
+  });
+
   test("thread draft survives page refresh", async ({ authedPage }) => {
     const { page, orgSlug } = authedPage;
-    await openNewThread(page, orgSlug, "kick off");
+    const taskId = await openNewThread(page, orgSlug, "kick off");
 
-    await waitForChatInput(page);
+    // Land on the thread WITHOUT autosend so the editor isn't disabled by
+    // streaming. The home-composer submit kicks off autosend which puts the
+    // chat into a streaming state; the editor's disabled prop swallows our
+    // typing if we don't shed the autosend query first.
+    await gotoThreadIdle(page, orgSlug, taskId);
     await clearComposer(page);
     await typeInComposer(page, "draft message that should survive");
 
@@ -132,13 +213,16 @@ test.describe("chat input draft persistence", () => {
     const { page, orgSlug } = authedPage;
     const taskId = await openNewThread(page, orgSlug, "first");
 
-    // Type a second message and submit it (clearing should fire).
-    await waitForChatInput(page);
+    // Land on the thread WITHOUT autosend so typing isn't swallowed by the
+    // streaming-disabled editor. Then type a draft, submit, and verify the
+    // saved draft was cleared by reloading and reading the editor.
+    await gotoThreadIdle(page, orgSlug, taskId);
     await clearComposer(page);
     await typeInComposer(page, "this should be cleared after submit");
     await submitComposer(page);
 
-    // Reload and confirm the input is empty.
+    // Reload and confirm the input is empty (submit's clearChatDraft
+    // wiped the per-thread draft from sessionStorage).
     await page.goto(`/${orgSlug}/${taskId}`);
     await waitForChatInput(page);
     expect(await composerText(page)).toBe("");
@@ -147,13 +231,15 @@ test.describe("chat input draft persistence", () => {
   test("drafts are isolated per thread", async ({ authedPage }) => {
     const { page, orgSlug } = authedPage;
     const taskA = await openNewThread(page, orgSlug, "thread a");
-    await waitForChatInput(page);
+    await gotoThreadIdle(page, orgSlug, taskA);
     await clearComposer(page);
     await typeInComposer(page, "draft for A");
 
-    // Navigate to the home composer to start a second thread.
+    // Start a second thread via the home composer. Then land on it in idle
+    // state so we can type without the streaming-disabled editor swallowing
+    // input.
     const taskB = await openNewThread(page, orgSlug, "thread b");
-    await waitForChatInput(page);
+    await gotoThreadIdle(page, orgSlug, taskB);
     await clearComposer(page);
     await typeInComposer(page, "draft for B");
 
