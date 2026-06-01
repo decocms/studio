@@ -37,8 +37,6 @@ export interface TaskGroupProps {
   onToggleOrgPin?: (virtualMcpId: string, pinned: boolean) => void;
   /** Precomputed visible count for this group (avoids O(T) scan per hook). */
   groupVisibleCount?: number;
-  /** When true, the group renders dimmed (used when filters wipe out the body). */
-  dimmed: boolean;
   filters: SidebarFilters;
   /** When set, the group header is draggable for reordering. */
   sortable?: {
@@ -60,7 +58,6 @@ export function TaskGroup({
   isOrgPinned = false,
   canManageOrgPin = false,
   onToggleOrgPin,
-  dimmed,
   filters,
   groupVisibleCount,
   sortable,
@@ -114,7 +111,7 @@ export function TaskGroup({
           isToolCallRuns={isToolCallRuns}
         />
       </span>
-      {!isToolCallRuns && !dimmed && (
+      {!isToolCallRuns && (
         <button
           type="button"
           aria-label="New task in this agent"
@@ -131,7 +128,7 @@ export function TaskGroup({
   );
 
   return (
-    <div className={cn("flex flex-col gap-0.5", dimmed && "opacity-50")}>
+    <div className="flex flex-col gap-0.5">
       {isToolCallRuns ? (
         header
       ) : (
