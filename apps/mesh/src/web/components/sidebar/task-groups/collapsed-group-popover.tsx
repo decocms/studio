@@ -18,6 +18,9 @@ import {
 } from "@deco/ui/components/context-menu.tsx";
 import { EyeOff, Plus, Settings02 } from "@untitledui/icons";
 import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
+import { ShowMoreButton } from "./show-more-button";
+import { useGroupShowMore } from "./use-group-show-more";
+import type { SidebarFilters } from "./next-page-offset";
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
 
@@ -25,6 +28,7 @@ export interface CollapsedGroupPopoverProps {
   virtualMcpId: string;
   threads: Task[];
   activeTaskId: string | null;
+  filters: SidebarFilters;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
   onNewTaskInGroup: (virtualMcpId: string) => void;
@@ -40,6 +44,7 @@ export function CollapsedGroupPopover({
   virtualMcpId,
   threads,
   activeTaskId,
+  filters,
   onSelectTask,
   onArchiveTask,
   onNewTaskInGroup,
@@ -48,6 +53,7 @@ export function CollapsedGroupPopover({
 }: CollapsedGroupPopoverProps) {
   const entity = useVirtualMCP(virtualMcpId);
   const latestTask = threads[0];
+  const showMore = useGroupShowMore("agent", virtualMcpId, filters);
 
   const handleClick = () => {
     if (latestTask) {
@@ -127,16 +133,24 @@ export function CollapsedGroupPopover({
               No tasks yet
             </div>
           ) : (
-            threads.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                isActive={activeTaskId === task.id}
-                onClick={() => onSelectTask(task)}
-                onArchive={() => onArchiveTask(task)}
-                showAutomationBadge={Boolean(task.trigger_id)}
-              />
-            ))
+            <>
+              {threads.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  isActive={activeTaskId === task.id}
+                  onClick={() => onSelectTask(task)}
+                  onArchive={() => onArchiveTask(task)}
+                  showAutomationBadge={Boolean(task.trigger_id)}
+                />
+              ))}
+              {(showMore.hasMore || showMore.isFetching) && (
+                <ShowMoreButton
+                  onClick={() => void showMore.loadMore()}
+                  isFetching={showMore.isFetching}
+                />
+              )}
+            </>
           )}
         </div>
       </HoverCardContent>

@@ -193,6 +193,7 @@ export function TaskGroupsList() {
               virtualMcpId={group.virtualMcpId}
               threads={filtered}
               activeTaskId={activeTaskId}
+              filters={filters}
               onSelectTask={(t) => setTaskId(t.id, t.virtual_mcp_id)}
               onArchiveTask={handleArchive}
               onNewTaskInGroup={handleNewInGroup}

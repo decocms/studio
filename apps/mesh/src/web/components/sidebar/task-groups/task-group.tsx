@@ -230,7 +230,7 @@ function AgentExpandedBody({
   onNewTaskInGroup: (virtualMcpId: string) => void;
   showMore: ReturnType<typeof useGroupShowMore>;
 }) {
-  const { isFetching, loadMore } = showMore;
+  const { isFetching, loadMore, hasMore } = showMore;
 
   return (
     <>
@@ -255,10 +255,12 @@ function AgentExpandedBody({
               showAutomationBadge={Boolean(task.trigger_id)}
             />
           ))}
-          <ShowMoreButton
-            onClick={() => void loadMore()}
-            isFetching={isFetching}
-          />
+          {(hasMore || isFetching) && (
+            <ShowMoreButton
+              onClick={() => void loadMore()}
+              isFetching={isFetching}
+            />
+          )}
         </>
       )}
     </>
@@ -278,7 +280,7 @@ function StatusExpandedBody({
   onArchiveTask: (task: Task) => void;
   showMore: ReturnType<typeof useGroupShowMore>;
 }) {
-  const { isFetching, loadMore } = showMore;
+  const { isFetching, loadMore, hasMore } = showMore;
 
   return (
     <>
@@ -294,7 +296,9 @@ function StatusExpandedBody({
           hideStatusIdle
         />
       ))}
-      <ShowMoreButton onClick={() => void loadMore()} isFetching={isFetching} />
+      {(hasMore || isFetching) && (
+        <ShowMoreButton onClick={() => void loadMore()} isFetching={isFetching} />
+      )}
     </>
   );
 }
