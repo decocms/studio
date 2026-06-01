@@ -112,13 +112,17 @@ async function defaultHomeAgentNextActions(
             maxHeight: t.maxHeight,
           }));
 
+        // Quick-access agent card (no prompt). The home chip shows the
+        // agent name as the title and its description as the subtitle, so
+        // map the fields that way rather than hoisting the description up
+        // into the title slot.
         const fallback = (): PromptEntry => ({
           agentId: id,
           agentName: virtualMcp.title,
           agentIcon: virtualMcp.icon,
           promptName: "",
-          title: virtualMcp.description || "Start a new chat",
-          description: "",
+          title: virtualMcp.title,
+          description: virtualMcp.description || "Start a new chat",
           hasArguments: false,
         });
 
@@ -261,8 +265,8 @@ export function createHomeNextActionsRoutes() {
         agentName: agent.title,
         agentIcon: agent.icon,
         promptName: "",
-        title: "Start a new chat",
-        description: "",
+        title: agent.title,
+        description: "Start a new chat",
         hasArguments: false,
       });
     }
