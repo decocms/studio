@@ -19,7 +19,7 @@ import {
   useVirtualMCPActions,
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useParams } from "@tanstack/react-router";
 import { authClient } from "@/web/lib/auth-client";
 import {
   useThreadActions,
@@ -100,9 +100,7 @@ export function TaskGroupsList() {
   const { hide } = useThreadActions();
 
   const { setTaskId, createNewTask } = usePanelActions();
-  const navigate = useNavigate();
   const params = useParams({ strict: false }) as {
-    org?: string;
     taskId?: string;
   };
   const activeTaskId = params.taskId ?? null;
@@ -160,14 +158,13 @@ export function TaskGroupsList() {
     const wasActive = task.id === activeTaskId;
     hide(task.id);
     if (!wasActive) return;
-    const next = sortedThreads.find((t) => t.id !== task.id);
+    const next = sortedThreads.find(
+      (t) => t.id !== task.id && t.virtual_mcp_id === task.virtual_mcp_id,
+    );
     if (next) {
       setTaskId(next.id, next.virtual_mcp_id);
-    } else if (params.org) {
-      navigate({
-        to: "/$org",
-        params: { org: params.org },
-      });
+    } else {
+      createNewTask(task.virtual_mcp_id);
     }
   };
 
