@@ -38,7 +38,7 @@ import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
 import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
 import { GridLoader } from "../../grid-loader.tsx";
-import { formatDuration } from "../../../lib/format-time.ts";
+import { formatDuration, toEpochMs } from "../../../lib/format-time.ts";
 
 type ThinkingStage = "planning" | "thinking";
 
@@ -607,19 +607,26 @@ export function MessageAssistant({
   const isSubmitted = status === "submitted";
   const isLoading = isStreaming || isSubmitted;
 
-  // Track when this message's generation started for the live elapsed timer
-  const [startedAt, setStartedAt] = useState<number | null>(() =>
-    isLoading ? Date.now() : null,
-  );
+  // Track when this message's generation started for the live elapsed timer.
+  //
+  // Prefer the server-stamped stream start (`metadata.created_at`, set on the
+  // first stream chunk in run-stream.ts and persisted in thread_messages).
+  // This makes the chronometer survive a page refresh — it resumes counting
+  // from the real start time instead of restarting at 0 on remount.
+  //
+  // Client fallback (`Date.now()`) covers the brief "submitted but no chunks
+  // yet" window where the server hasn't sent a `start` chunk; once that
+  // chunk arrives the server time takes over via the `??` below.
+  const serverStartedAt = toEpochMs(message?.metadata?.created_at);
+  const [clientFallbackStartedAt, setClientFallbackStartedAt] = useState<
+    number | null
+  >(() => (isLoading ? Date.now() : null));
   const [prevIsLoading, setPrevIsLoading] = useState(isLoading);
   if (prevIsLoading !== isLoading) {
     setPrevIsLoading(isLoading);
-    if (isLoading) {
-      setStartedAt(Date.now());
-    } else {
-      setStartedAt(null);
-    }
+    setClientFallbackStartedAt(isLoading ? Date.now() : null);
   }
+  const startedAt = serverStartedAt ?? clientFallbackStartedAt;
 
   // Handle null message or empty parts
   const hasContent = message !== null && message.parts.length > 0;
