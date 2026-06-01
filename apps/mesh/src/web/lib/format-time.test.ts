@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { subSeconds } from "date-fns";
-import { formatDuration, formatTimeAgo, toEpochMs } from "./format-time";
+import {
+  computeElapsedMs,
+  formatDuration,
+  formatTimeAgo,
+  toEpochMs,
+} from "./format-time";
 
 describe("formatTimeAgo", () => {
   test("returns <1m for dates less than 60 seconds ago", () => {
@@ -99,5 +104,25 @@ describe("toEpochMs", () => {
 
   test("returns null for an Invalid Date instance", () => {
     expect(toEpochMs(new Date("invalid"))).toBeNull();
+  });
+});
+
+describe("computeElapsedMs", () => {
+  test("returns positive elapsed when now is after start", () => {
+    expect(computeElapsedMs(1_000, 3_500)).toBe(2_500);
+  });
+
+  test("returns 0 when now equals start", () => {
+    expect(computeElapsedMs(1_000, 1_000)).toBe(0);
+  });
+
+  test("clamps to 0 when start is ahead of now (server clock skew)", () => {
+    // serverStartedAt > Date.now() — e.g. server clock 30s ahead of client.
+    // Without the clamp, the live timer would render "-30.0s".
+    expect(computeElapsedMs(30_000, 0)).toBe(0);
+  });
+
+  test("clamps to 0 for small sub-second skew", () => {
+    expect(computeElapsedMs(1_500, 1_200)).toBe(0);
   });
 });
