@@ -45,7 +45,7 @@ export function groupThreadsByStatus(threads: Task[]): StatusGroupData[] {
  *
  * Only agents with at least one thread appear here — the sidebar does not
  * pre-populate from the org directory. Empty slots come from the user's saved
- * order in `applyGroupOrder`.
+ * order in `useSidebarGroupOrder` / `computeDisplayGroups`.
  *
  * Ordering (before user order is applied):
  *  - Decopilot first when it has threads.

@@ -7,6 +7,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CSSProperties, ReactNode } from "react";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   partitionDisplayGroups,
   type SidebarGroupSection,
@@ -124,7 +125,7 @@ function SortableAgentGroupSection<TProps extends { virtualMcpId: string }>({
                   <div
                     ref={setNodeRef}
                     style={style}
-                    className={isDragging ? "opacity-50" : undefined}
+                    className={cn(isDragging && "opacity-50")}
                   >
                     {renderSortable(props, {
                       attributes,

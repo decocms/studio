@@ -105,14 +105,14 @@ export function saveOrgGroupOrder(orgId: string, order: string[]): void {
 }
 
 /** Decopilot and Automation runs are fixed — never reorderable. */
-export function isFixedSidebarGroupId(
+function isFixedSidebarGroupId(
   id: string,
   decopilotVirtualMcpId: string | null,
 ): boolean {
   return id === decopilotVirtualMcpId || id === TOOL_CALL_RUNS_GROUP_KEY;
 }
 
-export function isOrgPinnedAgent(
+function isOrgPinnedAgent(
   virtualMcpId: string,
   orgPinnedIds: string[],
 ): boolean {
@@ -353,22 +353,6 @@ export function computeDisplayGroups(
     orgPinnedIds,
     savedOrg,
   ).groups;
-}
-
-/** @deprecated Use computeDisplayGroups + ensureGroupOrdersSynced */
-export function applyGroupOrder(
-  scope: SidebarOrderScope,
-  groups: TaskGroupData[],
-  decopilotVirtualMcpId: string | null,
-  orgPinnedIds: string[] = [],
-): TaskGroupData[] {
-  ensureGroupOrdersSynced(scope, groups, decopilotVirtualMcpId, orgPinnedIds);
-  return computeDisplayGroups(
-    scope,
-    groups,
-    decopilotVirtualMcpId,
-    orgPinnedIds,
-  );
 }
 
 export function syncOrdersOnOrgPinToggle(
