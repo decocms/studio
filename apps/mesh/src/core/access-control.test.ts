@@ -6,6 +6,7 @@ import {
 } from "./access-control";
 import type { BetterAuthInstance, BoundAuthClient } from "./mesh-context";
 import type { Permission } from "../storage/types";
+import { BASIC_USAGE_TOOLS } from "../tools/registry-metadata";
 
 const createMockAuth = (): BetterAuthInstance => {
   const mockUserHasPermission = vi.fn();
@@ -212,6 +213,48 @@ describe("AccessControl", () => {
         undefined, // No user
         "TEST_TOOL",
         undefined, // No boundAuth
+        undefined,
+      );
+
+      await expect(ac.check()).rejects.toThrow(UnauthorizedError);
+    });
+  });
+
+  describe("basic-usage runtime grant", () => {
+    const basicUsageTool = [...BASIC_USAGE_TOOLS][0];
+
+    it("grants a basic-usage tool to a custom role with no stored permission", async () => {
+      const ac = new AccessControl(
+        createMockAuth(),
+        "user_1",
+        basicUsageTool,
+        createMockBoundAuth({}), // role grants nothing
+        "custom-role",
+      );
+
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+    });
+
+    it("still denies a non-basic-usage tool the role lacks", async () => {
+      const ac = new AccessControl(
+        createMockAuth(),
+        "user_1",
+        "DATABASES_RUN_SQL", // dangerous, never basic-usage
+        createMockBoundAuth({}),
+        "custom-role",
+      );
+
+      await expect(ac.check()).rejects.toThrow(ForbiddenError);
+      expect(ac.granted()).toBe(false);
+    });
+
+    it("does not grant basic-usage to an unauthenticated caller", async () => {
+      const ac = new AccessControl(
+        createMockAuth(),
+        undefined, // no user
+        basicUsageTool,
+        undefined, // no boundAuth
         undefined,
       );
 

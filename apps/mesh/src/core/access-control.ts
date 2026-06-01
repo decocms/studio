@@ -10,6 +10,7 @@
  */
 
 import { MCP_MESH_KEY } from "@/core/constants";
+import { BASIC_USAGE_TOOLS } from "@/tools/registry-metadata";
 import type { BetterAuthInstance, BoundAuthClient } from "./mesh-context";
 
 // ============================================================================
@@ -188,6 +189,14 @@ export class AccessControl implements Disposable {
     // No user or bound auth = deny
     if (!this.userId && !this.boundAuth) {
       return false;
+    }
+
+    // Basic-usage tools are granted to every authenticated org member at
+    // runtime, regardless of role. Resolving them here — instead of baking
+    // them into each role's stored permission — means the set evolves with a
+    // one-line edit to BASIC_USAGE_TOOLS, with no role-backfill migration.
+    if (BASIC_USAGE_TOOLS.has(resource)) {
+      return true;
     }
 
     // Admin and owner roles bypass all checks (they have full access)
