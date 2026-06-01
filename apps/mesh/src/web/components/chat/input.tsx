@@ -367,8 +367,6 @@ export function ChatInput({
   // model's context is much fuller than it actually is.
   const lastTotalTokens = lastUsage?.contextTokens ?? 0;
 
-  const playClickSound = useSound(question004Sound);
-
   const canSubmit =
     !isStreaming && !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
 
@@ -391,7 +389,6 @@ export function ChatInput({
         virtual_mcp_id: selectedVirtualMcp?.id ?? null,
         submission: e ? "button_or_enter" : "programmatic",
       });
-      playClickSound();
       if (stream) {
         void stream.sendMessage(tiptapDoc);
       } else {
