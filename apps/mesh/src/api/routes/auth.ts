@@ -25,6 +25,10 @@ import {
   getLocalAdminPassword,
   isLocalMode,
 } from "@/auth/local-mode";
+import {
+  allCapabilitiesGranted,
+  resolveCapabilities,
+} from "@/tools/registry-metadata";
 
 const app = new Hono();
 
@@ -178,6 +182,88 @@ app.post("/local-session", async (c) => {
       500,
     );
   }
+});
+
+/**
+ * My Capabilities Endpoint (authenticated)
+ *
+ * Resolves which permission capabilities the current user has in the given
+ * organization, as a capability-id → boolean map. The single source of truth
+ * for proactive UI gating, so the client never re-implements role logic.
+ *
+ * Server-resolved against the role's stored permission using the same wildcard
+ * rules AccessControl applies. Better Auth's listRoles is admin-only, so this
+ * route reads the caller's own membership + role directly to support every
+ * member. The org is taken from the path (not the session's active org, which
+ * can be stale or point at a different org than the one being viewed).
+ *
+ * Route: GET /api/auth/custom/my-capabilities/:slug
+ */
+app.get("/my-capabilities/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const session = (await auth.api.getSession({
+    headers: c.req.raw.headers,
+  })) as { user?: { id: string } } | null;
+
+  if (!session?.user) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
+
+  const db = getDb().db;
+
+  const org = await db
+    .selectFrom("organization")
+    .select(["id"])
+    .where("slug", "=", slug)
+    .executeTakeFirst();
+  if (!org) {
+    return c.json({ role: null, capabilities: {} });
+  }
+
+  const member = await db
+    .selectFrom("member")
+    .select(["role"])
+    .where("userId", "=", session.user.id)
+    .where("organizationId", "=", org.id)
+    .executeTakeFirst();
+
+  const role = member?.role ?? null;
+  if (!role) {
+    return c.json({ role: null, capabilities: {} });
+  }
+
+  // owner / admin bypass every permission check — match AccessControl.
+  if (role === "owner" || role === "admin") {
+    return c.json({ role, capabilities: allCapabilitiesGranted() });
+  }
+
+  // Any other role (built-in "user" or a custom role) is resolved from its
+  // stored permission. Built-in "user" has no organizationRole row, so its
+  // permission is empty and it resolves to no gated capabilities.
+  const customRole = await db
+    .selectFrom("organizationRole")
+    .select(["permission"])
+    .where("role", "=", role)
+    .where("organizationId", "=", org.id)
+    .executeTakeFirst();
+
+  let permission: Record<string, string[]> = {};
+  const raw = customRole?.permission;
+  if (typeof raw === "string") {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      // Stored permission must be a JSON object map. Anything else (array,
+      // primitive, null) is treated as no permissions rather than trusted —
+      // resolveCapabilities is also defensive, but we don't pass it garbage.
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        permission = parsed as Record<string, string[]>;
+      }
+    } catch {
+      permission = {};
+    }
+  }
+
+  return c.json({ role, capabilities: resolveCapabilities(permission) });
 });
 
 /**
