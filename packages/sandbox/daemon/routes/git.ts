@@ -83,7 +83,13 @@ export interface GitDiffResult {
   mergeBaseSha?: string;
 }
 
-function computeStatus(repoDir: string): GitStatusResult {
+/** Porcelain + upstream tracking only — no base-branch divergence (expensive). */
+function computeWorkingTreeStatus(
+  repoDir: string,
+): Omit<
+  GitStatusResult,
+  "base" | "aheadOfBase" | "behindBase" | "headSha" | "unpushed"
+> {
   const porcelain = runGit(repoDir, ["status", "--porcelain=v1", "-z"]);
   const files: GitStatusFile[] = parsePorcelainFiles(porcelain);
 
@@ -131,8 +137,6 @@ function computeStatus(repoDir: string): GitStatusResult {
     }
   }
 
-  const divergence = computeBranchDivergence(repoDir);
-
   return {
     not_added,
     conflicted,
@@ -147,12 +151,13 @@ function computeStatus(repoDir: string): GitStatusResult {
     current: branch,
     tracking,
     detached,
-    base: divergence.base,
-    aheadOfBase: divergence.aheadOfBase,
-    behindBase: divergence.behindBase,
-    headSha: divergence.headSha,
-    unpushed: divergence.unpushed,
   };
+}
+
+function computeStatus(repoDir: string): GitStatusResult {
+  const working = computeWorkingTreeStatus(repoDir);
+  const divergence = computeBranchDivergence(repoDir);
+  return { ...working, ...divergence };
 }
 
 function readWorkingFile(repoDir: string, filePath: string): string | null {
@@ -173,7 +178,7 @@ function readRefFile(
 }
 
 function computeDiff(repoDir: string): GitDiffResult {
-  const status = computeStatus(repoDir);
+  const status = computeWorkingTreeStatus(repoDir);
   const paths = [
     ...new Set(status.files.map((f) => f.path).filter((p) => p.length > 0)),
   ];
@@ -302,7 +307,7 @@ const SKIP_HOOKS_ENV: Record<string, string> = {
   HUSKY: "0",
 };
 
-function changedPathsFromStatus(status: GitStatusResult): string[] {
+function changedPathsFromStatus(status: { files: GitStatusFile[] }): string[] {
   return [
     ...new Set(status.files.map((f) => f.path).filter((p) => p.length > 0)),
   ];
@@ -327,7 +332,7 @@ function publish(deps: GitDeps, message: string): { pushed: boolean } {
     throw new Error("Cannot publish from a detached HEAD");
   }
 
-  const status = computeStatus(repoDir);
+  const status = computeWorkingTreeStatus(repoDir);
   const paths = changedPathsFromStatus(status);
   if (paths.length > 0) {
     runGit(repoDir, ["add", "--", ...paths]);
@@ -364,7 +369,7 @@ function publish(deps: GitDeps, message: string): { pushed: boolean } {
 function discard(deps: GitDeps, filepaths: string[]): void {
   const repoDir = deps.repoDir;
   const validated = filepaths.map((fp) => resolveRepoRelativePath(deps, fp));
-  const status = computeStatus(repoDir);
+  const status = computeWorkingTreeStatus(repoDir);
   const toRestore: string[] = [];
   const toDelete: string[] = [];
 

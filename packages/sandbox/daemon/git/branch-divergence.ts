@@ -9,35 +9,33 @@ export interface BranchDivergenceFields {
   unpushed: number;
 }
 
+export type GitTryRunner = (args: string[]) => string | null;
+
 function gitEnv(repoDir: string): Record<string, string> {
   return { ...process.env, GIT_CEILING_DIRECTORIES: repoDir };
 }
 
-function runGit(repoDir: string, args: string[]): string {
-  return git(args, { cwd: repoDir, env: gitEnv(repoDir) });
-}
-
-function tryGit(repoDir: string, args: string[]): string | null {
+function defaultTryGit(repoDir: string, args: string[]): string | null {
   try {
-    return runGit(repoDir, args);
+    return git(args, { cwd: repoDir, env: gitEnv(repoDir) });
   } catch {
     return null;
   }
 }
 
-/** Divergence vs default base branch — same rules as BranchStatusMonitor. */
+/** Divergence vs default base branch — shared by HTTP /git/status and BranchStatusMonitor. */
 export function computeBranchDivergence(
   repoDir: string,
+  tryGit: GitTryRunner = (args) => defaultTryGit(repoDir, args),
 ): BranchDivergenceFields {
   let base =
-    tryGit(repoDir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]) ??
-    "";
+    tryGit(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]) ?? "";
   if (base.startsWith("origin/")) base = base.slice("origin/".length);
   if (!base) base = "main";
 
-  const branch = tryGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]) ?? "";
+  const branch = tryGit(["rev-parse", "--abbrev-ref", "HEAD"]) ?? "";
   const refExists = (ref: string) =>
-    tryGit(repoDir, ["rev-parse", "--verify", "--quiet", ref]) !== null;
+    tryGit(["rev-parse", "--verify", "--quiet", ref]) !== null;
 
   const branchRef =
     branch && refExists(`origin/${branch}`) ? `origin/${branch}` : "HEAD";
@@ -45,14 +43,14 @@ export function computeBranchDivergence(
   let unpushed = 0;
   if (branch && branchRef === `origin/${branch}`) {
     unpushed = Number(
-      tryGit(repoDir, ["rev-list", "--count", `${branchRef}..HEAD`]) ?? "0",
+      tryGit(["rev-list", "--count", `${branchRef}..HEAD`]) ?? "0",
     );
   }
 
   let aheadOfBase = 0;
   let behindBase = 0;
   if (refExists(`origin/${base}`)) {
-    const lr = tryGit(repoDir, [
+    const lr = tryGit([
       "rev-list",
       "--left-right",
       "--count",
@@ -65,7 +63,7 @@ export function computeBranchDivergence(
     }
   }
 
-  const headSha = tryGit(repoDir, ["rev-parse", branchRef]) ?? "";
+  const headSha = tryGit(["rev-parse", branchRef]) ?? "";
 
   return { base, aheadOfBase, behindBase, headSha, unpushed };
 }

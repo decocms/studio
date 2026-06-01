@@ -236,7 +236,7 @@ export function countGitChanges(status: GitStatus | null): number {
 }
 
 /** True when the working tree or index has uncommitted work. */
-function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
+export function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
   if (!status) return false;
   return (
     countGitChanges(status) > 0 ||
@@ -245,15 +245,24 @@ function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
   );
 }
 
-/** True when there is local work to commit or unpushed commits on the branch. */
+/** True when the branch still needs commit and/or push (ignores base…head PR diff). */
+export function hasLocalWorkToPush(
+  status: GitStatus | null | undefined,
+): boolean {
+  if (!status) return false;
+  return (
+    hasGitLocalWork(status) || status.ahead > 0 || (status.unpushed ?? 0) > 0
+  );
+}
+
+/** True when there is local work to commit, unpushed commits, or working-tree diff paths. */
 export function hasUnpublishedWork(
   status: GitStatus | null | undefined,
   diff: GitDiffResult | null | undefined,
 ): boolean {
   if (!status) return false;
   return (
-    hasGitLocalWork(status) ||
-    status.ahead > 0 ||
+    hasLocalWorkToPush(status) ||
     (diff != null && Object.keys(diff.diffs).length > 0)
   );
 }
@@ -271,7 +280,7 @@ function gitStatusAheadOfBase(gitStatus: GitStatus): number {
 }
 
 function gitStatusBehindBase(gitStatus: GitStatus): number {
-  return gitStatus.behindBase ?? gitStatus.behind;
+  return gitStatus.behindBase ?? 0;
 }
 
 export function mergeBranchMetaWithGitStatus(
@@ -297,12 +306,16 @@ export function mergeBranchMetaWithGitStatus(
       unpushed: Math.max(branchMeta.unpushed, unpushed),
       aheadOfBase: Math.max(branchMeta.aheadOfBase, aheadOfBase),
       behindBase:
-        gitStatus.behindBase !== undefined ? behindBase : branchMeta.behindBase,
+        gitStatus.behindBase !== undefined
+          ? Math.max(branchMeta.behindBase, behindBase)
+          : branchMeta.behindBase,
       headSha: headSha || branchMeta.headSha,
     };
   }
 
-  if (!branchName && !gitDirty && aheadOfBase === 0 && unpushed === 0) {
+  // SSE still unknown — only promote when git reports actionable divergence,
+  // not merely because `git status` can read the checked-out branch name.
+  if (!gitDirty && aheadOfBase === 0 && unpushed === 0) {
     return branchMeta;
   }
 

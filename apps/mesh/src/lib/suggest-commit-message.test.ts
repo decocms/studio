@@ -2,7 +2,31 @@ import { describe, expect, test } from "bun:test";
 import {
   buildCommitContextSummary,
   fallbackCommitSuggestion,
+  parseCommitSuggestionJson,
 } from "./suggest-commit-message";
+
+describe("parseCommitSuggestionJson", () => {
+  test("parses bare JSON", () => {
+    const result = parseCommitSuggestionJson(
+      '{"title":"Add feature","body":"Does the thing"}',
+    );
+    expect(result?.title).toBe("Add feature");
+    expect(result?.body).toBe("Does the thing");
+  });
+
+  test("strips markdown fences", () => {
+    const result = parseCommitSuggestionJson(
+      '```json\n{"title":"Fix bug","body":""}\n```',
+    );
+    expect(result?.title).toBe("Fix bug");
+  });
+
+  test("falls back to first line as title", () => {
+    const result = parseCommitSuggestionJson("Plain title\n\nMore detail");
+    expect(result?.title).toBe("Plain title");
+    expect(result?.body).toBe("More detail");
+  });
+});
 
 describe("suggest-commit-message", () => {
   test("fallbackCommitSuggestion summarizes changed files", () => {

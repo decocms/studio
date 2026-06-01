@@ -38,6 +38,7 @@ import {
   fetchGitDiff,
   fetchGitStatus,
   fetchSuggestCommitMessage,
+  hasLocalWorkToPush,
   hasUnpublishedWork,
   isDecoOnlyDiff,
   publishGitChanges,
@@ -226,7 +227,9 @@ function PublishDialogBody({
   const changesCount = countGitChanges(gitStatus);
   const diffCount = gitDiff ? Object.keys(gitDiff.diffs).length : changesCount;
 
-  const hasLocalUnpublished = hasUnpublishedWork(gitStatus, gitDiff);
+  const hasLocalUnpublished = openPrFromCommits
+    ? hasLocalWorkToPush(gitStatus)
+    : hasUnpublishedWork(gitStatus, gitDiff);
   const canSubmit =
     !isLoadingGitDiff &&
     (isSaveChangesFlow
@@ -353,7 +356,8 @@ function PublishDialogBody({
         toast.error(msg, {
           action: {
             label: "View PR",
-            onClick: () => window.open(error.pr!.htmlUrl, "_blank", "noopener"),
+            onClick: () =>
+              window.open(error.pr!.htmlUrl, "_blank", "noopener,noreferrer"),
           },
         });
         await onPullRequestChanged?.();
@@ -432,7 +436,8 @@ function PublishDialogBody({
       toast.success(`Submitted pull request #${pr.number} for review`, {
         action: {
           label: "View on GitHub",
-          onClick: () => window.open(pr.htmlUrl, "_blank", "noopener"),
+          onClick: () =>
+            window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
         },
       });
       handleOpenChange(false);

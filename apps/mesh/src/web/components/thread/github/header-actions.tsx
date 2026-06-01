@@ -386,11 +386,14 @@ function HeaderButtonRenderer(props: {
     ? "Chat is running"
     : (button.tooltip ?? null);
 
-  if (button.action === "merge-split" && props.prNumber != null) {
+  if (
+    button.action === "merge-split" &&
+    props.prNumber != null &&
+    props.prBase != null
+  ) {
     return (
       <WithTooltip label={tooltipLabel}>
         <MergeSplitButton
-          prNumber={props.prNumber}
           baseBranch={props.prBase}
           disabled={disabled}
           loading={loading}

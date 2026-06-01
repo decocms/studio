@@ -10,7 +10,6 @@ import { ChevronDown } from "@untitledui/icons";
 import { publishToBaseLabel } from "./publish-label.ts";
 
 interface Props {
-  prNumber: number;
   /** PR base branch (e.g. main) — controls publish button copy. */
   baseBranch: string;
   disabled: boolean;

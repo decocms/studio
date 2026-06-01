@@ -206,7 +206,9 @@ export function fallbackCommitSuggestion(
   };
 }
 
-function parseCommitSuggestionJson(text: string): CommitSuggestion | null {
+export function parseCommitSuggestionJson(
+  text: string,
+): CommitSuggestion | null {
   const cleaned = text
     .trim()
     .replace(/^```(?:json)?\s*\n?/i, "")
