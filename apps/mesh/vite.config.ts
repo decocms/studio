@@ -19,7 +19,17 @@ export default defineConfig({
     // Vite child. Explicit here to override any default that
     // @decocms/vite-plugin's baseDecoPlugin might inject via server.port.
     port: Number(process.env.PORT ?? "3000"),
-    // No host/clientPort: HMR follows location.host (this Vite server).
+    // Bind dual-stack so `localhost` clients on either v4 (127.0.0.1) or
+    // v6 (::1) connect successfully. On Linux/macOS with the default
+    // `bindv6only=0`, a `[::]` socket also accepts IPv4-mapped traffic.
+    // The previous topology hid this — Bun.serve with hostname "0.0.0.0"
+    // was de facto dual-stacking — but Vite's default `127.0.0.1` only
+    // listens on v4, and Playwright's APIRequestContext doesn't Happy-
+    // Eyeballs-fall-back from `::1` ECONNREFUSED to `127.0.0.1`, so e2e
+    // jobs whose runners resolve `localhost` to `::1` first all failed
+    // with `connect ECONNREFUSED ::1:3000`.
+    host: "::",
+    // No clientPort: HMR follows location.host (this Vite server).
     // Works in standalone, conductor (Caddy-fronted), and inside any
     // sandbox proxy chain that delivers the page.
     hmr: { overlay: true },
