@@ -3,21 +3,10 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  DotsHorizontal,
-  Edit01,
   Flag01,
   Loading01,
-  Plus,
-  Trash01,
 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import {
   Tooltip,
@@ -40,8 +29,7 @@ import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema } from "./resolve-schema";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
-import { resolveMatcherIconName } from "./matcher-icons";
-import { getIconComponent } from "../agent-icon";
+import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
 import type { SectionCatalogEntry } from "./section-catalog";
@@ -86,27 +74,8 @@ import {
 
 const AUTOSAVE_DELAY = 700;
 
-const VARIANT_GREEN_TEXT = "oklch(0.65 0.15 160)";
 const VARIANT_TAB_ACTIVE_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
-
-function VariantTabIcon({
-  rule,
-  matchers,
-}: {
-  rule: Record<string, unknown> | undefined;
-  matchers: Array<{ resolveType: string; iconName: string }>;
-}) {
-  const rt = (rule?.__resolveType as string) ?? "";
-  // Prefer the schema-defined icon (resolved by extractMatchers) so custom
-  // matchers like "Birthday" pick up the Calendar icon set in their schema
-  // metadata, instead of falling back to FilterLines via regex matching.
-  const fromSchema = matchers.find((m) => m.resolveType === rt)?.iconName;
-  const iconName = fromSchema ?? resolveMatcherIconName(rt);
-  const Icon = getIconComponent(iconName);
-  if (!Icon) return null;
-  return <Icon size={14} className="shrink-0" />;
-}
 
 const capitalize = (s: string) =>
   s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
@@ -1549,6 +1518,46 @@ export function SectionsEditor({
     );
   };
 
+  const selectPageVariant = (index: number) => {
+    setRenameVariantIndex(null);
+    setActiveVariantIndex(index);
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+    setFieldBreadcrumbs([]);
+    const variantRule = pageVariants[index]?.rule;
+    const { resolveType, formValue } = readMatcherRuleFormState(
+      variantRule,
+      decofile ?? {},
+      meta ?? undefined,
+    );
+    setRuleResolveType(resolveType);
+    setRuleFormValue(formValue);
+  };
+
+  const handleReorderPageVariants = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    mutatePageVariants(
+      (variants) => arrayMove(variants, fromIndex, toIndex),
+      () => {
+        if (safeVariantIndex === fromIndex) {
+          setActiveVariantIndex(toIndex);
+        } else if (
+          fromIndex < safeVariantIndex &&
+          toIndex >= safeVariantIndex
+        ) {
+          setActiveVariantIndex(safeVariantIndex - 1);
+        } else if (
+          fromIndex > safeVariantIndex &&
+          toIndex <= safeVariantIndex
+        ) {
+          setActiveVariantIndex(safeVariantIndex + 1);
+        }
+      },
+    );
+  };
+
   const handleDeletePageVariant = (variantIndex: number) => {
     const deletedRule = pageVariants[variantIndex]?.rule;
     const orphanMatcherBlockKey = getSavedMatcherBlockKey(
@@ -1843,110 +1852,20 @@ export function SectionsEditor({
       </div>
 
       {/* Variant selector (when page sections are multivariate) */}
-      {hasMultipleVariants && !isEditing && (
-        <div className="flex items-center border-b shrink-0">
-          <div className="flex flex-1 min-w-0 items-center gap-1.5 pl-3 pr-2 py-2 overflow-x-auto">
-            {pageVariants.map((variant, i) => {
-              const isActive = i === safeVariantIndex;
-              const canDelete = pageVariants.length > 1;
-              return (
-                <div
-                  key={i}
-                  className={cn(
-                    "group shrink-0 inline-flex items-center rounded-md transition-colors",
-                    isActive
-                      ? VARIANT_TAB_ACTIVE_CLASS
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRenameVariantIndex(null);
-                      setActiveVariantIndex(i);
-                      setSelectedSectionIndex(null);
-                      setFormValue(null);
-                      setActiveResolveType(null);
-                      setFieldBreadcrumbs([]);
-                      const variantRule = pageVariants[i]?.rule;
-                      const { resolveType, formValue } =
-                        readMatcherRuleFormState(
-                          variantRule,
-                          decofile ?? {},
-                          meta ?? undefined,
-                        );
-                      setRuleResolveType(resolveType);
-                      setRuleFormValue(formValue);
-                    }}
-                    className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-sm font-medium cursor-pointer"
-                  >
-                    <VariantTabIcon
-                      rule={resolveEffectiveMatcherRule(
-                        variant.rule,
-                        decofile ?? {},
-                        meta ?? undefined,
-                      )}
-                      matchers={availableMatchers}
-                    />
-                    <span className="truncate">{variant.label}</span>
-                  </button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label={`Actions for ${variant.label}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className={cn(
-                          "inline-flex h-8 w-6 items-center justify-center pr-1 cursor-pointer transition-opacity",
-                          "opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100",
-                          isActive && "opacity-100",
-                        )}
-                      >
-                        <DotsHorizontal size={12} />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-36">
-                      <DropdownMenuItem
-                        onClick={() => setRenameVariantIndex(i)}
-                      >
-                        <Edit01 size={14} />
-                        Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        disabled={!canDelete}
-                        onClick={() => handleDeletePageVariant(i)}
-                      >
-                        <Trash01 size={14} />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              );
-            })}
-          </div>
-          {/* Pinned "+" — stays visible regardless of horizontal scroll. */}
-          <div className="shrink-0 pr-3 pl-1 py-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Add variant"
-                  className="size-8 shrink-0 cursor-pointer"
-                  style={{ color: VARIANT_GREEN_TEXT }}
-                  onClick={handleAddPageVariant}
-                >
-                  <Plus size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Add variant</TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
+      {hasMultipleVariants && !isEditing && activePageKey && (
+        <PageVariantTabs
+          listKey={activePageKey}
+          variants={pageVariants}
+          activeIndex={safeVariantIndex}
+          decofile={decofile ?? {}}
+          meta={meta}
+          matchers={availableMatchers}
+          onSelect={selectPageVariant}
+          onReorder={handleReorderPageVariants}
+          onRename={setRenameVariantIndex}
+          onDelete={handleDeletePageVariant}
+          onAdd={handleAddPageVariant}
+        />
       )}
 
       {/* Drill-down: section list OR section form */}

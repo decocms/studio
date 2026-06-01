@@ -38,7 +38,17 @@ describe("page-variants", () => {
     const seed = [{ __resolveType: "site/sections/Hero.tsx" }];
     const result = appendPageVariantSections([{ __resolveType: "A" }], seed);
     expect(result).toEqual({
-      variants: [{ value: [{ __resolveType: "A" }] }, { value: seed }],
+      __resolveType: "website/flags/multivariate.ts",
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: [{ __resolveType: "A" }],
+        },
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: seed,
+        },
+      ],
     });
   });
 
@@ -58,9 +68,14 @@ describe("page-variants", () => {
     expect(variantHasRule(variants[0])).toBe(true);
   });
 
-  it("collapses to a flat array when the last variant has no rule", () => {
+  it("collapses to a flat array when the last variant has the default rule", () => {
     const obj = { __resolveType: "website/flags/multivariate.ts" };
-    const variants = [{ value: [{ __resolveType: "A" }] }];
+    const variants = [
+      {
+        rule: { __resolveType: "website/matchers/always.ts" },
+        value: [{ __resolveType: "A" }],
+      },
+    ];
 
     expect(buildPageSectionsFromVariants(obj, variants)).toEqual([
       { __resolveType: "A" },

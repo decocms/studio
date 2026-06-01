@@ -3,7 +3,12 @@ import {
   isSavedMatcherBlockReference,
   resolveVariantRuleLabel,
 } from "./matcher-rules";
+import { isDefaultVariantRule } from "./section-variants";
 import type { RawSection } from "./section-types";
+import {
+  ALWAYS_MATCHER_RESOLVE_TYPE,
+  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+} from "./section-types";
 
 const PAGE_RESOLVE_TYPES = new Set([
   "website/pages/Page.tsx",
@@ -102,6 +107,28 @@ export function parsePageVariants(
   return [];
 }
 
+function defaultPageVariantRule(): Record<string, unknown> {
+  return { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
+}
+
+function createPageVariantEntry(value: RawSection[]): Record<string, unknown> {
+  return {
+    rule: defaultPageVariantRule(),
+    value,
+  };
+}
+
+function createMultivariatePageSections(
+  variants: Array<Record<string, unknown>>,
+  existing?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+    ...existing,
+    variants,
+  };
+}
+
 /**
  * Append a new page variant seeded from `seedSections`. Returns null when the
  * current sections shape cannot be extended.
@@ -112,21 +139,28 @@ export function appendPageVariantSections(
 ): Record<string, unknown> | null {
   const seed = structuredClone(seedSections);
   if (Array.isArray(current)) {
-    return {
-      variants: [{ value: current }, { value: seed }],
-    };
+    return createMultivariatePageSections([
+      createPageVariantEntry(current),
+      createPageVariantEntry(seed),
+    ]);
   }
   if (current && typeof current === "object") {
     const obj = current as Record<string, unknown>;
     if (Array.isArray(obj.variants)) {
-      return {
-        ...obj,
-        variants: [...(obj.variants as unknown[]), { value: seed }],
-      };
+      return createMultivariatePageSections(
+        [
+          ...(obj.variants as Array<Record<string, unknown>>),
+          createPageVariantEntry(seed),
+        ],
+        obj,
+      );
     }
     return null;
   }
-  return { variants: [{ value: [] }, { value: seed }] };
+  return createMultivariatePageSections([
+    createPageVariantEntry([]),
+    createPageVariantEntry(seed),
+  ]);
 }
 
 export function getLastVariantIndex(
@@ -153,18 +187,19 @@ export function buildPageSectionsFromVariants(
   variants: Array<Record<string, unknown>>,
 ): unknown {
   if (variants.length === 0) {
-    return { ...obj, variants: [] };
+    return createMultivariatePageSections([], obj);
   }
   if (variants.length === 1) {
     const only = variants[0];
-    if (variantHasRule(only)) {
-      return { ...obj, variants };
+    const rule = only?.rule as Record<string, unknown> | undefined;
+    if (!isDefaultVariantRule(rule)) {
+      return createMultivariatePageSections(variants, obj);
     }
     if (Array.isArray(only?.value)) {
       return only.value as unknown[];
     }
   }
-  return { ...obj, variants };
+  return createMultivariatePageSections(variants, obj);
 }
 
 function forEachPageVariantRule(

@@ -12,6 +12,9 @@ export const GLOBAL_SECTION_ICON_COLOR = "oklch(0.7278 0.151 289)";
 
 export const ALWAYS_MATCHER_RESOLVE_TYPE = "website/matchers/always.ts";
 
+export const PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE =
+  "website/flags/multivariate.ts";
+
 /** Human label from a deco resolve type path or block id. */
 export function labelFromResolveType(rt: string): string {
   const segments = rt.split("/");
