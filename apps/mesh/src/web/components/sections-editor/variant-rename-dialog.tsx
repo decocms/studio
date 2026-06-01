@@ -9,23 +9,25 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
+import { Loading01 } from "@untitledui/icons";
 
 /**
- * Renames a page variant by setting a custom `name` on its entry. When the
- * user clears the input, the variant falls back to the rule-derived label
- * (e.g. "Mobile", "Feb 23 → Mar 1") on the next render.
+ * Renames a page variant by saving its matcher as a global block and pointing
+ * the variant rule at that block. Clearing the input inlines the matcher again.
  */
 export function VariantRenameDialog({
   open,
   initialName,
   autoLabel,
+  isPending = false,
   onSubmit,
   onOpenChange,
 }: {
   open: boolean;
   initialName: string;
   autoLabel: string;
-  onSubmit: (name: string) => void;
+  isPending?: boolean;
+  onSubmit: (name: string) => void | Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
   const [name, setName] = useState(initialName);
@@ -36,19 +38,27 @@ export function VariantRenameDialog({
     if (open) setName(initialName);
   }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && !isPending) {
+      onOpenChange(false);
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    onSubmit(name.trim());
+    if (isPending) return;
+    await onSubmit(name.trim());
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Rename variant</DialogTitle>
             <DialogDescription>
-              Override the auto-generated label. Leave empty to fall back to{" "}
+              Save this matcher as a global block with a custom label. Leave
+              empty to inline the matcher again and fall back to{" "}
               <span className="font-medium">{autoLabel || "the rule"}</span>.
             </DialogDescription>
           </DialogHeader>
@@ -66,6 +76,7 @@ export function VariantRenameDialog({
               onChange={(e) => setName(e.target.value)}
               placeholder={autoLabel}
               autoFocus
+              disabled={isPending}
             />
           </div>
 
@@ -74,10 +85,20 @@ export function VariantRenameDialog({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
+              disabled={isPending}
             >
               Cancel
             </Button>
-            <Button type="submit">Save</Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending ? (
+                <>
+                  <Loading01 size={14} className="animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -29,6 +29,7 @@ import { VariantRenameDialog } from "./variant-rename-dialog";
 import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
+import { useDeleteBlock } from "./use-delete-block";
 import { useSaveBlock } from "./use-save-block";
 import { extractPages, globalSectionLabel } from "./page-list";
 import { normalizePagePath } from "./page-path-utils";
@@ -46,6 +47,16 @@ import { AddSectionModal } from "./add-section-modal";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
+import {
+  buildMatcherBlockData,
+  buildMatcherBlockReference,
+  inlineMatcherRule,
+  isSavedMatcherBlockReference,
+  readMatcherRuleFormState,
+  resolveEffectiveMatcherRule,
+  resolveVariantRuleLabel,
+  unwrapMatcherRule,
+} from "./matcher-rules";
 import {
   buildPageDataWithSections,
   cloneSection,
@@ -89,10 +100,8 @@ function VariantTabIcon({
 }
 
 interface PageVariant {
-  /** Display label (custom name if set, otherwise derived from the rule). */
+  /** Display label (global block name if saved, otherwise derived from the rule). */
   label: string;
-  /** User-provided custom name override. */
-  name?: string;
   sections: RawSection[];
   rule?: Record<string, unknown>;
 }
@@ -271,7 +280,10 @@ function formatMatcher(rule: Record<string, unknown> | undefined): string {
  * - Plain array → single variant labelled "Default"
  * - Multivariate flag object → one variant per entry in `variants`
  */
-function parsePageVariants(sections: unknown): PageVariant[] {
+function parsePageVariants(
+  sections: unknown,
+  decofile: Record<string, unknown>,
+): PageVariant[] {
   if (Array.isArray(sections)) {
     return [{ label: "Default", sections }];
   }
@@ -281,14 +293,10 @@ function parsePageVariants(sections: unknown): PageVariant[] {
       const raw = obj.variants as Array<{
         rule?: Record<string, unknown>;
         value?: unknown;
-        name?: unknown;
       }>;
-      // Custom name (if set) wins over the rule-derived label. Disambiguate
-      // remaining duplicates with an index ("Default 1", "Default 2").
-      const labels = raw.map((v) => {
-        const customName = typeof v.name === "string" ? v.name.trim() : "";
-        return customName || formatMatcher(v.rule);
-      });
+      const labels = raw.map((v) =>
+        resolveVariantRuleLabel(v.rule, decofile, formatMatcher),
+      );
       const labelCounts = labels.reduce<Record<string, number>>((acc, l) => {
         acc[l] = (acc[l] ?? 0) + 1;
         return acc;
@@ -302,10 +310,8 @@ function parsePageVariants(sections: unknown): PageVariant[] {
           seen[baseLabel] = (seen[baseLabel] ?? 0) + 1;
           label = `${baseLabel} ${seen[baseLabel]}`;
         }
-        const customName = typeof v.name === "string" ? v.name.trim() : "";
         return {
           label: label || `Variant ${i + 1}`,
-          name: customName || undefined,
           sections: Array.isArray(v.value) ? (v.value as RawSection[]) : [],
           rule: v.rule,
         };
@@ -536,6 +542,8 @@ export function SectionsEditor({
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -616,7 +624,7 @@ export function SectionsEditor({
           sections: [{ __resolveType: activeGlobalBlockKey! } as RawSection],
         },
       ]
-    : parsePageVariants(pageData?.sections);
+    : parsePageVariants(pageData?.sections, decofile ?? {});
   const hasMultipleVariants = pageVariants.length > 1;
   const safeVariantIndex = Math.min(
     activeVariantIndex,
@@ -1222,7 +1230,6 @@ export function SectionsEditor({
 
   // Sync rule form state when variant changes
   const activeRule = activeVariant?.rule;
-  const activeRuleRt = (activeRule?.__resolveType as string) ?? "";
   // Initialize rule form state when switching variants
   if (
     hasMultipleVariants &&
@@ -1230,9 +1237,12 @@ export function SectionsEditor({
     ruleResolveType === null &&
     activeRule
   ) {
-    setRuleResolveType(activeRuleRt);
-    const { __resolveType: _, ...ruleData } = activeRule;
-    setRuleFormValue(ruleData);
+    const { resolveType, formValue } = readMatcherRuleFormState(
+      activeRule,
+      decofile ?? {},
+    );
+    setRuleResolveType(resolveType);
+    setRuleFormValue(formValue);
   }
 
   const availableMatchers = meta ? extractMatchers(meta) : [];
@@ -1261,9 +1271,41 @@ export function SectionsEditor({
       const variants = [
         ...((mv.variants as Array<Record<string, unknown>>) ?? []),
       ];
-      if (variants[latestVariantIndex]) {
+      const currentVariant = variants[latestVariantIndex];
+      const currentRule = currentVariant?.rule as
+        | Record<string, unknown>
+        | undefined;
+
+      if (isSavedMatcherBlockReference(currentRule, latestDecofile)) {
+        const blockKey = (currentRule?.__resolveType as string) ?? "";
+        const existingBlock = latestDecofile[blockKey] as
+          | Record<string, unknown>
+          | undefined;
+        const displayName =
+          typeof existingBlock?.name === "string"
+            ? existingBlock.name
+            : blockKey;
+        const { __resolveType: matcherRt, ...matcherData } = newRule;
+        saveBlock.mutate(
+          {
+            blockKey,
+            data: buildMatcherBlockData(
+              (matcherRt as string) ?? "",
+              matcherData,
+              displayName,
+            ),
+          },
+          {
+            onSuccess: () => onSaved?.(),
+            onError: (err) => toast.error(`Save failed: ${err.message}`),
+          },
+        );
+        return;
+      }
+
+      if (currentVariant) {
         variants[latestVariantIndex] = {
-          ...variants[latestVariantIndex],
+          ...currentVariant,
           rule: newRule,
         };
       }
@@ -1548,20 +1590,103 @@ export function SectionsEditor({
     );
   };
 
-  const handleRenamePageVariant = (variantIndex: number, nextName: string) => {
-    mutatePageVariants((variants) => {
-      const target = variants[variantIndex];
-      if (!target) return null;
-      const trimmed = nextName.trim();
-      if (trimmed) {
-        variants[variantIndex] = { ...target, name: trimmed };
-      } else {
-        // Clearing the name reverts to the auto-derived label.
-        const { name: _drop, ...rest } = target as Record<string, unknown>;
-        variants[variantIndex] = rest;
+  const handleRenamePageVariant = async (
+    variantIndex: number,
+    nextName: string,
+  ) => {
+    if (!activePageKey) return;
+
+    const fullPageData = decofile[activePageKey] as Record<string, unknown>;
+    const current = fullPageData.sections;
+    if (!current || typeof current !== "object" || Array.isArray(current))
+      return;
+    const obj = current as Record<string, unknown>;
+    if (!Array.isArray(obj.variants)) return;
+
+    const variants = [...(obj.variants as Array<Record<string, unknown>>)];
+    const target = variants[variantIndex];
+    if (!target?.rule) return;
+
+    const trimmed = nextName.trim();
+    setRenameVariantPending(true);
+
+    try {
+      if (!trimmed) {
+        if (!isSavedMatcherBlockReference(target.rule, decofile)) {
+          setRenameVariantIndex(null);
+          return;
+        }
+
+        const blockKey = (target.rule as Record<string, unknown>)
+          .__resolveType as string;
+        variants[variantIndex] = {
+          ...target,
+          rule: inlineMatcherRule(target.rule, decofile),
+        };
+
+        await saveBlock.mutateAsync({
+          blockKey: activePageKey,
+          data: { ...fullPageData, sections: { ...obj, variants } },
+        });
+        await deleteBlock.mutateAsync({ blockKey });
+        setRenameVariantIndex(null);
+        onSaved?.();
+        return;
       }
-      return variants;
-    });
+
+      const unwrapped = unwrapMatcherRule(target.rule, decofile);
+      if (!unwrapped) return;
+
+      if (unwrapped.blockKey) {
+        await saveBlock.mutateAsync({
+          blockKey: unwrapped.blockKey,
+          data: buildMatcherBlockData(
+            unwrapped.resolveType,
+            unwrapped.data,
+            trimmed,
+          ),
+        });
+        setRenameVariantIndex(null);
+        onSaved?.();
+        return;
+      }
+
+      const blockId = suggestBlockId(trimmed);
+      const validationError = validateBlockId(blockId, decofile);
+      if (validationError) {
+        toast.error(validationError);
+        return;
+      }
+
+      await saveBlock.mutateAsync({
+        blockKey: blockId,
+        data: buildMatcherBlockData(
+          unwrapped.resolveType,
+          unwrapped.data,
+          trimmed,
+        ),
+      });
+
+      variants[variantIndex] = {
+        ...target,
+        rule: buildMatcherBlockReference(blockId),
+      };
+
+      await saveBlock.mutateAsync({
+        blockKey: activePageKey,
+        data: { ...fullPageData, sections: { ...obj, variants } },
+      });
+
+      setRenameVariantIndex(null);
+      toast.success(`Saved matcher as global block "${trimmed}"`);
+      onSaved?.();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to rename variant",
+      );
+    } finally {
+      setRenameVariantPending(false);
+    }
   };
 
   const exitSectionEditing = () => {
@@ -1612,7 +1737,10 @@ export function SectionsEditor({
                 )}
               >
                 <VariantTabIcon
-                  rule={activeVariant.rule}
+                  rule={resolveEffectiveMatcherRule(
+                    activeVariant.rule,
+                    decofile ?? {},
+                  )}
                   matchers={availableMatchers}
                 />
                 <span className="max-w-[160px] truncate">
@@ -1718,20 +1846,18 @@ export function SectionsEditor({
                       setActiveResolveType(null);
                       setFieldBreadcrumbs([]);
                       const variantRule = pageVariants[i]?.rule;
-                      const variantRuleRt =
-                        (variantRule?.__resolveType as string) ?? "";
-                      setRuleResolveType(variantRuleRt);
-                      if (variantRule) {
-                        const { __resolveType: _, ...ruleData } = variantRule;
-                        setRuleFormValue(ruleData);
-                      } else {
-                        setRuleFormValue(null);
-                      }
+                      const { resolveType, formValue } =
+                        readMatcherRuleFormState(variantRule, decofile ?? {});
+                      setRuleResolveType(resolveType);
+                      setRuleFormValue(formValue);
                     }}
                     className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-sm font-medium cursor-pointer"
                   >
                     <VariantTabIcon
-                      rule={variant.rule}
+                      rule={resolveEffectiveMatcherRule(
+                        variant.rule,
+                        decofile ?? {},
+                      )}
                       matchers={availableMatchers}
                     />
                     <span className="truncate">{variant.label}</span>
@@ -1903,7 +2029,11 @@ export function SectionsEditor({
                 <>
                   <MatcherPicker
                     currentRt={ruleResolveType}
-                    currentLabel={formatMatcher(activeVariant?.rule)}
+                    currentLabel={resolveVariantRuleLabel(
+                      activeVariant?.rule,
+                      decofile ?? {},
+                      formatMatcher,
+                    )}
                     matchers={availableMatchers}
                     onSelect={handleMatcherTypeChange}
                   />
@@ -1966,14 +2096,30 @@ export function SectionsEditor({
       {renameVariantIndex !== null && (
         <VariantRenameDialog
           open
-          initialName={pageVariants[renameVariantIndex]?.name ?? ""}
-          autoLabel={formatMatcher(pageVariants[renameVariantIndex]?.rule)}
-          onSubmit={(name) => {
-            handleRenamePageVariant(renameVariantIndex, name);
-            setRenameVariantIndex(null);
+          initialName={
+            isSavedMatcherBlockReference(
+              pageVariants[renameVariantIndex]?.rule,
+              decofile ?? {},
+            )
+              ? resolveVariantRuleLabel(
+                  pageVariants[renameVariantIndex]?.rule,
+                  decofile ?? {},
+                  formatMatcher,
+                )
+              : ""
+          }
+          autoLabel={formatMatcher(
+            resolveEffectiveMatcherRule(
+              pageVariants[renameVariantIndex]?.rule,
+              decofile ?? {},
+            ),
+          )}
+          isPending={renameVariantPending}
+          onSubmit={async (name) => {
+            await handleRenamePageVariant(renameVariantIndex, name);
           }}
           onOpenChange={(open) => {
-            if (!open) setRenameVariantIndex(null);
+            if (!open && !renameVariantPending) setRenameVariantIndex(null);
           }}
         />
       )}
