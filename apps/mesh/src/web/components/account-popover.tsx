@@ -203,7 +203,9 @@ function OrganizationsPanel({
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5 flex flex-col gap-1">
         {filtered.length === 0 && (
           <p className="px-3 py-4 text-sm text-muted-foreground/60 text-center">
-            No organizations match "{query}"
+            {query
+              ? `No organizations match "${query}"`
+              : "No organizations available"}
           </p>
         )}
         {filtered.map((org) => (
