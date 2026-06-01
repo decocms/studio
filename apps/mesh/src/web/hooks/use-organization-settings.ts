@@ -278,7 +278,7 @@ export function useDefaultHomeAgents(): DefaultHomeAgentsConfig | null {
   return data ?? null;
 }
 
-export function useUpdateDefaultHomeAgents() {
+function useUpdateDefaultHomeAgents() {
   const mutation = useUpdateOrganizationSettings();
   return {
     ...mutation,
