@@ -1538,24 +1538,15 @@ export function SectionsEditor({
   const handleReorderPageVariants = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return;
 
-    mutatePageVariants(
-      (variants) => arrayMove(variants, fromIndex, toIndex),
-      () => {
-        if (safeVariantIndex === fromIndex) {
-          setActiveVariantIndex(toIndex);
-        } else if (
-          fromIndex < safeVariantIndex &&
-          toIndex >= safeVariantIndex
-        ) {
-          setActiveVariantIndex(safeVariantIndex - 1);
-        } else if (
-          fromIndex > safeVariantIndex &&
-          toIndex <= safeVariantIndex
-        ) {
-          setActiveVariantIndex(safeVariantIndex + 1);
-        }
-      },
-    );
+    if (safeVariantIndex === fromIndex) {
+      setActiveVariantIndex(toIndex);
+    } else if (fromIndex < safeVariantIndex && toIndex >= safeVariantIndex) {
+      setActiveVariantIndex(safeVariantIndex - 1);
+    } else if (fromIndex > safeVariantIndex && toIndex <= safeVariantIndex) {
+      setActiveVariantIndex(safeVariantIndex + 1);
+    }
+
+    mutatePageVariants((variants) => arrayMove(variants, fromIndex, toIndex));
   };
 
   const handleDeletePageVariant = (variantIndex: number) => {

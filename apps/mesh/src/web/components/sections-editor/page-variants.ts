@@ -123,8 +123,8 @@ function createMultivariatePageSections(
   existing?: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
-    __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
     ...existing,
+    __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
     variants,
   };
 }
