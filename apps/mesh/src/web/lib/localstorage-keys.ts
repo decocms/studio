@@ -20,6 +20,8 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:simpleModeTier:${locator}`,
   chatAutosend: (locator: ProjectLocator | string, taskId: string) =>
     `mesh:chat:autosend:${locator}:${taskId}`,
+  chatDraft: (locator: ProjectLocator | string, taskKey: string) =>
+    `mesh:chat:draft:${locator}:${taskKey}`,
   assistantChatActiveTask: (locator: ProjectLocator) =>
     `mesh:assistant-chat:active-task:${locator}`,
   decoChatPanelWidth: () => `mesh:decochat:panel-width`,
