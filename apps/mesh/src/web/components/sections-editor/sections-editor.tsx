@@ -35,7 +35,11 @@ import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
-import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
+import {
+  ALWAYS_MATCHER_RESOLVE_TYPE,
+  labelFromResolveType,
+  type RawSection,
+} from "./section-types";
 import {
   buildMatcherBlockData,
   buildMatcherBlockReference,
@@ -82,17 +86,6 @@ const VARIANT_TAB_ACTIVE_CLASS =
 
 const capitalize = (s: string) =>
   s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-
-function labelFromResolveType(rt: string): string {
-  const segments = rt.split("/");
-  const filename = segments[segments.length - 1] ?? rt;
-  return (
-    filename
-      .replace(/\.(tsx?|jsx?)$/, "")
-      .replace(/[-_]/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
-  );
-}
 
 /**
  * Render a `start`/`end` ISO-date pair as a compact range — used by deco's
@@ -1793,7 +1786,7 @@ export function SectionsEditor({
             className={cn(
               "border-b px-3 py-2.5",
               showGlobalBanner &&
-                "border-[oklch(0.7278_0.151_289/0.22)] bg-[oklch(0.7278_0.151_289/0.12)] dark:bg-[oklch(0.7278_0.151_289/0.16)]",
+                "border-global-section/22 bg-global-section/12 dark:bg-global-section/16",
             )}
           >
             <div className="flex min-w-0 items-center gap-2 overflow-hidden">
@@ -1843,13 +1836,13 @@ export function SectionsEditor({
                           "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors",
                           isLast
                             ? showGlobalBanner
-                              ? "font-semibold text-[oklch(0.45_0.15_289)] dark:text-[oklch(0.78_0.15_289)]"
+                              ? "font-semibold text-global-section-fg dark:text-global-section-fg-dark"
                               : "font-medium text-foreground"
                             : showGlobalBanner
                               ? "text-foreground/80"
                               : "text-muted-foreground",
                           showGlobalBanner
-                            ? "hover:bg-[oklch(0.7278_0.151_289/0.15)]"
+                            ? "hover:bg-global-section/15"
                             : "hover:bg-accent hover:text-accent-foreground",
                         )}
                       >
@@ -1863,7 +1856,7 @@ export function SectionsEditor({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="shrink-0 cursor-help">
-                      <Globe01 className="size-4 text-[oklch(0.45_0.15_289)] dark:text-[oklch(0.78_0.15_289)]" />
+                      <Globe01 className="size-4 text-global-section-fg dark:text-global-section-fg-dark" />
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-[260px]">

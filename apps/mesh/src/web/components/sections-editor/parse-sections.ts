@@ -2,6 +2,8 @@ import { isLazyResolveType } from "./section-lazy";
 import {
   labelFromResolveType,
   NEVER_MATCHER_RESOLVE_TYPE,
+  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+  SECTION_MULTIVARIATE_RESOLVE_TYPE,
   type RawSection,
 } from "./section-types";
 
@@ -48,7 +50,10 @@ export function parseSections(
       : undefined;
     const mvRt = isLazy ? (innerSection?.__resolveType ?? "") : rt;
 
-    if (mvRt.includes("flags/multivariate")) {
+    if (
+      mvRt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
+      mvRt === SECTION_MULTIVARIATE_RESOLVE_TYPE
+    ) {
       const mvObj = (isLazy ? innerSection : s) as RawSection;
       const rawVariants = Array.isArray(mvObj?.variants) ? mvObj.variants : [];
 

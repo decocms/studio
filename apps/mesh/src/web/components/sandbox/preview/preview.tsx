@@ -815,7 +815,7 @@ export function PreviewContent() {
                     onClick={() => setPagesOpen((prev) => !prev)}
                   >
                     {activeGlobalSection && (
-                      <span className="shrink-0 inline-flex items-center gap-1 rounded bg-[oklch(0.7278_0.151_289/0.14)] px-1.5 py-0.5 text-[11px] font-medium text-[oklch(0.45_0.15_289)] dark:text-[oklch(0.78_0.15_289)]">
+                      <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
                         <Globe02 size={11} />
                         Global
                       </span>

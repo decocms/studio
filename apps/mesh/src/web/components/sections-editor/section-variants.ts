@@ -31,7 +31,14 @@ export function showSection(raw: RawSection): RawSection | null {
   const variants = mvObj?.variants as
     | Array<Record<string, unknown>>
     | undefined;
-  return (variants?.[0]?.value as RawSection | undefined) ?? null;
+  const first = variants?.[0];
+  const rule = first?.rule as Record<string, unknown> | undefined;
+  if (
+    (rule?.__resolveType as string | undefined) !== NEVER_MATCHER_RESOLVE_TYPE
+  ) {
+    return null;
+  }
+  return (first?.value as RawSection | undefined) ?? null;
 }
 
 export interface SectionFlagVariant {

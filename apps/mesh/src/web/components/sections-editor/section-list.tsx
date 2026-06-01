@@ -48,9 +48,9 @@ import { parseSections, type ParsedSection } from "./parse-sections";
 export { parseSections, type ParsedSection, type RawSection };
 
 const GLOBAL_SECTION_ROW_CLASS =
-  "text-[oklch(0.45_0.15_289)] hover:bg-[oklch(0.7278_0.151_289/0.12)] dark:text-[oklch(0.78_0.15_289)] dark:hover:bg-[oklch(0.7278_0.151_289/0.15)]";
+  "text-global-section-fg hover:bg-global-section/12 dark:text-global-section-fg-dark dark:hover:bg-global-section/15";
 const GLOBAL_SECTION_MENU_ITEM_CLASS =
-  "text-[oklch(0.45_0.15_289)] focus:bg-[oklch(0.7278_0.151_289/0.12)] focus:text-[oklch(0.45_0.15_289)] dark:text-[oklch(0.78_0.15_289)] dark:focus:bg-[oklch(0.7278_0.151_289/0.15)] dark:focus:text-[oklch(0.78_0.15_289)] [&_svg]:!text-[oklch(0.7278_0.151_289)]";
+  "text-global-section-fg focus:bg-global-section/12 focus:text-global-section-fg dark:text-global-section-fg-dark dark:focus:bg-global-section/15 dark:focus:text-global-section-fg-dark [&_svg]:!text-global-section";
 
 interface SectionEntry {
   id: string;
@@ -197,6 +197,7 @@ function SortableSectionItem({
             onToggleHidden();
           }}
           onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
         >
           {section.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
         </Button>
