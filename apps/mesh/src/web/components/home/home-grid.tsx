@@ -7,10 +7,10 @@
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense } from "react";
 import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
-import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowRight, X } from "@untitledui/icons";
+import { toast } from "sonner";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { ErrorBoundary } from "@/web/components/error-boundary";
@@ -21,9 +21,8 @@ import {
 } from "@/web/hooks/use-home-next-actions";
 import {
   useDefaultHomeAgents,
-  useUpdateDefaultHomeAgents,
+  useHomeAgentsWriter,
 } from "@/web/hooks/use-organization-settings";
-import { KEYS } from "@/web/lib/query-keys";
 import { useStartThreadFromPrompt } from "@/web/hooks/use-start-thread-from-prompt";
 import { TileBoard } from "./tile-board/tile-board";
 import { useBoardLayout } from "./tile-board/use-board-layout";
@@ -400,8 +399,7 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
   const { isLoading, prompts, tiles } = useHomeNextActions(org.slug);
   const homeIds = useDefaultHomeAgents()?.ids ?? [];
   const pinnedAgentIds = new Set(homeIds);
-  const updateDefaultHome = useUpdateDefaultHomeAgents();
-  const queryClient = useQueryClient();
+  const homeWriter = useHomeAgentsWriter();
 
   // Agents that have a UI tile own their prompts — those prompts render
   // inline inside the tile, not as their own grid cards.
@@ -447,22 +445,11 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
   // `hidden` list no longer suppresses pinned agents, so hiding alone would
   // be a no-op. Onboarding/suggestion cards (not pinned) still just hide.
   const removeAgentFromHome = (agentId: string) => {
-    const next = homeIds.filter((id) => id !== agentId);
-    queryClient.setQueryData(
-      KEYS.organizationSettings(org.id),
-      (prev: { default_home_agents?: unknown } | undefined) =>
-        prev ? { ...prev, default_home_agents: { ids: next } } : prev,
-    );
-    updateDefaultHome.mutate(
-      { ids: next },
-      {
-        onSuccess: () =>
-          queryClient.refetchQueries({
-            queryKey: KEYS.homeNextActions(org.slug),
-            type: "active",
-          }),
-      },
-    );
+    void homeWriter
+      .apply((ids) => ids.filter((id) => id !== agentId))
+      .catch(() =>
+        toast.error("Couldn't remove from home — please try again."),
+      );
   };
   const removeCandidate = (id: string) => {
     const candidate = candidatesById.get(id);

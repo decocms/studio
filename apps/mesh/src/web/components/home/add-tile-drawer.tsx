@@ -41,7 +41,7 @@ import {
 } from "@decocms/mesh-sdk";
 import {
   useDefaultHomeAgents,
-  useUpdateDefaultHomeAgents,
+  useHomeAgentsWriter,
 } from "@/web/hooks/use-organization-settings";
 import { useHomeNextActions } from "@/web/hooks/use-home-next-actions";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -142,14 +142,17 @@ export function AddTileDrawer({ open, onOpenChange }: AddTileDrawerProps) {
  * per-agent metadata writes go through the same place so the home-next-actions
  * query is fresh by the time the caller resolves.
  */
-function useHomeBoard() {
+function useHomeBoard(validIds?: ReadonlySet<string>) {
   const { org } = useProjectContext();
   // Read live from the org-settings cache so we never act on a stale snapshot
   // — seeding local state from this (non-suspense) query risked persisting an
   // empty list on first render and wiping the existing agents.
   const saved = useDefaultHomeAgents();
   const homeIds = saved?.ids ?? [];
-  const updateDefaultHome = useUpdateDefaultHomeAgents();
+  // All membership/order writes go through this serialized, optimistic,
+  // rollback-capable writer — see useHomeAgentsWriter for why we never touch
+  // the cache or the raw mutation directly here.
+  const writer = useHomeAgentsWriter();
   const actions = useVirtualMCPActions();
   const queryClient = useQueryClient();
 
@@ -159,28 +162,22 @@ function useHomeBoard() {
       type: "active",
     });
 
-  const persist = async (next: string[]) => {
-    // Optimistically reflect the new order/membership in the org-settings
-    // cache so the drawer (and the board, which reads home-next-actions after
-    // the refetch below) update without waiting on the round-trip.
-    queryClient.setQueryData(
-      KEYS.organizationSettings(org.id),
-      (prev: { default_home_agents?: unknown } | undefined) =>
-        prev ? { ...prev, default_home_agents: { ids: next } } : prev,
-    );
-    await updateDefaultHome.mutateAsync({ ids: next });
-    await refetchHome();
-  };
-
   const isOnHome = (id: string) => homeIds.includes(id);
-  const atLimit = homeIds.length >= HOME_LIMIT;
+  // Ids of deleted agents linger in the stored list (they just drop off the
+  // display). Don't let them eat into the limit and block adding agents the
+  // user can actually see — count only resolvable ids when we know which exist.
+  const liveCount = validIds
+    ? homeIds.filter((id) => validIds.has(id)).length
+    : homeIds.length;
+  const atLimit = liveCount >= HOME_LIMIT;
 
   const addAgent = (id: string) => {
     if (isOnHome(id) || atLimit) return Promise.resolve();
-    return persist([...homeIds, id]);
+    return writer.apply((ids) => (ids.includes(id) ? null : [...ids, id]));
   };
-  const removeAgent = (id: string) => persist(homeIds.filter((x) => x !== id));
-  const reorder = (next: string[]) => persist(next);
+  const removeAgent = (id: string) =>
+    writer.apply((ids) => ids.filter((x) => x !== id));
+  const reorder = (next: string[]) => writer.apply(() => next);
 
   // Writes an agent's metadata (tile/prompt curation) and makes sure the agent
   // is on the home, then waits for home-next-actions to refetch.
@@ -193,7 +190,9 @@ function useHomeBoard() {
       data: { metadata: nextMetadata },
     });
     if (!isOnHome(agent.id) && !atLimit) {
-      await updateDefaultHome.mutateAsync({ ids: [...homeIds, agent.id] });
+      await writer.apply((ids) =>
+        ids.includes(agent.id) ? null : [...ids, agent.id],
+      );
     }
     await refetchHome();
   };
@@ -212,8 +211,9 @@ function useHomeBoard() {
 type HomeBoard = ReturnType<typeof useHomeBoard>;
 
 function DrawerBody({ search }: { search: string }) {
-  const home = useHomeBoard();
   const agents = useVirtualMCPs({ pageSize: 1000 });
+  // Pass the set of existing agents so the limit ignores stale/deleted ids.
+  const home = useHomeBoard(new Set(agents.map((a) => a.id)));
 
   const byId = new Map(agents.map((a) => [a.id, a]));
   const lower = search.trim().toLowerCase();
@@ -273,7 +273,9 @@ function OnHomeSection({
     const oldIndex = ids.indexOf(active.id as string);
     const newIndex = ids.indexOf(over.id as string);
     if (oldIndex === -1 || newIndex === -1) return;
-    home.reorder(arrayMove([...ids], oldIndex, newIndex));
+    home
+      .reorder(arrayMove([...ids], oldIndex, newIndex))
+      .catch(() => toast.error("Couldn't reorder home — please try again."));
   };
 
   return (
@@ -441,7 +443,13 @@ function HomeAgentRow({
         </button>
         <button
           type="button"
-          onClick={() => home.removeAgent(agent.id)}
+          onClick={() =>
+            home
+              .removeAgent(agent.id)
+              .catch(() =>
+                toast.error("Couldn't remove from home — please try again."),
+              )
+          }
           aria-label={`Remove ${agent.title ?? agent.id} from home`}
           title="Remove from home"
           className="shrink-0 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
@@ -470,6 +478,8 @@ function AvailableAgentRow({
     setAdding(true);
     try {
       await home.addAgent(agent.id);
+    } catch {
+      toast.error("Couldn't add to home — please try again.");
     } finally {
       setAdding(false);
     }
@@ -710,6 +720,7 @@ function ToolRow({
       await home.saveAgentMetadata(agent, nextMetadata);
     } catch (err) {
       console.error("[home-tiles] failed to toggle tile", err);
+      toast.error("Couldn't update home — please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -916,6 +927,7 @@ function PromptRow({
       await home.saveAgentMetadata(agent, nextMetadata);
     } catch (err) {
       console.error("[home-tiles] failed to toggle prompt", err);
+      toast.error("Couldn't update home — please try again.");
     } finally {
       setSubmitting(false);
     }
