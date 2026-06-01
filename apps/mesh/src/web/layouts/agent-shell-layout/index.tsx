@@ -265,10 +265,23 @@ function VmEventsBridge({
     triggerAutoStart,
   ]);
 
+  // Open the events stream only when a sandbox exists or is about to: a
+  // GitHub-linked agent auto-starts one (effect above), or the sandboxMap
+  // already has an entry for this (user, branch). Without this gate, an
+  // ephemeral decopilot run that never spawns a sandbox would open an events
+  // stream that 404s and reconnects forever (daemon log spam).
+  const branchMap =
+    userId && currentBranch
+      ? parseBranchMap(sandboxMap?.[userId]?.[currentBranch])
+      : {};
+  const shouldConnect =
+    hasActiveGithubRepo || Object.keys(branchMap).length > 0;
+
   return (
     <SandboxEventsProvider
       virtualMcpId={virtualMcpId}
       branch={currentBranch ?? null}
+      enabled={shouldConnect}
     >
       {children}
     </SandboxEventsProvider>

@@ -136,10 +136,20 @@ const LOG_EVENT = "log" as const;
 export function SandboxEventsProvider({
   virtualMcpId,
   branch,
+  enabled = true,
   children,
 }: {
   virtualMcpId: string | null;
   branch: string | null;
+  /**
+   * Open the events stream only when a sandbox exists (or is about to) for
+   * this (virtualMcpId, branch). Mounting the provider with `enabled={false}`
+   * keeps the idle context available to consumers without connecting — this
+   * avoids an endless 404/reconnect loop (and daemon log spam) for branches
+   * that never spawn a sandbox, e.g. an ephemeral decopilot run that never
+   * touches a VM tool. Defaults to true to preserve prior behavior.
+   */
+  enabled?: boolean;
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
@@ -183,7 +193,7 @@ export function SandboxEventsProvider({
     setActiveProcesses([]);
     buffers.current.clear();
 
-    if (!virtualMcpId || !branch) return;
+    if (!virtualMcpId || !branch || !enabled) return;
 
     const sseUrl = `/api/${encodeURIComponent(org.slug)}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/events`;
 
@@ -387,7 +397,7 @@ export function SandboxEventsProvider({
       if (reconnectTimer) clearTimeout(reconnectTimer);
       clearSuspendTimer();
     };
-  }, [virtualMcpId, branch, org.slug]);
+  }, [virtualMcpId, branch, org.slug, enabled]);
 
   const value: SandboxEventsValue = {
     phase,
