@@ -96,11 +96,6 @@ function SectionRowContent({ section }: { section: ParsedSection }) {
       >
         {section.label}
       </span>
-      {section.isHidden ? (
-        <EyeOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      ) : (
-        <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60 opacity-0 group-hover:opacity-100" />
-      )}
       {section.isLazy && (
         <Zap className="h-3.5 w-3.5 shrink-0 text-yellow-500" />
       )}
@@ -134,6 +129,7 @@ function SortableSectionItem({
   onDelete,
   onDuplicate,
   onMakeReusable,
+  onToggleHidden,
 }: {
   section: ParsedSection;
   sortableId: string;
@@ -142,6 +138,7 @@ function SortableSectionItem({
   onDelete: () => void;
   onDuplicate: () => void;
   onMakeReusable: () => void;
+  onToggleHidden: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
@@ -180,6 +177,30 @@ function SortableSectionItem({
       )}
     >
       <SectionRowContent section={section} />
+
+      {!section.isMultivariate && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={
+            section.isHidden ? `Show ${section.label}` : `Hide ${section.label}`
+          }
+          className={cn(
+            "size-6 shrink-0 transition-opacity",
+            section.isHidden
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100",
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleHidden();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {section.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+        </Button>
+      )}
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -244,6 +265,7 @@ export function SectionList({
   onDelete,
   onDuplicate,
   onMakeReusable,
+  onToggleHidden,
   onAddSection,
   canAddSection = true,
 }: {
@@ -255,6 +277,7 @@ export function SectionList({
   onDelete: (index: number) => void;
   onDuplicate: (index: number) => void;
   onMakeReusable: (index: number) => void;
+  onToggleHidden: (index: number) => void;
   onAddSection: () => void;
   canAddSection?: boolean;
 }) {
@@ -381,6 +404,7 @@ export function SectionList({
                 onDelete={() => onDelete(entry.section.index)}
                 onDuplicate={() => onDuplicate(entry.section.index)}
                 onMakeReusable={() => onMakeReusable(entry.section.index)}
+                onToggleHidden={() => onToggleHidden(entry.section.index)}
               />
             ))}
           </div>

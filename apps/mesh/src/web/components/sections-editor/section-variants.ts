@@ -1,7 +1,38 @@
 import { isLazyResolveType } from "./section-lazy";
-import type { RawSection } from "./section-types";
+import {
+  NEVER_MATCHER_RESOLVE_TYPE,
+  SECTION_MULTIVARIATE_RESOLVE_TYPE,
+  type RawSection,
+} from "./section-types";
 
 export type { RawSection };
+
+/**
+ * Wrap a section in a multivariate block gated by a `never` matcher so it never
+ * renders on the live site. Parses back as `isHidden`. The original section is
+ * preserved verbatim as the variant value, so {@link showSection} can restore
+ * it exactly — works for normal, lazy, and saved-block sections alike.
+ */
+export function hideSection(raw: RawSection): RawSection {
+  return {
+    __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+    variants: [
+      { value: raw, rule: { __resolveType: NEVER_MATCHER_RESOLVE_TYPE } },
+    ],
+  } as RawSection;
+}
+
+/** Unwrap a hidden section back to the section it was hiding, or null. */
+export function showSection(raw: RawSection): RawSection | null {
+  const outerLazy = isLazyResolveType(raw.__resolveType);
+  const mvObj = (outerLazy ? raw.section : raw) as
+    | Record<string, unknown>
+    | undefined;
+  const variants = mvObj?.variants as
+    | Array<Record<string, unknown>>
+    | undefined;
+  return (variants?.[0]?.value as RawSection | undefined) ?? null;
+}
 
 export interface SectionFlagVariant {
   label: string;

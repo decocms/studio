@@ -4,13 +4,16 @@ import {
   duplicateMultivariateSectionVariant,
   flattenMultivariateSection,
   getMultivariateSectionObject,
+  hideSection,
   isDefaultVariantRule,
   parseSectionFlagVariants,
   pickVariantToKeepIndex,
+  showSection,
   unwrapVariantSectionValue,
   updateMultivariateSectionVariantValue,
   writeVariantSectionValue,
 } from "./section-variants";
+import { parseSections } from "./parse-sections";
 
 describe("section-variants", () => {
   it("getMultivariateSectionObject unwraps lazy multivariate sections", () => {
@@ -244,5 +247,39 @@ describe("section-variants", () => {
         title: "Default",
       },
     });
+  });
+
+  it("hideSection produces a section parsed as hidden", () => {
+    const hidden = hideSection({
+      __resolveType: "site/sections/Hero.tsx",
+      title: "Hero",
+    });
+
+    expect(parseSections([hidden], {})[0]?.isHidden).toBe(true);
+  });
+
+  it("hideSection/showSection round-trips normal, lazy, and saved-block sections", () => {
+    const cases = [
+      { __resolveType: "site/sections/Hero.tsx", title: "Hero" },
+      {
+        __resolveType: "website/sections/Rendering/Lazy.tsx",
+        section: { __resolveType: "site/sections/Hero.tsx", title: "Lazy" },
+      },
+      { __resolveType: "Header" },
+    ];
+
+    for (const original of cases) {
+      const restored = showSection(hideSection(original as never));
+      expect(restored).toEqual(original as never);
+    }
+  });
+
+  it("showSection returns null when there is no hidden value", () => {
+    expect(
+      showSection({
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [],
+      } as never),
+    ).toBeNull();
   });
 });

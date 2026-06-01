@@ -1,5 +1,9 @@
 import { isLazyResolveType } from "./section-lazy";
-import { labelFromResolveType, type RawSection } from "./section-types";
+import {
+  labelFromResolveType,
+  NEVER_MATCHER_RESOLVE_TYPE,
+  type RawSection,
+} from "./section-types";
 
 export interface ParsedSection {
   index: number;
@@ -48,12 +52,10 @@ export function parseSections(
       const mvObj = (isLazy ? innerSection : s) as RawSection;
       const rawVariants = Array.isArray(mvObj?.variants) ? mvObj.variants : [];
 
-      const NEVER_TYPES = ["website/matchers/never.ts"];
       if (
         rawVariants.length === 1 &&
-        NEVER_TYPES.includes(
-          (rawVariants[0]?.rule?.__resolveType as string) ?? "",
-        )
+        ((rawVariants[0]?.rule?.__resolveType as string) ?? "") ===
+          NEVER_MATCHER_RESOLVE_TYPE
       ) {
         const innerValue = (rawVariants[0]?.value ?? {}) as Record<
           string,
