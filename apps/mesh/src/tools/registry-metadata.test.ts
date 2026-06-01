@@ -54,6 +54,33 @@ describe("resolveCapabilities", () => {
     const result = resolveCapabilities({ "*": ["*"] });
     expect(Object.values(result).every((v) => v === true)).toBe(true);
   });
+
+  it("does NOT treat a per-connection wildcard as a global grant", () => {
+    // Full access to one connection must not light up org-management
+    // capabilities — only `*` / `self` wildcards are global.
+    const result = resolveCapabilities({ conn_abc123: ["*"] });
+    expect(Object.values(result).every((v) => v === false)).toBe(true);
+  });
+
+  it("does not throw on malformed (non-array) permission buckets", () => {
+    const malformed = {
+      self: "ORGANIZATION_GET", // string, not array
+      "*": 42, // number
+      conn_x: null, // null
+    } as unknown as Record<string, string[]>;
+    const result = resolveCapabilities(malformed);
+    // Treated as empty → no gated capability granted, and no throw.
+    expect(Object.values(result).every((v) => v === false)).toBe(true);
+  });
+
+  it("ignores non-array buckets but still resolves valid ones", () => {
+    const mixed = {
+      self: [...sampleTools],
+      conn_x: null, // malformed bucket is skipped, not fatal
+    } as unknown as Record<string, string[]>;
+    const result = resolveCapabilities(mixed);
+    expect(result[sampleCap.id]).toBe(true);
+  });
 });
 
 describe("allCapabilitiesGranted", () => {

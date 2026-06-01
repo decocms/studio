@@ -251,7 +251,13 @@ app.get("/my-capabilities/:slug", async (c) => {
   const raw = customRole?.permission;
   if (typeof raw === "string") {
     try {
-      permission = JSON.parse(raw) as Record<string, string[]>;
+      const parsed: unknown = JSON.parse(raw);
+      // Stored permission must be a JSON object map. Anything else (array,
+      // primitive, null) is treated as no permissions rather than trusted —
+      // resolveCapabilities is also defensive, but we don't pass it garbage.
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        permission = parsed as Record<string, string[]>;
+      }
     } catch {
       permission = {};
     }

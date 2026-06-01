@@ -1347,20 +1347,34 @@ export function allCapabilitiesGranted(): Record<string, boolean> {
  * A capability is granted when every tool it lists appears in some resource
  * bucket of the permission, or when the role holds an org-wide / self wildcard.
  * The hidden basic-usage capability is excluded (always-on, never gated).
+ *
+ * Defensive by design: `permission` is JSON stored on the role, so buckets may
+ * be malformed despite the type — non-array buckets are treated as empty and
+ * never throw.
  */
 export function resolveCapabilities(
   permission: Record<string, string[]>,
 ): Record<string, boolean> {
-  const orgWildcard = permission["*"]?.includes("*") === true;
-  const selfWildcard = permission.self?.includes("*") === true;
+  const perm = permission as Record<string, unknown>;
+  const arrayBucket = (key: string): string[] => {
+    const value = perm[key];
+    return Array.isArray(value) ? (value as string[]) : [];
+  };
+
+  // ONLY an org-wide (`*`) or full org-tool (`self`) wildcard is a GLOBAL grant
+  // across every capability. A `["*"]` inside any other bucket (e.g. a
+  // connection id) means "all tools on that resource" and must NOT light up
+  // unrelated management capabilities.
+  const hasGlobalGrant =
+    arrayBucket("*").includes("*") || arrayBucket("self").includes("*");
 
   const grantedActions = new Set<string>();
-  if (!orgWildcard && !selfWildcard) {
-    for (const actions of Object.values(permission)) {
+  if (!hasGlobalGrant) {
+    for (const actions of Object.values(perm)) {
+      if (!Array.isArray(actions)) continue;
       for (const action of actions) grantedActions.add(action);
     }
   }
-  const hasGlobalGrant = orgWildcard || selfWildcard || grantedActions.has("*");
 
   const out: Record<string, boolean> = {};
   for (const cap of PERMISSION_CAPABILITIES) {
