@@ -294,12 +294,16 @@ test("parent agent with an unresolved slot emits a connect-required card + finis
         messages: [{ role: "user", parts: [{ type: "text", text: "hi" }] }],
         agent: { id: agentId },
         branch: "ephemeral",
-        // Pin a cloud sandbox so dispatch-target resolution doesn't require an
-        // online user-desktop link daemon (which this env has none of). The
-        // gate under test lives in the decopilot harness; we intentionally do
-        // NOT set harnessId (it derives "decopilot" from the openrouter
-        // credential), so the parent connect-gate path still runs.
-        sandboxProviderKind: "local-docker",
+        // Pin the cluster sandbox so dispatch-target resolution stays
+        // in-cluster (loopback) and never needs an online user-desktop link
+        // daemon (which this env / CI has none of). Without pinning, the
+        // default can resolve to "user-desktop" and 409. "cluster" and
+        // "user-desktop" are the only valid kinds (local-docker was removed in
+        // the local-docker-sandbox drop). The gate under test lives in the
+        // decopilot harness; we intentionally do NOT set harnessId (it derives
+        // "decopilot" from the openrouter credential), so the parent
+        // connect-gate path still runs.
+        sandboxProviderKind: "cluster",
       },
       headers: { "content-type": "application/json" },
     },
