@@ -6,6 +6,8 @@ import {
   deriveGroupHasMore,
   GROUP_PAGE_SIZE,
   nextPageOffset,
+  resolveGroupHasMore,
+  groupHasMoreFromTotal,
   type SidebarFilters,
 } from "./next-page-offset";
 
@@ -86,7 +88,12 @@ describe("deriveGroupHasMore", () => {
   });
 
   it("is true when the global list may still hide rows for this group", () => {
-    expect(deriveGroupHasMore(2, true)).toBe(true);
+    expect(deriveGroupHasMore(2, true)).toBe(false);
+  });
+
+  it("is true for a partial group only after the server total is probed", () => {
+    expect(groupHasMoreFromTotal(2, 5)).toBe(true);
+    expect(groupHasMoreFromTotal(5, 5)).toBe(false);
   });
 
   it("is false when the group is partial and the global list is exhausted", () => {
@@ -95,6 +102,20 @@ describe("deriveGroupHasMore", () => {
 
   it("is true for an empty group while the global list has more pages", () => {
     expect(deriveGroupHasMore(0, true)).toBe(true);
+  });
+});
+
+describe("resolveGroupHasMore", () => {
+  it("hides the button after a per-group fetch confirms exhaustion", () => {
+    expect(resolveGroupHasMore(true, false)).toBe(false);
+  });
+
+  it("shows the button while the global hint applies and nothing was fetched yet", () => {
+    expect(resolveGroupHasMore(true, null)).toBe(true);
+  });
+
+  it("keeps the button when the server reports another page", () => {
+    expect(resolveGroupHasMore(false, true)).toBe(true);
   });
 });
 

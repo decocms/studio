@@ -32,15 +32,7 @@ export function SortableTaskGroups({
       renderGroup={renderGroup}
       renderFixed={(props) => <TaskGroup key={props.virtualMcpId} {...props} />}
       renderSortable={(props, sortable) => (
-        <TaskGroup
-          key={props.virtualMcpId}
-          {...props}
-          sortableHandle={{
-            attributes: sortable.attributes,
-            listeners: sortable.listeners,
-          }}
-          isDragging={sortable.isDragging}
-        />
+        <TaskGroup key={props.virtualMcpId} {...props} sortable={sortable} />
       )}
     />
   );

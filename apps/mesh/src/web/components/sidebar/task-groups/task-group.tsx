@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Menu02, Plus } from "@untitledui/icons";
+import { ChevronDown, ChevronRight, Plus } from "@untitledui/icons";
 import { useState } from "react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
@@ -35,18 +35,17 @@ export interface TaskGroupProps {
   isOrgPinned?: boolean;
   canManageOrgPin?: boolean;
   onToggleOrgPin?: (virtualMcpId: string, pinned: boolean) => void;
-  /** When true, the group renders dimmed (used when filters wipe out the body). */
   /** Precomputed visible count for this group (avoids O(T) scan per hook). */
   groupVisibleCount?: number;
   /** When true, the group renders dimmed (used when filters wipe out the body). */
   dimmed: boolean;
   filters: SidebarFilters;
-  /** When set, shows a drag handle for reordering agent groups. */
-  sortableHandle?: {
+  /** When set, the group header is draggable for reordering. */
+  sortable?: {
     attributes: DraggableAttributes;
     listeners: SyntheticListenerMap | undefined;
+    isDragging: boolean;
   };
-  isDragging?: boolean;
 }
 
 export function TaskGroup({
@@ -64,11 +63,11 @@ export function TaskGroup({
   dimmed,
   filters,
   groupVisibleCount,
-  sortableHandle,
-  isDragging,
+  sortable,
 }: TaskGroupProps) {
   const [expanded, setExpanded] = useGroupExpanded(virtualMcpId, false);
   const isToolCallRuns = virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
+  const isDragging = sortable?.isDragging ?? false;
 
   function handleToggleExpanded() {
     const next = !expanded;
@@ -77,6 +76,9 @@ export function TaskGroup({
 
   const header = (
     <div
+      {...(sortable && !isToolCallRuns
+        ? { ...sortable.attributes, ...sortable.listeners }
+        : {})}
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
@@ -91,27 +93,10 @@ export function TaskGroup({
       className={cn(
         "group/group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-medium text-foreground",
         "cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors",
-        isDragging && "shadow-md bg-accent/40",
+        sortable && !isToolCallRuns && "touch-none active:cursor-grabbing",
+        isDragging && "shadow-md bg-accent/40 cursor-grabbing",
       )}
     >
-      {sortableHandle && !isToolCallRuns && (
-        <button
-          type="button"
-          {...sortableHandle.attributes}
-          {...sortableHandle.listeners}
-          aria-label="Drag to reorder agent group"
-          className={cn(
-            "shrink-0 text-muted-foreground hover:text-foreground touch-none",
-            isDragging
-              ? "cursor-grabbing"
-              : "cursor-pointer active:cursor-grabbing",
-            "opacity-0 group-hover/group:opacity-100 focus-visible:opacity-100",
-          )}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Menu02 size={14} />
-        </button>
-      )}
       <div className="relative size-5 shrink-0 flex items-center justify-center">
         <span className="absolute inset-0 flex items-center justify-center transition-opacity group-hover/group:opacity-0">
           <TaskGroupAvatar

@@ -56,6 +56,21 @@ export function buildShowMoreArgs(
   return args;
 }
 
+function nextPageOffsetFromThreads(
+  threads: Task[],
+  kind: GroupKind,
+  groupKey: string,
+  filters: SidebarFilters,
+): number {
+  let count = 0;
+  for (const thread of threads) {
+    if (threadMatchesSidebarGroup(thread, kind, groupKey, filters)) {
+      count++;
+    }
+  }
+  return count;
+}
+
 /**
  * Number of tasks currently loaded in the flat list that match the given
  * group and the active sidebar filters. This is the offset to pass to the
@@ -68,27 +83,7 @@ export function nextPageOffset(
   groupKey: string,
   filters: SidebarFilters,
 ): number {
-  let count = 0;
-  for (const thread of threads) {
-    if (thread.hidden) continue;
-    if (kind === "agent" && thread.virtual_mcp_id !== groupKey) continue;
-    if (
-      kind === "status" &&
-      (thread.status ?? "completed") !== (groupKey as StatusKey)
-    )
-      continue;
-    if (
-      filters.member === "mine" &&
-      filters.currentUserId &&
-      thread.created_by !== filters.currentUserId
-    ) {
-      continue;
-    }
-    if (filters.type === "automation" && !thread.trigger_id) continue;
-    if (filters.type === "manual" && thread.trigger_id) continue;
-    count++;
-  }
-  return count;
+  return nextPageOffsetFromThreads(threads, kind, groupKey, filters);
 }
 
 /** Per-group visible thread counts for the active sidebar filters (single O(T) pass). */
@@ -99,34 +94,68 @@ export function buildGroupThreadCounts(
 ): Map<string, number> {
   const counts = new Map<string, number>();
   for (const thread of threads) {
-    if (thread.hidden) continue;
     const groupKey =
       kind === "agent" ? thread.virtual_mcp_id : (thread.status ?? "completed");
     if (!groupKey) continue;
-    if (
-      filters.member === "mine" &&
-      filters.currentUserId &&
-      thread.created_by !== filters.currentUserId
-    ) {
-      continue;
-    }
-    if (filters.type === "automation" && !thread.trigger_id) continue;
-    if (filters.type === "manual" && thread.trigger_id) continue;
+    if (!threadMatchesSidebarGroup(thread, kind, groupKey, filters)) continue;
     counts.set(groupKey, (counts.get(groupKey) ?? 0) + 1);
   }
   return counts;
 }
 
 /**
- * Whether a group should offer "Show more" before any per-group fetch ran.
- * Uses the loaded flat list: a full page for this group, or a partial global
- * page that may still hide rows for this group on the server.
+ * Optimistic hint before the server total is known. A lightweight probe
+ * (`limit: 1`) replaces this as soon as the group body mounts.
  */
 export function deriveGroupHasMore(
   visibleCount: number,
   globalHasMore: boolean,
 ): boolean {
   if (visibleCount >= GROUP_PAGE_SIZE) return true;
-  if (globalHasMore) return true;
+  if (visibleCount === 0 && globalHasMore) return true;
   return false;
+}
+
+/** Authoritative once `COLLECTION_THREADS_LIST` returns `totalCount`. */
+export function groupHasMoreFromTotal(
+  visibleCount: number,
+  totalCount: number,
+): boolean {
+  return visibleCount < totalCount;
+}
+
+/** Combine derived pagination hint with per-group fetch result. */
+export function resolveGroupHasMore(
+  derivedHasMore: boolean,
+  serverHasMore: boolean | null,
+): boolean {
+  if (serverHasMore === false) return false;
+  if (serverHasMore === true) return true;
+  return derivedHasMore;
+}
+
+export function threadMatchesSidebarGroup(
+  thread: Task,
+  kind: GroupKind,
+  groupKey: string,
+  filters: SidebarFilters,
+): boolean {
+  if (thread.hidden) return false;
+  if (kind === "agent" && thread.virtual_mcp_id !== groupKey) return false;
+  if (
+    kind === "status" &&
+    (thread.status ?? "completed") !== (groupKey as StatusKey)
+  ) {
+    return false;
+  }
+  if (
+    filters.member === "mine" &&
+    filters.currentUserId &&
+    thread.created_by !== filters.currentUserId
+  ) {
+    return false;
+  }
+  if (filters.type === "automation" && !thread.trigger_id) return false;
+  if (filters.type === "manual" && thread.trigger_id) return false;
+  return true;
 }
