@@ -15,6 +15,7 @@ export { COLLECTION_VIRTUAL_MCP_DELETE } from "./delete";
 export { VIRTUAL_MCP_PLUGIN_CONFIG_GET } from "./plugin-config-get";
 export { VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE } from "./plugin-config-update";
 export { VIRTUAL_MCP_PINNED_VIEWS_UPDATE } from "./pinned-views-update";
+export { VIRTUAL_MCP_LAST_USED_LIST } from "./last-used-list";
 
 // Re-export schema types (only types, not runtime schemas)
 export type {

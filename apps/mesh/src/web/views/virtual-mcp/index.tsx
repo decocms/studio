@@ -1,3 +1,4 @@
+import { formatDistanceToNow } from "date-fns";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
@@ -64,6 +65,7 @@ import {
   useProjectContext,
   useVirtualMCP,
   useVirtualMCPActions,
+  useVirtualMCPsLastUsed,
 } from "@decocms/mesh-sdk";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1083,6 +1085,8 @@ function VirtualMcpDetailViewWithData({
 }) {
   const { org } = useProjectContext();
   const actions = useVirtualMCPActions();
+  const { data: lastUsedMap } = useVirtualMCPsLastUsed([virtualMcp.id]);
+  const lastUsedAt = lastUsedMap?.get(virtualMcp.id)?.last_used_at;
   const connectionActions = useConnectionActions();
   const queryClient = useQueryClient();
   const client = useMCPClient({
@@ -1661,19 +1665,26 @@ Define step-by-step how the agent should handle requests.
             </div>
 
             {/* Creator metadata */}
-            <div className="flex items-center gap-2 -mt-6 text-muted-foreground">
+            <div className="flex items-center gap-2 -mt-6 text-sm text-muted-foreground">
               <User
                 id={virtualMcp.created_by}
                 size="2xs"
                 className="text-sm text-muted-foreground"
               />
-              <span className="text-muted-foreground/50 text-sm">·</span>
-              <span className="text-sm">
+              <span className="text-muted-foreground/50">·</span>
+              <span>
+                Created{" "}
                 {new Date(virtualMcp.created_at).toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
                   year: "numeric",
                 })}
+              </span>
+              <span className="text-muted-foreground/50">·</span>
+              <span>
+                {lastUsedAt
+                  ? `Last used ${formatDistanceToNow(new Date(lastUsedAt), { addSuffix: true })}`
+                  : "Never used"}
               </span>
             </div>
 

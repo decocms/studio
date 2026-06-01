@@ -128,6 +128,7 @@ const ALL_TOOL_NAMES = [
   "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
   "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
   "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+  "VIRTUAL_MCP_LAST_USED_LIST",
 
   // Ai providers tools
   "AI_PROVIDERS_LIST",
@@ -636,6 +637,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Virtual MCPs",
   },
   {
+    name: "VIRTUAL_MCP_LAST_USED_LIST",
+    description: "Get last-used info for one or more virtual MCPs",
+    category: "Virtual MCPs",
+  },
+  {
     name: "AI_PROVIDERS_LIST",
     description: "List available AI providers",
     category: "AI Providers",
@@ -1005,6 +1011,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
       "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
+      "VIRTUAL_MCP_LAST_USED_LIST",
       // View automations
       "AUTOMATION_GET",
       "AUTOMATION_LIST",

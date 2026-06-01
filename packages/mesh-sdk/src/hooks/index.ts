@@ -75,6 +75,8 @@ export {
   useVirtualMCPs,
   useVirtualMCP,
   useVirtualMCPActions,
+  useVirtualMCPsLastUsed,
   type VirtualMCPFilter,
   type UseVirtualMCPsOptions,
+  type VirtualMCPLastUsed,
 } from "./use-virtual-mcp";
