@@ -144,7 +144,7 @@ export function ImageField({
     // against a misbehaving min-w-0 chain.
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
       <div className="min-w-0 space-y-0.5">
-        <Label htmlFor={path}>{label}</Label>
+        <Label htmlFor={path} className="text-muted-foreground">{label}</Label>
         {schema.description && (
           <p className="text-xs leading-normal text-muted-foreground">
             {schema.description}

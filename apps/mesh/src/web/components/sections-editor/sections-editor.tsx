@@ -1900,42 +1900,46 @@ export function SectionsEditor({
               )}
             </>
           )}
-          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
-            {activeSchema && formValue ? (
-              <SchemaForm
-                key={formResetKey}
-                schema={activeSchema}
-                value={formValue}
-                onChange={handleFormChange}
-                basePath=""
-                breadcrumbPath={[]}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-              />
-            ) : (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                No editable fields for this variant.
-              </div>
-            )}
+          <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
+            <div className="mx-auto max-w-2xl">
+              {activeSchema && formValue ? (
+                <SchemaForm
+                  key={formResetKey}
+                  schema={activeSchema}
+                  value={formValue}
+                  onChange={handleFormChange}
+                  basePath=""
+                  breadcrumbPath={[]}
+                  onBreadcrumbChange={setFieldBreadcrumbs}
+                />
+              ) : (
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  No editable fields for this variant.
+                </div>
+              )}
+            </div>
           </div>
         </ScrollArea>
       ) : isGlobalBlockMode ? (
         <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
-          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
-            {activeSchema && formValue ? (
-              <SchemaForm
-                key={formResetKey}
-                schema={activeSchema}
-                value={formValue}
-                onChange={handleFormChange}
-                basePath=""
-                breadcrumbPath={[]}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-              />
-            ) : (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                No editable fields for this global block.
-              </div>
-            )}
+          <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
+            <div className="mx-auto max-w-2xl">
+              {activeSchema && formValue ? (
+                <SchemaForm
+                  key={formResetKey}
+                  schema={activeSchema}
+                  value={formValue}
+                  onChange={handleFormChange}
+                  basePath=""
+                  breadcrumbPath={[]}
+                  onBreadcrumbChange={setFieldBreadcrumbs}
+                />
+              ) : (
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  No editable fields for this global block.
+                </div>
+              )}
+            </div>
           </div>
         </ScrollArea>
       ) : (

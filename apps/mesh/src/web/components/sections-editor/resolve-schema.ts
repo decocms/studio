@@ -27,6 +27,7 @@ export interface SchemaProperty {
     resolveType: string;
     title: string;
     description?: string;
+    schema?: SchemaProperty;
   }>;
 }
 
@@ -128,6 +129,10 @@ export function resolveSchema(
     let resolved = v;
     if (typeof v.$ref === "string") {
       resolved = resolveRef(v.$ref);
+      const refKey = v.$ref.split("/").pop() ?? "";
+      if (refKey === "VideoWidget" && !resolved.format) {
+        resolved = { ...resolved, format: "video-uri" };
+      }
     }
 
     // Extract enum values from anyOf/oneOf const/enum branches
@@ -235,6 +240,7 @@ export function resolveSchema(
                 typeof branch.description === "string"
                   ? branch.description
                   : undefined,
+              schema: buildProperty(branch, depth + 1),
             };
           });
           return {
@@ -256,6 +262,7 @@ export function resolveSchema(
             resolveType: string;
             title: string;
             description?: string;
+            schema?: SchemaProperty;
           }> = [];
           for (const branch of nonNull) {
             const def = resolveRef(branch.$ref as string);
@@ -299,6 +306,7 @@ export function resolveSchema(
                 typeof def.description === "string"
                   ? def.description
                   : undefined,
+              schema: buildProperty(def, depth + 1),
             });
           }
           return {

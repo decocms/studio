@@ -96,7 +96,7 @@ export function renderField(props: FieldProps) {
     return <ImageField key={props.path} {...props} />;
   }
   // file-uri → FileField (filename chip + any-type picker)
-  if (schema.format === "file-uri") {
+  if (schema.format === "file-uri" || schema.format === "video-uri") {
     return <FileField key={props.path} {...props} />;
   }
 

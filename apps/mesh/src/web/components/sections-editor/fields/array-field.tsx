@@ -16,7 +16,7 @@ function getItemLabel(item: unknown, index: number): string {
     return String(item);
   if (item && typeof item === "object" && !Array.isArray(item)) {
     const obj = item as Record<string, unknown>;
-    for (const key of ["name", "label", "title", "text", "href", "id"]) {
+    for (const key of ["name", "label", "title", "alt", "text", "href", "id"]) {
       if (typeof obj[key] === "string" && obj[key]) return obj[key] as string;
     }
   }
@@ -41,7 +41,7 @@ export function ArrayField({
     const defaultVal =
       itemSchema?.default !== undefined
         ? itemSchema.default
-        : t === "object"
+        : t === "object" || t === "block-ref"
           ? {}
           : t === "number" || t === "integer"
             ? 0
