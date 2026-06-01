@@ -136,12 +136,35 @@ export async function pollInteraction(
 
     const payload = (await res.json()) as Record<string, unknown>;
     const status = stringField(payload, "status") ?? "in_progress";
-    const outputs = parseOutputs(arrayField(payload, "outputs") ?? []);
+    const outputs = parseSteps(payload);
     if (opts.onProgress) opts.onProgress(buildTranscript(outputs));
 
     switch (status) {
       case "completed": {
         const result = finalize(outputs, parseUsage(payload));
+        // Diagnostic: a completed interaction with empty text means we mapped no
+        // answer text out of the payload. The Interactions API replaced `outputs`
+        // with `steps` (default 2026-05-26, legacy removed 2026-06-08); if Google
+        // shifts the shape again this fires. Log the raw top-level step/output
+        // `type`s so we can see what the model actually returned.
+        if (result.text.trim() === "") {
+          const rawSteps =
+            arrayField(payload, "steps") ??
+            arrayField(payload, "outputs") ??
+            [];
+          const types = [
+            ...new Set(
+              rawSteps.map((s) =>
+                s && typeof s === "object"
+                  ? ((s as Record<string, unknown>).type ?? "?")
+                  : typeof s,
+              ),
+            ),
+          ];
+          console.warn(
+            `[gemini-interactions] completed with empty text — step types=${JSON.stringify(types)} steps=${rawSteps.length} outputTokens=${result.usage.outputTokens}`,
+          );
+        }
         // Gemini surfaces citation URLs as `vertexaisearch.cloud.google.com/...`
         // redirects rather than the underlying source. Resolve them so the
         // UI shows the real domain instead of an opaque Google URL.
@@ -237,16 +260,53 @@ function finalize(
   return { text: textParts.join("\n\n"), citations, usage };
 }
 
-function parseOutputs(raw: unknown[]): OutputBlock[] {
+/**
+ * Flatten an interaction payload into answer/thinking blocks, tolerating both
+ * schemas:
+ *
+ *   New (default 2026-05-26): `steps[]`, where a `model_output` step nests the
+ *     answer in `content[]` items (`{type:"text", text, annotations}`) and a
+ *     `thought` step carries the thinking summary. Other step types
+ *     (google_search_call, function_call, …) carry no answer text.
+ *
+ *   Legacy (removed 2026-06-08): flat `outputs[]` blocks with `text` and
+ *     `annotations` directly on the block, typed `text` / `thought_summary`.
+ *
+ * Both collapse to the same {type:"text"|"thought_summary", text, annotations}
+ * shape so finalize()/buildTranscript() stay schema-agnostic.
+ */
+function parseSteps(payload: Record<string, unknown>): OutputBlock[] {
+  const raw =
+    arrayField(payload, "steps") ?? arrayField(payload, "outputs") ?? [];
   const out: OutputBlock[] = [];
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
-    const o = r as Record<string, unknown>;
-    const annotations = arrayField(o, "annotations");
+    const step = r as Record<string, unknown>;
+    const stepType = stringField(step, "type") ?? "text";
+    const isThought = stepType === "thought" || stepType === "thought_summary";
+    const content = arrayField(step, "content");
+    if (content) {
+      // New nested shape: pull text items out of `content[]`.
+      for (const c of content) {
+        if (!c || typeof c !== "object") continue;
+        const item = c as Record<string, unknown>;
+        if ((stringField(item, "type") ?? "text") !== "text") continue;
+        out.push({
+          type: isThought ? "thought_summary" : "text",
+          text: stringField(item, "text") ?? "",
+          annotations:
+            (arrayField(item, "annotations") as OutputBlock["annotations"]) ??
+            [],
+        });
+      }
+      continue;
+    }
+    // Legacy flat shape: text + annotations live on the block itself.
     out.push({
-      type: stringField(o, "type") ?? "text",
-      text: stringField(o, "text") ?? "",
-      annotations: (annotations as OutputBlock["annotations"]) ?? [],
+      type: isThought ? "thought_summary" : stepType,
+      text: stringField(step, "text") ?? "",
+      annotations:
+        (arrayField(step, "annotations") as OutputBlock["annotations"]) ?? [],
     });
   }
   return out;
@@ -258,8 +318,15 @@ function parseUsage(payload: Record<string, unknown>): {
 } {
   const usage = payload.usage as Record<string, unknown> | undefined;
   if (!usage) return { inputTokens: 0, outputTokens: 0 };
-  const inputTokens = numberField(usage, "input_tokens") ?? 0;
+  // New schema (2026-05-26): total_input_tokens / total_output_tokens.
+  // Legacy: input_tokens / output_tokens. Fall back to total_tokens - input
+  // when only the aggregate is present.
+  const inputTokens =
+    numberField(usage, "total_input_tokens") ??
+    numberField(usage, "input_tokens") ??
+    0;
   const outputTokens =
+    numberField(usage, "total_output_tokens") ??
     numberField(usage, "output_tokens") ??
     Math.max(0, (numberField(usage, "total_tokens") ?? 0) - inputTokens);
   return { inputTokens, outputTokens };

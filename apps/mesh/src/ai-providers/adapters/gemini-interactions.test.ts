@@ -132,6 +132,82 @@ describe("pollInteraction", () => {
     expect(progress.at(-1)).toContain("Researching");
   });
 
+  test("parses the new steps schema (model_output content + total_* usage)", async () => {
+    const progress: string[] = [];
+    queueFetch([
+      () =>
+        jsonResponse({
+          status: "completed",
+          steps: [
+            {
+              type: "thought",
+              content: [{ type: "text", text: "Researching…" }],
+            },
+            { type: "google_search_call" },
+            {
+              type: "model_output",
+              content: [
+                {
+                  type: "text",
+                  text: "The answer is 42.",
+                  annotations: [
+                    {
+                      type: "url_citation",
+                      url: "https://example.com",
+                      title: "Example",
+                      start_index: 0,
+                      end_index: 5,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          usage: {
+            total_input_tokens: 100,
+            total_output_tokens: 50,
+            total_tokens: 199,
+          },
+        }),
+    ]);
+
+    const result = await pollInteraction({
+      apiKey: "k",
+      interactionId: "i_steps",
+      pollIntervalMs: 0,
+      onProgress: (t) => progress.push(t),
+    });
+
+    expect(result.text).toBe("The answer is 42.");
+    expect(result.citations).toEqual([
+      { url: "https://example.com", title: "Example" },
+    ]);
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 50 });
+    expect(progress.at(-1)).toContain("The answer is 42.");
+    expect(progress.at(-1)).toContain("Researching");
+  });
+
+  test("usage falls back to total_tokens when only the aggregate is present", async () => {
+    // Reproduces the field client's failing thread: new schema usage carried
+    // only total_tokens (199555), no total_output_tokens → fall back.
+    queueFetch([
+      () =>
+        jsonResponse({
+          status: "completed",
+          steps: [
+            { type: "model_output", content: [{ type: "text", text: "x" }] },
+          ],
+          usage: { total_tokens: 199555 },
+        }),
+    ]);
+    const result = await pollInteraction({
+      apiKey: "k",
+      interactionId: "i_agg",
+      pollIntervalMs: 0,
+    });
+    expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 199555 });
+  });
+
   test("throws AsyncResearchTerminalError on failed status", async () => {
     queueFetch([
       () => jsonResponse({ status: "failed", error: "model overloaded" }),
