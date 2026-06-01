@@ -51,8 +51,7 @@ export function genTitle(config: {
   // through the same sanitization as the model title, or a static default if
   // the message is empty or has no usable text.
   const fallbackTitle = (() => {
-    const candidate = userMessage
-      .split("\n")[0]
+    const candidate = (userMessage.split("\n")[0] ?? "")
       .replace(/[.!?]$/, "")
       .slice(0, 60)
       .trim();
