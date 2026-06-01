@@ -23,7 +23,7 @@ export const resolveOrgFromPath: MiddlewareHandler<{
 
   const org = await db
     .selectFrom("organization")
-    .select(["id", "slug", "name"])
+    .select(["id", "slug", "name", "metadata"])
     .where("slug", "=", slug)
     .executeTakeFirst();
 
@@ -34,6 +34,24 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       return c.redirect(`/${encodeURIComponent(slug)}`, 302);
     }
     return c.json({ error: `organization "${slug}" not found` }, 404);
+  }
+
+  // Archived (soft-deleted) orgs are invisible to the API. Treat them exactly
+  // like a missing org: bounce browser navigations into the SPA (the shell
+  // shows the branded "Organization unavailable" screen), and return JSON 404
+  // to machine clients such as the self-MCP proxy POST.
+  if (org.metadata) {
+    try {
+      const meta = JSON.parse(org.metadata) as Record<string, unknown>;
+      if (meta.archived === true) {
+        if (isBrowserNavigation(c)) {
+          return c.redirect(`/${encodeURIComponent(slug)}`, 302);
+        }
+        return c.json({ error: `organization "${slug}" not found` }, 404);
+      }
+    } catch {
+      // Unparseable metadata — treat as not archived
+    }
   }
 
   const userId = ctx.auth?.user?.id;

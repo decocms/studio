@@ -835,6 +835,7 @@ async function authenticateRequest(
                 "organization.id as orgId",
                 "organization.slug as orgSlug",
                 "organization.name as orgName",
+                "organization.metadata as orgMetadata",
               ])
               .where("member.userId", "=", session.user.id);
             if (requestedOrgId) {
@@ -845,6 +846,20 @@ async function authenticateRequest(
             return q.executeTakeFirst();
           },
         );
+
+        if (membership?.orgMetadata) {
+          try {
+            const meta = JSON.parse(membership.orgMetadata) as Record<
+              string,
+              unknown
+            >;
+            if (meta.archived === true) {
+              throw new Error("Organization is archived");
+            }
+          } catch (e) {
+            if ((e as Error).message === "Organization is archived") throw e;
+          }
+        }
 
         if (membership) {
           organization = {

@@ -542,11 +542,25 @@ export function AccountPopover() {
     (o: { slug: string }) => o.slug === orgParam,
   );
 
-  const sortedOrgs = [...(organizations ?? [])].sort((a, b) => {
-    if (a.slug === orgParam) return -1;
-    if (b.slug === orgParam) return 1;
-    return a.name.localeCompare(b.name);
-  });
+  const sortedOrgs = [...(organizations ?? [])]
+    .filter((o) => {
+      const raw = (o as { metadata?: unknown }).metadata;
+      if (!raw) return true;
+      try {
+        const meta =
+          typeof raw === "string"
+            ? (JSON.parse(raw) as { archived?: boolean })
+            : (raw as { archived?: boolean });
+        return meta.archived !== true;
+      } catch {
+        return true;
+      }
+    })
+    .sort((a, b) => {
+      if (a.slug === orgParam) return -1;
+      if (b.slug === orgParam) return 1;
+      return a.name.localeCompare(b.name);
+    });
 
   const handleSelectOrg = (orgSlug: string) => {
     setOpen(false);
