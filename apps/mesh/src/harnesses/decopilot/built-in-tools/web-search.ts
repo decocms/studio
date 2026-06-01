@@ -23,8 +23,8 @@
  * tokens, result preview. Debugging is one SQL query against thread_id.
  *
  * Small results stay inline in the tool result (kept in thread history).
- * Large results (> 8k output tokens) move to blob storage and the tool
- * result carries only a preview + mesh-storage:// URI.
+ * Large results (> LARGE_RESULT_TOKEN_THRESHOLD output tokens) move to blob
+ * storage and the tool result carries only a preview + mesh-storage:// URI.
  */
 
 import { tool, zodSchema, streamText, type UIMessageStreamWriter } from "ai";
@@ -293,6 +293,24 @@ async function runAsyncResearch({
 
     // Final flush — drops the *thinking* prefix streamed during the run.
     writeProgress(result.text);
+
+    // Guard: a "completed" job with empty text is a failure, not a success.
+    // Gemini deep-research can finish with only thought_summary blocks (no
+    // `type:"text"`), which finalize() collapses to "". Persisting that would
+    // write a 0-byte blob and hand the agent a bogus success:true. Throwing
+    // here routes through the catch below (markFailed + rethrow), so a retry
+    // gets a fresh interaction instead of reusing the empty one. See the
+    // empty-text diagnostic in gemini-interactions.ts for the raw block types.
+    if (result.text.trim() === "") {
+      log("error", "empty-result", {
+        ...logFields,
+        job: job.id,
+        tokens: result.usage.outputTokens,
+      });
+      throw new AsyncResearchTerminalError(
+        "research completed with empty result",
+      );
+    }
 
     // 4. Persist result + return tool-shaped response.
     const usageMeta = {
