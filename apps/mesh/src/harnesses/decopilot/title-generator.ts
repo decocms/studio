@@ -14,6 +14,11 @@ const TITLE_SCHEMA = z.object({
   title: z.string().describe("A concise, sentence-case title (3-7 words)"),
 });
 
+// A title is usable only if it contains at least one letter or number in any
+// script. Unicode-aware (\p{L}\p{N}) so non-Latin titles (CJK, Arabic, etc.)
+// aren't rejected the way ASCII-only \w would.
+const hasUsableText = (s: string): boolean => /[\p{L}\p{N}]/u.test(s);
+
 /**
  * Generate a short title for the conversation in the background.
  *
@@ -55,7 +60,7 @@ export function genTitle(config: {
       .replace(/[.!?]$/, "")
       .slice(0, 60)
       .trim();
-    return candidate && /\w/.test(candidate) ? candidate : "New chat";
+    return hasUsableText(candidate) ? candidate : "New chat";
   })();
 
   const promise = (async (): Promise<string | null> => {
@@ -75,7 +80,7 @@ export function genTitle(config: {
         .trim();
 
       // Reject empty or all-punctuation strings — fall back to user message
-      if (!title || !/\w/.test(title)) return fallbackTitle;
+      if (!hasUsableText(title)) return fallbackTitle;
 
       return title;
     } catch (error) {
