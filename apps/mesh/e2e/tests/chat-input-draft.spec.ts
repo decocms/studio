@@ -199,9 +199,35 @@ test.describe("chat input draft persistence", () => {
   // Seed an AI provider key before every test so the home / thread routes
   // render the composer instead of `NoAiProviderEmptyState`. Fresh test
   // users have no provider, so without this the chat input never mounts.
+  //
+  // Also pre-mark every known release as "seen" in localStorage so the
+  // bottom-right `FloatingReleaseCard` (`useReleaseSeenState`) never
+  // renders. The card intercepts pointer events on the send button on
+  // viewports where they overlap, and the close-button dismiss path is
+  // animation-racy. Pre-seeding kills the dialog at the source.
+  //
+  // If a release is added to `apps/mesh/src/web/lib/release-feed.ts`, add
+  // its id here too — otherwise the next id (`RELEASES[0]`) will surface
+  // as a popover and re-introduce the failure.
   test.beforeEach(async ({ authedPage }) => {
     const { page, orgSlug } = authedPage;
     await seedAiProviderKey(page.context().request, orgSlug);
+    await page.addInitScript(() => {
+      const STORAGE_KEY = "studio.release-feed.v1";
+      const seenAt = "1970-01-01T00:00:00.000Z";
+      const seen: Record<string, { seenAt: string }> = {
+        "claude-opus-4-8": { seenAt },
+        "enhanced-sidebar": { seenAt },
+        "smarter-task-delegation": { seenAt },
+        "sidebar-task-groups": { seenAt },
+        "release-channel": { seenAt },
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(seen));
+      } catch {
+        // private mode / sandboxed storage — fall back to clicking dismiss.
+      }
+    });
   });
 
   test("thread draft survives page refresh", async ({ authedPage }) => {
