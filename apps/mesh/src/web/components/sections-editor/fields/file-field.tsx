@@ -68,8 +68,15 @@ export function FileField({
 
   async function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
-    const list = Array.from(files);
+    let list = Array.from(files);
     if (list.length === 0) return;
+    if (isVideo) {
+      list = list.filter((f) => f.type.startsWith("video/"));
+      if (list.length === 0) {
+        toast.error("Please drop a video file (mp4, webm, …).");
+        return;
+      }
+    }
 
     const targetConfigId = resolveTargetConfigId();
     if (!targetConfigId) {

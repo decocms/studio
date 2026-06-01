@@ -246,7 +246,8 @@ export function resolveSchema(
                 typeof branch.description === "string"
                   ? branch.description
                   : undefined,
-              schema: buildProperty(branch, depth + 1),
+              schema:
+                depth + 1 < 6 ? buildProperty(branch, depth + 1) : undefined,
             };
           });
           return {
@@ -312,7 +313,7 @@ export function resolveSchema(
                 typeof def.description === "string"
                   ? def.description
                   : undefined,
-              schema: buildProperty(def, depth + 1),
+              schema: depth + 1 < 6 ? buildProperty(def, depth + 1) : undefined,
             });
           }
           return {

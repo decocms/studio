@@ -73,6 +73,7 @@ export function AnyOfField({
     return (
       <div className="space-y-4">
         <div className="space-y-1.5">
+          <Label htmlFor={path}>{label}</Label>
           <Select value={currentRt} onValueChange={handleRefChange}>
             <SelectTrigger>
               <SelectValue placeholder="Select..." />
