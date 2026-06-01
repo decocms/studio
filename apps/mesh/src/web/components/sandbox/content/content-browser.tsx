@@ -318,7 +318,12 @@ function ContentBrowserReady({
   const handleAddPageVariant = async (page: PageEntry) => {
     const fullPageData = decofile[page.key] as Record<string, unknown>;
     if (!fullPageData) return;
-    const seedSections = getPageVariantSectionsAt(decofile, page.key, 0);
+    const variantCount = getPageVariantCount(decofile, page.key);
+    const seedSections = getPageVariantSectionsAt(
+      decofile,
+      page.key,
+      Math.max(0, variantCount - 1),
+    );
     const updatedSections = appendPageVariantSections(
       fullPageData.sections,
       seedSections,

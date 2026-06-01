@@ -486,10 +486,16 @@ export function SectionsEditor({
 
   // Reset form state when the active page or global block changes
   const [prevPath, setPrevPath] = useState(currentPath);
+  const [prevPageBlockKey, setPrevPageBlockKey] = useState(activePageBlockKey);
   const [prevGlobalBlockKey, setPrevGlobalBlockKey] =
     useState(activeGlobalBlockKey);
-  if (prevPath !== currentPath || prevGlobalBlockKey !== activeGlobalBlockKey) {
+  if (
+    prevPath !== currentPath ||
+    prevPageBlockKey !== activePageBlockKey ||
+    prevGlobalBlockKey !== activeGlobalBlockKey
+  ) {
     setPrevPath(currentPath);
+    setPrevPageBlockKey(activePageBlockKey);
     setPrevGlobalBlockKey(activeGlobalBlockKey);
     setSelectedSectionIndex(null);
     setFormValue(null);

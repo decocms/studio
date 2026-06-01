@@ -26,15 +26,17 @@ const DATETIME_MAX = "2099-12-31T23:59";
  */
 function isoToDateInput(iso: string): string {
   if (!iso) return "";
+  const datePart = iso.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
 function dateInputToIso(dateValue: string): string {
   if (!dateValue) return "";
-  const d = new Date(`${dateValue}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return "";
+  return `${dateValue}T00:00:00.000Z`;
 }
 
 function isoToDateTimeInput(iso: string): string {

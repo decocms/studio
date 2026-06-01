@@ -24,16 +24,9 @@ function isMatcherBlockData(
   blockData: Record<string, unknown>,
   meta?: LiveMeta | null,
 ): boolean {
-  if (typeof blockData.path === "string") return false;
-  if (
-    typeof blockData.__resolveType === "string" &&
-    PAGE_RESOLVE_TYPES.has(blockData.__resolveType)
-  ) {
-    return false;
-  }
-
-  const moduleRt = (blockData.__resolveType as string) ?? "";
-  if (!moduleRt) return false;
+  const moduleRt = blockData.__resolveType;
+  if (typeof moduleRt !== "string" || !moduleRt) return false;
+  if (PAGE_RESOLVE_TYPES.has(moduleRt)) return false;
 
   if (meta) {
     return isManifestMatcherResolveType(meta, moduleRt);
@@ -48,8 +41,9 @@ export function isSavedMatcherBlockReference(
   meta?: LiveMeta | null,
 ): boolean {
   if (!rule) return false;
-  const rt = (rule.__resolveType as string) ?? "";
-  if (!isSavedBlockResolveType(rt) || !(rt in decofile)) return false;
+  const rt = rule.__resolveType;
+  if (typeof rt !== "string" || !isSavedBlockResolveType(rt)) return false;
+  if (!Object.hasOwn(decofile, rt)) return false;
 
   const blockData = decofile[rt] as Record<string, unknown>;
   if (!blockData || typeof blockData !== "object" || Array.isArray(blockData)) {
