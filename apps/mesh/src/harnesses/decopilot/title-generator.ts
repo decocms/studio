@@ -63,8 +63,8 @@ export function genTitle(config: {
         .slice(0, 60) // Max 60 chars
         .trim();
 
-      // If the model returned nothing useful, don't set a broken title
-      if (!title) return null;
+      // Reject empty or all-punctuation strings (e.g. "---", "{}")
+      if (!title || !/\w/.test(title)) return null;
 
       return title;
     } catch (error) {
