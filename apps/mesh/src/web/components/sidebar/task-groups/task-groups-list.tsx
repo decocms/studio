@@ -34,20 +34,21 @@ import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { useCanPinAgentsForOrg } from "@/web/hooks/use-can-pin-agents-for-org";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { BrowseAgentsButton } from "../browse-agents-button";
+import {
+  SyncSidebarAgentGroupsEmpty,
+  useSidebarOrderRevision,
+} from "../sidebar-agent-groups-context";
 import { SortableCollapsedTaskGroups } from "./sortable-collapsed-task-groups";
 import {
   groupThreadsByVirtualMcp,
   groupThreadsByStatus,
 } from "./group-threads";
-import {
-  applyGroupOrder,
-  removeGroupFromOrder,
-  syncOrdersOnOrgPinToggle,
-} from "./stable-order";
+import { removeGroupFromOrder, syncOrdersOnOrgPinToggle } from "./stable-order";
 import { SortableTaskGroups } from "./sortable-task-groups";
 import { StatusGroup } from "./task-group";
 import type { SidebarFilters } from "./next-page-offset";
-import { setSidebarAgentGroupsEmpty } from "../sidebar-agent-groups-empty";
+import { buildGroupThreadCounts } from "./next-page-offset";
+import { useSidebarGroupOrder } from "./use-sidebar-group-order";
 
 type TypeFilter = "all" | "manual" | "automation";
 type MemberFilter = "all" | "mine";
@@ -76,10 +77,22 @@ export function TaskGroupsList() {
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const agents = useVirtualMCPs();
-  const orgPinnedIds = agents.filter((a) => a.pinned).map((a) => a.id);
-  const orgPinnedSet = new Set(orgPinnedIds);
+  const serverOrgPinnedIds = agents.filter((a) => a.pinned).map((a) => a.id);
   const canManageOrgPin = useCanPinAgentsForOrg();
   const virtualMcpActions = useVirtualMCPActions();
+
+  const [orgPinOverrides, setOrgPinOverrides] = useState<
+    Record<string, boolean>
+  >({});
+  const orgPinnedIds = (() => {
+    const set = new Set(serverOrgPinnedIds);
+    for (const [id, pinned] of Object.entries(orgPinOverrides)) {
+      if (pinned) set.add(id);
+      else set.delete(id);
+    }
+    return [...set];
+  })();
+  const orgPinnedSet = new Set(orgPinnedIds);
 
   const { threads: allThreads } = useThreads();
   const visibleThreads = filterThreads(allThreads, { hidden: false });
@@ -102,18 +115,30 @@ export function TaskGroupsList() {
   const [groupBy, setGroupBy] = useState<GroupBy>("agent");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
-  const [orderRevision, setOrderRevision] = useState(0);
-  void orderRevision;
+  const [localOrderRevision, setLocalOrderRevision] = useState(0);
+  const contextOrderRevision = useSidebarOrderRevision();
+  const orderRevision = localOrderRevision + contextOrderRevision;
   const orderScope = { orgId: org.id, userId: sidebarUserId };
 
-  const groups = applyGroupOrder(
+  const filters: SidebarFilters = {
+    type: typeFilter,
+    member: memberFilter,
+    currentUserId: currentUserId ?? null,
+  };
+
+  const agentThreadCounts = buildGroupThreadCounts(
+    sortedThreads,
+    "agent",
+    filters,
+  );
+
+  const groups = useSidebarGroupOrder(
     orderScope,
     groupThreadsByVirtualMcp(sortedThreads, decopilotId),
     decopilotId,
     orgPinnedIds,
+    orderRevision,
   );
-
-  setSidebarAgentGroupsEmpty(groupBy === "agent" && groups.length === 0);
 
   const memberFiltered = (threads: Task[]) =>
     memberFilter === "mine" && currentUserId
@@ -164,23 +189,34 @@ export function TaskGroupsList() {
       for (const t of group.threads) hide(t.id);
     }
     removeGroupFromOrder(orderScope, virtualMcpId, orgPinnedIds);
-    setOrderRevision((n) => n + 1);
+    setLocalOrderRevision((n) => n + 1);
   };
 
   const handleToggleOrgPin = async (virtualMcpId: string, pinned: boolean) => {
+    if (!canManageOrgPin) return;
     track("sidebar_group_org_pin_toggled", {
       virtual_mcp_id: virtualMcpId,
       pinned,
     });
+    setOrgPinOverrides((prev) => ({ ...prev, [virtualMcpId]: pinned }));
     try {
       await virtualMcpActions.update.mutateAsync({
         id: virtualMcpId,
         data: { pinned },
       });
       syncOrdersOnOrgPinToggle(orderScope, virtualMcpId, pinned);
-      setOrderRevision((n) => n + 1);
+      setLocalOrderRevision((n) => n + 1);
+      setOrgPinOverrides((prev) => {
+        const next = { ...prev };
+        delete next[virtualMcpId];
+        return next;
+      });
     } catch {
-      // Error toast handled by mutation
+      setOrgPinOverrides((prev) => {
+        const next = { ...prev };
+        delete next[virtualMcpId];
+        return next;
+      });
     }
   };
 
@@ -190,21 +226,27 @@ export function TaskGroupsList() {
     onToggleOrgPin: handleToggleOrgPin,
   });
 
+  const buildAgentGroupRenderProps = (group: (typeof groups)[number]) => {
+    const filtered = typeFiltered(memberFiltered(group.threads));
+    return {
+      virtualMcpId: group.virtualMcpId,
+      threads: filtered,
+      activeTaskId,
+      filters,
+      groupVisibleCount: agentThreadCounts.get(group.virtualMcpId) ?? 0,
+      onSelectTask: (t: Task) => setTaskId(t.id, t.virtual_mcp_id),
+      onArchiveTask: handleArchive,
+      onNewTaskInGroup: handleNewInGroup,
+      onShowSettings: handleShowSettings,
+      onHideGroup: handleHideGroup,
+      ...groupContextMenuProps(group.virtualMcpId),
+    };
+  };
+
   const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
   const { state: sidebarState, isMobile } = useSidebar();
 
-  // On mobile the sidebar renders inside a full-width drawer that is always
-  // visually expanded (the wrapper hardcodes data-state="expanded"). The context
-  // `state` stays "collapsed" on mobile because the drawer toggles `openMobile`,
-  // not `open` — so without this guard the agent groups would render icon-only
-  // and hide their names. Mirror the wrapper: never collapse on mobile.
   const isCollapsed = sidebarState === "collapsed" && !isMobile;
-
-  const filters: SidebarFilters = {
-    type: typeFilter,
-    member: memberFilter,
-    currentUserId: currentUserId ?? null,
-  };
 
   if (isCollapsed) {
     const visibleGroups = groups.filter((group) => {
@@ -213,35 +255,29 @@ export function TaskGroupsList() {
     });
 
     return (
-      <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <SortableCollapsedTaskGroups
-          groups={visibleGroups}
-          orderScope={orderScope}
-          decopilotId={decopilotId}
-          orgPinnedIds={orgPinnedIds}
-          onReorder={() => setOrderRevision((n) => n + 1)}
-          renderGroup={(group) => {
-            const filtered = typeFiltered(memberFiltered(group.threads));
-            return {
-              virtualMcpId: group.virtualMcpId,
-              threads: filtered,
-              activeTaskId,
-              filters,
-              onSelectTask: (t) => setTaskId(t.id, t.virtual_mcp_id),
-              onArchiveTask: handleArchive,
-              onNewTaskInGroup: handleNewInGroup,
-              onShowSettings: handleShowSettings,
-              onHideGroup: handleHideGroup,
-              ...groupContextMenuProps(group.virtualMcpId),
-            };
-          }}
+      <>
+        <SyncSidebarAgentGroupsEmpty
+          value={groupBy === "agent" && groups.length === 0}
         />
-      </SidebarMenu>
+        <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <SortableCollapsedTaskGroups
+            groups={visibleGroups}
+            orderScope={orderScope}
+            decopilotId={decopilotId}
+            orgPinnedIds={orgPinnedIds}
+            onReorder={() => setLocalOrderRevision((n) => n + 1)}
+            renderGroup={(group) => buildAgentGroupRenderProps(group)}
+          />
+        </SidebarMenu>
+      </>
     );
   }
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      <SyncSidebarAgentGroupsEmpty
+        value={groupBy === "agent" && groups.length === 0}
+      />
       <div className="shrink-0 px-1 h-10 md:h-7 mb-2 flex items-center justify-between">
         <div className="flex items-center gap-0.5">
           <ToolbarIconButton
@@ -366,24 +402,13 @@ export function TaskGroupsList() {
             orderScope={orderScope}
             decopilotId={decopilotId}
             orgPinnedIds={orgPinnedIds}
-            onReorder={() => setOrderRevision((n) => n + 1)}
-            renderGroup={(group) => {
-              const filtered = typeFiltered(memberFiltered(group.threads));
-              const dimmed = filtersActive && filtered.length === 0;
-              return {
-                virtualMcpId: group.virtualMcpId,
-                threads: filtered,
-                activeTaskId,
-                onSelectTask: (t) => setTaskId(t.id, t.virtual_mcp_id),
-                onArchiveTask: handleArchive,
-                onNewTaskInGroup: handleNewInGroup,
-                onShowSettings: handleShowSettings,
-                onHideGroup: handleHideGroup,
-                ...groupContextMenuProps(group.virtualMcpId),
-                dimmed,
-                filters,
-              };
-            }}
+            onReorder={() => setLocalOrderRevision((n) => n + 1)}
+            renderGroup={(group) => ({
+              ...buildAgentGroupRenderProps(group),
+              dimmed:
+                filtersActive &&
+                typeFiltered(memberFiltered(group.threads)).length === 0,
+            })}
           />
         )}
       </div>

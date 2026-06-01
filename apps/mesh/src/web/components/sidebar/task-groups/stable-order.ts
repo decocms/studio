@@ -4,9 +4,6 @@
  * Two reorderable sections:
  * - Org-pinned agents (`sidebar.org-pinned-order.<orgId>`) — server `pinned: true`
  * - Personal agents (`sidebar.group-order.<orgId>.<userId>`) — user sidebar membership
- *
- * Hide removes an id from the personal list only. Decopilot stays first when present;
- * Automation runs stays last. Drag-and-drop never crosses the section boundary.
  */
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { TOOL_CALL_RUNS_GROUP_KEY, type TaskGroupData } from "./group-threads";
@@ -49,33 +46,29 @@ function writeStoredOrder(key: string, order: string[]): void {
   }
 }
 
-function loadUserOrder(
+function readUserOrderRaw(scope: SidebarOrderScope): string[] {
+  const cacheKey = userCacheKey(scope);
+  const cached = userOrderCache.get(cacheKey);
+  if (cached) return cached;
+
+  const key = LOCALSTORAGE_KEYS.sidebarGroupOrder(scope.orgId, scope.userId);
+  let order = readStoredOrder(key);
+  if (order.length === 0 && scope.userId !== "anon") {
+    const legacy = readStoredOrder(legacyOrderKey(scope.orgId));
+    if (legacy.length > 0) {
+      order = legacy;
+    }
+  }
+  userOrderCache.set(cacheKey, order);
+  return order;
+}
+
+function readUserOrder(
   scope: SidebarOrderScope,
   orgPinnedIds: string[],
 ): string[] {
   const orgPinnedSet = new Set(orgPinnedIds);
-  const cacheKey = userCacheKey(scope);
-
-  let order: string[];
-  const cached = userOrderCache.get(cacheKey);
-  if (cached) {
-    order = cached;
-  } else {
-    const key = LOCALSTORAGE_KEYS.sidebarGroupOrder(scope.orgId, scope.userId);
-    order = readStoredOrder(key);
-    if (order.length === 0 && scope.userId !== "anon") {
-      const legacy = readStoredOrder(legacyOrderKey(scope.orgId));
-      if (legacy.length > 0) {
-        order = legacy;
-      }
-    }
-  }
-
-  const filtered = order.filter((id) => !orgPinnedSet.has(id));
-  if (!cached || filtered.length !== order.length) {
-    saveUserOrder(scope, filtered);
-  }
-  return filtered;
+  return readUserOrderRaw(scope).filter((id) => !orgPinnedSet.has(id));
 }
 
 function saveUserOrder(scope: SidebarOrderScope, order: string[]): void {
@@ -86,7 +79,7 @@ function saveUserOrder(scope: SidebarOrderScope, order: string[]): void {
   );
 }
 
-function loadOrgPinnedOrder(orgId: string): string[] {
+function readOrgPinnedOrder(orgId: string): string[] {
   const cached = orgOrderCache.get(orgId);
   if (cached) return cached;
 
@@ -111,7 +104,8 @@ export function saveOrgGroupOrder(orgId: string, order: string[]): void {
   saveOrgPinnedOrder(orgId, order);
 }
 
-function isFixedGroupId(
+/** Decopilot and Automation runs are fixed — never reorderable. */
+export function isFixedSidebarGroupId(
   id: string,
   decopilotVirtualMcpId: string | null,
 ): boolean {
@@ -125,14 +119,13 @@ export function isOrgPinnedAgent(
   return orgPinnedIds.includes(virtualMcpId);
 }
 
-/** Middle-section ids (excluding Decopilot and Automation runs). */
 export function sortableGroupIds(
   groups: TaskGroupData[],
   decopilotVirtualMcpId: string | null,
 ): string[] {
   return groups
     .map((g) => g.virtualMcpId)
-    .filter((id) => !isFixedGroupId(id, decopilotVirtualMcpId));
+    .filter((id) => !isFixedSidebarGroupId(id, decopilotVirtualMcpId));
 }
 
 export function sortableGroupIdsForSection(
@@ -148,7 +141,8 @@ export function sortableGroupIdsForSection(
 }
 
 function mergeMissingIds(order: string[], requiredIds: string[]): string[] {
-  const missing = requiredIds.filter((id) => !order.includes(id));
+  const known = new Set(order);
+  const missing = requiredIds.filter((id) => !known.has(id));
   if (missing.length === 0) return order;
   return [...order, ...missing];
 }
@@ -223,7 +217,7 @@ export function computeGroupOrder(
   const userMiddleIds = middleIds.filter((id) => !orgPinnedSet.has(id));
 
   const orgRequired = orgPinnedIds.filter(
-    (id) => !isFixedGroupId(id, decopilotVirtualMcpId),
+    (id) => !isFixedSidebarGroupId(id, decopilotVirtualMcpId),
   );
   const orgOrder = mergeMissingIds(savedOrgOrder, orgRequired);
   const savedUserWithoutOrgPins = savedUserOrder.filter(
@@ -233,6 +227,7 @@ export function computeGroupOrder(
     savedUserWithoutOrgPins,
     userMiddleIds,
   );
+  const userOrderSet = new Set(userOrder);
 
   const byId = new Map(groups.map((g) => [g.virtualMcpId, g] as const));
 
@@ -252,7 +247,7 @@ export function computeGroupOrder(
     .map(toGroup);
 
   const trailingUser = userMiddleIds
-    .filter((id) => !userOrder.includes(id))
+    .filter((id) => !userOrderSet.has(id))
     .map((id) => byId.get(id)!);
 
   const result: TaskGroupData[] = [];
@@ -266,7 +261,7 @@ export function computeGroupOrder(
       ...userOrder,
       ...trailingUser
         .map((g) => g.virtualMcpId)
-        .filter((id) => !userOrder.includes(id)),
+        .filter((id) => !userOrderSet.has(id)),
     ],
     orgOrder: orderedOrg.map((g) => g.virtualMcpId),
   };
@@ -277,44 +272,50 @@ function migrateLegacyCombinedOrder(
   orgPinnedIds: string[],
 ): void {
   const orgPinnedSet = new Set(orgPinnedIds);
-  if (orgPinnedSet.size === 0) return;
 
-  const orgKey = LOCALSTORAGE_KEYS.sidebarOrgPinnedOrder(scope.orgId);
-  const existingOrg = readStoredOrder(orgKey);
-  if (existingOrg.length > 0) return;
+  const existingOrg = readOrgPinnedOrder(scope.orgId);
+  if (existingOrg.length === 0 && orgPinnedIds.length > 0) {
+    saveOrgPinnedOrder(scope.orgId, [...orgPinnedIds]);
+  }
 
   const userKey = LOCALSTORAGE_KEYS.sidebarGroupOrder(
     scope.orgId,
     scope.userId,
   );
-  let userOrder = readStoredOrder(userKey);
-  if (userOrder.length === 0) {
-    userOrder = readStoredOrder(legacyOrderKey(scope.orgId));
-  }
-  if (userOrder.length === 0) return;
+  if (readStoredOrder(userKey).length > 0) return;
 
-  const extractedOrg = userOrder.filter((id) => orgPinnedSet.has(id));
-  if (extractedOrg.length === 0) return;
+  const legacy = readStoredOrder(legacyOrderKey(scope.orgId));
+  if (legacy.length === 0) return;
 
-  const nextUser = userOrder.filter((id) => !orgPinnedSet.has(id));
-  saveOrgPinnedOrder(scope.orgId, extractedOrg);
+  const nextUser = legacy.filter((id) => !orgPinnedSet.has(id));
   saveUserOrder(scope, nextUser);
 }
 
-export function applyGroupOrder(
+function stripOrgPinsFromStoredUserOrder(
+  scope: SidebarOrderScope,
+  orgPinnedIds: string[],
+): void {
+  const orgPinnedSet = new Set(orgPinnedIds);
+  const raw = readUserOrderRaw(scope);
+  const filtered = raw.filter((id) => !orgPinnedSet.has(id));
+  if (filtered.length !== raw.length) {
+    saveUserOrder(scope, filtered);
+  }
+}
+
+/** One-shot migration + normalization; call when order inputs change. */
+export function ensureGroupOrdersSynced(
   scope: SidebarOrderScope,
   groups: TaskGroupData[],
   decopilotVirtualMcpId: string | null,
   orgPinnedIds: string[] = [],
-): TaskGroupData[] {
+): void {
   migrateLegacyCombinedOrder(scope, orgPinnedIds);
-  const savedUser = loadUserOrder(scope, orgPinnedIds);
-  const savedOrg = loadOrgPinnedOrder(scope.orgId);
-  const {
-    groups: ordered,
-    userOrder,
-    orgOrder,
-  } = computeGroupOrder(
+  stripOrgPinsFromStoredUserOrder(scope, orgPinnedIds);
+
+  const savedUser = readUserOrder(scope, orgPinnedIds);
+  const savedOrg = readOrgPinnedOrder(scope.orgId);
+  const { userOrder, orgOrder } = computeGroupOrder(
     groups,
     savedUser,
     decopilotVirtualMcpId,
@@ -334,8 +335,40 @@ export function applyGroupOrder(
   ) {
     saveOrgPinnedOrder(scope.orgId, orgOrder);
   }
+}
 
-  return ordered;
+/** Pure read + compute for rendering (no localStorage writes). */
+export function computeDisplayGroups(
+  scope: SidebarOrderScope,
+  groups: TaskGroupData[],
+  decopilotVirtualMcpId: string | null,
+  orgPinnedIds: string[] = [],
+): TaskGroupData[] {
+  const savedUser = readUserOrder(scope, orgPinnedIds);
+  const savedOrg = readOrgPinnedOrder(scope.orgId);
+  return computeGroupOrder(
+    groups,
+    savedUser,
+    decopilotVirtualMcpId,
+    orgPinnedIds,
+    savedOrg,
+  ).groups;
+}
+
+/** @deprecated Use computeDisplayGroups + ensureGroupOrdersSynced */
+export function applyGroupOrder(
+  scope: SidebarOrderScope,
+  groups: TaskGroupData[],
+  decopilotVirtualMcpId: string | null,
+  orgPinnedIds: string[] = [],
+): TaskGroupData[] {
+  ensureGroupOrdersSynced(scope, groups, decopilotVirtualMcpId, orgPinnedIds);
+  return computeDisplayGroups(
+    scope,
+    groups,
+    decopilotVirtualMcpId,
+    orgPinnedIds,
+  );
 }
 
 export function syncOrdersOnOrgPinToggle(
@@ -344,27 +377,38 @@ export function syncOrdersOnOrgPinToggle(
   pinned: boolean,
 ): void {
   if (pinned) {
-    const user = loadUserOrder(scope, [virtualMcpId]).filter(
+    const user = readUserOrder(scope, [virtualMcpId]).filter(
       (id) => id !== virtualMcpId,
     );
     saveUserOrder(scope, user);
 
-    const org = loadOrgPinnedOrder(scope.orgId);
+    const org = readOrgPinnedOrder(scope.orgId);
     if (!org.includes(virtualMcpId)) {
       saveOrgPinnedOrder(scope.orgId, [...org, virtualMcpId]);
     }
     return;
   }
 
-  const org = loadOrgPinnedOrder(scope.orgId).filter(
+  const org = readOrgPinnedOrder(scope.orgId).filter(
     (id) => id !== virtualMcpId,
   );
   saveOrgPinnedOrder(scope.orgId, org);
 
-  const user = loadUserOrder(scope, []);
+  const user = readUserOrder(scope, []);
   if (!user.includes(virtualMcpId)) {
     saveUserOrder(scope, [...user, virtualMcpId]);
   }
+}
+
+export function appendAgentToPersonalOrder(
+  scope: SidebarOrderScope,
+  virtualMcpId: string,
+  orgPinnedIds: string[] = [],
+): void {
+  if (orgPinnedIds.includes(virtualMcpId)) return;
+  const current = readUserOrder(scope, orgPinnedIds);
+  if (current.includes(virtualMcpId)) return;
+  saveUserOrder(scope, [virtualMcpId, ...current]);
 }
 
 export function removeGroupFromOrder(
@@ -372,7 +416,7 @@ export function removeGroupFromOrder(
   virtualMcpId: string,
   orgPinnedIds: string[] = [],
 ): void {
-  const current = loadUserOrder(scope, orgPinnedIds);
+  const current = readUserOrder(scope, orgPinnedIds);
   const next = current.filter((id) => id !== virtualMcpId);
   if (next.length === current.length) return;
   saveUserOrder(scope, next);
@@ -405,8 +449,18 @@ export function buildStoredOrderAfterReorder(
     return reorderedSectionIds;
   }
 
-  const current = loadUserOrder(scope, orgPinnedIds);
+  const current = readUserOrder(scope, orgPinnedIds);
   const userSet = new Set(reorderedSectionIds);
   const preservedTail = current.filter((id) => !userSet.has(id));
   return [...reorderedSectionIds, ...preservedTail];
+}
+
+export function canReorderAcrossSections(
+  activeId: string,
+  overId: string,
+  orgPinnedIds: string[],
+): boolean {
+  const activeIsOrg = isOrgPinnedAgent(activeId, orgPinnedIds);
+  const overIsOrg = isOrgPinnedAgent(overId, orgPinnedIds);
+  return activeIsOrg === overIsOrg;
 }

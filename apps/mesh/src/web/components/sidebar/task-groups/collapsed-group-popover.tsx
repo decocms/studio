@@ -31,6 +31,7 @@ export interface CollapsedGroupPopoverProps {
   threads: Task[];
   activeTaskId: string | null;
   filters: SidebarFilters;
+  groupVisibleCount?: number;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
   onNewTaskInGroup: (virtualMcpId: string) => void;
@@ -68,6 +69,7 @@ export function CollapsedGroupPopover({
   canManageOrgPin = false,
   onToggleOrgPin,
   sortable,
+  groupVisibleCount,
 }: CollapsedGroupPopoverProps) {
   const entity = useVirtualMCP(virtualMcpId);
   const latestTask = threads[0];
@@ -161,6 +163,7 @@ export function CollapsedGroupPopover({
           threads={threads}
           activeTaskId={activeTaskId}
           filters={filters}
+          groupVisibleCount={groupVisibleCount}
           onSelectTask={onSelectTask}
           onArchiveTask={onArchiveTask}
         />
@@ -174,6 +177,7 @@ function CollapsedGroupPopoverBody({
   threads,
   activeTaskId,
   filters,
+  groupVisibleCount,
   onSelectTask,
   onArchiveTask,
 }: {
@@ -181,10 +185,16 @@ function CollapsedGroupPopoverBody({
   threads: Task[];
   activeTaskId: string | null;
   filters: SidebarFilters;
+  groupVisibleCount?: number;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
 }) {
-  const showMore = useGroupShowMore("agent", virtualMcpId, filters);
+  const showMore = useGroupShowMore(
+    "agent",
+    virtualMcpId,
+    filters,
+    groupVisibleCount,
+  );
   return (
     <div className="flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
       {threads.length === 0 && !showMore.hasMore && !showMore.isFetching ? (

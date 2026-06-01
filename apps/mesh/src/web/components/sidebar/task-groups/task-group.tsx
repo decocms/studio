@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight, Menu02, Plus } from "@untitledui/icons";
+import { useState } from "react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
@@ -35,6 +36,9 @@ export interface TaskGroupProps {
   canManageOrgPin?: boolean;
   onToggleOrgPin?: (virtualMcpId: string, pinned: boolean) => void;
   /** When true, the group renders dimmed (used when filters wipe out the body). */
+  /** Precomputed visible count for this group (avoids O(T) scan per hook). */
+  groupVisibleCount?: number;
+  /** When true, the group renders dimmed (used when filters wipe out the body). */
   dimmed: boolean;
   filters: SidebarFilters;
   /** When set, shows a drag handle for reordering agent groups. */
@@ -59,25 +63,16 @@ export function TaskGroup({
   onToggleOrgPin,
   dimmed,
   filters,
+  groupVisibleCount,
   sortableHandle,
   isDragging,
 }: TaskGroupProps) {
   const [expanded, setExpanded] = useGroupExpanded(virtualMcpId, false);
   const isToolCallRuns = virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
-  const showMore = useGroupShowMore("agent", virtualMcpId, filters);
 
   function handleToggleExpanded() {
     const next = !expanded;
     setExpanded(next);
-    if (
-      next &&
-      !isToolCallRuns &&
-      threads.length === 0 &&
-      showMore.hasMore &&
-      !showMore.isFetching
-    ) {
-      void showMore.loadMore();
-    }
   }
 
   const header = (
@@ -191,7 +186,8 @@ export function TaskGroup({
               onSelectTask={onSelectTask}
               onArchiveTask={onArchiveTask}
               onNewTaskInGroup={onNewTaskInGroup}
-              showMore={showMore}
+              filters={filters}
+              groupVisibleCount={groupVisibleCount}
             />
           )}
         </div>
@@ -244,7 +240,8 @@ function AgentExpandedBody({
   onSelectTask,
   onArchiveTask,
   onNewTaskInGroup,
-  showMore,
+  filters,
+  groupVisibleCount,
 }: {
   virtualMcpId: string;
   threads: Task[];
@@ -252,9 +249,22 @@ function AgentExpandedBody({
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
   onNewTaskInGroup: (virtualMcpId: string) => void;
-  showMore: ReturnType<typeof useGroupShowMore>;
+  filters: SidebarFilters;
+  groupVisibleCount?: number;
 }) {
+  const showMore = useGroupShowMore(
+    "agent",
+    virtualMcpId,
+    filters,
+    groupVisibleCount,
+  );
   const { isFetching, loadMore, hasMore } = showMore;
+
+  const [autoLoaded, setAutoLoaded] = useState(false);
+  if (!autoLoaded && threads.length === 0 && hasMore && !isFetching) {
+    setAutoLoaded(true);
+    void loadMore();
+  }
 
   return (
     <>

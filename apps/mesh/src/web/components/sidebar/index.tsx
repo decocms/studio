@@ -8,6 +8,7 @@ import { SidebarInboxFooter } from "./footer/inbox";
 import { SidebarInboxFooterMobile } from "./footer/inbox-mobile";
 import { TaskGroupsList } from "./task-groups/task-groups-list";
 import { TaskGroupsSkeleton } from "./task-groups/task-groups-skeleton";
+import { SidebarAgentGroupsProvider } from "./sidebar-agent-groups-context";
 
 export type {
   NavigationSidebarItem,
@@ -20,25 +21,27 @@ export function StudioSidebar() {
   const sections = useProjectSidebarItems();
 
   return (
-    <NavigationSidebar
-      sections={sections}
-      footer={<SidebarInboxFooter />}
-      additionalContent={
-        <ErrorBoundary>
-          <Suspense
-            fallback={
-              <>
-                <Separator className="mb-2" />
-                <TaskGroupsSkeleton />
-              </>
-            }
-          >
-            <Separator className="mb-2" />
-            <TaskGroupsList />
-          </Suspense>
-        </ErrorBoundary>
-      }
-    />
+    <SidebarAgentGroupsProvider>
+      <NavigationSidebar
+        sections={sections}
+        footer={<SidebarInboxFooter />}
+        additionalContent={
+          <ErrorBoundary>
+            <Suspense
+              fallback={
+                <>
+                  <Separator className="mb-2" />
+                  <TaskGroupsSkeleton />
+                </>
+              }
+            >
+              <Separator className="mb-2" />
+              <TaskGroupsList />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
+    </SidebarAgentGroupsProvider>
   );
 }
 
@@ -46,25 +49,27 @@ export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
   const sections = useProjectSidebarItems();
 
   return (
-    <MobileNavigationSidebar
-      sections={sections}
-      onClose={onClose}
-      footer={<SidebarInboxFooterMobile />}
-      additionalContent={
-        <ErrorBoundary>
-          <Suspense
-            fallback={
-              <>
-                <Separator className="mb-2" />
-                <TaskGroupsSkeleton />
-              </>
-            }
-          >
-            <Separator className="mb-2" />
-            <TaskGroupsList />
-          </Suspense>
-        </ErrorBoundary>
-      }
-    />
+    <SidebarAgentGroupsProvider>
+      <MobileNavigationSidebar
+        sections={sections}
+        onClose={onClose}
+        footer={<SidebarInboxFooterMobile />}
+        additionalContent={
+          <ErrorBoundary>
+            <Suspense
+              fallback={
+                <>
+                  <Separator className="mb-2" />
+                  <TaskGroupsSkeleton />
+                </>
+              }
+            >
+              <Separator className="mb-2" />
+              <TaskGroupsList />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
+    </SidebarAgentGroupsProvider>
   );
 }

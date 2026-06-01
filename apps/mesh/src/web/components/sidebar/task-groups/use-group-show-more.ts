@@ -28,11 +28,13 @@ interface ShowMoreState {
 }
 
 function makeIdentity(
+  orgId: string,
   kind: GroupKind,
   key: string,
   filters: SidebarFilters,
 ): string {
   return [
+    orgId,
     kind,
     key,
     filters.type,
@@ -59,19 +61,17 @@ function parseListResult(result: unknown): {
 
 /**
  * Per-group "Show more" controller. Owns `hasMore`/`isFetching` for one
- * (kind, key, filters) tuple. Returns a `loadMore` callback that fetches
- * the next page from the server and merges it into the flat task list.
- *
- * `hasMore` resets whenever the identity (kind, key, filters) changes.
- * We use the "set state during render" pattern instead of useEffect to
- * comply with the no-useEffect lint rule.
+ * (org, kind, key, filters) tuple.
  */
 export function useGroupShowMore(
   kind: GroupKind,
   key: string,
   filters: SidebarFilters,
+  /** Precomputed visible count for this group (avoids O(T) scan per hook). */
+  visibleCount?: number,
 ) {
-  const identity = makeIdentity(kind, key, filters);
+  const { org } = useProjectContext();
+  const identity = makeIdentity(org.id, kind, key, filters);
   const [state, setState] = useState<ShowMoreState>({
     isFetching: false,
     identity,
@@ -83,12 +83,16 @@ export function useGroupShowMore(
 
   const manager = useThreadManager();
   const { threads, hasMore: globalHasMore } = useThreads();
-  const visibleCount = nextPageOffset(threads, kind, key, filters);
-  const derivedHasMore = deriveGroupHasMore(visibleCount, globalHasMore);
+  const resolvedVisibleCount =
+    visibleCount ?? nextPageOffset(threads, kind, key, filters);
+  const derivedHasMore = deriveGroupHasMore(
+    resolvedVisibleCount,
+    globalHasMore,
+  );
   const hasMore =
-    state.serverHasMore !== null ? state.serverHasMore : derivedHasMore;
+    derivedHasMore ||
+    (state.serverHasMore !== null ? state.serverHasMore : false);
 
-  const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,

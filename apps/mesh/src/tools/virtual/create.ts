@@ -14,6 +14,7 @@ import {
   requireOrganization,
 } from "../../core/mesh-context";
 import { VirtualMCPCreateDataSchema, VirtualMCPEntitySchema } from "./schema";
+import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 /**
  * Random icon+color for new agents (server-side, no React deps).
  * Uses the same icon:// format as the client-side agent-icon module.
@@ -107,6 +108,10 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     const userId = getUserId(ctx);
     if (!userId) {
       throw new Error("User ID required to create virtual MCP");
+    }
+
+    if (input.data.pinned === true) {
+      requireOrgAdminForPinnedField(ctx);
     }
 
     // Create the virtual MCP (input.data is already in the correct format)

@@ -38,7 +38,6 @@ import {
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
-import { usePinnedAgents } from "@/web/hooks/use-pinned-agents";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import {
   HYDROGEN_TEMPLATE,
@@ -57,7 +56,11 @@ import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePublicConfig } from "@/web/hooks/use-public-config";
-import { useSidebarAgentGroupsEmpty } from "./sidebar-agent-groups-empty";
+import {
+  useSidebarAgentGroupsEmpty,
+  useBumpSidebarOrderRevision,
+} from "./sidebar-agent-groups-context";
+import { appendAgentToPersonalOrder } from "./task-groups/stable-order";
 
 const EMPTY_SIDEBAR_HINT = "Select an existing agent";
 
@@ -165,8 +168,10 @@ function PinAgentPopoverContent({
   const [search, setSearch] = useState("");
   const allAgents = useVirtualMCPs();
   const { org } = useProjectContext();
+  const { data: session } = authClient.useSession();
+  const sidebarUserId = session?.user?.id ?? "anon";
   const serverPinnedIds = allAgents.filter((a) => a.pinned).map((a) => a.id);
-  const { pin, isPinned } = usePinnedAgents(org.id, serverPinnedIds);
+  const bumpOrderRevision = useBumpSidebarOrderRevision();
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
   });
@@ -183,9 +188,12 @@ function PinAgentPopoverContent({
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 
   const handleSelect = (agent: VirtualMCPEntity) => {
-    if (!isPinned(agent.id)) {
-      pin(agent.id);
-    }
+    appendAgentToPersonalOrder(
+      { orgId: org.id, userId: sidebarUserId },
+      agent.id,
+      serverPinnedIds,
+    );
+    bumpOrderRevision();
     onClose();
     setSearch("");
     navigateToNewTask(agent.id);

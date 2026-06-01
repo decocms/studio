@@ -45,7 +45,7 @@ export function useCreateVirtualMCP(
       description: "AI-driven assistant designed to handle specific tasks",
       status: "active",
       connections: [],
-      pinned: true,
+      pinned: false,
     });
 
     if (navigateOnCreate) {

@@ -6,11 +6,10 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { TOOL_CALL_RUNS_GROUP_KEY } from "./group-threads";
 import type { TaskGroupData } from "./group-threads";
 import {
   buildStoredOrderAfterReorder,
-  isOrgPinnedAgent,
+  canReorderAcrossSections,
   reorderGroupIds,
   saveGroupOrder,
   saveOrgGroupOrder,
@@ -20,14 +19,7 @@ import {
 } from "./stable-order";
 import { track } from "@/web/lib/posthog-client";
 
-export function isFixedAgentGroup(
-  virtualMcpId: string,
-  decopilotId: string,
-): boolean {
-  return (
-    virtualMcpId === decopilotId || virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY
-  );
-}
+export type SortableAgentGroupSurface = "expanded" | "collapsed_rail";
 
 export function useSortableAgentGroupOrder(
   sectionGroups: TaskGroupData[],
@@ -36,7 +28,7 @@ export function useSortableAgentGroupOrder(
   decopilotId: string,
   orgPinnedIds: string[],
   onReorder: () => void,
-  surface: "expanded" | "collapsed_rail" = "expanded",
+  surface: SortableAgentGroupSurface = "expanded",
 ) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -59,9 +51,7 @@ export function useSortableAgentGroupOrder(
     const activeId = String(active.id);
     const overId = String(over.id);
 
-    const activeIsOrg = isOrgPinnedAgent(activeId, orgPinnedIds);
-    const overIsOrg = isOrgPinnedAgent(overId, orgPinnedIds);
-    if (activeIsOrg !== overIsOrg) return;
+    if (!canReorderAcrossSections(activeId, overId, orgPinnedIds)) return;
 
     const reordered = reorderGroupIds(sortableIds, activeId, overId);
     const stored = buildStoredOrderAfterReorder(

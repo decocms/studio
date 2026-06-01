@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Task } from "@/web/components/chat/task/types";
 import {
   buildShowMoreArgs,
+  buildGroupThreadCounts,
   deriveGroupHasMore,
   GROUP_PAGE_SIZE,
   nextPageOffset,
@@ -183,5 +184,18 @@ describe("buildShowMoreArgs", () => {
     expect(args.orderBy).toEqual([
       { field: ["updated_at"], direction: "desc" },
     ]);
+  });
+});
+
+describe("buildGroupThreadCounts", () => {
+  it("counts per agent in one pass", () => {
+    const threads = [
+      t({ id: "1", virtual_mcp_id: "vm-a" }),
+      t({ id: "2", virtual_mcp_id: "vm-b" }),
+      t({ id: "3", virtual_mcp_id: "vm-a", hidden: true }),
+    ];
+    const counts = buildGroupThreadCounts(threads, "agent", noFilters);
+    expect(counts.get("vm-a")).toBe(1);
+    expect(counts.get("vm-b")).toBe(1);
   });
 });

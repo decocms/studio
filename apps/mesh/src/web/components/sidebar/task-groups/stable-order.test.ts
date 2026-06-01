@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   computeGroupOrder,
+  canReorderAcrossSections,
+  buildStoredOrderAfterReorder,
   partitionDisplayGroups,
   reorderGroupIds,
   sortableGroupIds,
@@ -190,5 +192,65 @@ describe("computeGroupOrder", () => {
       ["org-a"],
     );
     expect(ordered.map((g) => g.virtualMcpId)).toEqual(["org-a", "user-a"]);
+  });
+
+  test("prepends new thread groups before saved personal order", () => {
+    const groups = [group("agent-new"), group("agent-b")];
+    const { groups: ordered } = computeGroupOrder(
+      groups,
+      ["agent-b"],
+      decopilotId,
+    );
+    expect(ordered.map((g) => g.virtualMcpId)).toEqual([
+      "agent-new",
+      "agent-b",
+    ]);
+  });
+
+  test("prepends thread groups missing from saved personal order", () => {
+    const groups = [group("agent-x"), group("agent-y")];
+    const { groups: ordered } = computeGroupOrder(
+      groups,
+      ["agent-x"],
+      decopilotId,
+    );
+    expect(ordered.map((g) => g.virtualMcpId)).toEqual(["agent-y", "agent-x"]);
+  });
+
+  test("merges org-pinned ids missing from saved org order", () => {
+    const groups = [group("org-new")];
+    const { orgOrder } = computeGroupOrder(
+      groups,
+      [],
+      decopilotId,
+      ["org-new", "org-old"],
+      ["org-old"],
+    );
+    expect(orgOrder).toEqual(["org-old", "org-new"]);
+  });
+});
+
+describe("reorderGroupIds edge cases", () => {
+  test("same index is a no-op", () => {
+    expect(reorderGroupIds(["a", "b"], "a", "a")).toEqual(["a", "b"]);
+  });
+});
+
+describe("buildStoredOrderAfterReorder", () => {
+  test("preserves filtered-out tail ids in personal section", () => {
+    const stored = buildStoredOrderAfterReorder(
+      "user",
+      { orgId: "org-1", userId: "user-1" },
+      [],
+      ["visible-a", "visible-b"],
+    );
+    expect(stored.slice(0, 2)).toEqual(["visible-a", "visible-b"]);
+  });
+});
+
+describe("canReorderAcrossSections", () => {
+  test("blocks cross-section drags", () => {
+    expect(canReorderAcrossSections("org-a", "user-a", ["org-a"])).toBe(false);
+    expect(canReorderAcrossSections("user-a", "user-b", ["org-a"])).toBe(true);
   });
 });
