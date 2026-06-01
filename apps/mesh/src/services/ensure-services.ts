@@ -995,7 +995,7 @@ async function superviseLink(inputs: SuperviseLinkInputs): Promise<void> {
 // Public API
 // ---------------------------------------------------------------------------
 
-export { ensureLink, stopLink, superviseLink };
+export { stopLink, superviseLink };
 
 function portFromUrl(url: string, fallback: number): number {
   try {
