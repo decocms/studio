@@ -520,8 +520,17 @@ export class AgentSandboxProvider implements SandboxProvider {
       }
     }
 
+    // Operator may have evicted the claim+pod (15-min idle TTL) since the record
+    // was cached. Mirror exec()'s requireRecord(): resurrect from the persisted
+    // ensureOpts before giving up, so the agent's request path recovers the same
+    // way exec does instead of surfacing a 404. resurrectByHandle returns null
+    // only for genuine not-found cases (no state-store / no row / row predates
+    // ensureOpts) — those fall through to the 404 below. A real ensure() failure
+    // (K8s/provisioning/bootstrap) THROWS and must propagate: callers already
+    // treat a throw as unreachable, and swallowing it would mislabel a backend
+    // failure as a false 404 "sandbox not found".
     if (!rec) {
-      rec = await this.resurrectByHandle(handle).catch(() => null);
+      rec = await this.resurrectByHandle(handle);
     }
 
     if (!rec) {
