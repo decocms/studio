@@ -5,6 +5,16 @@ import { DevObjectStorage } from "../../object-storage/dev-object-storage";
 import { decorateStorageWithAssetHoisting } from "../../object-storage/asset-hoister";
 import { getObjectStorageS3Service } from "../../object-storage/factory";
 
+// A top-level browser navigation (clicking a link, pasting a URL) sends
+// `Accept: text/html`. API clients — `<img>` tags, `fetch`, and OAuth
+// discovery (Cursor/Claude) — do not. We use that to decide whether a denied
+// request should get a raw JSON error (machines) or be bounced into the SPA so
+// the existing OrgAccessGate can render a styled no-access / not-found screen
+// instead of dumping JSON into the address bar.
+export const isBrowserNavigation = (c: {
+  req: { header: (name: string) => string | undefined };
+}) => (c.req.header("accept") ?? "").includes("text/html");
+
 export const resolveOrgFromPath: MiddlewareHandler<{
   Variables: { meshContext: MeshContext };
 }> = async (c, next) => {
@@ -26,6 +36,11 @@ export const resolveOrgFromPath: MiddlewareHandler<{
     .executeTakeFirst();
 
   if (!org) {
+    // Bounce browser navigations into the SPA so OrgAccessGate shows the
+    // "Organization not found" screen instead of raw JSON.
+    if (isBrowserNavigation(c)) {
+      return c.redirect(`/${encodeURIComponent(slug)}`, 302);
+    }
     return c.json({ error: `organization "${slug}" not found` }, 404);
   }
 
@@ -52,6 +67,12 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       .executeTakeFirst();
 
     if (!membership) {
+      // Bounce browser navigations into the SPA so OrgAccessGate shows the
+      // styled "No access" screen (with invite/auto-join handling) instead of
+      // raw JSON in the address bar.
+      if (isBrowserNavigation(c)) {
+        return c.redirect(`/${encodeURIComponent(org.slug)}`, 302);
+      }
       return c.json({ error: "forbidden: not a member of organization" }, 403);
     }
     pathRole = membership.role;
