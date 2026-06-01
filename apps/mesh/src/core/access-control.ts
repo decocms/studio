@@ -191,11 +191,18 @@ export class AccessControl implements Disposable {
       return false;
     }
 
-    // Basic-usage tools are granted to every authenticated org member at
-    // runtime, regardless of role. Resolving them here — instead of baking
-    // them into each role's stored permission — means the set evolves with a
-    // one-line edit to BASIC_USAGE_TOOLS, with no role-backfill migration.
-    if (BASIC_USAGE_TOOLS.has(resource)) {
+    // Basic-usage tools are granted to every org MEMBER at runtime, regardless
+    // of their role. Resolving them here — instead of baking them into each
+    // role's stored permission — means the set evolves with a one-line edit to
+    // BASIC_USAGE_TOOLS, with no role-backfill migration.
+    //
+    // Gated on `this.role`: it's derived from the caller's membership row in
+    // the target org (see context-factory / resolveOrgFromPath), so it's only
+    // set for members and undefined for non-members. Without this guard the
+    // grant would leak basic-usage to any authenticated user against any org;
+    // the old bake-in model denied non-members implicitly (no role → no stored
+    // permission), so we keep that boundary explicit here.
+    if (this.role && BASIC_USAGE_TOOLS.has(resource)) {
       return true;
     }
 

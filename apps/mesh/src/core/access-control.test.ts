@@ -260,6 +260,19 @@ describe("AccessControl", () => {
 
       await expect(ac.check()).rejects.toThrow(UnauthorizedError);
     });
+
+    it("does not grant basic-usage to an authenticated non-member (no role)", async () => {
+      const ac = new AccessControl(
+        createMockAuth(),
+        "user_1",
+        basicUsageTool,
+        createMockBoundAuth({}), // authenticated, but not a member → no role
+        undefined, // role undefined = not a member of this org
+      );
+
+      await expect(ac.check()).rejects.toThrow(ForbiddenError);
+      expect(ac.granted()).toBe(false);
+    });
   });
 
   describe("granted", () => {
