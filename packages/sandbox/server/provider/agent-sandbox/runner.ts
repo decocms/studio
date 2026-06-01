@@ -410,7 +410,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     // Branch is the slug source; absent when caller didn't pass `repo`
     // (tool-only sandboxes, smoke tests). The shared computeHandle falls
     // back to a bare hash in that case, preserving stable identity.
-    const handle = this.computeHandle(id, opts.repo?.branch ?? null);
+    const handle = composeBranchHandle(id, opts.repo?.branch ?? null);
     return this.inflight.run(handle, () =>
       withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
         this.ensureLocked(id, handle, opts, ops),
@@ -1597,13 +1597,6 @@ export class AgentSandboxProvider implements SandboxProvider {
   }
 
   // ---- Identity + preview URL ----------------------------------------------
-
-  private computeHandle(id: SandboxId, branch: string | null): string {
-    // hashLen=16 (~64 bits) per handle.ts: runners that expose the handle as
-    // a public hostname must use longer hashes to resist brute-force. Also
-    // prevents DB handle collisions across users on the no-branch path.
-    return composeBranchHandle(id, branch, { hashLen: 16 });
-  }
 
   // Local mode: route preview traffic through the daemon port-forward, not
   // a separate dev forwarder. The daemon serves /_sandbox/* + /health

@@ -112,13 +112,10 @@ const previewBaseDomain = parsePreviewBaseDomain(
 );
 const previewProxyDeps = {
   baseDomain: previewBaseDomain ?? "",
-  getRunner: async () => {
-    const runner = await getOrInitRunnerForPreview();
-    if (!runner || runner.kind !== "cluster") return null;
-    // The cluster (agent-sandbox) runner is the only one that exposes proxyPreviewRequest /
-    // resolvePreviewUpstreamUrl; cast is safe after the kind check.
-    return runner as unknown as import("@decocms/sandbox/provider/agent-sandbox").AgentSandboxProvider;
-  },
+  // getOrInitSharedRunner resolves to the cluster AgentSandboxProvider (the
+  // only env-instantiable provider) or null — exactly what PreviewProxyDeps
+  // wants, so no kind check or cast is needed.
+  getRunner: getOrInitRunnerForPreview,
 };
 
 // Create the Hono app (any DBOS.registerWorkflow calls happen during this

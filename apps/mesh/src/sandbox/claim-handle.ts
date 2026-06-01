@@ -13,5 +13,5 @@ import { computeHandle, type SandboxId } from "@decocms/sandbox/provider";
  * construction.
  */
 export function computeClaimHandle(id: SandboxId, branch: string): string {
-  return computeHandle(id, branch, { hashLen: 16 });
+  return computeHandle(id, branch);
 }

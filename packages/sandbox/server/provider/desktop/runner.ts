@@ -83,13 +83,11 @@ export class DesktopSandboxProvider implements SandboxProvider {
   }
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
-    // hashLen=16 mirrors agent-sandbox and the cluster's `computeClaimHandle`
-    // — a 16-hex-char handle is used as a public subdomain prefix
-    // (e.g. `<handle>.localhost:<port>`) so a short hash keeps URLs readable.
-    // If this changes, the matching constant in
-    // `apps/mesh/src/sandbox/claim-handle.ts` must change too or the
-    // cluster's state-store lookup will silently miss.
-    const handle = computeHandle(id, opts.repo?.branch, { hashLen: 16 });
+    // computeHandle produces a 16-hex-char hash — the handle is used as a
+    // public subdomain prefix (e.g. `<handle>.localhost:<port>`), and the
+    // cluster's `computeClaimHandle` derives the same handle so its
+    // state-store lookup matches.
+    const handle = computeHandle(id, opts.repo?.branch);
 
     // Probe before trusting cached records — a dead daemon leaves a stale URL.
     const cached = this.records.get(handle);

@@ -10,7 +10,10 @@ import {
   type SandboxProviderKind,
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
-import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import type {
+  ClaimPhase,
+  AgentSandboxProvider,
+} from "@decocms/sandbox/provider/agent-sandbox";
 import { getDb } from "@/database";
 import type { Kysely } from "kysely";
 import { meter } from "@/observability";
@@ -217,8 +220,13 @@ export function getSandboxProviderByKind(
  * today. Reads the provider kind from env and constructs without a
  * MeshContext (the state store only needs a Kysely instance). Returns null
  * when no provider kind is configured.
+ *
+ * `instantiate()` only ever yields the cluster `AgentSandboxProvider` (the
+ * sole env-instantiable provider — `user-desktop` is built per-run and
+ * throws here), so the resolved provider is always an `AgentSandboxProvider`.
+ * Typing it as such lets the preview proxy skip a redundant kind check + cast.
  */
-export async function getOrInitSharedRunner(): Promise<SandboxProvider | null> {
+export async function getOrInitSharedRunner(): Promise<AgentSandboxProvider | null> {
   let kind: SandboxProviderKind;
   try {
     kind = resolveSandboxProviderKindFromEnv();
@@ -229,7 +237,8 @@ export async function getOrInitSharedRunner(): Promise<SandboxProvider | null> {
     );
     return null;
   }
-  return resolveOnce(kind, () => instantiate(kind, getDb().db));
+  const runner = await resolveOnce(kind, () => instantiate(kind, getDb().db));
+  return runner as AgentSandboxProvider;
 }
 
 // ---------------------------------------------------------------------------

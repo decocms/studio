@@ -40,7 +40,7 @@ export const SANDBOX_DELETE = defineTool({
   }),
 
   handler: async (input, ctx) => {
-    // Schema enum already constrained input to the canonical 3 kinds.
+    // Schema enum already constrained input to the canonical cluster/user-desktop kinds.
     const kind = input.sandboxProviderKind;
 
     let vmEntry: Awaited<ReturnType<typeof requireVmEntry>>;
