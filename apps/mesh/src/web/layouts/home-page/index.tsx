@@ -236,7 +236,7 @@ function Capybara() {
       src="/home/capybara.png"
       alt=""
       aria-hidden
-      className="pointer-events-none absolute -top-10 right-6 z-20 h-12 w-auto select-none"
+      className="pointer-events-none absolute -top-16 right-6 z-20 h-20 w-auto select-none"
     />
   );
 }
