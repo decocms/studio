@@ -48,7 +48,8 @@ function parseStoredDraft(value: string | null): TiptapDoc | null {
   if (
     !doc ||
     typeof doc !== "object" ||
-    (doc as { type?: unknown }).type !== "doc"
+    (doc as { type?: unknown }).type !== "doc" ||
+    !Array.isArray((doc as { content?: unknown }).content)
   ) {
     return null;
   }
@@ -85,7 +86,11 @@ export function writeChatDraft(
     storage.setItem(key, serialized);
   } catch (err) {
     if (isQuotaExceededError(err)) {
-      options?.onQuotaExceeded?.({ docSizeBytes: serialized.length });
+      // UTF-8 byte count, which is what sessionStorage actually pays for —
+      // `serialized.length` is UTF-16 code units and undercounts multi-byte
+      // characters (CJK, emoji).
+      const docSizeBytes = new TextEncoder().encode(serialized).byteLength;
+      options?.onQuotaExceeded?.({ docSizeBytes });
       return;
     }
     throw err;

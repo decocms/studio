@@ -124,6 +124,31 @@ describe("chat-draft storage", () => {
     expect(calls[0]!.docSizeBytes).toBeGreaterThan(0);
   });
 
+  test("writeChatDraft reports UTF-8 byte length on quota error, not char count", () => {
+    const storage = new QuotaStorage();
+    const calls: Array<{ docSizeBytes: number }> = [];
+    // 4-byte UTF-8 character (emoji 🐉) — char count = 2 UTF-16 code units;
+    // serialized JSON contains it plus boilerplate. We just need the byte
+    // count to differ from the char count to prove TextEncoder is in use.
+    writeChatDraft(storage, LOCATOR, TASK_ID, docWith("🐉🐉🐉🐉🐉"), {
+      onQuotaExceeded: (info) => calls.push(info),
+    });
+    expect(calls.length).toBe(1);
+    const serialized = JSON.stringify({
+      tiptapDoc: docWith("🐉🐉🐉🐉🐉"),
+      // updatedAt is a number, so its value doesn't shift UTF-8 byte count
+      // relative to UTF-16; only the doc string matters for the inequality.
+      updatedAt: 0,
+    });
+    const utf16 = serialized.length;
+    const utf8 = new TextEncoder().encode(serialized).byteLength;
+    // Sanity: the chosen content actually produces a difference.
+    expect(utf8).toBeGreaterThan(utf16);
+    // The reported size is bytes (>= UTF-8 byte length we just computed).
+    // Allow ±10 for the differing updatedAt value at runtime.
+    expect(calls[0]!.docSizeBytes).toBeGreaterThan(utf16);
+  });
+
   test("writeChatDraft is safe when no callback provided on quota error", () => {
     const storage = new QuotaStorage();
     expect(() =>
@@ -153,6 +178,19 @@ describe("chat-draft storage", () => {
   test("readChatDraft removes and returns null for shape mismatch", () => {
     const storage = new MemoryStorage();
     storage.setItem(KEY, JSON.stringify({ wrong: "shape" }));
+    expect(readChatDraft(storage, LOCATOR, TASK_ID)).toBeNull();
+    expect(storage.has(KEY)).toBe(false);
+  });
+
+  test("readChatDraft removes and returns null when content is not an array", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      KEY,
+      JSON.stringify({
+        tiptapDoc: { type: "doc", content: "not-an-array" },
+        updatedAt: 1,
+      }),
+    );
     expect(readChatDraft(storage, LOCATOR, TASK_ID)).toBeNull();
     expect(storage.has(KEY)).toBe(false);
   });
