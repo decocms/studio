@@ -167,7 +167,7 @@ export function buildPageSectionsFromVariants(
   return { ...obj, variants };
 }
 
-export function forEachPageVariantRule(
+function forEachPageVariantRule(
   decofile: Record<string, unknown>,
   visit: (
     rule: Record<string, unknown> | undefined,

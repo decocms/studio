@@ -31,7 +31,7 @@ import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
 import { useSaveBlock } from "./use-save-block";
-import { extractPages } from "./page-list";
+import { extractPages, globalSectionLabel } from "./page-list";
 import { normalizePagePath } from "./page-path-utils";
 import { SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
@@ -530,7 +530,7 @@ export function SectionsEditor({
   }>({
     rawSections: [],
     parsedSections: [],
-    decofile: {},
+    decofile: {} as Record<string, unknown>,
     activePageKey: null,
     pageVariants: [],
     variantIndex: 0,
@@ -628,7 +628,7 @@ export function SectionsEditor({
   latestRef.current = {
     rawSections,
     parsedSections,
-    decofile,
+    decofile: decofile ?? ({} as Record<string, unknown>),
     activePageKey,
     pageVariants,
     variantIndex: safeVariantIndex,
@@ -1584,8 +1584,8 @@ export function SectionsEditor({
   ) => {
     cancelPendingRuleSaves();
 
-    const { activePageKey: pageKey, decofile: latestDecofile } =
-      latestRef.current;
+    const pageKey = latestRef.current.activePageKey;
+    const latestDecofile: Record<string, unknown> = latestRef.current.decofile;
     if (!pageKey) return;
 
     const fullPageData = latestDecofile[pageKey] as Record<string, unknown>;
@@ -1597,26 +1597,26 @@ export function SectionsEditor({
 
     const variants = [...(obj.variants as Array<Record<string, unknown>>)];
     const target = variants[variantIndex];
-    if (!target?.rule) {
+    if (!target?.rule || typeof target.rule !== "object") {
       toast.error("This variant has no matcher rule to rename.");
       return;
     }
+    const targetRule = target.rule as Record<string, unknown>;
 
     const trimmed = nextName.trim();
     setRenameVariantPending(true);
 
     try {
       if (!trimmed) {
-        if (!isSavedMatcherBlockReference(target.rule, latestDecofile, meta)) {
+        if (!isSavedMatcherBlockReference(targetRule, latestDecofile, meta)) {
           setRenameVariantIndex(null);
           return;
         }
 
-        const blockKey = (target.rule as Record<string, unknown>)
-          .__resolveType as string;
+        const blockKey = (targetRule.__resolveType as string) ?? "";
         variants[variantIndex] = {
           ...target,
-          rule: inlineMatcherRule(target.rule, latestDecofile, meta),
+          rule: inlineMatcherRule(targetRule, latestDecofile, meta),
         };
 
         const projectedDecofile = {
@@ -1634,7 +1634,7 @@ export function SectionsEditor({
         return;
       }
 
-      const unwrapped = unwrapMatcherRule(target.rule, latestDecofile, meta);
+      const unwrapped = unwrapMatcherRule(targetRule, latestDecofile, meta);
       if (!unwrapped) {
         toast.error("Could not read this variant's matcher rule.");
         return;
