@@ -61,7 +61,10 @@ import {
 } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/mesh-sdk/types";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
+import {
+  useSandboxStart,
+  useIsSandboxStartPending,
+} from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -265,17 +268,20 @@ function VmEventsBridge({
     triggerAutoStart,
   ]);
 
-  // Open the events stream only when a sandbox exists or is about to: a
-  // GitHub-linked agent auto-starts one (effect above), or the sandboxMap
-  // already has an entry for this (user, branch). Without this gate, an
-  // ephemeral decopilot run that never spawns a sandbox would open an events
-  // stream that 404s and reconnects forever (daemon log spam).
+  // Open the events stream only when a sandbox actually exists or a start is
+  // in flight — NOT merely because the agent has a GitHub repo configured.
+  // Gate instead on a registered sandboxMap entry, or an in-flight
+  // SANDBOX_START (covers the booting window; the auto-start above shares this
+  // mutation key, so `useIsSandboxStartPending` observes it).
+  const isStartPending = useIsSandboxStartPending(
+    virtualMcpId,
+    currentBranch ?? undefined,
+  );
   const branchMap =
     userId && currentBranch
       ? parseBranchMap(sandboxMap?.[userId]?.[currentBranch])
       : {};
-  const shouldConnect =
-    hasActiveGithubRepo || Object.keys(branchMap).length > 0;
+  const shouldConnect = Object.keys(branchMap).length > 0 || isStartPending;
 
   return (
     <SandboxEventsProvider
