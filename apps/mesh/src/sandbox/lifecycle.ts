@@ -67,7 +67,7 @@ function resolveOnce(
   return promise;
 }
 
-// Set in prod (k8s/docker behind ingress) so the provider skips the local
+// Set in prod (k8s behind ingress) so the provider skips the local
 // 127.0.0.1 port-forward path and emits a URL the user's browser can
 // actually reach. Empty/unset = local forwarder fallback (dev).
 function readPreviewUrlPattern(): string | undefined {

@@ -153,7 +153,7 @@ export const SANDBOX_START = defineTool({
 
 /**
  * Lazy provisioner for the always-on sandbox tools path. Mirrors SANDBOX_START's
- * flow but: (a) tolerates a missing GitHub repo (boots blank under Docker),
+ * flow but: (a) tolerates a missing GitHub repo (boots a blank sandbox),
  * and (b) takes a fast path when the existing sandboxMap entry already
  * matches the requested kind — avoiding a full `provider.ensure` round-trip
  * on every fresh stream when the sandbox is already registered.
@@ -324,10 +324,11 @@ async function provisionSandbox(
     };
   }
 
-  // Missing workload = clone-only. Docker lets the runner pick its default.
+  // Missing workload = clone-only; the runner picks its default.
   // `devPort` is omitted unless the user explicitly pinned one — leaves
-  // runners free to assign a unique dynamic port (host runner needs this;
-  // multiple sandboxes share the host network and can't all bind 3000).
+  // runners free to assign a unique dynamic port (user-desktop needs this;
+  // multiple sandboxes on the user's machine share the host network and
+  // can't all bind 3000).
   const workload: Workload | undefined =
     runtime && packageManager
       ? {

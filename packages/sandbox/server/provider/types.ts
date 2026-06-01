@@ -1,6 +1,6 @@
 /**
  * Runner-agnostic interface. Callers never branch on kind; runner-specific
- * features (local-ingress ports, Docker volumes) live on concrete classes.
+ * features (e.g. local-ingress ports) live on concrete classes.
  */
 
 import type { ClaimPhase } from "./lifecycle-types";
@@ -30,8 +30,9 @@ export interface Workload {
   packageManager: "npm" | "pnpm" | "yarn" | "bun" | "deno";
   /**
    * User-pinned dev port. Omit when the user hasn't chosen one — runners
-   * pick a free port (host runner: avoids collisions across co-tenant
-   * sandboxes; container runners: fall back to their own default).
+   * pick a free port (user-desktop: avoids collisions across co-tenant
+   * sandboxes sharing the user's host network; cluster: falls back to its
+   * own default).
    */
   devPort?: number;
   /** Subdirectory inside the repo where the package manager manifest lives (e.g. `apps/web`). */
@@ -66,7 +67,7 @@ export interface EnsureOptions {
   env?: Record<string, string>;
   /**
    * Tenant identity for cost attribution. Runners MAY surface these as
-   * platform-native metadata (k8s pod labels, Docker container labels) so
+   * platform-native metadata (k8s pod labels) so
    * downstream metrics pipelines can attribute resource usage to the owning
    * org/user. Optional — callers without an org context (smoke tests, internal
    * tool sandboxes) leave it unset and pods get only platform-level labels.
@@ -126,8 +127,9 @@ export interface SandboxProvider {
   getPreviewUrl(handle: string): Promise<string | null>;
 
   /**
-   * Passthrough to the daemon control plane. Path is daemon-internal; providers
-   * translate (Docker prepends `/_daemon`). Bearer tokens stay inside the provider.
+   * Passthrough to the daemon control plane. Path is daemon-internal; each
+   * provider translates it to its own daemon transport. Bearer tokens stay
+   * inside the provider.
    */
   proxyDaemonRequest(
     handle: string,
