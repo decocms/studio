@@ -235,14 +235,14 @@ if (command === "backfill-message-parts") {
   const { backfillMessagePartsCommand } = await import(
     "./cli/commands/backfill-message-parts"
   );
-  const reconcile = values.reconcile === true;
   const code = await backfillMessagePartsCommand({
     dryRun: values["dry-run"] === true,
-    // reconcile pages are cheap (count check); copy pages can be huge rows.
-    batch: values.batch ? Number(values.batch) : reconcile ? 200 : 50,
+    // --batch is the id-page size; blobs are fetched one message at a time, so
+    // memory is bounded regardless and 200 ids/page is fine for both modes.
+    batch: values.batch ? Number(values.batch) : 200,
     limit: values.limit ? Number(values.limit) : undefined,
     afterId: values["after-id"] as string | undefined,
-    reconcile,
+    reconcile: values.reconcile === true,
   });
   process.exit(code);
 }
