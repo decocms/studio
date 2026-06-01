@@ -28,12 +28,14 @@ import {
   Monitor01,
   Moon01,
   Plus,
+  SearchMd,
   Settings02,
   Shield01,
   Sun,
   Users03,
   VolumeMax,
   VolumeX,
+  XClose,
 } from "@untitledui/icons";
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { SidebarMenuButton } from "@deco/ui/components/sidebar.tsx";
@@ -152,22 +154,60 @@ function OrganizationsPanel({
   onSelectOrg: (slug: string) => void;
   onCreateOrg: () => void;
 }) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const filtered = query
+    ? sortedOrgs.filter(
+        (o) =>
+          o.name.toLowerCase().includes(query.toLowerCase()) ||
+          o.slug.toLowerCase().includes(query.toLowerCase()),
+      )
+    : sortedOrgs;
+
+  function toggleSearch() {
+    setSearchOpen((prev) => {
+      if (prev) setQuery("");
+      return !prev;
+    });
+  }
+
   return (
     <>
       <div className="flex items-center justify-between px-4 py-3">
-        <span className="text-sm font-medium text-muted-foreground/60">
-          Your Organizations
-        </span>
-        <button
-          type="button"
-          onClick={onCreateOrg}
-          className="flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-        >
-          <Plus size={16} />
-        </button>
+        {searchOpen ? (
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search organizations..."
+            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+          />
+        ) : (
+          <span className="text-sm font-medium text-muted-foreground/60">
+            Your Organizations
+          </span>
+        )}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={toggleSearch}
+            className="flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+          >
+            {searchOpen ? <XClose size={16} /> : <SearchMd size={16} />}
+          </button>
+          <button
+            type="button"
+            onClick={onCreateOrg}
+            className="flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+          >
+            <Plus size={16} />
+          </button>
+        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5 flex flex-col gap-1">
-        {sortedOrgs.map((org) => (
+        {filtered.map((org) => (
           <button
             key={org.id}
             type="button"
