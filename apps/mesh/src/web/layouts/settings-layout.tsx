@@ -80,7 +80,7 @@ interface SettingsNavGroup {
 function useSettingsSidebarGroups(): SettingsNavGroup[] {
   const currentProject = useProjectContext().project;
   const enabledPlugins = currentProject.enabledPlugins ?? [];
-  const { capabilities, isPrivileged, loading } = useCapabilities();
+  const { capabilities, isPrivileged, loading, error } = useCapabilities();
 
   const enabledSettingsItems = pluginSettingsSidebarItems
     .filter((item) => enabledPlugins.includes(item.pluginId))
@@ -221,11 +221,12 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
     },
   ];
 
-  // While capabilities load, show every item optimistically (avoids a flicker
-  // for the common privileged case). Once resolved, hide items the member's
-  // role can't open and drop any group left empty. Items without a `requires`
-  // (Profile, plugin items) are always visible.
-  if (loading) {
+  // While capabilities load — or if the lookup errored — show every item
+  // optimistically. This avoids a flicker for the common privileged case and
+  // ensures a transient failure never hides nav from owners/admins. Once
+  // resolved, hide items the member's role can't open and drop any group left
+  // empty. Items without a `requires` (Profile, plugin items) are always shown.
+  if (loading || error) {
     return groups;
   }
   return groups

@@ -118,4 +118,31 @@ test.describe("settings capability gating", () => {
       0,
     );
   });
+
+  test("a failed capability lookup shows a retryable error, not a denial", async ({
+    page,
+  }) => {
+    const owner = await signUpViaApi(page.context().request);
+
+    // Force the capability lookup to fail for every attempt (incl. retries).
+    await page.route("**/api/auth/custom/my-capabilities/**", (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: "{}",
+      }),
+    );
+
+    await page.goto(`/${owner.orgSlug}/settings/general`);
+
+    // The owner would normally see General. With the lookup failing they get
+    // the retryable error — never the no-access panel, which would be
+    // indistinguishable from a real denial.
+    await expect(page.getByText("Couldn't load your permissions")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText("No access to general settings")).toHaveCount(
+      0,
+    );
+  });
 });

@@ -42,57 +42,72 @@ interface MyCapabilitiesResponse {
 function useMyCapabilities(): {
   data: MyCapabilitiesResponse | undefined;
   loading: boolean;
+  error: boolean;
 } {
   const { org, locator } = useProjectContext();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: KEYS.myCapabilities(locator),
     queryFn: async (): Promise<MyCapabilitiesResponse> => {
       const res = await fetch(
         `/api/auth/custom/my-capabilities/${encodeURIComponent(org.slug)}`,
         { credentials: "include" },
       );
+      // Throw on failure so it surfaces as an error state — NOT a silent
+      // "denied". Swallowing it would make a transient blip lock owners and
+      // admins out of every gated route, indistinguishable from real denial.
       if (!res.ok) {
-        return { role: null, capabilities: {} };
+        throw new Error(`my-capabilities request failed: ${res.status}`);
       }
       return (await res.json()) as MyCapabilitiesResponse;
     },
     staleTime: 30_000,
-    retry: false,
+    // Ride out transient failures before surfacing an error to the UI.
+    retry: 2,
   });
 
-  return { data, loading: isLoading };
+  return { data, loading: isLoading, error: isError };
 }
 
 export interface CapabilityResult {
   granted: boolean;
   loading: boolean;
-  reason: "loading" | "owner" | "admin" | "role" | "denied";
+  /** True when capabilities couldn't be resolved (network/server error). */
+  error: boolean;
+  reason: "loading" | "error" | "owner" | "admin" | "role" | "denied";
 }
 
 /**
  * Whether the current user has the given capability in the active org.
  */
 export function useCapability(id: CapabilityId): CapabilityResult {
-  const { data, loading } = useMyCapabilities();
+  const { data, loading, error } = useMyCapabilities();
 
   if (loading) {
-    return { granted: false, loading: true, reason: "loading" };
+    return { granted: false, loading: true, error: false, reason: "loading" };
+  }
+  if (error) {
+    return { granted: false, loading: false, error: true, reason: "error" };
   }
 
   const role = data?.role ?? null;
   if (!role) {
-    return { granted: false, loading: false, reason: "denied" };
+    return { granted: false, loading: false, error: false, reason: "denied" };
   }
   if (role === "owner") {
-    return { granted: true, loading: false, reason: "owner" };
+    return { granted: true, loading: false, error: false, reason: "owner" };
   }
   if (role === "admin") {
-    return { granted: true, loading: false, reason: "admin" };
+    return { granted: true, loading: false, error: false, reason: "admin" };
   }
 
   const granted = data?.capabilities?.[id] === true;
-  return { granted, loading: false, reason: granted ? "role" : "denied" };
+  return {
+    granted,
+    loading: false,
+    error: false,
+    reason: granted ? "role" : "denied",
+  };
 }
 
 /**
@@ -102,16 +117,18 @@ export function useCapability(id: CapabilityId): CapabilityResult {
 export function useCapabilities(): {
   capabilities: Record<CapabilityId, boolean>;
   loading: boolean;
+  error: boolean;
   isPrivileged: boolean;
   roleSlug: string | undefined;
 } {
-  const { data, loading } = useMyCapabilities();
+  const { data, loading, error } = useMyCapabilities();
   const role = data?.role ?? undefined;
   const isPrivileged = role ? BUILTIN_BYPASS_ROLES.has(role) : false;
 
   return {
     capabilities: (data?.capabilities ?? {}) as Record<CapabilityId, boolean>,
     loading,
+    error,
     isPrivileged,
     roleSlug: role,
   };

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Loading01 } from "@untitledui/icons";
 import { useCapability, type CapabilityId } from "@/web/hooks/use-capability";
 import { NoPermissionState } from "@/web/components/no-permission-state";
+import { CapabilityLoadError } from "@/web/components/capability-load-error";
 
 interface RequireCapabilityProps {
   capability: CapabilityId;
@@ -22,7 +23,7 @@ export function RequireCapability({
   area,
   children,
 }: RequireCapabilityProps) {
-  const { granted, loading } = useCapability(capability);
+  const { granted, loading, error } = useCapability(capability);
 
   if (loading) {
     return (
@@ -30,6 +31,12 @@ export function RequireCapability({
         <Loading01 size={20} className="animate-spin text-muted-foreground" />
       </div>
     );
+  }
+
+  // A failed capability lookup must not read as a denial — show a retryable
+  // error instead of locking the user (incl. owners/admins) out.
+  if (error) {
+    return <CapabilityLoadError />;
   }
 
   if (!granted) {
