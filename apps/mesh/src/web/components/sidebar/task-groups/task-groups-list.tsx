@@ -89,13 +89,21 @@ export function TaskGroupsList() {
   const [groupBy, setGroupBy] = useState<GroupBy>("agent");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
+  const [hiddenAgentIds, setHiddenAgentIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(`studio:hidden-agents:${org.id}`);
+      return new Set<string>(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set<string>();
+    }
+  });
   const { state: sidebarState, isMobile } = useSidebar();
 
   const groups = stabilizeGroupOrder(
     org.id,
     groupThreadsByVirtualMcp(sortedThreads, agents, decopilotId),
     decopilotId,
-  );
+  ).filter((g) => !hiddenAgentIds.has(g.virtualMcpId));
 
   const memberFiltered = (threads: Task[]) =>
     memberFilter === "mine" && currentUserId
@@ -141,8 +149,20 @@ export function TaskGroupsList() {
   const handleHideGroup = (virtualMcpId: string) => {
     track("sidebar_group_hide_clicked", { virtual_mcp_id: virtualMcpId });
     const group = groups.find((g) => g.virtualMcpId === virtualMcpId);
-    if (!group) return;
-    for (const t of group.threads) hide(t.id);
+    if (group) {
+      for (const t of group.threads) hide(t.id);
+    }
+    setHiddenAgentIds((prev) => {
+      const next = new Set(prev);
+      next.add(virtualMcpId);
+      try {
+        localStorage.setItem(
+          `studio:hidden-agents:${org.id}`,
+          JSON.stringify([...next]),
+        );
+      } catch {}
+      return next;
+    });
   };
 
   const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
@@ -176,6 +196,8 @@ export function TaskGroupsList() {
               onSelectTask={(t) => setTaskId(t.id, t.virtual_mcp_id)}
               onArchiveTask={handleArchive}
               onNewTaskInGroup={handleNewInGroup}
+              onShowSettings={handleShowSettings}
+              onHideGroup={handleHideGroup}
             />
           );
         })}

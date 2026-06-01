@@ -9,7 +9,14 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@deco/ui/components/sidebar.tsx";
-import { Plus } from "@untitledui/icons";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@deco/ui/components/context-menu.tsx";
+import { EyeOff, Plus, Settings02 } from "@untitledui/icons";
 import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
@@ -21,6 +28,8 @@ export interface CollapsedGroupPopoverProps {
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
   onNewTaskInGroup: (virtualMcpId: string) => void;
+  onShowSettings: (virtualMcpId: string) => void;
+  onHideGroup: (virtualMcpId: string) => void;
 }
 
 /**
@@ -34,6 +43,8 @@ export function CollapsedGroupPopover({
   onSelectTask,
   onArchiveTask,
   onNewTaskInGroup,
+  onShowSettings,
+  onHideGroup,
 }: CollapsedGroupPopoverProps) {
   const entity = useVirtualMCP(virtualMcpId);
   const latestTask = threads[0];
@@ -58,22 +69,41 @@ export function CollapsedGroupPopover({
         }
       }}
     >
-      <SidebarMenuItem>
-        <HoverCardTrigger asChild>
-          <SidebarMenuButton
-            onClick={handleClick}
-            isActive={Boolean(
-              latestTask && activeTaskId && latestTask.id === activeTaskId,
-            )}
-          >
-            <AgentAvatar
-              icon={entity?.icon ?? null}
-              name={entity?.title ?? "?"}
-              size="sm+"
-            />
-          </SidebarMenuButton>
-        </HoverCardTrigger>
-      </SidebarMenuItem>
+      <ContextMenu>
+        <SidebarMenuItem>
+          <ContextMenuTrigger asChild>
+            <HoverCardTrigger asChild>
+              <SidebarMenuButton
+                onClick={handleClick}
+                isActive={Boolean(
+                  latestTask && activeTaskId && latestTask.id === activeTaskId,
+                )}
+              >
+                <AgentAvatar
+                  icon={entity?.icon ?? null}
+                  name={entity?.title ?? "?"}
+                  size="sm+"
+                />
+              </SidebarMenuButton>
+            </HoverCardTrigger>
+          </ContextMenuTrigger>
+        </SidebarMenuItem>
+        <ContextMenuContent className="w-56">
+          <ContextMenuItem onSelect={() => onNewTaskInGroup(virtualMcpId)}>
+            <Plus size={14} className="mr-2" />
+            New task
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => onShowSettings(virtualMcpId)}>
+            <Settings02 size={14} className="mr-2" />
+            Settings
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => onHideGroup(virtualMcpId)}>
+            <EyeOff size={14} className="mr-2" />
+            Hide
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       <HoverCardContent
         side="right"
         align="start"

@@ -1,16 +1,13 @@
 /**
  * Stable group ordering for the sidebar.
  *
- * Once a VM appears in the sidebar it keeps its slot forever (per-org,
- * persisted in localStorage). The first time we see a new VM it slots in
- * immediately after Decopilot, so the user notices it at the top without
- * bumping existing groups around. Archiving every task in a group does NOT
- * remove the group — it stays in the order list and renders with an empty
- * thread array.
+ * Active agents (those with at least one thread) always sort by recency so
+ * the agent you just talked to floats to the top. Inactive agents (directory
+ * entries with no threads) keep a stable per-org order so they don't shuffle
+ * around on every render. Decopilot is always pinned first.
  *
  * The cache is a module-scoped Map that mirrors localStorage so we don't
- * re-parse the stored JSON on every render. Both the cache and the
- * localStorage entry are keyed by org id.
+ * re-parse the stored JSON on every render.
  */
 import type { TaskGroupData } from "./group-threads";
 
@@ -50,31 +47,33 @@ export function stabilizeGroupOrder(
   groups: TaskGroupData[],
   decopilotVirtualMcpId: string | null,
 ): TaskGroupData[] {
-  let order = loadOrder(orgId);
-  const known = new Set(order);
-  const currentIds = groups.map((g) => g.virtualMcpId);
-  const newIds = currentIds.filter((id) => !known.has(id));
+  const decopilot = decopilotVirtualMcpId
+    ? groups.find((g) => g.virtualMcpId === decopilotVirtualMcpId)
+    : undefined;
+  const rest = groups.filter((g) => g.virtualMcpId !== decopilotVirtualMcpId);
 
+  // Active agents always sort by most-recently-updated so the last one you
+  // talked to rises to the top.
+  const active = rest
+    .filter((g) => g.threads.length > 0)
+    .sort((a, b) => b.latestUpdatedAt.localeCompare(a.latestUpdatedAt));
+
+  // Inactive agents keep a stable order to prevent alphabetical churn.
+  const inactive = rest.filter((g) => g.threads.length === 0);
+  let inactiveOrder = loadOrder(orgId);
+  const known = new Set(inactiveOrder);
+  const newIds = inactive.map((g) => g.virtualMcpId).filter((id) => !known.has(id));
   if (newIds.length > 0) {
-    const decopilotIsFirst =
-      decopilotVirtualMcpId !== null && order[0] === decopilotVirtualMcpId;
-    // If Decopilot is the first known id, keep it pinned; new VMs slot in
-    // right after. Otherwise prepend at index 0 (initial seed for a new org).
-    const insertAt = decopilotIsFirst ? 1 : 0;
-    order = [...order.slice(0, insertAt), ...newIds, ...order.slice(insertAt)];
-    saveOrder(orgId, order);
+    inactiveOrder = [...inactiveOrder, ...newIds];
+    saveOrder(orgId, inactiveOrder);
   }
+  const inactiveById = new Map(inactive.map((g) => [g.virtualMcpId, g]));
+  const inactiveOrdered = inactiveOrder
+    .filter((id) => inactiveById.has(id))
+    .map((id) => inactiveById.get(id)!);
 
-  // Build the final list: respect `order`, fill empty groups for any tracked
-  // VM that no longer has threads (group keeps its slot forever).
-  const byId = new Map(groups.map((g) => [g.virtualMcpId, g] as const));
-  return order.map((id) => {
-    const existing = byId.get(id);
-    if (existing) return existing;
-    return {
-      virtualMcpId: id,
-      threads: [],
-      latestUpdatedAt: "",
-    } satisfies TaskGroupData;
-  });
+  const result: TaskGroupData[] = [];
+  if (decopilot) result.push(decopilot);
+  result.push(...active, ...inactiveOrdered);
+  return result;
 }
