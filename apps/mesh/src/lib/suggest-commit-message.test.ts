@@ -61,6 +61,30 @@ describe("suggest-commit-message", () => {
     expect(result.body).toContain(".deco/blocks/pages-home.json");
   });
 
+  test("fallbackCommitSuggestion classifies diff-only add and delete", () => {
+    const added = fallbackCommitSuggestion(
+      {
+        modified: [],
+        created: [],
+        deleted: [],
+        not_added: [],
+      },
+      { diffs: { "routes/new.tsx": { from: null, to: "export {}" } } },
+    );
+    expect(added.message).toContain("add routes/new.tsx");
+
+    const deleted = fallbackCommitSuggestion(
+      {
+        modified: [],
+        created: [],
+        deleted: [],
+        not_added: [],
+      },
+      { diffs: { "routes/old.tsx": { from: "x", to: null } } },
+    );
+    expect(deleted.message).toContain("delete routes/old.tsx");
+  });
+
   test("buildCommitContextSummary includes diff-only paths vs base", () => {
     const summary = buildCommitContextSummary(
       {

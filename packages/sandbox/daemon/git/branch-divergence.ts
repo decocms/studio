@@ -34,11 +34,15 @@ export function computeBranchDivergence(
   if (!base) base = "main";
 
   const branch = tryGit(["rev-parse", "--abbrev-ref", "HEAD"]) ?? "";
+  if (!branch || branch === "HEAD") {
+    const headSha = tryGit(["rev-parse", "HEAD"]) ?? "";
+    return { base, aheadOfBase: 0, behindBase: 0, headSha, unpushed: 0 };
+  }
+
   const refExists = (ref: string) =>
     tryGit(["rev-parse", "--verify", "--quiet", ref]) !== null;
 
-  const branchRef =
-    branch && refExists(`origin/${branch}`) ? `origin/${branch}` : "HEAD";
+  const branchRef = refExists(`origin/${branch}`) ? `origin/${branch}` : "HEAD";
 
   let unpushed = 0;
   if (branch && branchRef === `origin/${branch}`) {

@@ -43,13 +43,39 @@ function changedPaths(status: GitStatusLike, diff?: GitDiffLike): string[] {
   return [...new Set([...fromStatus, ...fromDiff])];
 }
 
-function pathChangeLabel(path: string, status: GitStatusLike): string {
+function pathChangeKind(
+  path: string,
+  status: GitStatusLike,
+  diff?: GitDiffLike,
+): "add" | "delete" | "update" {
   if (status.created.includes(path) || status.not_added.includes(path)) {
-    return `Added: ${path}`;
+    return "add";
   }
-  if (status.deleted.includes(path)) return `Deleted: ${path}`;
-  if (status.modified.includes(path)) return `Modified: ${path}`;
-  return `Changed: ${path}`;
+  if (status.deleted.includes(path)) return "delete";
+  const entry = diff?.diffs[path];
+  if (entry) {
+    if (!entry.from && entry.to) return "add";
+    if (entry.from && !entry.to) return "delete";
+  }
+  if (status.modified.includes(path)) return "update";
+  return "update";
+}
+
+function pathChangeLabel(
+  path: string,
+  status: GitStatusLike,
+  diff?: GitDiffLike,
+): string {
+  switch (pathChangeKind(path, status, diff)) {
+    case "add":
+      return `Added: ${path}`;
+    case "delete":
+      return `Deleted: ${path}`;
+    case "update":
+      return status.modified.includes(path)
+        ? `Modified: ${path}`
+        : `Changed: ${path}`;
+  }
 }
 
 function changedLines(
@@ -166,7 +192,9 @@ export function buildCommitContextSummary(
   diff: GitDiffLike,
 ): string {
   const paths = changedPaths(status, diff);
-  const fileLines = paths.map((p) => pathChangeLabel(p, status)).join("\n");
+  const fileLines = paths
+    .map((p) => pathChangeLabel(p, status, diff))
+    .join("\n");
 
   const snippets = paths
     .map((path) => {
@@ -186,11 +214,8 @@ export function fallbackCommitSuggestion(
 ): CommitSuggestion {
   const paths = changedPaths(status, diff);
   const all = paths.map((f) => {
-    if (status.created.includes(f) || status.not_added.includes(f)) {
-      return `add ${f}`;
-    }
-    if (status.deleted.includes(f)) return `delete ${f}`;
-    return `update ${f}`;
+    const kind = pathChangeKind(f, status, diff);
+    return `${kind} ${f}`;
   });
 
   const label = all.length > 0 ? all[0] : "Update files";

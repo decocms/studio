@@ -236,7 +236,7 @@ export function countGitChanges(status: GitStatus | null): number {
 }
 
 /** True when the working tree or index has uncommitted work. */
-export function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
+function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
   if (!status) return false;
   return (
     countGitChanges(status) > 0 ||
