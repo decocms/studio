@@ -61,6 +61,19 @@ const GROUP_BY_LABELS: Record<GroupBy, string> = {
   status: "Status",
 };
 
+function readHiddenState(orgId: string): { orgId: string; ids: Set<string> } {
+  try {
+    const raw = localStorage.getItem(`studio:hidden-agents:${orgId}`);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    const ids = Array.isArray(parsed)
+      ? parsed.filter((v): v is string => typeof v === "string")
+      : [];
+    return { orgId, ids: new Set(ids) };
+  } catch {
+    return { orgId, ids: new Set() };
+  }
+}
+
 export function TaskGroupsList() {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
@@ -92,27 +105,9 @@ export function TaskGroupsList() {
   const [hiddenState, setHiddenState] = useState<{
     orgId: string;
     ids: Set<string>;
-  }>(() => {
-    try {
-      const raw = localStorage.getItem(`studio:hidden-agents:${org.id}`);
-      return {
-        orgId: org.id,
-        ids: new Set<string>(raw ? JSON.parse(raw) : []),
-      };
-    } catch {
-      return { orgId: org.id, ids: new Set<string>() };
-    }
-  });
+  }>(() => readHiddenState(org.id));
   if (hiddenState.orgId !== org.id) {
-    try {
-      const raw = localStorage.getItem(`studio:hidden-agents:${org.id}`);
-      setHiddenState({
-        orgId: org.id,
-        ids: new Set<string>(raw ? JSON.parse(raw) : []),
-      });
-    } catch {
-      setHiddenState({ orgId: org.id, ids: new Set<string>() });
-    }
+    setHiddenState(readHiddenState(org.id));
   }
   const hiddenAgentIds = hiddenState.ids;
   const { state: sidebarState, isMobile } = useSidebar();
@@ -170,17 +165,15 @@ export function TaskGroupsList() {
     if (group) {
       for (const t of group.threads) hide(t.id);
     }
-    setHiddenState((prev) => {
-      const next = new Set(prev.ids);
-      next.add(virtualMcpId);
-      try {
-        localStorage.setItem(
-          `studio:hidden-agents:${org.id}`,
-          JSON.stringify([...next]),
-        );
-      } catch {}
-      return { ...prev, ids: next };
-    });
+    const next = new Set(hiddenAgentIds);
+    next.add(virtualMcpId);
+    try {
+      localStorage.setItem(
+        `studio:hidden-agents:${hiddenState.orgId}`,
+        JSON.stringify([...next]),
+      );
+    } catch {}
+    setHiddenState((prev) => ({ ...prev, ids: next }));
   };
 
   const filtersActive = typeFilter !== "all" || memberFilter !== "mine";

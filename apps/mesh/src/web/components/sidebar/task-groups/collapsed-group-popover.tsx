@@ -39,6 +39,10 @@ export interface CollapsedGroupPopoverProps {
 /**
  * In collapsed rail state, each VM group is represented by its avatar.
  * Hovering opens a popover preview that shows the same accordion body.
+ *
+ * `useGroupShowMore` lives in `CollapsedGroupPopoverBody` rather than here
+ * so the hook (and its thread-store subscriptions) only mounts when the
+ * HoverCard is open — not for every icon in the collapsed rail.
  */
 export function CollapsedGroupPopover({
   virtualMcpId,
@@ -53,7 +57,6 @@ export function CollapsedGroupPopover({
 }: CollapsedGroupPopoverProps) {
   const entity = useVirtualMCP(virtualMcpId);
   const latestTask = threads[0];
-  const showMore = useGroupShowMore("agent", virtualMcpId, filters);
 
   const handleClick = () => {
     if (latestTask) {
@@ -127,33 +130,61 @@ export function CollapsedGroupPopover({
             <Plus size={14} />
           </button>
         </div>
-        <div className="flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
-          {threads.length === 0 && !showMore.hasMore && !showMore.isFetching ? (
-            <div className="px-2 py-1.5 text-xs text-muted-foreground">
-              No tasks yet
-            </div>
-          ) : (
-            <>
-              {threads.map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  isActive={activeTaskId === task.id}
-                  onClick={() => onSelectTask(task)}
-                  onArchive={() => onArchiveTask(task)}
-                  showAutomationBadge={Boolean(task.trigger_id)}
-                />
-              ))}
-              {(showMore.hasMore || showMore.isFetching) && (
-                <ShowMoreButton
-                  onClick={() => void showMore.loadMore()}
-                  isFetching={showMore.isFetching}
-                />
-              )}
-            </>
-          )}
-        </div>
+        <CollapsedGroupPopoverBody
+          virtualMcpId={virtualMcpId}
+          threads={threads}
+          activeTaskId={activeTaskId}
+          filters={filters}
+          onSelectTask={onSelectTask}
+          onArchiveTask={onArchiveTask}
+        />
       </HoverCardContent>
     </HoverCard>
+  );
+}
+
+function CollapsedGroupPopoverBody({
+  virtualMcpId,
+  threads,
+  activeTaskId,
+  filters,
+  onSelectTask,
+  onArchiveTask,
+}: {
+  virtualMcpId: string;
+  threads: Task[];
+  activeTaskId: string | null;
+  filters: SidebarFilters;
+  onSelectTask: (task: Task) => void;
+  onArchiveTask: (task: Task) => void;
+}) {
+  const showMore = useGroupShowMore("agent", virtualMcpId, filters);
+  return (
+    <div className="flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
+      {threads.length === 0 && !showMore.hasMore && !showMore.isFetching ? (
+        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+          No tasks yet
+        </div>
+      ) : (
+        <>
+          {threads.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              isActive={activeTaskId === task.id}
+              onClick={() => onSelectTask(task)}
+              onArchive={() => onArchiveTask(task)}
+              showAutomationBadge={Boolean(task.trigger_id)}
+            />
+          ))}
+          {(showMore.hasMore || showMore.isFetching) && (
+            <ShowMoreButton
+              onClick={() => void showMore.loadMore()}
+              isFetching={showMore.isFetching}
+            />
+          )}
+        </>
+      )}
+    </div>
   );
 }
