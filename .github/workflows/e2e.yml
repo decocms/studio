@@ -117,19 +117,14 @@ jobs:
           for i in $(seq 1 10); do nc -z localhost 4222 && break || sleep 1; done
           nc -z localhost 4222
 
-      # MinIO runs the server only with an explicit command, which GitHub
-      # `services:` can't override — start it as a step, mirroring NATS above
-      # and the storage-integration workflow. Then create the bucket the app
-      # expects (S3Service never auto-creates it); reuse the already-installed
-      # @aws-sdk/client-s3 so there's no `mc` version to keep in sync.
       - name: Start MinIO
+        uses: ./.github/actions/start-minio
+
+      # Create the bucket the app expects (S3Service never auto-creates it);
+      # reuse the already-installed @aws-sdk/client-s3 so there's no `mc`
+      # version to keep in sync.
+      - name: Create S3 bucket
         run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
-          for i in $(seq 1 15); do nc -z localhost 9000 && break || sleep 1; done
-          nc -z localhost 9000
           bun -e '
             import { S3Client, CreateBucketCommand } from "@aws-sdk/client-s3";
             const c = new S3Client({
