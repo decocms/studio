@@ -319,6 +319,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
           githubActionPending={githubActionPending}
           onActivate={onActivate}
           prNumber={pr?.number}
+          prBase={pr?.base}
           onSquashMerge={handleSquashMerge}
           onReview={
             pr
@@ -364,6 +365,7 @@ function HeaderButtonRenderer(props: {
   githubActionPending: boolean;
   onActivate: (action: HeaderButton["action"]) => void;
   prNumber?: number;
+  prBase?: string;
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
   onReview?: () => void;
 }) {
@@ -389,6 +391,7 @@ function HeaderButtonRenderer(props: {
       <WithTooltip label={tooltipLabel}>
         <MergeSplitButton
           prNumber={props.prNumber}
+          baseBranch={props.prBase}
           disabled={disabled}
           loading={loading}
           onPublish={() => props.onSquashMerge(props.prNumber!)}

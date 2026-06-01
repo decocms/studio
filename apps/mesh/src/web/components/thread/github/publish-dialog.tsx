@@ -31,6 +31,7 @@ import {
   type CreatedPullRequest,
 } from "./github-pr-api.ts";
 import type { PrSummary } from "./use-pr-data.ts";
+import { publishToBaseLabel } from "./publish-label.ts";
 import {
   countGitChanges,
   discardGitFiles,
@@ -203,6 +204,7 @@ function PublishDialogBody({
   }
 
   const githubHeadBranch = readGitHeadBranch(gitStatus) ?? branch;
+  const publishLabel = publishToBaseLabel(baseBranch);
 
   const regenerateSuggestion = () => {
     if (!gitStatus || !gitDiff) return;
@@ -454,7 +456,7 @@ function PublishDialogBody({
                 ? "Save changes"
                 : openPrFromCommits
                   ? "Submit for review"
-                  : "Publish"}
+                  : publishLabel}
             </p>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-green-500" />
@@ -620,8 +622,8 @@ function PublishDialogBody({
                         <span className="font-mono">{baseBranch}</span>
                         {" · "}
                         <span className="text-foreground/80">
-                          Submit for review keeps changes on the branch; Publish
-                          squash-merges into {baseBranch}.
+                          Submit for review keeps changes on the branch;{" "}
+                          {publishLabel} squash-merges into {baseBranch}.
                         </span>
                       </>
                     )}
@@ -693,6 +695,7 @@ function PublishDialogBody({
                   Submit for review
                 </Button>
                 <PublishButton
+                  label={publishLabel}
                   canPublish={canPublish}
                   disabledReason={publishDisabledReason}
                   isPublishing={isPublishing}
@@ -717,12 +720,14 @@ function PublishDialogBody({
 }
 
 function PublishButton({
+  label,
   canPublish,
   disabledReason,
   isPublishing,
   isSubmittingForReview,
   onPublish,
 }: {
+  label: string;
   canPublish: boolean;
   disabledReason: string | null;
   isPublishing: boolean;
@@ -738,7 +743,7 @@ function PublishButton({
       disabled={!canPublish || isPublishing || isSubmittingForReview}
     >
       {isPublishing ? <Loading01 className="h-4 w-4 animate-spin" /> : null}
-      Publish
+      {label}
     </Button>
   );
 

@@ -442,9 +442,22 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Publish");
+    expect(r.label).toBe("Publish to production");
     expect(r.action).toBe("merge-split");
     expect(r.variant).toBe("success");
+  });
+
+  test("PR open + all clear + base develop → Publish", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ aheadOfBase: 3, base: "develop" }),
+        pr: pr({ base: "develop" }),
+        checks: [check()],
+        reviews: reviews(),
+      }),
+    );
+    expect(r.label).toBe("Publish");
+    expect(r.action).toBe("merge-split");
   });
 
   test("priority: dirty beats everything else", () => {
