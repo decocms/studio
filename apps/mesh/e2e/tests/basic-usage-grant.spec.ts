@@ -59,8 +59,12 @@ test.describe("runtime basic-usage grant", () => {
     const orgId = orgRow.rows[0]?.id;
     if (!orgId) throw new Error("org A not found after signup");
 
-    // A custom role granting exactly one non-basic tool (ORGANIZATION_GET) and
-    // nothing else — not owner/admin, and no basic-usage tools listed.
+    // A custom role with NO permissions — fully restrictive (not owner/admin,
+    // grants no tools). Better Auth's create-role only lets a creator grant
+    // permissions they hold *explicitly*, and the owner's `self: ["*"]` is not
+    // expanded for that check — so an empty permission is both what this test
+    // needs (the role must not grant the tool under test) and what create-role
+    // will accept.
     const roleSlug = `restricted-${Date.now()}-${Math.floor(
       Math.random() * 1e6,
     )}`;
@@ -70,7 +74,7 @@ test.describe("runtime basic-usage grant", () => {
         data: {
           organizationId: orgId,
           role: roleSlug,
-          permission: { self: ["ORGANIZATION_GET"] },
+          permission: {},
         },
       },
     );
@@ -83,8 +87,11 @@ test.describe("runtime basic-usage grant", () => {
     const memberCtx = await newApiContext(playwright);
     const member = await signUpViaApi(memberCtx);
 
+    // Invite with the built-in "user" role (defined in our auth config); the
+    // member's effective role is overwritten with the restrictive custom role
+    // below, so this is only the transient role between invite and assignment.
     const invite = await ownerCtx.post("/api/auth/organization/invite-member", {
-      data: { organizationId: orgId, email: member.email, role: "member" },
+      data: { organizationId: orgId, email: member.email, role: "user" },
     });
     expect(invite.ok()).toBe(true);
     const inviteJson = (await invite.json()) as {
