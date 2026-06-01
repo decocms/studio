@@ -90,6 +90,13 @@ jobs:
       # signups per run; without this they get 429s and only pass on retry,
       # which masks real regressions as "flaky".
       DISABLE_RATE_LIMIT: "true"
+      # MinIO, started below — makes the app resolve OBJECT_STORAGE to the real
+      # S3Service path (not the DevObjectStorage filesystem fallback) so the
+      # object-storage e2e exercises production code end-to-end.
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: studio-e2e
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
 
     steps:
       - name: Checkout repository
@@ -109,6 +116,29 @@ jobs:
           docker run -d --name nats -p 4222:4222 nats:2.10 -js
           for i in $(seq 1 10); do nc -z localhost 4222 && break || sleep 1; done
           nc -z localhost 4222
+
+      - name: Start MinIO
+        uses: ./.github/actions/start-minio
+
+      # Create the bucket the app expects (S3Service never auto-creates it);
+      # reuse the already-installed @aws-sdk/client-s3 so there's no `mc`
+      # version to keep in sync.
+      - name: Create S3 bucket
+        run: |
+          bun -e '
+            import { S3Client, CreateBucketCommand } from "@aws-sdk/client-s3";
+            const c = new S3Client({
+              endpoint: process.env.S3_ENDPOINT,
+              region: "auto",
+              credentials: {
+                accessKeyId: process.env.S3_ACCESS_KEY_ID,
+                secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+              },
+              forcePathStyle: true,
+            });
+            await c.send(new CreateBucketCommand({ Bucket: process.env.S3_BUCKET }));
+            console.log("created bucket", process.env.S3_BUCKET);
+          '
 
       - name: Cache Playwright browsers
         id: cache-playwright
