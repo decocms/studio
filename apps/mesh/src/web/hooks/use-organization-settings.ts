@@ -13,6 +13,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { useRef } from "react";
 import { KEYS } from "@/web/lib/query-keys";
 
 export type { SimpleModeTier } from "@/tools/organization/schema";
@@ -277,7 +278,7 @@ export function useDefaultHomeAgents(): DefaultHomeAgentsConfig | null {
   return data ?? null;
 }
 
-export function useUpdateDefaultHomeAgents() {
+function useUpdateDefaultHomeAgents() {
   const mutation = useUpdateOrganizationSettings();
   return {
     ...mutation,
@@ -290,6 +291,69 @@ export function useUpdateDefaultHomeAgents() {
       options?: OrgSettingsMutateOptions,
     ) => mutation.mutateAsync({ default_home_agents: config }, options),
   };
+}
+
+export interface HomeAgentsWriter {
+  /** The freshest id list, read live from the cache (not a render snapshot). */
+  currentIds: () => string[];
+  /**
+   * Queue a write. `transform` receives the freshest id list and returns the
+   * next one, or `null` to skip (no-op guards like "already on home").
+   */
+  apply: (transform: (ids: string[]) => string[] | null) => Promise<void>;
+}
+
+/**
+ * Serialized, optimistic writer for `default_home_agents`.
+ *
+ * Both the home board and the manage-home drawer mutate this same ordered list,
+ * often via rapid clicks (add / remove / reorder). Three guarantees keep that
+ * safe — and are why callers must go through here instead of touching the cache
+ * and mutation directly:
+ *  - each write derives its next id list from the *live* cache, never a
+ *    render-time snapshot, so concurrent edits can't clobber each other;
+ *  - writes run strictly in order (a per-instance promise chain), so two
+ *    in-flight requests can't reach the server out of order and commit stale ids;
+ *  - the cache is patched optimistically and rolled back if the write fails.
+ */
+export function useHomeAgentsWriter(): HomeAgentsWriter {
+  const { org } = useProjectContext();
+  const update = useUpdateDefaultHomeAgents();
+  const queryClient = useQueryClient();
+  const chain = useRef<Promise<unknown>>(Promise.resolve());
+  const key = KEYS.organizationSettings(org.id);
+
+  const currentIds = (): string[] =>
+    queryClient.getQueryData<OrganizationSettings>(key)?.default_home_agents
+      ?.ids ?? [];
+
+  const apply = (
+    transform: (ids: string[]) => string[] | null,
+  ): Promise<void> => {
+    const run = chain.current.then(async () => {
+      const snapshot = queryClient.getQueryData<OrganizationSettings>(key);
+      const next = transform(snapshot?.default_home_agents?.ids ?? []);
+      if (next === null) return;
+      queryClient.setQueryData<OrganizationSettings | undefined>(key, (prev) =>
+        prev ? { ...prev, default_home_agents: { ids: next } } : prev,
+      );
+      try {
+        await update.mutateAsync({ ids: next });
+        await queryClient.refetchQueries({
+          queryKey: KEYS.homeNextActions(org.slug),
+          type: "active",
+        });
+      } catch (err) {
+        queryClient.setQueryData(key, snapshot);
+        throw err;
+      }
+    });
+    // Keep the chain alive even when a write rejects, so later writes still run.
+    chain.current = run.catch(() => {});
+    return run;
+  };
+
+  return { currentIds, apply };
 }
 
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {

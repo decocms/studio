@@ -75,16 +75,6 @@ export const KEYS = {
   // Home tile-board layout (positions/sizes/hidden), KV-backed per org.
   boardLayout: (orgSlug: string) => ["board-layout", orgSlug] as const,
 
-  // Per-agent presence probe for the add-tile drawer (UI tools + prompts).
-  agentSummary: (orgId: string, agentId: string) =>
-    ["agent-summary", orgId, agentId] as const,
-
-  // One-shot timer the add-tile drawer uses to stop waiting on slow
-  // agent probes after a grace period (avoids a single hung gateway
-  // holding the whole list on skeleton).
-  agentSummaryDeadline: (orgId: string, ms: number) =>
-    ["agent-summary-deadline", orgId, ms] as const,
-
   // Prompts exposed by an agent's gateway (drawer's prompt list).
   agentPrompts: (orgId: string, agentId: string) =>
     ["agent-prompts", orgId, agentId] as const,

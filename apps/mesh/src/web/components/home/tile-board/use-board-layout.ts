@@ -15,6 +15,10 @@ interface CandidateTile {
   id: string;
   defaultSize?: { w: number; h: number };
   minSize?: { w: number; h: number };
+  /** Pinned to home (in default_home_agents). Pinned candidates ignore the
+   *  `hidden` list — membership is owned by the manage-home drawer now, so a
+   *  stale board-level hide must never suppress an explicitly-pinned agent. */
+  pinned?: boolean;
 }
 
 interface BoardSnapshot {
@@ -126,7 +130,9 @@ export function useBoardLayout(candidates: CandidateTile[]): BoardLayoutApi {
   // Build the visible-tile list deterministically from candidates +
   // layout. Auto-place anything that doesn't have a stored position yet.
   const placed: TileInstance[] = [];
-  const visibleCandidates = candidates.filter((c) => !hiddenSet.has(c.id));
+  const visibleCandidates = candidates.filter(
+    (c) => c.pinned || !hiddenSet.has(c.id),
+  );
   const minByCandidate = new Map<string, { w: number; h: number }>();
   for (const cand of candidates) {
     if (cand.minSize) minByCandidate.set(cand.id, cand.minSize);
