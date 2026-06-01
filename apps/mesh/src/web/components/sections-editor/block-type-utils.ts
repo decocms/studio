@@ -31,6 +31,14 @@ export function isManifestSectionResolveType(
   return blockType !== null && blockType.includes("sections");
 }
 
+export function isManifestMatcherResolveType(
+  meta: LiveMeta,
+  resolveType: string,
+): boolean {
+  const blockType = getManifestBlockType(meta, resolveType);
+  return blockType !== null && blockType.includes("matchers");
+}
+
 /** Block id reference (no module path) — e.g. `Header`, not `site/sections/Header.tsx`. */
 export function isSavedBlockResolveType(resolveType: string): boolean {
   return !resolveType.includes("/");

@@ -1,10 +1,7 @@
 import type { RawSection } from "./section-types";
+import type { PageVariant } from "./page-variants";
 
-interface PageVariant {
-  label: string;
-  sections: RawSection[];
-  rule?: Record<string, unknown>;
-}
+export type { PageVariant };
 
 export function buildPageDataWithSections(
   decofile: Record<string, unknown>,
