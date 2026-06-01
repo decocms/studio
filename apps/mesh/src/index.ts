@@ -92,9 +92,6 @@ function withSecurityHeaders(res: Response): Response {
   });
 }
 
-// Closed early in gracefulShutdown so the port frees before the Hono drain.
-let ingressServers: import("node:net").Server[] = [];
-
 // Sandbox preview reverse-proxy (agent-sandbox only). The base domain is parsed at
 // boot from STUDIO_SANDBOX_PREVIEW_URL_PATTERN; null disables the proxy and
 // preview-host requests fall through to the normal mesh routing (which 404s
@@ -115,65 +112,11 @@ const previewBaseDomain = parsePreviewBaseDomain(
 );
 const previewProxyDeps = {
   baseDomain: previewBaseDomain ?? "",
-  getRunner: async () => {
-    const runner = await getOrInitRunnerForPreview();
-    if (!runner || runner.kind !== "cluster") return null;
-    // The cluster (agent-sandbox) runner is the only one that exposes proxyPreviewRequest /
-    // resolvePreviewUpstreamUrl; cast is safe after the kind check.
-    return runner as unknown as import("@decocms/sandbox/provider/agent-sandbox").AgentSandboxProvider;
-  },
+  // getOrInitSharedRunner resolves to the cluster AgentSandboxProvider (the
+  // only env-instantiable provider) or null — exactly what PreviewProxyDeps
+  // wants, so no kind check or cast is needed.
+  getRunner: getOrInitRunnerForPreview,
 };
-
-// Boot/dev wiring for the Docker runner. The boot sweep + local ingress
-// are local-docker-only — other runners (cluster, user-desktop)
-// either don't run on this machine or expose previews via their own
-// publicly-reachable URLs.
-const { resolveSandboxProviderKindFromEnv } = await import(
-  "@decocms/sandbox/provider"
-);
-const sandboxProviderKind = resolveSandboxProviderKindFromEnv();
-const ingressEligible = sandboxProviderKind === "local-docker";
-
-if (ingressEligible) {
-  const { startLocalSandboxIngress } = await import(
-    "@decocms/sandbox/provider"
-  );
-  const { getSharedSandboxProviderIfInit, getOrInitSharedRunner } =
-    await import("./sandbox/lifecycle");
-
-  // Boot sweep (best-effort). Shutdown cleanup can't cover crashes —
-  // SIGTERM races with the parent killing postgres — so the boot sweep is
-  // what actually keeps `docker ps` empty between sessions.
-  const { sweepDockerOrphansOnBoot } = await import(
-    "@decocms/sandbox/provider"
-  );
-  await sweepDockerOrphansOnBoot();
-
-  // Port 7070 default: macOS AirPlay Receiver owns `*:7000` on v4+v6, so a
-  // Chrome Happy-Eyeballs race would hit Apple. The ingress is part of the
-  // Docker runner contract — Docker exposes user dev servers through
-  // `<handle>.localhost:7070`, so the gate is the runner kind, not
-  // NODE_ENV. Set `SANDBOX_INGRESS_PORT=0` to skip binding entirely.
-  const ingressPort = Number(process.env.SANDBOX_INGRESS_PORT ?? 7070);
-  if (ingressPort > 0) {
-    ingressServers = startLocalSandboxIngress(() => {
-      const r = getSharedSandboxProviderIfInit();
-      if (!r) return null;
-      if (r.kind !== "local-docker") return null;
-      // DockerSandboxProvider exposes resolveDaemonPort; the structural
-      // cast is safe after the kind check.
-      return r as unknown as {
-        resolveDaemonPort(handle: string): Promise<number | null>;
-      };
-    }, ingressPort);
-
-    // Construct the provider up-front. The first preview-iframe request
-    // typically arrives on a page reload with a warm sandboxMap, before either
-    // SANDBOX_START or `/api/vm-events` has touched the provider — without this
-    // eager init the ingress would 503 with "Sandbox Runner Not Initialized".
-    await getOrInitSharedRunner();
-  }
-}
 
 // Create the Hono app (any DBOS.registerWorkflow calls happen during this
 // import chain). Launch DBOS afterwards so the registry is sealed before
@@ -355,14 +298,10 @@ async function gracefulShutdown(signal: string) {
     // 1. Mark as shutting down — readiness returns 503 immediately
     app.markShuttingDown();
 
-    // 2. Close ingress first so port 7070 frees immediately — next `bun dev`
-    //    shouldn't have to wait out our drain.
-    for (const s of ingressServers) s.close();
-
-    // 3. Let K8s notice the 503 before we close connections.
+    // 2. Let K8s notice the 503 before we close connections.
     await new Promise((r) => setTimeout(r, 2_000));
 
-    // 4. Force-close connections (SSE streams are long-lived and would block
+    // 3. Force-close connections (SSE streams are long-lived and would block
     //    graceful drain indefinitely).
     await server.stop(true);
 
@@ -381,7 +320,7 @@ async function gracefulShutdown(signal: string) {
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 // Bun keeps the process alive after terminal close — without SIGHUP we
-// accumulate zombies still holding port 7070.
+// accumulate zombies still holding the listen port.
 process.on("SIGHUP", () => gracefulShutdown("SIGHUP"));
 
 process.on("unhandledRejection", (reason) => {

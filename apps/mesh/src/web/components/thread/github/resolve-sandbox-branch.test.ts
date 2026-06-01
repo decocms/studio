@@ -8,10 +8,10 @@ import {
 const sandboxMapFixture = {
   user1: {
     "deco/silver-plume": {
-      "local-docker": {
+      "user-desktop": {
         sandboxHandle: "h1",
         previewUrl: "http://localhost:1",
-        sandboxProviderKind: "local-docker" as const,
+        sandboxProviderKind: "user-desktop" as const,
       },
     },
   },

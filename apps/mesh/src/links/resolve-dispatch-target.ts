@@ -3,7 +3,7 @@
  * provider kind pinned for this (thread, virtualMcpId, branch).
  *
  * `sandboxProviderKind` is the single source of truth:
- *   - cloud kind (local-docker/cluster) → cluster default sandbox
+ *   - cloud kind (cluster) → cluster default sandbox
  *   - `user-desktop` + decopilot → cluster decopilot, sandbox tools tunneled
  *   - `user-desktop` + claude-code/codex → whole stream dispatched to the desktop
  *

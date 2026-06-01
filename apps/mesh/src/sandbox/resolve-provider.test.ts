@@ -13,14 +13,14 @@ import type {
 } from "../links/link-claim-registry";
 
 // Pin env kind so resolver fallback is deterministic.
-process.env.STUDIO_SANDBOX_PROVIDER = "local-docker";
+process.env.STUDIO_SANDBOX_PROVIDER = "cluster";
 
 async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-const stubDocker: SandboxProvider = {
-  kind: "local-docker",
+const stubCluster: SandboxProvider = {
+  kind: "cluster",
   ensure: async (_id: SandboxId, _opts?: EnsureOptions): Promise<Sandbox> => ({
     handle: "h",
     workdir: "/",
@@ -34,18 +34,13 @@ const stubDocker: SandboxProvider = {
   watchClaimLifecycle: () => readyOnly(),
 };
 
-const stubAgentSandbox: SandboxProvider = {
-  ...stubDocker,
-  kind: "cluster",
-};
-const stubDesktop: SandboxProvider = { ...stubDocker, kind: "user-desktop" };
+const stubDesktop: SandboxProvider = { ...stubCluster, kind: "user-desktop" };
 
 // Mock lifecycle: dispatch on requested kind so we can assert which one was
 // picked.
 const byKindSpy = mock(
-  async (_ctx: unknown, kind: "local-docker" | "cluster" | "user-desktop") => {
-    if (kind === "local-docker") return stubDocker;
-    if (kind === "cluster") return stubAgentSandbox;
+  async (_ctx: unknown, kind: "cluster" | "user-desktop") => {
+    if (kind === "cluster") return stubCluster;
     throw new Error("unreachable — resolver builds user-desktop directly");
   },
 );
@@ -118,7 +113,7 @@ describe("resolveSandboxProvider", () => {
       },
     );
     expect(kind).toBe("cluster");
-    expect(provider).toBe(stubAgentSandbox);
+    expect(provider).toBe(stubCluster);
     expect(buildDesktopSpy).not.toHaveBeenCalled();
   });
 
@@ -155,18 +150,18 @@ describe("resolveSandboxProvider", () => {
       userId: "u-1",
       branch: "deco/foo",
       virtualMcpMetadata: metadata,
-      explicitKind: "local-docker",
+      explicitKind: "cluster",
     });
-    expect(kind).toBe("local-docker");
+    expect(kind).toBe("cluster");
   });
 
-  test("no link + no sandboxMap entry → env kind (local-docker here)", async () => {
+  test("no link + no sandboxMap entry → env kind (cluster here)", async () => {
     const { kind } = await resolveSandboxProvider(stubCtx(null), {
       userId: "u-1",
       branch: "deco/fresh",
       virtualMcpMetadata: null,
     });
-    expect(kind).toBe("local-docker");
+    expect(kind).toBe("cluster");
   });
 
   test("ctx hint (sandboxPreference=user-desktop + link) short-circuits without sandboxMap read", async () => {
@@ -212,8 +207,8 @@ describe("resolveSandboxProvider", () => {
       branch: "deco/foo",
       virtualMcpMetadata: null,
     });
-    // STUDIO_SANDBOX_PROVIDER=local-docker pinned at top of file.
-    expect(kind).toBe("local-docker");
+    // STUDIO_SANDBOX_PROVIDER=cluster pinned at top of file.
+    expect(kind).toBe("cluster");
   });
 
   test("sandboxPreference=cluster-default + env=user-desktop + link online → binds user-desktop with link", async () => {

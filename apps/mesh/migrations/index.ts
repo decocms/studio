@@ -95,6 +95,7 @@ import * as migration093backfillglobalsearchbasicusage from "./093-backfill-glob
 import * as migration094orgfileconfigs from "./094-org-file-configs.ts";
 import * as migration095removeautomationtoolcallkind from "./095-remove-automation-tool-call-kind.ts";
 import * as migration096orgfileconfigspublicurlbase from "./096-org-file-configs-public-url-base.ts";
+import * as migration097droplocaldockersandboxstate from "./097-drop-local-docker-sandbox-state.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -211,6 +212,8 @@ const migrations: Record<string, Migration> = {
     migration095removeautomationtoolcallkind,
   "096-org-file-configs-public-url-base":
     migration096orgfileconfigspublicurlbase,
+  "097-drop-local-docker-sandbox-state":
+    migration097droplocaldockersandboxstate,
 };
 
 export default migrations;

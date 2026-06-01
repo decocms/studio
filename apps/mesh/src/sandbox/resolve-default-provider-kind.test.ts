@@ -23,7 +23,7 @@ describe("resolveDefaultSandboxProviderKind", () => {
   test("returns user-desktop when the user's link is online", async () => {
     const kind = await resolveDefaultSandboxProviderKind("u-1", {
       linkClaimRegistry: stubRegistry(linkOnline()),
-      resolveEnvKind: () => "local-docker",
+      resolveEnvKind: () => "cluster",
     });
     expect(kind).toBe("user-desktop");
   });
@@ -31,8 +31,8 @@ describe("resolveDefaultSandboxProviderKind", () => {
   test("falls back to env kind when no link is registered", async () => {
     const kind = await resolveDefaultSandboxProviderKind("u-1", {
       linkClaimRegistry: stubRegistry(null),
-      resolveEnvKind: () => "local-docker",
+      resolveEnvKind: () => "cluster",
     });
-    expect(kind).toBe("local-docker");
+    expect(kind).toBe("cluster");
   });
 });

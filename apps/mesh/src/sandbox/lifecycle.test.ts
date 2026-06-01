@@ -1,73 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-  DockerSandboxProvider,
-  type ClaimPhase,
-  type SandboxProvider,
-} from "@decocms/sandbox/provider";
-import type { MeshContext } from "@/core/mesh-context";
+import { beforeEach, describe, expect, it } from "bun:test";
+import type { ClaimPhase, SandboxProvider } from "@decocms/sandbox/provider";
 import {
   __resetSharedLifecyclesForTesting,
-  asDockerRunner,
-  getSandboxProviderByKind,
   subscribeLifecycle,
 } from "./lifecycle";
-
-// Minimal MeshContext stub — lifecycle only reads ctx.db, and only to hand
-// it to the KyselySandboxProviderStateStore constructor (no queries run until
-// an actual ensure/delete call).
-const stubCtx = { db: {} } as unknown as MeshContext;
-
-describe("asDockerRunner", () => {
-  it("returns null for null input", () => {
-    expect(asDockerRunner(null)).toBeNull();
-  });
-
-  it("returns the instance unchanged for a DockerSandboxProvider", () => {
-    const runner = new DockerSandboxProvider();
-    expect(asDockerRunner(runner)).toBe(runner);
-  });
-
-  it("returns null for a non-Docker runner", () => {
-    // Duck-typed non-Docker runner — satisfies the SandboxProvider shape but
-    // isn't a DockerSandboxProvider instance, so instanceof narrows to null.
-    const fake = {
-      kind: "cluster" as const,
-      ensure: async () => ({ handle: "h", workdir: "/app", previewUrl: null }),
-      exec: async () => ({
-        stdout: "",
-        stderr: "",
-        exitCode: 0,
-        timedOut: false,
-      }),
-      delete: async () => {},
-      alive: async () => false,
-      getPreviewUrl: async () => null,
-      proxyDaemonRequest: async () => new Response(null, { status: 204 }),
-    };
-    // biome-ignore lint/suspicious/noExplicitAny: intentional duck-type
-    expect(asDockerRunner(fake as any)).toBeNull();
-  });
-});
-
-describe("getSandboxProviderByKind caching", () => {
-  // The `runners` cache lives at module scope, so a kind cached by one test
-  // leaks into later tests. Isolate by claiming a kind once per suite and
-  // asserting identity within the same test only.
-
-  beforeEach(() => {
-    // No-op: we can't reset module state without dynamic re-import, so each
-    // test must use independent observations (see below).
-  });
-
-  afterEach(() => {});
-
-  it("returns the same DockerSandboxProvider instance across calls", async () => {
-    const a = await getSandboxProviderByKind(stubCtx, "local-docker");
-    const b = await getSandboxProviderByKind(stubCtx, "local-docker");
-    expect(a).toBe(b);
-    expect(a).toBeInstanceOf(DockerSandboxProvider);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // subscribeLifecycle — multi-tab dedup
