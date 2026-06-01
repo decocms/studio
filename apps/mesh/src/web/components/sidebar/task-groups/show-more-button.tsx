@@ -7,10 +7,9 @@ interface ShowMoreButtonProps {
 }
 
 /**
- * Presentational "Show more" button. Always rendered (the affordance stays
- * available so the user can pull in any tasks that arrived after the last
- * fetch — SSE inserts, fresh runs, etc.). Wire it to a paginator via
- * `useGroupShowMore`.
+ * Presentational "Show more" button. Rendered only when the parent
+ * determines there are more pages to fetch (`hasMore || isFetching`).
+ * Wire it to a paginator via `useGroupShowMore`.
  */
 export function ShowMoreButton({ onClick, isFetching }: ShowMoreButtonProps) {
   return (

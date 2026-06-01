@@ -1,20 +1,16 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  EyeOff,
-  Plus,
-  Settings02,
-} from "@untitledui/icons";
+import { ChevronDown, ChevronRight, Plus } from "@untitledui/icons";
+import { useState } from "react";
+import type { DraggableAttributes } from "@dnd-kit/core";
+import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ContextMenu,
   ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@deco/ui/components/context-menu.tsx";
+import { AgentGroupContextMenuItems } from "./agent-group-context-menu-items";
 import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
 import {
   TOOL_CALL_RUNS_GROUP_KEY,
@@ -36,9 +32,20 @@ export interface TaskGroupProps {
   onNewTaskInGroup: (virtualMcpId: string) => void;
   onShowSettings: (virtualMcpId: string) => void;
   onHideGroup: (virtualMcpId: string) => void;
+  isOrgPinned?: boolean;
+  canManageOrgPin?: boolean;
+  onToggleOrgPin?: (virtualMcpId: string, pinned: boolean) => void;
+  /** Precomputed visible count for this group (avoids O(T) scan per hook). */
+  groupVisibleCount?: number;
   /** When true, the group renders dimmed (used when filters wipe out the body). */
   dimmed: boolean;
   filters: SidebarFilters;
+  /** When set, the group header is draggable for reordering. */
+  sortable?: {
+    attributes: DraggableAttributes;
+    listeners: SyntheticListenerMap | undefined;
+    isDragging: boolean;
+  };
 }
 
 export function TaskGroup({
@@ -50,29 +57,28 @@ export function TaskGroup({
   onNewTaskInGroup,
   onShowSettings,
   onHideGroup,
+  isOrgPinned = false,
+  canManageOrgPin = false,
+  onToggleOrgPin,
   dimmed,
   filters,
+  groupVisibleCount,
+  sortable,
 }: TaskGroupProps) {
   const [expanded, setExpanded] = useGroupExpanded(virtualMcpId, false);
   const isToolCallRuns = virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
-  const showMore = useGroupShowMore("agent", virtualMcpId, filters);
+  const isDragging = sortable?.isDragging ?? false;
 
   function handleToggleExpanded() {
     const next = !expanded;
     setExpanded(next);
-    if (
-      next &&
-      !isToolCallRuns &&
-      threads.length === 0 &&
-      showMore.hasMore &&
-      !showMore.isFetching
-    ) {
-      void showMore.loadMore();
-    }
   }
 
   const header = (
     <div
+      {...(sortable && !isToolCallRuns
+        ? { ...sortable.attributes, ...sortable.listeners }
+        : {})}
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
@@ -87,6 +93,8 @@ export function TaskGroup({
       className={cn(
         "group/group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-medium text-foreground",
         "cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors",
+        sortable && !isToolCallRuns && "touch-none active:cursor-grabbing",
+        isDragging && "shadow-md bg-accent/40 cursor-grabbing",
       )}
     >
       <div className="relative size-5 shrink-0 flex items-center justify-center">
@@ -130,19 +138,15 @@ export function TaskGroup({
         <ContextMenu>
           <ContextMenuTrigger asChild>{header}</ContextMenuTrigger>
           <ContextMenuContent className="w-56">
-            <ContextMenuItem onSelect={() => onNewTaskInGroup(virtualMcpId)}>
-              <Plus size={14} className="mr-2" />
-              New task
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => onShowSettings(virtualMcpId)}>
-              <Settings02 size={14} className="mr-2" />
-              Settings
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => onHideGroup(virtualMcpId)}>
-              <EyeOff size={14} className="mr-2" />
-              Hide
-            </ContextMenuItem>
+            <AgentGroupContextMenuItems
+              virtualMcpId={virtualMcpId}
+              isOrgPinned={isOrgPinned}
+              canManageOrgPin={canManageOrgPin}
+              onNewTaskInGroup={onNewTaskInGroup}
+              onShowSettings={onShowSettings}
+              onToggleOrgPin={onToggleOrgPin ?? (() => {})}
+              onHideGroup={onHideGroup}
+            />
           </ContextMenuContent>
         </ContextMenu>
       )}
@@ -167,7 +171,8 @@ export function TaskGroup({
               onSelectTask={onSelectTask}
               onArchiveTask={onArchiveTask}
               onNewTaskInGroup={onNewTaskInGroup}
-              showMore={showMore}
+              filters={filters}
+              groupVisibleCount={groupVisibleCount}
             />
           )}
         </div>
@@ -220,7 +225,8 @@ function AgentExpandedBody({
   onSelectTask,
   onArchiveTask,
   onNewTaskInGroup,
-  showMore,
+  filters,
+  groupVisibleCount,
 }: {
   virtualMcpId: string;
   threads: Task[];
@@ -228,9 +234,24 @@ function AgentExpandedBody({
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
   onNewTaskInGroup: (virtualMcpId: string) => void;
-  showMore: ReturnType<typeof useGroupShowMore>;
+  filters: SidebarFilters;
+  groupVisibleCount?: number;
 }) {
-  const { isFetching, loadMore } = showMore;
+  const showMore = useGroupShowMore(
+    "agent",
+    virtualMcpId,
+    filters,
+    groupVisibleCount,
+  );
+  const { isFetching, loadMore, hasMore } = showMore;
+
+  const [autoLoaded, setAutoLoaded] = useState(false);
+  if (!autoLoaded && threads.length === 0 && hasMore && !isFetching) {
+    setAutoLoaded(true);
+    queueMicrotask(() => {
+      void loadMore();
+    });
+  }
 
   return (
     <>
@@ -255,10 +276,12 @@ function AgentExpandedBody({
               showAutomationBadge={Boolean(task.trigger_id)}
             />
           ))}
-          <ShowMoreButton
-            onClick={() => void loadMore()}
-            isFetching={isFetching}
-          />
+          {(hasMore || isFetching) && (
+            <ShowMoreButton
+              onClick={() => void loadMore()}
+              isFetching={isFetching}
+            />
+          )}
         </>
       )}
     </>
@@ -278,7 +301,7 @@ function StatusExpandedBody({
   onArchiveTask: (task: Task) => void;
   showMore: ReturnType<typeof useGroupShowMore>;
 }) {
-  const { isFetching, loadMore } = showMore;
+  const { isFetching, loadMore, hasMore } = showMore;
 
   return (
     <>
@@ -294,7 +317,12 @@ function StatusExpandedBody({
           hideStatusIdle
         />
       ))}
-      <ShowMoreButton onClick={() => void loadMore()} isFetching={isFetching} />
+      {(hasMore || isFetching) && (
+        <ShowMoreButton
+          onClick={() => void loadMore()}
+          isFetching={isFetching}
+        />
+      )}
     </>
   );
 }
