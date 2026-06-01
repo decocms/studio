@@ -92,6 +92,21 @@ export const FIXED_SYSTEM_TABS = [
 const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
 
 /**
+ * Returns true for tab ids that are scoped to a specific thread and must not
+ * be carried across task switches:
+ *   - "app:<connectionId>:<toolName>"  (expanded tool / pinned view)
+ *   - "web-page:<slug>"               (ephemeral web preview)
+ *   - "automation:<id>"               (ephemeral automation detail)
+ */
+export function isPerThreadTab(tabId: string): boolean {
+  return (
+    tabId.startsWith("app:") ||
+    tabId.startsWith("web-page:") ||
+    tabId.startsWith("automation:")
+  );
+}
+
+/**
  * Legacy tab ids that were merged into the unified "settings" tab. Kept
  * here so saved defaults / URL state migrate cleanly.
  */

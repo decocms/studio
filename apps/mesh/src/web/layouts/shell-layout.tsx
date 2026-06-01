@@ -26,6 +26,7 @@ import {
 import { KEYS } from "../lib/query-keys";
 import { readCachedTaskBranch } from "../lib/read-cached-task-branch";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
+import { isPerThreadTab } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useOrganizationSettingsSuspense } from "../hooks/use-organization-settings";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
@@ -117,14 +118,14 @@ export function usePanelActions() {
         if (virtualMcpId) next.virtualmcpid = virtualMcpId;
         else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
         // Preserve system-level panel tabs (git, preview, settings, …) across
-        // thread switches, but drop per-thread tabs (expanded tool views and
-        // web-page previews) that are specific to the previous task.
+        // thread switches, but drop per-thread tabs (expanded tool views,
+        // web-page previews, automation details) that are specific to the
+        // previous task.
         const prevMain = prev.main;
         if (
           prevMain &&
           typeof prevMain === "string" &&
-          !prevMain.startsWith("app:") &&
-          !prevMain.startsWith("web-page:")
+          !isPerThreadTab(prevMain)
         ) {
           next.main = prevMain;
         }

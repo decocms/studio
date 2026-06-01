@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { getWellKnownDecopilotVirtualMCP } from "@decocms/mesh-sdk";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useProjectContext } from "@decocms/mesh-sdk";
+import { isPerThreadTab } from "@/web/layouts/main-panel-tabs/tab-id";
 import { AUTOSEND_QUERY_VALUE } from "@/web/lib/autosend";
 
 export interface ChatNavigation {
@@ -36,7 +37,13 @@ export function useChatNavigation(): ChatNavigation {
         const next: Record<string, unknown> = {};
         const vmcp = opts?.virtualMcpId ?? prev.virtualmcpid;
         if (vmcp) next.virtualmcpid = vmcp;
-        if (prev.main) next.main = prev.main;
+        const prevMain = prev.main;
+        if (
+          prevMain &&
+          typeof prevMain === "string" &&
+          !isPerThreadTab(prevMain)
+        )
+          next.main = prevMain;
         if (prev.chat) next.chat = prev.chat;
         if (opts?.autosend) next.autosend = AUTOSEND_QUERY_VALUE;
         return next;
