@@ -14,7 +14,7 @@ const BRAND_GRADIENT = [
 
 /**
  * Full-screen centered shell shared by every org access-gate screen
- * (no-access, not-found, pending invite, auto domain join, archived org).
+ * (no-access, not-found, pending invite, auto domain join, archived org, SSO required).
  * Provides the branded gradient background so these pages feel like part of
  * the product instead of a bare error page.
  */

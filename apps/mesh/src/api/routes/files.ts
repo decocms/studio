@@ -20,7 +20,7 @@ import { HTTPException } from "hono/http-exception";
 import type { MeshContext } from "@/core/mesh-context";
 import { generatePresignedGetUrl } from "./decopilot/file-materializer";
 import { usesLocalObjectStorage } from "@/tools/connection/dev-assets";
-import { isBrowserNavigation } from "../middleware/resolve-org-from-path";
+import { isBrowserNavigation } from "../utils/browser-navigation";
 
 type Variables = { meshContext: MeshContext };
 
@@ -36,8 +36,7 @@ app.get("/:org/files/*", async (c) => {
     // login (and return to this org afterward), not a raw JSON 401. API
     // clients (no `Accept: text/html`) still get the 401.
     if (isBrowserNavigation(c)) {
-      const slug = c.req.param("org");
-      return c.redirect(`/login?next=${encodeURIComponent(`/${slug}`)}`, 302);
+      return c.redirect(`/login?next=${encodeURIComponent(c.req.path)}`, 302);
     }
     throw new HTTPException(401, { message: "Authentication required" });
   }
