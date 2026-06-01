@@ -600,6 +600,7 @@ function ConnectionItemSkeleton() {
 
 interface UITool {
   name: string;
+  title?: string;
   description?: string;
   resourceUri: string;
 }
@@ -658,6 +659,7 @@ function LayoutTabContent({
                 icon?: string | null;
                 tools?: Array<{
                   name: string;
+                  title?: string;
                   description?: string;
                   _meta?: Record<string, unknown>;
                 }> | null;
@@ -667,7 +669,12 @@ function LayoutTabContent({
               const resourceUri = getUIResourceUri(t._meta);
               if (!resourceUri) return [];
               return [
-                { name: t.name, description: t.description, resourceUri },
+                {
+                  name: t.name,
+                  title: t.title,
+                  description: t.description,
+                  resourceUri,
+                },
               ];
             });
             return {
@@ -811,12 +818,15 @@ function LayoutTabContent({
         writeLayout({ defaultMainView: { type: "chat" } });
       }
     } else {
+      const toolTitle = connectionsData
+        .find((c) => c.id === connectionId)
+        ?.uiTools.find((t) => t.name === toolName)?.title;
       writePinned([
         ...pinnedViews,
         {
           connectionId,
           toolName,
-          label: toTitleCase(toolName),
+          label: toolTitle ?? toTitleCase(toolName),
           icon: null,
         },
       ]);
@@ -1034,7 +1044,7 @@ function LayoutTabContent({
                                   value={
                                     pinned && pinnedView
                                       ? pinnedView.label
-                                      : toTitleCase(tool.name)
+                                      : (tool.title ?? toTitleCase(tool.name))
                                   }
                                   onChange={(e) =>
                                     handleLabelChange(
