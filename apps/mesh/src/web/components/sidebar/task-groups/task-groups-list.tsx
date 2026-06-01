@@ -89,14 +89,32 @@ export function TaskGroupsList() {
   const [groupBy, setGroupBy] = useState<GroupBy>("agent");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
-  const [hiddenAgentIds, setHiddenAgentIds] = useState<Set<string>>(() => {
+  const [hiddenState, setHiddenState] = useState<{
+    orgId: string;
+    ids: Set<string>;
+  }>(() => {
     try {
       const raw = localStorage.getItem(`studio:hidden-agents:${org.id}`);
-      return new Set<string>(raw ? JSON.parse(raw) : []);
+      return {
+        orgId: org.id,
+        ids: new Set<string>(raw ? JSON.parse(raw) : []),
+      };
     } catch {
-      return new Set<string>();
+      return { orgId: org.id, ids: new Set<string>() };
     }
   });
+  if (hiddenState.orgId !== org.id) {
+    try {
+      const raw = localStorage.getItem(`studio:hidden-agents:${org.id}`);
+      setHiddenState({
+        orgId: org.id,
+        ids: new Set<string>(raw ? JSON.parse(raw) : []),
+      });
+    } catch {
+      setHiddenState({ orgId: org.id, ids: new Set<string>() });
+    }
+  }
+  const hiddenAgentIds = hiddenState.ids;
   const { state: sidebarState, isMobile } = useSidebar();
 
   const groups = stabilizeGroupOrder(
@@ -152,8 +170,8 @@ export function TaskGroupsList() {
     if (group) {
       for (const t of group.threads) hide(t.id);
     }
-    setHiddenAgentIds((prev) => {
-      const next = new Set(prev);
+    setHiddenState((prev) => {
+      const next = new Set(prev.ids);
       next.add(virtualMcpId);
       try {
         localStorage.setItem(
@@ -161,7 +179,7 @@ export function TaskGroupsList() {
           JSON.stringify([...next]),
         );
       } catch {}
-      return next;
+      return { ...prev, ids: next };
     });
   };
 

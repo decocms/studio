@@ -128,7 +128,7 @@ export function CollapsedGroupPopover({
           </button>
         </div>
         <div className="flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
-          {threads.length === 0 ? (
+          {threads.length === 0 && !showMore.hasMore && !showMore.isFetching ? (
             <div className="px-2 py-1.5 text-xs text-muted-foreground">
               No tasks yet
             </div>

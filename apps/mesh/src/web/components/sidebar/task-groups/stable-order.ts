@@ -5,11 +5,12 @@
  * the agent you just talked to floats to the top. Inactive agents (directory
  * entries with no threads) keep a stable per-org order so they don't shuffle
  * around on every render. Decopilot is always pinned first.
+ * The tool-call-runs group is always pinned last.
  *
  * The cache is a module-scoped Map that mirrors localStorage so we don't
  * re-parse the stored JSON on every render.
  */
-import type { TaskGroupData } from "./group-threads";
+import { TOOL_CALL_RUNS_GROUP_KEY, type TaskGroupData } from "./group-threads";
 
 const STORAGE_KEY_PREFIX = "sidebar.group-order.";
 const orderCache = new Map<string, string[]>();
@@ -50,7 +51,14 @@ export function stabilizeGroupOrder(
   const decopilot = decopilotVirtualMcpId
     ? groups.find((g) => g.virtualMcpId === decopilotVirtualMcpId)
     : undefined;
-  const rest = groups.filter((g) => g.virtualMcpId !== decopilotVirtualMcpId);
+  const toolCallRuns = groups.find(
+    (g) => g.virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY,
+  );
+  const rest = groups.filter(
+    (g) =>
+      g.virtualMcpId !== decopilotVirtualMcpId &&
+      g.virtualMcpId !== TOOL_CALL_RUNS_GROUP_KEY,
+  );
 
   // Active agents always sort by most-recently-updated so the last one you
   // talked to rises to the top.
@@ -77,5 +85,6 @@ export function stabilizeGroupOrder(
   const result: TaskGroupData[] = [];
   if (decopilot) result.push(decopilot);
   result.push(...active, ...inactiveOrdered);
+  if (toolCallRuns) result.push(toolCallRuns);
   return result;
 }
