@@ -123,7 +123,7 @@ export function AddTileDrawer({ open, onOpenChange }: AddTileDrawerProps) {
             />
           </div>
         </SheetHeader>
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="p-3 flex flex-col gap-4">
             <Suspense fallback={<DrawerListSkeleton />}>
               <DrawerBody search={search} />

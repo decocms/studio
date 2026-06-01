@@ -285,7 +285,7 @@ function BoardTile({
   );
 }
 
-function TileMenu({
+export function TileMenu({
   tile,
   onResize,
   onRemove,
