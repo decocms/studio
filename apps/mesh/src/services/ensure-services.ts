@@ -195,11 +195,16 @@ function probePort(port: number, host = "localhost"): Promise<boolean> {
   });
 }
 
-async function waitForPort(port: number, timeoutMs = 30_000): Promise<void> {
+async function waitForPort(
+  port: number,
+  timeoutMs = 30_000,
+  signal?: AbortSignal,
+): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    if (signal?.aborted) throw new Error(`Aborted waiting for port ${port}`);
     if (await probePort(port)) return;
-    await sleep(200);
+    await sleep(200, signal ? { signal } : undefined).catch(() => {});
   }
   throw new Error(`Timed out waiting for port ${port}`);
 }
@@ -962,9 +967,17 @@ async function superviseLink(inputs: SuperviseLinkInputs): Promise<void> {
     }
 
     // ensureLink already waited for the port on a fresh spawn; a reused daemon
-    // hasn't been probed here. Either way, confirm before declaring ready.
-    void waitForPort(result.info.port)
-      .then(() => inputs.onReady?.(result.info.port))
+    // hasn't been probed here. Either way, confirm before declaring ready —
+    // but bind the probe to this daemon instance: cancel it when the daemon
+    // exits or we abort, so a slow/late probe can't emit a stale onReady for a
+    // dead daemon (each respawn gets a new port) or leak across respawns.
+    const readyAbort = new AbortController();
+    const cancelReady = () => readyAbort.abort();
+    inputs.signal.addEventListener("abort", cancelReady, { once: true });
+    void waitForPort(result.info.port, 30_000, readyAbort.signal)
+      .then(() => {
+        if (!readyAbort.signal.aborted) inputs.onReady?.(result.info.port);
+      })
       .catch(() => {});
 
     // Block until the daemon process is gone. Fresh spawn → await the
@@ -974,6 +987,11 @@ async function superviseLink(inputs: SuperviseLinkInputs): Promise<void> {
     } else if (result.info.pid !== null) {
       await waitUntilPidDead(result.info.pid, inputs.signal);
     }
+
+    // Daemon is gone (or we're aborting): stop the readiness probe and drop the
+    // abort listener so iterations don't accumulate listeners on inputs.signal.
+    readyAbort.abort();
+    inputs.signal.removeEventListener("abort", cancelReady);
 
     if (inputs.signal.aborted) return;
 
