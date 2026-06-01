@@ -47,6 +47,7 @@ import {
   getTargetKey,
   type RoleEditorTarget,
 } from "@/web/views/settings/org-role-detail.tsx";
+import { RequireCapability } from "@/web/components/require-capability";
 
 // ============================================================================
 // Role color helpers
@@ -426,7 +427,7 @@ function RolesPageContent() {
   );
 }
 
-export default function RolesPage() {
+function RolesPage() {
   return (
     <ErrorBoundary
       fallback={
@@ -454,5 +455,13 @@ export default function RolesPage() {
         <RolesPageContent />
       </Suspense>
     </ErrorBoundary>
+  );
+}
+
+export default function RolesRoute() {
+  return (
+    <RequireCapability capability="members:manage" area="roles">
+      <RolesPage />
+    </RequireCapability>
   );
 }

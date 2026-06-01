@@ -29,6 +29,10 @@ export const KEYS = {
   organizationRoles: (locator: ProjectLocator) =>
     [locator, "organization-roles"] as const,
 
+  // Current user's resolved capability bitmap within the active org
+  myCapabilities: (locator: ProjectLocator) =>
+    [locator, "my-capabilities"] as const,
+
   // Connections (scoped by project)
   connections: (locator: ProjectLocator) => [locator, "connections"] as const,
   connectionsByBinding: (locator: ProjectLocator, binding: string) =>
