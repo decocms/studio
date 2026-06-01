@@ -64,18 +64,19 @@ const { createAssetHandler, resolveClientDir } = await import(
 
 const port = settings.port;
 
-// Create asset handler - handles both dev proxy and production static files
-// When running from source (src/index.ts), the "../client" relative path
-// doesn't resolve to dist/client/. Fall back to dist/client/ relative to CWD.
+// Create asset handler - handles production static files only.
+// In dev, Vite is the front door (see apps/mesh/vite.config.ts) and
+// the Studio API never receives asset requests, so we skip the handler
+// entirely to avoid construction work and a dead code path.
 import { existsSync } from "fs";
+const isDev = process.env.NODE_ENV !== "production";
 const resolvedClientDir = resolveClientDir(import.meta.url, "../client");
 const clientDir = existsSync(resolvedClientDir)
   ? resolvedClientDir
   : resolveClientDir(import.meta.url, "../dist/client");
-const handleAssets = createAssetHandler({
-  clientDir,
-  isServerPath,
-});
+const handleAssets = isDev
+  ? null
+  : createAssetHandler({ clientDir, isServerPath });
 
 const SECURITY_HEADERS: Record<string, string> = {
   "X-Frame-Options": "DENY",
@@ -197,10 +198,12 @@ const server = Bun.serve({
       if (uplinkRes) return uplinkRes; // 401 / 426
     }
 
-    // Try assets first (static files or dev proxy), then API
-    // Pass server as env so Hono's getConnInfo can access requestIP
-    const assetRes = await handleAssets(request);
-    if (assetRes) return withSecurityHeaders(assetRes);
+    // Try assets in prod (serve built files from disk). In dev, handleAssets
+    // is null because Vite fronts the asset surface — see vite.config.ts.
+    if (handleAssets) {
+      const assetRes = await handleAssets(request);
+      if (assetRes) return withSecurityHeaders(assetRes);
+    }
     return app.fetch(request, { server });
   },
   // WebSocket handler — only sandbox preview connections remain (the link
