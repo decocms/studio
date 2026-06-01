@@ -116,6 +116,8 @@ export {
   type VirtualMCPConnection,
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
+  type VirtualMcpHomeTile,
+  getHomeTiles,
   SandboxMapSchema,
   type SandboxMap,
   SandboxRecordSchema,
