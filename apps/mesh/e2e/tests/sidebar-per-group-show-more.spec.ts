@@ -12,8 +12,8 @@
  *   5. Assert ≤ 10 task rows are visible inside the group.
  *   6. Assert a "Show more" button (aria-label="Show more tasks") is present.
  *   7. Click "Show more" and assert the row count grows to ≥ 15.
- *   8. Assert the "Show more" button is still visible (we keep the affordance
- *      around so users can pull in tasks that arrive later via SSE).
+ *   8. Assert the "Show more" button is hidden once all tasks are loaded
+ *      (button is only shown when hasMore is true).
  */
 
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
@@ -145,11 +145,11 @@ test.describe("Sidebar per-group Show more", () => {
     expect(afterCount).toBeGreaterThanOrEqual(TOTAL_THREADS);
 
     // -------------------------------------------------------------------------
-    // 8. Assert the "Show more" button is still visible — we keep the
-    //    affordance around so users can pull in tasks that arrive later
-    //    (SSE inserts, fresh runs, etc.).
+    // 8. Assert the "Show more" button is hidden — all tasks are now loaded
+    //    (5 < PAGE_SIZE=10 means hasMore became false), so the button
+    //    should no longer be rendered.
     // -------------------------------------------------------------------------
-    await expect(showMoreButton).toBeVisible();
+    await expect(showMoreButton).toBeHidden();
 
     // Verify the user info is consistent (guards against fixture wiring bugs).
     expect(user.orgSlug).toBe(orgSlug);

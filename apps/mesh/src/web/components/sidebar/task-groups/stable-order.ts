@@ -62,7 +62,9 @@ export function stabilizeGroupOrder(
   const inactive = rest.filter((g) => g.threads.length === 0);
   let inactiveOrder = loadOrder(orgId);
   const known = new Set(inactiveOrder);
-  const newIds = inactive.map((g) => g.virtualMcpId).filter((id) => !known.has(id));
+  const newIds = inactive
+    .map((g) => g.virtualMcpId)
+    .filter((id) => !known.has(id));
   if (newIds.length > 0) {
     inactiveOrder = [...inactiveOrder, ...newIds];
     saveOrder(orgId, inactiveOrder);

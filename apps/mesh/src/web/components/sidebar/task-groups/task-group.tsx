@@ -297,7 +297,10 @@ function StatusExpandedBody({
         />
       ))}
       {(hasMore || isFetching) && (
-        <ShowMoreButton onClick={() => void loadMore()} isFetching={isFetching} />
+        <ShowMoreButton
+          onClick={() => void loadMore()}
+          isFetching={isFetching}
+        />
       )}
     </>
   );
