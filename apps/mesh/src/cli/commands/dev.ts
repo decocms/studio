@@ -33,11 +33,30 @@ export interface DevOptions {
   localSandboxProvider: boolean;
 }
 
-// Strip ANSI escape codes from a string
+// Strip ALL terminal control bytes from child output so a child can't drive
+// our cursor. The previous regex only stripped SGR color codes
+// (`\x1b[…m`) — cursor moves (`\x1b[?25l`, `\x1b[K`, `\x1b[<n>A`), screen
+// clears, OSC title sets, and bare C0/C1 control chars all slipped through
+// into `rawLine` and got re-emitted by Ink as `<Text>` content, corrupting
+// the TUI's cursor model. Here we treat children's stdout as untrusted bytes
+// and reduce them to printable text (plus TAB) before display.
 function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI codes requires matching control chars
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping terminal control sequences requires matching control chars
   // oxlint-disable-next-line no-control-regex
-  return str.replace(/\x1b\[[0-9;]*m/g, "");
+  return (
+    str
+      // CSI: ESC [ params intermediates final — covers SGR, cursor moves,
+      // erase, scroll, mode set/reset, etc.
+      .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+      // OSC: ESC ] ... (BEL | ESC \) — covers terminal title, hyperlinks
+      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+      // Other ESC-introduced sequences (single-shift, charset select, etc.)
+      .replace(/\x1b[@-Z\\-_]/g, "")
+      // C0 control chars except TAB (0x09) and LF (0x0a), plus DEL (0x7f)
+      .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "")
+      // C1 control chars (8-bit equivalents of ESC sequences)
+      .replace(/[\x80-\x9f]/g, "")
+  );
 }
 
 /**
@@ -158,13 +177,23 @@ export async function startDevServer(
     ...(settings.baseUrl ? { BASE_URL: settings.baseUrl } : {}),
   };
 
+  // Sever children's access to the parent TTY when the TUI is active.
+  // Ink owns stdout in raw mode; any child that touches the TTY (Vite's
+  // "press r to restart", Bun's `--hot`, anything calling tcsetattr) would
+  // toggle termios out from under Ink and visibly flicker the prompt.
+  // With `"ignore"` the child sees /dev/null on stdin, can't detect a TTY,
+  // and can't fight us for the cursor — the studio remains hermetic
+  // regardless of what 3p code we spawn under it. `noTui` keeps inherit
+  // because the user wants raw passthrough in that mode.
+  const childStdin: "inherit" | "ignore" = useInherit ? "inherit" : "ignore";
+
   // Vite child — user-facing. Binds PORT (userPort). Vite reads
   // process.env.PORT natively for its bind port.
   const viteChild = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:client"], {
     cwd: repoRoot,
     env: { ...sharedEnv, PORT: String(userPort) },
     stdio: [
-      "inherit",
+      childStdin,
       useInherit ? "inherit" : "pipe",
       useInherit ? "inherit" : "pipe",
     ],
@@ -178,7 +207,7 @@ export async function startDevServer(
       cwd: repoRoot,
       env: { ...sharedEnv, PORT: String(studioApiPortResolved) },
       stdio: [
-        "inherit",
+        childStdin,
         useInherit ? "inherit" : "pipe",
         useInherit ? "inherit" : "pipe",
       ],
@@ -263,7 +292,7 @@ export async function startDevServer(
           repoRoot,
           signal: linkAbort.signal,
           stdio: [
-            "inherit",
+            childStdin,
             useInherit ? "inherit" : "pipe",
             useInherit ? "inherit" : "pipe",
           ],
@@ -306,6 +335,7 @@ export async function startDevServer(
               rawLine,
             }),
         });
+      })()
       })();
 
   const shutdown = async (signal: NodeJS.Signals) => {

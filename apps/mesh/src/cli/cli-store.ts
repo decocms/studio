@@ -14,30 +14,15 @@ interface CliState {
   logs: LogEntry[];
 }
 
-function createInitialState(): CliState {
-  return {
-    services: [
-      { name: "Postgres", status: "pending", port: 0 },
-      { name: "NATS", status: "pending", port: 0 },
-    ],
-    migrationsStatus: "pending",
-    serverUrl: null,
-    logs: [],
-  };
-}
-
-let state: CliState = createInitialState();
-
-export function resetCliStateForTests() {
-  state = createInitialState();
-}
-
-function initialServices(): ServiceStatus[] {
-  return [
+let state: CliState = {
+  services: [
     { name: "Postgres", status: "pending", port: 0 },
     { name: "NATS", status: "pending", port: 0 },
-  ];
-}
+  ],
+  migrationsStatus: "pending",
+  serverUrl: null,
+  logs: [],
+};
 
 const listeners = new Set<() => void>();
 
@@ -72,30 +57,40 @@ export function setServerUrl(url: string) {
   emit();
 }
 
-export function addLogEntry(entry: LogEntry) {
-  const logs = [...state.logs, entry];
+// Coalesce log inserts so a chatty child can't outpace Ink's reconciler.
+// Each addLogEntry pushes into a buffer; the first call in a tick schedules
+// a microtask that flushes the buffer with a single state swap + emit. This
+// bounds the re-render rate to ~once per microtask boundary regardless of
+// how many lines a child pipes in, keeping the TUI hermetic — see comment
+// on stripAnsi in cli/commands/dev.ts for the broader hardening story.
+let pendingLogs: LogEntry[] = [];
+let flushScheduled = false;
+
+function flushPendingLogs() {
+  flushScheduled = false;
+  if (pendingLogs.length === 0) return;
+  const next = state.logs.concat(pendingLogs);
+  pendingLogs = [];
   state = {
     ...state,
-    logs: logs.length > MAX_LOGS ? logs.slice(-MAX_LOGS) : logs,
+    logs: next.length > MAX_LOGS ? next.slice(-MAX_LOGS) : next,
   };
   emit();
 }
 
-export function setDevMode(
-  opts: { localSandboxProvider?: boolean; devLinkToxiProxy?: boolean } = {},
-) {
-  const includeToxiProxy =
-    opts.localSandboxProvider === true && opts.devLinkToxiProxy === true;
+export function addLogEntry(entry: LogEntry) {
+  pendingLogs.push(entry);
+  if (flushScheduled) return;
+  flushScheduled = true;
+  queueMicrotask(flushPendingLogs);
+}
 
+export function setDevMode(opts: { localSandboxProvider?: boolean } = {}) {
   state = {
     ...state,
     services: [
-      ...initialServices(),
-      { name: "API", status: "pending", port: 0 },
+      ...state.services,
       { name: "Vite", status: "pending", port: 0 },
-      ...(includeToxiProxy
-        ? [{ name: "ToxiProxy", status: "pending" as const, port: 0 }]
-        : []),
       // Auto-spawned by `bun run dev --local-sandbox-provider` after the
       // cluster is up — see apps/mesh/src/cli/commands/dev.ts. The
       // desktop sandbox provider routes through this. Marked ready

@@ -8,10 +8,20 @@ function statusColor(status: number): string {
   return "green";
 }
 
+// Cap the rendered window so each Ink reconciliation is O(visible) rather
+// than O(buffered). The cli-store keeps up to MAX_LOGS (500) entries; we
+// only ever paint the tail that could plausibly fit on screen. Without this
+// cap, every new log line forced Ink to diff a 500-row tree, which couldn't
+// keep up with bursts and flickered. Constant chosen to comfortably exceed
+// any realistic terminal height while still bounding the per-frame cost.
+const VISIBLE_LOG_LINES = 80;
+
 export function RequestLog({ logs }: { logs: LogEntry[] }) {
+  const visible =
+    logs.length > VISIBLE_LOG_LINES ? logs.slice(-VISIBLE_LOG_LINES) : logs;
   return (
     <Box flexDirection="column">
-      {logs.map((entry, i) => {
+      {visible.map((entry, i) => {
         if (entry.rawLine) {
           return (
             <Text key={i} dimColor>
