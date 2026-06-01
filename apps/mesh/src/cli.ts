@@ -70,6 +70,8 @@ const { values, positionals } = parseArgs({
     batch: { type: "string" },
     limit: { type: "string" },
     org: { type: "string" },
+    "after-id": { type: "string" },
+    reconcile: { type: "boolean", default: false },
   },
   allowPositionals: true,
 });
@@ -87,6 +89,7 @@ Usage:
   deco auth <login|whoami|logout>    Manage CLI authentication
   deco link [studio-url] [options]   Start the desktop-side link daemon
   deco backfill-assets               Hoist legacy inline media out of threads + connections
+  deco backfill-message-parts        Copy thread_messages.parts into message_parts (--reconcile to verify/repair)
   deco completion [shell]            Install shell completions
 
 Server Options:
@@ -223,6 +226,23 @@ if (command === "backfill-assets") {
     baseUrl: values["base-url"],
     org: values.org as string | undefined,
     target: targetArg as "all" | "threads" | "connections",
+  });
+  process.exit(code);
+}
+
+// ── Backfill: copy thread_messages.parts into message_parts ─────────────
+if (command === "backfill-message-parts") {
+  const { backfillMessagePartsCommand } = await import(
+    "./cli/commands/backfill-message-parts"
+  );
+  const reconcile = values.reconcile === true;
+  const code = await backfillMessagePartsCommand({
+    dryRun: values["dry-run"] === true,
+    // reconcile pages are cheap (count check); copy pages can be huge rows.
+    batch: values.batch ? Number(values.batch) : reconcile ? 200 : 50,
+    limit: values.limit ? Number(values.limit) : undefined,
+    afterId: values["after-id"] as string | undefined,
+    reconcile,
   });
   process.exit(code);
 }

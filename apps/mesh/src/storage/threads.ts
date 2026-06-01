@@ -568,6 +568,37 @@ export class SqlThreadStorage implements ThreadStoragePort {
         )
         .execute();
 
+      // Dual-write (migration 098): mirror each message's parts into the
+      // normalized `message_parts` table. Upsert by (message_id, idx) and
+      // delete any trailing rows so a message whose part count shrank doesn't
+      // keep stale tail rows. Idempotent — the backfill uses ON CONFLICT DO
+      // NOTHING, so live writes here always win for active messages.
+      for (const message of unique) {
+        const partRows = message.parts.map((part, idx) => ({
+          message_id: message.id,
+          idx,
+          type: String((part as { type?: unknown }).type ?? "unknown"),
+          content: JSON.stringify(part),
+        }));
+        if (partRows.length > 0) {
+          await trx
+            .insertInto("message_parts")
+            .values(partRows)
+            .onConflict((oc) =>
+              oc.columns(["message_id", "idx"]).doUpdateSet((eb) => ({
+                type: eb.ref("excluded.type"),
+                content: eb.ref("excluded.content"),
+              })),
+            )
+            .execute();
+        }
+        await trx
+          .deleteFrom("message_parts")
+          .where("message_id", "=", message.id)
+          .where("idx", ">=", partRows.length)
+          .execute();
+      }
+
       await trx
         .updateTable("threads")
         .set({ updated_at: now })

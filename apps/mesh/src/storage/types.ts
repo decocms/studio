@@ -1023,6 +1023,21 @@ export interface ThreadMessageTable {
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
+/**
+ * Normalized message parts (migration 098). One row per element of a message's
+ * `parts` array. `content` is the part's JSON-text fragment stored verbatim in
+ * a `text` column (NOT jsonb — parts can contain ` `, e.g. binary tool
+ * outputs, which jsonb rejects); the app JSON.parses it on read. `type` is
+ * denormalized from `part.type` for filtering. Reconstruct the array via
+ * `'[' || string_agg(content, ',' ORDER BY idx) || ']'`.
+ */
+export interface MessagePartsTable {
+  message_id: string;
+  idx: number;
+  type: string;
+  content: string;
+}
+
 export interface ThreadMessage extends ChatMessage {
   thread_id: string;
   created_at: string;
@@ -1316,6 +1331,7 @@ export interface Database {
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
+  message_parts: MessagePartsTable;
   async_research_jobs: AsyncResearchJobTable;
 
   // Member tags tables
