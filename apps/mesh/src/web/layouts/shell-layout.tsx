@@ -26,6 +26,7 @@ import {
 import { KEYS } from "../lib/query-keys";
 import { readCachedTaskBranch } from "../lib/read-cached-task-branch";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
+import { isPerThreadTab } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useOrganizationSettingsSuspense } from "../hooks/use-organization-settings";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
@@ -116,9 +117,18 @@ export function usePanelActions() {
         const next: Record<string, unknown> = { chat: 1 };
         if (virtualMcpId) next.virtualmcpid = virtualMcpId;
         else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
-        // Preserve the main panel tab (git / preview / env / …) so that
-        // switching tasks keeps the user's current view.
-        if (prev.main) next.main = prev.main;
+        // Preserve system-level panel tabs (git, preview, settings, …) across
+        // thread switches, but drop per-thread tabs (expanded tool views,
+        // web-page previews, automation details) that are specific to the
+        // previous task.
+        const prevMain = prev.main;
+        if (
+          prevMain &&
+          typeof prevMain === "string" &&
+          !isPerThreadTab(prevMain)
+        ) {
+          next.main = prevMain;
+        }
         if (opts?.autosend) next.autosend = AUTOSEND_QUERY_VALUE;
         return next;
       },
