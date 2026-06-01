@@ -21,9 +21,16 @@
  * fragments (the app then JSON.parses it, exactly like the old `parts` blob):
  *   SELECT coalesce('[' || string_agg(content, ',' ORDER BY idx) || ']', '[]')
  *   FROM message_parts WHERE message_id = $1
+ *
+ * `created_at`/`updated_at` are per-part (text, like `thread_messages`): a part
+ * mutates in place across streaming saves (a tool-call goes input-streaming →
+ * input-available → output-available at the same idx), so the dual-write
+ * preserves `created_at` on conflict and bumps `updated_at` only when `content`
+ * actually changes. Backfilled rows inherit the message's `created_at`, since
+ * no true per-part time exists for them.
  */
 
-import type { Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
@@ -38,6 +45,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     // text, not jsonb: parts can contain binary tool outputs, which
     // jsonb rejects. Stores the JSON-text fragment verbatim, like `parts`.
     .addColumn("content", "text", (col) => col.notNull())
+    .addColumn("created_at", "text", (col) =>
+      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
+    )
+    .addColumn("updated_at", "text", (col) =>
+      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
+    )
     .addPrimaryKeyConstraint("message_parts_pkey", ["message_id", "idx"])
     .execute();
 

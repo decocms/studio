@@ -5,7 +5,7 @@
  * Threads are organization-scoped, messages are thread-scoped.
  */
 
-import { type Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type { ThreadStoragePort } from "./ports";
@@ -585,6 +585,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
           idx,
           type: String((part as { type?: unknown }).type ?? "unknown"),
           content: JSON.stringify(part),
+          created_at: now,
+          updated_at: now,
         })),
       );
       // Chunk under the bind-parameter limit; usually a single iteration.
@@ -593,10 +595,20 @@ export class SqlThreadStorage implements ThreadStoragePort {
           .insertInto("message_parts")
           .values(partRows.slice(i, i + MAX_PART_ROWS_PER_INSERT))
           .onConflict((oc) =>
-            oc.columns(["message_id", "idx"]).doUpdateSet((eb) => ({
-              type: eb.ref("excluded.type"),
-              content: eb.ref("excluded.content"),
-            })),
+            oc
+              .columns(["message_id", "idx"])
+              .doUpdateSet((eb) => ({
+                type: eb.ref("excluded.type"),
+                content: eb.ref("excluded.content"),
+                // created_at is intentionally NOT updated → first-write time
+                // survives in-place edits across streaming saves.
+                updated_at: eb.ref("excluded.updated_at"),
+              }))
+              // Skip no-op rewrites: an unchanged part isn't touched, so no dead
+              // tuple/WAL and `updated_at` only moves on a real content change.
+              .where(
+                sql<boolean>`message_parts.content is distinct from excluded.content`,
+              ),
           )
           .execute();
       }

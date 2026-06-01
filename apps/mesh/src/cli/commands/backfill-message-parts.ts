@@ -48,6 +48,8 @@ type PartRow = {
   idx: number;
   type: string;
   content: string;
+  created_at: string;
+  updated_at: string;
 };
 
 // 4 columns per row; stay well under Postgres' 65535 bind-parameter ceiling.
@@ -76,8 +78,16 @@ function fmtDuration(ms: number): string {
     .join("");
 }
 
-/** Build the normalized rows for a message's parts blob (NUL-safe via JS). */
-function partRowsFor(messageId: string, rawParts: unknown): PartRow[] {
+/**
+ * Build the normalized rows for a message's parts blob (NUL-safe via JS).
+ * `ts` stamps both timestamps: backfilled parts have no true per-part time, so
+ * they inherit the message's `created_at`.
+ */
+function partRowsFor(
+  messageId: string,
+  rawParts: unknown,
+  ts: string,
+): PartRow[] {
   const parsed =
     typeof rawParts === "string"
       ? (JSON.parse(rawParts) as unknown[])
@@ -88,6 +98,8 @@ function partRowsFor(messageId: string, rawParts: unknown): PartRow[] {
     idx,
     type: String((part as { type?: unknown })?.type ?? "unknown"),
     content: JSON.stringify(part),
+    created_at: ts,
+    updated_at: ts,
   }));
 }
 
@@ -219,15 +231,20 @@ export async function backfillMessagePartsCommand(
           }
 
           // Fetch just this one message's parts (bounds memory to one row).
+          // `created_at` stamps the backfilled parts (no true per-part time).
           const row = await db
             .selectFrom("thread_messages")
-            .select("parts")
+            .select(["parts", "created_at"])
             .where("id", "=", id)
             .executeTakeFirst();
           if (!row) {
             skipped++;
             continue;
           }
+          const messageTs =
+            typeof row.created_at === "string"
+              ? row.created_at
+              : row.created_at.toISOString();
 
           const rawParts: unknown = row.parts;
           const partsText =
@@ -242,7 +259,7 @@ export async function backfillMessagePartsCommand(
             );
           }
 
-          const partRows = partRowsFor(id, rawParts);
+          const partRows = partRowsFor(id, rawParts, messageTs);
 
           if (reconcile) {
             if (have === partRows.length) {

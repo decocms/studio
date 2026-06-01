@@ -1029,13 +1029,16 @@ export interface ThreadMessageTable {
  * a `text` column (NOT jsonb — parts can contain ` `, e.g. binary tool
  * outputs, which jsonb rejects); the app JSON.parses it on read. `type` is
  * denormalized from `part.type` for filtering. Reconstruct the array via
- * `'[' || string_agg(content, ',' ORDER BY idx) || ']'`.
+ * `'[' || string_agg(content, ',' ORDER BY idx) || ']'`. `created_at` is set
+ * once (preserved on conflict); `updated_at` bumps only when `content` changes.
  */
 export interface MessagePartsTable {
   message_id: string;
   idx: number;
   type: string;
   content: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
 export interface ThreadMessage extends ChatMessage {
