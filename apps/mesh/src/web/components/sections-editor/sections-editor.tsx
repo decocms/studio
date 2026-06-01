@@ -31,7 +31,7 @@ import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
 import { useSaveBlock } from "./use-save-block";
-import { extractPages, globalSectionLabel } from "./page-list";
+import { extractPages } from "./page-list";
 import { normalizePagePath } from "./page-path-utils";
 import { SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
@@ -50,6 +50,7 @@ import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
 import {
   buildMatcherBlockData,
   buildMatcherBlockReference,
+  getSavedMatcherBlockKey,
   inlineMatcherRule,
   isSavedMatcherBlockReference,
   readMatcherRuleFormState,
@@ -57,6 +58,14 @@ import {
   resolveVariantRuleLabel,
   unwrapMatcherRule,
 } from "./matcher-rules";
+import {
+  appendPageVariantSections,
+  buildPageSectionsFromVariants,
+  countSavedMatcherBlockReferences,
+  getLastVariantIndex,
+  parsePageVariants,
+  type PageVariant,
+} from "./page-variants";
 import {
   buildPageDataWithSections,
   cloneSection,
@@ -97,13 +106,6 @@ function VariantTabIcon({
   const Icon = getIconComponent(iconName);
   if (!Icon) return null;
   return <Icon size={14} className="shrink-0" />;
-}
-
-interface PageVariant {
-  /** Display label (global block name if saved, otherwise derived from the rule). */
-  label: string;
-  sections: RawSection[];
-  rule?: Record<string, unknown>;
 }
 
 const capitalize = (s: string) =>
@@ -275,50 +277,11 @@ function formatMatcher(rule: Record<string, unknown> | undefined): string {
   }
 }
 
-/**
- * Parse page-level `sections` into an array of variants.
- * - Plain array → single variant labelled "Default"
- * - Multivariate flag object → one variant per entry in `variants`
- */
-function parsePageVariants(
+function parsePageVariantsForEditor(
   sections: unknown,
   decofile: Record<string, unknown>,
 ): PageVariant[] {
-  if (Array.isArray(sections)) {
-    return [{ label: "Default", sections }];
-  }
-  if (sections && typeof sections === "object") {
-    const obj = sections as Record<string, unknown>;
-    if (Array.isArray(obj.variants)) {
-      const raw = obj.variants as Array<{
-        rule?: Record<string, unknown>;
-        value?: unknown;
-      }>;
-      const labels = raw.map((v) =>
-        resolveVariantRuleLabel(v.rule, decofile, formatMatcher),
-      );
-      const labelCounts = labels.reduce<Record<string, number>>((acc, l) => {
-        acc[l] = (acc[l] ?? 0) + 1;
-        return acc;
-      }, {});
-      const seen: Record<string, number> = {};
-      return raw.map((v, i) => {
-        const baseLabel = labels[i] ?? `Variant ${i + 1}`;
-        const total = labelCounts[baseLabel] ?? 1;
-        let label = baseLabel;
-        if (total > 1) {
-          seen[baseLabel] = (seen[baseLabel] ?? 0) + 1;
-          label = `${baseLabel} ${seen[baseLabel]}`;
-        }
-        return {
-          label: label || `Variant ${i + 1}`,
-          sections: Array.isArray(v.value) ? (v.value as RawSection[]) : [],
-          rule: v.rule,
-        };
-      });
-    }
-  }
-  return [];
+  return parsePageVariants(sections, decofile, formatMatcher);
 }
 
 /**
@@ -624,7 +587,7 @@ export function SectionsEditor({
           sections: [{ __resolveType: activeGlobalBlockKey! } as RawSection],
         },
       ]
-    : parsePageVariants(pageData?.sections, decofile ?? {});
+    : parsePageVariantsForEditor(pageData?.sections, decofile ?? {});
   const hasMultipleVariants = pageVariants.length > 1;
   const safeVariantIndex = Math.min(
     activeVariantIndex,
@@ -701,14 +664,13 @@ export function SectionsEditor({
     setFormValue(unwrapped?.data ?? null);
     setActiveResolveType(unwrapped?.resolveType ?? null);
 
-    const ruleRt = (variant.rule?.__resolveType as string) ?? "";
-    setSectionRuleResolveType(ruleRt);
-    if (variant.rule) {
-      const { __resolveType: _, ...ruleData } = variant.rule;
-      setSectionRuleFormValue(ruleData);
-    } else {
-      setSectionRuleFormValue(null);
-    }
+    const { resolveType, formValue } = readMatcherRuleFormState(
+      variant.rule,
+      decofile,
+      meta ?? undefined,
+    );
+    setSectionRuleResolveType(resolveType);
+    setSectionRuleFormValue(formValue);
   };
 
   // Auto-select section when parent signals a click-through from the preview.
@@ -1240,6 +1202,7 @@ export function SectionsEditor({
     const { resolveType, formValue } = readMatcherRuleFormState(
       activeRule,
       decofile ?? {},
+      meta ?? undefined,
     );
     setRuleResolveType(resolveType);
     setRuleFormValue(formValue);
@@ -1251,6 +1214,35 @@ export function SectionsEditor({
 
   const ruleSchema =
     ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
+
+  const cancelPendingRuleSaves = () => {
+    if (ruleDebounceRef.current) {
+      clearTimeout(ruleDebounceRef.current);
+      ruleDebounceRef.current = null;
+    }
+    if (sectionRuleDebounceRef.current) {
+      clearTimeout(sectionRuleDebounceRef.current);
+      sectionRuleDebounceRef.current = null;
+    }
+  };
+
+  const cleanupOrphanMatcherBlock = async (
+    blockKey: string,
+    projectedDecofile: Record<string, unknown>,
+  ) => {
+    if (
+      countSavedMatcherBlockReferences(projectedDecofile, blockKey, meta) > 0
+    ) {
+      return;
+    }
+    try {
+      await deleteBlock.mutateAsync({ blockKey });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not delete matcher block",
+      );
+    }
+  };
 
   const scheduleRuleSave = (newRule: Record<string, unknown>) => {
     if (ruleDebounceRef.current) clearTimeout(ruleDebounceRef.current);
@@ -1276,7 +1268,7 @@ export function SectionsEditor({
         | Record<string, unknown>
         | undefined;
 
-      if (isSavedMatcherBlockReference(currentRule, latestDecofile)) {
+      if (isSavedMatcherBlockReference(currentRule, latestDecofile, meta)) {
         const blockKey = (currentRule?.__resolveType as string) ?? "";
         const existingBlock = latestDecofile[blockKey] as
           | Record<string, unknown>
@@ -1477,34 +1469,13 @@ export function SectionsEditor({
   const handleAddPageVariant = () => {
     if (!activePageKey) return;
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
-    const current = fullPageData.sections;
-    // Seed the new variant with a clone of the currently active variant's
-    // sections — gives the user a working baseline to modify (matches the
-    // A/B-test mental model: fork-then-tweak).
-    const seedSections = structuredClone(rawSections);
-    let updatedSections: Record<string, unknown>;
-    if (Array.isArray(current)) {
-      updatedSections = {
-        variants: [{ value: current }, { value: seedSections }],
-      };
-    } else if (current && typeof current === "object") {
-      const obj = current as Record<string, unknown>;
-      if (Array.isArray(obj.variants)) {
-        updatedSections = {
-          ...obj,
-          variants: [...(obj.variants as unknown[]), { value: seedSections }],
-        };
-      } else {
-        return;
-      }
-    } else {
-      updatedSections = {
-        variants: [{ value: [] }, { value: seedSections }],
-      };
-    }
-    const newVariantIndex = Array.isArray(updatedSections.variants as unknown[])
-      ? (updatedSections.variants as unknown[]).length - 1
-      : 1;
+    const updatedSections = appendPageVariantSections(
+      fullPageData.sections,
+      rawSections,
+    );
+    if (!updatedSections) return;
+
+    const newVariantIndex = getLastVariantIndex(updatedSections);
     saveBlock.mutate(
       {
         blockKey: activePageKey,
@@ -1526,15 +1497,15 @@ export function SectionsEditor({
   };
 
   /**
-   * Read the page's variants array, apply a transform, then either persist
-   * the modified `{ variants: [...] }` shape or collapse back to a flat
-   * sections array when only one variant remains. Shared by delete + rename.
+   * Read the page's variants array, apply a transform, then persist the
+   * modified shape. Shared by delete variant flows.
    */
   const mutatePageVariants = (
     transform: (
       variants: Array<Record<string, unknown>>,
     ) => Array<Record<string, unknown>> | null,
     onSaved?: () => void,
+    orphanMatcherBlockKey?: string | null,
   ) => {
     if (!activePageKey) return;
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
@@ -1547,23 +1518,39 @@ export function SectionsEditor({
       ...(obj.variants as Array<Record<string, unknown>>),
     ]);
     if (!next) return;
-    const updatedSections: unknown =
-      next.length === 1 && Array.isArray(next[0]?.value)
-        ? (next[0].value as unknown[])
-        : { ...obj, variants: next };
+    const updatedSections = buildPageSectionsFromVariants(obj, next);
+    const projectedDecofile = {
+      ...decofile,
+      [activePageKey]: { ...fullPageData, sections: updatedSections },
+    };
     saveBlock.mutate(
       {
         blockKey: activePageKey,
-        data: { ...fullPageData, sections: updatedSections },
+        data: projectedDecofile[activePageKey] as Record<string, unknown>,
       },
       {
-        onSuccess: () => onSaved?.(),
+        onSuccess: () => {
+          onSaved?.();
+          if (orphanMatcherBlockKey) {
+            void cleanupOrphanMatcherBlock(
+              orphanMatcherBlockKey,
+              projectedDecofile,
+            );
+          }
+        },
         onError: (err) => toast.error(`Save failed: ${err.message}`),
       },
     );
   };
 
   const handleDeletePageVariant = (variantIndex: number) => {
+    const deletedRule = pageVariants[variantIndex]?.rule;
+    const orphanMatcherBlockKey = getSavedMatcherBlockKey(
+      deletedRule,
+      decofile ?? {},
+      meta ?? undefined,
+    );
+
     mutatePageVariants(
       (variants) => {
         if (variants.length <= 1) return null;
@@ -1587,6 +1574,7 @@ export function SectionsEditor({
         setRuleFormValue(null);
         setRuleResolveType(null);
       },
+      orphanMatcherBlockKey,
     );
   };
 
@@ -1594,9 +1582,13 @@ export function SectionsEditor({
     variantIndex: number,
     nextName: string,
   ) => {
-    if (!activePageKey) return;
+    cancelPendingRuleSaves();
 
-    const fullPageData = decofile[activePageKey] as Record<string, unknown>;
+    const { activePageKey: pageKey, decofile: latestDecofile } =
+      latestRef.current;
+    if (!pageKey) return;
+
+    const fullPageData = latestDecofile[pageKey] as Record<string, unknown>;
     const current = fullPageData.sections;
     if (!current || typeof current !== "object" || Array.isArray(current))
       return;
@@ -1605,14 +1597,17 @@ export function SectionsEditor({
 
     const variants = [...(obj.variants as Array<Record<string, unknown>>)];
     const target = variants[variantIndex];
-    if (!target?.rule) return;
+    if (!target?.rule) {
+      toast.error("This variant has no matcher rule to rename.");
+      return;
+    }
 
     const trimmed = nextName.trim();
     setRenameVariantPending(true);
 
     try {
       if (!trimmed) {
-        if (!isSavedMatcherBlockReference(target.rule, decofile)) {
+        if (!isSavedMatcherBlockReference(target.rule, latestDecofile, meta)) {
           setRenameVariantIndex(null);
           return;
         }
@@ -1621,21 +1616,29 @@ export function SectionsEditor({
           .__resolveType as string;
         variants[variantIndex] = {
           ...target,
-          rule: inlineMatcherRule(target.rule, decofile),
+          rule: inlineMatcherRule(target.rule, latestDecofile, meta),
+        };
+
+        const projectedDecofile = {
+          ...latestDecofile,
+          [pageKey]: { ...fullPageData, sections: { ...obj, variants } },
         };
 
         await saveBlock.mutateAsync({
-          blockKey: activePageKey,
-          data: { ...fullPageData, sections: { ...obj, variants } },
+          blockKey: pageKey,
+          data: projectedDecofile[pageKey] as Record<string, unknown>,
         });
-        await deleteBlock.mutateAsync({ blockKey });
+        await cleanupOrphanMatcherBlock(blockKey, projectedDecofile);
         setRenameVariantIndex(null);
         onSaved?.();
         return;
       }
 
-      const unwrapped = unwrapMatcherRule(target.rule, decofile);
-      if (!unwrapped) return;
+      const unwrapped = unwrapMatcherRule(target.rule, latestDecofile, meta);
+      if (!unwrapped) {
+        toast.error("Could not read this variant's matcher rule.");
+        return;
+      }
 
       if (unwrapped.blockKey) {
         await saveBlock.mutateAsync({
@@ -1652,30 +1655,42 @@ export function SectionsEditor({
       }
 
       const blockId = suggestBlockId(trimmed);
-      const validationError = validateBlockId(blockId, decofile);
+      const validationError = validateBlockId(blockId, latestDecofile);
       if (validationError) {
         toast.error(validationError);
         return;
       }
 
-      await saveBlock.mutateAsync({
-        blockKey: blockId,
-        data: buildMatcherBlockData(
-          unwrapped.resolveType,
-          unwrapped.data,
-          trimmed,
-        ),
-      });
+      const blockData = buildMatcherBlockData(
+        unwrapped.resolveType,
+        unwrapped.data,
+        trimmed,
+      );
 
-      variants[variantIndex] = {
-        ...target,
-        rule: buildMatcherBlockReference(blockId),
-      };
-
-      await saveBlock.mutateAsync({
-        blockKey: activePageKey,
-        data: { ...fullPageData, sections: { ...obj, variants } },
-      });
+      let createdBlockId: string | null = null;
+      try {
+        await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
+        createdBlockId = blockId;
+        variants[variantIndex] = {
+          ...target,
+          rule: buildMatcherBlockReference(blockId),
+        };
+        await saveBlock.mutateAsync({
+          blockKey: pageKey,
+          data: {
+            ...fullPageData,
+            sections: { ...obj, variants },
+          },
+        });
+        createdBlockId = null;
+      } catch (err) {
+        if (createdBlockId) {
+          await deleteBlock
+            .mutateAsync({ blockKey: createdBlockId })
+            .catch(() => {});
+        }
+        throw err;
+      }
 
       setRenameVariantIndex(null);
       toast.success(`Saved matcher as global block "${trimmed}"`);
@@ -1740,6 +1755,7 @@ export function SectionsEditor({
                   rule={resolveEffectiveMatcherRule(
                     activeVariant.rule,
                     decofile ?? {},
+                    meta ?? undefined,
                   )}
                   matchers={availableMatchers}
                 />
@@ -1840,6 +1856,7 @@ export function SectionsEditor({
                   <button
                     type="button"
                     onClick={() => {
+                      setRenameVariantIndex(null);
                       setActiveVariantIndex(i);
                       setSelectedSectionIndex(null);
                       setFormValue(null);
@@ -1847,7 +1864,11 @@ export function SectionsEditor({
                       setFieldBreadcrumbs([]);
                       const variantRule = pageVariants[i]?.rule;
                       const { resolveType, formValue } =
-                        readMatcherRuleFormState(variantRule, decofile ?? {});
+                        readMatcherRuleFormState(
+                          variantRule,
+                          decofile ?? {},
+                          meta ?? undefined,
+                        );
                       setRuleResolveType(resolveType);
                       setRuleFormValue(formValue);
                     }}
@@ -1857,6 +1878,7 @@ export function SectionsEditor({
                       rule={resolveEffectiveMatcherRule(
                         variant.rule,
                         decofile ?? {},
+                        meta ?? undefined,
                       )}
                       matchers={availableMatchers}
                     />
@@ -2026,13 +2048,19 @@ export function SectionsEditor({
                 )}
               </button>
               {isVariantRuleOpen && (
-                <>
+                <div
+                  className={cn(
+                    "space-y-3",
+                    renameVariantPending && "pointer-events-none opacity-50",
+                  )}
+                >
                   <MatcherPicker
                     currentRt={ruleResolveType}
                     currentLabel={resolveVariantRuleLabel(
                       activeVariant?.rule,
                       decofile ?? {},
                       formatMatcher,
+                      meta ?? undefined,
                     )}
                     matchers={availableMatchers}
                     onSelect={handleMatcherTypeChange}
@@ -2047,7 +2075,7 @@ export function SectionsEditor({
                       />
                     </div>
                   )}
-                </>
+                </div>
               )}
             </div>
           )}
@@ -2100,11 +2128,13 @@ export function SectionsEditor({
             isSavedMatcherBlockReference(
               pageVariants[renameVariantIndex]?.rule,
               decofile ?? {},
+              meta ?? undefined,
             )
               ? resolveVariantRuleLabel(
                   pageVariants[renameVariantIndex]?.rule,
                   decofile ?? {},
                   formatMatcher,
+                  meta ?? undefined,
                 )
               : ""
           }
@@ -2112,6 +2142,7 @@ export function SectionsEditor({
             resolveEffectiveMatcherRule(
               pageVariants[renameVariantIndex]?.rule,
               decofile ?? {},
+              meta ?? undefined,
             ),
           )}
           isPending={renameVariantPending}

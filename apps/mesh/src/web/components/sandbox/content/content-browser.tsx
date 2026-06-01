@@ -58,6 +58,11 @@ import {
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
 import { normalizePagePath } from "@/web/components/sections-editor/page-path-utils";
+import {
+  appendPageVariantSections,
+  getPageVariantCount,
+  getPageVariantSectionsAt,
+} from "@/web/components/sections-editor/page-variants";
 import type { SectionCatalogEntry } from "@/web/components/sections-editor/section-catalog";
 import { useNavigate } from "@tanstack/react-router";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
@@ -97,18 +102,6 @@ const AddSectionModal = lazy(() =>
 );
 
 const VARIANT_GREEN = "oklch(0.65 0.15 160)";
-
-function getPageVariantCount(
-  decofile: Record<string, unknown>,
-  pageKey: string,
-): number {
-  const pageData = decofile[pageKey] as Record<string, unknown> | undefined;
-  const sections = pageData?.sections;
-  if (!sections || Array.isArray(sections)) return 1;
-  const obj = sections as Record<string, unknown>;
-  if (Array.isArray(obj.variants)) return (obj.variants as unknown[]).length;
-  return 1;
-}
 
 type CollectionId = "pages" | "sections";
 
@@ -325,32 +318,12 @@ function ContentBrowserReady({
   const handleAddPageVariant = async (page: PageEntry) => {
     const fullPageData = decofile[page.key] as Record<string, unknown>;
     if (!fullPageData) return;
-    const current = fullPageData.sections;
-    let updatedSections: Record<string, unknown>;
-    if (Array.isArray(current)) {
-      // Fork: new variant starts as a clone of the existing sections so the
-      // user has a working baseline to tweak (matches A/B-test mental model).
-      const cloned = structuredClone(current);
-      updatedSections = {
-        variants: [{ value: current }, { value: cloned }],
-      };
-    } else if (current && typeof current === "object") {
-      const obj = current as Record<string, unknown>;
-      if (Array.isArray(obj.variants)) {
-        const variants = obj.variants as Array<Record<string, unknown>>;
-        // Clone the active/last variant's sections as the seed.
-        const seed = variants[variants.length - 1]?.value;
-        const cloned = Array.isArray(seed) ? structuredClone(seed) : [];
-        updatedSections = {
-          ...obj,
-          variants: [...variants, { value: cloned }],
-        };
-      } else {
-        return;
-      }
-    } else {
-      updatedSections = { variants: [{ value: [] }, { value: [] }] };
-    }
+    const seedSections = getPageVariantSectionsAt(decofile, page.key, 0);
+    const updatedSections = appendPageVariantSections(
+      fullPageData.sections,
+      seedSections,
+    );
+    if (!updatedSections) return;
     try {
       await saveBlock.mutateAsync({
         blockKey: page.key,
