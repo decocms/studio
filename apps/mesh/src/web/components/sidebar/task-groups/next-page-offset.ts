@@ -12,6 +12,9 @@ export interface SidebarFilters {
 
 export type GroupKind = "agent" | "status";
 
+/** Page size for per-group sidebar pagination (matches `useGroupShowMore`). */
+export const GROUP_PAGE_SIZE = 10;
+
 export interface ShowMoreArgs {
   where: Record<string, unknown>;
   limit: number;
@@ -35,7 +38,7 @@ export function buildShowMoreArgs(
   filters: SidebarFilters,
   limit: number,
 ): ShowMoreArgs {
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { hidden: false };
   if (kind === "agent") where.virtual_mcp_id = groupKey;
   if (filters.member === "mine" && filters.currentUserId) {
     where.created_by = filters.currentUserId;
@@ -86,4 +89,18 @@ export function nextPageOffset(
     count++;
   }
   return count;
+}
+
+/**
+ * Whether a group should offer "Show more" before any per-group fetch ran.
+ * Uses the loaded flat list: a full page for this group, or a partial global
+ * page that may still hide rows for this group on the server.
+ */
+export function deriveGroupHasMore(
+  visibleCount: number,
+  globalHasMore: boolean,
+): boolean {
+  if (visibleCount >= GROUP_PAGE_SIZE) return true;
+  if (globalHasMore) return true;
+  return false;
 }

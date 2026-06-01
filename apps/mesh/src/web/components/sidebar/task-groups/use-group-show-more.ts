@@ -13,18 +13,18 @@ import type { Task } from "@/web/components/chat/task/types";
 import { extractToolErrorMessage } from "@/web/components/chat/store/mcp-utils";
 import {
   buildShowMoreArgs,
+  deriveGroupHasMore,
+  GROUP_PAGE_SIZE,
   nextPageOffset,
   type GroupKind,
   type SidebarFilters,
 } from "./next-page-offset";
 
-const PAGE_SIZE = 10;
-
 interface ShowMoreState {
-  hasMore: boolean;
   isFetching: boolean;
-  /** Identity snapshot — when filters or key change, state resets. */
   identity: string;
+  /** Set after a per-group fetch; overrides `deriveGroupHasMore` when non-null. */
+  serverHasMore: boolean | null;
 }
 
 function makeIdentity(
@@ -41,14 +41,30 @@ function makeIdentity(
   ].join("|");
 }
 
+function parseListResult(result: unknown): {
+  items: Task[];
+  hasMore: boolean;
+} {
+  const payload = ((result as { structuredContent?: unknown })
+    .structuredContent ?? result) as {
+    items?: Task[];
+    hasMore?: boolean;
+  };
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  return {
+    items,
+    hasMore: payload.hasMore ?? items.length === GROUP_PAGE_SIZE,
+  };
+}
+
 /**
  * Per-group "Show more" controller. Owns `hasMore`/`isFetching` for one
  * (kind, key, filters) tuple. Returns a `loadMore` callback that fetches
  * the next page from the server and merges it into the flat task list.
  *
- * `hasMore` resets to `true` whenever the identity (kind, key, filters)
- * changes. We use the "set state during render" pattern instead of
- * useEffect to comply with the no-useEffect lint rule.
+ * `hasMore` resets whenever the identity (kind, key, filters) changes.
+ * We use the "set state during render" pattern instead of useEffect to
+ * comply with the no-useEffect lint rule.
  */
 export function useGroupShowMore(
   kind: GroupKind,
@@ -57,16 +73,21 @@ export function useGroupShowMore(
 ) {
   const identity = makeIdentity(kind, key, filters);
   const [state, setState] = useState<ShowMoreState>({
-    hasMore: true,
     isFetching: false,
     identity,
+    serverHasMore: null,
   });
   if (state.identity !== identity) {
-    setState({ hasMore: true, isFetching: false, identity });
+    setState({ isFetching: false, identity, serverHasMore: null });
   }
 
   const manager = useThreadManager();
-  const { threads } = useThreads();
+  const { threads, hasMore: globalHasMore } = useThreads();
+  const visibleCount = nextPageOffset(threads, kind, key, filters);
+  const derivedHasMore = deriveGroupHasMore(visibleCount, globalHasMore);
+  const hasMore =
+    state.serverHasMore !== null ? state.serverHasMore : derivedHasMore;
+
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -75,9 +96,6 @@ export function useGroupShowMore(
   });
 
   async function loadMore(): Promise<void> {
-    // The button stays visible even when hasMore is false so users can pull
-    // in tasks that arrived later (SSE inserts, fresh runs, etc.). We only
-    // guard against re-entrancy here.
     if (state.isFetching) return;
     const capturedIdentity = identity;
     setState((s) =>
@@ -85,7 +103,13 @@ export function useGroupShowMore(
     );
     try {
       const offset = nextPageOffset(threads, kind, key, filters);
-      const args = buildShowMoreArgs(kind, key, offset, filters, PAGE_SIZE);
+      const args = buildShowMoreArgs(
+        kind,
+        key,
+        offset,
+        filters,
+        GROUP_PAGE_SIZE,
+      );
 
       const result = await client.callTool({
         name: "COLLECTION_THREADS_LIST",
@@ -98,22 +122,15 @@ export function useGroupShowMore(
         );
       }
 
-      const raw = (result as { structuredContent?: { items?: unknown } })
-        .structuredContent?.items;
-      const items: Task[] = Array.isArray(raw) ? (raw as Task[]) : [];
+      const { items, hasMore: nextHasMore } = parseListResult(result);
 
-      // Stale responses (filters/grouping changed mid-flight) are harmless:
-      // `mergeThreads` dedupes by id and the rendered view re-filters and
-      // re-sorts, so any rows that don't match the new identity are simply
-      // ignored. The setState updater below guards hasMore/isFetching so
-      // those don't leak across identities.
       manager.mergeThreads(items);
       setState((s) => {
         if (s.identity !== capturedIdentity) return s;
         return {
           ...s,
           isFetching: false,
-          hasMore: items.length === PAGE_SIZE,
+          serverHasMore: items.length === 0 ? false : nextHasMore,
         };
       });
     } catch (err) {
@@ -125,5 +142,5 @@ export function useGroupShowMore(
     }
   }
 
-  return { hasMore: state.hasMore, isFetching: state.isFetching, loadMore };
+  return { hasMore, isFetching: state.isFetching, loadMore };
 }

@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import type { Task } from "@/web/components/chat/task/types";
 import {
   buildShowMoreArgs,
+  deriveGroupHasMore,
+  GROUP_PAGE_SIZE,
   nextPageOffset,
   type SidebarFilters,
 } from "./next-page-offset";
@@ -77,10 +79,29 @@ describe("nextPageOffset", () => {
   });
 });
 
+describe("deriveGroupHasMore", () => {
+  it("is true when the group already has a full page loaded", () => {
+    expect(deriveGroupHasMore(GROUP_PAGE_SIZE, false)).toBe(true);
+  });
+
+  it("is true when the global list may still hide rows for this group", () => {
+    expect(deriveGroupHasMore(2, true)).toBe(true);
+  });
+
+  it("is false when the group is partial and the global list is exhausted", () => {
+    expect(deriveGroupHasMore(3, false)).toBe(false);
+  });
+
+  it("is true for an empty group while the global list has more pages", () => {
+    expect(deriveGroupHasMore(0, true)).toBe(true);
+  });
+});
+
 describe("buildShowMoreArgs", () => {
   it("places virtual_mcp_id inside where for agent mode", () => {
     const args = buildShowMoreArgs("agent", "vm-a", 0, noFilters, 10);
     expect(args.where.virtual_mcp_id).toBe("vm-a");
+    expect(args.where.hidden).toBe(false);
     expect(args.status).toBeUndefined();
   });
 

@@ -1,6 +1,12 @@
-import { Suspense, useState } from "react";
+import { Suspense, useState, type ReactElement } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { cn } from "@deco/ui/lib/utils.ts";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import {
   Link,
   useNavigate,
@@ -51,6 +57,20 @@ import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePublicConfig } from "@/web/hooks/use-public-config";
+import { useSidebarAgentGroupsEmpty } from "./sidebar-agent-groups-empty";
+
+const EMPTY_SIDEBAR_HINT = "Select an existing agent";
+
+function BrowseAgentsEmptyHint({ children }: { children: ReactElement }) {
+  return (
+    <Tooltip defaultOpen delayDuration={0}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8}>
+        {EMPTY_SIDEBAR_HINT}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 function useIsDecoUser() {
   const { enableDecoImport } = usePublicConfig();
@@ -333,6 +353,15 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
+  const highlightEmpty = useSidebarAgentGroupsEmpty();
+  const emptyCtaClass = highlightEmpty ? "border border-border" : undefined;
+
+  const wrapEmptyHint = (trigger: ReactElement) =>
+    highlightEmpty ? (
+      <BrowseAgentsEmptyHint>{trigger}</BrowseAgentsEmptyHint>
+    ) : (
+      trigger
+    );
 
   const handleClose = () => {
     setOpen(false);
@@ -363,27 +392,33 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
       {isMobile ? (
         <>
           {compact ? (
-            <ToolbarIconButton
-              aria-label="Browse agents"
-              onClick={() => {
-                track("agent_browser_opened", { surface: "mobile_drawer" });
-                setOpen(true);
-              }}
-            >
-              <Plus className="size-4" />
-            </ToolbarIconButton>
-          ) : (
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Browse agents"
+            wrapEmptyHint(
+              <ToolbarIconButton
+                aria-label="Browse agents"
+                className={cn(emptyCtaClass)}
                 onClick={() => {
                   track("agent_browser_opened", { surface: "mobile_drawer" });
                   setOpen(true);
                 }}
               >
-                <Plus />
-                <span>New agent</span>
-              </SidebarMenuButton>
+                <Plus className="size-4" />
+              </ToolbarIconButton>,
+            )
+          ) : (
+            <SidebarMenuItem>
+              {wrapEmptyHint(
+                <SidebarMenuButton
+                  tooltip={highlightEmpty ? undefined : "Browse agents"}
+                  className={cn(emptyCtaClass)}
+                  onClick={() => {
+                    track("agent_browser_opened", { surface: "mobile_drawer" });
+                    setOpen(true);
+                  }}
+                >
+                  <Plus />
+                  <span>New agent</span>
+                </SidebarMenuButton>,
+              )}
             </SidebarMenuItem>
           )}
           <Drawer open={open} onOpenChange={setOpen} direction="bottom">
@@ -404,19 +439,29 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
           }}
         >
           {compact ? (
-            <PopoverTrigger asChild>
-              <ToolbarIconButton aria-label="Browse agents">
-                <Plus className="size-4" />
-              </ToolbarIconButton>
-            </PopoverTrigger>
+            wrapEmptyHint(
+              <PopoverTrigger asChild>
+                <ToolbarIconButton
+                  aria-label="Browse agents"
+                  className={cn(emptyCtaClass)}
+                >
+                  <Plus className="size-4" />
+                </ToolbarIconButton>
+              </PopoverTrigger>,
+            )
           ) : (
             <SidebarMenuItem>
-              <PopoverTrigger asChild>
-                <SidebarMenuButton tooltip="Browse agents">
-                  <Plus />
-                  <span>New agent</span>
-                </SidebarMenuButton>
-              </PopoverTrigger>
+              {wrapEmptyHint(
+                <PopoverTrigger asChild>
+                  <SidebarMenuButton
+                    tooltip={highlightEmpty ? undefined : "Browse agents"}
+                    className={cn(emptyCtaClass)}
+                  >
+                    <Plus />
+                    <span>New agent</span>
+                  </SidebarMenuButton>
+                </PopoverTrigger>,
+              )}
             </SidebarMenuItem>
           )}
           <PopoverContent

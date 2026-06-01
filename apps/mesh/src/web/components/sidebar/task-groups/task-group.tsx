@@ -1,20 +1,15 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  EyeOff,
-  Plus,
-  Settings02,
-} from "@untitledui/icons";
+import { ChevronDown, ChevronRight, Menu02, Plus } from "@untitledui/icons";
+import type { DraggableAttributes } from "@dnd-kit/core";
+import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ContextMenu,
   ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@deco/ui/components/context-menu.tsx";
+import { AgentGroupContextMenuItems } from "./agent-group-context-menu-items";
 import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
 import {
   TOOL_CALL_RUNS_GROUP_KEY,
@@ -36,9 +31,18 @@ export interface TaskGroupProps {
   onNewTaskInGroup: (virtualMcpId: string) => void;
   onShowSettings: (virtualMcpId: string) => void;
   onHideGroup: (virtualMcpId: string) => void;
+  isOrgPinned?: boolean;
+  canManageOrgPin?: boolean;
+  onToggleOrgPin?: (virtualMcpId: string, pinned: boolean) => void;
   /** When true, the group renders dimmed (used when filters wipe out the body). */
   dimmed: boolean;
   filters: SidebarFilters;
+  /** When set, shows a drag handle for reordering agent groups. */
+  sortableHandle?: {
+    attributes: DraggableAttributes;
+    listeners: SyntheticListenerMap | undefined;
+  };
+  isDragging?: boolean;
 }
 
 export function TaskGroup({
@@ -50,8 +54,13 @@ export function TaskGroup({
   onNewTaskInGroup,
   onShowSettings,
   onHideGroup,
+  isOrgPinned = false,
+  canManageOrgPin = false,
+  onToggleOrgPin,
   dimmed,
   filters,
+  sortableHandle,
+  isDragging,
 }: TaskGroupProps) {
   const [expanded, setExpanded] = useGroupExpanded(virtualMcpId, false);
   const isToolCallRuns = virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
@@ -87,8 +96,27 @@ export function TaskGroup({
       className={cn(
         "group/group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-medium text-foreground",
         "cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors",
+        isDragging && "shadow-md bg-accent/40",
       )}
     >
+      {sortableHandle && !isToolCallRuns && (
+        <button
+          type="button"
+          {...sortableHandle.attributes}
+          {...sortableHandle.listeners}
+          aria-label="Drag to reorder agent group"
+          className={cn(
+            "shrink-0 text-muted-foreground hover:text-foreground touch-none",
+            isDragging
+              ? "cursor-grabbing"
+              : "cursor-pointer active:cursor-grabbing",
+            "opacity-0 group-hover/group:opacity-100 focus-visible:opacity-100",
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Menu02 size={14} />
+        </button>
+      )}
       <div className="relative size-5 shrink-0 flex items-center justify-center">
         <span className="absolute inset-0 flex items-center justify-center transition-opacity group-hover/group:opacity-0">
           <TaskGroupAvatar
@@ -130,19 +158,15 @@ export function TaskGroup({
         <ContextMenu>
           <ContextMenuTrigger asChild>{header}</ContextMenuTrigger>
           <ContextMenuContent className="w-56">
-            <ContextMenuItem onSelect={() => onNewTaskInGroup(virtualMcpId)}>
-              <Plus size={14} className="mr-2" />
-              New task
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => onShowSettings(virtualMcpId)}>
-              <Settings02 size={14} className="mr-2" />
-              Settings
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => onHideGroup(virtualMcpId)}>
-              <EyeOff size={14} className="mr-2" />
-              Hide
-            </ContextMenuItem>
+            <AgentGroupContextMenuItems
+              virtualMcpId={virtualMcpId}
+              isOrgPinned={isOrgPinned}
+              canManageOrgPin={canManageOrgPin}
+              onNewTaskInGroup={onNewTaskInGroup}
+              onShowSettings={onShowSettings}
+              onToggleOrgPin={onToggleOrgPin ?? (() => {})}
+              onHideGroup={onHideGroup}
+            />
           </ContextMenuContent>
         </ContextMenu>
       )}

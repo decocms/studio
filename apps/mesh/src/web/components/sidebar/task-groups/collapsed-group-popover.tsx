@@ -12,11 +12,13 @@ import {
 import {
   ContextMenu,
   ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@deco/ui/components/context-menu.tsx";
-import { EyeOff, Plus, Settings02 } from "@untitledui/icons";
+import { Plus } from "@untitledui/icons";
+import type { DraggableAttributes } from "@dnd-kit/core";
+import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
+import { cn } from "@deco/ui/lib/utils.ts";
+import { AgentGroupContextMenuItems } from "./agent-group-context-menu-items";
 import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
 import { ShowMoreButton } from "./show-more-button";
 import { useGroupShowMore } from "./use-group-show-more";
@@ -34,6 +36,14 @@ export interface CollapsedGroupPopoverProps {
   onNewTaskInGroup: (virtualMcpId: string) => void;
   onShowSettings: (virtualMcpId: string) => void;
   onHideGroup: (virtualMcpId: string) => void;
+  isOrgPinned?: boolean;
+  canManageOrgPin?: boolean;
+  onToggleOrgPin?: (virtualMcpId: string, pinned: boolean) => void;
+  sortable?: {
+    attributes: DraggableAttributes;
+    listeners: SyntheticListenerMap | undefined;
+    isDragging: boolean;
+  };
 }
 
 /**
@@ -54,6 +64,10 @@ export function CollapsedGroupPopover({
   onNewTaskInGroup,
   onShowSettings,
   onHideGroup,
+  isOrgPinned = false,
+  canManageOrgPin = false,
+  onToggleOrgPin,
+  sortable,
 }: CollapsedGroupPopoverProps) {
   const entity = useVirtualMCP(virtualMcpId);
   const latestTask = threads[0];
@@ -68,9 +82,11 @@ export function CollapsedGroupPopover({
 
   return (
     <HoverCard
+      open={sortable?.isDragging ? false : undefined}
       openDelay={120}
       closeDelay={150}
       onOpenChange={(next) => {
+        if (sortable?.isDragging) return;
         if (next) {
           track("sidebar_group_hover_popover_opened", {
             virtual_mcp_id: virtualMcpId,
@@ -87,30 +103,40 @@ export function CollapsedGroupPopover({
                 isActive={Boolean(
                   latestTask && activeTaskId && latestTask.id === activeTaskId,
                 )}
+                title={sortable ? "Drag to reorder" : undefined}
+                {...(sortable
+                  ? {
+                      ...sortable.attributes,
+                      ...sortable.listeners,
+                    }
+                  : {})}
+                className={cn(
+                  "group-data-[state=collapsed]/sidebar:!size-10 group-data-[state=collapsed]/sidebar:!max-w-none group-data-[state=collapsed]/sidebar:!overflow-visible group-data-[state=collapsed]/sidebar:[&_svg]:opacity-100",
+                  sortable &&
+                    "cursor-pointer active:cursor-grabbing touch-none",
+                  sortable?.isDragging && "cursor-grabbing",
+                )}
               >
                 <AgentAvatar
                   icon={entity?.icon ?? null}
                   name={entity?.title ?? "?"}
                   size="sm+"
+                  className="rounded-lg"
                 />
               </SidebarMenuButton>
             </HoverCardTrigger>
           </ContextMenuTrigger>
         </SidebarMenuItem>
         <ContextMenuContent className="w-56">
-          <ContextMenuItem onSelect={() => onNewTaskInGroup(virtualMcpId)}>
-            <Plus size={14} className="mr-2" />
-            New task
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => onShowSettings(virtualMcpId)}>
-            <Settings02 size={14} className="mr-2" />
-            Settings
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => onHideGroup(virtualMcpId)}>
-            <EyeOff size={14} className="mr-2" />
-            Hide
-          </ContextMenuItem>
+          <AgentGroupContextMenuItems
+            virtualMcpId={virtualMcpId}
+            isOrgPinned={isOrgPinned}
+            canManageOrgPin={canManageOrgPin}
+            onNewTaskInGroup={onNewTaskInGroup}
+            onShowSettings={onShowSettings}
+            onToggleOrgPin={onToggleOrgPin ?? (() => {})}
+            onHideGroup={onHideGroup}
+          />
         </ContextMenuContent>
       </ContextMenu>
       <HoverCardContent

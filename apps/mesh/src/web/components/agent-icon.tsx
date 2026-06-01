@@ -28,97 +28,97 @@ export interface AgentIconColor {
 export const AGENT_ICON_COLORS: AgentIconColor[] = [
   {
     name: "red",
-    bg: "bg-red-100 dark:bg-red-950/60",
+    bg: "bg-red-100 dark:bg-red-950",
     text: "text-red-600 dark:text-red-400",
     dot: "bg-red-400",
   },
   {
     name: "orange",
-    bg: "bg-orange-100 dark:bg-orange-950/60",
+    bg: "bg-orange-100 dark:bg-orange-950",
     text: "text-orange-600 dark:text-orange-400",
     dot: "bg-orange-400",
   },
   {
     name: "amber",
-    bg: "bg-amber-100 dark:bg-amber-950/60",
+    bg: "bg-amber-100 dark:bg-amber-950",
     text: "text-amber-600 dark:text-amber-400",
     dot: "bg-amber-400",
   },
   {
     name: "yellow",
-    bg: "bg-yellow-100 dark:bg-yellow-950/60",
+    bg: "bg-yellow-100 dark:bg-yellow-950",
     text: "text-yellow-600 dark:text-yellow-400",
     dot: "bg-yellow-400",
   },
   {
     name: "lime",
-    bg: "bg-lime-100 dark:bg-lime-950/60",
+    bg: "bg-lime-100 dark:bg-lime-950",
     text: "text-lime-600 dark:text-lime-400",
     dot: "bg-lime-400",
   },
   {
     name: "green",
-    bg: "bg-green-100 dark:bg-green-950/60",
+    bg: "bg-green-100 dark:bg-green-950",
     text: "text-green-600 dark:text-green-400",
     dot: "bg-green-400",
   },
   {
     name: "emerald",
-    bg: "bg-emerald-100 dark:bg-emerald-950/60",
+    bg: "bg-emerald-100 dark:bg-emerald-950",
     text: "text-emerald-600 dark:text-emerald-400",
     dot: "bg-emerald-400",
   },
   {
     name: "cyan",
-    bg: "bg-cyan-100 dark:bg-cyan-950/60",
+    bg: "bg-cyan-100 dark:bg-cyan-950",
     text: "text-cyan-600 dark:text-cyan-400",
     dot: "bg-cyan-400",
   },
   {
     name: "sky",
-    bg: "bg-sky-100 dark:bg-sky-950/60",
+    bg: "bg-sky-100 dark:bg-sky-950",
     text: "text-sky-600 dark:text-sky-400",
     dot: "bg-sky-400",
   },
   {
     name: "blue",
-    bg: "bg-blue-100 dark:bg-blue-950/60",
+    bg: "bg-blue-100 dark:bg-blue-950",
     text: "text-blue-600 dark:text-blue-400",
     dot: "bg-blue-400",
   },
   {
     name: "indigo",
-    bg: "bg-indigo-100 dark:bg-indigo-950/60",
+    bg: "bg-indigo-100 dark:bg-indigo-950",
     text: "text-indigo-600 dark:text-indigo-400",
     dot: "bg-indigo-400",
   },
   {
     name: "violet",
-    bg: "bg-violet-100 dark:bg-violet-950/60",
+    bg: "bg-violet-100 dark:bg-violet-950",
     text: "text-violet-600 dark:text-violet-400",
     dot: "bg-violet-400",
   },
   {
     name: "purple",
-    bg: "bg-purple-100 dark:bg-purple-950/60",
+    bg: "bg-purple-100 dark:bg-purple-950",
     text: "text-purple-600 dark:text-purple-400",
     dot: "bg-purple-400",
   },
   {
     name: "fuchsia",
-    bg: "bg-fuchsia-100 dark:bg-fuchsia-950/60",
+    bg: "bg-fuchsia-100 dark:bg-fuchsia-950",
     text: "text-fuchsia-600 dark:text-fuchsia-400",
     dot: "bg-fuchsia-400",
   },
   {
     name: "pink",
-    bg: "bg-pink-100 dark:bg-pink-950/60",
+    bg: "bg-pink-100 dark:bg-pink-950",
     text: "text-pink-600 dark:text-pink-400",
     dot: "bg-pink-400",
   },
   {
     name: "rose",
-    bg: "bg-rose-100 dark:bg-rose-950/60",
+    bg: "bg-rose-100 dark:bg-rose-950",
     text: "text-rose-600 dark:text-rose-400",
     dot: "bg-rose-400",
   },
@@ -269,7 +269,7 @@ const SIZES = {
     container: "w-10 h-10",
     icon: 20,
     text: "text-base",
-    radius: "rounded-xl",
+    radius: "rounded-lg",
   },
   md: {
     container: "w-12 h-12",
@@ -324,13 +324,9 @@ export function AgentAvatar({
           sizeConfig.radius,
           color.bg,
           color.text,
-          "flex items-center justify-center shrink-0 overflow-hidden",
+          "flex items-center justify-center shrink-0 outline-none ring-0 shadow-none",
           className,
         )}
-        style={{
-          boxShadow:
-            "inset 0 0 0.5px 1px hsla(0, 0%, 100%, 0.075), 0 0 0 0.5px hsla(0, 0%, 0%, 0.12)",
-        }}
       >
         {IconComp ? (
           <IconComp size={sizeConfig.icon} />
@@ -367,13 +363,9 @@ export function AgentAvatar({
         sizeConfig.radius,
         fallbackColor.bg,
         fallbackColor.text,
-        "flex items-center justify-center shrink-0 overflow-hidden",
+        "flex items-center justify-center shrink-0 outline-none ring-0 shadow-none",
         className,
       )}
-      style={{
-        boxShadow:
-          "inset 0 0 0.5px 1px hsla(0, 0%, 100%, 0.075), 0 0 0 0.5px hsla(0, 0%, 0%, 0.12)",
-      }}
     >
       <FallbackIcon size={sizeConfig.icon} />
     </div>
@@ -416,13 +408,9 @@ function AgentAvatarImage({
           sizeConfig.radius,
           fallbackColor.bg,
           fallbackColor.text,
-          "flex items-center justify-center shrink-0 overflow-hidden",
+          "flex items-center justify-center shrink-0 outline-none ring-0 shadow-none",
           className,
         )}
-        style={{
-          boxShadow:
-            "inset 0 0 0.5px 1px hsla(0, 0%, 100%, 0.075), 0 0 0 0.5px hsla(0, 0%, 0%, 0.12)",
-        }}
       >
         <FallbackIcon size={sizeConfig.icon} />
       </div>
@@ -435,13 +423,9 @@ function AgentAvatarImage({
         sizeConfig.container,
         sizeConfig.radius,
         bgClass,
-        "shrink-0 overflow-hidden",
+        "shrink-0 overflow-hidden outline-none ring-0 shadow-none",
         className,
       )}
-      style={{
-        boxShadow:
-          "inset 0 0 0.5px 1px hsla(0, 0%, 100%, 0.075), 0 0 0 0.5px hsla(0, 0%, 0%, 0.12)",
-      }}
     >
       <img
         src={url}

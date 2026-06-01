@@ -28,7 +28,6 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-04-01T00:00:00Z",
         }),
       ],
-      [],
       "vm-decopilot",
     );
     expect(result.map((g) => g.virtualMcpId)).toEqual([
@@ -56,7 +55,6 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-02-01T00:00:00Z",
         }),
       ],
-      [],
       null,
     );
     expect(result.map((g) => g.virtualMcpId)).toEqual(["vm-2", "vm-1"]);
@@ -81,13 +79,12 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-01-01T00:00:00Z",
         }),
       ],
-      [],
       null,
     );
     expect(result[0]?.threads.map((th) => th.id)).toEqual(["a", "b", "c"]);
   });
 
-  it("inserts decopilot as an empty group when it has no threads", () => {
+  it("does not insert decopilot when it has no threads", () => {
     const result = groupThreadsByVirtualMcp(
       [
         t({
@@ -96,14 +93,9 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-05-01T00:00:00Z",
         }),
       ],
-      [],
       "vm-decopilot",
     );
-    expect(result.map((g) => g.virtualMcpId)).toEqual([
-      "vm-decopilot",
-      "vm-other",
-    ]);
-    expect(result[0]?.threads).toEqual([]);
+    expect(result.map((g) => g.virtualMcpId)).toEqual(["vm-other"]);
   });
 
   it("buckets threads without virtual_mcp_id under a synthetic 'tool-call-runs' group at the end", () => {
@@ -120,7 +112,6 @@ describe("groupThreadsByVirtualMcp", () => {
           updated_at: "2026-04-01T00:00:00Z",
         }),
       ],
-      [],
       "vm-decopilot",
     );
     const ids = result.map((g) => g.virtualMcpId);
@@ -128,7 +119,12 @@ describe("groupThreadsByVirtualMcp", () => {
   });
 
   it("returns an empty array when no threads and no decopilot id is supplied", () => {
-    const result = groupThreadsByVirtualMcp([], [], null);
+    const result = groupThreadsByVirtualMcp([], null);
+    expect(result).toEqual([]);
+  });
+
+  it("returns an empty array when no threads even with decopilot id", () => {
+    const result = groupThreadsByVirtualMcp([], "vm-decopilot");
     expect(result).toEqual([]);
   });
 });
@@ -146,7 +142,6 @@ describe("groupThreadsByVirtualMcp - dangling welcome threads", () => {
           virtual_mcp_id: "studio-brand-manager_org-1",
         }),
       ],
-      [],
       null,
     );
     expect(result).toHaveLength(1);
@@ -161,15 +156,14 @@ describe("groupThreadsByVirtualMcp - dangling welcome threads", () => {
           virtual_mcp_id: "studio-store-manager_org-1",
         }),
       ],
-      [],
       null,
     );
     expect(result).toHaveLength(0);
   });
 });
 
-describe("groupThreadsByVirtualMcp — directory merging", () => {
-  it("includes agents with no threads as empty groups after active ones", () => {
+describe("groupThreadsByVirtualMcp — no directory seeding", () => {
+  it("does not include agents that only exist in the org directory", () => {
     const result = groupThreadsByVirtualMcp(
       [
         t({
@@ -178,49 +172,9 @@ describe("groupThreadsByVirtualMcp — directory merging", () => {
           updated_at: "2026-05-01T00:00:00Z",
         }),
       ],
-      [
-        { id: "vm-active", title: "Active" },
-        { id: "vm-idle", title: "Idle" },
-      ] as unknown as Parameters<typeof groupThreadsByVirtualMcp>[1],
       null,
     );
-    expect(result.map((g) => g.virtualMcpId)).toEqual(["vm-active", "vm-idle"]);
-    expect(result.find((g) => g.virtualMcpId === "vm-idle")?.threads).toEqual(
-      [],
-    );
-  });
-
-  it("sorts the inactive tier alphabetically by id when no agent title is present", () => {
-    const result = groupThreadsByVirtualMcp(
-      [],
-      [
-        { id: "vm-zzz", title: "Z" },
-        { id: "vm-aaa", title: "A" },
-      ] as unknown as Parameters<typeof groupThreadsByVirtualMcp>[1],
-      null,
-    );
-    expect(result.map((g) => g.virtualMcpId)).toEqual(["vm-aaa", "vm-zzz"]);
-  });
-
-  it("still pins decopilot first even when it is in the agents directory", () => {
-    const result = groupThreadsByVirtualMcp(
-      [
-        t({
-          id: "a",
-          virtual_mcp_id: "vm-other",
-          updated_at: "2026-05-01T00:00:00Z",
-        }),
-      ],
-      [
-        { id: "vm-decopilot", title: "Decopilot" },
-        { id: "vm-other", title: "Other" },
-      ] as unknown as Parameters<typeof groupThreadsByVirtualMcp>[1],
-      "vm-decopilot",
-    );
-    expect(result.map((g) => g.virtualMcpId)).toEqual([
-      "vm-decopilot",
-      "vm-other",
-    ]);
+    expect(result.map((g) => g.virtualMcpId)).toEqual(["vm-active"]);
   });
 });
 
