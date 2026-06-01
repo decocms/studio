@@ -103,7 +103,7 @@ export function TaskGroupsList() {
     org.id,
     groupThreadsByVirtualMcp(sortedThreads, agents, decopilotId),
     decopilotId,
-  ).filter((g) => !hiddenAgentIds.has(g.virtualMcpId));
+  ).filter((g) => g.threads.length > 0 || !hiddenAgentIds.has(g.virtualMcpId));
 
   const memberFiltered = (threads: Task[]) =>
     memberFilter === "mine" && currentUserId
