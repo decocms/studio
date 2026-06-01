@@ -7,7 +7,9 @@
  * `org.metadata?.archived` check silently passes archived orgs through on the
  * string path, so callers must normalize. This helper handles both shapes.
  */
-export function isOrgArchived(org: { metadata?: unknown } | null): boolean {
+export function isOrgArchived(
+  org: { metadata?: unknown } | null | undefined,
+): boolean {
   const raw = org?.metadata;
   if (!raw) return false;
   try {
