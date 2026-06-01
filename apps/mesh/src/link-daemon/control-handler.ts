@@ -143,9 +143,15 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
       const rest = sm[2] ?? "/";
       const port = deps.provider.proxyPort(handle);
       if (port == null) {
-        console.warn(
-          `[control] handleStream unknown handle=${handle} method=${req.method} rest=${rest} (no spawned sandbox for this handle)`,
-        );
+        // SSE-style endpoints (`/events`, `/idle`) auto-reconnect from the
+        // browser, so a handle with no spawned sandbox would flood the log on
+        // every retry. Stay quiet for those — same rationale as the verbose
+        // gate on the success path below.
+        if (rest !== "/events" && rest !== "/idle") {
+          console.warn(
+            `[control] handleStream unknown handle=${handle} method=${req.method} rest=${rest} (no spawned sandbox for this handle)`,
+          );
+        }
         return (async function* () {
           yield {
             type: "headers" as const,
