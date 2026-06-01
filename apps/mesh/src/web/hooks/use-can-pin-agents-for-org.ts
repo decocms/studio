@@ -29,9 +29,11 @@ export function useCanPinAgentsForOrg(): boolean {
     staleTime: 60_000,
   });
 
-  const role = membersResult?.data?.members?.find(
-    (member) => member.userId === userId,
-  )?.role;
+  const members = (membersResult?.data?.members ?? []) as Array<{
+    userId: string;
+    role?: string | null;
+  }>;
+  const role = members.find((member) => member.userId === userId)?.role;
 
-  return isOrgAdminRole(role);
+  return isOrgAdminRole(role ?? undefined);
 }
