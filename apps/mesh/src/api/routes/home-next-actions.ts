@@ -251,6 +251,22 @@ export function createHomeNextActionsRoutes() {
       await defaultHomeAgentNextActions(orgId, mesh, studioPackAgentIds);
     prompts.push(...defaultPrompts);
 
+    const settings = await mesh.storage.organizationSettings.get(orgId);
+    const pinnedIds = new Set(settings?.default_home_agents?.ids ?? []);
+    const agentIdsWithCard = new Set(prompts.map((p) => p.agentId));
+    for (const { agent, agentId } of perAgent) {
+      if (!pinnedIds.has(agentId) || agentIdsWithCard.has(agentId)) continue;
+      prompts.push({
+        agentId,
+        agentName: agent.title,
+        agentIcon: agent.icon,
+        promptName: "",
+        title: "Start a new chat",
+        description: "",
+        hasArguments: false,
+      });
+    }
+
     c.header("Cache-Control", "private, max-age=10");
     return c.json({ prompts, tiles });
   });

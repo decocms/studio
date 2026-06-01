@@ -7,6 +7,7 @@
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense } from "react";
 import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
+import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowRight, X } from "@untitledui/icons";
@@ -18,6 +19,11 @@ import {
   type HomeTileEntry,
   useHomeNextActions,
 } from "@/web/hooks/use-home-next-actions";
+import {
+  useDefaultHomeAgents,
+  useUpdateDefaultHomeAgents,
+} from "@/web/hooks/use-organization-settings";
+import { KEYS } from "@/web/lib/query-keys";
 import { useStartThreadFromPrompt } from "@/web/hooks/use-start-thread-from-prompt";
 import { TileBoard } from "./tile-board/tile-board";
 import { useBoardLayout } from "./tile-board/use-board-layout";
@@ -392,6 +398,10 @@ function TileErrorFallback({
 export function HomeGrid({ isEditMode }: HomeGridProps) {
   const { org } = useProjectContext();
   const { isLoading, prompts, tiles } = useHomeNextActions(org.slug);
+  const homeIds = useDefaultHomeAgents()?.ids ?? [];
+  const pinnedAgentIds = new Set(homeIds);
+  const updateDefaultHome = useUpdateDefaultHomeAgents();
+  const queryClient = useQueryClient();
 
   // Agents that have a UI tile own their prompts — those prompts render
   // inline inside the tile, not as their own grid cards.
@@ -428,8 +438,40 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
       // under the header — at 1 row the embedded UI collapses to a
       // sliver. Prompt tiles can stay at 1×1.
       minSize: c.kind === "tile" ? TILE_MIN_SIZE : undefined,
+      pinned: pinnedAgentIds.has(c.data.agentId),
     })),
   );
+
+  // Removing a card. For a pinned agent (managed by the drawer) we drop it
+  // from default_home_agents so it actually leaves home — the board's old
+  // `hidden` list no longer suppresses pinned agents, so hiding alone would
+  // be a no-op. Onboarding/suggestion cards (not pinned) still just hide.
+  const removeAgentFromHome = (agentId: string) => {
+    const next = homeIds.filter((id) => id !== agentId);
+    queryClient.setQueryData(
+      KEYS.organizationSettings(org.id),
+      (prev: { default_home_agents?: unknown } | undefined) =>
+        prev ? { ...prev, default_home_agents: { ids: next } } : prev,
+    );
+    updateDefaultHome.mutate(
+      { ids: next },
+      {
+        onSuccess: () =>
+          queryClient.refetchQueries({
+            queryKey: KEYS.homeNextActions(org.slug),
+            type: "active",
+          }),
+      },
+    );
+  };
+  const removeCandidate = (id: string) => {
+    const candidate = candidatesById.get(id);
+    if (candidate && pinnedAgentIds.has(candidate.data.agentId)) {
+      removeAgentFromHome(candidate.data.agentId);
+    } else {
+      layout.hideTile(id);
+    }
+  };
 
   const renderTile = (instance: TileInstance) => {
     const candidate = candidatesById.get(instance.id);
@@ -494,7 +536,7 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
             key={c.id}
             entry={c.data}
             isEditMode={isEditMode}
-            onHide={() => layout.hideTile(c.id)}
+            onHide={() => removeCandidate(c.id)}
           />
         ))}
       </div>
@@ -509,7 +551,7 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
         renderTile={renderTile}
         onMove={layout.moveTile}
         onResize={layout.resizeTile}
-        onRemove={layout.hideTile}
+        onRemove={removeCandidate}
       />
     </div>
   );
