@@ -23,10 +23,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // dev:servers was removed (it gave both Vite and Studio the same env,
+    // dev:servers was removed (it gave both Vite and the API the same env,
     // including PORT). Invoke the CLI directly to get the orchestrated
     // dual-port spawn. The CLI listens on PORT (user-facing) and auto-picks
-    // STUDIO_API_PORT internally.
+    // API_PORT internally.
     // MCP_CACHE_ENABLED=true: e2e exercises production-like behavior; the
     // cache is on in prod but off in dev by default, so opt back in here
     // to keep cache-dependent specs (proxy roundtrip, no-re-handshake) green.

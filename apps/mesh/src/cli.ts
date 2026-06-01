@@ -25,9 +25,9 @@ const { values, positionals } = parseArgs({
       short: "p",
       default: process.env.PORT || "3000",
     },
-    "studio-api-port": {
+    "api-port": {
       type: "string",
-      default: process.env.STUDIO_API_PORT || "3001",
+      default: process.env.API_PORT || "3001",
     },
     home: {
       type: "string",
@@ -103,7 +103,7 @@ Server Options:
   -v, --version         Show version
 
 Dev Options:
-  --studio-api-port <port>      Internal Studio API port (default: 3001)
+  --api-port <port>             Internal API port (default: 3001)
   --base-url <url>              Base URL for the server
   --local-sandbox-provider      Auto-spawn the local link daemon (desktop sandbox provider)
   --hot                         Hot-reload managed link and sandbox daemons in dev
@@ -340,7 +340,7 @@ if (command === "dev") {
     localSandboxProvider && isDevLinkToxiProxyEnabled(process.env);
   const devOptions = {
     port: values.port!,
-    studioApiPort: values["studio-api-port"]!,
+    apiPort: values["api-port"]!,
     home: decoHome,
     baseUrl: values["base-url"],
     skipMigrations: values["skip-migrations"] === true,

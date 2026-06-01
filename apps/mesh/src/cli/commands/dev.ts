@@ -21,7 +21,7 @@ import { waitForPort } from "../lib/port-wait";
 
 export interface DevOptions {
   port: string;
-  studioApiPort: string;
+  apiPort: string;
   home: string;
   baseUrl?: string;
   skipMigrations: boolean;
@@ -115,10 +115,10 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
 export async function startDevServer(
   options: DevOptions,
 ): Promise<{ port: number; process: Subprocess }> {
-  const { studioApiPort, baseUrl, noTui } = options;
+  const { apiPort, baseUrl, noTui } = options;
 
   const userPort = await findAvailablePort(Number(options.port));
-  const studioApiPortResolved = await findAvailablePort(Number(studioApiPort));
+  const apiPortResolved = await findAvailablePort(Number(apiPort));
 
   const { settings, services, managedServiceNames } = await buildSettings({
     port: String(userPort),
@@ -127,7 +127,7 @@ export async function startDevServer(
     localMode: options.localMode,
     skipMigrations: options.skipMigrations,
     noTui: options.noTui,
-    studioApiPort: String(studioApiPortResolved),
+    apiPort: String(apiPortResolved),
   });
 
   for (const s of services) {
@@ -156,11 +156,11 @@ export async function startDevServer(
   const useInherit = noTui === true;
 
   // Shared env for both children — each gets a distinct PORT.
-  // STUDIO_API_PORT is set on BOTH so vite.config.ts can read it as the
+  // API_PORT is set on BOTH so vite.config.ts can read it as the
   // proxy target.
   const sharedEnv: Record<string, string> = {
     ...process.env,
-    STUDIO_API_PORT: String(studioApiPortResolved),
+    API_PORT: String(apiPortResolved),
     DATABASE_URL: settings.databaseUrl,
     NATS_URL: settings.natsUrls.join(","),
     NODE_ENV: settings.nodeEnv,
@@ -199,44 +199,41 @@ export async function startDevServer(
     ],
   });
 
-  // Studio API child — internal. Binds STUDIO_API_PORT. mesh's
+  // API child — internal. Binds API_PORT. mesh's
   // src/index.ts reads process.env.PORT for its bind port.
-  const studioChild = Bun.spawn(
-    ["bun", "run", "--cwd=apps/mesh", "dev:server"],
-    {
-      cwd: repoRoot,
-      env: { ...sharedEnv, PORT: String(studioApiPortResolved) },
-      stdio: [
-        childStdin,
-        useInherit ? "inherit" : "pipe",
-        useInherit ? "inherit" : "pipe",
-      ],
-    },
-  );
+  const apiChild = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:server"], {
+    cwd: repoRoot,
+    env: { ...sharedEnv, PORT: String(apiPortResolved) },
+    stdio: [
+      childStdin,
+      useInherit ? "inherit" : "pipe",
+      useInherit ? "inherit" : "pipe",
+    ],
+  });
 
   if (!useInherit) {
     pipeToLogStore(viteChild.stdout as ReadableStream<Uint8Array>);
     pipeToLogStore(viteChild.stderr as ReadableStream<Uint8Array>);
-    pipeToLogStore(studioChild.stdout as ReadableStream<Uint8Array>);
-    pipeToLogStore(studioChild.stderr as ReadableStream<Uint8Array>);
+    pipeToLogStore(apiChild.stdout as ReadableStream<Uint8Array>);
+    pipeToLogStore(apiChild.stderr as ReadableStream<Uint8Array>);
   }
 
   // Cross-link the two children: if either exits, kill the other so the
   // parent's `await result.process.exited` resolves promptly and no child
   // is orphaned. Without this, a Vite crash would leave the parent
-  // waiting on studioChild.exited forever; a Studio crash would orphan
+  // waiting on apiChild.exited forever; an API crash would orphan
   // viteChild when the parent process.exit's.
   void viteChild.exited.then((code) => {
     if (code !== null && code !== 0) {
       console.error(`[dev] vite child exited with code ${code}`);
     }
     try {
-      studioChild.kill("SIGTERM");
+      apiChild.kill("SIGTERM");
     } catch {
       // already gone
     }
   });
-  void studioChild.exited.then(() => {
+  void apiChild.exited.then(() => {
     try {
       viteChild.kill("SIGTERM");
     } catch {
@@ -244,16 +241,16 @@ export async function startDevServer(
     }
   });
 
-  // Treat the studio API child as the "main" child for shutdown/exit tracking.
-  const child = studioChild;
+  // Treat the API child as the "main" child for shutdown/exit tracking.
+  const child = apiChild;
 
   const serverUrl = baseUrl || `http://localhost:${userPort}`;
   setServerUrl(serverUrl);
-  updateService({ name: "Studio", status: "ready", port: userPort });
+  updateService({ name: "Web", status: "ready", port: userPort });
   updateService({
-    name: "Studio API",
+    name: "API",
     status: "ready",
-    port: studioApiPortResolved,
+    port: apiPortResolved,
   });
 
   // ── Auto-spawn `deco link` (opt-in) ──────────────────────────────
@@ -359,12 +356,12 @@ export async function startDevServer(
     }
     // Wait for both children to finish graceful shutdown before killing
     // shared services. Otherwise pg dies mid-flight and DBOS / app.shutdown
-    // error out connecting to a dead system DB. The studio child has a 55s
+    // error out connecting to a dead system DB. The API child has a 55s
     // force-exit timer covering the worst case; Vite exits quickly on
     // SIGTERM in practice.
     viteChild.kill(signal);
-    studioChild.kill(signal);
-    await Promise.all([viteChild.exited, studioChild.exited]);
+    apiChild.kill(signal);
+    await Promise.all([viteChild.exited, apiChild.exited]);
     if (managedServiceNames.length > 0) {
       const { stopServices } = await import("../../services/ensure-services");
       await stopServices(settings.dataDir);

@@ -5,8 +5,8 @@ import { defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import pkg from "./package.json" with { type: "json" };
 
-const STUDIO_API_PORT = process.env.STUDIO_API_PORT ?? "3001";
-const studioApiTarget = `http://127.0.0.1:${STUDIO_API_PORT}`;
+const API_PORT = process.env.API_PORT ?? "3001";
+const apiTarget = `http://127.0.0.1:${API_PORT}`;
 
 // ── Bun socket `destroySoon` polyfill ────────────────────────────────
 // Vite's bundled http-proxy calls `socket.destroySoon()` on the `end`
@@ -15,8 +15,8 @@ const studioApiTarget = `http://127.0.0.1:${STUDIO_API_PORT}`;
 // expose `destroySoon` on the sockets it hands the HTTP layer (as of
 // v1.3.14), so the first such response crashes Vite with
 //   TypeError: socket.destroySoon is not a function
-// and the cross-linked-children kill in dev.ts then drops the studio
-// API child too. We polyfill at two layers — `net.Socket.prototype`
+// and the cross-linked-children kill in dev.ts then drops the API
+// child too. We polyfill at two layers — `net.Socket.prototype`
 // (covers anything inheriting from the canonical class) and
 // per-incoming HTTP connection (covers Bun's own socket class if it
 // differs) — using end-then-destroy-on-finish semantics that mirror
@@ -91,16 +91,16 @@ export default defineConfig({
     // Works in standalone, conductor (Caddy-fronted), and inside any
     // sandbox proxy chain that delivers the page.
     hmr: { overlay: true },
-    // When adding a new top-level route to the Studio API, add a proxy
-    // entry here. Browser hits Vite first; only listed prefixes reach the API.
+    // When adding a new top-level route to the API, add a proxy entry
+    // here. Browser hits Vite first; only listed prefixes reach the API.
     proxy: {
-      "/api": { target: studioApiTarget, ws: true, changeOrigin: true },
-      "/mcp": { target: studioApiTarget, ws: true, changeOrigin: true },
-      "/oauth-proxy": { target: studioApiTarget, changeOrigin: true },
-      "/.well-known": { target: studioApiTarget, changeOrigin: true },
-      "/org": { target: studioApiTarget, changeOrigin: true },
-      "/health": { target: studioApiTarget, changeOrigin: true },
-      "/metrics": { target: studioApiTarget, changeOrigin: true },
+      "/api": { target: apiTarget, ws: true, changeOrigin: true },
+      "/mcp": { target: apiTarget, ws: true, changeOrigin: true },
+      "/oauth-proxy": { target: apiTarget, changeOrigin: true },
+      "/.well-known": { target: apiTarget, changeOrigin: true },
+      "/org": { target: apiTarget, changeOrigin: true },
+      "/health": { target: apiTarget, changeOrigin: true },
+      "/metrics": { target: apiTarget, changeOrigin: true },
     },
   },
   clearScreen: false,

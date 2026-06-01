@@ -66,7 +66,7 @@ const port = settings.port;
 
 // Create asset handler - handles production static files only.
 // In dev, Vite is the front door (see apps/mesh/vite.config.ts) and
-// the Studio API never receives asset requests, so we skip the handler
+// the API never receives asset requests, so we skip the handler
 // entirely to avoid construction work and a dead code path.
 import { existsSync } from "fs";
 const isDev = process.env.NODE_ENV !== "production";

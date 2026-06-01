@@ -45,7 +45,7 @@ function initSettingsFromEnv(): void {
       localMode: envVars.DECOCMS_LOCAL_MODE === "true",
       skipMigrations: true,
       noTui: envVars.DECO_NO_TUI === "true",
-      studioApiPort: envVars.STUDIO_API_PORT,
+      apiPort: envVars.API_PORT,
       baseUrl: envVars.BASE_URL,
     },
     envVars,

@@ -27,7 +27,7 @@ console.log = (...args: unknown[]) => {
 
 startWorktree(slug, async (ctx) => {
   // Only the user-facing port needs pre-allocation. The CLI auto-picks
-  // STUDIO_API_PORT internally via findAvailablePort.
+  // API_PORT internally via findAvailablePort.
   const port = await ctx.findFreePort(3000);
 
   const child = Bun.spawn(
