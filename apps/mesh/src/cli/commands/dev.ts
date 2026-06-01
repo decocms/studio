@@ -7,6 +7,7 @@
  */
 import { tmpdir } from "node:os";
 import { join } from "path";
+import { sleep } from "@decocms/std";
 import type { Subprocess } from "bun";
 import { buildSettings } from "../../settings/pipeline";
 import {
@@ -20,7 +21,7 @@ import { waitForPort } from "../lib/port-wait";
 
 export interface DevOptions {
   port: string;
-  vitePort: string;
+  studioApiPort: string;
   home: string;
   baseUrl?: string;
   skipMigrations: boolean;
@@ -30,10 +31,6 @@ export interface DevOptions {
    *  desktop sandbox provider has a live target. Default false —
    *  `dev:conductor` opts in. */
   localSandboxProvider: boolean;
-  /** When true, hot-reload the managed link daemon and sandbox daemons. */
-  hotReload?: boolean;
-  /** Dev-only: route managed user-desktop link traffic through ToxiProxy. */
-  devLinkToxiProxy?: boolean;
 }
 
 // Strip ANSI escape codes from a string
@@ -99,32 +96,19 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
 export async function startDevServer(
   options: DevOptions,
 ): Promise<{ port: number; process: Subprocess }> {
-  const { baseUrl, noTui } = options;
+  const { studioApiPort, baseUrl, noTui } = options;
 
-  // Sandbox preview: the daemon injects PORT and proxies the preview to it,
-  // expecting HTML at /. Mesh's dev front door is Vite (it serves the app and
-  // proxies /api → the Bun server); the Bun server alone 404s at / in dev. So
-  // in a sandbox we bind Vite to the injected PORT and move the Bun server to
-  // an internal port (Vite's proxy target follows PORT). The daemon sets
-  // HOST=0.0.0.0 (buildDevEnv) and local `bun run dev` never does, so that's
-  // our sandbox tell. Locally the conventional split is preserved (server on
-  // --port, Vite on --vite-port).
-  const inSandbox = process.env.HOST === "0.0.0.0" && Boolean(process.env.PORT);
-  const vitePort = inSandbox ? process.env.PORT! : options.vitePort;
-  const publicBaseUrl = baseUrl || `http://localhost:${vitePort}`;
-
-  const port = inSandbox
-    ? await findAvailablePort(Number(vitePort) + 1)
-    : await findAvailablePort(Number(options.port));
+  const userPort = await findAvailablePort(Number(options.port));
+  const studioApiPortResolved = await findAvailablePort(Number(studioApiPort));
 
   const { settings, services, managedServiceNames } = await buildSettings({
-    port: String(port),
+    port: String(userPort),
     home: options.home,
     baseUrl: options.baseUrl,
     localMode: options.localMode,
     skipMigrations: options.skipMigrations,
     noTui: options.noTui,
-    vitePort: options.vitePort,
+    studioApiPort: String(studioApiPortResolved),
   });
 
   for (const s of services) {
@@ -146,50 +130,39 @@ export async function startDevServer(
     process.env.WORKTREE_SLUG ??
     process.env.CONDUCTOR_WORKSPACE_NAME ??
     "default";
-  // Local mode mints an API-key session into an isolated tmpdir so sandbox
-  // clones never nest inside the mesh repo's .git. Non-local mode reuses
-  // DECOCMS_HOME so the auto-spawned link registers as the same OAuth user
-  // logged into the browser (e.g. tavano@deco.cx).
-  const linkDataDir = options.localMode
-    ? join(tmpdir(), `decocms-dev-link-${slug}`)
-    : settings.dataDir;
+  const linkDataDir = join(tmpdir(), `decocms-dev-link-${slug}`);
 
   // When TUI is active, pipe stdout/stderr so child output doesn't corrupt
   // Ink's cursor-based rendering. Lines are fed into the CLI store instead.
   const useInherit = noTui === true;
-  const child = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:servers"], {
+
+  // Shared env for both children — each gets a distinct PORT.
+  // STUDIO_API_PORT is set on BOTH so vite.config.ts can read it as the
+  // proxy target.
+  const sharedEnv: Record<string, string> = {
+    ...process.env,
+    STUDIO_API_PORT: String(studioApiPortResolved),
+    DATABASE_URL: settings.databaseUrl,
+    NATS_URL: settings.natsUrls.join(","),
+    NODE_ENV: settings.nodeEnv,
+    DECOCMS_LOCAL_MODE: String(settings.localMode),
+    DECOCMS_HOME: settings.dataDir,
+    DATA_DIR: settings.dataDir,
+    DECO_CLI: "1",
+    // Tell the cluster where to write the dev-link session file when
+    // local-sandbox-provider is on, so the auto-spawned link daemon
+    // finds session.json under its DATA_DIR.
+    ...(options.localSandboxProvider
+      ? { DEV_LINK_SESSION_PATH: join(linkDataDir, "session.json") }
+      : {}),
+    ...(settings.baseUrl ? { BASE_URL: settings.baseUrl } : {}),
+  };
+
+  // Vite child — user-facing. Binds PORT (userPort). Vite reads
+  // process.env.PORT natively for its bind port.
+  const viteChild = Bun.spawn(["bun", "run", "--cwd=apps/mesh", "dev:client"], {
     cwd: repoRoot,
-    env: {
-      ...process.env,
-      PORT: String(settings.port),
-      VITE_PORT: String(vitePort),
-      DATABASE_URL: settings.databaseUrl,
-      NATS_URL: settings.natsUrls.join(","),
-      NODE_ENV: settings.nodeEnv,
-      BASE_URL: publicBaseUrl,
-      DECOCMS_LOCAL_MODE: String(settings.localMode),
-      DECOCMS_HOME: settings.dataDir,
-      DATA_DIR: settings.dataDir,
-      DECO_CLI: "1",
-      // Object storage (managed MinIO or external S3). Pass from frozen
-      // settings so the child server resolves the real S3Service for the
-      // message-offload path instead of the DevObjectStorage fallback.
-      ...(settings.s3Endpoint
-        ? {
-            S3_ENDPOINT: settings.s3Endpoint,
-            S3_BUCKET: settings.s3Bucket ?? "",
-            S3_ACCESS_KEY_ID: settings.s3AccessKeyId ?? "",
-            S3_SECRET_ACCESS_KEY: settings.s3SecretAccessKey ?? "",
-            S3_FORCE_PATH_STYLE: String(settings.s3ForcePathStyle),
-          }
-        : {}),
-      // Local mode only: tell the cluster to mint an API-key session for the
-      // auto-spawned link. Non-local mode uses the developer's OAuth session
-      // from DECOCMS_HOME instead (see ensureDevLinkSession).
-      ...(options.localSandboxProvider && options.localMode
-        ? { DEV_LINK_SESSION_PATH: join(linkDataDir, "session.json") }
-        : {}),
-    },
+    env: { ...sharedEnv, PORT: String(userPort) },
     stdio: [
       "inherit",
       useInherit ? "inherit" : "pipe",
@@ -197,67 +170,62 @@ export async function startDevServer(
     ],
   });
 
+  // Studio API child — internal. Binds STUDIO_API_PORT. mesh's
+  // src/index.ts reads process.env.PORT for its bind port.
+  const studioChild = Bun.spawn(
+    ["bun", "run", "--cwd=apps/mesh", "dev:server"],
+    {
+      cwd: repoRoot,
+      env: { ...sharedEnv, PORT: String(studioApiPortResolved) },
+      stdio: [
+        "inherit",
+        useInherit ? "inherit" : "pipe",
+        useInherit ? "inherit" : "pipe",
+      ],
+    },
+  );
+
   if (!useInherit) {
-    pipeToLogStore(child.stdout as ReadableStream<Uint8Array>);
-    pipeToLogStore(child.stderr as ReadableStream<Uint8Array>);
+    pipeToLogStore(viteChild.stdout as ReadableStream<Uint8Array>);
+    pipeToLogStore(viteChild.stderr as ReadableStream<Uint8Array>);
+    pipeToLogStore(studioChild.stdout as ReadableStream<Uint8Array>);
+    pipeToLogStore(studioChild.stderr as ReadableStream<Uint8Array>);
   }
 
-  const serverUrl = publicBaseUrl;
+  // Cross-link the two children: if either exits, kill the other so the
+  // parent's `await result.process.exited` resolves promptly and no child
+  // is orphaned. Without this, a Vite crash would leave the parent
+  // waiting on studioChild.exited forever; a Studio crash would orphan
+  // viteChild when the parent process.exit's.
+  void viteChild.exited.then((code) => {
+    if (code !== null && code !== 0) {
+      console.error(`[dev] vite child exited with code ${code}`);
+    }
+    try {
+      studioChild.kill("SIGTERM");
+    } catch {
+      // already gone
+    }
+  });
+  void studioChild.exited.then(() => {
+    try {
+      viteChild.kill("SIGTERM");
+    } catch {
+      // already gone
+    }
+  });
+
+  // Treat the studio API child as the "main" child for shutdown/exit tracking.
+  const child = studioChild;
+
+  const serverUrl = baseUrl || `http://localhost:${userPort}`;
   setServerUrl(serverUrl);
-  updateService({ name: "Vite", status: "ready", port: Number(vitePort) });
-  updateService({ name: "API", status: "ready", port: Number(settings.port) });
-
-  let linkClusterUrl = serverUrl;
-  let stopToxiProxy: (() => Promise<void>) | null = null;
-  try {
-    if (options.localSandboxProvider && options.devLinkToxiProxy) {
-      const {
-        DEV_LINK_TOXIPROXY_SERVICE_NAME,
-        ensureDevLinkToxiProxy,
-        resolveDevLinkClusterUrl,
-      } = await import("../lib/dev-link-toxiproxy");
-      const apiPort = await findAvailablePort(18474);
-      const listenPort = await findAvailablePort(18480);
-      const toxiproxy = await ensureDevLinkToxiProxy({
-        serverUrl,
-        apiPort,
-        listenPort,
-      });
-      stopToxiProxy = toxiproxy.stop;
-      linkClusterUrl = resolveDevLinkClusterUrl({
-        serverUrl,
-        toxiproxy: toxiproxy.config,
-      });
-      updateService({
-        name: DEV_LINK_TOXIPROXY_SERVICE_NAME,
-        status: "ready",
-        port: listenPort,
-      });
-      addLogEntry({
-        method: "",
-        path: "",
-        status: 0,
-        duration: 0,
-        timestamp: new Date(),
-        rawLine: toxiproxy.config.logLine,
-      });
-    }
-  } catch (error) {
-    if (stopToxiProxy) {
-      await stopToxiProxy().catch(() => null);
-    }
-    child.kill("SIGTERM");
-    await child.exited.catch(() => null);
-    if (managedServiceNames.length > 0) {
-      try {
-        const { stopServices } = await import("../../services/ensure-services");
-        await stopServices(settings.dataDir);
-      } catch {
-        /* best-effort cleanup; preserve the original startup error */
-      }
-    }
-    throw error;
-  }
+  updateService({ name: "Studio", status: "ready", port: userPort });
+  updateService({
+    name: "Studio API",
+    status: "ready",
+    port: studioApiPortResolved,
+  });
 
   // ── Auto-spawn `deco link` (opt-in) ──────────────────────────────
   // Gated on --local-sandbox-provider. When set, once the cluster is up
@@ -290,10 +258,9 @@ export async function startDevServer(
         );
         await superviseLink({
           home: settings.dataDir,
-          clusterUrl: linkClusterUrl,
+          clusterUrl: serverUrl,
           linkDataDir,
           repoRoot,
-          hotReload: options.hotReload,
           signal: linkAbort.signal,
           stdio: [
             "inherit",
@@ -306,17 +273,21 @@ export async function startDevServer(
             pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
           },
           beforeSpawn: async () => {
+            // Wait for the cluster's HTTP port before spawning the link
+            // daemon so it can immediately reach the WS gateway.
             await waitForPort(Number(settings.port), { intervalMs: 500 });
-            const { ensureDevLinkSession } = await import(
-              "../lib/ensure-dev-link-session"
+            // Then wait for the cluster's `bootstrapDevLinkSession` to drop
+            // session.json into linkDataDir, since the link CLI's
+            // `ensureSession` errors out (non-TTY auto-spawn) if it's missing.
+            const sessionPath = join(linkDataDir, "session.json");
+            const deadline = Date.now() + 30_000;
+            while (Date.now() < deadline) {
+              if (await Bun.file(sessionPath).exists()) return;
+              await sleep(250);
+            }
+            throw new Error(
+              `[dev-link] session.json not minted at ${sessionPath} after 30s — check cluster logs for [dev-link] errors`,
             );
-            await ensureDevLinkSession({
-              localMode: options.localMode,
-              linkDataDir,
-              studioDataDir: settings.dataDir,
-              serverUrl: linkClusterUrl,
-              isInteractive: Boolean(process.stdin.isTTY),
-            });
           },
           // Drive Sandbox status from real liveness: "ready" when the daemon's
           // HTTP port answers, "pending" (spinner) while it's down/respawning
@@ -343,12 +314,11 @@ export async function startDevServer(
     // also prevents orphaning a process spawned right as we shut down.
     linkAbort.abort();
     await linkSupervisor.catch(() => null);
-    // Stop the link next — signal the daemon process (stopLink reads the
-    // state file written by ensureLink, signals the daemon, waits for
-    // exit, then removes the state file). There is no HTTP DELETE endpoint;
-    // the link-claim entry expires via the 60 s NATS-KV TTL after the
-    // process exits. Stopping before the API server reduces the window
-    // where polls arrive but NATS is already gone.
+    // Stop the link next — it talks to the cluster on shutdown
+    // (DELETE /api/links/me), so giving it a window before we tear down
+    // the API server reduces orphaned registry entries. stopLink reads
+    // the state file written by ensureLink, signals the daemon, waits
+    // for exit, then removes the state file.
     if (options.localSandboxProvider) {
       const { stopLink } = await import("../../services/ensure-services");
       try {
@@ -357,19 +327,14 @@ export async function startDevServer(
         /* best-effort */
       }
     }
-    if (stopToxiProxy) {
-      try {
-        await stopToxiProxy();
-      } catch {
-        /* best-effort */
-      }
-    }
-    child.kill(signal);
-    // Wait for the server to finish graceful shutdown before killing shared
-    // services. Otherwise pg dies mid-flight and DBOS / app.shutdown error
-    // out connecting to a dead system DB. The server has its own 55s force-
-    // exit timer, so this won't hang indefinitely.
-    await child.exited;
+    // Wait for both children to finish graceful shutdown before killing
+    // shared services. Otherwise pg dies mid-flight and DBOS / app.shutdown
+    // error out connecting to a dead system DB. The studio child has a 55s
+    // force-exit timer covering the worst case; Vite exits quickly on
+    // SIGTERM in practice.
+    viteChild.kill(signal);
+    studioChild.kill(signal);
+    await Promise.all([viteChild.exited, studioChild.exited]);
     if (managedServiceNames.length > 0) {
       const { stopServices } = await import("../../services/ensure-services");
       await stopServices(settings.dataDir);
@@ -379,5 +344,5 @@ export async function startDevServer(
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  return { port: Number(vitePort), process: child };
+  return { port: userPort, process: child };
 }

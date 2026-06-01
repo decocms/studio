@@ -25,9 +25,9 @@ const { values, positionals } = parseArgs({
       short: "p",
       default: process.env.PORT || "3000",
     },
-    "vite-port": {
+    "studio-api-port": {
       type: "string",
-      default: process.env.VITE_PORT || "4000",
+      default: process.env.STUDIO_API_PORT || "3001",
     },
     home: {
       type: "string",
@@ -103,7 +103,7 @@ Server Options:
   -v, --version         Show version
 
 Dev Options:
-  --vite-port <port>            Vite dev server port (default: 4000)
+  --studio-api-port <port>      Internal Studio API port (default: 3001)
   --base-url <url>              Base URL for the server
   --local-sandbox-provider      Auto-spawn the local link daemon (desktop sandbox provider)
   --hot                         Hot-reload managed link and sandbox daemons in dev
@@ -340,7 +340,7 @@ if (command === "dev") {
     localSandboxProvider && isDevLinkToxiProxyEnabled(process.env);
   const devOptions = {
     port: values.port!,
-    vitePort: values["vite-port"]!,
+    studioApiPort: values["studio-api-port"]!,
     home: decoHome,
     baseUrl: values["base-url"],
     skipMigrations: values["skip-migrations"] === true,

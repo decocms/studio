@@ -104,7 +104,7 @@ export interface CliFlags {
   localMode: boolean;
   skipMigrations: boolean;
   noTui?: boolean;
-  vitePort?: string;
+  studioApiPort?: string;
   nodeEnv?: "production" | "development" | "test";
 }
 
