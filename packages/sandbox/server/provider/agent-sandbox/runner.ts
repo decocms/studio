@@ -125,8 +125,8 @@ const DEFAULT_IDLE_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Handle shape: `<slug>-<hash5>` when a branch is supplied, `<hash5>`
- * otherwise — identical to the docker/host runners' default from
- * `composeBranchHandle` (re-exported as `computeHandle`). With
+ * otherwise — the shared default from `composeBranchHandle` (re-exported
+ * as `computeHandle`). With
  * slug(≤24) + 1 + hash(5) = 30 chars max — well under K8s's 63-char DNS
  * label cap.
  */
@@ -410,7 +410,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     // Branch is the slug source; absent when caller didn't pass `repo`
     // (tool-only sandboxes, smoke tests). The shared computeHandle falls
     // back to a bare hash in that case, preserving stable identity.
-    const handle = this.computeHandle(id, opts.repo?.branch ?? null);
+    const handle = composeBranchHandle(id, opts.repo?.branch ?? null);
     return this.inflight.run(handle, () =>
       withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
         this.ensureLocked(id, handle, opts, ops),
@@ -1598,13 +1598,6 @@ export class AgentSandboxProvider implements SandboxProvider {
 
   // ---- Identity + preview URL ----------------------------------------------
 
-  private computeHandle(id: SandboxId, branch: string | null): string {
-    // hashLen=16 (~64 bits) per handle.ts: runners that expose the handle as
-    // a public hostname must use longer hashes to resist brute-force. Also
-    // prevents DB handle collisions across users on the no-branch path.
-    return composeBranchHandle(id, branch, { hashLen: 16 });
-  }
-
   // Local mode: route preview traffic through the daemon port-forward, not
   // a separate dev forwarder. The daemon serves /_sandbox/* + /health
   // in-process and reverse-proxies everything else to in-pod localhost:DEV_PORT
@@ -1945,7 +1938,7 @@ function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
 /**
  * Convert tenant struct to OTel attribute keys. `runner_kind` is constant for
  * a given runner instance but included on every attrs set so downstream
- * dashboards can pivot across runners (k8s vs docker) without re-aggregating.
+ * dashboards can pivot across runners without re-aggregating.
  */
 function tenantAttrs(tenant: RunnerTenant | null): {
   org_id: string;

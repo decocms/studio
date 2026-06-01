@@ -32,7 +32,7 @@ export interface SandboxStartArgs {
    * via resolveDefaultSandboxProviderKind (link-online ⇒ user-desktop, else
    * the env kind). Used by the v2 RunnerPill to materialize a specific kind.
    */
-  sandboxProviderKind?: "local-docker" | "cluster" | "user-desktop";
+  sandboxProviderKind?: "cluster" | "user-desktop";
 }
 
 export interface SandboxStartResult {
@@ -40,7 +40,7 @@ export interface SandboxStartResult {
   sandboxHandle: string;
   branch: string;
   isNewVm: boolean;
-  sandboxProviderKind?: "local-docker" | "cluster" | "user-desktop";
+  sandboxProviderKind?: "cluster" | "user-desktop";
 }
 
 const inflightStarts = new Map<string, Promise<SandboxStartResult>>();

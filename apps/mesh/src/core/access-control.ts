@@ -10,6 +10,7 @@
  */
 
 import { MCP_MESH_KEY } from "@/core/constants";
+import { BASIC_USAGE_TOOLS } from "@/tools/registry-metadata";
 import type { BetterAuthInstance, BoundAuthClient } from "./mesh-context";
 
 // ============================================================================
@@ -188,6 +189,24 @@ export class AccessControl implements Disposable {
     // No user or bound auth = deny
     if (!this.userId && !this.boundAuth) {
       return false;
+    }
+
+    // Basic-usage tools are granted to every authenticated org MEMBER at
+    // runtime, regardless of their role. Resolving them here — instead of
+    // baking them into each role's stored permission — means the set evolves
+    // with a one-line edit to BASIC_USAGE_TOOLS, with no role-backfill
+    // migration.
+    //
+    // Both signals are required and checked explicitly:
+    //   - `userId`: a verified authenticated principal. `boundAuth` is NOT a
+    //     proxy for auth — it's constructed for every request, including
+    //     anonymous ones, so it must never gate this grant.
+    //   - `role`: derived from the caller's membership row in the target org
+    //     (context-factory / resolveOrgFromPath); set only for members. The old
+    //     bake-in model denied non-members implicitly (no role → no stored
+    //     permission), so we keep that boundary explicit here.
+    if (this.userId && this.role && BASIC_USAGE_TOOLS.has(resource)) {
+      return true;
     }
 
     // Admin and owner roles bypass all checks (they have full access)

@@ -37,6 +37,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
+import { delay } from "@decocms/std";
 import type {
   ClaimPhase,
   SandboxProvider,
@@ -141,7 +142,7 @@ export const createVmEventsRoutes = () => {
     // this user already had a sandboxMap entry pointing at *this exact* claim.
     // The handle-match guard avoids racing SANDBOX_START's claim-creation window
     // (~250ms–1.2s for agent-sandbox before `createSandboxClaim` lands;
-    // similar window for host/docker between `provider.ensure` returning and
+    // similar window for user-desktop between `provider.ensure` returning and
     // `setSandboxMapEntry` writing the row). Without it, an SSE that opens during
     // that window would observe alive=false and emit a spurious `gone`.
     const existingVmEntry =
@@ -186,13 +187,12 @@ export const createVmEventsRoutes = () => {
       });
 
       try {
-        // Same probe for every runner. `runner.alive` is honest across
-        // host/docker/agent-sandbox: each implementation queries its
-        // respective source-of-truth (state-store + pid for host, docker
-        // inspect, K8s API). When the prior sandboxMap entry's runner kind
-        // differs from the env's current runner, we route the stale-state
-        // cleanup through the *prior* kind so we don't leave behind rows
-        // in the wrong table.
+        // Same probe for every runner. `runner.alive` is honest across both
+        // providers: each queries its source-of-truth (the K8s API for
+        // cluster, the link daemon for user-desktop). When the prior
+        // sandboxMap entry's runner kind differs from the env's current
+        // runner, we route the stale-state cleanup through the *prior* kind
+        // so we don't leave behind rows in the wrong table.
         if (expectingHandle && providerKind) {
           const stale = await isStaleHandle(runner, claimName);
           if (stale) {
@@ -325,7 +325,7 @@ async function cleanupStaleEntry(args: {
  *
  * Subscribes via `subscribeLifecycle` so multiple SSE clients for the same
  * claim (multi-tab) share one underlying source. For agent-sandbox the source
- * is the K8s watcher; for host/docker the source yields a single `ready`
+ * is the K8s watcher; for user-desktop the source yields a single `ready`
  * phase and ends immediately.
  */
 async function emitLifecycle(args: {
@@ -441,7 +441,7 @@ async function proxyDaemonEvents(args: {
       // probe still failing, ...). Same race window as 404 — retry, then
       // surface as failed if the budget elapses.
       if (Date.now() - openedAt < PROXY_OPEN_RETRY_BUDGET_MS) {
-        await sleepAbortable(PROXY_OPEN_RETRY_DELAY_MS, signal);
+        await delay(PROXY_OPEN_RETRY_DELAY_MS, { signal }).catch(() => {});
         continue;
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -465,7 +465,7 @@ async function proxyDaemonEvents(args: {
         /* ignore */
       }
       if (Date.now() - openedAt < PROXY_OPEN_RETRY_BUDGET_MS) {
-        await sleepAbortable(PROXY_OPEN_RETRY_DELAY_MS, signal);
+        await delay(PROXY_OPEN_RETRY_DELAY_MS, { signal }).catch(() => {});
         continue;
       }
       // Budget elapsed and handle still missing — genuine eviction. Emit
@@ -516,23 +516,4 @@ async function proxyDaemonEvents(args: {
       /* ignore */
     }
   }
-}
-
-/** Sleep that resolves immediately when the abort signal fires. */
-function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    const timeout = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timeout);
-      resolve();
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 }

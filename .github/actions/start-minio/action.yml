@@ -1,0 +1,40 @@
+name: Start MinIO
+description: >-
+  Start a MinIO (S3-compatible) server as a detached container and wait until it
+  accepts connections. MinIO only runs the server with an explicit command,
+  which GitHub `services:` can't provide — so it has to be a step, not a service.
+  Shared by e2e.yml and storage-integration.yml so the pinned image version
+  lives in exactly one place.
+
+inputs:
+  image:
+    description: MinIO container image — single source of truth for the pinned version.
+    default: minio/minio:RELEASE.2025-09-07T16-13-09Z
+  port:
+    description: Host port to publish and probe for readiness.
+    default: "9000"
+  root-user:
+    description: MINIO_ROOT_USER.
+    default: minioadmin
+  root-password:
+    description: MINIO_ROOT_PASSWORD.
+    default: minioadmin
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        docker run -d --name minio -p ${{ inputs.port }}:9000 \
+          -e MINIO_ROOT_USER=${{ inputs.root-user }} \
+          -e MINIO_ROOT_PASSWORD=${{ inputs.root-password }} \
+          ${{ inputs.image }} server /data
+        # Poll MinIO's readiness endpoint, not a bare TCP probe: `nc -z` passes
+        # as soon as the port is listening, but the object layer isn't serving
+        # yet and resets S3 requests (ECONNRESET). /minio/health/ready returns
+        # 200 only once it can actually serve.
+        ready="http://localhost:${{ inputs.port }}/minio/health/ready"
+        for i in $(seq 1 30); do
+          curl -fsS "$ready" >/dev/null 2>&1 && break || sleep 1
+        done
+        curl -fsS "$ready" >/dev/null

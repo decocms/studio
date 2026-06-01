@@ -6,6 +6,7 @@ import {
 } from "./access-control";
 import type { BetterAuthInstance, BoundAuthClient } from "./mesh-context";
 import type { Permission } from "../storage/types";
+import { BASIC_USAGE_TOOLS } from "../tools/registry-metadata";
 
 const createMockAuth = (): BetterAuthInstance => {
   const mockUserHasPermission = vi.fn();
@@ -216,6 +217,59 @@ describe("AccessControl", () => {
       );
 
       await expect(ac.check()).rejects.toThrow(UnauthorizedError);
+    });
+  });
+
+  // The basic-usage runtime grant lives BELOW the HTTP auth/membership
+  // middleware: resolveOrgFromPath 403s non-members and mcpAuth 401s anonymous
+  // callers before a tool runs. So the e2e specs (front door) can prove the
+  // happy path and the routing boundary, but they can never drive checkResource
+  // without an authenticated member — they can't exercise this guard at all.
+  // This is the internal-logic / single-boundary-mock case TESTING.md allows,
+  // and it's the only place the guard below can be regression-tested.
+  describe("basic-usage grant guard", () => {
+    const tool = [...BASIC_USAGE_TOOLS][0];
+
+    it("grants a basic-usage tool to an authenticated member, regardless of role", async () => {
+      const ac = new AccessControl(
+        createMockAuth(),
+        "user_1", // authenticated principal
+        tool,
+        createMockBoundAuth({}), // role grants nothing explicitly
+        "some-custom-role", // a member (role set), not owner/admin
+      );
+
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+    });
+
+    it("does NOT grant basic-usage without an authenticated principal, even though boundAuth is present", async () => {
+      // boundAuth is constructed for every request, so it must never be treated
+      // as authentication. With no userId the grant must not fire. (Before the
+      // userId guard, a role-but-no-principal state would have leaked here.)
+      const ac = new AccessControl(
+        createMockAuth(),
+        undefined, // no authenticated principal
+        tool,
+        createMockBoundAuth({}), // boundAuth present, as it always is
+        "some-custom-role", // role present, but the principal is not verified
+      );
+
+      await expect(ac.check()).rejects.toThrow(ForbiddenError);
+      expect(ac.granted()).toBe(false);
+    });
+
+    it("does NOT grant basic-usage to an authenticated non-member (no role)", async () => {
+      const ac = new AccessControl(
+        createMockAuth(),
+        "user_1",
+        tool,
+        createMockBoundAuth({}),
+        undefined, // not a member of this org → no role
+      );
+
+      await expect(ac.check()).rejects.toThrow(ForbiddenError);
+      expect(ac.granted()).toBe(false);
     });
   });
 

@@ -91,7 +91,7 @@ export const ThreadEntitySchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Pinned on first message; identifies which sandbox provider to dispatch to (e.g. 'local-docker', 'cluster', 'user-desktop').",
+      "Pinned on first message; identifies which sandbox provider to dispatch to (e.g. 'cluster', 'user-desktop').",
     ),
   harness_id: z
     .string()

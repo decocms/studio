@@ -18,6 +18,7 @@ import {
   LayoutAlt01,
   LinkExternal01,
   Plus,
+  SearchLg,
   TextInput,
   Loading01,
   Monitor04,
@@ -832,13 +833,18 @@ export function PreviewContent() {
 
                   {pagesOpen && (
                     <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
-                      <div className="px-2 pt-2 pb-1">
+                      <div className="px-2 h-10 flex items-center gap-2 border-b">
+                        <SearchLg
+                          size={14}
+                          className="shrink-0 text-muted-foreground"
+                          aria-hidden
+                        />
                         <input
                           type="text"
                           value={pagesSearch}
                           onChange={(e) => setPagesSearch(e.target.value)}
                           placeholder="Search pages and components..."
-                          className="w-full rounded-md border border-input bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
+                          className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                           autoFocus
                         />
                       </div>

@@ -3,8 +3,7 @@
  * port. Routes by Host header: `<handle>.localhost[:port]` → the sandbox's
  * local HTTP port. HTTP and WebSocket upgrades are both proxied.
  *
- * No auth — same posture as `bun dev` / local-docker; the listener is
- * 127.0.0.1-only.
+ * No auth — same posture as `bun dev`; the listener is 127.0.0.1-only.
  */
 import { parseHandleFromHost } from "./host-parser";
 

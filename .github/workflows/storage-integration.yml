@@ -91,6 +91,10 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # MinIO, started below — backs the s3-service integration test.
+      S3_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -105,6 +109,12 @@ jobs:
 
       - name: Run migrations
         run: bun run --cwd=apps/mesh migrate
+
+      # Backs the s3-service integration test. The test creates its own bucket
+      # in beforeAll, so this only needs the server up. Shared composite action
+      # so the pinned image version stays in sync with e2e.yml.
+      - name: Start MinIO
+        uses: ./.github/actions/start-minio
 
       # Convention: every `*.integration.test.ts` file is picked up here.
       # Adding a new integration test = create a `something.integration.test.ts`

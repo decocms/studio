@@ -25,10 +25,6 @@ import {
 } from "../core/context-factory";
 import type { MeshContext } from "../core/mesh-context";
 import { closeDatabase, getDb, type MeshDatabase } from "../database";
-import {
-  asDockerRunner,
-  getSharedSandboxProviderIfInit,
-} from "../sandbox/lifecycle";
 import { createEventBus, type EventBus } from "../event-bus";
 import {
   flushMonitoringData,
@@ -2092,17 +2088,6 @@ export async function createApp(options: CreateAppOptions = {}) {
           })
         : Promise.resolve(),
     ]);
-
-    // Sweep sandbox containers — Docker only. Other runners' sandboxes
-    // outlive mesh by design, so a generic sweep would nuke active user VMs.
-    // Must run before NATS/DB close (sweep writes state).
-    const dockerRunner = asDockerRunner(getSharedSandboxProviderIfInit());
-    if (dockerRunner) {
-      const { sweepDockerOrphansOnShutdown } = await import(
-        "@decocms/sandbox/provider"
-      );
-      await sweepDockerOrphansOnShutdown(dockerRunner);
-    }
 
     // Phase 3: Drain NATS (after all consumers stopped)
     if (natsProvider) {

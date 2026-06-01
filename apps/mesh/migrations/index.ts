@@ -96,6 +96,7 @@ import * as migration094orgfileconfigs from "./094-org-file-configs.ts";
 import * as migration095removeautomationtoolcallkind from "./095-remove-automation-tool-call-kind.ts";
 import * as migration096orgfileconfigspublicurlbase from "./096-org-file-configs-public-url-base.ts";
 import * as migration097connectionaccessandslots from "./097-connection-access-and-slots.ts";
+import * as migration097droplocaldockersandboxstate from "./097-drop-local-docker-sandbox-state.ts";
 import * as migration098orgscopeconnectionsandderiveappid from "./098-org-scope-connections-and-derive-app-id.ts";
 
 /**
@@ -214,6 +215,8 @@ const migrations: Record<string, Migration> = {
   "096-org-file-configs-public-url-base":
     migration096orgfileconfigspublicurlbase,
   "097-connection-access-and-slots": migration097connectionaccessandslots,
+  "097-drop-local-docker-sandbox-state":
+    migration097droplocaldockersandboxstate,
   "098-org-scope-connections-and-derive-app-id":
     migration098orgscopeconnectionsandderiveappid,
 };

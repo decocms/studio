@@ -1,16 +1,11 @@
-import {
-  computeHandle,
-  resolveSandboxProviderKindFromEnv,
-  type SandboxId,
-} from "@decocms/sandbox/provider";
+import { computeHandle, type SandboxId } from "@decocms/sandbox/provider";
 
 /**
- * Compute the claim handle for a sandbox using the correct hashLen for the
- * current runner kind. agent-sandbox and desktop both expose preview
- * URLs as public hostnames (`<handle>.cluster.host` and
- * `<handle>.localhost` respectively), so both use hashLen=16 — shorter
- * hashes are brute-forceable at an unrate-limited gateway. Other runners
- * (docker) keep their handles local, so the default hashLen=5 is fine there.
+ * Compute the claim handle for a sandbox. Both live runner kinds (cluster's
+ * agent-sandbox and desktop) expose preview URLs as public hostnames
+ * (`<handle>.cluster.host` and `<handle>.localhost` respectively), so both
+ * use hashLen=16 — shorter hashes are brute-forceable at an unrate-limited
+ * gateway.
  *
  * Single source of truth — import this everywhere a claimName must match
  * what a runner stored (vm-events, vm-exec, etc.). The matching
@@ -18,8 +13,5 @@ import {
  * construction.
  */
 export function computeClaimHandle(id: SandboxId, branch: string): string {
-  const providerKind = resolveSandboxProviderKindFromEnv();
-  const useLongHash =
-    providerKind === "cluster" || providerKind === "user-desktop";
-  return computeHandle(id, branch, useLongHash ? { hashLen: 16 } : {});
+  return computeHandle(id, branch);
 }
