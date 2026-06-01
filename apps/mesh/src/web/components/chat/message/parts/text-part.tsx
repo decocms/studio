@@ -2,9 +2,11 @@ import { useState, type ReactNode } from "react";
 import { useCopy } from "@deco/ui/hooks/use-copy.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { MemoizedMarkdown } from "../../markdown.tsx";
-import { Check, Copy01 } from "@untitledui/icons";
+import { Check, Copy01, ThumbsDown, ThumbsUp } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
-import { track } from "@/web/lib/posthog-client";
+import { track, getSessionReplayUrl } from "@/web/lib/posthog-client";
+import { useOptionalChatTask } from "../../context.tsx";
+import { MessageFeedbackDialog } from "../../message-feedback-dialog.tsx";
 
 interface MessageTextPartProps {
   id: string;
@@ -23,7 +25,10 @@ export function MessageTextPart({
   alwaysShowActions = false,
 }: MessageTextPartProps) {
   const { handleCopy } = useCopy();
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const [isCopied, setIsCopied] = useState(false);
+  const [feedback, setFeedback] = useState<"positive" | null>(null);
+  const [negativeOpen, setNegativeOpen] = useState(false);
 
   const handleCopyMessage = async () => {
     track("chat_message_copied", {
@@ -35,8 +40,30 @@ export function MessageTextPart({
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  // Only show copy button on the last part (the one with extraActions/usage stats)
-  const showCopyButton = copyable && extraActions;
+  const handleThumbsUp = () => {
+    if (feedback === "positive") {
+      setFeedback(null);
+      track("chat_message_feedback_positive_undone", {
+        message_id: id,
+        thread_id: threadId,
+        session_replay_url: getSessionReplayUrl(),
+      });
+    } else {
+      setFeedback("positive");
+      track("chat_message_feedback_positive", {
+        message_id: id,
+        thread_id: threadId,
+        session_replay_url: getSessionReplayUrl(),
+      });
+    }
+  };
+
+  const handleThumbsDown = () => {
+    setNegativeOpen(true);
+  };
+
+  // Fix: show copy on any copyable part, not only when extraActions is present
+  const showCopyButton = copyable;
   const showActions = showCopyButton || extraActions;
 
   return (
@@ -69,8 +96,49 @@ export function MessageTextPart({
               )}
             </button>
           )}
+          {showCopyButton && (
+            <>
+              <span className="text-muted-foreground/40 select-none">·</span>
+              <button
+                type="button"
+                onClick={handleThumbsUp}
+                className={cn(
+                  "transition-colors active:scale-[0.97]",
+                  feedback === "positive"
+                    ? "text-foreground"
+                    : "text-muted-foreground [@media(hover:hover)]:hover:text-foreground",
+                )}
+                aria-label="Good response"
+              >
+                <ThumbsUp
+                  className={cn(
+                    "size-4",
+                    feedback === "positive" && "fill-current",
+                  )}
+                />
+              </button>
+              {feedback !== "positive" && (
+                <button
+                  type="button"
+                  onClick={handleThumbsDown}
+                  className="text-muted-foreground [@media(hover:hover)]:hover:text-foreground transition-colors active:scale-[0.97]"
+                  aria-label="Bad response"
+                >
+                  <ThumbsDown className="size-4" />
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
+      <MessageFeedbackDialog
+        open={negativeOpen}
+        onOpenChange={setNegativeOpen}
+        messageId={id}
+        threadId={threadId}
+        messageContent={part.text}
+        sessionReplayUrl={getSessionReplayUrl()}
+      />
     </div>
   );
 }

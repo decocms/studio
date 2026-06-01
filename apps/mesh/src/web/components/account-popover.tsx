@@ -22,15 +22,14 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import {
   Check,
   Copy01,
-  File06,
   Globe01,
   LogOut01,
+  MessageChatCircle,
   Monitor01,
   Moon01,
   Plus,
   SearchMd,
   Settings02,
-  Shield01,
   Sun,
   Users03,
   VolumeMax,
@@ -43,6 +42,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
+import { FeedbackDialog } from "@/web/components/feedback-dialog";
 import { usePreferences, type ThemeMode } from "@/web/hooks/use-preferences.ts";
 import { toast } from "@deco/ui/components/sonner.js";
 
@@ -534,6 +534,7 @@ export function AccountPopover() {
 
   const [open, setOpen] = useState(false);
   const [creatingOrg, setCreatingOrg] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
@@ -571,18 +572,12 @@ export function AccountPopover() {
       },
     },
     {
-      key: "terms",
-      label: "Terms of Use",
-      icon: <File06 size={16} />,
-      href: "https://www.decocms.com/terms-of-use",
-      external: true,
-    },
-    {
-      key: "privacy",
-      label: "Privacy Policy",
-      icon: <Shield01 size={16} />,
-      href: "https://www.decocms.com/privacy-policy",
-      external: true,
+      key: "feedback",
+      label: "Feedback",
+      icon: <MessageChatCircle size={16} />,
+      onClick: () => {
+        setFeedbackOpen(true);
+      },
     },
     {
       key: "github",
@@ -732,6 +727,7 @@ export function AccountPopover() {
         open={creatingOrg}
         onOpenChange={setCreatingOrg}
       />
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </>
   );
 }

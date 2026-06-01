@@ -151,6 +151,20 @@ export function captureException(
 }
 
 /**
+ * Returns a direct link to the PostHog session recording at the current
+ * timestamp. Returns null when PostHog is not initialized (self-hosted
+ * installs without POSTHOG_KEY).
+ */
+export function getSessionReplayUrl(): string | null {
+  if (!initialized) return null;
+  try {
+    return posthog.get_session_replay_url({ withTimestamp: true }) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Test-only: reset module-level state between tests. Not exported from any
  * non-test consumer; kept here because module state is otherwise opaque.
  */
