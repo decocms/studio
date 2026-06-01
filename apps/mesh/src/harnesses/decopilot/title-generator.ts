@@ -47,6 +47,9 @@ export function genTitle(config: {
     }, POST_STREAM_GRACE_MS);
   };
 
+  const fallbackTitle =
+    userMessage.split("\n")[0].trim().slice(0, 60) || null;
+
   const promise = (async (): Promise<string | null> => {
     try {
       const result = await generateObject({
@@ -63,8 +66,8 @@ export function genTitle(config: {
         .slice(0, 60) // Max 60 chars
         .trim();
 
-      // Reject empty or all-punctuation strings (e.g. "---", "{}")
-      if (!title || !/\w/.test(title)) return null;
+      // Reject empty or all-punctuation strings — fall back to user message
+      if (!title || !/\w/.test(title)) return fallbackTitle;
 
       return title;
     } catch (error) {
@@ -73,13 +76,13 @@ export function genTitle(config: {
         console.warn(
           "[decopilot:title] Title generation aborted (timeout or parent abort)",
         );
-      } else {
-        console.error(
-          "[decopilot:title] ❌ Failed to generate title:",
-          err.message,
-        );
+        return null;
       }
-      return null;
+      console.error(
+        "[decopilot:title] ❌ Failed to generate title:",
+        err.message,
+      );
+      return fallbackTitle;
     } finally {
       clearTimeout(graceTimeoutId);
       abortSignal.removeEventListener("abort", onParentAbort);
