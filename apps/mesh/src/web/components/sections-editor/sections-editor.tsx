@@ -1861,7 +1861,7 @@ export function SectionsEditor({
 
       {/* Drill-down: section list OR section form */}
       {isEditing ? (
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
           {isEditingMultivariateSection && sectionFlagVariants.length > 0 && (
             <>
               <SectionVariantList
@@ -1919,7 +1919,7 @@ export function SectionsEditor({
           </div>
         </ScrollArea>
       ) : isGlobalBlockMode ? (
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
           <div className="min-w-0 max-w-full overflow-x-hidden p-4">
             {activeSchema && formValue ? (
               <SchemaForm
@@ -1939,7 +1939,7 @@ export function SectionsEditor({
           </div>
         </ScrollArea>
       ) : (
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
           {/* Variant rule editor (collapsible so users can reclaim space) */}
           {hasMultipleVariants && ruleResolveType !== null && (
             <div
