@@ -6,7 +6,6 @@ import {
 } from "./access-control";
 import type { BetterAuthInstance, BoundAuthClient } from "./mesh-context";
 import type { Permission } from "../storage/types";
-import { BASIC_USAGE_TOOLS } from "../tools/registry-metadata";
 
 const createMockAuth = (): BetterAuthInstance => {
   const mockUserHasPermission = vi.fn();
@@ -220,60 +219,11 @@ describe("AccessControl", () => {
     });
   });
 
-  describe("basic-usage runtime grant", () => {
-    const basicUsageTool = [...BASIC_USAGE_TOOLS][0];
-
-    it("grants a basic-usage tool to a custom role with no stored permission", async () => {
-      const ac = new AccessControl(
-        createMockAuth(),
-        "user_1",
-        basicUsageTool,
-        createMockBoundAuth({}), // role grants nothing
-        "custom-role",
-      );
-
-      await ac.check();
-      expect(ac.granted()).toBe(true);
-    });
-
-    it("still denies a non-basic-usage tool the role lacks", async () => {
-      const ac = new AccessControl(
-        createMockAuth(),
-        "user_1",
-        "DATABASES_RUN_SQL", // dangerous, never basic-usage
-        createMockBoundAuth({}),
-        "custom-role",
-      );
-
-      await expect(ac.check()).rejects.toThrow(ForbiddenError);
-      expect(ac.granted()).toBe(false);
-    });
-
-    it("does not grant basic-usage to an unauthenticated caller", async () => {
-      const ac = new AccessControl(
-        createMockAuth(),
-        undefined, // no user
-        basicUsageTool,
-        undefined, // no boundAuth
-        undefined,
-      );
-
-      await expect(ac.check()).rejects.toThrow(UnauthorizedError);
-    });
-
-    it("does not grant basic-usage to an authenticated non-member (no role)", async () => {
-      const ac = new AccessControl(
-        createMockAuth(),
-        "user_1",
-        basicUsageTool,
-        createMockBoundAuth({}), // authenticated, but not a member → no role
-        undefined, // role undefined = not a member of this org
-      );
-
-      await expect(ac.check()).rejects.toThrow(ForbiddenError);
-      expect(ac.granted()).toBe(false);
-    });
-  });
+  // Basic-usage runtime grant + its org-membership boundary are verified
+  // end-to-end through the real stack (Better Auth + resolveOrgFromPath + self
+  // MCP) in apps/mesh/e2e/tests/basic-usage-grant.spec.ts. A unit test here
+  // would have to mock BoundAuthClient — the kind of own-contract mock
+  // TESTING.md steers away from — so the verification lives in e2e.
 
   describe("granted", () => {
     it("should return false initially", () => {
