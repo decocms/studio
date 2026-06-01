@@ -13,6 +13,22 @@ export function formatTimeAgo(date: Date): string {
 }
 
 /**
+ * Convert a server-provided timestamp (ISO string, Date, null, or undefined)
+ * into a finite epoch-ms number, or `null` if the value is missing/unparseable.
+ *
+ * Used to lift server-side "started at" timestamps into the live-elapsed-timer
+ * pipeline so the chronometer survives page refreshes instead of restarting
+ * from `Date.now()` on every mount.
+ */
+export function toEpochMs(
+  value: string | Date | null | undefined,
+): number | null {
+  if (value == null || value === "") return null;
+  const ms = value instanceof Date ? value.getTime() : Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
  * Format a duration in seconds into a human-readable string.
  * - Under 60s: "12.3s"
  * - 60s and above: "2m 3.1s"
