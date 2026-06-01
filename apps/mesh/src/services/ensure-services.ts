@@ -15,7 +15,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "fs";
-import { sleep } from "@decocms/std";
+import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import { chmod, unlink } from "fs/promises";
 import { createRequire } from "module";
 import { createConnection, createServer } from "net";
@@ -867,11 +867,135 @@ async function stopLink(home: string): Promise<void> {
   console.log("Link stopped");
 }
 
+// Respawn policy for a dev-session link daemon. Capped exponential backoff so
+// a daemon that crash-loops on a persistent fault doesn't busy-spin.
+const LINK_RESPAWN_BASE_MS = 500;
+const LINK_RESPAWN_CAP_MS = 30_000;
+// A daemon that stays up at least this long counts as healthy; its next exit
+// resets the backoff streak instead of escalating from a stale count.
+const LINK_HEALTHY_UPTIME_MS = 30_000;
+
+function linkRespawnBackoffMs(attempt: number): number {
+  return exponentialBackoffWithJitter(
+    LINK_RESPAWN_CAP_MS,
+    LINK_RESPAWN_BASE_MS,
+    attempt,
+    2,
+    0.5,
+  );
+}
+
+/** Resolve when the subprocess exits or `signal` aborts, whichever is first. */
+function exitedOrAborted(
+  proc: ReturnType<typeof Bun.spawn>,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void proc.exited.then(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    });
+  });
+}
+
+/** Poll a PID until it dies or `signal` aborts. Used for a reused daemon, where
+ *  we have no `Subprocess` handle to await. */
+async function waitUntilPidDead(
+  pid: number,
+  signal: AbortSignal,
+): Promise<void> {
+  while (!signal.aborted && isProcessAlive(pid)) {
+    await sleep(2_000, { signal }).catch(() => {});
+  }
+}
+
+export interface SuperviseLinkInputs extends EnsureLinkInputs {
+  /** Fired when the daemon's HTTP port is accepting connections. */
+  onReady?: (port: number) => void;
+  /** Fired when the daemon is down and a respawn is pending. */
+  onDown?: () => void;
+  /** Human-facing status lines (spawn failures, crash codes, respawn notices). */
+  onLog?: (line: string) => void;
+  /** Abort to stop supervising (orderly shutdown). */
+  signal: AbortSignal;
+}
+
+/**
+ * Keep the link daemon alive for the lifetime of a dev session.
+ *
+ * `ensureLink` spawns the daemon once and returns; nothing notices if it later
+ * dies. The daemon's *WebSocket* self-heals (cluster-connection.ts reconnects
+ * forever), so the one unrecoverable failure is the process itself exiting —
+ * after which its NATS link claim expires (60s TTL) and every user-desktop
+ * dispatch returns `user_desktop_link_offline` while the dev UI still shows the
+ * sandbox as ready. This loop closes that gap: respawn on unexpected exit with
+ * capped exponential backoff, and surface real liveness via the callbacks.
+ *
+ * Resolves when `signal` aborts (orderly shutdown). The caller is responsible
+ * for stopping the still-running daemon afterward (e.g. via `stopLink`).
+ */
+async function superviseLink(inputs: SuperviseLinkInputs): Promise<void> {
+  let attempt = 0;
+  while (!inputs.signal.aborted) {
+    const startedAt = Date.now();
+    let result: EnsureLinkResult;
+    try {
+      result = await ensureLink(inputs);
+    } catch (err) {
+      inputs.onDown?.();
+      inputs.onLog?.(
+        `[link] daemon failed to start: ${
+          err instanceof Error ? err.message : String(err)
+        } — retrying`,
+      );
+      if (inputs.signal.aborted) return;
+      await sleep(linkRespawnBackoffMs(attempt++), {
+        signal: inputs.signal,
+      }).catch(() => {});
+      continue;
+    }
+
+    // ensureLink already waited for the port on a fresh spawn; a reused daemon
+    // hasn't been probed here. Either way, confirm before declaring ready.
+    void waitForPort(result.info.port)
+      .then(() => inputs.onReady?.(result.info.port))
+      .catch(() => {});
+
+    // Block until the daemon process is gone. Fresh spawn → await the
+    // Subprocess; reused managed daemon (proc === null) → poll its PID.
+    if (result.proc) {
+      await exitedOrAborted(result.proc, inputs.signal);
+    } else if (result.info.pid !== null) {
+      await waitUntilPidDead(result.info.pid, inputs.signal);
+    }
+
+    if (inputs.signal.aborted) return;
+
+    // Unexpected exit. ensureLink's next readState sees the dead PID and clears
+    // it, so the following iteration spawns fresh.
+    inputs.onDown?.();
+    const aliveMs = Date.now() - startedAt;
+    if (aliveMs >= LINK_HEALTHY_UPTIME_MS) attempt = 0;
+    inputs.onLog?.(
+      `[link] daemon exited after ${Math.round(aliveMs / 1000)}s — respawning`,
+    );
+    await sleep(linkRespawnBackoffMs(attempt++), {
+      signal: inputs.signal,
+    }).catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-export { ensureLink, stopLink };
+export { ensureLink, stopLink, superviseLink };
 
 function portFromUrl(url: string, fallback: number): number {
   try {
