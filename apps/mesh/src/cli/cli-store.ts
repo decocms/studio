@@ -90,7 +90,14 @@ export function setDevMode(opts: { localSandboxProvider?: boolean } = {}) {
     ...state,
     services: [
       ...state.services,
-      { name: "Vite", status: "pending", port: 0 },
+      // Names MUST match the labels dev.ts passes to updateService(). The
+      // store updates services by name; a mismatch silently drops the
+      // status transition and the spinner spins forever. The Vite-fronts-
+      // Studio topology renamed the user-facing slot to "Studio" (vite)
+      // and added "Studio API" (the mesh API behind the proxy) — keep
+      // these two in lockstep with the spawn labels in dev.ts.
+      { name: "Studio", status: "pending", port: 0 },
+      { name: "Studio API", status: "pending", port: 0 },
       // Auto-spawned by `bun run dev --local-sandbox-provider` after the
       // cluster is up — see apps/mesh/src/cli/commands/dev.ts. The
       // desktop sandbox provider routes through this. Marked ready
