@@ -24,6 +24,7 @@ test.describe("Sidebar org pin", () => {
       },
     });
     const agentId = vmcpResult.item.id;
+    expect(agentId).toBeTruthy();
 
     await callSelfMcpTool(request, orgSlug, "COLLECTION_THREADS_CREATE", {
       data: {
@@ -35,29 +36,36 @@ test.describe("Sidebar org pin", () => {
     await page.goto(`/${orgSlug}`);
     await page.waitForURL(new RegExp(`/${orgSlug}(/|$)`), { timeout: 15_000 });
 
-    const sidebarToggle = page
-      .getByRole("button", { name: /sidebar/i })
-      .first();
-    if (await sidebarToggle.isVisible()) {
-      await sidebarToggle.click();
-    }
+    const toggleSidebar = page.getByRole("button", { name: "Toggle sidebar" });
+    await toggleSidebar.waitFor({ state: "visible", timeout: 15_000 });
+    await toggleSidebar.click();
 
-    const groupHeader = page.getByRole("button", {
-      name: new RegExp(agentTitle, "i"),
+    const anyGroupHeader = page.locator('[role="button"][aria-expanded]');
+    await anyGroupHeader.first().waitFor({ state: "visible", timeout: 30_000 });
+
+    const groupHeader = anyGroupHeader.filter({ hasText: agentTitle }).first();
+    await groupHeader.waitFor({ state: "visible", timeout: 30_000 });
+
+    const pinMenuItem = page.getByRole("menuitem", {
+      name: "Pin for all members",
     });
-    await expect(groupHeader).toBeVisible({ timeout: 15_000 });
-    await groupHeader.click({ button: "right" });
 
-    await page.getByRole("menuitem", { name: "Pin for all members" }).click();
+    // Role resolution is async (`useCanPinAgentsForOrg`); retry opening the menu
+    // until the pin action is available for the owner.
+    await expect(async () => {
+      await page.keyboard.press("Escape");
+      await groupHeader.click({ button: "right" });
+      await expect(pinMenuItem).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+
+    await pinMenuItem.click();
 
     await expect
       .poll(async () => {
-        const listed = await callSelfMcpTool<{
-          items: Array<{ id: string; pinned?: boolean }>;
-        }>(request, orgSlug, "COLLECTION_VIRTUAL_MCP_LIST", {
-          where: { id: agentId },
-        });
-        return listed.items[0]?.pinned === true;
+        const got = await callSelfMcpTool<{
+          item: { id: string; pinned?: boolean } | null;
+        }>(request, orgSlug, "COLLECTION_VIRTUAL_MCP_GET", { id: agentId });
+        return got.item?.pinned === true;
       })
       .toBe(true);
   });

@@ -11,6 +11,10 @@ function isOrgAdminRole(role: string | undefined): boolean {
 /**
  * Whether the current user can pin/unpin agents for all org members
  * (`connections.pinned` on the server).
+ *
+ * Uses `listMembers` rather than `getActiveMember`: the app resolves org
+ * from the URL and intentionally does not persist `activeOrganizationId`
+ * on the session (multi-tab safety), so getActiveMember returns null.
  */
 export function useCanPinAgentsForOrg(): boolean {
   const { locator } = useProjectContext();
@@ -18,16 +22,16 @@ export function useCanPinAgentsForOrg(): boolean {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
-  const { data: role } = useQuery({
-    queryKey: [...KEYS.members(locator), "active-member", userId] as const,
-    queryFn: async () => {
-      const result = await orgAuth.organization.getActiveMember();
-      if (result.error) return undefined;
-      return result.data?.role as string | undefined;
-    },
+  const { data: membersResult } = useQuery({
+    queryKey: KEYS.members(locator),
+    queryFn: () => orgAuth.organization.listMembers(),
     enabled: Boolean(userId),
     staleTime: 60_000,
   });
+
+  const role = membersResult?.data?.members?.find(
+    (member) => member.userId === userId,
+  )?.role;
 
   return isOrgAdminRole(role);
 }
