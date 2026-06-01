@@ -5,15 +5,29 @@ import { DevObjectStorage } from "../../object-storage/dev-object-storage";
 import { decorateStorageWithAssetHoisting } from "../../object-storage/asset-hoister";
 import { getObjectStorageS3Service } from "../../object-storage/factory";
 
-// A top-level browser navigation (clicking a link, pasting a URL) sends
-// `Accept: text/html`. API clients — `<img>` tags, `fetch`, and OAuth
-// discovery (Cursor/Claude) — do not. We use that to decide whether a denied
-// request should get a raw JSON error (machines) or be bounced into the SPA so
-// the existing OrgAccessGate can render a styled no-access / not-found screen
-// instead of dumping JSON into the address bar.
+// Decides whether a denied request should get a raw JSON error (machines) or be
+// bounced into the SPA so the existing OrgAccessGate can render a styled
+// no-access / not-found screen instead of dumping JSON into the address bar.
+//
+// The authoritative signal for "a person navigated here in a browser" is the
+// Fetch Metadata header `Sec-Fetch-Dest: document`, set by browsers ONLY for
+// top-level navigations. It's a forbidden header — `fetch`/XHR cannot set or
+// override it — so a browser's own subresource requests are correctly excluded:
+// `<img>` sends `image`, `fetch`/XHR send `empty`, an iframe sends `iframe`.
+// When the header is present we trust it exclusively, which fixes the previous
+// `Accept`-only heuristic that could misclassify an API client carrying a broad
+// `Accept` (or a browser <img>/fetch) as a navigation.
+//
+// Clients that don't send Sec-Fetch-* (older browsers, some tools) fall back to
+// content negotiation: real API clients send `application/json` or `*/*` (no
+// `text/html` substring), so only an HTML-preferring navigation matches.
 export const isBrowserNavigation = (c: {
   req: { header: (name: string) => string | undefined };
-}) => (c.req.header("accept") ?? "").includes("text/html");
+}) => {
+  const dest = c.req.header("sec-fetch-dest");
+  if (dest !== undefined) return dest === "document";
+  return (c.req.header("accept") ?? "").includes("text/html");
+};
 
 export const resolveOrgFromPath: MiddlewareHandler<{
   Variables: { meshContext: MeshContext };
