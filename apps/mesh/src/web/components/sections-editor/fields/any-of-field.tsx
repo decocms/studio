@@ -14,7 +14,7 @@ function detectCurrentType(
   value: unknown,
   refs: Array<{ resolveType: string; schema?: SchemaProperty }>,
 ): string {
-  const fallback = refs.find((r) => r.resolveType)?.resolveType ?? "";
+  const fallback = refs[0]?.resolveType ?? "";
   if (!value || typeof value !== "object" || Array.isArray(value))
     return fallback;
   const obj = value as Record<string, unknown>;
@@ -24,7 +24,8 @@ function detectCurrentType(
     if (match) return match.resolveType;
   }
 
-  // Infer branch by counting matching property keys
+  // Infer branch by counting matching property keys; only prefer a scored
+  // branch when it actually matches something (score > 0).
   let best = fallback;
   let bestScore = -1;
   for (const ref of refs) {
@@ -32,7 +33,7 @@ function detectCurrentType(
     const score = Object.keys(ref.schema.properties).filter(
       (k) => (obj as Record<string, unknown>)[k] !== undefined,
     ).length;
-    if (score > bestScore) {
+    if (score > 0 && score > bestScore) {
       bestScore = score;
       best = ref.resolveType;
     }
@@ -57,11 +58,16 @@ export function AnyOfField({
     const selectedRef = refs.find((r) => r.resolveType === currentRt);
 
     const handleRefChange = (rt: string) => {
+      const targetRef = refs.find((r) => r.resolveType === rt);
+      const allowed = new Set(Object.keys(targetRef?.schema?.properties ?? {}));
       const existing =
         value !== null && typeof value === "object" && !Array.isArray(value)
           ? (value as Record<string, unknown>)
           : {};
-      onChange({ ...existing, __resolveType: rt });
+      const filtered = Object.fromEntries(
+        Object.entries(existing).filter(([k]) => allowed.has(k)),
+      );
+      onChange({ ...filtered, __resolveType: rt });
     };
 
     return (

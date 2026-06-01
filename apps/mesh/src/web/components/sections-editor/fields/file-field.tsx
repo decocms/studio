@@ -14,6 +14,15 @@ import { useFilePickerUpload } from "@/web/hooks/use-file-picker";
 import { extractUrl } from "./extract-url";
 import type { FieldProps } from "./field-props";
 
+function ExtBadge({ ext }: { ext: string }) {
+  if (!ext) return null;
+  return (
+    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+      {ext}
+    </span>
+  );
+}
+
 function basename(url: string): string {
   try {
     const path = new URL(url).pathname;
@@ -36,6 +45,7 @@ export function FileField({
   path,
   label,
 }: FieldProps) {
+  const isVideo = schema.format === "video-uri";
   const strValue = extractUrl(value);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -122,7 +132,7 @@ export function FileField({
         )}
       >
         {strValue ? (
-          schema.format === "video-uri" ? (
+          isVideo ? (
             <>
               <div className="relative h-40 w-full overflow-hidden bg-black">
                 <video
@@ -137,11 +147,7 @@ export function FileField({
                 <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                   {fileName}
                 </p>
-                {ext && (
-                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
-                    {ext}
-                  </span>
-                )}
+                <ExtBadge ext={ext} />
               </div>
             </>
           ) : (
@@ -155,11 +161,7 @@ export function FileField({
                   {strValue}
                 </p>
               </div>
-              {ext && (
-                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
-                  {ext}
-                </span>
-              )}
+              <ExtBadge ext={ext} />
             </div>
           )
         ) : (
@@ -168,15 +170,11 @@ export function FileField({
             onClick={() => setPickerOpen(true)}
             className="flex w-full flex-col items-center justify-center gap-2 py-8 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
           >
-            {schema.format === "video-uri" ? (
-              <Film01 size={20} />
-            ) : (
-              <File02 size={20} />
-            )}
+            {isVideo ? <Film01 size={20} /> : <File02 size={20} />}
             <span className="text-sm font-medium">
               {upload.isPending
                 ? "Uploading…"
-                : schema.format === "video-uri"
+                : isVideo
                   ? "Drop a video here or click to browse"
                   : "Drop a file or click to browse"}
             </span>

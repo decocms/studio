@@ -43,6 +43,12 @@ export interface LiveMeta {
 
 type RawSchema = Record<string, unknown>;
 
+// deco.cx convention: VideoWidget schemas don't carry `format` in their
+// JSON Schema definition, so we inject it here so the UI can render a
+// VideoField instead of a generic FileField. If the schema ever gains the
+// `format` field natively this guard becomes a no-op.
+const VIDEO_WIDGET_REF_KEY = "VideoWidget";
+
 /**
  * Resolve the schema for a given __resolveType by searching across ALL
  * block types in the manifest (sections, loaders, matchers, etc.).
@@ -130,7 +136,7 @@ export function resolveSchema(
     if (typeof v.$ref === "string") {
       resolved = resolveRef(v.$ref);
       const refKey = v.$ref.split("/").pop() ?? "";
-      if (refKey === "VideoWidget" && !resolved.format) {
+      if (refKey === VIDEO_WIDGET_REF_KEY && !resolved.format) {
         resolved = { ...resolved, format: "video-uri" };
       }
     }

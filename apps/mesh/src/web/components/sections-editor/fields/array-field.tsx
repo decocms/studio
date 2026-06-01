@@ -41,15 +41,17 @@ export function ArrayField({
     const defaultVal =
       itemSchema?.default !== undefined
         ? itemSchema.default
-        : t === "object" || t === "block-ref"
+        : t === "object"
           ? {}
-          : t === "number" || t === "integer"
-            ? 0
-            : t === "boolean"
-              ? false
-              : t === "array"
-                ? []
-                : "";
+          : t === "block-ref"
+            ? { __resolveType: itemSchema?.anyOfRefs?.[0]?.resolveType ?? "" }
+            : t === "number" || t === "integer"
+              ? 0
+              : t === "boolean"
+                ? false
+                : t === "array"
+                  ? []
+                  : "";
     const next = [...items, defaultVal];
     onChange(next);
     const nextIndex = next.length - 1;
