@@ -108,16 +108,18 @@ const ac = createAccessControl(statement);
 // and can't create a capability-scoped custom role at all. Enumerating the full
 // tool list fixes that.
 //
-// `user` keeps `self: ["*"]` and is NOT given the full tool list: it is
-// enforced at runtime (only owner/admin bypass — see ADMIN_ROLES), so its grant
-// IS now consulted. By the literal-match rule above, `["*"]` authorizes no
-// specific tool, so a member gets only basic-usage (granted out-of-band in
-// AccessControl) plus any connection-scoped grants — never full access. It also
-// can't create roles (allowedRolesToCreateResources = ADMIN_ROLES).
+// `user` must hold NO `self` tools (`self: []`). It is enforced at runtime —
+// only owner/admin bypass (see ADMIN_ROLES), so its grant IS consulted. Crucially
+// `createBoundAuthClient` falls back to a `{ self: ["*"] }` wildcard probe when
+// the exact check misses, and a `self: ["*"]` grant here would satisfy that probe
+// and hand every member full access — re-introducing the very bypass we removed.
+// With `self: []` a member gets only basic-usage (granted out-of-band in
+// AccessControl) plus any connection-scoped grants. It also can't create roles
+// (allowedRolesToCreateResources = ADMIN_ROLES).
 const creatorSelf = ["*", ...allTools];
 
 const user = ac.newRole({
-  self: ["*"],
+  self: [],
   ...adminAc.statements,
 }) as Role;
 

@@ -11,6 +11,11 @@
  *     stored permission does NOT list the tool) can still call a basic-usage
  *     tool, yet is denied a non-basic tool it was never granted. This is the
  *     test that actually exercises the runtime grant.
+ *   - A member on the built-in "user" role likewise gets basic-usage but is
+ *     denied a gated tool. The `user` role is defined with `self: ["*"]`, and
+ *     `createBoundAuthClient` falls back to a `{ self: ["*"] }` wildcard probe,
+ *     so this guards against that combination re-granting full access once the
+ *     owner/admin-only bypass is in place.
  *   - A NON-member cannot call a basic-usage tool against the org — the grant
  *     must never leak past membership.
  *
@@ -150,6 +155,79 @@ test.describe("runtime basic-usage grant", () => {
     expect(
       denied.result?.isError === true || !!denied.error,
       `expected MONITORING_STATS to be denied, got: ${JSON.stringify(denied)}`,
+    ).toBe(true);
+    expect(errText).toMatch(/access denied|permission/i);
+
+    await ownerCtx.dispose();
+    await memberCtx.dispose();
+  });
+
+  test("the built-in user role gets basic-usage but is denied gated tools", async ({
+    playwright,
+  }) => {
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("org not found after signup");
+
+    // A second user, invited and LEFT on the built-in "user" role (no custom
+    // role reassignment). This is the path that regressed: the `user` role is
+    // defined with `self: ["*"]`, and the runtime wildcard fallback would
+    // otherwise grant it every tool once the owner/admin-only bypass is in
+    // place. It must get basic-usage only.
+    const memberCtx = await newApiContext(playwright);
+    const member = await signUpViaApi(memberCtx);
+
+    const invite = await ownerCtx.post("/api/auth/organization/invite-member", {
+      data: { organizationId: orgId, email: member.email, role: "user" },
+    });
+    expect(invite.ok()).toBe(true);
+    const inviteJson = (await invite.json()) as {
+      id?: string;
+      invitation?: { id?: string };
+    };
+    const invitationId = inviteJson.id ?? inviteJson.invitation?.id;
+    expect(invitationId).toBeTruthy();
+
+    const accept = await memberCtx.post(
+      "/api/auth/organization/accept-invitation",
+      { data: { invitationId } },
+    );
+    expect(
+      accept.ok(),
+      `accept-invitation failed: ${await accept.text().catch(() => "")}`,
+    ).toBe(true);
+
+    // Basic-usage tool → granted at runtime regardless of role.
+    const automations = await callSelfMcpTool<{ automations: unknown[] }>(
+      memberCtx,
+      owner.orgSlug,
+      "AUTOMATION_LIST",
+      {},
+    );
+    expect(Array.isArray(automations.automations)).toBe(true);
+
+    // Gated tool (monitoring:view) → denied. Before enforcing the user role,
+    // the `self: ["*"]` grant + wildcard fallback leaked full access here.
+    const deniedRes = await memberCtx.post(`/api/${owner.orgSlug}/mcp/self`, {
+      data: toolCallBody("MONITORING_STATS"),
+      headers: MCP_HEADERS,
+    });
+    const denied = (await deniedRes.json()) as {
+      result?: { isError?: boolean; content?: Array<{ text?: string }> };
+      error?: { message?: string };
+    };
+    const errText =
+      denied.result?.content?.[0]?.text ?? denied.error?.message ?? "";
+    expect(
+      denied.result?.isError === true || !!denied.error,
+      `expected MONITORING_STATS to be denied for built-in user, got: ${JSON.stringify(
+        denied,
+      )}`,
     ).toBe(true);
     expect(errText).toMatch(/access denied|permission/i);
 
