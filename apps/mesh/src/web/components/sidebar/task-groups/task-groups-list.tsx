@@ -85,9 +85,30 @@ export function TaskGroupsList() {
   const [orgPinOverrides, setOrgPinOverrides] = useState<
     Record<string, boolean>
   >({});
+  const serverOrgPinnedSet = new Set(serverOrgPinnedIds);
+
+  // Partition overrides into active (server hasn't confirmed yet) vs confirmed.
+  // Confirmed entries are pruned from state so they can't reactivate if server
+  // data fluctuates (cache miss, background refetch, etc.).
+  const activeOverrides: Record<string, boolean> = {};
+  const confirmedKeys: string[] = [];
+  for (const [id, pinned] of Object.entries(orgPinOverrides)) {
+    if (serverOrgPinnedSet.has(id) !== pinned) {
+      activeOverrides[id] = pinned;
+    } else {
+      confirmedKeys.push(id);
+    }
+  }
+  if (confirmedKeys.length > 0) {
+    setOrgPinOverrides((prev) => {
+      const next = { ...prev };
+      for (const k of confirmedKeys) delete next[k];
+      return next;
+    });
+  }
   const orgPinnedIds = (() => {
     const set = new Set(serverOrgPinnedIds);
-    for (const [id, pinned] of Object.entries(orgPinOverrides)) {
+    for (const [id, pinned] of Object.entries(activeOverrides)) {
       if (pinned) set.add(id);
       else set.delete(id);
     }
@@ -193,7 +214,7 @@ export function TaskGroupsList() {
 
   const handleToggleOrgPin = async (virtualMcpId: string, pinned: boolean) => {
     if (!canManageOrgPin) return;
-    if (orgPinOverrides[virtualMcpId] !== undefined) return;
+    if (activeOverrides[virtualMcpId] !== undefined) return;
     track("sidebar_group_org_pin_toggled", {
       virtual_mcp_id: virtualMcpId,
       pinned,
@@ -204,14 +225,10 @@ export function TaskGroupsList() {
         id: virtualMcpId,
         data: { pinned },
       });
-      syncOrdersOnOrgPinToggle(orderScope, virtualMcpId, pinned);
-      setLocalOrderRevision((n) => n + 1);
-      setOrgPinOverrides((prev) => {
-        const next = { ...prev };
-        delete next[virtualMcpId];
-        return next;
-      });
+      // The override is pruned from state automatically on the next render once
+      // serverOrgPinnedIds reflects the change — no explicit cleanup needed here.
     } catch {
+      syncOrdersOnOrgPinToggle(orderScope, virtualMcpId, !pinned);
       setOrgPinOverrides((prev) => {
         const next = { ...prev };
         delete next[virtualMcpId];
