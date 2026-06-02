@@ -72,6 +72,7 @@ export {
   // Virtual MCP hooks
   useVirtualMCPs,
   useVirtualMCP,
+  virtualMcpItemQueryOptions,
   useVirtualMCPActions,
   useVirtualMCPsLastUsed,
   type VirtualMCPFilter,

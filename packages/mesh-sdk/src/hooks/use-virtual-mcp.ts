@@ -10,12 +10,14 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { VirtualMCPEntity } from "../types/virtual-mcp";
 import { useProjectContext } from "../context";
 import {
+  collectionItemQueryOptions,
   useCollectionActions,
   useCollectionItem,
   useCollectionList,
   type CollectionFilter,
   type UseCollectionListOptions,
 } from "./use-collections";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "./use-mcp-client";
 import { SELF_MCP_ALIAS_ID } from "../lib/constants";
 import { KEYS } from "../lib/query-keys";
@@ -55,6 +57,23 @@ export function useVirtualMCPs(options: UseVirtualMCPsOptions = {}) {
     "VIRTUAL_MCP",
     client,
     options,
+  );
+}
+
+/**
+ * Query options for a single virtual MCP — shared with parallel-prefetch
+ * batches so they warm the exact cache entry useVirtualMCP reads.
+ */
+export function virtualMcpItemQueryOptions(
+  orgId: string,
+  virtualMcpId: string | null | undefined,
+  client: Client,
+) {
+  return collectionItemQueryOptions<VirtualMCPEntity>(
+    orgId,
+    "VIRTUAL_MCP",
+    virtualMcpId ?? undefined,
+    client,
   );
 }
 

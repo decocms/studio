@@ -213,15 +213,20 @@ function AgentUITile({
       </button>
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border">
-          <MCPAppRenderer
-            resourceURI={tile.resourceUri}
-            orgId={org.id}
-            client={client}
-            displayMode="fullscreen"
-            minHeight={tile.minHeight ?? 200}
-            maxHeight={tile.maxHeight ?? 4000}
-            className="h-full"
-          />
+          {/* Inner boundary so the slow resource read only blocks the embedded
+              panel — the tile chrome (agent name, Open chat, prompt chips)
+              renders immediately and stays interactive while the app loads. */}
+          <Suspense fallback={<TilePanelSkeleton />}>
+            <MCPAppRenderer
+              resourceURI={tile.resourceUri}
+              orgId={org.id}
+              client={client}
+              displayMode="fullscreen"
+              minHeight={tile.minHeight ?? 200}
+              maxHeight={tile.maxHeight ?? 4000}
+              className="h-full"
+            />
+          </Suspense>
         </div>
         {promptChips.length > 0 && !isEditMode && tileWidth >= 2 && (
           // Right-side column of action chips. `overflow-hidden` clips
@@ -243,6 +248,18 @@ function AgentUITile({
         )}
       </div>
       {dialog}
+    </div>
+  );
+}
+
+/** Fallback for just the embedded app panel — keeps the tile chrome visible
+ *  while the (potentially slow) resource read is in flight. */
+function TilePanelSkeleton() {
+  return (
+    <div className="flex h-full w-full flex-col gap-2 p-4">
+      <Skeleton className="h-3 w-2/3" />
+      <Skeleton className="h-3 w-1/2" />
+      <Skeleton className="mt-1 h-full w-full rounded-md" />
     </div>
   );
 }

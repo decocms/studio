@@ -1,8 +1,12 @@
 import {
   getWellKnownDecopilotVirtualMCP,
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
   useProjectContext,
   useVirtualMCP,
+  virtualMcpItemQueryOptions,
 } from "@decocms/mesh-sdk";
+import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { Check, LayoutAlt04, Plus, X } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -17,9 +21,14 @@ import {
   useHomeEdit,
 } from "@/web/components/home/home-edit-context";
 import { HomeGrid, useHomeGridStats } from "@/web/components/home/home-grid";
-import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+import {
+  aiProviderKeysQueryOptions,
+  useAiProviderKeys,
+} from "@/web/hooks/collections/use-ai-providers";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
+import { homeNextActionsQueryOptions } from "@/web/hooks/use-home-next-actions";
+import { organizationSettingsQueryOptions } from "@/web/hooks/use-organization-settings";
 import {
   agentHasClonableSource,
   hasLocalCliHarness,
@@ -32,11 +41,34 @@ export function HomePage() {
   const { data: session } = authClient.useSession();
   const { org } = useProjectContext();
   const isMobile = useIsMobile();
-  const allKeys = useAiProviderKeys();
   const link = useCurrentLink();
   const { selectedVirtualMcp } = useChatPrefs();
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
+
+  // Warm the tile-gating home feed in parallel with the self tool calls below.
+  // Plain (non-suspense) query so a flaky feed never blanks the home — it only
+  // starts the fetch early; useHomeGridStats reads the same cache entry.
+  useQuery(homeNextActionsQueryOptions(org.slug));
+
+  // Resolve the self MCP client once, then fire every independent self tool call
+  // in a single parallel batch. Without this, the stacked useSuspenseQuery hooks
+  // below each suspend before the next starts, serializing into a waterfall that
+  // delayed home-next-actions (and thus the tiles) by seconds.
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  useSuspenseQueries({
+    queries: [
+      aiProviderKeysQueryOptions(selfClient, org.id),
+      organizationSettingsQueryOptions(selfClient, org.id),
+      virtualMcpItemQueryOptions(org.id, displayAgent.id, selfClient),
+    ],
+  });
+
+  const allKeys = useAiProviderKeys();
   const fullVm = useVirtualMCP(displayAgent.id);
   const {
     hasDecoKey,
