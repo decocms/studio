@@ -3,6 +3,7 @@
  */
 
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { addSidebarPersonalAgentOrderInitScriptForSlug } from "../fixtures/sidebar-order";
 import { expect, test } from "../fixtures/test";
 
 test.describe("Sidebar org pin", () => {
@@ -10,7 +11,7 @@ test.describe("Sidebar org pin", () => {
     authedPage,
   }) => {
     test.setTimeout(120_000);
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const request = page.context().request;
 
     const agentTitle = `OrgPinAgent-${Date.now()}`;
@@ -32,6 +33,15 @@ test.describe("Sidebar org pin", () => {
         virtual_mcp_id: agentId,
       },
     });
+
+    // Sidebar membership is explicit — seed personal order so the group is
+    // visible before the test org-pins it from the context menu.
+    await addSidebarPersonalAgentOrderInitScriptForSlug(
+      page,
+      orgSlug,
+      user.userId,
+      [agentId],
+    );
 
     await page.goto(`/${orgSlug}`);
     await page.waitForURL(new RegExp(`/${orgSlug}(/|$)`), { timeout: 15_000 });
