@@ -239,41 +239,41 @@ describe("local-ingress WS proxying", () => {
   });
 
   test("caps pre-handshake buffer and closes with 1011 on overflow", async () => {
-    // An upstream that accepts the TCP socket but never finishes the WS
-    // handshake. Bun.serve with no `websocket` handler accepts upgrades but
-    // the client-side new WebSocket(...) will sit in CONNECTING until
-    // upstream times out or this test tears it down.
-    upstream = Bun.serve({
-      port: 0,
-      fetch(req) {
-        if (req.headers.get("upgrade") === "websocket") {
-          // Deliberately *do not* call srv.upgrade — let the connection
-          // hang in handshake state from the proxy's perspective so its
-          // upstream WebSocket never fires `open`.
-          //
-          // For *this* test we just need a sink that accepts TCP and never
-          // completes the upgrade. A 200 response on the upgrade request
-          // works — the proxy's upstream WS dial will stay in CONNECTING.
-          return new Response("not actually upgrading", { status: 200 });
-        }
-        return new Response("no", { status: 404 });
-      },
+    // Raw TCP sink: accepts the connection but never sends any HTTP/WS
+    // response. The proxy's upstream WebSocket will stay in CONNECTING
+    // for the full lifetime of the test, so the client→upstream message
+    // handler must accumulate frames into pendingMessages — and once we
+    // exceed MAX_PENDING_FRAMES (256), the proxy must close the client
+    // with code 1011. Without the cap this test hangs until timeout.
+    const { createServer } = await import("node:net");
+    const tcpServer = createServer((socket) => {
+      // Hold the socket open; don't reply. The connection stays alive.
+      socket.on("error", () => {
+        /* swallow EPIPE/ECONNRESET when proxy tears down */
+      });
     });
-    ingress = await startLocalIngress({
-      port: 0,
-      lookupSandboxPort: () => upstream!.port ?? null,
-    });
-    const ws = new WebSocket(`ws://abc.localhost:${ingress.port}/`);
-    const closeEvent = new Promise<CloseEvent>((resolve) => {
-      ws.addEventListener("close", (e) => resolve(e));
-    });
-    await new Promise<void>((r) => ws.addEventListener("open", () => r()));
-    // Fire MAX_PENDING_FRAMES + 1 frames before the upstream handshake
-    // could plausibly complete. The proxy must close us with 1011.
-    for (let i = 0; i < 300; i++) {
-      ws.send(`spam-${i}`);
+    await new Promise<void>((r) => tcpServer.listen(0, "127.0.0.1", r));
+    const tcpPort = (tcpServer.address() as { port: number }).port;
+    try {
+      ingress = await startLocalIngress({
+        port: 0,
+        lookupSandboxPort: () => tcpPort,
+      });
+      const ws = new WebSocket(`ws://abc.localhost:${ingress.port}/`);
+      const closeEvent = new Promise<CloseEvent>((resolve) => {
+        ws.addEventListener("close", (e) => resolve(e));
+      });
+      await new Promise<void>((r) => ws.addEventListener("open", () => r()));
+      // Fire MAX_PENDING_FRAMES + 44 frames. The handshake to the raw TCP
+      // sink will never complete, so every send hits the buffer path. The
+      // 257th send must trigger the 1011 close.
+      for (let i = 0; i < 300; i++) {
+        ws.send(`spam-${i}`);
+      }
+      const ev = await closeEvent;
+      expect(ev.code).toBe(1011);
+    } finally {
+      await new Promise<void>((r) => tcpServer.close(() => r()));
     }
-    const ev = await closeEvent;
-    expect(ev.code).toBe(1011);
   });
 });
