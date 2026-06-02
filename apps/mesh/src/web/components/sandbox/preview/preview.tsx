@@ -814,6 +814,12 @@ export function PreviewContent() {
                     className="flex h-8 w-full min-w-0 items-center gap-1 rounded-md bg-background px-2 transition-colors duration-200 hover:bg-accent"
                     onClick={() => setPagesOpen((prev) => !prev)}
                   >
+                    {activeGlobalSection && (
+                      <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                        <Globe02 size={11} />
+                        Global
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
                       {previewLabel}
                     </span>
