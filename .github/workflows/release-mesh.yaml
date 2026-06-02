@@ -83,14 +83,20 @@ jobs:
             echo "Image ${{ steps.version.outputs.version }} not in GHCR, will build"
           fi
 
-  publish-npm:
-    name: Publish to NPM
+  # Build the npm tarball EXACTLY ONCE, then hand it to both publish-npm and
+  # build-docker as a workflow artifact. `npm pack` does not run prepublishOnly,
+  # so we build the bundles explicitly first (build:client + build:server), then
+  # pack. Sharing one tarball is what guarantees the Docker image and the
+  # published npm package are byte-identical.
+  build-dist:
+    name: Build package artifact
     needs: prepare
-    if: needs.prepare.outputs.version-changed == 'true'
+    if: |
+      needs.prepare.outputs.version-changed == 'true' ||
+      needs.prepare.outputs.image-exists == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,46 +105,58 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
       - name: Install dependencies
         run: bun install
-      - name: Publish to NPM
-        run: npm publish --access public --tag ${{ needs.prepare.outputs.npm-tag }} --provenance
-        working-directory: apps/mesh
-      - name: Wait for npm propagation
+      - name: Build client + server bundles
         run: |
-          echo "Waiting for npm registry propagation..."
-          for i in $(seq 1 6); do
-            if npm view decocms@${{ needs.prepare.outputs.version }} version >/dev/null 2>&1; then
-              echo "Version available on npm after $((i * 5))s"
-              exit 0
-            fi
-            echo "Attempt $i/6 - not yet available, waiting 5s..."
-            sleep 5
-          done
-          echo "Version not available on npm after 30s"
-          exit 1
+          bun run --cwd=apps/mesh build:client
+          bun run --cwd=apps/mesh build:server
+      - name: Pack the npm tarball
+        working-directory: apps/mesh
+        run: npm pack
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesh-package
+          path: apps/mesh/decocms-*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-npm:
+    name: Publish to NPM
+    needs: [prepare, build-dist]
+    if: needs.prepare.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mesh-package
+      - name: Publish to NPM
+        run: npm publish decocms-*.tgz --access public --tag ${{ needs.prepare.outputs.npm-tag }} --provenance
 
   # Single-job multi-arch build. Pushes the final tagged manifest directly to
-  # GHCR — no digest-export + imagetools merge dance. arm64 is built under
-  # QEMU on an amd64 runner; for this Bun image (no heavy native compile) the
-  # emulation overhead is small enough to make the simpler topology a win.
-  # Depends on publish-npm: the Dockerfile installs the *published* package
-  # (`RUN bun add decocms@${MESH_VERSION}` in apps/mesh/Dockerfile), so the
-  # build can only resolve the version AFTER publish-npm has published it and
-  # its "Wait for npm propagation" step confirms availability. Running this in
-  # parallel with publish-npm races the publish and fails with
-  # `No version matching "<v>" found for specifier "decocms"`.
+  # GHCR. arm64 is built under QEMU on an amd64 runner; only node-pty compiles
+  # natively, which is small enough to keep the simpler topology.
+  # Consumes the tarball built by build-dist (NOT the npm registry): the
+  # Dockerfile does `bun add /tmp/decocms.tgz`, so there is no registry read to
+  # race against publish-npm. Runs in PARALLEL with publish-npm — both gate only
+  # on build-dist and install the same tarball, so the image stays byte-identical
+  # to the published package.
   build-docker:
     name: Build & push Docker (multi-arch)
-    needs: [prepare, publish-npm]
-    # always() so a skipped publish-npm (version already on npm) still lets the
-    # build run; a failed publish-npm skips it (don't ship an image whose
-    # `bunx @decocms/mesh@X` can't resolve).
+    needs: [prepare, build-dist]
     if: |
       always() &&
       needs.prepare.outputs.image-exists == 'false' &&
-      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
+      needs.build-dist.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -156,6 +174,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      - name: Download package artifact into build context
+        uses: actions/download-artifact@v4
+        with:
+          name: mesh-package
+          path: docker-context
+      - name: Normalize tarball filename
+        run: mv docker-context/decocms-*.tgz docker-context/decocms.tgz
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -168,23 +193,22 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ./apps/mesh
+          context: ./docker-context
           file: ./apps/mesh/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            MESH_VERSION=${{ needs.prepare.outputs.version }}
           cache-from: type=gha,scope=mesh
           cache-to: type=gha,mode=max,scope=mesh
 
   release:
     name: GitHub Release + Deployment
-    needs: [prepare, publish-npm, build-docker]
+    needs: [prepare, build-dist, publish-npm, build-docker]
     if: |
       always() &&
       (needs.prepare.outputs.version-changed == 'true' || needs.prepare.outputs.image-exists == 'false') &&
+      (needs.build-dist.result == 'success' || needs.build-dist.result == 'skipped') &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
       (needs.build-docker.result == 'success' || needs.build-docker.result == 'skipped')
     runs-on: ubuntu-latest
@@ -252,7 +276,7 @@ jobs:
   # ---------------------------------------------------------------------------
   bump-deco-apps-cd:
     name: Trigger deco-apps-cd bump
-    needs: [prepare, publish-npm, build-docker]
+    needs: [prepare, build-dist, publish-npm, build-docker]
     # Only bump when this release is fully consistent across the artifact pair:
     #   * a VALID image for this version exists (either already published, so
     #     build-docker is skipped, or freshly built), AND
@@ -264,6 +288,7 @@ jobs:
     # (image already in GHCR) is fine — those mean "nothing to do", not failure.
     if: |
       always() &&
+      (needs.build-dist.result == 'success' || needs.build-dist.result == 'skipped') &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
       (
         needs.prepare.outputs.image-exists == 'true' ||
