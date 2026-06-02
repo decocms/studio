@@ -83,6 +83,45 @@ jobs:
             echo "Image ${{ steps.version.outputs.version }} not in GHCR, will build"
           fi
 
+  # Build the npm tarball EXACTLY ONCE, then hand it to both publish-npm and
+  # build-docker as a workflow artifact. `npm pack` does not run prepublishOnly,
+  # so we build the bundles explicitly first (build:client + build:server), then
+  # pack. Sharing one tarball is what guarantees the Docker image and the
+  # published npm package are byte-identical.
+  build-dist:
+    name: Build package artifact
+    needs: prepare
+    if: |
+      needs.prepare.outputs.version-changed == 'true' ||
+      needs.prepare.outputs.image-exists == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install dependencies
+        run: bun install
+      - name: Build client + server bundles
+        run: |
+          bun run --cwd=apps/mesh build:client
+          bun run --cwd=apps/mesh build:server
+      - name: Pack the npm tarball
+        working-directory: apps/mesh
+        run: npm pack
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesh-package
+          path: apps/mesh/decocms-*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
   publish-npm:
     name: Publish to NPM
     needs: prepare
