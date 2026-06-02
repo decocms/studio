@@ -7,7 +7,7 @@
  * dual-stack system). Bun resolves `localhost` to a single address — the
  * wrong one half the time — so we probe both before opening the real
  * connection. Probing first means a mid-flight failure on the chosen
- * address never silently retries on the other one, which would re-execute
+ * address never silently retries on the other family, which would re-execute
  * non-idempotent requests on HTTP and re-do the WS handshake on WS.
  *
  * ECONNREFUSED on a closed loopback port comes back instantly, so the probe

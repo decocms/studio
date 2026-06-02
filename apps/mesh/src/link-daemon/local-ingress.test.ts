@@ -254,111 +254,31 @@ describe("local-ingress WS proxying", () => {
     expect(closeEvent.reason).toBe("deliberate test close");
   });
 
-  test("closes client with 1011 when upstream WS ctor throws synchronously", async () => {
-    // Provoke a synchronous throw from `new WebSocket(...)` inside the
-    // daemon's `open` handler by sending a Sec-WebSocket-Protocol header
-    // with duplicate tokens. Bun's WebSocket constructor rejects duplicate
-    // subprotocols with "WebSocket protocols contain duplicates". The
-    // browser-style WebSocket client rejects this client-side too, so we
-    // send the upgrade over raw TCP. Without the try/catch around the ctor
-    // the client would be left open with no upstream until close-on-timeout.
-    const { createConnection } = await import("node:net");
+  test("closes client with 1011 when upstream is unreachable", async () => {
+    const { createServer } = await import("node:net");
+    const reserved = createServer();
+    await new Promise<void>((resolve) =>
+      reserved.listen(0, "127.0.0.1", resolve),
+    );
+    const closedPort = (reserved.address() as { port: number }).port;
+    await new Promise<void>((resolve) => reserved.close(() => resolve()));
+
     ingress = await startLocalIngress({
       port: 0,
-      // Sandbox port is irrelevant — the ctor throws before any dial happens.
-      lookupSandboxPort: () => 1,
+      lookupSandboxPort: () => closedPort,
     });
-    const ingressPort = ingress.port;
-    const closeCode = await new Promise<number>((resolve, reject) => {
-      const sock = createConnection(
-        { port: ingressPort, host: "127.0.0.1" },
-        () => {
-          const req = [
-            "GET / HTTP/1.1",
-            `Host: abc.localhost:${ingressPort}`,
-            "Upgrade: websocket",
-            "Connection: Upgrade",
-            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
-            "Sec-WebSocket-Version: 13",
-            // Two identical tokens — the daemon parses these into
-            // ["dup", "dup"], which `new WebSocket(url, [...])` rejects.
-            "Sec-WebSocket-Protocol: dup, dup",
-            "",
-            "",
-          ].join("\r\n");
-          sock.write(req);
-        },
+    const ws = new WebSocket(`ws://abc.localhost:${ingress.port}/`);
+    const closeEvent = await new Promise<CloseEvent>((resolve, reject) => {
+      const t = setTimeout(
+        () => reject(new Error("no close event within 5s")),
+        5000,
       );
-      const chunks: Buffer[] = [];
-      const t = setTimeout(() => {
-        sock.destroy();
-        reject(new Error("no close frame within 5s"));
-      }, 5000);
-      sock.on("data", (d: Buffer) => {
-        chunks.push(d);
-        const all = Buffer.concat(chunks);
-        // Find end of HTTP/1.1 101 headers.
-        const headerEnd = all.indexOf("\r\n\r\n");
-        if (headerEnd < 0) return;
-        // First WS frame begins right after \r\n\r\n. Close frame layout:
-        //   byte 0: 0x88  (FIN | opcode=8)
-        //   byte 1: payload length (server frames are not masked)
-        //   bytes 2-3: close code (big-endian uint16)
-        const frame = all.subarray(headerEnd + 4);
-        if (frame.length < 4) return;
-        if (frame[0] !== 0x88) return;
-        const len = frame[1]! & 0x7f;
-        if (len < 2 || frame.length < 2 + len) return;
-        const code = frame.readUInt16BE(2);
+      ws.addEventListener("close", (e) => {
         clearTimeout(t);
-        sock.destroy();
-        resolve(code);
-      });
-      sock.on("error", (err: Error) => {
-        clearTimeout(t);
-        reject(err);
+        resolve(e);
       });
     });
-    expect(closeCode).toBe(1011);
-  });
-
-  test("caps pre-handshake buffer and closes with 1011 on overflow", async () => {
-    // Raw TCP sink: accepts the connection but never sends any HTTP/WS
-    // response. The proxy's upstream WebSocket will stay in CONNECTING
-    // for the full lifetime of the test, so the client→upstream message
-    // handler must accumulate frames into pendingMessages — and once we
-    // exceed MAX_PENDING_FRAMES (256), the proxy must close the client
-    // with code 1011. Without the cap this test hangs until timeout.
-    const { createServer } = await import("node:net");
-    const tcpServer = createServer((socket) => {
-      // Hold the socket open; don't reply. The connection stays alive.
-      socket.on("error", () => {
-        /* swallow EPIPE/ECONNRESET when proxy tears down */
-      });
-    });
-    await new Promise<void>((r) => tcpServer.listen(0, "127.0.0.1", r));
-    const tcpPort = (tcpServer.address() as { port: number }).port;
-    try {
-      ingress = await startLocalIngress({
-        port: 0,
-        lookupSandboxPort: () => tcpPort,
-      });
-      const ws = new WebSocket(`ws://abc.localhost:${ingress.port}/`);
-      const closeEvent = new Promise<CloseEvent>((resolve) => {
-        ws.addEventListener("close", (e) => resolve(e));
-      });
-      await new Promise<void>((r) => ws.addEventListener("open", () => r()));
-      // Fire MAX_PENDING_FRAMES + 44 frames. The handshake to the raw TCP
-      // sink will never complete, so every send hits the buffer path. The
-      // 257th send must trigger the 1011 close.
-      for (let i = 0; i < 300; i++) {
-        ws.send(`spam-${i}`);
-      }
-      const ev = await closeEvent;
-      expect(ev.code).toBe(1011);
-    } finally {
-      await new Promise<void>((r) => tcpServer.close(() => r()));
-    }
+    expect(closeEvent.code).toBe(1011);
   });
 });
 

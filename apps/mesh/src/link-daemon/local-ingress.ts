@@ -5,6 +5,12 @@
  *
  * No auth — same posture as `bun dev`; the listener is 127.0.0.1-only.
  */
+import {
+  createNodeWebSocketProxy,
+  createNodeWebSocketProxyData,
+  parseWebSocketProtocols,
+  type NodeWebSocketProxyData,
+} from "@decocms/sandbox/proxy/websocket";
 import { parseHandleFromHost } from "./host-parser";
 
 /**
@@ -18,6 +24,7 @@ const MAX_PENDING_FRAMES = 256;
 export interface StartLocalIngressInput {
   port: number;
   lookupSandboxPort: (handle: string) => number | null;
+  maxPendingWsFrames?: number;
 }
 
 export interface LocalIngress {
@@ -25,19 +32,16 @@ export interface LocalIngress {
   stop(): Promise<void>;
 }
 
-interface WsData {
-  sandboxPort: number;
-  /** Path + query the client requested; forwarded verbatim to upstream. */
-  upstreamPath: string;
-  /** Subprotocols requested by the client; passed to the upstream WS ctor. */
-  upstreamProtocols: string[];
-  upstream?: WebSocket;
-  pendingMessages: Array<string | Uint8Array | ArrayBuffer>;
-}
+type WsData = NodeWebSocketProxyData;
 
 export async function startLocalIngress(
   input: StartLocalIngressInput,
 ): Promise<LocalIngress> {
+  const wsProxy = createNodeWebSocketProxy<WsData>({
+    maxPendingFrames: input.maxPendingWsFrames ?? MAX_PENDING_FRAMES,
+    backlogOverflowReason: "ingress backlog overflow",
+  });
+
   const server = Bun.serve<WsData>({
     port: input.port,
     hostname: "127.0.0.1",
@@ -50,20 +54,12 @@ export async function startLocalIngress(
 
       if (req.headers.get("upgrade") === "websocket") {
         const reqUrl = new URL(req.url);
-        const protocolHeader = req.headers.get("sec-websocket-protocol");
-        const upstreamProtocols = protocolHeader
-          ? protocolHeader
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : [];
         const ok = srv.upgrade(req, {
-          data: {
-            sandboxPort,
-            upstreamPath: `${reqUrl.pathname}${reqUrl.search}`,
-            upstreamProtocols,
-            pendingMessages: [],
-          },
+          data: createNodeWebSocketProxyData({
+            port: sandboxPort,
+            pathQuery: `${reqUrl.pathname}${reqUrl.search}`,
+            protocols: parseWebSocketProtocols(req.headers),
+          }),
         });
         if (!ok) return new Response("ws upgrade failed", { status: 400 });
         return undefined as unknown as Response;
@@ -81,109 +77,9 @@ export async function startLocalIngress(
       });
     },
     websocket: {
-      async open(ws) {
-        const { sandboxPort, upstreamPath, upstreamProtocols } = ws.data;
-        const upstreamUrl = `ws://127.0.0.1:${sandboxPort}${upstreamPath}`;
-        // Mirror preview-proxy.ts: a synchronous throw from the WebSocket
-        // constructor (malformed URL, transient dial failure) would leave the
-        // client WS open with no upstream and let `pendingMessages` accumulate
-        // toward the 256-frame cap. Close the client bridge with 1011 instead.
-        let upstream: WebSocket;
-        try {
-          upstream =
-            upstreamProtocols.length > 0
-              ? new WebSocket(upstreamUrl, upstreamProtocols)
-              : new WebSocket(upstreamUrl);
-        } catch (err) {
-          console.warn(
-            `[local-ingress] failed to dial upstream ${upstreamUrl}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          try {
-            ws.close(1011, "upstream dial failed");
-          } catch {
-            /* */
-          }
-          return;
-        }
-        upstream.binaryType = "arraybuffer";
-        ws.data.upstream = upstream;
-        ws.data.pendingMessages = [];
-        upstream.addEventListener("open", () => {
-          // Flush any messages that arrived before upstream was ready.
-          const pending = ws.data.pendingMessages;
-          ws.data.pendingMessages = [];
-          for (const msg of pending) {
-            try {
-              upstream.send(msg);
-            } catch {
-              /* */
-            }
-          }
-        });
-        upstream.addEventListener("message", (e) => {
-          try {
-            ws.send(e.data as string | Uint8Array | ArrayBuffer);
-          } catch {
-            /* */
-          }
-        });
-        upstream.addEventListener("close", (ev: CloseEvent) => {
-          try {
-            ws.close(ev.code || 1000, ev.reason || "");
-          } catch {
-            /* */
-          }
-        });
-        // Without this, a failed upstream connect (sandbox died, port not yet
-        // bound) emits `error` and may never emit `close` — the client WS
-        // stays open with `pendingMessages` accumulating indefinitely.
-        upstream.addEventListener("error", () => {
-          try {
-            ws.close(1011, "upstream error");
-          } catch {
-            /* */
-          }
-        });
-      },
-      message(ws, raw) {
-        const upstream = ws.data.upstream;
-        const msg: string | Uint8Array | ArrayBuffer =
-          typeof raw === "string"
-            ? raw
-            : raw instanceof ArrayBuffer
-              ? raw
-              : new Uint8Array(raw);
-        if (!upstream || upstream.readyState !== WebSocket.OPEN) {
-          if (ws.data.pendingMessages.length >= MAX_PENDING_FRAMES) {
-            try {
-              ws.close(1011, "ingress backlog overflow");
-            } catch {
-              /* */
-            }
-            try {
-              upstream?.close();
-            } catch {
-              /* */
-            }
-            return;
-          }
-          ws.data.pendingMessages.push(msg);
-          return;
-        }
-        try {
-          upstream.send(msg);
-        } catch {
-          /* */
-        }
-      },
-      close(ws) {
-        const upstream = ws.data.upstream;
-        try {
-          upstream?.close();
-        } catch {
-          /* */
-        }
-      },
+      open: wsProxy.open,
+      message: wsProxy.message,
+      close: wsProxy.close,
     },
   });
 
