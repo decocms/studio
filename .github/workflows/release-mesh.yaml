@@ -124,39 +124,23 @@ jobs:
 
   publish-npm:
     name: Publish to NPM
-    needs: prepare
+    needs: [prepare, build-dist]
     if: needs.prepare.outputs.version-changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
-      - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
-      - name: Install dependencies
-        run: bun install
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mesh-package
       - name: Publish to NPM
-        run: npm publish --access public --tag ${{ needs.prepare.outputs.npm-tag }} --provenance
-        working-directory: apps/mesh
-      - name: Wait for npm propagation
-        run: |
-          echo "Waiting for npm registry propagation..."
-          for i in $(seq 1 6); do
-            if npm view decocms@${{ needs.prepare.outputs.version }} version >/dev/null 2>&1; then
-              echo "Version available on npm after $((i * 5))s"
-              exit 0
-            fi
-            echo "Attempt $i/6 - not yet available, waiting 5s..."
-            sleep 5
-          done
-          echo "Version not available on npm after 30s"
-          exit 1
+        run: npm publish decocms-*.tgz --access public --tag ${{ needs.prepare.outputs.npm-tag }} --provenance
 
   # Single-job multi-arch build. Pushes the final tagged manifest directly to
   # GHCR. arm64 is built under QEMU on an amd64 runner; only node-pty compiles
