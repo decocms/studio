@@ -42,6 +42,7 @@ import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
+import { getSettings } from "../../settings";
 import { setSandboxMapEntry } from "./sandbox-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
@@ -354,7 +355,9 @@ async function provisionSandbox(
   // relevant for `user-desktop`; the cluster daemon reads its own S3 env.
   const offload =
     runner.kind === "user-desktop"
-      ? await deriveOffloadAllowlist(ctx.objectStorage)
+      ? await deriveOffloadAllowlist(ctx.objectStorage, {
+          isProduction: getSettings().nodeEnv === "production",
+        })
       : null;
 
   const sandbox = await runner.ensure(

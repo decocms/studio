@@ -15,7 +15,6 @@
  * `S3_ENDPOINT` would miss.
  */
 
-import { getSettings } from "../settings";
 import type { BoundObjectStorage } from "./bound-object-storage";
 
 export interface OffloadAllowlist {
@@ -45,6 +44,7 @@ const LOOPBACK_HOSTS = new Set([
  */
 export async function deriveOffloadAllowlist(
   objectStorage: BoundObjectStorage | null,
+  opts: { isProduction: boolean },
 ): Promise<OffloadAllowlist> {
   if (!objectStorage) return { hosts: [], allowSameHostDev: false };
 
@@ -83,10 +83,9 @@ export async function deriveOffloadAllowlist(
 
   const host = parsed.hostname;
   const isLoopback = LOOPBACK_HOSTS.has(host);
-  const isProd = getSettings().nodeEnv === "production";
 
   return {
     hosts: [host],
-    allowSameHostDev: isLoopback && !isProd,
+    allowSameHostDev: isLoopback && !opts.isProduction,
   };
 }
