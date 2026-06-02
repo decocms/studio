@@ -2,8 +2,9 @@ import { sha256Hex } from "../../../../apps/mesh/src/harnesses/offload-messages"
 import { retry } from "@decocms/std";
 
 /** Max size of an offloaded messages blob (bound to a realistic harness input,
- *  not a generic 500MiB transfer). */
-export const MAX_OFFLOAD_BYTES = 32 * 1024 * 1024;
+ *  not a generic 500MiB transfer). Module-local — only used by the fetcher
+ *  below. */
+const MAX_OFFLOAD_BYTES = 32 * 1024 * 1024;
 
 /**
  * Assert that `raw` is a URL that is safe to fetch for offloaded messages.
