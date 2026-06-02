@@ -165,4 +165,33 @@ describe("dispatcher", () => {
     const decoded = decodeFrame(new TextDecoder().decode(cancels[0]!.data));
     expect(decoded.type).toBe("cancel");
   });
+
+  test("request publish failure rejects and unsubscribes the inbox exactly once", async () => {
+    const nats = makeFakeNats();
+    let unsubscribes = 0;
+    const origSubscribe = nats.subscribe.bind(nats);
+    (nats as { subscribe: typeof nats.subscribe }).subscribe = (
+      subject,
+      cb,
+    ) => {
+      const off = origSubscribe(subject, cb);
+      return () => {
+        unsubscribes++;
+        off();
+      };
+    };
+    (nats as { publish: typeof nats.publish }).publish = () => {
+      throw new Error("MAX_PAYLOAD_EXCEEDED");
+    };
+    const dispatch = createDispatcher({ nats, requestTimeoutMs: 5_000 });
+    await expect(async () => {
+      for await (const _ of dispatch("user-1", {
+        method: "POST",
+        path: "/_sandbox/x/write",
+        headers: {},
+        body: "x",
+      }));
+    }).toThrow(/MAX_PAYLOAD_EXCEEDED/);
+    expect(unsubscribes).toBe(1); // exactly once — no leak, no double-cleanup
+  });
 });
