@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { File02, Trash01, Upload01 } from "@untitledui/icons";
+import { File02, Film01, Trash01, Upload01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -13,6 +13,15 @@ import { useFileConfigsQuery } from "@/web/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/web/hooks/use-file-picker";
 import { extractUrl } from "./extract-url";
 import type { FieldProps } from "./field-props";
+
+function ExtBadge({ ext }: { ext: string }) {
+  if (!ext) return null;
+  return (
+    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+      {ext}
+    </span>
+  );
+}
 
 function basename(url: string): string {
   try {
@@ -36,6 +45,7 @@ export function FileField({
   path,
   label,
 }: FieldProps) {
+  const isVideo = schema.format === "video-uri";
   const strValue = extractUrl(value);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -58,8 +68,15 @@ export function FileField({
 
   async function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
-    const list = Array.from(files);
+    let list = Array.from(files);
     if (list.length === 0) return;
+    if (isVideo) {
+      list = list.filter((f) => f.type.startsWith("video/"));
+      if (list.length === 0) {
+        toast.error("Please drop a video file (mp4, webm, …).");
+        return;
+      }
+    }
 
     const targetConfigId = resolveTargetConfigId();
     if (!targetConfigId) {
@@ -101,7 +118,9 @@ export function FileField({
     // bulletproofs against any broken min-w-0 chain above.
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
       <div className="min-w-0 space-y-0.5">
-        <Label htmlFor={path}>{label}</Label>
+        <Label htmlFor={path} className="text-muted-foreground">
+          {label}
+        </Label>
         {schema.description && (
           <p className="text-xs leading-normal text-muted-foreground">
             {schema.description}
@@ -120,33 +139,51 @@ export function FileField({
         )}
       >
         {strValue ? (
-          <div className="flex items-center gap-3 px-3 py-2.5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-background">
-              <File02 size={18} className="text-muted-foreground" />
+          isVideo ? (
+            <>
+              <div className="relative h-40 w-full overflow-hidden bg-black">
+                <video
+                  key={strValue}
+                  src={strValue}
+                  preload="metadata"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+              <div className="flex items-center gap-2 border-t border-border/60 bg-background/50 px-3 py-2">
+                <Film01 size={14} className="shrink-0 text-muted-foreground" />
+                <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  {fileName}
+                </p>
+                <ExtBadge ext={ext} />
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-background">
+                <File02 size={18} className="text-muted-foreground" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{fileName}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {strValue}
+                </p>
+              </div>
+              <ExtBadge ext={ext} />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{fileName}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {strValue}
-              </p>
-            </div>
-            {ext && (
-              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
-                {ext}
-              </span>
-            )}
-          </div>
+          )
         ) : (
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
             className="flex w-full flex-col items-center justify-center gap-2 py-8 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
           >
-            <File02 size={20} />
+            {isVideo ? <Film01 size={20} /> : <File02 size={20} />}
             <span className="text-sm font-medium">
               {upload.isPending
                 ? "Uploading…"
-                : "Drop a file or click to browse"}
+                : isVideo
+                  ? "Drop a video here or click to browse"
+                  : "Drop a file or click to browse"}
             </span>
             <span className="text-xs text-muted-foreground">Up to 100 MB</span>
           </button>

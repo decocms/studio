@@ -27,6 +27,7 @@ export interface SchemaProperty {
     resolveType: string;
     title: string;
     description?: string;
+    schema?: SchemaProperty;
   }>;
 }
 
@@ -41,6 +42,12 @@ export interface LiveMeta {
 }
 
 type RawSchema = Record<string, unknown>;
+
+// deco.cx convention: VideoWidget schemas don't carry `format` in their
+// JSON Schema definition, so we inject it here so the UI can render a
+// VideoField instead of a generic FileField. If the schema ever gains the
+// `format` field natively this guard becomes a no-op.
+const VIDEO_WIDGET_REF_KEY = "VideoWidget";
 
 /**
  * Resolve the schema for a given __resolveType by searching across ALL
@@ -128,6 +135,10 @@ export function resolveSchema(
     let resolved = v;
     if (typeof v.$ref === "string") {
       resolved = resolveRef(v.$ref);
+      const refKey = v.$ref.split("/").pop() ?? "";
+      if (refKey === VIDEO_WIDGET_REF_KEY && !resolved.format) {
+        resolved = { ...resolved, format: "video-uri" };
+      }
     }
 
     // Extract enum values from anyOf/oneOf const/enum branches
@@ -235,6 +246,8 @@ export function resolveSchema(
                 typeof branch.description === "string"
                   ? branch.description
                   : undefined,
+              schema:
+                depth + 1 < 6 ? buildProperty(branch, depth + 1) : undefined,
             };
           });
           return {
@@ -256,6 +269,7 @@ export function resolveSchema(
             resolveType: string;
             title: string;
             description?: string;
+            schema?: SchemaProperty;
           }> = [];
           for (const branch of nonNull) {
             const def = resolveRef(branch.$ref as string);
@@ -299,6 +313,7 @@ export function resolveSchema(
                 typeof def.description === "string"
                   ? def.description
                   : undefined,
+              schema: depth + 1 < 6 ? buildProperty(def, depth + 1) : undefined,
             });
           }
           return {

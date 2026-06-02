@@ -28,7 +28,7 @@ import { isLazyResolveType } from "./section-lazy";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
-import { resolveSchema } from "./resolve-schema";
+import { resolveSchema, type SchemaProperty } from "./resolve-schema";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
@@ -80,6 +80,44 @@ import {
 } from "./section-variants";
 
 const AUTOSAVE_DELAY = 700;
+
+function SchemaFormPanel({
+  activeSchema,
+  formValue,
+  formResetKey,
+  onFormChange,
+  onBreadcrumbChange,
+  emptyMessage,
+}: {
+  activeSchema: SchemaProperty | null | undefined;
+  formValue: unknown;
+  formResetKey: number;
+  onFormChange: (v: unknown) => void;
+  onBreadcrumbChange: (path: string[]) => void;
+  emptyMessage: string;
+}) {
+  return (
+    <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
+      <div className="mx-auto max-w-2xl">
+        {activeSchema && formValue ? (
+          <SchemaForm
+            key={formResetKey}
+            schema={activeSchema}
+            value={formValue}
+            onChange={onFormChange}
+            basePath=""
+            breadcrumbPath={[]}
+            onBreadcrumbChange={onBreadcrumbChange}
+          />
+        ) : (
+          <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const VARIANT_TAB_ACTIVE_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
@@ -1961,43 +1999,25 @@ export function SectionsEditor({
               )}
             </>
           )}
-          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
-            {activeSchema && formValue ? (
-              <SchemaForm
-                key={formResetKey}
-                schema={activeSchema}
-                value={formValue}
-                onChange={handleFormChange}
-                basePath=""
-                breadcrumbPath={[]}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-              />
-            ) : (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                No editable fields for this variant.
-              </div>
-            )}
-          </div>
+          <SchemaFormPanel
+            activeSchema={activeSchema}
+            formValue={formValue}
+            formResetKey={formResetKey}
+            onFormChange={handleFormChange}
+            onBreadcrumbChange={setFieldBreadcrumbs}
+            emptyMessage="No editable fields for this variant."
+          />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
         <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
-          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
-            {activeSchema && formValue ? (
-              <SchemaForm
-                key={formResetKey}
-                schema={activeSchema}
-                value={formValue}
-                onChange={handleFormChange}
-                basePath=""
-                breadcrumbPath={[]}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-              />
-            ) : (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                No editable fields for this global block.
-              </div>
-            )}
-          </div>
+          <SchemaFormPanel
+            activeSchema={activeSchema}
+            formValue={formValue}
+            formResetKey={formResetKey}
+            onFormChange={handleFormChange}
+            onBreadcrumbChange={setFieldBreadcrumbs}
+            emptyMessage="No editable fields for this global block."
+          />
         </ScrollArea>
       ) : (
         <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
