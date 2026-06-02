@@ -161,6 +161,40 @@ export interface DesktopSandboxProviderDeps {
   onEvent?: (event: SandboxEvent) => void;
 }
 
+/**
+ * Wrap a low-level bring-up step error in a user-facing message carrying the
+ * stable `sandbox failed to start:` marker. The chat web layer keys on this
+ * marker (`parseErrorMessage` in the highlight component) to show the real
+ * reason instead of the generic "took longer than expected". The original
+ * error is preserved as `cause` for the daemon log + the `failed` event.
+ */
+function markBringUpFailure(reason: string, cause: unknown): Error {
+  return new Error(`sandbox failed to start: ${reason}`, { cause });
+}
+
+/**
+ * True for runtime timeout aborts — notably the `AbortSignal.timeout()`
+ * `DOMException` ("The operation timed out.") that fires when the spawned
+ * daemon doesn't answer `POST /_sandbox/config` within `CONFIG_TIMEOUT_MS`.
+ */
+function isTimeoutLike(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === "TimeoutError" ||
+    /timed out|timeout|operation was aborted|aborted/i.test(err.message)
+  );
+}
+
+/** The original (pre-marker) cause message, for operator-facing logs/events. */
+function bringUpCauseMessage(err: unknown): string {
+  if (err instanceof Error) {
+    const cause = (err as { cause?: unknown }).cause;
+    if (cause instanceof Error && cause.message) return cause.message;
+    return err.message;
+  }
+  return String(err);
+}
+
 export function createDesktopSandboxProvider(
   deps: DesktopSandboxProviderDeps,
 ): DesktopSandboxProvider {
@@ -292,16 +326,29 @@ export function createDesktopSandboxProvider(
       deps.spawnDaemon({ workdir, handle: input.handle, port, daemonToken }),
     );
     try {
-      await deps.waitForHealth(port);
+      try {
+        await deps.waitForHealth(port);
+      } catch (err) {
+        throw markBringUpFailure("the sandbox didn't come online in time", err);
+      }
       console.log(
         `[user-desktop] healthy handle=${input.handle} port=${port} — posting config`,
       );
-      await deps.postConfig(
-        port,
-        devPort,
-        { repo: input.repo, workload: input.workload },
-        daemonToken,
-      );
+      try {
+        await deps.postConfig(
+          port,
+          devPort,
+          { repo: input.repo, workload: input.workload },
+          daemonToken,
+        );
+      } catch (err) {
+        throw markBringUpFailure(
+          isTimeoutLike(err)
+            ? "configuration timed out"
+            : "the sandbox rejected its configuration",
+          err,
+        );
+      }
     } catch (err) {
       console.error(
         `[user-desktop] sandbox bring-up failed handle=${input.handle} port=${port} (killing daemon):`,
@@ -315,7 +362,7 @@ export function createDesktopSandboxProvider(
       emit({
         handle: input.handle,
         phase: "failed",
-        error: err instanceof Error ? err.message : String(err),
+        error: bringUpCauseMessage(err),
       });
       throw err;
     }
