@@ -18,50 +18,32 @@ import {
   ResizablePanelGroup,
   type ImperativePanelGroupHandle,
 } from "@/web/components/resizable";
-import { useLocalStorage } from "@/web/hooks/use-local-storage";
-import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { useChatPanelWidth } from "@/web/hooks/use-chat-panel-width";
 import { computeChatMainSizes } from "@/web/hooks/use-layout-state";
 import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 
-const DEFAULT_CHAT_PANEL_WIDTH = 45;
-
-/** react-resizable-panels requires numeric defaultSize; localStorage may hold strings. */
-function normalizePanelSizePercent(
-  value: unknown,
-  fallback = DEFAULT_CHAT_PANEL_WIDTH,
-): number {
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n) || n <= 0 || n >= 100) return fallback;
-  return n;
-}
-
-function chatPanelWidthInitializer(existing: number | undefined): number {
-  return normalizePanelSizePercent(existing, DEFAULT_CHAT_PANEL_WIDTH);
-}
-
 function PersistentChatPanel({
   children,
   defaultSize,
   chatOpen,
-}: PropsWithChildren<{ defaultSize: number; chatOpen: boolean }>) {
+  chatPanelWidth,
+  onChatPanelResize,
+}: PropsWithChildren<{
+  defaultSize: number;
+  chatOpen: boolean;
+  chatPanelWidth: number;
+  onChatPanelResize: (size: number) => void;
+}>) {
   const [_isPending, startTransition] = useTransition();
-  const [storedChatPanelWidth, setChatPanelWidth] = useLocalStorage(
-    LOCALSTORAGE_KEYS.decoChatPanelWidth(),
-    chatPanelWidthInitializer,
-  );
-  const chatPanelWidth = normalizePanelSizePercent(
-    storedChatPanelWidth,
-    DEFAULT_CHAT_PANEL_WIDTH,
-  );
   // Only apply the stored width when both panels are open (non-extreme default).
   // When chat is solo (100) or closed (0), the caller's defaultSize wins.
   const effectiveDefaultSize =
     defaultSize > 0 && defaultSize < 100 ? chatPanelWidth : defaultSize;
   const handleResize = (size: number) =>
     startTransition(() => {
-      if (size > 0 && size < 100) setChatPanelWidth(size);
+      if (size > 0 && size < 100) onChatPanelResize(size);
     });
   return (
     <ResizablePanel
@@ -100,14 +82,7 @@ export function ChatMainPanelGroup({
   chatContent,
 }: ChatMainPanelGroupProps) {
   const sizes = computeChatMainSizes(chatOpen, mainOpen);
-  const [storedChatPanelWidth] = useLocalStorage(
-    LOCALSTORAGE_KEYS.decoChatPanelWidth(),
-    chatPanelWidthInitializer,
-  );
-  const chatPanelWidth = normalizePanelSizePercent(
-    storedChatPanelWidth,
-    DEFAULT_CHAT_PANEL_WIDTH,
-  );
+  const [chatPanelWidth, setChatPanelWidth] = useChatPanelWidth();
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — syncs panel layout from URL-derived state; imperative DOM API has no React 19 alternative
@@ -129,7 +104,12 @@ export function ChatMainPanelGroup({
       className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0"
       style={{ overflow: "visible" }}
     >
-      <PersistentChatPanel defaultSize={sizes.chat} chatOpen={chatOpen}>
+      <PersistentChatPanel
+        defaultSize={sizes.chat}
+        chatOpen={chatOpen}
+        chatPanelWidth={chatPanelWidth}
+        onChatPanelResize={setChatPanelWidth}
+      >
         <div className="h-full p-0.5 pt-0.25">
           <div className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow">
             {chatContent ?? <ChatCenterPanel />}

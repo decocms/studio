@@ -804,6 +804,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    orgSlug: org.slug,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   cbRef.current = {
@@ -813,6 +814,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    orgSlug: org.slug,
   };
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
@@ -874,7 +876,7 @@ export function ActiveTaskProvider({
         // can flip that state, so re-fetch on every finish — covers both
         // `mine=true` and `mine=false` variants via partial-key match.
         cb.queryClient.invalidateQueries({
-          queryKey: KEYS.homeNextActions(org.slug),
+          queryKey: KEYS.homeNextActions(cb.orgSlug),
         });
 
         const serverThreadId = (message.metadata as Metadata | undefined)
