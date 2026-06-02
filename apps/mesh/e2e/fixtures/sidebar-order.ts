@@ -10,11 +10,11 @@ import type { Page } from "@playwright/test";
 import type { Client } from "pg";
 import { connectDevDb } from "./db";
 
-export function sidebarPersonalOrderKey(orgId: string, userId: string): string {
+function sidebarPersonalOrderKey(orgId: string, userId: string): string {
   return `sidebar.group-order.${orgId}.${userId}`;
 }
 
-export async function lookupOrgId(
+async function lookupOrgId(
   db: Client,
   orgSlug: string,
 ): Promise<string> {
@@ -30,7 +30,7 @@ export async function lookupOrgId(
 }
 
 /** Runs before navigation so the first paint sees the seeded order. */
-export async function addSidebarPersonalAgentOrderInitScript(
+async function addSidebarPersonalAgentOrderInitScript(
   page: Page,
   options: { orgId: string; userId: string; agentIds: string[] },
 ): Promise<void> {
