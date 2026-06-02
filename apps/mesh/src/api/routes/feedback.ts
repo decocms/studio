@@ -6,7 +6,12 @@ export function createFeedbackRoutes() {
 
   app.post("/feedback", async (c) => {
     const mesh = c.get("meshContext");
-    const body = await c.req.json<{ message?: unknown }>();
+    let body: { message?: unknown };
+    try {
+      body = await c.req.json<{ message?: unknown }>();
+    } catch {
+      return c.json({ error: "invalid JSON" }, 400);
+    }
     const message =
       typeof body?.message === "string" ? body.message.trim() : "";
     if (!message) return c.json({ error: "message required" }, 400);

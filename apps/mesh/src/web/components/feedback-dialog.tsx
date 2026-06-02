@@ -24,20 +24,32 @@ export function FeedbackDialog({
   orgSlug,
 }: FeedbackDialogProps) {
   const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!message.trim()) return;
-    fetch(`/api/${orgSlug}/feedback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message.trim() }),
-    });
-    track("user_feedback_submitted", {
-      session_replay_url: getSessionReplayUrl(),
-    });
-    setMessage("");
-    onOpenChange(false);
-    toast.success("Feedback sent — thank you!");
+    setSending(true);
+    try {
+      const res = await fetch(`/api/${orgSlug}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message.trim() }),
+      });
+      if (!res.ok) {
+        toast.error("Failed to send feedback. Please try again.");
+        return;
+      }
+      track("user_feedback_submitted", {
+        session_replay_url: getSessionReplayUrl(),
+      });
+      setMessage("");
+      onOpenChange(false);
+      toast.success("Feedback sent — thank you!");
+    } catch {
+      toast.error("Failed to send feedback. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -66,7 +78,7 @@ export function FeedbackDialog({
             placeholder="Tell us about your experience, bugs you've found, or features you'd like to see..."
             className="min-h-32 resize-none"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !sending) {
                 handleSubmit();
               }
             }}
@@ -80,7 +92,11 @@ export function FeedbackDialog({
           >
             contact@decocms.com
           </a>
-          <Button onClick={handleSubmit} disabled={!message.trim()} size="sm">
+          <Button
+            onClick={handleSubmit}
+            disabled={!message.trim() || sending}
+            size="sm"
+          >
             Send feedback
             <span className="ml-1.5 text-xs opacity-60">⌘↵</span>
           </Button>
