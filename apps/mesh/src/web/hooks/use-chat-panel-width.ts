@@ -1,10 +1,10 @@
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 
-export const DEFAULT_CHAT_PANEL_WIDTH = 45;
+const DEFAULT_CHAT_PANEL_WIDTH = 45;
 
 /** react-resizable-panels requires numeric defaultSize; localStorage may hold strings. */
-export function normalizePanelSizePercent(
+function normalizePanelSizePercent(
   value: unknown,
   fallback = DEFAULT_CHAT_PANEL_WIDTH,
 ): number {

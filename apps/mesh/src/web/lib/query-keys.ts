@@ -152,6 +152,10 @@ export const KEYS = {
 
   // Monitoring queries
   monitoringStats: () => ["monitoring", "stats"] as const,
+  monitoringStatsToolCalls: (orgId: string, paramsKey: string) =>
+    ["MONITORING_STATS", orgId, "tool-calls", paramsKey] as const,
+  monitoringStatsLlm: (orgId: string, paramsKey: string) =>
+    ["MONITORING_STATS", orgId, "llm", paramsKey] as const,
   monitoringLogs: (filters: {
     connectionId?: string;
     toolName?: string;
@@ -298,6 +302,8 @@ export const KEYS = {
 
   // AI provider stored keys (scoped by org)
   aiProviderKeys: (orgId: string) => ["ai-provider-keys", orgId] as const,
+  aiProviderKeyPreview: (keyId: string) =>
+    ["ai-provider-key-preview", keyId] as const,
 
   // Secrets (scoped by org; user-scope filtering happens server-side)
   secrets: (orgId: string) => ["secrets", orgId] as const,
