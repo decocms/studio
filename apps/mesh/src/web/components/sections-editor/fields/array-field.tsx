@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
 
@@ -44,12 +45,13 @@ export function ArrayField({
         : t === "object"
           ? {}
           : t === "block-ref"
-            ? {
-                __resolveType:
-                  typeof itemSchema?.anyOfRefs?.[0]?.resolveType === "string"
-                    ? itemSchema.anyOfRefs[0].resolveType
-                    : "",
-              }
+            ? (() => {
+                const rt = itemSchema?.anyOfRefs?.[0]?.resolveType;
+                if (typeof rt !== "string" || isEmbeddedUnionResolveType(rt)) {
+                  return {};
+                }
+                return { __resolveType: rt };
+              })()
             : t === "number" || t === "integer"
               ? 0
               : t === "boolean"
