@@ -39,10 +39,6 @@ const MINIO_ROOT_USER = "minioadmin";
 const MINIO_ROOT_PASSWORD = "minioadmin";
 const MINIO_DEV_BUCKET = "studio-dev";
 const MINIO_DEFAULT_PORT = 9000;
-// Objects under this prefix are short-lived dispatch payloads offloaded by the
-// unified harness/sandbox transport. Expire them after 1 day so the dev bucket
-// doesn't grow unbounded — mirrors the production lifecycle policy.
-const MINIO_DISPATCH_PREFIX = "link-dispatch/";
 
 const IS_WINDOWS = platform() === "win32";
 const EXE_EXT = IS_WINDOWS ? ".exe" : "";
@@ -804,16 +800,24 @@ async function waitForMinioReady(
 }
 
 /**
- * Create the dev bucket (idempotent) and apply a lifecycle rule expiring
- * objects under the dispatch prefix after 1 day. Uses the already-installed
+ * Create the dev bucket (idempotent). Uses the already-installed
  * @aws-sdk/client-s3 so there's no `mc` version to keep in sync.
+ *
+ * Object-storage hygiene notes for dispatch offload objects:
+ * - The primary reclaimer for `link-dispatch/` offload objects is the eager
+ *   `finally` block in remote-dispatch.ts, which deletes the object on run
+ *   completion (success or failure).
+ * - An S3 lifecycle `Prefix` rule is left-anchored and literal. Real offload
+ *   object keys are `<orgId>/link-dispatch/<reqId>` (BoundObjectStorage
+ *   prepends `<orgId>/`), so a `Prefix: "link-dispatch/"` rule would never
+ *   match them. Rather than install a silently-broken rule here, we omit it.
+ * - Production operators who want automatic cleanup should configure a
+ *   lifecycle rule appropriate to their key layout, e.g. an object-tag-based
+ *   rule (tag offload objects on PUT and filter on that tag), or an
+ *   `<orgId>/link-dispatch/` prefix per org if their layout is known.
  */
 async function provisionMinioBucket(endpoint: string): Promise<void> {
-  const {
-    S3Client,
-    CreateBucketCommand,
-    PutBucketLifecycleConfigurationCommand,
-  } = await import("@aws-sdk/client-s3");
+  const { S3Client, CreateBucketCommand } = await import("@aws-sdk/client-s3");
 
   const client = new S3Client({
     endpoint,
@@ -841,28 +845,6 @@ async function provisionMinioBucket(endpoint: string): Promise<void> {
       client.destroy();
       throw e;
     }
-  }
-
-  // The lifecycle rule is a hygiene/expiry convenience — its failure must NOT
-  // break dev startup. Warn and continue.
-  try {
-    await client.send(
-      new PutBucketLifecycleConfigurationCommand({
-        Bucket: MINIO_DEV_BUCKET,
-        LifecycleConfiguration: {
-          Rules: [
-            {
-              ID: "expire-link-dispatch",
-              Status: "Enabled",
-              Filter: { Prefix: MINIO_DISPATCH_PREFIX },
-              Expiration: { Days: 1 },
-            },
-          ],
-        },
-      }),
-    );
-  } catch (err) {
-    console.warn("[minio] failed to apply link-dispatch lifecycle rule:", err);
   }
 
   client.destroy();

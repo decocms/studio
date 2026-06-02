@@ -160,7 +160,9 @@ test.describe("link dispatch message-offload", () => {
         const key = offloadKey(reqId);
         await s3.put(orgId, key, bytes, { contentType: "application/json" });
         seenKeys.push(key);
-        const url = await s3.presignedGetUrl(orgId, key, 600);
+        const url = await s3.presignedGetUrl(orgId, key, 600, {
+          requireFetchable: true,
+        });
         return {
           url,
           bytes: bytes.byteLength,

@@ -16,7 +16,10 @@ export interface CapabilityProbes {
 export async function detectCapabilities(
   probes: CapabilityProbes = defaultProbes,
 ): Promise<Capability[]> {
-  const caps: Capability[] = ["decopilot-sandbox"];
+  // `body-offload` is a daemon-code capability — this daemon build always
+  // supports re-inflating offloaded messages (Task 6 added that code), so it
+  // is advertised unconditionally regardless of any external probe.
+  const caps: Capability[] = ["decopilot-sandbox", "body-offload"];
   const [hasClaudeCode, hasCodex] = await Promise.all([
     probes.detectClaudeCode().catch(() => false),
     probes.detectCodex().catch(() => false),
