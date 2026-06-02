@@ -72,13 +72,19 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
   const result = unwrapResult<{ items?: VirtualMCPEntity[] }>(part.output);
   const items = Array.isArray(result?.items) ? result.items : [];
 
-  if (state === "loading" || state === "approval") {
+  if (state === "loading") {
     return (
       <ToolCallShell
         icon={<UserCircle className="animate-pulse" />}
         title="Loading agents"
         state="loading"
       />
+    );
+  }
+
+  if (state === "approval") {
+    return (
+      <ToolCallShell icon={<UserCircle />} title="List agents" state="idle" />
     );
   }
 

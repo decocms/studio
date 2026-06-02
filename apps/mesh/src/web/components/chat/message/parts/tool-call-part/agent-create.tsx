@@ -22,7 +22,7 @@ const PASSPORT_TEXT =
 
 // Computed once at module load — avoids re-querying the CSSOM on every mousemove.
 const prefersReducedMotion =
-  typeof window !== "undefined"
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-reduced-motion: reduce)")
     : null;
 
@@ -72,7 +72,7 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
     rectRef.current = null;
   };
 
-  if (state === "loading" || state === "approval") {
+  if (state === "loading") {
     return (
       <ToolCallShell
         icon={<UserCircle className="animate-pulse" />}
@@ -80,6 +80,12 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
         state="loading"
         defaultOpen
       />
+    );
+  }
+
+  if (state === "approval") {
+    return (
+      <ToolCallShell icon={<UserCircle />} title="Create agent" state="idle" />
     );
   }
 
