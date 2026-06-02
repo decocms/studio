@@ -366,10 +366,21 @@ describe("local-ingress + real Vite HMR (integration)", () => {
   const VITE_BOOT_TIMEOUT_MS = 30_000;
   const HMR_HELLO_TIMEOUT_MS = 10_000;
   // Budget for the whole test: Vite boot (≤30s) + HMR hello (≤10s) + setup
-  // slack. Bun's default per-test timeout is 5s — too tight for CI where
-  // bunx may need a cold resolve of the workspace vite dep — so we override
-  // it via the third arg to `test()` below.
+  // slack. Bun's default per-test timeout is 5s, so override via the third
+  // arg to `test()` below.
   const TEST_TIMEOUT_MS = 60_000;
+
+  // Resolve the workspace's installed Vite binary at module load time so the
+  // spawn below doesn't depend on cwd-based resolution. The fixture is in
+  // `mkdtempSync(tmpdir())`, which has no node_modules — `bunx vite` from
+  // there would walk up to / and fall back to downloading vite from npm,
+  // which hangs CI past any reasonable test timeout.
+  //
+  // `vite/package.json` is reachable through vite's exports map; from there
+  // we derive the absolute path to the bin script. (Using `import.meta.resolve`
+  // on `vite/bin/vite.js` is blocked because it isn't in the exports map.)
+  const VITE_PKG_URL = import.meta.resolve("vite/package.json");
+  const VITE_BIN = new URL("./bin/vite.js", VITE_PKG_URL).pathname;
 
   let fixtureDir: string | null = null;
   let viteProc: ReturnType<typeof Bun.spawn> | null = null;
@@ -382,12 +393,15 @@ describe("local-ingress + real Vite HMR (integration)", () => {
       '<!doctype html><html><body><script type="module" src="/main.js"></script></body></html>',
     );
     writeFileSync(join(fixtureDir, "main.js"), "console.log('hi');");
-    // Let Vite pick a free port; we'll read it from stdout.
+    // Let Vite pick a free port; we'll read it from stdout. Invoke the
+    // workspace's vite binary directly under bun — bypassing `bunx` (which
+    // would re-resolve vite from the fixture cwd, find no node_modules, and
+    // attempt a network install).
     viteProc = Bun.spawn(
       [
-        "bunx",
+        "bun",
         "--bun",
-        "vite",
+        VITE_BIN,
         "--port",
         "0",
         "--host",
