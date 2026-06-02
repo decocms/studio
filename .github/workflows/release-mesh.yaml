@@ -123,13 +123,22 @@ jobs:
   # GHCR — no digest-export + imagetools merge dance. arm64 is built under
   # QEMU on an amd64 runner; for this Bun image (no heavy native compile) the
   # emulation overhead is small enough to make the simpler topology a win.
-  # Runs in parallel with publish-npm: the Dockerfile installs from the
-  # workspace, never from the npm registry, so it doesn't depend on the npm
-  # publish completing first.
+  # Depends on publish-npm: the Dockerfile installs the *published* package
+  # (`RUN bun add decocms@${MESH_VERSION}` in apps/mesh/Dockerfile), so the
+  # build can only resolve the version AFTER publish-npm has published it and
+  # its "Wait for npm propagation" step confirms availability. Running this in
+  # parallel with publish-npm races the publish and fails with
+  # `No version matching "<v>" found for specifier "decocms"`.
   build-docker:
     name: Build & push Docker (multi-arch)
-    needs: prepare
-    if: needs.prepare.outputs.image-exists == 'false'
+    needs: [prepare, publish-npm]
+    # always() so a skipped publish-npm (version already on npm) still lets the
+    # build run; a failed publish-npm skips it (don't ship an image whose
+    # `bunx @decocms/mesh@X` can't resolve).
+    if: |
+      always() &&
+      needs.prepare.outputs.image-exists == 'false' &&
+      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
