@@ -47,7 +47,7 @@ import {
   getTargetKey,
   type RoleEditorTarget,
 } from "@/web/views/settings/org-role-detail.tsx";
-import { RequireCapability } from "@/web/components/require-capability";
+import { RequirePrivileged } from "@/web/components/require-privileged";
 
 // ============================================================================
 // Role color helpers
@@ -459,9 +459,11 @@ function RolesPage() {
 }
 
 export default function RolesRoute() {
+  // Role-definition CRUD (listRoles/createRole/…) is owner/admin-only in Better
+  // Auth, so gate on privilege rather than a grantable capability.
   return (
-    <RequireCapability capability="members:manage" area="roles">
+    <RequirePrivileged area="roles">
       <RolesPage />
-    </RequireCapability>
+    </RequirePrivileged>
   );
 }

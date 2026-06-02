@@ -70,6 +70,9 @@ interface SettingsNavItem {
   to: string;
   /** Capability required to see this item. Omitted = visible to every member. */
   requires?: CapabilityId;
+  /** Restrict to privileged built-in roles (owner/admin). For screens backed
+   *  by owner/admin-only APIs (e.g. role management). */
+  privilegedOnly?: boolean;
 }
 
 interface SettingsNavGroup {
@@ -184,7 +187,8 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "Roles",
           icon: <Shield01 size={14} />,
           to: "/$org/settings/roles",
-          requires: "members:manage",
+          // Role management uses owner/admin-only Better Auth APIs.
+          privilegedOnly: true,
         },
         {
           key: "sso",
@@ -232,9 +236,11 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
   return groups
     .map((group) => ({
       ...group,
-      items: group.items.filter(
-        (item) => !item.requires || isPrivileged || capabilities[item.requires],
-      ),
+      items: group.items.filter((item) => {
+        if (item.privilegedOnly) return isPrivileged;
+        if (!item.requires) return true;
+        return isPrivileged || capabilities[item.requires];
+      }),
     }))
     .filter((group) => group.items.length > 0);
 }
