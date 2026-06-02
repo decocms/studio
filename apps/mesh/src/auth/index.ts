@@ -99,18 +99,27 @@ const statement = { ...defaultStatements, self: ["*", ...allTools] };
 
 const ac = createAccessControl(statement);
 
+// Built-in roles must enumerate every `self` tool, not just `["*"]`. Better
+// Auth's access-control `authorize()` matches actions literally — `["*"]` only
+// authorizes a request for the literal action "*", NOT specific tools. Runtime
+// checks bypass this for built-in roles, but `create-role` gates a creator on
+// whether they hold each permission they grant; with `self: ["*"]` an owner is
+// reported as "missing self:SOME_TOOL" and can't create a capability-scoped
+// custom role at all. Enumerating the full tool list fixes that.
+const fullSelf = ["*", ...allTools];
+
 const user = ac.newRole({
-  self: ["*"],
+  self: fullSelf,
   ...adminAc.statements,
 }) as Role;
 
 const admin = ac.newRole({
-  self: ["*"],
+  self: fullSelf,
   ...adminAc.statements,
 }) as Role;
 
 const owner = ac.newRole({
-  self: ["*"],
+  self: fullSelf,
   ...adminAc.statements,
 }) as Role;
 
