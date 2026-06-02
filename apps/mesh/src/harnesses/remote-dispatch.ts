@@ -11,6 +11,11 @@
  */
 import type { UIMessageChunk } from "ai";
 import { dispatchSSEEventSchema } from "../links/protocol";
+import {
+  type MessagesRef,
+  offloadKey,
+  shouldOffload,
+} from "./offload-messages";
 import type { HarnessId, HarnessStreamInput } from "./types";
 
 export interface RemoteDispatchDeps {
@@ -24,6 +29,19 @@ export interface RemoteDispatchDeps {
       signal?: AbortSignal;
     },
   ) => Promise<Response>;
+  /**
+   * Body-offload seam. When the encoded dispatch body would exceed the
+   * per-message budget (`shouldOffload`), `input.messages` is written to
+   * object storage and replaced inline with `[]`; the daemon re-inflates it
+   * from `messagesRef`. `supported` mirrors the daemon's advertised
+   * `body-offload` capability — when false, an oversized body is a hard error
+   * (the daemon couldn't fetch the ref).
+   */
+  offload?: {
+    supported: boolean;
+    put: (reqId: string, messagesJson: string) => Promise<MessagesRef>;
+    cleanup: (key: string) => Promise<void>;
+  };
 }
 
 export function remoteDispatch(
@@ -35,7 +53,30 @@ export function remoteDispatch(
   const { signal, processLocal: _processLocal, ...wireInput } = input;
   return {
     async *[Symbol.asyncIterator]() {
-      const body = JSON.stringify({ harnessId: id, input: wireInput });
+      // Build the inline body, then decide whether `messages` must be
+      // offloaded out of band. The daemon receives the same envelope shape in
+      // both cases — only the presence of `messagesRef` differs.
+      const baseBody = JSON.stringify({ harnessId: id, input: wireInput });
+      let body = baseBody;
+      let cleanupKey: string | null = null;
+      if (shouldOffload(new TextEncoder().encode(baseBody).byteLength)) {
+        if (!deps.offload?.supported) {
+          throw new Error(
+            "[remoteDispatch] request too large and the remote sandbox cannot receive offloaded payloads (daemon too old or no object storage configured)",
+          );
+        }
+        const reqId = crypto.randomUUID();
+        const ref = await deps.offload.put(
+          reqId,
+          JSON.stringify(wireInput.messages),
+        );
+        cleanupKey = offloadKey(reqId);
+        body = JSON.stringify({
+          harnessId: id,
+          input: { ...wireInput, messages: [] },
+          messagesRef: ref,
+        });
+      }
 
       const emitEvent = function* (
         eventText: string,
@@ -64,57 +105,72 @@ export function remoteDispatch(
         // `done` returns no chunk — outer loop ends when the stream closes.
       };
 
-      const res = await deps.proxyDaemonRequest(sandboxHandle, "/dispatch", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "text/event-stream",
-        },
-        body,
-        signal,
-      });
+      // Best-effort delete of the offloaded payload fires ONLY after the
+      // stream drains cleanly. On abort/throw we leave the object in place —
+      // the daemon may still be fetching it, and the bucket's lifecycle TTL
+      // reclaims `link-dispatch/*` regardless.
+      let completed = false;
+      try {
+        const res = await deps.proxyDaemonRequest(sandboxHandle, "/dispatch", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "text/event-stream",
+          },
+          body,
+          signal,
+        });
 
-      // A non-2xx Response carries no `data:` lines (the daemon returns a JSON
-      // error body), so feeding it to the SSE parser would silently yield an
-      // empty stream — a failed run that looks successful. Read the JSON error
-      // and rethrow BEFORE any SSE parsing.
-      if (!res.ok) {
-        let detail = `dispatch failed (${res.status})`;
-        try {
-          const j = await res.json();
-          if (j && typeof j === "object" && "error" in j && j.error) {
-            detail = String((j as { error: unknown }).error);
+        // A non-2xx Response carries no `data:` lines (the daemon returns a
+        // JSON error body), so feeding it to the SSE parser would silently
+        // yield an empty stream — a failed run that looks successful. Read the
+        // JSON error and rethrow BEFORE any SSE parsing.
+        if (!res.ok) {
+          let detail = `dispatch failed (${res.status})`;
+          try {
+            const j = await res.json();
+            if (j && typeof j === "object" && "error" in j && j.error) {
+              detail = String((j as { error: unknown }).error);
+            }
+          } catch {
+            /* */
           }
-        } catch {
-          /* */
+          throw new Error(`[remoteDispatch] ${detail}`);
         }
-        throw new Error(`[remoteDispatch] ${detail}`);
-      }
 
-      const responseBody = res.body;
-      if (!responseBody)
-        throw new Error("[remoteDispatch] response body is null");
-      const reader = responseBody.getReader();
-      // SINGLE streaming decoder across the whole Response body — a multi-byte
-      // UTF-8 char can be split across chunks; a per-chunk decoder corrupts it.
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let sep = buffer.indexOf("\n\n");
-        while (sep !== -1) {
-          const block = buffer.slice(0, sep);
-          buffer = buffer.slice(sep + 2);
-          for (const chunk of emitEvent(block)) yield chunk;
-          sep = buffer.indexOf("\n\n");
+        const responseBody = res.body;
+        if (!responseBody)
+          throw new Error("[remoteDispatch] response body is null");
+        const reader = responseBody.getReader();
+        // SINGLE streaming decoder across the whole Response body — a
+        // multi-byte UTF-8 char can be split across chunks; a per-chunk
+        // decoder corrupts it.
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let sep = buffer.indexOf("\n\n");
+          while (sep !== -1) {
+            const block = buffer.slice(0, sep);
+            buffer = buffer.slice(sep + 2);
+            for (const chunk of emitEvent(block)) yield chunk;
+            sep = buffer.indexOf("\n\n");
+          }
         }
-      }
-      buffer += decoder.decode();
-      const tail = buffer.trim();
-      if (tail.length > 0) {
-        for (const chunk of emitEvent(tail)) yield chunk;
+        buffer += decoder.decode();
+        const tail = buffer.trim();
+        if (tail.length > 0) {
+          for (const chunk of emitEvent(tail)) yield chunk;
+        }
+        completed = true;
+      } finally {
+        if (completed && cleanupKey && deps.offload) {
+          void deps.offload.cleanup(cleanupKey).catch(() => {
+            /* lifecycle TTL reclaims */
+          });
+        }
       }
     },
   };
