@@ -33,6 +33,11 @@ export interface SiteSeoEntry {
   seoResolveType: string;
 }
 
+/** Narrows a decofile value to a plain (non-array) object. */
+function isPlainObject(val: unknown): val is Record<string, unknown> {
+  return typeof val === "object" && val !== null && !Array.isArray(val);
+}
+
 /** Matches SEO section resolveTypes, e.g. "website/sections/Seo/SeoV2.tsx". */
 function isSeoResolveType(rt: unknown): rt is string {
   return (
@@ -53,11 +58,11 @@ function looksLikeSeo(obj: Record<string, unknown>): boolean {
  */
 function inferSeoResolveType(decofile: Record<string, unknown>): string {
   for (const val of Object.values(decofile)) {
-    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
-    const obj = val as Record<string, unknown>;
+    if (!isPlainObject(val)) continue;
+    const obj = val;
     if (isSeoResolveType(obj.__resolveType)) return obj.__resolveType;
-    const seo = obj.seo as Record<string, unknown> | undefined;
-    if (seo && typeof seo === "object" && isSeoResolveType(seo.__resolveType)) {
+    const seo = obj.seo;
+    if (isPlainObject(seo) && isSeoResolveType(seo.__resolveType)) {
       return seo.__resolveType;
     }
   }
@@ -79,13 +84,13 @@ export function findSiteSeoEntry(
 ): SiteSeoEntry | null {
   // 1) SEO nested on a non-page config block.
   for (const [key, val] of Object.entries(decofile)) {
-    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
-    const obj = val as Record<string, unknown>;
+    if (!isPlainObject(val)) continue;
+    const obj = val;
     const rt = obj.__resolveType;
     if (typeof rt === "string" && PAGE_RESOLVE_TYPES.has(rt)) continue;
     const seo = obj.seo;
-    if (seo && typeof seo === "object" && !Array.isArray(seo)) {
-      const seoObj = seo as Record<string, unknown>;
+    if (isPlainObject(seo)) {
+      const seoObj = seo;
       if (looksLikeSeo(seoObj)) {
         return {
           blockKey: key,
@@ -102,8 +107,8 @@ export function findSiteSeoEntry(
 
   // 2) Standalone SEO block.
   for (const [key, val] of Object.entries(decofile)) {
-    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
-    const obj = val as Record<string, unknown>;
+    if (!isPlainObject(val)) continue;
+    const obj = val;
     if (isSeoResolveType(obj.__resolveType)) {
       return {
         blockKey: key,
@@ -158,11 +163,12 @@ export function resolveSeoTarget(
       build: (value) => buildSiteSeoBlockData(entry, value),
     };
   }
-  const blockData = decofile[target.pageKey] as
-    | Record<string, unknown>
-    | undefined;
-  if (!blockData) return null;
-  const seo = blockData.seo as Record<string, unknown> | undefined;
+  // Guard against malformed entries: a non-object page block (or a non-object
+  // `seo`) would otherwise be spread into the saved payload and corrupt it.
+  const rawBlock = decofile[target.pageKey];
+  if (!isPlainObject(rawBlock)) return null;
+  const blockData = rawBlock;
+  const seo = isPlainObject(blockData.seo) ? blockData.seo : undefined;
   return {
     blockKey: target.pageKey,
     seoData: seo,

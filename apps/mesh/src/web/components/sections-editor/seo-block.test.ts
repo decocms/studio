@@ -178,6 +178,39 @@ describe("resolveSeoTarget", () => {
     expect(resolved?.seoResolveType).toBe(DEFAULT_SEO_RESOLVE_TYPE);
   });
 
+  test("page target whose entry is not an object resolves to null", () => {
+    const decofile = { home: "not-an-object" as unknown as object };
+    expect(
+      resolveSeoTarget(decofile, {
+        kind: "page",
+        pageKey: "home",
+        pageName: "Home",
+        path: "/",
+      }),
+    ).toBeNull();
+  });
+
+  test("page target with a non-object seo treats it as no seo", () => {
+    const decofile = {
+      home: {
+        __resolveType: "website/pages/Page.tsx",
+        seo: "oops" as unknown as object,
+      },
+    };
+    const resolved = resolveSeoTarget(decofile, {
+      kind: "page",
+      pageKey: "home",
+      pageName: "Home",
+      path: "/",
+    });
+    expect(resolved?.seoData).toBeUndefined();
+    // The malformed seo must not be spread into the saved payload.
+    expect(resolved?.build({ title: "T" })).toEqual({
+      __resolveType: "website/pages/Page.tsx",
+      seo: { title: "T" },
+    });
+  });
+
   test("page target for a missing key resolves to null", () => {
     expect(
       resolveSeoTarget(
