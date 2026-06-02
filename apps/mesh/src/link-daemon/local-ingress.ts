@@ -104,9 +104,9 @@ export async function startLocalIngress(
             /* */
           }
         });
-        upstream.addEventListener("close", () => {
+        upstream.addEventListener("close", (ev: CloseEvent) => {
           try {
-            ws.close();
+            ws.close(ev.code || 1000, ev.reason || "");
           } catch {
             /* */
           }

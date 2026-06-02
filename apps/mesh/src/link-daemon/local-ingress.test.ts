@@ -206,4 +206,35 @@ describe("local-ingress WS proxying", () => {
     expect(Array.from(bytes)).toEqual([0xff, 0x01, 0x02, 0x03]);
     ws.close();
   });
+
+  test("propagates upstream close code and reason to client", async () => {
+    upstream = Bun.serve({
+      port: 0,
+      fetch(req, srv) {
+        if (req.headers.get("upgrade") === "websocket") {
+          srv.upgrade(req, { data: {} });
+          return undefined;
+        }
+        return new Response("no", { status: 404 });
+      },
+      websocket: {
+        open(ws) {
+          // Close with a distinctive code/reason as soon as the WS opens.
+          ws.close(4321, "deliberate test close");
+        },
+        message() {},
+        close() {},
+      },
+    });
+    ingress = await startLocalIngress({
+      port: 0,
+      lookupSandboxPort: () => upstream!.port ?? null,
+    });
+    const ws = new WebSocket(`ws://abc.localhost:${ingress.port}/`);
+    const closeEvent = await new Promise<CloseEvent>((resolve) => {
+      ws.addEventListener("close", (e) => resolve(e));
+    });
+    expect(closeEvent.code).toBe(4321);
+    expect(closeEvent.reason).toBe("deliberate test close");
+  });
 });
