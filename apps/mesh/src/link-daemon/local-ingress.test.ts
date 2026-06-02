@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { startLocalIngress, type LocalIngress } from "./local-ingress";
 
 let ingress: LocalIngress | null = null;
@@ -275,5 +278,108 @@ describe("local-ingress WS proxying", () => {
     } finally {
       await new Promise<void>((r) => tcpServer.close(() => r()));
     }
+  });
+});
+
+describe("local-ingress + real Vite HMR (integration)", () => {
+  let fixtureDir: string | null = null;
+  let viteProc: ReturnType<typeof Bun.spawn> | null = null;
+  let vitePort = 0;
+
+  async function startVite(): Promise<number> {
+    fixtureDir = mkdtempSync(join(tmpdir(), "local-ingress-vite-"));
+    writeFileSync(
+      join(fixtureDir, "index.html"),
+      '<!doctype html><html><body><script type="module" src="/main.js"></script></body></html>',
+    );
+    writeFileSync(join(fixtureDir, "main.js"), "console.log('hi');");
+    // Let Vite pick a free port; we'll read it from stdout.
+    viteProc = Bun.spawn(
+      [
+        "bunx",
+        "--bun",
+        "vite",
+        "--port",
+        "0",
+        "--host",
+        "127.0.0.1",
+        "--strictPort",
+        "false",
+      ],
+      {
+        cwd: fixtureDir,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    // Read stdout until we see "Local:   http://127.0.0.1:PORT".
+    // `stdout: "pipe"` above guarantees a ReadableStream, but Bun's types
+    // widen to include `number` (fd) and `undefined`; narrow here.
+    const stdout = viteProc.stdout as ReadableStream<Uint8Array>;
+    const reader = stdout.getReader();
+    const decoder = new TextDecoder();
+    const deadline = Date.now() + 30_000;
+    let buf = "";
+    while (Date.now() < deadline) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const m = buf.match(/Local:\s+http:\/\/127\.0\.0\.1:(\d+)/);
+      if (m) {
+        return Number(m[1]);
+      }
+    }
+    throw new Error("Vite did not announce its port within 30s");
+  }
+
+  afterEach(async () => {
+    try {
+      viteProc?.kill();
+    } catch {
+      /* */
+    }
+    viteProc = null;
+    if (fixtureDir) {
+      try {
+        rmSync(fixtureDir, { recursive: true, force: true });
+      } catch {
+        /* */
+      }
+      fixtureDir = null;
+    }
+  });
+
+  test("HMR client receives the 'connected' welcome through the ingress", async () => {
+    vitePort = await startVite();
+    ingress = await startLocalIngress({
+      port: 0,
+      lookupSandboxPort: () => vitePort,
+    });
+    // Mimic exactly what the Vite-injected HMR client does:
+    //   new WebSocket(`ws://host/?token=...`, "vite-hmr")
+    // Vite ignores unknown tokens by default in 5.x dev mode, so any token
+    // is fine for this smoke test; what matters is that path + subprotocol
+    // round-trip correctly.
+    const ws = new WebSocket(
+      `ws://abc.localhost:${ingress.port}/?token=test`,
+      "vite-hmr",
+    );
+    const firstMessage = await new Promise<string>((resolve, reject) => {
+      const t = setTimeout(
+        () => reject(new Error("no HMR message within 10s")),
+        10_000,
+      );
+      ws.addEventListener("message", (e) => {
+        clearTimeout(t);
+        resolve(typeof e.data === "string" ? e.data : "");
+      });
+      ws.addEventListener("close", (e) => {
+        clearTimeout(t);
+        reject(new Error(`closed before message: ${e.code} ${e.reason}`));
+      });
+    });
+    const parsed = JSON.parse(firstMessage);
+    expect(parsed.type).toBe("connected");
+    ws.close();
   });
 });
