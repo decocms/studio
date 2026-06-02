@@ -7,6 +7,14 @@
  */
 import { parseHandleFromHost } from "./host-parser";
 
+/**
+ * Cap on frames buffered between client upgrade and upstream WS open. Vite
+ * HMR sends roughly one frame per file event, so 256 covers a normal cold
+ * start with room to spare while preventing a slow/blackholed upstream from
+ * exhausting daemon memory. Mirrors MAX_PENDING_FRAMES in preview-proxy.ts.
+ */
+const MAX_PENDING_FRAMES = 256;
+
 export interface StartLocalIngressInput {
   port: number;
   lookupSandboxPort: (handle: string) => number | null;
@@ -19,8 +27,12 @@ export interface LocalIngress {
 
 interface WsData {
   sandboxPort: number;
+  /** Path + query the client requested; forwarded verbatim to upstream. */
+  upstreamPath: string;
+  /** Subprotocols requested by the client; passed to the upstream WS ctor. */
+  upstreamProtocols: string[];
   upstream?: WebSocket;
-  pendingMessages: Array<string | Uint8Array>;
+  pendingMessages: Array<string | Uint8Array | ArrayBuffer>;
 }
 
 export async function startLocalIngress(
@@ -37,8 +49,21 @@ export async function startLocalIngress(
       if (!sandboxPort) return new Response("unknown handle", { status: 404 });
 
       if (req.headers.get("upgrade") === "websocket") {
+        const reqUrl = new URL(req.url);
+        const protocolHeader = req.headers.get("sec-websocket-protocol");
+        const upstreamProtocols = protocolHeader
+          ? protocolHeader
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
         const ok = srv.upgrade(req, {
-          data: { sandboxPort, pendingMessages: [] },
+          data: {
+            sandboxPort,
+            upstreamPath: `${reqUrl.pathname}${reqUrl.search}`,
+            upstreamProtocols,
+            pendingMessages: [],
+          },
         });
         if (!ok) return new Response("ws upgrade failed", { status: 400 });
         return undefined as unknown as Response;
@@ -57,8 +82,30 @@ export async function startLocalIngress(
     },
     websocket: {
       async open(ws) {
-        const { sandboxPort } = ws.data;
-        const upstream = new WebSocket(`ws://127.0.0.1:${sandboxPort}`);
+        const { sandboxPort, upstreamPath, upstreamProtocols } = ws.data;
+        const upstreamUrl = `ws://127.0.0.1:${sandboxPort}${upstreamPath}`;
+        // Mirror preview-proxy.ts: a synchronous throw from the WebSocket
+        // constructor (malformed URL, transient dial failure) would leave the
+        // client WS open with no upstream and let `pendingMessages` accumulate
+        // toward the 256-frame cap. Close the client bridge with 1011 instead.
+        let upstream: WebSocket;
+        try {
+          upstream =
+            upstreamProtocols.length > 0
+              ? new WebSocket(upstreamUrl, upstreamProtocols)
+              : new WebSocket(upstreamUrl);
+        } catch (err) {
+          console.warn(
+            `[local-ingress] failed to dial upstream ${upstreamUrl}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          try {
+            ws.close(1011, "upstream dial failed");
+          } catch {
+            /* */
+          }
+          return;
+        }
+        upstream.binaryType = "arraybuffer";
         ws.data.upstream = upstream;
         ws.data.pendingMessages = [];
         upstream.addEventListener("open", () => {
@@ -75,14 +122,14 @@ export async function startLocalIngress(
         });
         upstream.addEventListener("message", (e) => {
           try {
-            ws.send(e.data as string);
+            ws.send(e.data as string | Uint8Array | ArrayBuffer);
           } catch {
             /* */
           }
         });
-        upstream.addEventListener("close", () => {
+        upstream.addEventListener("close", (ev: CloseEvent) => {
           try {
-            ws.close();
+            ws.close(ev.code || 1000, ev.reason || "");
           } catch {
             /* */
           }
@@ -100,8 +147,26 @@ export async function startLocalIngress(
       },
       message(ws, raw) {
         const upstream = ws.data.upstream;
-        const msg = typeof raw === "string" ? raw : new Uint8Array(raw);
+        const msg: string | Uint8Array | ArrayBuffer =
+          typeof raw === "string"
+            ? raw
+            : raw instanceof ArrayBuffer
+              ? raw
+              : new Uint8Array(raw);
         if (!upstream || upstream.readyState !== WebSocket.OPEN) {
+          if (ws.data.pendingMessages.length >= MAX_PENDING_FRAMES) {
+            try {
+              ws.close(1011, "ingress backlog overflow");
+            } catch {
+              /* */
+            }
+            try {
+              upstream?.close();
+            } catch {
+              /* */
+            }
+            return;
+          }
           ws.data.pendingMessages.push(msg);
           return;
         }
