@@ -19,6 +19,8 @@ export interface LocalIngress {
 
 interface WsData {
   sandboxPort: number;
+  /** Path + query the client requested; forwarded verbatim to upstream. */
+  upstreamPath: string;
   upstream?: WebSocket;
   pendingMessages: Array<string | Uint8Array>;
 }
@@ -37,8 +39,13 @@ export async function startLocalIngress(
       if (!sandboxPort) return new Response("unknown handle", { status: 404 });
 
       if (req.headers.get("upgrade") === "websocket") {
+        const reqUrl = new URL(req.url);
         const ok = srv.upgrade(req, {
-          data: { sandboxPort, pendingMessages: [] },
+          data: {
+            sandboxPort,
+            upstreamPath: `${reqUrl.pathname}${reqUrl.search}`,
+            pendingMessages: [],
+          },
         });
         if (!ok) return new Response("ws upgrade failed", { status: 400 });
         return undefined as unknown as Response;
@@ -57,8 +64,10 @@ export async function startLocalIngress(
     },
     websocket: {
       async open(ws) {
-        const { sandboxPort } = ws.data;
-        const upstream = new WebSocket(`ws://127.0.0.1:${sandboxPort}`);
+        const { sandboxPort, upstreamPath } = ws.data;
+        const upstream = new WebSocket(
+          `ws://127.0.0.1:${sandboxPort}${upstreamPath}`,
+        );
         ws.data.upstream = upstream;
         ws.data.pendingMessages = [];
         upstream.addEventListener("open", () => {

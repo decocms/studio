@@ -91,4 +91,35 @@ describe("local-ingress WS proxying", () => {
     expect(got[0]).toBe("echo:hi");
     ws.close();
   });
+
+  test("forwards path and query string to upstream", async () => {
+    let seenPath: string | null = null;
+    upstream = Bun.serve({
+      port: 0,
+      fetch(req, srv) {
+        if (req.headers.get("upgrade") === "websocket") {
+          const u = new URL(req.url);
+          seenPath = `${u.pathname}${u.search}`;
+          srv.upgrade(req, { data: {} });
+          return undefined;
+        }
+        return new Response("no", { status: 404 });
+      },
+      websocket: { message() {}, open() {}, close() {} },
+    });
+    ingress = await startLocalIngress({
+      port: 0,
+      lookupSandboxPort: () => upstream!.port ?? null,
+    });
+    const ws = new WebSocket(
+      `ws://abc.localhost:${ingress.port}/foo?token=hello`,
+    );
+    await new Promise<void>((r) => ws.addEventListener("open", () => r()));
+    // Give upstream a tick to process its own upgrade and record the path.
+    for (let i = 0; i < 40 && seenPath === null; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(seenPath).toBe("/foo?token=hello");
+    ws.close();
+  });
 });
