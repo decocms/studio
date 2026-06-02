@@ -74,7 +74,7 @@ describe("reorderGroupIds", () => {
 });
 
 describe("computeGroupOrder", () => {
-  test("pins decopilot first and automation runs last", () => {
+  test("pins decopilot first and automation runs last without auto-adding thread-only agents", () => {
     const groups = [
       group("agent-b"),
       group(decopilotId),
@@ -84,8 +84,6 @@ describe("computeGroupOrder", () => {
     const { groups: ordered } = computeGroupOrder(groups, [], decopilotId);
     expect(ordered.map((g) => g.virtualMcpId)).toEqual([
       decopilotId,
-      "agent-b",
-      "agent-a",
       TOOL_CALL_RUNS_GROUP_KEY,
     ]);
   });
@@ -128,7 +126,7 @@ describe("computeGroupOrder", () => {
     expect(ordered).toEqual([]);
   });
 
-  test("adds a new thread group to empty saved order", () => {
+  test("does not add thread-only agents when saved personal order is empty", () => {
     const thread = {
       id: "t1",
       title: "Task",
@@ -142,8 +140,8 @@ describe("computeGroupOrder", () => {
       [],
       decopilotId,
     );
-    expect(ordered.map((g) => g.virtualMcpId)).toEqual(["agent-a"]);
-    expect(userOrder).toEqual(["agent-a"]);
+    expect(ordered.map((g) => g.virtualMcpId)).toEqual([]);
+    expect(userOrder).toEqual([]);
   });
 
   test("places org-pinned agents before personal agents", () => {
@@ -194,27 +192,24 @@ describe("computeGroupOrder", () => {
     expect(ordered.map((g) => g.virtualMcpId)).toEqual(["org-a", "user-a"]);
   });
 
-  test("prepends new thread groups before saved personal order", () => {
+  test("only lists personal agents present in saved order", () => {
     const groups = [group("agent-new"), group("agent-b")];
     const { groups: ordered } = computeGroupOrder(
       groups,
       ["agent-b"],
       decopilotId,
     );
-    expect(ordered.map((g) => g.virtualMcpId)).toEqual([
-      "agent-new",
-      "agent-b",
-    ]);
+    expect(ordered.map((g) => g.virtualMcpId)).toEqual(["agent-b"]);
   });
 
-  test("prepends thread groups missing from saved personal order", () => {
+  test("omits thread groups not listed in saved personal order", () => {
     const groups = [group("agent-x"), group("agent-y")];
     const { groups: ordered } = computeGroupOrder(
       groups,
       ["agent-x"],
       decopilotId,
     );
-    expect(ordered.map((g) => g.virtualMcpId)).toEqual(["agent-y", "agent-x"]);
+    expect(ordered.map((g) => g.virtualMcpId)).toEqual(["agent-x"]);
   });
 
   test("merges org-pinned ids missing from saved org order", () => {
