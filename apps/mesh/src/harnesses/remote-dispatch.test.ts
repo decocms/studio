@@ -155,7 +155,7 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
     const enc = new TextEncoder();
     const full = `data: ${JSON.stringify({ type: "ui-message-chunk", chunk: { t: "héllo😀" } })}\n\n`;
     const bytes = enc.encode(full);
-    const cut = 12; // mid multi-byte
+    const cut = 54; // mid multi-byte: inside the 4-byte 😀 (bytes 53–56)
     const stream = new ReadableStream<Uint8Array>({
       start(c) {
         c.enqueue(bytes.slice(0, cut));
@@ -177,5 +177,35 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
     ))
       out.push(c);
     expect(out).toEqual([{ t: "héllo😀" }]);
+  });
+
+  it("reassembles a 2-byte UTF-8 SSE event split across two Response chunks", async () => {
+    const enc = new TextEncoder();
+    const full = `data: ${JSON.stringify({ type: "ui-message-chunk", chunk: { t: "café" } })}\n\n`;
+    const bytes = enc.encode(full);
+    // Split the 2-byte é (lead byte ends chunk one, continuation byte starts
+    // chunk two) — a per-chunk decoder would emit U+FFFD here.
+    const cut = bytes.indexOf(0xc3) + 1;
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(bytes.slice(0, cut));
+        c.enqueue(bytes.slice(cut));
+        c.close();
+      },
+    });
+    const proxy = async () =>
+      new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    const out: unknown[] = [];
+    for await (const c of remoteDispatch(
+      "claude-code",
+      { runId: "r" } as never,
+      "h",
+      { proxyDaemonRequest: proxy } as never,
+    ))
+      out.push(c);
+    expect(out).toEqual([{ t: "café" }]);
   });
 });

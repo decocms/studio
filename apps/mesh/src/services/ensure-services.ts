@@ -12,6 +12,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   symlinkSync,
   writeFileSync,
 } from "fs";
@@ -746,6 +747,16 @@ export function minioDownloadUrl(os: string, arch: string): string {
   return `https://dl.min.io/server/minio/release/${osName}-${archName}/${artifact}`;
 }
 
+/**
+ * Resolve external-S3 path-style addressing from the env. Mirrors
+ * resolve-config.ts's default EXACTLY (unset/empty/"true"/"1" → true) so the
+ * in-process `buildSettings` path (deco serve / deco dev) agrees with the
+ * bundled-prod `initSettingsFromEnv` path. Pure (no IO) so it is unit-testable.
+ */
+export function externalForcePathStyleFromEnv(raw: string | undefined): boolean {
+  return raw === undefined || raw === "" || raw === "true" || raw === "1";
+}
+
 function minioBinaryPath(home: string): string {
   return join(servicesDir(home), "minio", "bin", `minio${EXE_EXT}`);
 }
@@ -765,13 +776,19 @@ async function downloadMinio(home: string): Promise<string> {
     );
   }
 
-  // MinIO ships the raw executable (not an archive), so write it directly.
+  // MinIO ships the raw executable (not an archive). Write to a temp path then
+  // atomically rename into place, so an interrupted/partial write never leaves a
+  // truncated binary at `binPath` that the existsSync guard above would return
+  // forever. Mirrors downloadNats's temp-then-materialize pattern.
   const arrayBuffer = await response.arrayBuffer();
-  writeFileSync(binPath, Buffer.from(arrayBuffer));
+  const tmpPath = `${binPath}.download-${process.pid}`;
+  writeFileSync(tmpPath, Buffer.from(arrayBuffer));
 
   if (!IS_WINDOWS) {
-    await chmod(binPath, 0o755);
+    await chmod(tmpPath, 0o755);
   }
+
+  renameSync(tmpPath, binPath);
 
   if (!existsSync(binPath)) {
     throw new Error(`MinIO binary not found at ${binPath} after download`);
@@ -1353,10 +1370,14 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       port: portFromUrl(process.env.S3_ENDPOINT!, MINIO_DEFAULT_PORT),
       owner: "external",
     });
-    // For external S3 (real AWS S3 or operator-managed), respect the operator's
-    // S3_FORCE_PATH_STYLE setting (default false). Forcing true would break
-    // virtual-hosted-style buckets on real AWS S3.
-    const externalForcePathStyle = process.env.S3_FORCE_PATH_STYLE === "true";
+    // For external S3, mirror resolve-config.ts's default so the in-process
+    // `buildSettings` path (deco serve / deco dev) agrees with the bundled-prod
+    // `initSettingsFromEnv` path: an unset/empty S3_FORCE_PATH_STYLE means
+    // path-style (true). A custom S3-compatible store (MinIO/Ceph) needs this;
+    // real AWS S3 (virtual-hosted-style) must set S3_FORCE_PATH_STYLE=false.
+    const externalForcePathStyle = externalForcePathStyleFromEnv(
+      process.env.S3_FORCE_PATH_STYLE,
+    );
     s3 = {
       endpoint: process.env.S3_ENDPOINT!,
       bucket: process.env.S3_BUCKET!,
@@ -1385,8 +1406,10 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
     process.env.S3_BUCKET = s3.bucket;
     process.env.S3_ACCESS_KEY_ID = s3.accessKeyId;
     process.env.S3_SECRET_ACCESS_KEY = s3.secretAccessKey;
-    // Only force path-style for managed MinIO. Real AWS S3 uses virtual-hosted-
-    // style by default; overwriting the operator's setting would break it.
+    // Mirror the resolved path-style choice into env so a spawned `dev:servers`
+    // child re-derives the same value. We only ever write "true" (managed MinIO,
+    // or external S3 defaulting to path-style when S3_FORCE_PATH_STYLE is unset);
+    // an explicit "false" the operator set is left untouched.
     if (s3.forcePathStyle) {
       process.env.S3_FORCE_PATH_STYLE = "true";
     }
