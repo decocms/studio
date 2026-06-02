@@ -10,3 +10,4 @@ export {
   BrandContextGetPart,
   BrandContextListPart,
 } from "./brand-context.tsx";
+export { AgentCreatePart } from "./agent-create.tsx";

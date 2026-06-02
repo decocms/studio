@@ -24,6 +24,7 @@ import {
   BrandContextPart,
   BrandContextGetPart,
   BrandContextListPart,
+  AgentCreatePart,
 } from "./parts/tool-call-part/index.ts";
 import { NextActionChip } from "./next-action-chip.tsx";
 import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
@@ -517,6 +518,14 @@ function MessagePart({
       if (fallback.type === "tool-BRAND_CONTEXT_LIST") {
         return (
           <BrandContextListPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (fallback.type === "tool-COLLECTION_VIRTUAL_MCP_CREATE") {
+        return (
+          <AgentCreatePart
             part={fallback}
             latency={getMeta(fallback.toolCallId)?.latencySeconds}
           />
