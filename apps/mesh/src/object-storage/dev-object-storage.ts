@@ -29,7 +29,6 @@ import type {
 } from "./s3-service";
 import type { BoundObjectStorage } from "./bound-object-storage";
 import { detectContentType, isTextContentType, sanitizeKey } from "./key-utils";
-import { assertFetchableUrl } from "./fetchable";
 import { getSettings } from "../settings";
 
 const DEV_ASSETS_BASE_DIR = "./data/assets";
@@ -200,14 +199,18 @@ export class DevObjectStorage implements BoundObjectStorage {
     _expiresIn?: number,
     opts?: { requireFetchable?: boolean },
   ): Promise<string> {
+    if (opts?.requireFetchable) {
+      // DevObjectStorage only produces inline data: URLs, which a remote daemon
+      // cannot fetch. Throw before reading/encoding the (possibly large) blob.
+      throw new Error(
+        "object storage returned a not fetchable (data:) URL; configure real S3/R2/MinIO for large-payload offload",
+      );
+    }
     const path = filePath(this.orgId, key);
     const bytes = await readFile(path);
     const contentType = detectContentType(key);
     const base64 = Buffer.from(bytes).toString("base64");
     const url = `data:${contentType};base64,${base64}`;
-    if (opts?.requireFetchable) {
-      assertFetchableUrl(url);
-    }
     return url;
   }
 
