@@ -6,11 +6,9 @@
 import type { ConfigPatch } from "../daemon/config-store/types";
 import type { TenantConfig } from "../daemon/types";
 import { sleep } from "../shared";
-import type { ExecInput, ExecOutput } from "./provider/types";
 
 export type { ConfigPatch };
 
-const DEFAULT_EXEC_TIMEOUT_MS = 60_000;
 const HEALTH_PROBE_TIMEOUT_MS = 500;
 const CONFIG_TIMEOUT_MS = 10_000;
 const READY_ATTEMPTS = 25;
@@ -132,46 +130,6 @@ async function configRequest(
     );
   }
   return JSON.parse(body) as ConfigResponse;
-}
-
-export async function daemonBash(
-  daemonUrl: string,
-  token: string,
-  input: ExecInput,
-): Promise<ExecOutput> {
-  const timeoutMs = input.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
-  const response = await fetch(`${daemonUrl}/_sandbox/bash`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      command: input.command,
-      timeout: timeoutMs,
-      cwd: input.cwd,
-      env: input.env,
-    }),
-    signal: AbortSignal.timeout(timeoutMs + 5_000),
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `sandbox daemon /_sandbox/bash returned ${response.status}${body ? `: ${body}` : ""}`,
-    );
-  }
-  const json = (await response.json()) as {
-    stdout?: string;
-    stderr?: string;
-    exitCode?: number;
-    timedOut?: boolean;
-  };
-  return {
-    stdout: json.stdout ?? "",
-    stderr: json.stderr ?? "",
-    exitCode: json.exitCode ?? -1,
-    timedOut: Boolean(json.timedOut),
-  };
 }
 
 const STRIP_REQUEST_HEADERS = [

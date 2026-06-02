@@ -22,12 +22,6 @@ function makeMockRunner(kind: SandboxProviderKind): SandboxProvider {
       workdir: "/app",
       previewUrl: null,
     }),
-    exec: async () => ({
-      stdout: "",
-      stderr: "",
-      exitCode: 0,
-      timedOut: false,
-    }),
     delete: (h) => mockDelete(h),
     alive: async () => true,
     getPreviewUrl: async () => null,

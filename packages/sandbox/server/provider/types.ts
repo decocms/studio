@@ -78,20 +78,6 @@ export interface EnsureOptions {
   };
 }
 
-export interface ExecInput {
-  command: string;
-  timeoutMs?: number;
-  cwd?: string;
-  env?: Record<string, string>;
-}
-
-export interface ExecOutput {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timedOut: boolean;
-}
-
 export interface ProxyRequestInit {
   method: string;
   headers: Headers;
@@ -109,7 +95,6 @@ export interface SandboxProvider {
   readonly kind: SandboxProviderKind;
 
   ensure(id: SandboxId, opts?: EnsureOptions): Promise<Sandbox>;
-  exec(handle: string, input: ExecInput): Promise<ExecOutput>;
   delete(handle: string): Promise<void>;
   alive(handle: string): Promise<boolean>;
 
