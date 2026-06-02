@@ -53,31 +53,6 @@ export function remoteDispatch(
   const { signal, processLocal: _processLocal, ...wireInput } = input;
   return {
     async *[Symbol.asyncIterator]() {
-      // Build the inline body, then decide whether `messages` must be
-      // offloaded out of band. The daemon receives the same envelope shape in
-      // both cases — only the presence of `messagesRef` differs.
-      const baseBody = JSON.stringify({ harnessId: id, input: wireInput });
-      let body = baseBody;
-      let cleanupKey: string | null = null;
-      if (shouldOffload(new TextEncoder().encode(baseBody).byteLength)) {
-        if (!deps.offload?.supported) {
-          throw new Error(
-            "[remoteDispatch] request too large and the remote sandbox cannot receive offloaded payloads (daemon too old or no object storage configured)",
-          );
-        }
-        const reqId = crypto.randomUUID();
-        const ref = await deps.offload.put(
-          reqId,
-          JSON.stringify(wireInput.messages),
-        );
-        cleanupKey = offloadKey(reqId);
-        body = JSON.stringify({
-          harnessId: id,
-          input: { ...wireInput, messages: [] },
-          messagesRef: ref,
-        });
-      }
-
       const emitEvent = function* (
         eventText: string,
       ): Generator<UIMessageChunk> {
@@ -109,8 +84,32 @@ export function remoteDispatch(
       // stream drains cleanly. On abort/throw we leave the object in place —
       // the daemon may still be fetching it, and the bucket's lifecycle TTL
       // reclaims `link-dispatch/*` regardless.
+      let cleanupKey: string | null = null;
       let completed = false;
       try {
+        // Build the inline body, then decide whether `messages` must be
+        // offloaded out of band. The daemon receives the same envelope shape in
+        // both cases — only the presence of `messagesRef` differs.
+        const baseBody = JSON.stringify({ harnessId: id, input: wireInput });
+        let body = baseBody;
+        if (shouldOffload(Buffer.byteLength(baseBody, "utf8"))) {
+          if (!deps.offload?.supported) {
+            throw new Error(
+              "[remoteDispatch] request too large and the remote sandbox cannot receive offloaded payloads (daemon too old or no object storage configured)",
+            );
+          }
+          const reqId = crypto.randomUUID();
+          const ref = await deps.offload.put(
+            reqId,
+            JSON.stringify(wireInput.messages),
+          );
+          cleanupKey = offloadKey(reqId);
+          body = JSON.stringify({
+            harnessId: id,
+            input: { ...wireInput, messages: [] },
+            messagesRef: ref,
+          });
+        }
         const res = await deps.proxyDaemonRequest(sandboxHandle, "/dispatch", {
           method: "POST",
           headers: {
@@ -166,10 +165,9 @@ export function remoteDispatch(
         }
         completed = true;
       } finally {
+        // Eager delete only on clean completion. On any failure the object is left for the bucket-lifecycle TTL — we must not delete while the daemon may still be fetching the ref.
         if (completed && cleanupKey && deps.offload) {
-          void deps.offload.cleanup(cleanupKey).catch(() => {
-            /* lifecycle TTL reclaims */
-          });
+          void deps.offload.cleanup(cleanupKey).catch(() => {});
         }
       }
     },

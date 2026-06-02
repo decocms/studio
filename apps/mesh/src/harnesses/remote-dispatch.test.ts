@@ -126,6 +126,31 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
     expect(env.input.messages).toEqual([{ role: "user", content: "hi" }]);
   });
 
+  it("calls offload cleanup after a clean completion", async () => {
+    let cleanupKey: string | null = null;
+    const proxy = async () => resFromSse([JSON.stringify({ type: "done" })]);
+    const big = "x".repeat(900 * 1024);
+    const offload = {
+      supported: true,
+      put: async () => ({ url: "https://s/r", bytes: 1, sha256: "ab" }),
+      cleanup: async (key: string) => {
+        cleanupKey = key;
+      },
+    };
+    for await (const _ of remoteDispatch(
+      "claude-code",
+      { runId: "r", messages: [{ role: "user", content: big }] } as never,
+      "h",
+      { proxyDaemonRequest: proxy, offload } as never,
+    )) {
+      /* */
+    }
+    // give the void cleanup().catch() microtask a tick to run
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cleanupKey).not.toBeNull();
+    expect(cleanupKey).toMatch(/^link-dispatch\//);
+  });
+
   it("reassembles a multi-byte UTF-8 SSE event split across two Response chunks", async () => {
     const enc = new TextEncoder();
     const full = `data: ${JSON.stringify({ type: "ui-message-chunk", chunk: { t: "héllo😀" } })}\n\n`;
