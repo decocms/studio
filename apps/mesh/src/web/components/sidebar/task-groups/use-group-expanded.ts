@@ -12,6 +12,9 @@ export function useGroupExpanded(
   virtualMcpId: string,
   defaultExpanded: boolean,
 ): [boolean, (next: boolean) => void] {
+  if (virtualMcpId.length === 0) {
+    return [false, () => {}];
+  }
   const [expanded, setExpanded] = useLocalStorage<boolean>(
     `${STORAGE_KEY_PREFIX}${virtualMcpId}`,
     defaultExpanded,

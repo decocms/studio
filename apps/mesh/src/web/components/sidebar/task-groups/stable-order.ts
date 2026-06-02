@@ -31,7 +31,7 @@ function readStoredOrder(key: string): string[] {
     const raw = localStorage.getItem(key);
     const parsed = raw ? (JSON.parse(raw) as unknown) : [];
     return Array.isArray(parsed)
-      ? parsed.filter((v): v is string => typeof v === "string")
+      ? parsed.filter((v): v is string => typeof v === "string" && v.length > 0)
       : [];
   } catch {
     return [];

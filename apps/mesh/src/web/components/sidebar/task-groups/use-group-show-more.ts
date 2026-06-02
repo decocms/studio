@@ -22,6 +22,16 @@ import {
   type GroupKind,
   type SidebarFilters,
 } from "./next-page-offset";
+import {
+  fetchGroupPageDeduped,
+  fetchGroupProbeDeduped,
+  getCachedGroupProbe,
+  isGroupProbeInFlight,
+} from "./group-threads-fetch-dedup";
+import {
+  groupShowMoreIdentity,
+  shouldDeferGroupProbe,
+} from "./group-show-more-identity";
 
 interface ShowMoreState {
   isFetching: boolean;
@@ -29,22 +39,6 @@ interface ShowMoreState {
   identity: string;
   /** Authoritative once probed or after a per-group page fetch. */
   serverHasMore: boolean | null;
-}
-
-function makeIdentity(
-  orgId: string,
-  kind: GroupKind,
-  key: string,
-  filters: SidebarFilters,
-): string {
-  return [
-    orgId,
-    kind,
-    key,
-    filters.type,
-    filters.member,
-    filters.currentUserId ?? "",
-  ].join("|");
 }
 
 function parseListResult(result: unknown): {
@@ -83,6 +77,14 @@ function countNewMatchingItems(
   return count;
 }
 
+function resolveServerHasMoreFromProbe(
+  totalCount: number | undefined,
+  visible: number,
+): boolean {
+  if (totalCount === undefined) return false;
+  return groupHasMoreFromTotal(visible, totalCount);
+}
+
 /**
  * Per-group "Show more" controller. Owns `hasMore`/`isFetching` for one
  * (org, kind, key, filters) tuple.
@@ -93,22 +95,43 @@ export function useGroupShowMore(
   filters: SidebarFilters,
   /** Precomputed visible count for this group (avoids O(T) scan per hook). */
   visibleCount?: number,
+  /**
+   * When false, skips probe/load network calls. Pass `false` while a group is
+   * collapsed so dozens of stored `sidebar.group.expanded.*` keys cannot fan out
+   * MCP requests on mount.
+   */
+  enabled = true,
 ) {
   const { org } = useProjectContext();
-  const identity = makeIdentity(org.id, kind, key, filters);
-  const [state, setState] = useState<ShowMoreState>({
-    isFetching: false,
-    isProbing: false,
-    identity,
-    serverHasMore: null,
+  const identity = groupShowMoreIdentity(org.id, kind, key, filters);
+  const deferProbe = shouldDeferGroupProbe(filters);
+
+  const [state, setState] = useState<ShowMoreState>(() => {
+    const cached = getCachedGroupProbe(identity);
+    return {
+      isFetching: false,
+      isProbing: !cached && isGroupProbeInFlight(identity),
+      identity,
+      serverHasMore: cached?.serverHasMore ?? null,
+    };
   });
+
+  /** Avoid attaching multiple listeners when `serverHasMore` is still null. */
+  const [probeListenerIdentity, setProbeListenerIdentity] = useState<
+    string | null
+  >(null);
+
   if (state.identity !== identity) {
+    const cached = getCachedGroupProbe(identity);
     setState({
       isFetching: false,
-      isProbing: false,
+      isProbing: !cached && isGroupProbeInFlight(identity),
       identity,
-      serverHasMore: null,
+      serverHasMore: cached?.serverHasMore ?? null,
     });
+    if (probeListenerIdentity !== null) {
+      setProbeListenerIdentity(null);
+    }
   }
 
   const manager = useThreadManager();
@@ -127,53 +150,50 @@ export function useGroupShowMore(
   });
 
   if (
+    enabled &&
+    !deferProbe &&
     state.identity === identity &&
     state.serverHasMore === null &&
-    !state.isProbing &&
-    !state.isFetching
+    !state.isFetching &&
+    probeListenerIdentity !== identity
   ) {
     const capturedIdentity = identity;
-    setState((s) =>
-      s.identity === capturedIdentity ? { ...s, isProbing: true } : s,
-    );
-    void (async () => {
-      try {
-        const args = buildShowMoreArgs(kind, key, 0, filters, 1);
-        const result = await client.callTool({
-          name: "COLLECTION_THREADS_LIST",
-          arguments: args as unknown as Record<string, unknown>,
-        });
-        if ((result as { isError?: boolean }).isError) {
-          throw new Error(
-            extractToolErrorMessage(result, "COLLECTION_THREADS_LIST failed"),
-          );
-        }
-        const { totalCount } = parseListResult(result);
-        const visible = nextPageOffset(
-          manager.threads.get(),
-          kind,
-          key,
-          filters,
+    setProbeListenerIdentity(capturedIdentity);
+    if (!getCachedGroupProbe(capturedIdentity)) {
+      setState((s) =>
+        s.identity === capturedIdentity ? { ...s, isProbing: true } : s,
+      );
+    }
+    void fetchGroupProbeDeduped(capturedIdentity, async () => {
+      const args = buildShowMoreArgs(kind, key, 0, filters, 1);
+      const result = await client.callTool({
+        name: "COLLECTION_THREADS_LIST",
+        arguments: args as unknown as Record<string, unknown>,
+      });
+      if ((result as { isError?: boolean }).isError) {
+        throw new Error(
+          extractToolErrorMessage(result, "COLLECTION_THREADS_LIST failed"),
         );
+      }
+      const { totalCount } = parseListResult(result);
+      const visible = nextPageOffset(manager.threads.get(), kind, key, filters);
+      return {
+        serverHasMore: resolveServerHasMoreFromProbe(totalCount, visible),
+      };
+    })
+      .then(({ serverHasMore }) => {
         setState((s) => {
           if (s.identity !== capturedIdentity) return s;
-          return {
-            ...s,
-            isProbing: false,
-            serverHasMore:
-              totalCount === undefined
-                ? false
-                : groupHasMoreFromTotal(visible, totalCount),
-          };
+          return { ...s, isProbing: false, serverHasMore };
         });
-      } catch {
+      })
+      .catch(() => {
         setState((s) =>
           s.identity === capturedIdentity
             ? { ...s, isProbing: false, serverHasMore: false }
             : s,
         );
-      }
-    })();
+      });
   }
 
   async function loadMore(): Promise<void> {
@@ -192,10 +212,16 @@ export function useGroupShowMore(
         GROUP_PAGE_SIZE,
       );
 
-      const result = await client.callTool({
-        name: "COLLECTION_THREADS_LIST",
-        arguments: args as unknown as Record<string, unknown>,
-      });
+      const result = await fetchGroupPageDeduped(
+        capturedIdentity,
+        offset,
+        GROUP_PAGE_SIZE,
+        () =>
+          client.callTool({
+            name: "COLLECTION_THREADS_LIST",
+            arguments: args as unknown as Record<string, unknown>,
+          }),
+      );
 
       if ((result as { isError?: boolean }).isError) {
         throw new Error(
@@ -249,7 +275,17 @@ export function useGroupShowMore(
 
   const isBusy = state.isFetching || state.isProbing;
   const showButton =
-    !isBusy && resolveGroupHasMore(derivedHasMore, state.serverHasMore);
+    enabled &&
+    !deferProbe &&
+    !isBusy &&
+    resolveGroupHasMore(derivedHasMore, state.serverHasMore);
 
-  return { hasMore: showButton, isFetching: isBusy, loadMore };
+  return {
+    hasMore: showButton,
+    isFetching: isBusy,
+    loadMore,
+    /** Safe to auto-fetch the first page after the probe returned `true`. */
+    canAutoLoadFirstPage:
+      enabled && !deferProbe && state.serverHasMore === true && !isBusy,
+  };
 }
