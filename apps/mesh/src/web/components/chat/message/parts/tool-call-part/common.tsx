@@ -3,7 +3,8 @@
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ChevronRight, Check, Copy01 } from "@untitledui/icons";
+import { ArrowRight, ChevronRight, Check, Copy01 } from "@untitledui/icons";
+import { formatDuration } from "@/web/lib/format-time.ts";
 import {
   Collapsible,
   CollapsibleContent,
@@ -236,3 +237,38 @@ export function ToolCallShell({
 }
 
 export type { ToolCallMetrics } from "./utils.tsx";
+
+/** Renders a latency badge for the `trailing` slot of ToolCallShell. */
+export function LatencyLabel({ latency }: { latency?: number }) {
+  if (latency == null || latency <= 0) return null;
+  return (
+    <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
+      {formatDuration(latency)}
+    </span>
+  );
+}
+
+/** "See all N <noun>" footer row used by list-style tool cards. */
+export function SeeAllRow({
+  count,
+  noun,
+  onClick,
+}: {
+  count: number;
+  noun: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+    >
+      See all {count} {noun}
+      <ArrowRight
+        className="size-4 transition-transform group-hover:translate-x-0.5"
+        aria-hidden="true"
+      />
+    </button>
+  );
+}

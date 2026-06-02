@@ -10,9 +10,6 @@ interface AgentConnectionsPreviewProps {
   className?: string;
 }
 
-/**
- * Connection Icon Preview Component - Shows a single connection icon
- */
 function ConnectionIconPreview({
   connection_id,
   iconSize = "xs",
@@ -35,9 +32,6 @@ function ConnectionIconPreview({
   );
 }
 
-/**
- * Connection Icon Preview Fallback Component - Shows loading state while connection loads
- */
 ConnectionIconPreview.Fallback = function ConnectionIconPreviewFallback({
   iconSize = "xs",
 }: {
@@ -51,12 +45,6 @@ ConnectionIconPreview.Fallback = function ConnectionIconPreviewFallback({
   );
 };
 
-/**
- * Agent Connections Preview Component
- *
- * Displays up to maxVisibleIcons connection icons, and if there are more,
- * shows a "+{n-maxVisibleIcons}" badge styled as an icon.
- */
 export function AgentConnectionsPreview({
   connectionIds,
   maxVisibleIcons = 2,
@@ -72,7 +60,6 @@ export function AgentConnectionsPreview({
 
   return (
     <div className={cn("flex items-center justify-end -space-x-2", className)}>
-      {/* Visible icons with overlapping */}
       {visibleIds.map((id) => (
         <Suspense
           key={id}
@@ -81,8 +68,6 @@ export function AgentConnectionsPreview({
           <ConnectionIconPreview connection_id={id} iconSize={iconSize} />
         </Suspense>
       ))}
-
-      {/* "+{n}" badge styled as an icon for remaining connections */}
       {remainingCount > 0 && (
         <div
           className={cn(
@@ -95,6 +80,7 @@ export function AgentConnectionsPreview({
               iconSize === "sm" ? "text-sm" : "text-xs",
               "font-medium text-muted-foreground",
             )}
+            aria-label={`and ${remainingCount} more`}
           >
             +{remainingCount}
           </span>
@@ -104,9 +90,6 @@ export function AgentConnectionsPreview({
   );
 }
 
-/**
- * Fallback component for loading state
- */
 AgentConnectionsPreview.Fallback = function AgentConnectionsPreviewFallback({
   maxVisibleIcons = 2,
   iconSize = "xs",
@@ -118,7 +101,7 @@ AgentConnectionsPreview.Fallback = function AgentConnectionsPreviewFallback({
   const badgeSizeClass = iconSize === "sm" ? "size-8" : "size-6";
   return (
     <div className="flex items-center -space-x-2">
-      {Array.from({ length: Math.min(maxVisibleIcons, 2) }).map((_, i) => (
+      {Array.from({ length: maxVisibleIcons }).map((_, i) => (
         <div
           key={i}
           className="shrink-0 bg-background ring-1 ring-background rounded-lg"

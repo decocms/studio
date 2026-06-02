@@ -62,8 +62,8 @@ export function getEffectiveState(
   state: string,
   preliminary?: boolean,
 ): "loading" | "error" | "idle" | "approval" {
-  // Error state takes precedence
-  if (state === "output-error") {
+  // Error state takes precedence (output-denied treated as error for UI purposes)
+  if (state === "output-error" || state === "output-denied") {
     return "error";
   }
 
@@ -83,4 +83,29 @@ export function getEffectiveState(
 
   // Default to idle
   return "idle";
+}
+
+/**
+ * Unwrap a tool output that may be in one of two shapes:
+ * - Built-in tools: raw object
+ * - MCP tools: CallToolResult ({ content, structuredContent })
+ */
+export function unwrapResult<T>(output: unknown): T | undefined {
+  if (output == null || typeof output !== "object") return undefined;
+  const o = output as Record<string, unknown>;
+  if (o.structuredContent && typeof o.structuredContent === "object") {
+    return o.structuredContent as T;
+  }
+  if (Array.isArray(o.content)) {
+    const first = (o.content as Array<{ type?: string; text?: string }>)[0];
+    if (first?.type === "text" && typeof first.text === "string") {
+      try {
+        return JSON.parse(first.text) as T;
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+  return output as T;
 }
