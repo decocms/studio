@@ -1,4 +1,7 @@
-import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
+// Relative (not the `@/` alias) so the sandbox daemon — which imports this
+// module cross-workspace via a relative path and typechecks under its own
+// tsconfig (no `@/` alias) — can resolve the transitive import.
+import { MAX_PUBLISH_BYTES } from "../nats/payload-chunking";
 
 export interface MessagesRef {
   url: string;
