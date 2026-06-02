@@ -22,6 +22,7 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import {
   Check,
   Copy01,
+  File06,
   Globe01,
   LogOut01,
   MessageChatCircle,
@@ -30,6 +31,7 @@ import {
   Plus,
   SearchMd,
   Settings02,
+  Shield01,
   Sun,
   Users03,
   VolumeMax,
@@ -580,6 +582,20 @@ export function AccountPopover() {
       },
     },
     {
+      key: "terms",
+      label: "Terms of Use",
+      icon: <File06 size={16} />,
+      href: "https://www.decocms.com/terms-of-use",
+      external: true,
+    },
+    {
+      key: "privacy",
+      label: "Privacy Policy",
+      icon: <Shield01 size={16} />,
+      href: "https://www.decocms.com/privacy-policy",
+      external: true,
+    },
+    {
       key: "github",
       label: "decocms/studio",
       icon: <GitHubIcon className="w-4 h-4" />,
@@ -727,7 +743,11 @@ export function AccountPopover() {
         open={creatingOrg}
         onOpenChange={setCreatingOrg}
       />
-      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+      <FeedbackDialog
+        open={feedbackOpen}
+        onOpenChange={setFeedbackOpen}
+        orgSlug={orgParam ?? ""}
+      />
     </>
   );
 }

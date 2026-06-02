@@ -62,8 +62,8 @@ export function MessageTextPart({
     setNegativeOpen(true);
   };
 
-  // Fix: show copy on any copyable part, not only when extraActions is present
-  const showCopyButton = copyable;
+  // Only show copy/feedback on the last part (the one with extraActions/usage stats)
+  const showCopyButton = copyable && !!extraActions;
   const showActions = showCopyButton || extraActions;
 
   return (
@@ -136,8 +136,6 @@ export function MessageTextPart({
         onOpenChange={setNegativeOpen}
         messageId={id}
         threadId={threadId}
-        messageContent={part.text}
-        sessionReplayUrl={getSessionReplayUrl()}
       />
     </div>
   );

@@ -19,6 +19,7 @@ import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
+import { createFeedbackRoutes } from "./feedback";
 import { createHomeNextActionsRoutes } from "./home-next-actions";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
@@ -82,6 +83,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createFileUploadRoutes()); // /api/:org/file-configs/:id/upload
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/", createHomeNextActionsRoutes());
+  app.route("/", createFeedbackRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(

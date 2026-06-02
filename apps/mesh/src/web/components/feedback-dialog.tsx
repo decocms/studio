@@ -15,20 +15,26 @@ import { track, getSessionReplayUrl } from "@/web/lib/posthog-client";
 interface FeedbackDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  orgSlug: string;
 }
 
-export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
+export function FeedbackDialog({
+  open,
+  onOpenChange,
+  orgSlug,
+}: FeedbackDialogProps) {
   const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!message.trim()) return;
-    setSending(true);
-    track("user_feedback", {
-      message: message.trim(),
+    fetch(`/api/${orgSlug}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: message.trim() }),
+    });
+    track("user_feedback_submitted", {
       session_replay_url: getSessionReplayUrl(),
     });
-    setSending(false);
     setMessage("");
     onOpenChange(false);
     toast.success("Feedback sent — thank you!");
@@ -74,11 +80,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
           >
             contact@decocms.com
           </a>
-          <Button
-            onClick={handleSubmit}
-            disabled={!message.trim() || sending}
-            size="sm"
-          >
+          <Button onClick={handleSubmit} disabled={!message.trim()} size="sm">
             Send feedback
             <span className="ml-1.5 text-xs opacity-60">⌘↵</span>
           </Button>

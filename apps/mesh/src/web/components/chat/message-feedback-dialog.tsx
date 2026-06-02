@@ -9,7 +9,7 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { toast } from "@deco/ui/components/sonner.js";
-import { track } from "@/web/lib/posthog-client";
+import { track, getSessionReplayUrl } from "@/web/lib/posthog-client";
 
 const REASONS = [
   "Incorrect or incomplete",
@@ -27,8 +27,6 @@ interface MessageFeedbackDialogProps {
   onOpenChange: (open: boolean) => void;
   messageId: string;
   threadId: string | null;
-  messageContent: string;
-  sessionReplayUrl: string | null;
 }
 
 export function MessageFeedbackDialog({
@@ -36,8 +34,6 @@ export function MessageFeedbackDialog({
   onOpenChange,
   messageId,
   threadId,
-  messageContent,
-  sessionReplayUrl,
 }: MessageFeedbackDialogProps) {
   const [selected, setSelected] = useState<Set<Reason>>(new Set());
   const [details, setDetails] = useState("");
@@ -60,8 +56,7 @@ export function MessageFeedbackDialog({
       thread_id: threadId,
       reasons: [...selected],
       details: details.trim() || undefined,
-      message_content: messageContent.slice(0, 500) || undefined,
-      session_replay_url: sessionReplayUrl,
+      session_replay_url: getSessionReplayUrl(),
     });
     setSelected(new Set());
     setDetails("");
@@ -110,7 +105,12 @@ export function MessageFeedbackDialog({
           placeholder="Share details (optional)"
           className="min-h-28 resize-none"
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
+            if (
+              e.key === "Enter" &&
+              (e.metaKey || e.ctrlKey) &&
+              !(selected.size === 0 && !details.trim())
+            )
+              handleSubmit();
           }}
         />
 
