@@ -145,17 +145,30 @@ export async function handleDispatchRequest(
   }
 
   const encoder = new TextEncoder();
+  // Set once the SSE consumer goes away (reader cancel) or the run is
+  // aborted. Guards every `write` so a harness that keeps producing chunks
+  // after the client disconnected can't `enqueue` on a closed controller —
+  // that throws `ERR_INVALID_STATE: Controller is already closed`, which
+  // crashed the run (surfaced as `harness_crashed`) and triggered a cluster
+  // re-dispatch storm instead of a clean stop.
+  let streamClosed = false;
   const sseStream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const write = (event: DispatchSSEEvent) => {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
-        );
+      const write = (event: DispatchSSEEvent): void => {
+        if (streamClosed || ctrl.signal.aborted) return;
+        try {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+          );
+        } catch {
+          // Consumer disconnected between the guard check and the enqueue.
+          streamClosed = true;
+        }
       };
       let chunkCount = 0;
       try {
         for await (const chunk of harness.stream()) {
-          if (ctrl.signal.aborted) break;
+          if (ctrl.signal.aborted || streamClosed) break;
           chunkCount++;
           write({ type: "ui-message-chunk", chunk });
         }
@@ -175,8 +188,23 @@ export async function handleDispatchRequest(
       } finally {
         write({ type: "done" });
         activeRuns.delete(input.runId);
-        controller.close();
+        if (!streamClosed) {
+          try {
+            controller.close();
+          } catch {
+            // Already closed by a consumer cancel — nothing to do.
+          }
+        }
       }
+    },
+    cancel() {
+      // The SSE consumer (link daemon → cluster reverse-proxy → browser)
+      // disconnected — e.g. the user navigated to another task or the link
+      // WS stream was torn down mid-run. Abort the run so the harness
+      // `for await` loop stops pulling chunks instead of spinning until it
+      // writes to the now-closed controller. Mirrors DELETE /_sandbox/runs/:id.
+      streamClosed = true;
+      ctrl.abort();
     },
   });
 

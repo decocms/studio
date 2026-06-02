@@ -113,6 +113,77 @@ describe("POST /_sandbox/dispatch", () => {
     expect(res.status).toBe(410);
   });
 
+  it("does not crash with ERR_INVALID_STATE when the consumer cancels mid-stream", async () => {
+    // Repro for the link-daemon crash: a long-lived run whose SSE consumer
+    // (browser → cluster → link WS) disconnects mid-stream. The harness keeps
+    // producing chunks; without a guard the writer enqueues on the now-closed
+    // controller and throws "Controller is already closed", crashing the run
+    // (surfaced as `harness_crashed`) instead of stopping cleanly.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let settleHarness!: () => void;
+    const harnessDone = new Promise<void>((r) => {
+      settleHarness = r;
+    });
+
+    const errorArgs: unknown[][] = [];
+    const originalConsoleError = console.error;
+    console.error = (...args: unknown[]) => {
+      errorArgs.push(args);
+    };
+
+    try {
+      const deps = makeDeps({
+        lookupHarness: () => ({
+          async *stream() {
+            try {
+              yield { type: "start", id: "m1" } as const;
+              // Pause until the consumer has cancelled, then keep producing —
+              // these post-cancel chunks are what used to crash the writer.
+              await gate;
+              for (let i = 0; i < 25; i++) {
+                yield { type: "text-delta", id: "m1", delta: "x" } as const;
+              }
+            } finally {
+              settleHarness();
+            }
+          },
+        }),
+      });
+
+      const body = JSON.stringify({
+        harnessId: "fake",
+        input: {
+          ...fixtures.FIXTURE_MINIMAL_INPUT,
+          runId: "run-cancel-midstream",
+        },
+      });
+      const res = await handleDispatchRequest(authedDispatch(body), deps);
+      expect(res.status).toBe(200);
+
+      const reader = res.body!.getReader();
+      await reader.read(); // consume the first chunk
+      await reader.cancel(); // simulate consumer disconnect → stream cancel()
+      release(); // let the harness produce more after the consumer is gone
+      await harnessDone; // the generator's `finally` ran → loop fully unwound
+      await Promise.resolve();
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    const crashed = errorArgs.some((args) =>
+      args.some(
+        (a) =>
+          (typeof a === "string" && a.includes("harness crashed")) ||
+          (a instanceof Error &&
+            a.message.includes("Controller is already closed")),
+      ),
+    );
+    expect(crashed).toBe(false);
+  });
+
   it("wraps harness errors as an error SSE event followed by done", async () => {
     const harnessId = "throws";
     const body = JSON.stringify({
