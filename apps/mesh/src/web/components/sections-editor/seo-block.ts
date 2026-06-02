@@ -81,7 +81,8 @@ export function findSiteSeoEntry(
   for (const [key, val] of Object.entries(decofile)) {
     if (!val || typeof val !== "object" || Array.isArray(val)) continue;
     const obj = val as Record<string, unknown>;
-    if (PAGE_RESOLVE_TYPES.has(obj.__resolveType as string)) continue;
+    const rt = obj.__resolveType;
+    if (typeof rt === "string" && PAGE_RESOLVE_TYPES.has(rt)) continue;
     const seo = obj.seo;
     if (seo && typeof seo === "object" && !Array.isArray(seo)) {
       const seoObj = seo as Record<string, unknown>;

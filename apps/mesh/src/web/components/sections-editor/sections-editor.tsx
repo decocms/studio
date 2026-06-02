@@ -961,8 +961,14 @@ export function SectionsEditor({
     pageDebounceRef.current = setTimeout(() => {
       const pending = pendingPageFieldsRef.current;
       pendingPageFieldsRef.current = {};
+      // Read-modify-write against the freshest block (see handleSeoFormChange):
+      // SEO edits write the same block from a separate debounce, so a stale
+      // render-closure snapshot here would drop a concurrent SEO change.
       const fullPageData = {
-        ...(decofile[activePageKey] as Record<string, unknown>),
+        ...(latestRef.current.decofile[activePageKey] as Record<
+          string,
+          unknown
+        >),
         ...pending,
       };
       // No onSaved/iframe reload — name/path don't affect the visual preview
@@ -1840,8 +1846,19 @@ export function SectionsEditor({
   const handleSeoFormChange = (next: unknown) => {
     const nextRecord = next as Record<string, unknown>;
     setSeoFormValue(nextRecord);
-    if (!activePageKey || !pageData) return;
-    seoSave.save(activePageKey, { ...pageData, seo: nextRecord });
+    if (!activePageKey) return;
+    // Resolve the merge at fire time against the freshest page block, not a
+    // keystroke-time snapshot: page name/path edits write the same block from a
+    // separate debounce, so spreading a stale `pageData` here would clobber
+    // them. `latestRef.current.decofile` tracks the live (optimistically
+    // updated) decofile.
+    seoSave.save(activePageKey, () => {
+      const latestPage = latestRef.current.decofile[activePageKey] as
+        | Record<string, unknown>
+        | undefined;
+      if (!latestPage) return null;
+      return { ...latestPage, seo: nextRecord };
+    });
   };
 
   const handleBreadcrumbClick = (index: number) => {
