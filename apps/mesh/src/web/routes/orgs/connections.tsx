@@ -1079,7 +1079,9 @@ function ConnectionResults({
               description={
                 listState.search
                   ? `No Connections match "${listState.search}"`
-                  : "Create a connection to get started."
+                  : canManage
+                    ? "Create a connection to get started."
+                    : "Ask an organization admin to add one."
               }
             />
           ) : (
@@ -1351,8 +1353,10 @@ function OrgMcpsContent() {
       registryItems,
     });
 
-  // Create dialog state is derived from search params
-  const isCreating = search.action === "create";
+  // Create dialog state is derived from search params, but gated on capability
+  // so it can't be opened by deep-linking to ?action=create without
+  // connections:manage (the write would fail server-side regardless).
+  const isCreating = canManage && search.action === "create";
 
   const openCreateDialog = () => {
     track("connections_custom_dialog_opened", {
