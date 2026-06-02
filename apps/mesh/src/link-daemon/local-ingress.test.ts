@@ -122,7 +122,14 @@ describe("local-ingress WS proxying", () => {
     for (let i = 0; i < 40 && seenPath === null; i++) {
       await new Promise((r) => setTimeout(r, 25));
     }
-    expect(seenPath).toBe("/foo?token=hello");
+    // TS narrows closure-mutated `string | null` back to literal `null` at
+    // the outer site, which makes `expect().toBe(...)` resolve to its
+    // null-only overload. Re-widen via the assertion cast so tsc accepts
+    // the comparison while still failing the test loudly on mismatch.
+    if ((seenPath as string | null) === null) {
+      throw new Error("upstream did not see request in time");
+    }
+    expect(seenPath as string | null).toBe("/foo?token=hello");
     ws.close();
   });
 
@@ -153,7 +160,11 @@ describe("local-ingress WS proxying", () => {
     for (let i = 0; i < 40 && seenProtocol === null; i++) {
       await new Promise((r) => setTimeout(r, 25));
     }
-    expect(seenProtocol).toBe("vite-hmr");
+    // See note on `seenPath` above re: closure-mutation narrowing.
+    if ((seenProtocol as string | null) === null) {
+      throw new Error("upstream did not see subprotocol in time");
+    }
+    expect(seenProtocol as string | null).toBe("vite-hmr");
     ws.close();
   });
 
@@ -204,7 +215,9 @@ describe("local-ingress WS proxying", () => {
       await new Promise((r) => setTimeout(r, 25));
     }
     expect(received.length).toBe(1);
-    const bytes = new Uint8Array(received[0].data);
+    const first = received[0];
+    if (!first) throw new Error("did not receive expected echo");
+    const bytes = new Uint8Array(first.data);
     // Expected: [0xff, 0x01, 0x02, 0x03] — marker + original payload.
     expect(Array.from(bytes)).toEqual([0xff, 0x01, 0x02, 0x03]);
     ws.close();
@@ -318,10 +331,14 @@ describe("local-ingress + real Vite HMR (integration)", () => {
       },
     );
     // Read stdout until we see "Local:   http://127.0.0.1:PORT".
-    if (!viteProc.stdout) {
+    // Bun's spawn return type widens stdout to `number | ReadableStream
+    // | undefined`; `stdout: "pipe"` above always yields a ReadableStream,
+    // but tsc can't infer that, so check both shapes explicitly.
+    const stdout = viteProc.stdout;
+    if (!stdout || typeof stdout === "number") {
       throw new Error("vite stdout pipe unexpectedly absent");
     }
-    const reader = viteProc.stdout.getReader();
+    const reader = stdout.getReader();
     const decoder = new TextDecoder();
     const deadline = Date.now() + VITE_BOOT_TIMEOUT_MS;
     let buf = "";
