@@ -195,8 +195,18 @@ export function createDesktopSandboxProvider(
     const timer = setTimeout(() => ac.abort(), 1500);
     try {
       const res = await fetcher(`${sandboxUrl}/health`, { signal: ac.signal });
+      if (!res.ok) {
+        console.warn(
+          `[user-desktop] probe ${sandboxUrl}/health → ${res.status} (treating as dead)`,
+        );
+      }
       return res.ok;
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[user-desktop] probe ${sandboxUrl}/health failed: ${
+          err instanceof Error ? err.message : String(err)
+        } (treating as dead)`,
+      );
       return false;
     } finally {
       clearTimeout(timer);
@@ -204,6 +214,9 @@ export function createDesktopSandboxProvider(
   };
 
   const evictDead = (state: SandboxState): void => {
+    console.warn(
+      `[user-desktop] evicting dead daemon handle=${state.handle} port=${state.port}`,
+    );
     try {
       state.process.kill("SIGTERM");
     } catch {
@@ -237,8 +250,16 @@ export function createDesktopSandboxProvider(
     const candidates = [...sandboxes.values()]
       .filter((s) => s.activeDispatchCount === 0)
       .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-    if (candidates.length === 0) return; // every sandbox is pinned
+    if (candidates.length === 0) {
+      console.warn(
+        `[user-desktop] at cap ${sandboxes.size}/${cap} but every sandbox is pinned (active dispatch) — exceeding cap temporarily`,
+      );
+      return; // every sandbox is pinned
+    }
     const victim = candidates[0]!;
+    console.log(
+      `[user-desktop] evicting LRU victim handle=${victim.handle} port=${victim.port} (cap ${cap} reached, size=${sandboxes.size})`,
+    );
     try {
       victim.process.kill("SIGTERM");
     } catch {
@@ -329,8 +350,15 @@ export function createDesktopSandboxProvider(
       spawned.exited.then(() => {
         const current = sandboxes.get(input.handle);
         if (current === state) {
+          console.warn(
+            `[user-desktop] daemon process exited unexpectedly handle=${input.handle} port=${port} — removing from cache`,
+          );
           sandboxes.delete(input.handle);
           emit({ handle: input.handle, phase: "evicted" });
+        } else {
+          console.log(
+            `[user-desktop] daemon process exited handle=${input.handle} port=${port} (already replaced/removed)`,
+          );
         }
       });
     }
@@ -343,6 +371,9 @@ export function createDesktopSandboxProvider(
       const existing = sandboxes.get(input.handle);
       if (existing) {
         if (await probeAlive(existing.sandboxApiUrl)) {
+          console.log(
+            `[user-desktop] cache hit handle=${input.handle} port=${existing.port} (alive)`,
+          );
           existing.lastUsedAt = Date.now();
           return {
             sandboxApiUrl: existing.sandboxApiUrl,
@@ -352,10 +383,18 @@ export function createDesktopSandboxProvider(
         }
         // Cached entry is dead — tear it down before respawning so the new
         // entry's spawn isn't fighting the corpse for the same workdir.
+        console.warn(
+          `[user-desktop] cache stale handle=${input.handle} port=${existing.port} — respawning`,
+        );
         evictDead(existing);
       }
       const pending = inflight.get(input.handle);
-      if (pending) return pending;
+      if (pending) {
+        console.log(
+          `[user-desktop] joining in-flight ensure handle=${input.handle}`,
+        );
+        return pending;
+      }
       const promise = buildEntry(input).finally(() => {
         inflight.delete(input.handle);
       });
@@ -406,7 +445,13 @@ export function createDesktopSandboxProvider(
     },
     async deleteSandbox(handle) {
       const s = sandboxes.get(handle);
-      if (!s) return;
+      if (!s) {
+        console.log(
+          `[user-desktop] delete handle=${handle} (not found, no-op)`,
+        );
+        return;
+      }
+      console.log(`[user-desktop] delete handle=${handle} port=${s.port}`);
       try {
         s.process.kill("SIGTERM");
       } catch {
@@ -416,6 +461,9 @@ export function createDesktopSandboxProvider(
       emit({ handle, phase: "deleted" });
     },
     async shutdown() {
+      console.log(
+        `[user-desktop] shutdown — killing ${sandboxes.size} sandbox(es)`,
+      );
       for (const s of sandboxes.values()) {
         try {
           s.process.kill("SIGTERM");
