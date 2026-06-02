@@ -1,9 +1,12 @@
 /**
  * Per-user sidebar group ordering (localStorage).
  *
- * Two reorderable sections:
- * - Org-pinned agents (`sidebar.org-pinned-order.<orgId>`) — server `pinned: true`
- * - Personal agents (`sidebar.group-order.<orgId>.<userId>`) — user sidebar membership
+ * Sidebar membership is explicit only:
+ * - Org-pinned agents (`connections.pinned` + `sidebar.org-pinned-order.<orgId>`)
+ * - Personal agents (`sidebar.group-order.<orgId>.<userId>`)
+ *
+ * Agents with tasks but not in either list do not appear. Decopilot and
+ * tool-call runs still render when they have threads (fixed groups).
  */
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { TOOL_CALL_RUNS_GROUP_KEY, type TaskGroupData } from "./group-threads";
@@ -153,16 +156,6 @@ function mergeMissingIds(order: string[], requiredIds: string[]): string[] {
   return [...order, ...missing];
 }
 
-function mergeNewUserIdsIntoOrder(
-  order: string[],
-  currentUserIds: string[],
-): string[] {
-  const known = new Set(order);
-  const newIds = currentUserIds.filter((id) => !known.has(id));
-  if (newIds.length === 0) return order;
-  return [...newIds, ...order];
-}
-
 export interface PartitionedDisplayGroups {
   decopilot?: TaskGroupData;
   orgPinned: TaskGroupData[];
@@ -219,21 +212,12 @@ export function computeGroupOrder(
     (g) => g.virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY,
   );
   const orgPinnedSet = new Set(orgPinnedIds);
-  const middleIds = sortableGroupIds(groups, decopilotVirtualMcpId);
-  const userMiddleIds = middleIds.filter((id) => !orgPinnedSet.has(id));
 
   const orgRequired = orgPinnedIds.filter(
     (id) => !isFixedSidebarGroupId(id, decopilotVirtualMcpId),
   );
   const orgOrder = mergeMissingIds(savedOrgOrder, orgRequired);
-  const savedUserWithoutOrgPins = savedUserOrder.filter(
-    (id) => !orgPinnedSet.has(id),
-  );
-  const userOrder = mergeNewUserIdsIntoOrder(
-    savedUserWithoutOrgPins,
-    userMiddleIds,
-  );
-  const userOrderSet = new Set(userOrder);
+  const userOrder = savedUserOrder.filter((id) => !orgPinnedSet.has(id));
 
   const byId = new Map(groups.map((g) => [g.virtualMcpId, g] as const));
 
@@ -248,27 +232,16 @@ export function computeGroupOrder(
   };
 
   const orderedOrg = orgOrder.filter((id) => orgPinnedSet.has(id)).map(toGroup);
-  const orderedUser = userOrder
-    .filter((id) => !orgPinnedSet.has(id))
-    .map(toGroup);
-
-  const trailingUser = userMiddleIds
-    .filter((id) => !userOrderSet.has(id))
-    .map((id) => byId.get(id)!);
+  const orderedUser = userOrder.map(toGroup);
 
   const result: TaskGroupData[] = [];
   if (decopilot) result.push(decopilot);
-  result.push(...orderedOrg, ...orderedUser, ...trailingUser);
+  result.push(...orderedOrg, ...orderedUser);
   if (toolCallRuns) result.push(toolCallRuns);
 
   return {
     groups: result,
-    userOrder: [
-      ...userOrder,
-      ...trailingUser
-        .map((g) => g.virtualMcpId)
-        .filter((id) => !userOrderSet.has(id)),
-    ],
+    userOrder,
     orgOrder: orderedOrg.map((g) => g.virtualMcpId),
   };
 }
