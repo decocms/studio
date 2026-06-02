@@ -243,12 +243,19 @@ jobs:
   # ---------------------------------------------------------------------------
   bump-deco-apps-cd:
     name: Trigger deco-apps-cd bump
-    needs: [prepare, build-docker]
-    # Only bump when a VALID image for this version exists: either already
-    # published (image-exists == 'true', so build-docker is skipped) or just
-    # built. A skipped build-docker from a failed build must NOT bump.
+    needs: [prepare, publish-npm, build-docker]
+    # Only bump when this release is fully consistent across the artifact pair:
+    #   * a VALID image for this version exists (either already published, so
+    #     build-docker is skipped, or freshly built), AND
+    #   * the npm side didn't fail. publish-npm is gated separately because
+    #     build-docker is now parallel to it — without this clause, an npm
+    #     failure could still ship an image to prod whose `bunx @decocms/mesh@X`
+    #     wouldn't resolve, leaving the two artifacts inconsistent.
+    # A skipped publish-npm (version already on npm) or skipped build-docker
+    # (image already in GHCR) is fine — those mean "nothing to do", not failure.
     if: |
       always() &&
+      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
       (
         needs.prepare.outputs.image-exists == 'true' ||
         needs.build-docker.result == 'success'
