@@ -1,20 +1,16 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronRight, CreditCardSearch, Loading01 } from "@untitledui/icons";
-import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
-import { useSaveBlock } from "./use-save-block";
+import { useDebouncedSaveBlock } from "./use-save-block";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema } from "./resolve-schema";
 import type { LiveMeta } from "./resolve-schema";
-import { buildSiteSeoBlockData, findSiteSeoEntry } from "./seo-block";
+import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
+import type { SeoTarget } from "./seo-block";
 import { SeoPreview } from "./seo-preview";
 
-const AUTOSAVE_DELAY = 700;
-
-export type SeoTarget =
-  | { kind: "page"; pageKey: string; pageName: string; path: string }
-  | { kind: "site" };
+export type { SeoTarget } from "./seo-block";
 
 interface SeoEditorProps {
   orgSlug: string;
@@ -32,48 +28,6 @@ interface SeoEditorProps {
   onBack?: () => void;
 }
 
-interface ResolvedSeo {
-  blockKey: string;
-  seoData: Record<string, unknown> | undefined;
-  /** resolveType to resolve the form schema with. */
-  seoResolveType: string;
-  /** Builds the full decofile block payload to persist an edited SEO value. */
-  build: (value: Record<string, unknown>) => Record<string, unknown>;
-}
-
-/**
- * Resolves the SEO block + write target for a page or the site default.
- */
-function resolveTarget(
-  decofile: Record<string, unknown>,
-  target: SeoTarget,
-): ResolvedSeo | null {
-  if (target.kind === "site") {
-    const entry = findSiteSeoEntry(decofile);
-    if (!entry) return null;
-    return {
-      blockKey: entry.blockKey,
-      seoData: entry.seoData,
-      seoResolveType: entry.seoResolveType,
-      build: (value) => buildSiteSeoBlockData(entry, value),
-    };
-  }
-  const blockData = decofile[target.pageKey] as
-    | Record<string, unknown>
-    | undefined;
-  if (!blockData) return null;
-  const seo = blockData.seo as Record<string, unknown> | undefined;
-  return {
-    blockKey: target.pageKey,
-    seoData: seo,
-    seoResolveType:
-      typeof seo?.__resolveType === "string"
-        ? seo.__resolveType
-        : "website/sections/Seo/SeoV2.tsx",
-    build: (value) => ({ ...blockData, seo: value }),
-  };
-}
-
 export function SeoEditor({
   orgSlug,
   virtualMcpId,
@@ -86,7 +40,7 @@ export function SeoEditor({
   onEditDefaultSeo,
   onBack,
 }: SeoEditorProps) {
-  const resolved = resolveTarget(decofile, target);
+  const resolved = resolveSeoTarget(decofile, target);
   const seoData = resolved?.seoData;
   const seoSchema = resolved
     ? resolveSchema(resolved.seoResolveType, meta)
@@ -102,9 +56,10 @@ export function SeoEditor({
     setFormValue(null);
   }
 
-  const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestFormRef = useRef<Record<string, unknown> | null>(null);
+  const { save, isPending } = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { onSaved },
+  );
 
   const effectiveSeo = formValue ?? seoData ?? {};
 
@@ -122,20 +77,7 @@ export function SeoEditor({
     if (!resolved) return;
     const nextRecord = next as Record<string, unknown>;
     setFormValue(nextRecord);
-    latestFormRef.current = nextRecord;
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const value = latestFormRef.current;
-      if (!value) return;
-      saveBlock.mutate(
-        { blockKey: resolved.blockKey, data: resolved.build(value) },
-        {
-          onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(`Save failed: ${err.message}`),
-        },
-      );
-    }, AUTOSAVE_DELAY);
+    save(resolved.blockKey, resolved.build(nextRecord));
   };
 
   const path = target.kind === "page" ? target.path : "/";
@@ -175,7 +117,7 @@ export function SeoEditor({
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          {saveBlock.isPending && (
+          {isPending && (
             <Loading01
               size={14}
               className="animate-spin text-muted-foreground"

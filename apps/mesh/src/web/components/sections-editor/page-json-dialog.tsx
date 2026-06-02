@@ -24,7 +24,11 @@ export function PageJsonDialog({
 }: PageJsonDialogProps) {
   const [copied, setCopied] = useState(false);
   const pageData = decofile[pageKey];
-  const json = JSON.stringify(pageData, null, 2);
+  // A missing key would otherwise stringify to the literal "undefined".
+  const json =
+    pageData === undefined
+      ? "// Page not found."
+      : JSON.stringify(pageData, null, 2);
 
   const handleCopy = () => {
     void navigator.clipboard.writeText(json).then(() => {

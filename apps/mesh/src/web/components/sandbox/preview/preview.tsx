@@ -102,15 +102,9 @@ const SectionsEditor = lazy(() =>
   })),
 );
 
-const PageSeoSheet = lazy(() =>
+const SeoSheet = lazy(() =>
   import("@/web/components/sections-editor/page-seo-sheet").then((m) => ({
-    default: m.PageSeoSheet,
-  })),
-);
-
-const SiteSeoSheet = lazy(() =>
-  import("@/web/components/sections-editor/page-seo-sheet").then((m) => ({
-    default: m.SiteSeoSheet,
+    default: m.SeoSheet,
   })),
 );
 
@@ -664,6 +658,9 @@ export function PreviewContent() {
     const prev = viewMode;
     setViewMode(mode);
     setVisualElement(null);
+    // Leaving code mode clears the "View JSON" deep-link so re-entering code
+    // mode later opens the file tree, not the previously-viewed page JSON.
+    if (mode !== "code") setCodeFilePath(null);
     if (mode !== "cms") setCmsSelectedSectionIndex(null);
     if (prev === "visual") deactivateVisualEditor();
     if (prev === "cms") deactivateCmsEditor();
@@ -1354,7 +1351,7 @@ export function PreviewContent() {
 
       {seoPageKey && decofile && meta && (
         <Suspense fallback={null}>
-          <PageSeoSheet
+          <SeoSheet
             open={!!seoPageKey}
             onOpenChange={(open) => {
               if (!open) setSeoPageKey(null);
@@ -1362,16 +1359,21 @@ export function PreviewContent() {
             orgSlug={org.slug}
             virtualMcpId={virtualMcpId ?? ""}
             branch={branch ?? ""}
-            pageKey={seoPageKey}
             decofile={decofile}
             meta={meta}
+            target={{
+              kind: "page",
+              pageKey: seoPageKey,
+              pageName: pages.find((p) => p.key === seoPageKey)?.name ?? "Page",
+              path: pages.find((p) => p.key === seoPageKey)?.path ?? "/",
+            }}
           />
         </Suspense>
       )}
 
       {siteSeoOpen && decofile && meta && (
         <Suspense fallback={null}>
-          <SiteSeoSheet
+          <SeoSheet
             open={siteSeoOpen}
             onOpenChange={setSiteSeoOpen}
             orgSlug={org.slug}
@@ -1379,6 +1381,7 @@ export function PreviewContent() {
             branch={branch ?? ""}
             decofile={decofile}
             meta={meta}
+            target={{ kind: "site" }}
           />
         </Suspense>
       )}
