@@ -27,8 +27,9 @@ import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
+import { offloadKey, sha256Hex } from "@/harnesses/offload-messages";
 import { ensureSandbox } from "@/tools/sandbox/start";
-import { getDispatch } from "@/api/app";
+import { buildDesktopProvider } from "@/sandbox/lifecycle";
 import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
@@ -876,12 +877,67 @@ async function prepareRun(
             { agent: input.agent, branch: mem.thread.branch ?? input.branch },
             ctx,
           );
+          // Route through the unified `proxyDaemonRequest` seam: the desktop
+          // provider tunnels `/dispatch` over the same WS+NATS link transport
+          // the old raw `dispatch` dep used, but now consumes the returned
+          // streaming `Response` (DispatchFn is a private impl detail of the
+          // provider). `proxyDaemonRequest` expects a `ProxyRequestInit`
+          // (`headers: Headers`, `body: BodyInit | null`), so adapt our
+          // simpler `{ headers: Record<string,string>, body: string }` shape.
+          const provider = await buildDesktopProvider(ctx, input.userId);
+          // Body-offload: when the dispatch body exceeds the per-message
+          // budget, `remoteDispatch` writes `input.messages` to object
+          // storage and the daemon re-inflates from the ref. `supported`
+          // mirrors the daemon's advertised capability (from the link claim
+          // resolved on `target.link`); without object storage the seam is a
+          // hard "no" so an oversized body fails loudly rather than silently
+          // truncating.
+          const supported =
+            target.link?.capabilities?.includes("body-offload") ?? false;
+          const offload = ctx.objectStorage
+            ? {
+                supported,
+                put: async (reqId: string, messagesJson: string) => {
+                  const bytes = new TextEncoder().encode(messagesJson);
+                  const key = offloadKey(reqId);
+                  await ctx.objectStorage!.put(key, bytes, {
+                    contentType: "application/json",
+                  });
+                  const url = await ctx.objectStorage!.presignedGetUrl(
+                    key,
+                    600,
+                    { requireFetchable: true },
+                  );
+                  return {
+                    url,
+                    bytes: bytes.byteLength,
+                    sha256: await sha256Hex(bytes),
+                  };
+                },
+                cleanup: (key: string) =>
+                  ctx.objectStorage!.delete(key).then(() => {}),
+              }
+            : {
+                supported: false,
+                put: async () => {
+                  throw new Error("no object storage");
+                },
+                cleanup: async () => {},
+              };
           rawHarnessChunks = remoteDispatch(
             harnessId,
             harnessInput,
-            input.userId,
             sandboxHandle,
-            { dispatch: getDispatch() },
+            {
+              proxyDaemonRequest: (h, p, init) =>
+                provider.proxyDaemonRequest(h, p, {
+                  method: init.method,
+                  headers: new Headers(init.headers),
+                  body: init.body ?? null,
+                  signal: init.signal,
+                }),
+              offload,
+            },
           );
         } else {
           rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);

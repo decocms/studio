@@ -1,24 +1,35 @@
 /**
- * Remote dispatch — cluster → daemon over the WS+NATS link path.
+ * Remote dispatch — cluster → daemon over the unified `proxyDaemonRequest`
+ * seam.
  *
- * The daemon's control handler reverse-proxies `/_sandbox/<handle>/dispatch`
- * to the spawned sandbox daemon, which emits an SSE response. The bytes
- * arrive at us as raw chunk-frame payloads; we reassemble SSE events and
- * decode each event's JSON via `dispatchSSEEventSchema`.
+ * `SandboxProvider.proxyDaemonRequest(handle, "/dispatch", init)` reaches the
+ * spawned sandbox daemon (the desktop provider tunnels it over the WS+NATS
+ * link path; the cluster provider over HTTP) and returns a streaming
+ * `Response`. The daemon reverse-proxies the sandbox's SSE response, so the
+ * Response body is a stream of SSE event blocks; we reassemble them and decode
+ * each event's JSON via `dispatchSSEEventSchema`.
  */
 import type { UIMessageChunk } from "ai";
 import { dispatchSSEEventSchema } from "../links/protocol";
-import type { DispatchFn } from "../links/dispatcher";
 import type { HarnessId, HarnessStreamInput } from "./types";
 
 export interface RemoteDispatchDeps {
-  dispatch: DispatchFn;
+  proxyDaemonRequest: (
+    handle: string,
+    path: string,
+    init: {
+      method: string;
+      headers: Record<string, string>;
+      body?: string;
+      signal?: AbortSignal;
+    },
+  ) => Promise<Response>;
 }
 
 export function remoteDispatch(
   id: HarnessId,
   input: HarnessStreamInput,
-  userSub: string,
+  _userSub: string,
   sandboxHandle: string,
   deps: RemoteDispatchDeps,
 ): AsyncIterable<UIMessageChunk> {
@@ -26,21 +37,7 @@ export function remoteDispatch(
   return {
     async *[Symbol.asyncIterator]() {
       const body = JSON.stringify({ harnessId: id, input: wireInput });
-      const iter = deps.dispatch(
-        userSub,
-        {
-          method: "POST",
-          path: `/_sandbox/${sandboxHandle}/dispatch`,
-          headers: {
-            "content-type": "application/json",
-            accept: "text/event-stream",
-          },
-          body,
-        },
-        { signal },
-      );
 
-      let buffer = "";
       const emitEvent = function* (
         eventText: string,
       ): Generator<UIMessageChunk> {
@@ -65,20 +62,54 @@ export function remoteDispatch(
             `[remoteDispatch] ${ev.data.code}: ${ev.data.message}`,
           );
         }
-        // `done` returns no chunk — outer loop ends when the iterable closes.
+        // `done` returns no chunk — outer loop ends when the stream closes.
       };
 
-      for await (const raw of iter) {
-        if (raw.data == null) continue;
-        buffer += raw.data;
+      const res = await deps.proxyDaemonRequest(sandboxHandle, "/dispatch", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "text/event-stream",
+        },
+        body,
+        signal,
+      });
+
+      // A non-2xx Response carries no `data:` lines (the daemon returns a JSON
+      // error body), so feeding it to the SSE parser would silently yield an
+      // empty stream — a failed run that looks successful. Read the JSON error
+      // and rethrow BEFORE any SSE parsing.
+      if (!res.ok) {
+        let detail = `dispatch failed (${res.status})`;
+        try {
+          const j = await res.json();
+          if (j && typeof j === "object" && "error" in j && j.error) {
+            detail = String((j as { error: unknown }).error);
+          }
+        } catch {
+          /* */
+        }
+        throw new Error(`[remoteDispatch] ${detail}`);
+      }
+
+      const reader = res.body!.getReader();
+      // SINGLE streaming decoder across the whole Response body — a multi-byte
+      // UTF-8 char can be split across chunks; a per-chunk decoder corrupts it.
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
         let sep = buffer.indexOf("\n\n");
         while (sep !== -1) {
-          const eventBlock = buffer.slice(0, sep);
+          const block = buffer.slice(0, sep);
           buffer = buffer.slice(sep + 2);
-          for (const chunk of emitEvent(eventBlock)) yield chunk;
+          for (const chunk of emitEvent(block)) yield chunk;
           sep = buffer.indexOf("\n\n");
         }
       }
+      buffer += decoder.decode();
       const tail = buffer.trim();
       if (tail.length > 0) {
         for (const chunk of emitEvent(tail)) yield chunk;
