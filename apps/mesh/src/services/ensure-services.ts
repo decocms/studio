@@ -33,6 +33,16 @@ const PG_DATABASE = "postgres";
 
 const NATS_VERSION = "v2.10.24";
 
+// MinIO dev defaults. The root credentials mirror the e2e setup
+// (.github/actions/start-minio) so local dev and CI use the same contract.
+const MINIO_ROOT_USER = "minioadmin";
+const MINIO_ROOT_PASSWORD = "minioadmin";
+const MINIO_DEV_BUCKET = "studio-dev";
+// Objects under this prefix are short-lived dispatch payloads offloaded by the
+// unified harness/sandbox transport. Expire them after 1 day so the dev bucket
+// doesn't grow unbounded — mirrors the production lifecycle policy.
+const MINIO_DISPATCH_PREFIX = "link-dispatch/";
+
 const IS_WINDOWS = platform() === "win32";
 const EXE_EXT = IS_WINDOWS ? ".exe" : "";
 
@@ -688,6 +698,277 @@ async function stopNats(home: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// MinIO (auto-downloaded binary — S3-compatible object storage for dev)
+// ---------------------------------------------------------------------------
+//
+// Object storage is a hard dependency of the message-offload path. In dev we
+// auto-provision a real S3-compatible store (MinIO) so the offload code runs
+// against the production S3Service rather than the DevObjectStorage fallback,
+// mirroring how postgres and nats-server are managed above.
+//
+// MinIO publishes per-OS/arch *server* binaries at a stable URL:
+//   https://dl.min.io/server/minio/release/<os>-<arch>/minio[.exe]
+
+/**
+ * Build the MinIO server binary artifact name for an os/arch pair.
+ *
+ * Pure (no IO) so it is unit-testable. `os`/`arch` are the values returned by
+ * `os.platform()` / `os.arch()`. Only the platform name affects the artifact
+ * file name (`minio` vs `minio.exe`); the os/arch pair selects the release
+ * directory in {@link minioDownloadUrl}.
+ */
+export function minioArtifactName(os: string, _arch: string): string {
+  return os === "win32" ? "minio.exe" : "minio";
+}
+
+/**
+ * Build the MinIO server binary download URL for an os/arch pair.
+ *
+ * Pure (no IO) so it is unit-testable. Throws on an unsupported platform.
+ */
+export function minioDownloadUrl(os: string, arch: string): string {
+  const osMap: Record<string, string> = {
+    darwin: "darwin",
+    linux: "linux",
+    win32: "windows",
+  };
+
+  const archMap: Record<string, string> = {
+    arm64: "arm64",
+    x64: "amd64",
+  };
+
+  const osName = osMap[os];
+  const archName = archMap[arch];
+
+  if (!osName || !archName) {
+    throw new Error(`Unsupported platform for MinIO: ${os}/${arch}`);
+  }
+
+  const artifact = minioArtifactName(os, arch);
+  return `https://dl.min.io/server/minio/release/${osName}-${archName}/${artifact}`;
+}
+
+function minioBinaryPath(home: string): string {
+  return join(servicesDir(home), "minio", "bin", `minio${EXE_EXT}`);
+}
+
+async function downloadMinio(home: string): Promise<string> {
+  const binPath = minioBinaryPath(home);
+  if (existsSync(binPath)) return binPath;
+
+  const binDir = join(servicesDir(home), "minio", "bin");
+  ensureDir(binDir);
+
+  const url = minioDownloadUrl(platform(), arch());
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download MinIO: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  // MinIO ships the raw executable (not an archive), so write it directly.
+  const arrayBuffer = await response.arrayBuffer();
+  writeFileSync(binPath, Buffer.from(arrayBuffer));
+
+  if (!IS_WINDOWS) {
+    await chmod(binPath, 0o755);
+  }
+
+  if (!existsSync(binPath)) {
+    throw new Error(`MinIO binary not found at ${binPath} after download`);
+  }
+
+  return binPath;
+}
+
+/** Poll MinIO's readiness endpoint — 200 means the object layer can serve. */
+async function waitForMinioReady(
+  port: number,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const url = `http://127.0.0.1:${port}/minio/health/ready`;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(url);
+      if (res.status === 200) return;
+    } catch {
+      // not up yet
+    }
+    await sleep(200).catch(() => {});
+  }
+  throw new Error(`Timed out waiting for MinIO readiness at ${url}`);
+}
+
+/**
+ * Create the dev bucket (idempotent) and apply a lifecycle rule expiring
+ * objects under the dispatch prefix after 1 day. Uses the already-installed
+ * @aws-sdk/client-s3 so there's no `mc` version to keep in sync.
+ */
+async function provisionMinioBucket(endpoint: string): Promise<void> {
+  const {
+    S3Client,
+    CreateBucketCommand,
+    PutBucketLifecycleConfigurationCommand,
+  } = await import("@aws-sdk/client-s3");
+
+  const client = new S3Client({
+    endpoint,
+    region: "auto",
+    credentials: {
+      accessKeyId: MINIO_ROOT_USER,
+      secretAccessKey: MINIO_ROOT_PASSWORD,
+    },
+    forcePathStyle: true,
+  });
+
+  try {
+    await client.send(new CreateBucketCommand({ Bucket: MINIO_DEV_BUCKET }));
+  } catch (e: unknown) {
+    // BucketAlreadyOwnedByUs / BucketAlreadyExists — fine, it's persistent.
+    const name =
+      e && typeof e === "object" && "name" in e ? String(e.name) : "";
+    if (
+      name !== "BucketAlreadyOwnedByUs" &&
+      name !== "BucketAlreadyExists" &&
+      !(e instanceof Error && e.message.includes("already"))
+    ) {
+      throw e;
+    }
+  }
+
+  await client.send(
+    new PutBucketLifecycleConfigurationCommand({
+      Bucket: MINIO_DEV_BUCKET,
+      LifecycleConfiguration: {
+        Rules: [
+          {
+            ID: "expire-link-dispatch",
+            Status: "Enabled",
+            Filter: { Prefix: MINIO_DISPATCH_PREFIX },
+            Expiration: { Days: 1 },
+          },
+        ],
+      },
+    }),
+  );
+
+  client.destroy();
+}
+
+async function ensureMinio(home: string): Promise<ServiceInfo> {
+  const info: ServiceInfo = {
+    name: "MinIO",
+    state: "stopped",
+    pid: null,
+    port: 0,
+    owner: "none",
+  };
+
+  // Check state.json for an existing managed instance
+  const existing = readState(home, "minio");
+  if (existing !== null) {
+    if (isOwnedProcess(existing.pid, "minio")) {
+      info.state = "running";
+      info.pid = existing.pid;
+      info.port = existing.port;
+      info.owner = "managed";
+      return info;
+    }
+    // Dead process — clean up stale state
+    await removeState(home, "minio");
+  }
+
+  // Allocate a dynamic port
+  const port = await findAvailablePort();
+  info.port = port;
+
+  const binPath = await downloadMinio(home);
+  const dataDir = join(servicesDir(home), "minio", "data");
+  const logDir = join(servicesDir(home), "minio");
+  ensureDir(dataDir);
+
+  const logFile = Bun.file(join(logDir, "minio.log"));
+  const proc = Bun.spawn(
+    [binPath, "server", dataDir, "--address", `:${port}`],
+    {
+      env: {
+        ...process.env,
+        MINIO_ROOT_USER,
+        MINIO_ROOT_PASSWORD,
+      },
+      stdout: logFile,
+      stderr: logFile,
+    },
+  );
+
+  writeState(home, "minio", {
+    pid: proc.pid,
+    port,
+    startedAt: new Date().toISOString(),
+  });
+
+  await waitForMinioReady(port);
+  await provisionMinioBucket(`http://127.0.0.1:${port}`);
+
+  info.state = "running";
+  info.pid = proc.pid;
+  info.owner = "managed";
+  return info;
+}
+
+async function stopMinio(home: string): Promise<void> {
+  const state = readState(home, "minio");
+  if (state === null) {
+    console.log("MinIO: not running");
+    return;
+  }
+
+  const { pid } = state;
+
+  if (!isProcessAlive(pid)) {
+    console.log("MinIO: process already dead, cleaning up state");
+    await removeState(home, "minio");
+    return;
+  }
+
+  if (!isOwnedProcess(pid, "minio")) {
+    console.log(
+      `MinIO: PID ${pid} no longer belongs to minio (possible PID reuse), cleaning up state`,
+    );
+    await removeState(home, "minio");
+    return;
+  }
+
+  console.log(`MinIO: stopping (PID ${pid})...`);
+
+  if (IS_WINDOWS) {
+    Bun.spawn(["taskkill", "/PID", String(pid)]);
+  } else {
+    process.kill(pid, "SIGTERM");
+  }
+
+  const start = Date.now();
+  while (Date.now() - start < 5000 && isProcessAlive(pid)) {
+    await sleep(200);
+  }
+
+  if (isProcessAlive(pid) && isOwnedProcess(pid, "minio")) {
+    console.log("MinIO: force killing...");
+    if (IS_WINDOWS) {
+      Bun.spawn(["taskkill", "/PID", String(pid), "/F"]);
+    } else {
+      process.kill(pid, "SIGKILL");
+    }
+  }
+
+  await removeState(home, "minio");
+  console.log("MinIO stopped");
+}
+
+// ---------------------------------------------------------------------------
 // Link daemon (deco link, spawned via `bun run --cwd=apps/mesh src/cli.ts link`)
 // ---------------------------------------------------------------------------
 
@@ -1032,6 +1313,15 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
 
   const skipPostgres = inputs.externalDatabaseUrl !== null;
   const skipNats = inputs.externalNatsUrl !== null;
+  // Skip managed MinIO when an external S3 store is already configured (CI/prod
+  // set S3_ENDPOINT + bucket + credentials) or when the caller opts out.
+  const externalS3 = Boolean(
+    process.env.S3_ENDPOINT &&
+      process.env.S3_BUCKET &&
+      process.env.S3_ACCESS_KEY_ID &&
+      process.env.S3_SECRET_ACCESS_KEY,
+  );
+  const skipMinio = inputs.skipMinio === true || externalS3;
 
   const pgInfo: ServiceInfo = skipPostgres
     ? {
@@ -1053,6 +1343,48 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       }
     : await ensureNats(inputs.home);
 
+  const services: ServiceInfo[] = [pgInfo, natsInfo];
+
+  // Object storage. Managed MinIO unless an external S3 store is configured.
+  let s3: ServiceOutputs["s3"] = null;
+  if (externalS3) {
+    services.push({
+      name: "MinIO",
+      state: "external",
+      pid: null,
+      port: portFromUrl(process.env.S3_ENDPOINT!, 9000),
+      owner: "external",
+    });
+    s3 = {
+      endpoint: process.env.S3_ENDPOINT!,
+      bucket: process.env.S3_BUCKET!,
+      accessKeyId: process.env.S3_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
+    };
+  } else if (!skipMinio) {
+    const minioInfo = await ensureMinio(inputs.home);
+    services.push(minioInfo);
+    s3 = {
+      endpoint: `http://127.0.0.1:${minioInfo.port}`,
+      bucket: MINIO_DEV_BUCKET,
+      accessKeyId: MINIO_ROOT_USER,
+      secretAccessKey: MINIO_ROOT_PASSWORD,
+    };
+  }
+
+  // Mirror the resolved S3 config into process.env BEFORE the app constructs
+  // its S3Service. The in-process serve path reads frozen Settings (threaded
+  // via `outputs.s3` in pipeline.ts); the dev path spawns `dev:servers` as a
+  // child that re-derives Settings from the inherited process.env, so set both.
+  if (s3) {
+    process.env.S3_ENDPOINT = s3.endpoint;
+    process.env.S3_BUCKET = s3.bucket;
+    process.env.S3_ACCESS_KEY_ID = s3.accessKeyId;
+    process.env.S3_SECRET_ACCESS_KEY = s3.secretAccessKey;
+    // MinIO needs path-style addressing (no virtual-hosted-style buckets).
+    process.env.S3_FORCE_PATH_STYLE = "true";
+  }
+
   const databaseUrl = skipPostgres
     ? inputs.externalDatabaseUrl!
     : pgConnectionString(pgInfo.port);
@@ -1062,10 +1394,11 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
     : `nats://localhost:${natsInfo.port}`;
 
   return {
-    services: [pgInfo, natsInfo],
+    services,
     outputs: {
       databaseUrl,
       natsUrls: [natsUrl],
+      s3,
     },
   };
 }
@@ -1076,6 +1409,7 @@ export async function stopServices(home: string): Promise<void> {
   await stopLink(home);
   await stopPostgres(home);
   await stopNats(home);
+  await stopMinio(home);
   console.log("\nAll managed services stopped.");
 }
 
@@ -1115,6 +1449,26 @@ async function serviceStatus(home: string): Promise<ServiceInfo[]> {
     if (natsState !== null) await removeState(home, "nats");
     services.push({
       name: "NATS",
+      state: "stopped",
+      pid: null,
+      port: 0,
+      owner: "none",
+    });
+  }
+
+  const minioState = readState(home, "minio");
+  if (minioState !== null && isProcessAlive(minioState.pid)) {
+    services.push({
+      name: "MinIO",
+      state: "running",
+      pid: minioState.pid,
+      port: minioState.port,
+      owner: "managed",
+    });
+  } else {
+    if (minioState !== null) await removeState(home, "minio");
+    services.push({
+      name: "MinIO",
       state: "stopped",
       pid: null,
       port: 0,
