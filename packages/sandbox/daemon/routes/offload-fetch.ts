@@ -1,3 +1,4 @@
+import { sha256Hex } from "../../../../apps/mesh/src/harnesses/offload-messages";
 import { retry } from "@decocms/std";
 
 /** Max size of an offloaded messages blob (bound to a realistic harness input,
@@ -58,6 +59,7 @@ export async function fetchOffloadedMessages(
     allowedHosts: string[];
     allowSameHostDev: boolean;
     deadlineMs?: number;
+    expectedSha256?: string;
   },
 ): Promise<unknown> {
   assertAllowedRefUrl(rawUrl, opts.allowedHosts, opts.allowSameHostDev);
@@ -116,6 +118,10 @@ export async function fetchOffloadedMessages(
     for (const chunk of chunks) {
       buf.set(chunk, offset);
       offset += chunk.byteLength;
+    }
+    const actual = await sha256Hex(buf);
+    if (opts.expectedSha256 && actual !== opts.expectedSha256) {
+      throw new Error("offload ref: sha256 mismatch");
     }
     return JSON.parse(new TextDecoder().decode(buf));
   } finally {
