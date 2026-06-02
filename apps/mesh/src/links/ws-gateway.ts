@@ -20,6 +20,7 @@ import {
 import type { LinkClaim, LinkClaimRegistry } from "./link-claim-registry";
 import type { Capability } from "./protocol";
 import { MAX_PUBLISH_BYTES, splitChunkData } from "../nats/payload-chunking";
+import type { LinkErrorCode } from "./protocol/error-codes";
 
 const WS_CLOSE_SUPERSEDED = 4001;
 const WS_CLOSE_POLICY = 1008;
@@ -335,13 +336,12 @@ function publishErrorFrame(
   reply: string,
   reqId: string,
   message: string,
+  code: LinkErrorCode = "publish_failed",
 ): boolean {
   try {
     ws.data.deps.nats.publish(
       reply,
-      encoder.encode(
-        encodeFrame({ type: "error", reqId, code: "publish_failed", message }),
-      ),
+      encoder.encode(encodeFrame({ type: "error", reqId, code, message })),
     );
     return true;
   } catch {
@@ -431,13 +431,14 @@ export const gatewayWsHandlers = {
     if (inflight && inflight.size > 0) {
       for (const [reqId, entry] of inflight) {
         try {
+          const code: LinkErrorCode = "ws_closed";
           ws.data.deps.nats.publish(
             entry.reply,
             encoder.encode(
               encodeFrame({
                 type: "error",
                 reqId,
-                code: "ws_closed",
+                code,
                 message: "daemon WebSocket closed before response completed",
               }),
             ),
