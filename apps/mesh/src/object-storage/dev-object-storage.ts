@@ -29,6 +29,7 @@ import type {
 } from "./s3-service";
 import type { BoundObjectStorage } from "./bound-object-storage";
 import { detectContentType, isTextContentType, sanitizeKey } from "./key-utils";
+import { assertFetchableUrl } from "./fetchable";
 import { getSettings } from "../settings";
 
 const DEV_ASSETS_BASE_DIR = "./data/assets";
@@ -194,12 +195,20 @@ export class DevObjectStorage implements BoundObjectStorage {
    * The /api/dev-assets/ route is still used by external clients (e.g. the UI)
    * via the stable redirect endpoint (/api/:org/files/:key).
    */
-  async presignedGetUrl(key: string): Promise<string> {
+  async presignedGetUrl(
+    key: string,
+    _expiresIn?: number,
+    opts?: { requireFetchable?: boolean },
+  ): Promise<string> {
     const path = filePath(this.orgId, key);
     const bytes = await readFile(path);
     const contentType = detectContentType(key);
     const base64 = Buffer.from(bytes).toString("base64");
-    return `data:${contentType};base64,${base64}`;
+    const url = `data:${contentType};base64,${base64}`;
+    if (opts?.requireFetchable) {
+      assertFetchableUrl(url);
+    }
+    return url;
   }
 
   async presignedPutUrl(key: string, expiresIn = 3600): Promise<string> {
