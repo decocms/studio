@@ -10,6 +10,7 @@ import {
   encodeFrame,
   type DispatchFrame,
 } from "./dispatch-frames";
+import { MAX_PUBLISH_BYTES } from "../nats/payload-chunking";
 
 function makeFakeNatsAdapter() {
   // Records subscribe/publish; doesn't deliver — that's tested in dispatch demux.
@@ -433,5 +434,152 @@ describe("ws-gateway dispatch demux", () => {
     const frameB = decodeFrame(new TextDecoder().decode(repliesB[0]!));
     expect(frameA.type).toBe("error");
     expect(frameB.type).toBe("error");
+  });
+
+  test("splits an oversized chunk frame into ordered sub-chunks that each fit", async () => {
+    const nats = makeFakeNatsAdapter();
+    const inbox = "_INBOX.big";
+    const replies: Uint8Array[] = [];
+    nats.subs.set(inbox, (data) => replies.push(data));
+
+    const { url } = await startGateway({
+      validateBearer: async () => "user-1",
+      natsAdapter: nats,
+    });
+
+    const ws = new WebSocket(url, {
+      headers: { authorization: "Bearer x" },
+    } as unknown as string);
+    await new Promise<void>((r) => ws.addEventListener("open", () => r()));
+    ws.send(
+      encodeFrame({
+        type: "hello",
+        previewPort: 5174,
+        machineId: "m",
+        cliVersion: "1",
+        capabilities: [],
+      }),
+    );
+    for (let i = 0; i < 40; i++) {
+      if (nats.subs.has("links.dispatch.user-1")) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const dispatchHandler = nats.subs.get("links.dispatch.user-1")!;
+    dispatchHandler(
+      new TextEncoder().encode(
+        encodeFrame({
+          type: "request",
+          reqId: "r-1",
+          method: "GET",
+          path: "/_sandbox/x/read",
+          headers: {},
+        }),
+      ),
+      inbox,
+    );
+
+    // One oversized chunk whose encoded frame exceeds the NATS payload budget.
+    const data = "x".repeat(MAX_PUBLISH_BYTES + 100);
+    ws.send(encodeFrame({ type: "chunk", reqId: "r-1", data }));
+
+    const chunkData = () =>
+      replies
+        .map((b) => decodeFrame(new TextDecoder().decode(b)))
+        .filter(
+          (f): f is Extract<DispatchFrame, { type: "chunk" }> =>
+            f.type === "chunk",
+        );
+    for (let i = 0; i < 80; i++) {
+      if (
+        chunkData()
+          .map((f) => f.data)
+          .join("").length >= data.length
+      ) {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+
+    const chunks = chunkData();
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const b of replies) {
+      expect(b.length).toBeLessThanOrEqual(MAX_PUBLISH_BYTES);
+    }
+    expect(chunks.every((f) => f.reqId === "r-1")).toBe(true);
+    expect(chunks.map((f) => f.data).join("")).toBe(data);
+    ws.close();
+  });
+
+  test("a publish that throws becomes a clean error frame (no uncaught throw)", async () => {
+    const nats = makeFakeNatsAdapter();
+    const inbox = "_INBOX.err";
+    const replies: Uint8Array[] = [];
+    nats.subs.set(inbox, (data) => replies.push(data));
+
+    const origPublish = nats.publish.bind(nats);
+    let threw = false;
+    (nats as { publish: typeof nats.publish }).publish = (subject, data) => {
+      let frame: DispatchFrame | null = null;
+      try {
+        frame = decodeFrame(new TextDecoder().decode(data));
+      } catch {
+        /* not a frame */
+      }
+      if (frame?.type === "chunk" && !threw) {
+        threw = true;
+        throw new Error("MAX_PAYLOAD_EXCEEDED");
+      }
+      origPublish(subject, data);
+    };
+
+    const { url } = await startGateway({
+      validateBearer: async () => "user-1",
+      natsAdapter: nats,
+    });
+    const ws = new WebSocket(url, {
+      headers: { authorization: "Bearer x" },
+    } as unknown as string);
+    await new Promise<void>((r) => ws.addEventListener("open", () => r()));
+    ws.send(
+      encodeFrame({
+        type: "hello",
+        previewPort: 5174,
+        machineId: "m",
+        cliVersion: "1",
+        capabilities: [],
+      }),
+    );
+    for (let i = 0; i < 40; i++) {
+      if (nats.subs.has("links.dispatch.user-1")) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const dispatchHandler = nats.subs.get("links.dispatch.user-1")!;
+    dispatchHandler(
+      new TextEncoder().encode(
+        encodeFrame({
+          type: "request",
+          reqId: "r-1",
+          method: "GET",
+          path: "/_sandbox/x/read",
+          headers: {},
+        }),
+      ),
+      inbox,
+    );
+
+    ws.send(encodeFrame({ type: "chunk", reqId: "r-1", data: "hello" }));
+
+    for (let i = 0; i < 80; i++) {
+      if (replies.length > 0) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(replies.length).toBeGreaterThanOrEqual(1);
+    const frame = decodeFrame(new TextDecoder().decode(replies[0]!));
+    expect(frame.type).toBe("error");
+    if (frame.type === "error") {
+      expect(frame.code).toBe("publish_failed");
+      expect(frame.reqId).toBe("r-1");
+    }
+    ws.close();
   });
 });
