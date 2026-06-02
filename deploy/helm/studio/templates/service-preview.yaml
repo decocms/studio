@@ -1,0 +1,42 @@
+{{- /*
+Preview Service for blue-green Rollouts.
+
+Argo Rollouts manages the selectors of `activeService` (this chart's main
+Service) and `previewService` (this one) — it injects the rollout's pod-
+template-hash so each Service routes to the correct ReplicaSet at each phase:
+
+  - previewService → new ReplicaSet, available BEFORE promotion (use it to
+    smoke-test the green version, or to wire prePromotionAnalysis probes).
+  - activeService  → current ReplicaSet that serves prod traffic.
+
+Only rendered when blueGreen is the chosen strategy. Canary uses traffic
+splitting (Istio/NGINX) instead of a second Service.
+*/}}
+{{- $rollouts := default dict .Values.argoRollouts }}
+{{- $strategy := default dict $rollouts.strategy }}
+{{- $bg := default dict $strategy.blueGreen }}
+{{- if and $rollouts.enabled $bg.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ default (printf "%s-preview" (include "chart-deco-studio.fullname" .)) $bg.previewServiceName }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: preview
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "chart-deco-studio.selectorLabels" . | nindent 4 }}
+  {{- if .Values.service.sessionAffinity }}
+  sessionAffinity: {{ .Values.service.sessionAffinity }}
+  {{- end }}
+  {{- if .Values.service.sessionAffinityConfig }}
+  sessionAffinityConfig:
+    {{- toYaml .Values.service.sessionAffinityConfig | nindent 4 }}
+  {{- end }}
+{{- end }}

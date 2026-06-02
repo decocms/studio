@@ -52,6 +52,73 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
+# Argo Rollouts opt-in.
+#
+# When `argoRollouts.enabled: true`, the chart renders a Rollout (argoproj.io/v1alpha1)
+# in place of the standard Deployment. The pod template is shared between both
+# kinds via the `podTemplate` helper, so toggling this flag changes ONLY the
+# orchestration around traffic switching — never the workload itself.
+#
+# Requires: argo-rollouts controller installed in the cluster
+# (https://argo-rollouts.readthedocs.io/).
+#
+# IMPORTANT: blue-green amplifies the schema/code overlap window. Destructive
+# DB migrations (DROP/RENAME/type changes) on a single release WILL break the
+# old (blue) ReplicaSet while it still serves traffic. Pair with
+# `migrationJob.enabled: true` so migrations run before the new ReplicaSet is
+# scaled up, and adopt expand-contract migration discipline at the code level.
+argoRollouts:
+  enabled: false
+  # revisionHistoryLimit: 5  # how many old ReplicaSets to keep
+  strategy:
+    # Pick exactly ONE of `blueGreen.enabled` or `canary.enabled`.
+    blueGreen:
+      enabled: true
+      # autoPromotionEnabled: false → manual promote in the Argo UI after
+      # validating preview. Set true (or wire prePromotionAnalysis) to
+      # auto-promote once the new ReplicaSet is healthy.
+      autoPromotionEnabled: false
+      # autoPromotionSeconds: 0  # auto-promote N seconds after preview becomes available
+      # Keep the old ReplicaSet alive for N seconds after promotion so in-flight
+      # requests drain cleanly. Reasonable default for long-lived sessions
+      # (MCP / chat connections).
+      scaleDownDelaySeconds: 30
+      # previewReplicaCount: 1  # scale preview to <full replicas> until promote
+      # activeServiceName: ""  # default: <fullname>
+      # previewServiceName: "" # default: <fullname>-preview
+      # prePromotionAnalysis: {}
+      # postPromotionAnalysis: {}
+    canary:
+      enabled: false
+      # canaryService: ""
+      # stableService: ""
+      # steps: []
+      # trafficRouting: {}
+
+# Pre-deploy migration Job (Helm pre-upgrade + ArgoCD PreSync hook).
+#
+# When enabled, the chart renders a Job that runs `bun run --cwd=apps/mesh
+# migrate` ONCE before the workload (Deployment or Rollout) sees the new
+# image. The runtime pod command gets `--skip-migrations` appended (see
+# _pod-template.tpl) so pods don't also try to migrate on boot — eliminating
+# the race between N replicas migrating concurrently and giving a clear
+# pre-deploy gate (Job fails → release aborted).
+#
+# Critical companion to `argoRollouts.enabled: true` for blue-green safety:
+# migrations have already settled before the new ReplicaSet starts probing.
+migrationJob:
+  enabled: false
+  # command: ["bun", "run", "--cwd=apps/mesh", "migrate"]  # override if needed
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 300
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+
 configMap:
   meshConfig:
     NODE_ENV: "production"

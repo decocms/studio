@@ -1,0 +1,105 @@
+{{- if and .Values.migrationJob .Values.migrationJob.enabled }}
+{{- /*
+Pre-deploy migration Job — opt-in via `migrationJob.enabled: true`.
+
+Runs `bun run --cwd=apps/mesh migrate` ONCE before the workload (Deployment or
+Rollout) sees the new image. Both Helm and ArgoCD hook semantics are declared
+so the Job ordering is preserved whether the chart is installed via `helm
+upgrade` directly or synced by ArgoCD:
+
+  - helm.sh/hook: pre-install,pre-upgrade  (helm)
+  - argocd.argoproj.io/hook: PreSync       (argocd)
+  - sync-wave: -1                           (extra ordering hint)
+
+When this Job is enabled, the workload pod command gets `--skip-migrations`
+appended (see _pod-template.tpl) so the runtime DOES NOT also run migrations on
+boot. This eliminates the race between N replicas trying to migrate simultaneously
+and gives an explicit pre-deploy gate: if the migration Job fails, the release
+is aborted before the new ReplicaSet is created.
+
+IMPORTANT: this Job moves migration ordering but does NOT eliminate the
+schema/code compatibility problem during the overlap window between old and
+new pods. Destructive migrations (DROP/RENAME/type changes) still require
+expand-contract discipline at the migration code level. See chart README for
+the migration playbook.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-migrate-{{ .Release.Revision | default 0 }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "argocd.argoproj.io/hook": PreSync
+    "argocd.argoproj.io/hook-delete-policy": BeforeHookCreation
+    "argocd.argoproj.io/sync-wave": "-1"
+spec:
+  backoffLimit: {{ default 0 .Values.migrationJob.backoffLimit }}
+  activeDeadlineSeconds: {{ default 600 .Values.migrationJob.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ default 300 .Values.migrationJob.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "chart-deco-studio.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "chart-deco-studio.serviceAccountName" . }}
+      securityContext:
+        {{- include "chart-deco-studio.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: migrate
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}{{- if and .Values.image.tag (hasPrefix "sha256:" .Values.image.tag) }}@{{ .Values.image.tag }}{{- else }}:{{ .Values.image.tag | default .Chart.AppVersion }}{{- end }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            {{- toYaml (default (list "bun" "run" "--cwd=apps/mesh" "migrate") .Values.migrationJob.command) | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "chart-deco-studio.fullname" . }}-config
+            - secretRef:
+                name: {{ include "chart-deco-studio.secretName" . }}
+          {{- with .Values.migrationJob.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
+          volumeMounts:
+            - name: ca-cert
+              mountPath: /etc/ssl/certs
+              readOnly: true
+          {{- end }}
+      {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
+      volumes:
+        - name: ca-cert
+          configMap:
+            name: {{ include "chart-deco-studio.fullname" . }}-ca-cert
+            items:
+              - key: ca-cert.pem
+                path: ca-cert.pem
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

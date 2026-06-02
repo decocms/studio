@@ -1,0 +1,92 @@
+{{- if and .Values.argoRollouts .Values.argoRollouts.enabled }}
+{{- /*
+Argo Rollouts Rollout — opt-in via `argoRollouts.enabled: true`.
+
+Replaces the standard Deployment with a Rollout managed by argo-rollouts. The
+pod template is shared with the Deployment path via the `podTemplate` helper,
+so both kinds describe the same workload; only the orchestration around traffic
+switching differs.
+
+BlueGreen strategy:
+  - activeService: routes prod traffic. Argo updates its selector to point to
+    the active ReplicaSet (the post-promotion one).
+  - previewService: routes preview/probe traffic. Argo points it at the new
+    ReplicaSet before promotion so it can be smoke-tested / inspected.
+  - autoPromotionEnabled: false by default — promote manually via the Argo UI
+    after verifying the preview, or wire prePromotionAnalysis to gate it.
+  - scaleDownDelaySeconds: keeps the old ReplicaSet alive for N seconds after
+    promotion so in-flight requests drain cleanly before its pods terminate.
+
+Canary strategy: also supported — set `argoRollouts.strategy.canary` instead.
+Pick one; setting both throws at install time.
+
+IMPORTANT for stateful workloads (long-lived sessions, MCP / chat): destructive
+schema migrations during a blue/green window will break the old version. Pair
+this Rollout with `migrationJob.enabled: true` so migrations run before the new
+ReplicaSet is brought up, AND adopt expand-contract migration discipline so the
+overlap window between old and new code is safe.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chart-deco-studio.selectorLabels" . | nindent 6 }}
+  {{- with .Values.argoRollouts.revisionHistoryLimit }}
+  revisionHistoryLimit: {{ . }}
+  {{- end }}
+  template:
+    {{- include "chart-deco-studio.podTemplate" . | nindent 4 }}
+  strategy:
+    {{- $bg := default dict (default dict .Values.argoRollouts.strategy).blueGreen }}
+    {{- $canary := default dict (default dict .Values.argoRollouts.strategy).canary }}
+    {{- if and $bg.enabled $canary.enabled }}
+    {{- fail "chart-deco-studio: argoRollouts.strategy.blueGreen.enabled and argoRollouts.strategy.canary.enabled are mutually exclusive — pick one." }}
+    {{- end }}
+    {{- if $canary.enabled }}
+    canary:
+      {{- with $canary.canaryService }}
+      canaryService: {{ . }}
+      {{- end }}
+      {{- with $canary.stableService }}
+      stableService: {{ . }}
+      {{- end }}
+      {{- with $canary.steps }}
+      steps:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $canary.trafficRouting }}
+      trafficRouting:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- else }}
+    blueGreen:
+      activeService: {{ default (include "chart-deco-studio.fullname" .) $bg.activeServiceName }}
+      previewService: {{ default (printf "%s-preview" (include "chart-deco-studio.fullname" .)) $bg.previewServiceName }}
+      autoPromotionEnabled: {{ default false $bg.autoPromotionEnabled }}
+      {{- with $bg.autoPromotionSeconds }}
+      autoPromotionSeconds: {{ . }}
+      {{- end }}
+      {{- with $bg.scaleDownDelaySeconds }}
+      scaleDownDelaySeconds: {{ . }}
+      {{- end }}
+      {{- with $bg.previewReplicaCount }}
+      previewReplicaCount: {{ . }}
+      {{- end }}
+      {{- with $bg.prePromotionAnalysis }}
+      prePromotionAnalysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $bg.postPromotionAnalysis }}
+      postPromotionAnalysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+{{- end }}
