@@ -21,6 +21,8 @@ interface WsData {
   sandboxPort: number;
   /** Path + query the client requested; forwarded verbatim to upstream. */
   upstreamPath: string;
+  /** Subprotocols requested by the client; passed to the upstream WS ctor. */
+  upstreamProtocols: string[];
   upstream?: WebSocket;
   pendingMessages: Array<string | Uint8Array>;
 }
@@ -40,10 +42,18 @@ export async function startLocalIngress(
 
       if (req.headers.get("upgrade") === "websocket") {
         const reqUrl = new URL(req.url);
+        const protocolHeader = req.headers.get("sec-websocket-protocol");
+        const upstreamProtocols = protocolHeader
+          ? protocolHeader
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
         const ok = srv.upgrade(req, {
           data: {
             sandboxPort,
             upstreamPath: `${reqUrl.pathname}${reqUrl.search}`,
+            upstreamProtocols,
             pendingMessages: [],
           },
         });
@@ -64,10 +74,14 @@ export async function startLocalIngress(
     },
     websocket: {
       async open(ws) {
-        const { sandboxPort, upstreamPath } = ws.data;
-        const upstream = new WebSocket(
-          `ws://127.0.0.1:${sandboxPort}${upstreamPath}`,
-        );
+        const { sandboxPort, upstreamPath, upstreamProtocols } = ws.data;
+        const upstream =
+          upstreamProtocols.length > 0
+            ? new WebSocket(
+                `ws://127.0.0.1:${sandboxPort}${upstreamPath}`,
+                upstreamProtocols,
+              )
+            : new WebSocket(`ws://127.0.0.1:${sandboxPort}${upstreamPath}`);
         ws.data.upstream = upstream;
         ws.data.pendingMessages = [];
         upstream.addEventListener("open", () => {

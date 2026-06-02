@@ -122,4 +122,35 @@ describe("local-ingress WS proxying", () => {
     expect(seenPath).toBe("/foo?token=hello");
     ws.close();
   });
+
+  test("forwards subprotocol to upstream", async () => {
+    let seenProtocol: string | null = null;
+    upstream = Bun.serve({
+      port: 0,
+      fetch(req, srv) {
+        if (req.headers.get("upgrade") === "websocket") {
+          seenProtocol = req.headers.get("sec-websocket-protocol");
+          // Bun's srv.upgrade accepts a `headers` option for the response.
+          srv.upgrade(req, {
+            data: {},
+            headers: { "sec-websocket-protocol": "vite-hmr" },
+          });
+          return undefined;
+        }
+        return new Response("no", { status: 404 });
+      },
+      websocket: { message() {}, open() {}, close() {} },
+    });
+    ingress = await startLocalIngress({
+      port: 0,
+      lookupSandboxPort: () => upstream!.port ?? null,
+    });
+    const ws = new WebSocket(`ws://abc.localhost:${ingress.port}/`, "vite-hmr");
+    await new Promise<void>((r) => ws.addEventListener("open", () => r()));
+    for (let i = 0; i < 40 && seenProtocol === null; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(seenProtocol).toBe("vite-hmr");
+    ws.close();
+  });
 });
