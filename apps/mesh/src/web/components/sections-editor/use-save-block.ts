@@ -1,6 +1,11 @@
+import { useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
 import { KEYS } from "@/web/lib/query-keys";
+
+/** Debounce window for form-driven block autosaves (ms). */
+export const AUTOSAVE_DELAY = 700;
 
 interface UseSaveBlockParams {
   orgSlug: string;
@@ -72,4 +77,38 @@ export function useSaveBlock({
       );
     },
   });
+}
+
+/**
+ * Wraps {@link useSaveBlock} with the standard debounced-autosave loop shared by
+ * every form-driven block editor (section forms, the SEO editor, the SEO
+ * sheets). Call `save(blockKey, data)` on each change; the latest payload is
+ * persisted once edits settle for {@link AUTOSAVE_DELAY}ms, with a toast on
+ * failure.
+ */
+export function useDebouncedSaveBlock(
+  params: UseSaveBlockParams,
+  opts?: { onSaved?: () => void },
+) {
+  const saveBlock = useSaveBlock(params);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRef = useRef<{
+    blockKey: string;
+    data: Record<string, unknown>;
+  } | null>(null);
+
+  const save = (blockKey: string, data: Record<string, unknown>) => {
+    latestRef.current = { blockKey, data };
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const pending = latestRef.current;
+      if (!pending) return;
+      saveBlock.mutate(pending, {
+        onSuccess: () => opts?.onSaved?.(),
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      });
+    }, AUTOSAVE_DELAY);
+  };
+
+  return { save, isPending: saveBlock.isPending };
 }

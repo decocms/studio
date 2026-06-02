@@ -22,7 +22,11 @@ import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
-import { useSaveBlock } from "./use-save-block";
+import {
+  AUTOSAVE_DELAY,
+  useDebouncedSaveBlock,
+  useSaveBlock,
+} from "./use-save-block";
 import { extractPages, globalSectionLabel } from "./page-list";
 import { normalizePagePath } from "./page-path-utils";
 import { SectionList, parseSections } from "./section-list";
@@ -81,8 +85,6 @@ import {
   updateMultivariateSectionVariantValue,
 } from "./section-variants";
 import { PageJsonDialog } from "./page-json-dialog";
-
-const AUTOSAVE_DELAY = 700;
 
 function SchemaFormPanel({
   activeSchema,
@@ -546,6 +548,10 @@ export function SectionsEditor({
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  const seoSave = useDebouncedSaveBlock(
+    { orgSlug, virtualMcpId, branch },
+    { onSaved },
+  );
   const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -553,8 +559,6 @@ export function SectionsEditor({
   const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const seoDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestSeoFormRef = useRef<Record<string, unknown> | null>(null);
   // Accumulates pending page header field changes to avoid losing edits
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
 
@@ -1836,21 +1840,8 @@ export function SectionsEditor({
   const handleSeoFormChange = (next: unknown) => {
     const nextRecord = next as Record<string, unknown>;
     setSeoFormValue(nextRecord);
-    latestSeoFormRef.current = nextRecord;
-
-    if (seoDebounceRef.current) clearTimeout(seoDebounceRef.current);
-    seoDebounceRef.current = setTimeout(() => {
-      const value = latestSeoFormRef.current;
-      if (!value || !activePageKey || !pageData) return;
-      const updatedPageData = { ...pageData, seo: value };
-      saveBlock.mutate(
-        { blockKey: activePageKey, data: updatedPageData },
-        {
-          onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(`Save failed: ${err.message}`),
-        },
-      );
-    }, AUTOSAVE_DELAY);
+    if (!activePageKey || !pageData) return;
+    seoSave.save(activePageKey, { ...pageData, seo: nextRecord });
   };
 
   const handleBreadcrumbClick = (index: number) => {

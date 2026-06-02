@@ -4,7 +4,7 @@ const PAGE_RESOLVE_TYPES = new Set([
 ]);
 
 /** Default deco SEO section type — schema fallback for inlined SEO props. */
-const DEFAULT_SEO_RESOLVE_TYPE = "website/sections/Seo/SeoV2.tsx";
+export const DEFAULT_SEO_RESOLVE_TYPE = "website/sections/Seo/SeoV2.tsx";
 
 /** Props that mark an object as SEO config even without a `__resolveType`. */
 const SEO_FIELD_HINTS = [
@@ -122,4 +122,53 @@ export function buildSiteSeoBlockData(
   value: Record<string, unknown>,
 ): Record<string, unknown> {
   return entry.kind === "block" ? value : { ...entry.blockData, seo: value };
+}
+
+/** What a SEO surface is editing: a specific page, or the site default. */
+export type SeoTarget =
+  | { kind: "page"; pageKey: string; pageName: string; path: string }
+  | { kind: "site" };
+
+export interface ResolvedSeo {
+  blockKey: string;
+  seoData: Record<string, unknown> | undefined;
+  /** resolveType to resolve the form schema with. */
+  seoResolveType: string;
+  /** Builds the full decofile block payload to persist an edited SEO value. */
+  build: (value: Record<string, unknown>) => Record<string, unknown>;
+}
+
+/**
+ * Resolves the SEO block + write target for a page or the site default. Shared
+ * by every SEO surface (the two-pane editor and the sheets) so they all read
+ * and persist SEO the same way. Returns null when no SEO block exists.
+ */
+export function resolveSeoTarget(
+  decofile: Record<string, unknown>,
+  target: SeoTarget,
+): ResolvedSeo | null {
+  if (target.kind === "site") {
+    const entry = findSiteSeoEntry(decofile);
+    if (!entry) return null;
+    return {
+      blockKey: entry.blockKey,
+      seoData: entry.seoData,
+      seoResolveType: entry.seoResolveType,
+      build: (value) => buildSiteSeoBlockData(entry, value),
+    };
+  }
+  const blockData = decofile[target.pageKey] as
+    | Record<string, unknown>
+    | undefined;
+  if (!blockData) return null;
+  const seo = blockData.seo as Record<string, unknown> | undefined;
+  return {
+    blockKey: target.pageKey,
+    seoData: seo,
+    seoResolveType:
+      typeof seo?.__resolveType === "string"
+        ? seo.__resolveType
+        : DEFAULT_SEO_RESOLVE_TYPE,
+    build: (value) => ({ ...blockData, seo: value }),
+  };
 }
