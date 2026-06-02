@@ -1018,22 +1018,38 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // View AI providers (read-only — every member needs to know which
       // providers are configured so chat / agents can use them). KEY_LIST
       // returns metadata only (no secret material); CREDITS is the balance
-      // shown in the chat header.
+      // shown in the chat header. TOPUP_URL returns a checkout link surfaced
+      // in the chat credits-exhausted banner so any member can self-serve.
       "AI_PROVIDERS_LIST",
       "AI_PROVIDERS_LIST_MODELS",
       "AI_PROVIDERS_ACTIVE",
       "AI_PROVIDER_KEY_LIST",
       "AI_PROVIDER_CREDITS",
+      "AI_PROVIDER_TOPUP_URL",
       // Object storage access
       "LIST_OBJECTS",
       "GET_OBJECT_METADATA",
       "GET_PRESIGNED_URL",
       "PUT_PRESIGNED_URL",
+      // Browse files in a configured bucket (file picker in the sandbox /
+      // content editor). Lists object keys only — no credentials returned.
+      "FILE_OBJECTS_LIST",
       // Sandbox previews
       "SANDBOX_START",
       "SANDBOX_DELETE",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
+      // App-shell essentials (read-only) — every member hits these on first
+      // paint or in the global chrome:
+      //   SETTINGS_GET → sidebar / plugins / model tiers loaded at shell boot
+      //   USER_GET     → resolve member display ("created by" on agents, etc.);
+      //                  handler scopes to shared-org members, no secrets
+      //   LINK_CURRENT_GET → caller's own desktop-link status (header poll)
+      //   BRAND_CONTEXT_LIST → org branding for the chat empty state
+      "ORGANIZATION_SETTINGS_GET",
+      "USER_GET",
+      "LINK_CURRENT_GET",
+      "BRAND_CONTEXT_LIST",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
