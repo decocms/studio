@@ -753,7 +753,7 @@ export function minioDownloadUrl(os: string, arch: string): string {
  * in-process `buildSettings` path (deco serve / deco dev) agrees with the
  * bundled-prod `initSettingsFromEnv` path. Pure (no IO) so it is unit-testable.
  */
-export function externalForcePathStyleFromEnv(raw: string | undefined): boolean {
+function externalForcePathStyleFromEnv(raw: string | undefined): boolean {
   return raw === undefined || raw === "" || raw === "true" || raw === "1";
 }
 
