@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -107,6 +107,15 @@ export function useDebouncedSaveBlock(
   const saveBlock = useSaveBlock(params);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestRef = useRef<{ blockKey: string; data: SaveData } | null>(null);
+
+  // Cancel a pending debounced save on unmount so it can't fire against a torn
+  // -down editor and persist a snapshot the user already navigated away from.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — timer lifecycle cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const save = (blockKey: string, data: SaveData) => {
     latestRef.current = { blockKey, data };
