@@ -14,8 +14,7 @@ export interface DispatchEnvelope {
   messagesRef?: MessagesRef;
 }
 
-/** Ephemeral key prefix; a bucket lifecycle rule reclaims `*\/link-dispatch/`.
- *  The org segment is implicit — BoundObjectStorage prepends `<orgId>/`. */
+/** Ephemeral key prefix; a bucket lifecycle rule reclaims `*\/link-dispatch/`. */
 export function offloadKey(reqId: string): string {
   return `link-dispatch/${reqId}`;
 }
@@ -41,9 +40,7 @@ export function parseMessagesRef(env: unknown): MessagesRef | null {
   return null;
 }
 
-export async function sha256Hex(
-  bytes: Uint8Array<ArrayBuffer>,
-): Promise<string> {
+export async function sha256Hex(bytes: BufferSource): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
