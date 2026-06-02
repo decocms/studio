@@ -20,7 +20,6 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
     for await (const c of remoteDispatch(
       "claude-code",
       { runId: "r", messages: [] } as never,
-      "u",
       "h",
       { proxyDaemonRequest: proxy } as never,
     ))
@@ -39,7 +38,6 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
         for await (const _ of remoteDispatch(
           "codex",
           { runId: "r" } as never,
-          "u",
           "h",
           { proxyDaemonRequest: proxy } as never,
         )) {
@@ -70,7 +68,6 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
     for await (const c of remoteDispatch(
       "claude-code",
       { runId: "r" } as never,
-      "u",
       "h",
       { proxyDaemonRequest: proxy } as never,
     ))

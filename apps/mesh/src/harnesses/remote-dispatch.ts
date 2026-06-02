@@ -29,7 +29,6 @@ export interface RemoteDispatchDeps {
 export function remoteDispatch(
   id: HarnessId,
   input: HarnessStreamInput,
-  _userSub: string,
   sandboxHandle: string,
   deps: RemoteDispatchDeps,
 ): AsyncIterable<UIMessageChunk> {
@@ -92,7 +91,10 @@ export function remoteDispatch(
         throw new Error(`[remoteDispatch] ${detail}`);
       }
 
-      const reader = res.body!.getReader();
+      const responseBody = res.body;
+      if (!responseBody)
+        throw new Error("[remoteDispatch] response body is null");
+      const reader = responseBody.getReader();
       // SINGLE streaming decoder across the whole Response body — a multi-byte
       // UTF-8 char can be split across chunks; a per-chunk decoder corrupts it.
       const decoder = new TextDecoder();
