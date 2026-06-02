@@ -25,6 +25,22 @@ import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 
+const DEFAULT_CHAT_PANEL_WIDTH = 45;
+
+/** react-resizable-panels requires numeric defaultSize; localStorage may hold strings. */
+function normalizePanelSizePercent(
+  value: unknown,
+  fallback = DEFAULT_CHAT_PANEL_WIDTH,
+): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0 || n >= 100) return fallback;
+  return n;
+}
+
+function chatPanelWidthInitializer(existing: number | undefined): number {
+  return normalizePanelSizePercent(existing, DEFAULT_CHAT_PANEL_WIDTH);
+}
+
 function PersistentChatPanel({
   children,
   defaultSize,
@@ -33,12 +49,16 @@ function PersistentChatPanel({
   const [_isPending, startTransition] = useTransition();
   const [storedChatPanelWidth, setChatPanelWidth] = useLocalStorage(
     LOCALSTORAGE_KEYS.decoChatPanelWidth(),
-    45,
+    chatPanelWidthInitializer,
+  );
+  const chatPanelWidth = normalizePanelSizePercent(
+    storedChatPanelWidth,
+    DEFAULT_CHAT_PANEL_WIDTH,
   );
   // Only apply the stored width when both panels are open (non-extreme default).
   // When chat is solo (100) or closed (0), the caller's defaultSize wins.
   const effectiveDefaultSize =
-    defaultSize > 0 && defaultSize < 100 ? storedChatPanelWidth : defaultSize;
+    defaultSize > 0 && defaultSize < 100 ? chatPanelWidth : defaultSize;
   const handleResize = (size: number) =>
     startTransition(() => {
       if (size > 0 && size < 100) setChatPanelWidth(size);
@@ -82,7 +102,11 @@ export function ChatMainPanelGroup({
   const sizes = computeChatMainSizes(chatOpen, mainOpen);
   const [storedChatPanelWidth] = useLocalStorage(
     LOCALSTORAGE_KEYS.decoChatPanelWidth(),
-    45,
+    chatPanelWidthInitializer,
+  );
+  const chatPanelWidth = normalizePanelSizePercent(
+    storedChatPanelWidth,
+    DEFAULT_CHAT_PANEL_WIDTH,
   );
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
 
@@ -92,11 +116,10 @@ export function ChatMainPanelGroup({
     if (!handle) return;
     const s = computeChatMainSizes(chatOpen, mainOpen);
     // When both panels are open, honor the user's persisted chat width.
-    const chatSize = s.chat > 0 && s.chat < 100 ? storedChatPanelWidth : s.chat;
-    const mainSize =
-      s.chat > 0 && s.chat < 100 ? 100 - storedChatPanelWidth : s.main;
+    const chatSize = s.chat > 0 && s.chat < 100 ? chatPanelWidth : s.chat;
+    const mainSize = s.chat > 0 && s.chat < 100 ? 100 - chatPanelWidth : s.main;
     handle.setLayout([chatSize, mainSize]);
-  }, [chatOpen, mainOpen, storedChatPanelWidth]);
+  }, [chatOpen, mainOpen, chatPanelWidth]);
 
   return (
     <ResizablePanelGroup
