@@ -65,6 +65,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
   const chat = useChatStream();
   const [publishOpen, setPublishOpen] = useState(false);
+  const [publishDialogIntent, setPublishDialogIntent] = useState<
+    "publish" | "open-pr"
+  >("publish");
   const [githubActionPending, setGithubActionPending] = useState(false);
   const debugKeyRef = useRef("");
 
@@ -248,7 +251,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
     if (!action || !githubHeadBranch) return;
     switch (action) {
       case "commit-and-push":
+        setPublishDialogIntent("publish");
+        setPublishOpen(true);
+        return;
       case "create-pr":
+        setPublishDialogIntent("open-pr");
         setPublishOpen(true);
         return;
       case "reopen":
@@ -312,6 +319,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
           githubActionPending={githubActionPending}
           onActivate={onActivate}
           prNumber={pr?.number}
+          prBase={pr?.base}
           onSquashMerge={handleSquashMerge}
           onReview={
             pr
@@ -336,6 +344,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
           owner={githubRepo.owner}
           repo={githubRepo.name}
           previewUrl={previewUrl}
+          dialogIntent={publishDialogIntent}
+          headSha={
+            effectiveBranchMeta.kind === "ready"
+              ? effectiveBranchMeta.headSha
+              : null
+          }
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={switchToFreshBranch}
@@ -351,6 +365,7 @@ function HeaderButtonRenderer(props: {
   githubActionPending: boolean;
   onActivate: (action: HeaderButton["action"]) => void;
   prNumber?: number;
+  prBase?: string;
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
   onReview?: () => void;
 }) {
@@ -371,11 +386,15 @@ function HeaderButtonRenderer(props: {
     ? "Chat is running"
     : (button.tooltip ?? null);
 
-  if (button.action === "merge-split" && props.prNumber != null) {
+  if (
+    button.action === "merge-split" &&
+    props.prNumber != null &&
+    props.prBase != null
+  ) {
     return (
       <WithTooltip label={tooltipLabel}>
         <MergeSplitButton
-          prNumber={props.prNumber}
+          baseBranch={props.prBase}
           disabled={disabled}
           loading={loading}
           onPublish={() => props.onSquashMerge(props.prNumber!)}

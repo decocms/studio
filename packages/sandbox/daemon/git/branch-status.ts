@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Broadcaster } from "../events/broadcast";
 import type { BranchMeta } from "../events/types";
 import type { Config } from "../types";
+import { computeBranchDivergence } from "./branch-divergence";
 import { gitSync as rawGitSync } from "./git-sync";
 import { parsePorcelainZ } from "./porcelain";
 
@@ -231,15 +232,17 @@ export class BranchStatusMonitor {
   }
 
   private compute(): Extract<BranchMeta, { kind: "ready" }> | null {
-    const run = (args: string[]) => this.runGit(args);
-    const refExists = (ref: string) =>
-      run(["rev-parse", "--verify", "--quiet", ref]).length > 0;
     try {
-      const branch = run(["rev-parse", "--abbrev-ref", "HEAD"]);
+      const branch = this.runGit(["rev-parse", "--abbrev-ref", "HEAD"]);
       if (!branch || branch === "HEAD") return null;
-      let base = run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
-      if (base.startsWith("origin/")) base = base.slice("origin/".length);
-      if (!base) base = "main";
+
+      const tryGit = (args: string[]) => {
+        const out = this.runGit(args);
+        return out.length > 0 ? out : null;
+      };
+      const { base, unpushed, aheadOfBase, behindBase, headSha } =
+        computeBranchDivergence(this.config.repoDir, tryGit);
+
       const dirtyPaths = this.readDirtyPaths();
       const baseline = this.dirtyBaseline;
       const { dirty, changedPaths } = this.isWorkingTreeDirty(dirtyPaths);
@@ -253,31 +256,7 @@ export class BranchStatusMonitor {
           workingTreeDirty: dirty,
         });
       }
-      const branchRef = refExists(`origin/${branch}`)
-        ? `origin/${branch}`
-        : "HEAD";
-      const unpushed =
-        branchRef === `origin/${branch}`
-          ? Number(
-              run(["rev-list", "--count", `origin/${branch}..HEAD`]) || "0",
-            )
-          : 0;
-      let aheadOfBase = 0;
-      let behindBase = 0;
-      if (refExists(`origin/${base}`)) {
-        const lr = run([
-          "rev-list",
-          "--left-right",
-          "--count",
-          `origin/${base}...${branchRef}`,
-        ]);
-        const m = lr.match(/^(\d+)\s+(\d+)$/);
-        if (m) {
-          behindBase = Number(m[1]);
-          aheadOfBase = Number(m[2]);
-        }
-      }
-      const headSha = run(["rev-parse", branchRef]);
+
       return {
         kind: "ready",
         branch,
