@@ -182,15 +182,12 @@ function extractPayload<T>(result: unknown): T {
 }
 
 /**
- * Get a single item by ID from a collection
- *
- * @param scopeKey - The scope key (connectionId for connection-scoped, virtualMcpId for virtual-mcp-scoped, etc.)
- * @param collectionName - The name of the collection (e.g., "CONNECTIONS", "AGENT")
- * @param itemId - The ID of the item to fetch (undefined returns null without making an API call)
- * @param client - The MCP client used to call collection tools
- * @returns Suspense query result with the item, or null if itemId is undefined
+ * Query options for a single collection item. Shared between useCollectionItem
+ * and parallel-prefetch batches (useSuspenseQueries) so both build an identical
+ * query key + queryFn — letting a prefetch warm the exact cache entry the hook
+ * later reads.
  */
-export function useCollectionItem<T extends CollectionEntity>(
+export function collectionItemQueryOptions<T extends CollectionEntity>(
   scopeKey: string,
   collectionName: string,
   itemId: string | undefined,
@@ -198,8 +195,7 @@ export function useCollectionItem<T extends CollectionEntity>(
 ) {
   const upperName = collectionName.toUpperCase();
   const getToolName = `COLLECTION_${upperName}_GET`;
-
-  const { data } = useSuspenseQuery({
+  return {
     queryKey: KEYS.collectionItem(
       client,
       scopeKey,
@@ -220,7 +216,18 @@ export function useCollectionItem<T extends CollectionEntity>(
       return extractPayload<CollectionGetOutput<T>>(result);
     },
     staleTime: 60_000,
-  });
+  };
+}
+
+export function useCollectionItem<T extends CollectionEntity>(
+  scopeKey: string,
+  collectionName: string,
+  itemId: string | undefined,
+  client: Client,
+) {
+  const { data } = useSuspenseQuery(
+    collectionItemQueryOptions<T>(scopeKey, collectionName, itemId, client),
+  );
 
   return data?.item ?? null;
 }

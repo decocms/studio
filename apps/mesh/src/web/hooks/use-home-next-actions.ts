@@ -29,8 +29,13 @@ interface HomeNextActionsResponse {
   tiles?: HomeTileEntry[];
 }
 
-export function useHomeNextActions(orgSlug: string) {
-  const query = useQuery({
+/**
+ * Query options for the home next-actions feed. Shared with parallel-prefetch
+ * batches so the (tile-gating) fetch can start alongside the self tool calls
+ * instead of waiting behind them.
+ */
+export function homeNextActionsQueryOptions(orgSlug: string) {
+  return {
     queryKey: KEYS.homeNextActions(orgSlug),
     queryFn: async (): Promise<HomeNextActionsResponse> => {
       // `no-store`: the endpoint sends `Cache-Control: max-age=10`, so a
@@ -44,8 +49,12 @@ export function useHomeNextActions(orgSlug: string) {
       return (await res.json()) as HomeNextActionsResponse;
     },
     staleTime: 0,
-    refetchOnWindowFocus: "always",
-  });
+    refetchOnWindowFocus: "always" as const,
+  };
+}
+
+export function useHomeNextActions(orgSlug: string) {
+  const query = useQuery(homeNextActionsQueryOptions(orgSlug));
 
   return {
     isLoading: query.isLoading,

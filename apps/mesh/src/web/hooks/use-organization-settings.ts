@@ -4,6 +4,7 @@ import {
   useProjectContext,
   WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   useMutation,
   useQuery,
@@ -69,6 +70,33 @@ const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
 };
 
 /**
+ * Query options for the shared org-settings row. Shared by both the suspense
+ * and non-suspense hooks below and by parallel-prefetch batches, so all callers
+ * build the same query key + queryFn and read one cache entry.
+ */
+export function organizationSettingsQueryOptions(
+  client: Client,
+  orgId: string,
+) {
+  return {
+    queryKey: KEYS.organizationSettings(orgId),
+    queryFn: async (): Promise<OrganizationSettings> => {
+      const result = (await client.callTool({
+        name: "ORGANIZATION_SETTINGS_GET",
+        arguments: {},
+      })) as { structuredContent?: OrganizationSettings; isError?: boolean };
+      if (result?.isError) {
+        return { ...EMPTY_SETTINGS, organizationId: orgId };
+      }
+      return (
+        result.structuredContent ?? { ...EMPTY_SETTINGS, organizationId: orgId }
+      );
+    },
+    staleTime: 60_000,
+  };
+}
+
+/**
  * Core query hook over the single shared `organization_settings` row.
  * Callers pass a `select` fn to derive just the slice they care about.
  * Not exported — use a named wrapper (useSimpleMode, useRegistryConfig, …).
@@ -84,23 +112,7 @@ function useOrganizationSettings<T = OrganizationSettings>(
   });
 
   return useQuery({
-    queryKey: KEYS.organizationSettings(org.id),
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "ORGANIZATION_SETTINGS_GET",
-        arguments: {},
-      })) as { structuredContent?: OrganizationSettings; isError?: boolean };
-      if (result?.isError) {
-        return { ...EMPTY_SETTINGS, organizationId: org.id };
-      }
-      return (
-        result.structuredContent ?? {
-          ...EMPTY_SETTINGS,
-          organizationId: org.id,
-        }
-      );
-    },
-    staleTime: 60_000,
+    ...organizationSettingsQueryOptions(client, org.id),
     select: select as (data: OrganizationSettings) => T,
   });
 }
@@ -120,22 +132,9 @@ export function useOrganizationSettingsSuspense(
     orgSlug,
   });
 
-  const { data } = useSuspenseQuery({
-    queryKey: KEYS.organizationSettings(orgId),
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "ORGANIZATION_SETTINGS_GET",
-        arguments: {},
-      })) as { structuredContent?: OrganizationSettings; isError?: boolean };
-      if (result?.isError) {
-        return { ...EMPTY_SETTINGS, organizationId: orgId };
-      }
-      return (
-        result.structuredContent ?? { ...EMPTY_SETTINGS, organizationId: orgId }
-      );
-    },
-    staleTime: 60_000,
-  });
+  const { data } = useSuspenseQuery(
+    organizationSettingsQueryOptions(client, orgId),
+  );
 
   return data;
 }

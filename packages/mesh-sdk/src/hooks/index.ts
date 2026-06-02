@@ -74,6 +74,7 @@ export {
 export {
   useVirtualMCPs,
   useVirtualMCP,
+  virtualMcpItemQueryOptions,
   useVirtualMCPActions,
   useVirtualMCPsLastUsed,
   type VirtualMCPFilter,
