@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
-import { Loading01 } from "@untitledui/icons";
 import { useCapability, type CapabilityId } from "@/web/hooks/use-capability";
-import { NoPermissionState } from "@/web/components/no-permission-state";
-import { CapabilityLoadError } from "@/web/components/capability-load-error";
+import { AccessGate } from "@/web/components/access-gate";
 
 interface RequireCapabilityProps {
   capability: CapabilityId;
@@ -13,10 +11,9 @@ interface RequireCapabilityProps {
 
 /**
  * Route-level guard. Renders children only when the current user has the
- * capability, a clean no-permission state otherwise, and a spinner while the
- * capability resolves (so the page doesn't flicker). Because the guarded
- * subtree isn't mounted until access is confirmed, the inner view's data
- * hooks never fire for a denied user.
+ * capability (spinner while resolving, retryable error on lookup failure,
+ * no-access panel when denied). The guarded subtree isn't mounted until access
+ * is confirmed, so the inner view's data hooks never fire for a denied user.
  */
 export function RequireCapability({
   capability,
@@ -24,24 +21,9 @@ export function RequireCapability({
   children,
 }: RequireCapabilityProps) {
   const { granted, loading, error } = useCapability(capability);
-
-  if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  // A failed capability lookup must not read as a denial — show a retryable
-  // error instead of locking the user (incl. owners/admins) out.
-  if (error) {
-    return <CapabilityLoadError />;
-  }
-
-  if (!granted) {
-    return <NoPermissionState area={area} />;
-  }
-
-  return <>{children}</>;
+  return (
+    <AccessGate granted={granted} loading={loading} error={error} area={area}>
+      {children}
+    </AccessGate>
+  );
 }
