@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { HTTPException } from "hono/http-exception";
 import type { Env } from "../hono-env";
 
 /** Max JSON body size for feedback POSTs. */
@@ -154,7 +153,7 @@ export function createFeedbackRoutes(sink: FeedbackSink = logFeedbackSink) {
       const mesh = c.get("meshContext");
       const userId = mesh.auth.user?.id ?? mesh.auth.apiKey?.userId;
       if (!userId) {
-        throw new HTTPException(401, { message: "Unauthorized" });
+        return c.json({ error: "Unauthorized" }, 401);
       }
 
       const orgId = mesh.organization?.id;
