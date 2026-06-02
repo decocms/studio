@@ -28,3 +28,54 @@ describe("codexHarnessFactory", () => {
     expect(typeof harness.stream).toBe("function");
   });
 });
+
+import type { UIMessageChunk } from "ai";
+
+describe("codexHarnessFactory.stream", () => {
+  test("yields a data-title-input chunk as the first emission", async () => {
+    const harness = codexHarnessFactory.create({} as HarnessContext);
+    const abortController = new AbortController();
+    abortController.abort();
+
+    const input = {
+      threadId: "t",
+      runId: "r",
+      messages: [
+        {
+          id: "m1",
+          role: "user",
+          parts: [{ type: "text", text: "Add OAuth support" }],
+        } as never,
+      ],
+      models: {
+        credentialId: "c",
+        thinking: { id: "codex:gpt-5.4", provider: "openai" },
+      },
+      mcp: { url: "https://example", headers: {}, expiresAt: 0 },
+      mode: "default",
+      temperature: 0.2,
+      toolApprovalLevel: "readonly",
+      user: { id: "u", email: "u@example.com" },
+      organizationId: "o",
+      virtualMcp: { id: "vm" },
+      agent: { id: "a" },
+      signal: abortController.signal,
+    } as never;
+
+    const chunks: UIMessageChunk[] = [];
+    try {
+      for await (const c of harness.stream(input)) {
+        chunks.push(c);
+        if (chunks.length >= 1) break;
+      }
+    } catch {
+      // streamText errors out post-abort; the first yield happens
+      // before the call.
+    }
+
+    expect(chunks[0]?.type).toBe("data-title-input");
+    expect(
+      (chunks[0] as { data?: { userMessage?: string } }).data?.userMessage,
+    ).toBe("Add OAuth support");
+  });
+});

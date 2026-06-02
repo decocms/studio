@@ -38,7 +38,8 @@
 
 import { streamText, type UIMessageChunk } from "ai";
 import { createCodexModel, resolveCodexModelId } from "./model";
-import { prepCliMessages } from "../cli-message-prep";
+import { extractUserText, prepCliMessages } from "../cli-message-prep";
+import { makeTitleInputChunk } from "../title-chunk";
 import type {
   Harness,
   HarnessContext,
@@ -93,6 +94,16 @@ export const codexHarnessFactory: HarnessFactory = {
           //    details — a previous `as never` cast hid this mismatch
           //    and would have thrown `InvalidPromptError` at runtime.
           const messages = await prepCliMessages(input.messages);
+
+          // 3a. Request cluster-side title generation. The harness emits a
+          //     single transient `data-title-input` chunk carrying the user
+          //     message text; the dispatch-layer interceptor
+          //     (apps/mesh/src/api/routes/decopilot/title-interceptor.ts) runs
+          //     genTitle against the cluster's pre-activated provider and
+          //     writes back a `data-thread-title` chunk + persists the title.
+          yield makeTitleInputChunk(
+            extractUserText(messages),
+          ) as UIMessageChunk;
 
           // 4. Run streamText. Codex's CLI manages its own tools and
           //    system prompt, so we explicitly DO NOT pass `tools` or
