@@ -573,14 +573,18 @@ export function AccountPopover() {
         });
       },
     },
-    {
-      key: "feedback",
-      label: "Feedback",
-      icon: <MessageChatCircle size={16} />,
-      onClick: () => {
-        setFeedbackOpen(true);
-      },
-    },
+    ...(orgParam
+      ? [
+          {
+            key: "feedback",
+            label: "Feedback",
+            icon: <MessageChatCircle size={16} />,
+            onClick: () => {
+              setFeedbackOpen(true);
+            },
+          } satisfies MenuItem,
+        ]
+      : []),
     {
       key: "terms",
       label: "Terms of Use",
@@ -743,11 +747,13 @@ export function AccountPopover() {
         open={creatingOrg}
         onOpenChange={setCreatingOrg}
       />
-      <FeedbackDialog
-        open={feedbackOpen}
-        onOpenChange={setFeedbackOpen}
-        orgSlug={orgParam ?? ""}
-      />
+      {orgParam ? (
+        <FeedbackDialog
+          open={feedbackOpen}
+          onOpenChange={setFeedbackOpen}
+          orgSlug={orgParam}
+        />
+      ) : null}
     </>
   );
 }

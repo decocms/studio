@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useParams } from "@tanstack/react-router";
 import { useCopy } from "@deco/ui/hooks/use-copy.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { MemoizedMarkdown } from "../../markdown.tsx";
@@ -25,6 +26,7 @@ export function MessageTextPart({
   alwaysShowActions = false,
 }: MessageTextPartProps) {
   const { handleCopy } = useCopy();
+  const orgSlug = (useParams({ strict: false }) as { org?: string }).org ?? "";
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const [isCopied, setIsCopied] = useState(false);
   const [feedback, setFeedback] = useState<"positive" | null>(null);
@@ -131,12 +133,15 @@ export function MessageTextPart({
           )}
         </div>
       )}
-      <MessageFeedbackDialog
-        open={negativeOpen}
-        onOpenChange={setNegativeOpen}
-        messageId={id}
-        threadId={threadId}
-      />
+      {showCopyButton && orgSlug ? (
+        <MessageFeedbackDialog
+          open={negativeOpen}
+          onOpenChange={setNegativeOpen}
+          orgSlug={orgSlug}
+          messageId={id}
+          threadId={threadId}
+        />
+      ) : null}
     </div>
   );
 }

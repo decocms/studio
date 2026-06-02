@@ -11,6 +11,7 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { toast } from "@deco/ui/components/sonner.js";
 import { track, getSessionReplayUrl } from "@/web/lib/posthog-client";
+import { submitFeedback } from "@/web/lib/submit-feedback";
 
 interface FeedbackDialogProps {
   open: boolean;
@@ -27,13 +28,11 @@ export function FeedbackDialog({
   const [sending, setSending] = useState(false);
 
   const handleSubmit = async () => {
-    if (!message.trim()) return;
+    if (sending || !message.trim() || !orgSlug) return;
     setSending(true);
     try {
-      const res = await fetch(`/api/${orgSlug}/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: message.trim() }),
+      const res = await submitFeedback(orgSlug, {
+        message: message.trim(),
       });
       if (!res.ok) {
         toast.error("Failed to send feedback. Please try again.");
@@ -79,7 +78,7 @@ export function FeedbackDialog({
             className="min-h-32 resize-none"
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !sending) {
-                handleSubmit();
+                void handleSubmit();
               }
             }}
           />
@@ -93,8 +92,8 @@ export function FeedbackDialog({
             contact@decocms.com
           </a>
           <Button
-            onClick={handleSubmit}
-            disabled={!message.trim() || sending}
+            onClick={() => void handleSubmit()}
+            disabled={!message.trim() || sending || !orgSlug}
             size="sm"
           >
             Send feedback

@@ -10,6 +10,7 @@ import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { toast } from "@deco/ui/components/sonner.js";
 import { track, getSessionReplayUrl } from "@/web/lib/posthog-client";
+import { submitFeedback } from "@/web/lib/submit-feedback";
 
 const REASONS = [
   "Incorrect or incomplete",
@@ -25,6 +26,7 @@ type Reason = (typeof REASONS)[number];
 interface MessageFeedbackDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  orgSlug: string;
   messageId: string;
   threadId: string | null;
 }
@@ -32,11 +34,15 @@ interface MessageFeedbackDialogProps {
 export function MessageFeedbackDialog({
   open,
   onOpenChange,
+  orgSlug,
   messageId,
   threadId,
 }: MessageFeedbackDialogProps) {
   const [selected, setSelected] = useState<Set<Reason>>(new Set());
   const [details, setDetails] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const canSubmit = selected.size > 0 || !!details.trim();
 
   const toggle = (reason: Reason) => {
     setSelected((prev) => {
@@ -50,18 +56,36 @@ export function MessageFeedbackDialog({
     });
   };
 
-  const handleSubmit = () => {
-    track("chat_message_feedback_negative", {
-      message_id: messageId,
-      thread_id: threadId,
-      reasons: [...selected],
-      details: details.trim() || undefined,
-      session_replay_url: getSessionReplayUrl(),
-    });
-    setSelected(new Set());
-    setDetails("");
-    onOpenChange(false);
-    toast.success("Feedback sent — thank you!");
+  const handleSubmit = async () => {
+    if (sending || !canSubmit || !orgSlug) return;
+    setSending(true);
+    try {
+      const res = await submitFeedback(orgSlug, {
+        kind: "chat_negative",
+        messageId,
+        threadId,
+        reasons: selected.size > 0 ? [...selected] : undefined,
+        details: details.trim() || undefined,
+      });
+      if (!res.ok) {
+        toast.error("Failed to send feedback. Please try again.");
+        return;
+      }
+      track("chat_message_feedback_negative", {
+        message_id: messageId,
+        thread_id: threadId,
+        reasons: selected.size > 0 ? [...selected] : undefined,
+        session_replay_url: getSessionReplayUrl(),
+      });
+      setSelected(new Set());
+      setDetails("");
+      onOpenChange(false);
+      toast.success("Feedback sent — thank you!");
+    } catch {
+      toast.error("Failed to send feedback. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -108,16 +132,18 @@ export function MessageFeedbackDialog({
             if (
               e.key === "Enter" &&
               (e.metaKey || e.ctrlKey) &&
-              !(selected.size === 0 && !details.trim())
-            )
-              handleSubmit();
+              canSubmit &&
+              !sending
+            ) {
+              void handleSubmit();
+            }
           }}
         />
 
         <div className="flex justify-end">
           <Button
-            onClick={handleSubmit}
-            disabled={selected.size === 0 && !details.trim()}
+            onClick={() => void handleSubmit()}
+            disabled={!canSubmit || sending || !orgSlug}
             size="sm"
           >
             Submit
