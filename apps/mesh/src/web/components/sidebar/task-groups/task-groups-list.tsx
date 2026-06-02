@@ -85,9 +85,18 @@ export function TaskGroupsList() {
   const [orgPinOverrides, setOrgPinOverrides] = useState<
     Record<string, boolean>
   >({});
+  const serverOrgPinnedSet = new Set(serverOrgPinnedIds);
+  // Only keep overrides that haven't been confirmed by server data yet.
+  // This prevents the group from jumping back when the override is cleared
+  // before the React Query re-fetch completes.
+  const activeOverrides = Object.fromEntries(
+    Object.entries(orgPinOverrides).filter(
+      ([id, pinned]) => serverOrgPinnedSet.has(id) !== pinned,
+    ),
+  );
   const orgPinnedIds = (() => {
     const set = new Set(serverOrgPinnedIds);
-    for (const [id, pinned] of Object.entries(orgPinOverrides)) {
+    for (const [id, pinned] of Object.entries(activeOverrides)) {
       if (pinned) set.add(id);
       else set.delete(id);
     }
@@ -193,7 +202,7 @@ export function TaskGroupsList() {
 
   const handleToggleOrgPin = async (virtualMcpId: string, pinned: boolean) => {
     if (!canManageOrgPin) return;
-    if (orgPinOverrides[virtualMcpId] !== undefined) return;
+    if (activeOverrides[virtualMcpId] !== undefined) return;
     track("sidebar_group_org_pin_toggled", {
       virtual_mcp_id: virtualMcpId,
       pinned,
@@ -204,14 +213,10 @@ export function TaskGroupsList() {
         id: virtualMcpId,
         data: { pinned },
       });
-      syncOrdersOnOrgPinToggle(orderScope, virtualMcpId, pinned);
-      setLocalOrderRevision((n) => n + 1);
-      setOrgPinOverrides((prev) => {
-        const next = { ...prev };
-        delete next[virtualMcpId];
-        return next;
-      });
+      // Override auto-clears via activeOverrides once serverOrgPinnedIds reflects the change.
+      // No explicit cleanup here to avoid the group jumping back while the re-fetch is in flight.
     } catch {
+      syncOrdersOnOrgPinToggle(orderScope, virtualMcpId, !pinned);
       setOrgPinOverrides((prev) => {
         const next = { ...prev };
         delete next[virtualMcpId];
