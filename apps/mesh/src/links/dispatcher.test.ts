@@ -194,4 +194,28 @@ describe("dispatcher", () => {
     }).toThrow(/MAX_PAYLOAD_EXCEEDED/);
     expect(unsubscribes).toBe(1); // exactly once — no leak, no double-cleanup
   });
+
+  test("request publish failure detaches the abort listener (no stray cancel on later abort)", async () => {
+    const nats = makeFakeNats();
+    const cancels: string[] = [];
+    (nats as { publish: typeof nats.publish }).publish = (subject) => {
+      if (subject.startsWith("links.dispatch.")) {
+        throw new Error("MAX_PAYLOAD_EXCEEDED");
+      }
+      if (subject.startsWith("links.cancel.")) cancels.push(subject);
+    };
+    const ac = new AbortController();
+    const dispatch = createDispatcher({ nats, requestTimeoutMs: 5_000 });
+    await expect(async () => {
+      for await (const _ of dispatch(
+        "user-1",
+        { method: "POST", path: "/_sandbox/x/write", headers: {}, body: "x" },
+        { signal: ac.signal },
+      ));
+    }).toThrow(/MAX_PAYLOAD_EXCEEDED/);
+    // The dispatch already failed and cleaned up; aborting now must not invoke
+    // onAbort (its listener was removed), so no cancel frame is published.
+    ac.abort();
+    expect(cancels).toEqual([]);
+  });
 });

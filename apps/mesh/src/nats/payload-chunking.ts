@@ -7,7 +7,8 @@
  * stream the consumer concatenates, so an oversized `chunk` frame is split
  * into smaller ORDERED chunks (no reassembly needed) before publishing.
  *
- * This module is the single source of truth for the per-message byte budget.
+ * This module is the link transport's source of truth for the per-message byte
+ * budget; decopilot's nats-stream-buffer.ts keeps its own separate copy.
  */
 
 /** Per-message ceiling, under the 1 MiB NATS default to leave headroom for

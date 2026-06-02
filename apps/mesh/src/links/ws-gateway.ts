@@ -327,13 +327,15 @@ function publishFrame(
   }
 }
 
-/** Best-effort clean error frame to a reply inbox. */
+/** Best-effort clean error frame to a reply inbox. Returns whether it
+ *  actually published — callers use this to decide if the inflight entry can
+ *  be dropped or must be kept for the close-time fallback. */
 function publishErrorFrame(
   ws: ServerWebSocket<WsAttachData>,
   reply: string,
   reqId: string,
   message: string,
-): void {
+): boolean {
   try {
     ws.data.deps.nats.publish(
       reply,
@@ -341,8 +343,10 @@ function publishErrorFrame(
         encodeFrame({ type: "error", reqId, code: "publish_failed", message }),
       ),
     );
+    return true;
   } catch {
     /* reply inbox unreachable — nothing more we can do */
+    return false;
   }
 }
 
@@ -366,13 +370,17 @@ async function onAfterHello(
     // A NATS publish error (e.g. connection gone) — surface it cleanly to the
     // waiting dispatcher instead of letting the throw escape the WS handler
     // and silently break the stream.
-    publishErrorFrame(
+    const delivered = publishErrorFrame(
       ws,
       entry.reply,
       frame.reqId,
       err instanceof Error ? err.message : String(err),
     );
-    inflight.delete(frame.reqId);
+    // Only drop the inflight entry once the dispatcher has actually been told
+    // the request ended. If even the error frame failed to publish (e.g. NATS
+    // down), keep it so the close handler's ws_closed fallback can still fire —
+    // the dispatcher has no idle timeout once it has received any chunk.
+    if (delivered) inflight.delete(frame.reqId);
     return;
   }
 

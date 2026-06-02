@@ -582,4 +582,80 @@ describe("ws-gateway dispatch demux", () => {
     }
     ws.close();
   });
+
+  test("keeps the inflight entry when even the error frame fails to publish, so close still notifies", async () => {
+    const nats = makeFakeNatsAdapter();
+    const inbox = "_INBOX.dbl";
+    const replies: Uint8Array[] = [];
+    nats.subs.set(inbox, (data) => replies.push(data));
+
+    // While `failInbox` is set, every publish to the reply inbox throws — so
+    // both the chunk publish AND the follow-up error-frame publish fail.
+    let failInbox = true;
+    const origPublish = nats.publish.bind(nats);
+    (nats as { publish: typeof nats.publish }).publish = (subject, data) => {
+      if (subject === inbox && failInbox) {
+        throw new Error("MAX_PAYLOAD_EXCEEDED");
+      }
+      origPublish(subject, data);
+    };
+
+    const { url } = await startGateway({
+      validateBearer: async () => "user-1",
+      natsAdapter: nats,
+    });
+    const ws = new WebSocket(url, {
+      headers: { authorization: "Bearer x" },
+    } as unknown as string);
+    await new Promise<void>((r) => ws.addEventListener("open", () => r()));
+    ws.send(
+      encodeFrame({
+        type: "hello",
+        previewPort: 5174,
+        machineId: "m",
+        cliVersion: "1",
+        capabilities: [],
+      }),
+    );
+    for (let i = 0; i < 40; i++) {
+      if (nats.subs.has("links.dispatch.user-1")) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const dispatchHandler = nats.subs.get("links.dispatch.user-1")!;
+    dispatchHandler(
+      new TextEncoder().encode(
+        encodeFrame({
+          type: "request",
+          reqId: "r-1",
+          method: "GET",
+          path: "/_sandbox/x/read",
+          headers: {},
+        }),
+      ),
+      inbox,
+    );
+
+    // Chunk publish throws; the error-frame publish throws too → nothing
+    // reaches the inbox and the inflight entry must be retained.
+    ws.send(encodeFrame({ type: "chunk", reqId: "r-1", data: "hello" }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(replies.length).toBe(0);
+
+    // NATS recovers; closing the socket must now deliver a ws_closed error for
+    // the still-tracked request, proving the entry was not dropped.
+    failInbox = false;
+    ws.close();
+
+    for (let i = 0; i < 80; i++) {
+      if (replies.length > 0) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(replies.length).toBeGreaterThanOrEqual(1);
+    const frame = decodeFrame(new TextDecoder().decode(replies[0]!));
+    expect(frame.type).toBe("error");
+    if (frame.type === "error") {
+      expect(frame.code).toBe("ws_closed");
+      expect(frame.reqId).toBe("r-1");
+    }
+  });
 });

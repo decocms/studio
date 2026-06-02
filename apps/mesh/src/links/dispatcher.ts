@@ -146,7 +146,9 @@ export function createDispatcher(deps: CreateDispatcherDeps): DispatchFn {
           );
         } catch (err) {
           // e.g. a request body over max_payload (follow-up F1 will chunk
-          // these). Tear down the inbox subscription before surfacing.
+          // these). This path skips the finally below, so detach the abort
+          // listener and tear down the inbox subscription before surfacing.
+          opts?.signal?.removeEventListener("abort", onAbort);
           cleanup();
           throw err instanceof Error ? err : new Error(String(err));
         }
