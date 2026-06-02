@@ -24,7 +24,7 @@ interface WsData {
   /** Subprotocols requested by the client; passed to the upstream WS ctor. */
   upstreamProtocols: string[];
   upstream?: WebSocket;
-  pendingMessages: Array<string | Uint8Array>;
+  pendingMessages: Array<string | Uint8Array | ArrayBuffer>;
 }
 
 export async function startLocalIngress(
@@ -82,6 +82,7 @@ export async function startLocalIngress(
                 upstreamProtocols,
               )
             : new WebSocket(`ws://127.0.0.1:${sandboxPort}${upstreamPath}`);
+        upstream.binaryType = "arraybuffer";
         ws.data.upstream = upstream;
         ws.data.pendingMessages = [];
         upstream.addEventListener("open", () => {
@@ -98,7 +99,7 @@ export async function startLocalIngress(
         });
         upstream.addEventListener("message", (e) => {
           try {
-            ws.send(e.data as string);
+            ws.send(e.data as string | Uint8Array | ArrayBuffer);
           } catch {
             /* */
           }
@@ -123,7 +124,12 @@ export async function startLocalIngress(
       },
       message(ws, raw) {
         const upstream = ws.data.upstream;
-        const msg = typeof raw === "string" ? raw : new Uint8Array(raw);
+        const msg: string | Uint8Array | ArrayBuffer =
+          typeof raw === "string"
+            ? raw
+            : raw instanceof ArrayBuffer
+              ? raw
+              : new Uint8Array(raw);
         if (!upstream || upstream.readyState !== WebSocket.OPEN) {
           ws.data.pendingMessages.push(msg);
           return;
