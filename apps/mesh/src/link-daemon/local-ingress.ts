@@ -7,6 +7,14 @@
  */
 import { parseHandleFromHost } from "./host-parser";
 
+/**
+ * Cap on frames buffered between client upgrade and upstream WS open. Vite
+ * HMR sends roughly one frame per file event, so 256 covers a normal cold
+ * start with room to spare while preventing a slow/blackholed upstream from
+ * exhausting daemon memory. Mirrors MAX_PENDING_FRAMES in preview-proxy.ts.
+ */
+const MAX_PENDING_FRAMES = 256;
+
 export interface StartLocalIngressInput {
   port: number;
   lookupSandboxPort: (handle: string) => number | null;
@@ -131,6 +139,19 @@ export async function startLocalIngress(
               ? raw
               : new Uint8Array(raw);
         if (!upstream || upstream.readyState !== WebSocket.OPEN) {
+          if (ws.data.pendingMessages.length >= MAX_PENDING_FRAMES) {
+            try {
+              ws.close(1011, "ingress backlog overflow");
+            } catch {
+              /* */
+            }
+            try {
+              upstream?.close();
+            } catch {
+              /* */
+            }
+            return;
+          }
           ws.data.pendingMessages.push(msg);
           return;
         }
