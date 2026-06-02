@@ -8,6 +8,7 @@ import { SearchInput } from "@deco/ui/components/search-input.tsx";
 import { Page } from "@/web/components/page";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
+import { RequireCapability } from "@/web/components/require-capability";
 import { MONITORING_CONFIG } from "@/web/components/monitoring/config.ts";
 import type { DateRange } from "@/web/components/monitoring/monitoring-stats-row.tsx";
 import {
@@ -885,101 +886,103 @@ export default function MonitoringDashboard() {
     activeFiltersCount += validPropertyFilters.length;
 
   return (
-    <Page>
-      <ErrorBoundary
-        fallback={
-          <>
-            <Page.Body className="!pb-3">
-              <Page.Title>Monitoring</Page.Title>
-            </Page.Body>
-            <Page.Content>
-              <div className="flex-1 flex items-center justify-center h-full">
-                <EmptyState
-                  title="Failed to load monitoring data"
-                  description="There was an error loading the monitoring data. Please try again."
-                />
-              </div>
-            </Page.Content>
-          </>
-        }
-      >
-        <Suspense
+    <RequireCapability capability="monitoring:view" area="monitoring">
+      <Page>
+        <ErrorBoundary
           fallback={
             <>
               <Page.Body className="!pb-3">
-                <div className="flex flex-col gap-4">
-                  <Page.Title>Monitoring</Page.Title>
-                  <CollectionTabs
-                    tabs={[
-                      { id: "overview", label: "Overview" },
-                      { id: "audit", label: "Audit" },
-                      { id: "threads", label: "Threads" },
-                    ]}
-                    activeTab={tab}
-                    onTabChange={(tabId) =>
-                      updateFilters({
-                        tab: tabId as "overview" | "audit" | "threads",
-                      })
-                    }
+                <Page.Title>Monitoring</Page.Title>
+              </Page.Body>
+              <Page.Content>
+                <div className="flex-1 flex items-center justify-center h-full">
+                  <EmptyState
+                    title="Failed to load monitoring data"
+                    description="There was an error loading the monitoring data. Please try again."
                   />
                 </div>
-              </Page.Body>
-
-              {tab === "threads" ? (
-                <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
-                  <MonitoringLogsTable.Skeleton />
-                </div>
-              ) : tab === "audit" ? (
-                <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
-                  <MonitoringLogsTable.Skeleton />
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col overflow-auto">
-                  <OverviewTabSkeleton />
-                </div>
-              )}
+              </Page.Content>
             </>
           }
         >
-          <MonitoringDashboardContent
-            tab={tab}
-            dateRange={dateRange}
-            displayDateRange={displayDateRange}
-            connectionIds={connectionIds}
-            virtualMcpIds={virtualMcpIds}
-            tool={tool}
-            status={status}
-            search={searchQuery}
-            streaming={streaming}
-            hideSystem={hideSystem}
-            activeFiltersCount={activeFiltersCount}
-            from={from}
-            to={to}
-            propertyFilters={propertyFilters}
-            onUpdateFilters={updateFilters}
-            onTimeRangeChange={(range) => {
-              track("monitoring_time_range_changed", {
-                from: range.from,
-                to: range.to,
-              });
-              handleTimeRangeChange(range);
-            }}
-            onStreamingToggle={() => {
-              track("monitoring_live_toggled", { enabled: !streaming });
-              updateFilters({ streaming: !streaming });
-            }}
-            onTabChange={(newTab) => {
-              if (newTab !== tab) {
-                track("monitoring_tab_changed", {
-                  from_tab: tab,
-                  to_tab: newTab,
+          <Suspense
+            fallback={
+              <>
+                <Page.Body className="!pb-3">
+                  <div className="flex flex-col gap-4">
+                    <Page.Title>Monitoring</Page.Title>
+                    <CollectionTabs
+                      tabs={[
+                        { id: "overview", label: "Overview" },
+                        { id: "audit", label: "Audit" },
+                        { id: "threads", label: "Threads" },
+                      ]}
+                      activeTab={tab}
+                      onTabChange={(tabId) =>
+                        updateFilters({
+                          tab: tabId as "overview" | "audit" | "threads",
+                        })
+                      }
+                    />
+                  </div>
+                </Page.Body>
+
+                {tab === "threads" ? (
+                  <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+                    <MonitoringLogsTable.Skeleton />
+                  </div>
+                ) : tab === "audit" ? (
+                  <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">
+                    <MonitoringLogsTable.Skeleton />
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col overflow-auto">
+                    <OverviewTabSkeleton />
+                  </div>
+                )}
+              </>
+            }
+          >
+            <MonitoringDashboardContent
+              tab={tab}
+              dateRange={dateRange}
+              displayDateRange={displayDateRange}
+              connectionIds={connectionIds}
+              virtualMcpIds={virtualMcpIds}
+              tool={tool}
+              status={status}
+              search={searchQuery}
+              streaming={streaming}
+              hideSystem={hideSystem}
+              activeFiltersCount={activeFiltersCount}
+              from={from}
+              to={to}
+              propertyFilters={propertyFilters}
+              onUpdateFilters={updateFilters}
+              onTimeRangeChange={(range) => {
+                track("monitoring_time_range_changed", {
+                  from: range.from,
+                  to: range.to,
                 });
-              }
-              updateFilters({ tab: newTab });
-            }}
-          />
-        </Suspense>
-      </ErrorBoundary>
-    </Page>
+                handleTimeRangeChange(range);
+              }}
+              onStreamingToggle={() => {
+                track("monitoring_live_toggled", { enabled: !streaming });
+                updateFilters({ streaming: !streaming });
+              }}
+              onTabChange={(newTab) => {
+                if (newTab !== tab) {
+                  track("monitoring_tab_changed", {
+                    from_tab: tab,
+                    to_tab: newTab,
+                  });
+                }
+                updateFilters({ tab: newTab });
+              }}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      </Page>
+    </RequireCapability>
   );
 }

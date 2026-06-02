@@ -133,9 +133,9 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
     {
       label: "Build",
       items: [
-        // connections + agents map to heavy route components that aren't
-        // capability-guarded yet — gated fully (nav + route + actions) in a
-        // follow-up, so leave them visible here to avoid half-gating.
+        // connections + agents stay visible to every member — viewing them is
+        // basic-usage. The create/update/delete affordances inside those pages
+        // are gated in-page by connections:manage / agents:manage.
         {
           key: "connections",
           label: "Connections",
@@ -168,12 +168,11 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
       label: "Manage",
       items: [
         {
-          // Monitor's route isn't capability-guarded yet (see Build note); gated
-          // fully in the follow-up. Visible to all members for now.
           key: "monitor",
           label: "Monitor",
           icon: <BarChart10 size={14} />,
           to: "/$org/settings/monitor",
+          requires: "monitoring:view",
         },
         {
           key: "members",
