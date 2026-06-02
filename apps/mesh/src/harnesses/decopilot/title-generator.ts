@@ -52,14 +52,14 @@ export function genTitle(config: {
     }, POST_STREAM_GRACE_MS);
   };
 
-  // Always resolves to a usable title: first line of the user message, run
-  // through the same sanitization as the model title, or a static default if
-  // the message is empty or has no usable text.
+  // Fallback used when the LLM call errors or produces unusable output.
+  // Spec: take the literal first 10 characters of the user message, trim,
+  // and fall through to "New chat" if there's no usable letter/digit.
+  // Short, deterministic, and cheap; the user can rename the thread at
+  // any time. 10 chars was picked over the previous 60-char first-line
+  // shape to keep failed/empty titles visually compact in the sidebar.
   const fallbackTitle = (() => {
-    const candidate = (userMessage.split("\n")[0] ?? "")
-      .replace(/[.!?]$/, "")
-      .slice(0, 60)
-      .trim();
+    const candidate = userMessage.slice(0, 10).trim();
     return hasUsableText(candidate) ? candidate : "New chat";
   })();
 

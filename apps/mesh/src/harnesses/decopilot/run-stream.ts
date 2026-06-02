@@ -57,15 +57,11 @@ import type { MeshProvider } from "@/ai-providers/types";
 import { createEnableToolTool } from "./built-in-tools/enable-tool";
 import type { PendingImage } from "./built-in-tools";
 import { createUsageAccumulator } from "../usage-accumulator";
-import {
-  DEFAULT_THREAD_TITLE,
-  generateMessageId,
-} from "../../api/routes/decopilot/constants";
+import { generateMessageId } from "../../api/routes/decopilot/constants";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
-import { genTitle } from "./title-generator";
+import { makeTitleInputChunk } from "../title-chunk";
 import type { ChatMessage } from "../../api/routes/decopilot/types";
 import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
-import { createLanguageModel } from "../../ai-providers/language-model";
 import type { HarnessStreamInput } from "../types";
 import type { AssembledTools } from "./tools";
 import type { AssembledPrompt } from "./prompt";
@@ -383,10 +379,6 @@ export async function* runDecopilotStream(
     processedMessages,
     originalMessages,
     threadId,
-    currentThreadTitle,
-    registerPendingOp,
-    isStreamFinished,
-    onTitleUpdated,
     writer,
   } = extras;
 
@@ -397,71 +389,14 @@ export async function* runDecopilotStream(
   // Side-channel chunk queue — see `makeChunkQueue` jsdoc for why.
   const chunkQueue = makeChunkQueue();
 
-  // ── Auto-title: kick off in parallel with the main stream ─────────
-  //
-  // Title generation only runs when the thread is still using the
-  // default name AND we have a non-CLI provider (we always do here —
-  // the CLI branches live in their own harness). When the title
-  // promise resolves, persist the new value and push the
-  // `data-thread-title` chunk onto the queue — so it interleaves with
-  // the main streamText output via the generator's yield loop.
-  let titleHandle: ReturnType<typeof genTitle> | null = null;
-  const shouldGenerateTitle = currentThreadTitle === DEFAULT_THREAD_TITLE;
-  if (shouldGenerateTitle) {
-    const titleInput = JSON.stringify(processedMessages[0]?.content);
-    titleHandle = genTitle({
-      abortSignal: registrySignal,
-      model: createLanguageModel(
-        provider,
-        input.models.fast ?? input.models.thinking,
-      ),
-      userMessage: titleInput,
-    });
-    const titleOp = titleHandle.promise
-      .then(async (title) => {
-        if (!title) return;
-
-        await ctx.storage.threads.update(threadId, { title }).catch((error) => {
-          console.error(
-            "[decopilot:stream] Error updating thread title",
-            error,
-          );
-        });
-
-        // Notify subscribers outside the per-thread /stream (other tabs,
-        // panels). Best-effort: a publish failure must not break the run.
-        try {
-          await onTitleUpdated?.(title);
-        } catch (err) {
-          console.error(
-            "[decopilot:stream] onTitleUpdated callback failed",
-            err,
-          );
-        }
-
-        if (!isStreamFinished()) {
-          chunkQueue.push({
-            type: "data-thread-title",
-            data: { title },
-            transient: true,
-          });
-          console.log(
-            "[decopilot:title-debug] SSE title event sent threadId=%s",
-            threadId,
-          );
-        } else {
-          console.warn(
-            "[decopilot:title-debug] Stream already finished, title SSE NOT sent threadId=%s title=%j",
-            threadId,
-            title,
-          );
-        }
-      })
-      .catch((error) => {
-        console.warn("[decopilot:stream] Title generation failed:", error);
-      });
-    registerPendingOp(titleOp);
-  }
+  // ── Auto-title: emit a data-title-input chunk so the cluster's
+  //    dispatch-layer interceptor runs title generation. The harness
+  //    itself no longer touches genTitle, storage, or onTitleUpdated;
+  //    see apps/mesh/src/api/routes/decopilot/title-interceptor.ts. The
+  //    interceptor gates on currentThreadTitle, so it's safe to emit
+  //    unconditionally — the interceptor decides whether to act.
+  const userMessageText = JSON.stringify(processedMessages[0]?.content ?? "");
+  yield makeTitleInputChunk(userMessageText) as UIMessageChunk;
 
   // ── Mode + tool gating state shared between prepareStep and the
   //    `tools` argument to streamText ───────────────────────────────
@@ -1049,10 +984,9 @@ export async function* runDecopilotStream(
     // Defensive: make sure the queue is closed so any callback fired
     // after we exit can't hang the consumer.
     chunkQueue.close();
-    // Signal to the title-gen helper that the main stream is done.
-    // Starts its 10s grace period before aborting — mirroring the
-    // outer onFinish/onError handlers in the inline original.
-    titleHandle?.finish();
+    // Note: the title-gen grace period (10s post-stream) lives in the
+    // dispatch-layer title interceptor now — see
+    // apps/mesh/src/api/routes/decopilot/title-interceptor.ts.
   }
 
   // Note about posthog: the original `chat_message_completed` /
