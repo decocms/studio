@@ -5,20 +5,23 @@ import {
   getCachedGroupProbeResult,
   inferServerHasMoreWithoutProbe,
 } from "./group-threads-probe-cache";
+import { resetGroupThreadsFetchQueueForTests } from "./group-threads-fetch-queue";
 import { GROUP_PAGE_SIZE } from "./next-page-offset";
 
 afterEach(() => {
   clearGroupThreadsProbeCacheForTests();
+  resetGroupThreadsFetchQueueForTests();
 });
 
 describe("inferServerHasMoreWithoutProbe", () => {
-  it("returns true when a full page is already visible", () => {
-    expect(inferServerHasMoreWithoutProbe(GROUP_PAGE_SIZE, false)).toBe(true);
-  });
-
   it("returns false when the global list is exhausted", () => {
     expect(inferServerHasMoreWithoutProbe(0, false)).toBe(false);
     expect(inferServerHasMoreWithoutProbe(3, false)).toBe(false);
+    expect(inferServerHasMoreWithoutProbe(GROUP_PAGE_SIZE, false)).toBe(false);
+  });
+
+  it("returns true when a full page is visible and the global list has more", () => {
+    expect(inferServerHasMoreWithoutProbe(GROUP_PAGE_SIZE, true)).toBe(true);
   });
 
   it("returns null when a network probe is still required", () => {
@@ -59,7 +62,9 @@ describe("ensureGroupProbe", () => {
     };
 
     ensureGroupProbe("cached", probe, () => {});
-    await Promise.resolve();
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
     expect(calls).toBe(1);
 
     let secondResult: boolean | undefined;
@@ -68,5 +73,40 @@ describe("ensureGroupProbe", () => {
     });
     expect(secondResult).toBe(false);
     expect(calls).toBe(1);
+  });
+
+  it("does not cache failed probes so a later call can retry", async () => {
+    let calls = 0;
+    const probe = () => {
+      calls++;
+      return Promise.reject(new Error("network"));
+    };
+
+    const results: boolean[] = [];
+    ensureGroupProbe("retry", probe, (value) => {
+      results.push(value);
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    expect(calls).toBe(1);
+    expect(results).toEqual([false]);
+    expect(getCachedGroupProbeResult("retry")).toBeUndefined();
+
+    ensureGroupProbe(
+      "retry",
+      async () => {
+        calls++;
+        return true;
+      },
+      (value) => {
+        results.push(value);
+      },
+    );
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    expect(calls).toBe(2);
+    expect(results).toEqual([false, true]);
   });
 });

@@ -1,3 +1,4 @@
+import { enqueueGroupThreadsFetch } from "./group-threads-fetch-queue";
 import { GROUP_PAGE_SIZE } from "./next-page-offset";
 
 const probeResults = new Map<string, boolean>();
@@ -11,8 +12,8 @@ export function inferServerHasMoreWithoutProbe(
   visibleCount: number,
   globalHasMore: boolean,
 ): boolean | null {
-  if (visibleCount >= GROUP_PAGE_SIZE) return true;
   if (!globalHasMore) return false;
+  if (visibleCount >= GROUP_PAGE_SIZE) return true;
   return null;
 }
 
@@ -46,21 +47,20 @@ export function ensureGroupProbe(
 
   let inflight = probeInflight.get(identity);
   if (!inflight) {
-    inflight = probe()
+    inflight = enqueueGroupThreadsFetch(probe)
       .then((result) => {
         probeResults.set(identity, result);
         probeInflight.delete(identity);
         return result;
       })
       .catch(() => {
-        probeResults.set(identity, false);
         probeInflight.delete(identity);
-        return false;
+        return Promise.reject(new Error("group probe failed"));
       });
     probeInflight.set(identity, inflight);
   }
 
-  void inflight.then(onResolved);
+  void inflight.then(onResolved, () => onResolved(false));
 }
 
 export function clearGroupThreadsProbeCacheForTests(): void {
