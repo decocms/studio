@@ -12,10 +12,10 @@
  *     tool, yet is denied a non-basic tool it was never granted. This is the
  *     test that actually exercises the runtime grant.
  *   - A member on the built-in "user" role likewise gets basic-usage but is
- *     denied a gated tool. The `user` role is defined with `self: ["*"]`, and
- *     `createBoundAuthClient` falls back to a `{ self: ["*"] }` wildcard probe,
- *     so this guards against that combination re-granting full access once the
- *     owner/admin-only bypass is in place.
+ *     denied a gated tool, and is denied org management via Better Auth's native
+ *     endpoints (invite-member). Guards two regressions: the `self: ["*"]` grant
+ *     + wildcard fallback re-granting every tool, and the `user` role spreading
+ *     `adminAc` (org-admin statements) instead of member-level `memberAc`.
  *   - A NON-member cannot call a basic-usage tool against the org — the grant
  *     must never leak past membership.
  *
@@ -230,6 +230,27 @@ test.describe("runtime basic-usage grant", () => {
       )}`,
     ).toBe(true);
     expect(errText).toMatch(/access denied|permission/i);
+
+    // The built-in user role uses member-level org statements (memberAc), not
+    // adminAc — so Better Auth's native org endpoints reject org management.
+    // invite-member requires `invitation: ["create"]`, which memberAc omits;
+    // adminAc would have granted it.
+    const escalation = await memberCtx.post(
+      "/api/auth/organization/invite-member",
+      {
+        data: {
+          organizationId: orgId,
+          email: `escalation-${Date.now()}@example.com`,
+          role: "user",
+        },
+      },
+    );
+    expect(
+      escalation.ok(),
+      `expected invite-member to be denied for built-in user, got ${escalation.status()}: ${await escalation
+        .text()
+        .catch(() => "")}`,
+    ).toBe(false);
 
     await ownerCtx.dispose();
     await memberCtx.dispose();

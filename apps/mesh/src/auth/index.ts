@@ -31,6 +31,7 @@ import {
 import {
   adminAc,
   defaultStatements,
+  memberAc,
 } from "@decocms/better-auth/plugins/organization/access";
 
 import { getConfig } from "@/core/config";
@@ -118,9 +119,15 @@ const ac = createAccessControl(statement);
 // (allowedRolesToCreateResources = ADMIN_ROLES).
 const creatorSelf = ["*", ...allTools];
 
+// `user` spreads `memberAc` (the org plugin's member role), NOT `adminAc`. These
+// org statements (organization/member/invitation/team/ac) gate Better Auth's
+// native org-plugin endpoints — not MCP tools, which our AccessControl checks on
+// `self`/connection buckets. `adminAc` grants org:update + member/invitation/team
+// management; spreading it here would let a plain member manage the org via those
+// endpoints. `memberAc` grants only `ac: ["read"]` (read roles for the UI).
 const user = ac.newRole({
   self: [],
-  ...adminAc.statements,
+  ...memberAc.statements,
 }) as Role;
 
 const admin = ac.newRole({
