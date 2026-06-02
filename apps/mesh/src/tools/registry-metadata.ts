@@ -1015,10 +1015,15 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // View automations
       "AUTOMATION_GET",
       "AUTOMATION_LIST",
-      // View AI providers
+      // View AI providers (read-only — every member needs to know which
+      // providers are configured so chat / agents can use them). KEY_LIST
+      // returns metadata only (no secret material); CREDITS is the balance
+      // shown in the chat header.
       "AI_PROVIDERS_LIST",
       "AI_PROVIDERS_LIST_MODELS",
       "AI_PROVIDERS_ACTIVE",
+      "AI_PROVIDER_KEY_LIST",
+      "AI_PROVIDER_CREDITS",
       // Object storage access
       "LIST_OBJECTS",
       "GET_OBJECT_METADATA",
