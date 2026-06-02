@@ -248,6 +248,9 @@ export function LatencyLabel({ latency }: { latency?: number }) {
   );
 }
 
+/** Max items shown before a "See all" row in list-style tool cards. */
+export const MAX_VISIBLE = 4;
+
 /** "See all N <noun>" footer row used by list-style tool cards. */
 export function SeeAllRow({
   count,

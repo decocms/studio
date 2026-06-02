@@ -8,7 +8,12 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
-import { ToolCallShell, LatencyLabel, SeeAllRow } from "./common.tsx";
+import {
+  ToolCallShell,
+  LatencyLabel,
+  SeeAllRow,
+  MAX_VISIBLE,
+} from "./common.tsx";
 import { getEffectiveState, unwrapResult } from "./utils.tsx";
 import { AgentConnectionsPreview } from "./agent-connections-preview.tsx";
 
@@ -16,8 +21,6 @@ interface AgentListPartProps {
   part: ToolUIPart;
   latency?: number;
 }
-
-const MAX_VISIBLE = 4;
 
 function AgentRow({ agent }: { agent: VirtualMCPEntity }) {
   const navigateToAgent = useNavigateToAgent();

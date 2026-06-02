@@ -7,15 +7,18 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import type { ConnectionEntity } from "@decocms/mesh-sdk/types";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ToolCallShell, LatencyLabel, SeeAllRow } from "./common.tsx";
+import {
+  ToolCallShell,
+  LatencyLabel,
+  SeeAllRow,
+  MAX_VISIBLE,
+} from "./common.tsx";
 import { getEffectiveState, unwrapResult } from "./utils.tsx";
 
 interface ConnectionListPartProps {
   part: ToolUIPart;
   latency?: number;
 }
-
-const MAX_VISIBLE = 4;
 
 const STATUS_DOT: Record<ConnectionEntity["status"], string> = {
   active: "bg-emerald-500",
@@ -79,7 +82,7 @@ export function ConnectionListPart({ part, latency }: ConnectionListPartProps) {
     (c) => c.connection_type !== "VIRTUAL",
   );
 
-  if (state === "loading") {
+  if (state === "loading" || state === "approval") {
     return (
       <ToolCallShell
         icon={<Link01 className="animate-pulse" />}
