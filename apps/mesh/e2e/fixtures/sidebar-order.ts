@@ -14,10 +14,7 @@ function sidebarPersonalOrderKey(orgId: string, userId: string): string {
   return `sidebar.group-order.${orgId}.${userId}`;
 }
 
-async function lookupOrgId(
-  db: Client,
-  orgSlug: string,
-): Promise<string> {
+async function lookupOrgId(db: Client, orgSlug: string): Promise<string> {
   const orgRow = await db.query<{ id: string }>(
     `SELECT id FROM "organization" WHERE slug = $1`,
     [orgSlug],
