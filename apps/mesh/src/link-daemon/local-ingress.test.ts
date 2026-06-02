@@ -282,6 +282,9 @@ describe("local-ingress WS proxying", () => {
 });
 
 describe("local-ingress + real Vite HMR (integration)", () => {
+  const VITE_BOOT_TIMEOUT_MS = 30_000;
+  const HMR_HELLO_TIMEOUT_MS = 10_000;
+
   let fixtureDir: string | null = null;
   let viteProc: ReturnType<typeof Bun.spawn> | null = null;
   let vitePort = 0;
@@ -309,41 +312,48 @@ describe("local-ingress + real Vite HMR (integration)", () => {
       {
         cwd: fixtureDir,
         stdout: "pipe",
-        stderr: "pipe",
+        // We don't surface stderr; ignoring it prevents a noisy Vite boot
+        // from filling a pipe buffer and stalling port discovery.
+        stderr: "ignore",
       },
     );
     // Read stdout until we see "Local:   http://127.0.0.1:PORT".
-    // `stdout: "pipe"` above guarantees a ReadableStream, but Bun's types
-    // widen to include `number` (fd) and `undefined`; narrow here.
-    const stdout = viteProc.stdout as ReadableStream<Uint8Array>;
-    const reader = stdout.getReader();
-    const decoder = new TextDecoder();
-    const deadline = Date.now() + 30_000;
-    let buf = "";
-    while (Date.now() < deadline) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const m = buf.match(/Local:\s+http:\/\/127\.0\.0\.1:(\d+)/);
-      if (m) {
-        return Number(m[1]);
-      }
+    if (!viteProc.stdout) {
+      throw new Error("vite stdout pipe unexpectedly absent");
     }
-    throw new Error("Vite did not announce its port within 30s");
+    const reader = viteProc.stdout.getReader();
+    const decoder = new TextDecoder();
+    const deadline = Date.now() + VITE_BOOT_TIMEOUT_MS;
+    let buf = "";
+    try {
+      while (Date.now() < deadline) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const m = buf.match(/Local:\s+http:\/\/127\.0\.0\.1:(\d+)/);
+        if (m) {
+          return Number(m[1]);
+        }
+      }
+      throw new Error("Vite did not announce its port within 30s");
+    } finally {
+      // Release the pipe so the FD doesn't stay pending after kill().
+      reader.releaseLock();
+    }
   }
 
   afterEach(async () => {
     try {
       viteProc?.kill();
-    } catch {
-      /* */
+    } catch (err) {
+      console.warn("failed to kill vite proc:", err);
     }
     viteProc = null;
     if (fixtureDir) {
       try {
         rmSync(fixtureDir, { recursive: true, force: true });
-      } catch {
-        /* */
+      } catch (err) {
+        console.warn("failed to remove vite fixture dir:", err);
       }
       fixtureDir = null;
     }
@@ -367,7 +377,7 @@ describe("local-ingress + real Vite HMR (integration)", () => {
     const firstMessage = await new Promise<string>((resolve, reject) => {
       const t = setTimeout(
         () => reject(new Error("no HMR message within 10s")),
-        10_000,
+        HMR_HELLO_TIMEOUT_MS,
       );
       ws.addEventListener("message", (e) => {
         clearTimeout(t);
@@ -376,6 +386,14 @@ describe("local-ingress + real Vite HMR (integration)", () => {
       ws.addEventListener("close", (e) => {
         clearTimeout(t);
         reject(new Error(`closed before message: ${e.code} ${e.reason}`));
+      });
+      ws.addEventListener("error", (e) => {
+        clearTimeout(t);
+        reject(
+          new Error(
+            `ws error before message: ${(e as ErrorEvent).message ?? "unknown"}`,
+          ),
+        );
       });
     });
     const parsed = JSON.parse(firstMessage);
