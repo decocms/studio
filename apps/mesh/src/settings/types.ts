@@ -92,10 +92,12 @@ export interface ServiceOutputs {
    * Threaded into the frozen Settings so the in-process serve path resolves the
    * real S3Service; also mirrored into process.env for spawned child servers.
    */
-  s3?: {
+  s3: {
     endpoint: string;
     bucket: string;
     accessKeyId: string;
     secretAccessKey: string;
+    /** true for managed MinIO; reflects operator's S3_FORCE_PATH_STYLE for external S3. */
+    forcePathStyle: boolean;
   } | null;
 }

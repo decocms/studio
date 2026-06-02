@@ -38,6 +38,7 @@ const NATS_VERSION = "v2.10.24";
 const MINIO_ROOT_USER = "minioadmin";
 const MINIO_ROOT_PASSWORD = "minioadmin";
 const MINIO_DEV_BUCKET = "studio-dev";
+const MINIO_DEFAULT_PORT = 9000;
 // Objects under this prefix are short-lived dispatch payloads offloaded by the
 // unified harness/sandbox transport. Expire them after 1 day so the dev bucket
 // doesn't grow unbounded — mirrors the production lifecycle policy.
@@ -835,25 +836,34 @@ async function provisionMinioBucket(endpoint: string): Promise<void> {
       name !== "BucketAlreadyExists" &&
       !(e instanceof Error && e.message.includes("already"))
     ) {
+      // Genuine bucket-create failure: the offload feature requires the bucket,
+      // so let this propagate and abort startup.
+      client.destroy();
       throw e;
     }
   }
 
-  await client.send(
-    new PutBucketLifecycleConfigurationCommand({
-      Bucket: MINIO_DEV_BUCKET,
-      LifecycleConfiguration: {
-        Rules: [
-          {
-            ID: "expire-link-dispatch",
-            Status: "Enabled",
-            Filter: { Prefix: MINIO_DISPATCH_PREFIX },
-            Expiration: { Days: 1 },
-          },
-        ],
-      },
-    }),
-  );
+  // The lifecycle rule is a hygiene/expiry convenience — its failure must NOT
+  // break dev startup. Warn and continue.
+  try {
+    await client.send(
+      new PutBucketLifecycleConfigurationCommand({
+        Bucket: MINIO_DEV_BUCKET,
+        LifecycleConfiguration: {
+          Rules: [
+            {
+              ID: "expire-link-dispatch",
+              Status: "Enabled",
+              Filter: { Prefix: MINIO_DISPATCH_PREFIX },
+              Expiration: { Days: 1 },
+            },
+          ],
+        },
+      }),
+    );
+  } catch (err) {
+    console.warn("[minio] failed to apply link-dispatch lifecycle rule:", err);
+  }
 
   client.destroy();
 }
@@ -875,6 +885,12 @@ async function ensureMinio(home: string): Promise<ServiceInfo> {
       info.pid = existing.pid;
       info.port = existing.port;
       info.owner = "managed";
+      // Always provision the bucket on every dev start — provisionMinioBucket
+      // is idempotent (bucket create swallows BucketAlreadyOwnedByUs/Exists;
+      // lifecycle PutBucketLifecycleConfiguration is declarative). This ensures
+      // the bucket exists even if a previous run wrote state.json but crashed
+      // before completing provisioning.
+      await provisionMinioBucket(`http://127.0.0.1:${existing.port}`);
       return info;
     }
     // Dead process — clean up stale state
@@ -1352,14 +1368,19 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       name: "MinIO",
       state: "external",
       pid: null,
-      port: portFromUrl(process.env.S3_ENDPOINT!, 9000),
+      port: portFromUrl(process.env.S3_ENDPOINT!, MINIO_DEFAULT_PORT),
       owner: "external",
     });
+    // For external S3 (real AWS S3 or operator-managed), respect the operator's
+    // S3_FORCE_PATH_STYLE setting (default false). Forcing true would break
+    // virtual-hosted-style buckets on real AWS S3.
+    const externalForcePathStyle = process.env.S3_FORCE_PATH_STYLE === "true";
     s3 = {
       endpoint: process.env.S3_ENDPOINT!,
       bucket: process.env.S3_BUCKET!,
       accessKeyId: process.env.S3_ACCESS_KEY_ID!,
       secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
+      forcePathStyle: externalForcePathStyle,
     };
   } else if (!skipMinio) {
     const minioInfo = await ensureMinio(inputs.home);
@@ -1369,6 +1390,7 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       bucket: MINIO_DEV_BUCKET,
       accessKeyId: MINIO_ROOT_USER,
       secretAccessKey: MINIO_ROOT_PASSWORD,
+      forcePathStyle: true,
     };
   }
 
@@ -1381,8 +1403,11 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
     process.env.S3_BUCKET = s3.bucket;
     process.env.S3_ACCESS_KEY_ID = s3.accessKeyId;
     process.env.S3_SECRET_ACCESS_KEY = s3.secretAccessKey;
-    // MinIO needs path-style addressing (no virtual-hosted-style buckets).
-    process.env.S3_FORCE_PATH_STYLE = "true";
+    // Only force path-style for managed MinIO. Real AWS S3 uses virtual-hosted-
+    // style by default; overwriting the operator's setting would break it.
+    if (s3.forcePathStyle) {
+      process.env.S3_FORCE_PATH_STYLE = "true";
+    }
   }
 
   const databaseUrl = skipPostgres

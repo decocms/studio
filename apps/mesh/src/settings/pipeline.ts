@@ -77,7 +77,7 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
           s3Bucket: serviceOutputs.s3.bucket,
           s3AccessKeyId: serviceOutputs.s3.accessKeyId,
           s3SecretAccessKey: serviceOutputs.s3.secretAccessKey,
-          s3ForcePathStyle: true,
+          s3ForcePathStyle: serviceOutputs.s3.forcePathStyle,
         }
       : {}),
   };
