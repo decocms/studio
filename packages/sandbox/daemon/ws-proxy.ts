@@ -29,6 +29,7 @@
 import {
   createNodeWebSocketProxy,
   createNodeWebSocketProxyData,
+  parseWebSocketProtocols,
   type NodeWebSocketProxyData,
 } from "../proxy/websocket";
 
@@ -53,17 +54,10 @@ export function makeWsUpgrader(
     upgradeData(req: Request): WsProxyData {
       const url = new URL(req.url);
       const port = getDevPort();
-      const protoHeader = req.headers.get("sec-websocket-protocol");
-      const protocols = protoHeader
-        ? protoHeader
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined;
       return createNodeWebSocketProxyData({
         port,
         pathQuery: `${url.pathname}${url.search}`,
-        protocols,
+        protocols: parseWebSocketProtocols(req.headers),
       });
     },
 

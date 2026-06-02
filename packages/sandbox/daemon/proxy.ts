@@ -1,6 +1,6 @@
 import { BOOTSTRAP_SCRIPT } from "./constants";
 import type { Broadcaster } from "./events/broadcast";
-import { fetchLoopback } from "./upstream-fetch";
+import { fetchLoopback } from "../proxy/http";
 
 export interface ProxyDeps {
   broadcaster: Broadcaster;

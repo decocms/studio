@@ -17,6 +17,7 @@
     "./provider/desktop": "./server/provider/desktop/index.ts",
     "./daemon-client": "./server/daemon-client.ts",
     "./daemon/routes/dispatch": "./daemon/routes/dispatch.ts",
+    "./proxy/http": "./proxy/http.ts",
     "./proxy/websocket": "./proxy/websocket.ts"
   },
   "dependencies": {

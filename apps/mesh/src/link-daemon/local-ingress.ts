@@ -8,6 +8,7 @@
 import {
   createNodeWebSocketProxy,
   createNodeWebSocketProxyData,
+  parseWebSocketProtocols,
   type NodeWebSocketProxyData,
 } from "@decocms/sandbox/proxy/websocket";
 import { parseHandleFromHost } from "./host-parser";
@@ -53,19 +54,11 @@ export async function startLocalIngress(
 
       if (req.headers.get("upgrade") === "websocket") {
         const reqUrl = new URL(req.url);
-        const protocolHeader = req.headers.get("sec-websocket-protocol");
-        const upstreamProtocols = protocolHeader
-          ? protocolHeader
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : [];
         const ok = srv.upgrade(req, {
           data: createNodeWebSocketProxyData({
             port: sandboxPort,
             pathQuery: `${reqUrl.pathname}${reqUrl.search}`,
-            protocols:
-              upstreamProtocols.length > 0 ? upstreamProtocols : undefined,
+            protocols: parseWebSocketProtocols(req.headers),
           }),
         });
         if (!ok) return new Response("ws upgrade failed", { status: 400 });

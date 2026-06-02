@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fetchLoopback } from "./upstream-fetch";
+import { fetchLoopback } from "./http";
 
 async function withServer(
   hostname: string,

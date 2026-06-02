@@ -37,6 +37,19 @@ export interface NodeWebSocketProxyOptions {
   onClientMessage?: () => void;
 }
 
+export function parseWebSocketProtocols(
+  headers: Headers,
+): string[] | undefined {
+  const protocolHeader = headers.get("sec-websocket-protocol");
+  const protocols = protocolHeader
+    ? protocolHeader
+        .split(",")
+        .map((protocol) => protocol.trim())
+        .filter(Boolean)
+    : [];
+  return protocols.length > 0 ? protocols : undefined;
+}
+
 export function createNodeWebSocketProxyData(
   input: Pick<NodeWebSocketProxyData, "port" | "pathQuery" | "protocols">,
 ): NodeWebSocketProxyData {
