@@ -102,16 +102,18 @@ const ac = createAccessControl(statement);
 // The role-creating built-in roles (owner/admin) must enumerate every `self`
 // tool, not just `["*"]`. Better Auth's access-control `authorize()` matches
 // actions literally — `["*"]` authorizes only a request for the literal action
-// "*", NOT specific tools. Runtime checks bypass this for built-in roles, but
+// "*", NOT specific tools. Runtime checks bypass this for owner/admin, but
 // `create-role` gates the *creator* on whether they hold each permission they
 // grant; with `self: ["*"]` an owner is reported as "missing self:SOME_TOOL"
 // and can't create a capability-scoped custom role at all. Enumerating the full
 // tool list fixes that.
 //
-// `user` is intentionally left as-is: it can't create roles
-// (allowedRolesToCreateResources = ADMIN_ROLES), and its `self` is never
-// consulted at runtime (the built-in-role bypass short-circuits first). Giving
-// it the full tool list would only mis-signal that "user" holds full access.
+// `user` keeps `self: ["*"]` and is NOT given the full tool list: it is
+// enforced at runtime (only owner/admin bypass — see ADMIN_ROLES), so its grant
+// IS now consulted. By the literal-match rule above, `["*"]` authorizes no
+// specific tool, so a member gets only basic-usage (granted out-of-band in
+// AccessControl) plus any connection-scoped grants — never full access. It also
+// can't create roles (allowedRolesToCreateResources = ADMIN_ROLES).
 const creatorSelf = ["*", ...allTools];
 
 const user = ac.newRole({

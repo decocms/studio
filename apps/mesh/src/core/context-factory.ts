@@ -264,11 +264,11 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       requestedPermission: Permission,
       options?: { organizationId?: string },
     ): Promise<boolean> => {
-      // Built-in roles bypass all permission checks
-      if (
-        role &&
-        BUILTIN_ROLES.includes(role as (typeof BUILTIN_ROLES)[number])
-      ) {
+      // Only owner/admin bypass all permission checks (full org access). The
+      // built-in `user` role is enforced like any member: it gets basic-usage
+      // (granted out-of-band in AccessControl) plus its explicit Better Auth /
+      // connection grants, and nothing else. See ADMIN_ROLES in auth/roles.ts.
+      if (role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])) {
         return true;
       }
 
@@ -439,7 +439,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
 import { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import { ConnectionEntity } from "@/tools/connection/schema";
-import { BUILTIN_ROLES } from "../auth/roles";
+import { ADMIN_ROLES, BUILTIN_ROLES } from "../auth/roles";
 import { OrgScopedThreadStorage, SqlThreadStorage } from "@/storage/threads";
 import {
   OrgScopedAsyncResearchJobStorage,
@@ -459,15 +459,17 @@ import { DevObjectStorage } from "../object-storage/dev-object-storage";
 import { decorateStorageWithAssetHoisting } from "../object-storage/asset-hoister";
 
 /**
- * Fetch role permissions from the database
- * Returns undefined for built-in roles (they bypass permission checks)
+ * Fetch role permissions from the database.
+ * Built-in roles have no row in the organizationRole table, so this returns
+ * undefined for them. owner/admin additionally bypass all checks at runtime;
+ * `user` falls through to its (intentionally empty) Better Auth role grant.
  */
 export async function fetchRolePermissions(
   db: Kysely<Database>,
   organizationId: string,
   role: string,
 ): Promise<Permission | undefined> {
-  // Built-in roles bypass permission checks
+  // Built-in roles have no custom-role permission row to fetch.
   if (BUILTIN_ROLES.includes(role as (typeof BUILTIN_ROLES)[number])) {
     return undefined;
   }
