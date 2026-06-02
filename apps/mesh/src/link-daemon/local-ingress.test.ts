@@ -365,6 +365,11 @@ describe("local-ingress WS proxying", () => {
 describe("local-ingress + real Vite HMR (integration)", () => {
   const VITE_BOOT_TIMEOUT_MS = 30_000;
   const HMR_HELLO_TIMEOUT_MS = 10_000;
+  // Budget for the whole test: Vite boot (≤30s) + HMR hello (≤10s) + setup
+  // slack. Bun's default per-test timeout is 5s — too tight for CI where
+  // bunx may need a cold resolve of the workspace vite dep — so we override
+  // it via the third arg to `test()` below.
+  const TEST_TIMEOUT_MS = 60_000;
 
   let fixtureDir: string | null = null;
   let viteProc: ReturnType<typeof Bun.spawn> | null = null;
@@ -444,45 +449,49 @@ describe("local-ingress + real Vite HMR (integration)", () => {
     }
   });
 
-  test("HMR client receives the 'connected' welcome through the ingress", async () => {
-    vitePort = await startVite();
-    ingress = await startLocalIngress({
-      port: 0,
-      lookupSandboxPort: () => vitePort,
-    });
-    // Mimic exactly what the Vite-injected HMR client does:
-    //   new WebSocket(`ws://host/?token=...`, "vite-hmr")
-    // Vite ignores unknown tokens by default in 5.x dev mode, so any token
-    // is fine for this smoke test; what matters is that path + subprotocol
-    // round-trip correctly.
-    const ws = new WebSocket(
-      `ws://abc.localhost:${ingress.port}/?token=test`,
-      "vite-hmr",
-    );
-    const firstMessage = await new Promise<string>((resolve, reject) => {
-      const t = setTimeout(
-        () => reject(new Error("no HMR message within 10s")),
-        HMR_HELLO_TIMEOUT_MS,
+  test(
+    "HMR client receives the 'connected' welcome through the ingress",
+    async () => {
+      vitePort = await startVite();
+      ingress = await startLocalIngress({
+        port: 0,
+        lookupSandboxPort: () => vitePort,
+      });
+      // Mimic exactly what the Vite-injected HMR client does:
+      //   new WebSocket(`ws://host/?token=...`, "vite-hmr")
+      // Vite ignores unknown tokens by default in 5.x dev mode, so any token
+      // is fine for this smoke test; what matters is that path + subprotocol
+      // round-trip correctly.
+      const ws = new WebSocket(
+        `ws://abc.localhost:${ingress.port}/?token=test`,
+        "vite-hmr",
       );
-      ws.addEventListener("message", (e) => {
-        clearTimeout(t);
-        resolve(typeof e.data === "string" ? e.data : "");
-      });
-      ws.addEventListener("close", (e) => {
-        clearTimeout(t);
-        reject(new Error(`closed before message: ${e.code} ${e.reason}`));
-      });
-      ws.addEventListener("error", (e) => {
-        clearTimeout(t);
-        reject(
-          new Error(
-            `ws error before message: ${(e as ErrorEvent).message ?? "unknown"}`,
-          ),
+      const firstMessage = await new Promise<string>((resolve, reject) => {
+        const t = setTimeout(
+          () => reject(new Error("no HMR message within 10s")),
+          HMR_HELLO_TIMEOUT_MS,
         );
+        ws.addEventListener("message", (e) => {
+          clearTimeout(t);
+          resolve(typeof e.data === "string" ? e.data : "");
+        });
+        ws.addEventListener("close", (e) => {
+          clearTimeout(t);
+          reject(new Error(`closed before message: ${e.code} ${e.reason}`));
+        });
+        ws.addEventListener("error", (e) => {
+          clearTimeout(t);
+          reject(
+            new Error(
+              `ws error before message: ${(e as ErrorEvent).message ?? "unknown"}`,
+            ),
+          );
+        });
       });
-    });
-    const parsed = JSON.parse(firstMessage);
-    expect(parsed.type).toBe("connected");
-    ws.close();
-  });
+      const parsed = JSON.parse(firstMessage);
+      expect(parsed.type).toBe("connected");
+      ws.close();
+    },
+    TEST_TIMEOUT_MS,
+  );
 });
