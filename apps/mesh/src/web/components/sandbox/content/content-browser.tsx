@@ -1,6 +1,7 @@
 import { Suspense, lazy, useState } from "react";
 import {
   AlertCircle,
+  Code01,
   Copy01,
   DotsHorizontal,
   Edit01,
@@ -10,6 +11,7 @@ import {
   Loading01,
   Plus,
   SearchLg,
+  CreditCardSearch,
   Trash01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -88,10 +90,17 @@ import {
 } from "./content-mutations";
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
+import { PageJsonDialog } from "@/web/components/sections-editor/page-json-dialog";
 
 const SectionsEditor = lazy(() =>
   import("@/web/components/sections-editor/sections-editor").then((m) => ({
     default: m.SectionsEditor,
+  })),
+);
+
+const SeoEditor = lazy(() =>
+  import("@/web/components/sections-editor/seo-editor").then((m) => ({
+    default: m.SeoEditor,
   })),
 );
 
@@ -103,7 +112,7 @@ const AddSectionModal = lazy(() =>
 
 const VARIANT_GREEN = "oklch(0.65 0.15 160)";
 
-type CollectionId = "pages" | "sections";
+type CollectionId = "pages" | "sections" | "seo";
 
 type Selection =
   | { collection: "pages"; key: string; path: string }
@@ -264,6 +273,8 @@ function ContentBrowserReady({
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
   const [selection, setSelection] = useState<Selection>(null);
+  // Page whose SEO is being edited in the two-pane SEO editor (null = none).
+  const [seoPageKey, setSeoPageKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   // Reset search when switching collections (derived-state sync pattern)
   const [prevCollection, setPrevCollection] = useState(activeCollection);
@@ -278,6 +289,7 @@ function ContentBrowserReady({
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
+  const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
 
   if (decofileLoading || metaLoading) {
     return (
@@ -306,7 +318,7 @@ function ContentBrowserReady({
     );
   }
 
-  const counts: Record<CollectionId, number> = {
+  const counts: Record<"pages" | "sections", number> = {
     pages: pages.length,
     sections: globalSections.length,
   };
@@ -537,51 +549,99 @@ function ContentBrowserReady({
         onSelect={(id) => {
           setActiveCollection(id);
           setSelection(null);
+          setSeoPageKey(null);
         }}
       />
-      <ItemList
-        activeCollection={activeCollection}
-        pages={pages}
-        sections={globalSections}
-        decofile={decofile}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        selection={selection}
-        onSelect={setSelection}
-        previewUrl={previewUrl}
-        onCreate={() => {
-          if (activeCollection === "pages") {
-            openCreatePage();
-          } else if (!previewUrl) {
-            toast.error("Start the preview dev server to add sections.");
-          } else {
-            setAddSectionOpen(true);
-          }
-        }}
-        onDuplicatePage={openDuplicatePage}
-        onRenamePage={openRenamePage}
-        onAddPageVariant={handleAddPageVariant}
-        onDeletePage={(page) =>
-          setDeleteTarget({ kind: "page", key: page.key, label: page.name })
-        }
-        onDuplicateSection={handleDuplicateSection}
-        onRenameSection={(s) => setRenameSectionKey(s.key)}
-        onDeleteSection={(s) =>
-          setDeleteTarget({ kind: "section", key: s.key, label: s.name })
-        }
-      />
-      <div className="flex-1 min-w-0">
-        {selection ? (
-          <Suspense
-            fallback={
-              <div className="h-full flex items-center justify-center">
-                <Loading01
-                  size={20}
-                  className="animate-spin text-muted-foreground"
-                />
-              </div>
+      {activeCollection !== "seo" && (
+        <ItemList
+          activeCollection={activeCollection}
+          pages={pages}
+          sections={globalSections}
+          decofile={decofile}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          selection={selection}
+          onSelect={(next) => {
+            setSelection(next);
+            setSeoPageKey(null);
+          }}
+          previewUrl={previewUrl}
+          onCreate={() => {
+            if (activeCollection === "pages") {
+              openCreatePage();
+            } else if (!previewUrl) {
+              toast.error("Start the preview dev server to add sections.");
+            } else {
+              setAddSectionOpen(true);
             }
-          >
+          }}
+          onDuplicatePage={openDuplicatePage}
+          onRenamePage={openRenamePage}
+          onAddPageVariant={handleAddPageVariant}
+          onDeletePage={(page) =>
+            setDeleteTarget({ kind: "page", key: page.key, label: page.name })
+          }
+          onEditPageSeo={(page) => {
+            setSelection({
+              collection: "pages",
+              key: page.key,
+              path: page.path,
+            });
+            setSeoPageKey(page.key);
+          }}
+          onViewPageJson={(page) => setJsonPageKey(page.key)}
+          onDuplicateSection={handleDuplicateSection}
+          onRenameSection={(s) => setRenameSectionKey(s.key)}
+          onDeleteSection={(s) =>
+            setDeleteTarget({ kind: "section", key: s.key, label: s.name })
+          }
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <Suspense
+          fallback={
+            <div className="h-full flex items-center justify-center">
+              <Loading01
+                size={20}
+                className="animate-spin text-muted-foreground"
+              />
+            </div>
+          }
+        >
+          {activeCollection === "seo" ? (
+            <SeoEditor
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              decofile={decofile}
+              meta={meta}
+              target={{ kind: "site" }}
+              previewBaseUrl={previewUrl}
+            />
+          ) : seoPageKey ? (
+            <SeoEditor
+              key={`seo:${seoPageKey}`}
+              orgSlug={orgSlug}
+              virtualMcpId={virtualMcpId}
+              branch={branch}
+              decofile={decofile}
+              meta={meta}
+              target={{
+                kind: "page",
+                pageKey: seoPageKey,
+                pageName:
+                  pages.find((p) => p.key === seoPageKey)?.name ?? "Page",
+                path: pages.find((p) => p.key === seoPageKey)?.path ?? "/",
+              }}
+              previewBaseUrl={previewUrl}
+              onBack={() => setSeoPageKey(null)}
+              onEditDefaultSeo={() => {
+                setSeoPageKey(null);
+                setSelection(null);
+                setActiveCollection("seo");
+              }}
+            />
+          ) : selection ? (
             <SectionsEditor
               key={
                 selection.collection === "pages"
@@ -602,22 +662,23 @@ function ContentBrowserReady({
               activeGlobalBlockKey={
                 selection.collection === "sections" ? selection.key : null
               }
+              onEditPageSeo={(pageKey) => setSeoPageKey(pageKey)}
             />
-          </Suspense>
-        ) : (
-          <EmptyMessage
-            title={
-              activeCollection === "pages"
-                ? "Select a page to edit"
-                : "Select a section to edit"
-            }
-            description={
-              activeCollection === "pages"
-                ? 'Pick a page from the list, or click "+ New" to create one.'
-                : 'Pick a section from the list, or click "+ New" to create one.'
-            }
-          />
-        )}
+          ) : (
+            <EmptyMessage
+              title={
+                activeCollection === "pages"
+                  ? "Select a page to edit"
+                  : "Select a section to edit"
+              }
+              description={
+                activeCollection === "pages"
+                  ? 'Pick a page from the list, or click "+ New" to create one.'
+                  : 'Pick a section from the list, or click "+ New" to create one.'
+              }
+            />
+          )}
+        </Suspense>
       </div>
 
       {/* Page create/duplicate/rename dialog */}
@@ -669,6 +730,18 @@ function ContentBrowserReady({
             onSelect={handleCreateSection}
           />
         </Suspense>
+      )}
+
+      {/* Page JSON dialog */}
+      {jsonPageKey && (
+        <PageJsonDialog
+          open={!!jsonPageKey}
+          onOpenChange={(open) => {
+            if (!open) setJsonPageKey(null);
+          }}
+          pageKey={jsonPageKey}
+          decofile={decofile}
+        />
       )}
 
       {/* Delete confirmation */}
@@ -725,7 +798,7 @@ function CollectionsSidebar({
   onSelect,
 }: {
   active: CollectionId;
-  counts: Record<CollectionId, number>;
+  counts: Record<"pages" | "sections", number>;
   onSelect: (id: CollectionId) => void;
 }) {
   return (
@@ -750,6 +823,13 @@ function CollectionsSidebar({
           active={active === "sections"}
           onSelect={onSelect}
         />
+        <CollectionRow
+          id="seo"
+          icon={CreditCardSearch}
+          label="SEO"
+          active={active === "seo"}
+          onSelect={onSelect}
+        />
       </nav>
     </div>
   );
@@ -766,7 +846,7 @@ function CollectionRow({
   id: CollectionId;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   label: string;
-  count: number;
+  count?: number;
   active: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
@@ -783,14 +863,16 @@ function CollectionRow({
     >
       <Icon size={16} className="shrink-0" />
       <span className="flex-1 truncate">{label}</span>
-      <span
-        className={cn(
-          "shrink-0 text-xs tabular-nums",
-          active ? "text-accent-foreground/70" : "text-muted-foreground/70",
-        )}
-      >
-        {count}
-      </span>
+      {count !== undefined && (
+        <span
+          className={cn(
+            "shrink-0 text-xs tabular-nums",
+            active ? "text-accent-foreground/70" : "text-muted-foreground/70",
+          )}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }
@@ -810,6 +892,8 @@ function ItemList({
   onRenamePage,
   onAddPageVariant,
   onDeletePage,
+  onEditPageSeo,
+  onViewPageJson,
   onDuplicateSection,
   onRenameSection,
   onDeleteSection,
@@ -828,6 +912,8 @@ function ItemList({
   onRenamePage: (page: PageEntry) => void;
   onAddPageVariant: (page: PageEntry) => void;
   onDeletePage: (page: PageEntry) => void;
+  onEditPageSeo: (page: PageEntry) => void;
+  onViewPageJson: (page: PageEntry) => void;
   onDuplicateSection: (section: GlobalSectionEntry) => void;
   onRenameSection: (section: GlobalSectionEntry) => void;
   onDeleteSection: (section: GlobalSectionEntry) => void;
@@ -927,6 +1013,8 @@ function ItemList({
                         onDuplicate={() => onDuplicatePage(page)}
                         onRename={() => onRenamePage(page)}
                         onAddVariant={() => onAddPageVariant(page)}
+                        onEditSeo={() => onEditPageSeo(page)}
+                        onViewJson={() => onViewPageJson(page)}
                         onDelete={() => onDeletePage(page)}
                       />
                     }
@@ -1061,11 +1149,15 @@ function ItemActions({
   onDuplicate,
   onRename,
   onAddVariant,
+  onEditSeo,
+  onViewJson,
   onDelete,
 }: {
   onDuplicate: () => void;
   onRename: () => void;
   onAddVariant?: () => void;
+  onEditSeo?: () => void;
+  onViewJson?: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -1100,6 +1192,23 @@ function ItemActions({
               <Flag01 size={14} style={{ color: VARIANT_GREEN }} />
               Add variant
             </DropdownMenuItem>
+          </>
+        )}
+        {(onEditSeo || onViewJson) && (
+          <>
+            <DropdownMenuSeparator />
+            {onEditSeo && (
+              <DropdownMenuItem onClick={onEditSeo}>
+                <CreditCardSearch size={14} />
+                Edit SEO
+              </DropdownMenuItem>
+            )}
+            {onViewJson && (
+              <DropdownMenuItem onClick={onViewJson}>
+                <Code01 size={14} />
+                View JSON
+              </DropdownMenuItem>
+            )}
           </>
         )}
         <DropdownMenuSeparator />

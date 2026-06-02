@@ -141,8 +141,10 @@ export function ImageField({
     // grid-cols-[minmax(0,1fr)] forces every child to be at most 100% of
     // the grid, no matter what intrinsic-content sizing tries to do —
     // the only reliable way to bulletproof a deeply-nested form field
-    // against a misbehaving min-w-0 chain.
-    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+    // against a misbehaving min-w-0 chain. No `overflow-hidden` here: it
+    // clips the input/button focus rings and right borders (cutting off the
+    // URL input + Browse button); the grid track already caps width.
+    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <div className="min-w-0 space-y-0.5">
         <Label htmlFor={path} className="text-muted-foreground">
           {label}
