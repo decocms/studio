@@ -80,11 +80,25 @@ export function useSaveBlock({
 }
 
 /**
+/**
+ * The payload for a debounced save: either a ready object, or a builder
+ * resolved at fire time. Pass a builder when the block is also written by
+ * another debounced path (e.g. a page's name/path edits vs. its SEO edits) so
+ * the persisted value is a read-modify-write against the freshest block data
+ * instead of a stale keystroke-time snapshot — otherwise the later-firing save
+ * clobbers the other path's concurrent edit.
+ */
+type SaveData =
+  | Record<string, unknown>
+  | (() => Record<string, unknown> | null);
+
+/**
  * Wraps {@link useSaveBlock} with the standard debounced-autosave loop shared by
  * every form-driven block editor (section forms, the SEO editor, the SEO
  * sheets). Call `save(blockKey, data)` on each change; the latest payload is
  * persisted once edits settle for {@link AUTOSAVE_DELAY}ms, with a toast on
- * failure.
+ * failure. `data` may be a builder (see {@link SaveData}) that returns null to
+ * abort the save.
  */
 export function useDebouncedSaveBlock(
   params: UseSaveBlockParams,
@@ -92,21 +106,24 @@ export function useDebouncedSaveBlock(
 ) {
   const saveBlock = useSaveBlock(params);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestRef = useRef<{
-    blockKey: string;
-    data: Record<string, unknown>;
-  } | null>(null);
+  const latestRef = useRef<{ blockKey: string; data: SaveData } | null>(null);
 
-  const save = (blockKey: string, data: Record<string, unknown>) => {
+  const save = (blockKey: string, data: SaveData) => {
     latestRef.current = { blockKey, data };
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       const pending = latestRef.current;
       if (!pending) return;
-      saveBlock.mutate(pending, {
-        onSuccess: () => opts?.onSaved?.(),
-        onError: (err) => toast.error(`Save failed: ${err.message}`),
-      });
+      const resolved =
+        typeof pending.data === "function" ? pending.data() : pending.data;
+      if (!resolved) return;
+      saveBlock.mutate(
+        { blockKey: pending.blockKey, data: resolved },
+        {
+          onSuccess: () => opts?.onSaved?.(),
+          onError: (err) => toast.error(`Save failed: ${err.message}`),
+        },
+      );
     }, AUTOSAVE_DELAY);
   };
 

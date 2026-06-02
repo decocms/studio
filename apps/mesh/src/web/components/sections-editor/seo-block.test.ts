@@ -75,6 +75,19 @@ describe("findSiteSeoEntry", () => {
     expect(findSiteSeoEntry(decofile)).toBeNull();
   });
 
+  test("tolerates a non-string __resolveType (not treated as a page skip)", () => {
+    const decofile = {
+      weird: {
+        // number, not a string — must not crash or be mistaken for a page type
+        __resolveType: 42 as unknown as string,
+        seo: { title: "Still SEO" },
+      },
+    };
+    const entry = findSiteSeoEntry(decofile);
+    expect(entry?.kind).toBe("nested");
+    expect(entry?.blockKey).toBe("weird");
+  });
+
   test("returns null when there is no SEO anywhere", () => {
     const decofile = {
       home: { __resolveType: "website/pages/Page.tsx", sections: [] },
