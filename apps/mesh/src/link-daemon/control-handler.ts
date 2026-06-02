@@ -35,6 +35,12 @@ interface EnsureSandboxBody {
   handle: string;
   repo?: RepoRef;
   workload?: Workload;
+  /** Message-offload SSRF allowlist pushed by the cluster (trusted config,
+   *  never a request frame). Threaded into the spawned daemon's boot env so
+   *  it can fetch offloaded `messagesRef` payloads from these hosts only. */
+  offloadAllowedHosts?: string[];
+  /** Permit http:// loopback offload refs (dev MinIO). */
+  offloadAllowSameHostDev?: boolean;
 }
 
 export type StreamEvent =

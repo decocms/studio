@@ -129,6 +129,16 @@ export class DesktopSandboxProvider implements SandboxProvider {
       repo: opts.repo,
       branch: opts.repo?.branch,
       ...(opts.workload ? { workload: opts.workload } : {}),
+      // Message-offload SSRF allowlist, derived cluster-side from the
+      // cluster's own trusted S3 config and pushed down here so the spawned
+      // daemon can fetch offloaded `messagesRef` payloads. The daemon fails
+      // closed without these. NEVER sourced from a request frame.
+      ...(opts.offloadAllowedHosts
+        ? { offloadAllowedHosts: opts.offloadAllowedHosts }
+        : {}),
+      ...(opts.offloadAllowSameHostDev !== undefined
+        ? { offloadAllowSameHostDev: opts.offloadAllowSameHostDev }
+        : {}),
     });
     const responseText = await this.dispatchJson(
       "POST",

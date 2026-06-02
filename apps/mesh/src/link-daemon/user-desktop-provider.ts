@@ -81,6 +81,17 @@ export interface EnsureSandboxInput {
   handle: string;
   repo?: RepoRef;
   workload?: Workload;
+  /**
+   * Message-offload SSRF allowlist, pushed by the cluster from its OWN trusted
+   * S3 config (never a request frame). Threaded into the spawned daemon's boot
+   * env (`OFFLOAD_ALLOWED_HOSTS`) so it can re-inflate offloaded `messagesRef`
+   * payloads — but only from these hosts. Absent/empty = the daemon fails
+   * closed (every offload fetch rejected).
+   */
+  offloadAllowedHosts?: string[];
+  /** Permit http:// loopback offload refs (dev MinIO over localhost). Maps to
+   *  the daemon's `OFFLOAD_ALLOW_SAME_HOST_DEV=1`. */
+  offloadAllowSameHostDev?: boolean;
 }
 
 export interface SandboxState {
@@ -130,6 +141,11 @@ export interface DesktopSandboxProviderDeps {
     handle: string;
     port: number;
     daemonToken: string;
+    /** Message-offload SSRF allowlist for the daemon's boot env. Empty = the
+     *  daemon fails closed. Sourced from the cluster's trusted ensure body. */
+    offloadAllowedHosts: string[];
+    /** Maps to the daemon's `OFFLOAD_ALLOW_SAME_HOST_DEV=1`. */
+    offloadAllowSameHostDev: boolean;
   }) => SpawnResult | Promise<SpawnResult>;
   postConfig: (
     port: number,
@@ -323,7 +339,17 @@ export function createDesktopSandboxProvider(
       `[user-desktop] spawn handle=${input.handle} port=${port} devPort=${devPort} workdir=${workdir}`,
     );
     const spawned = await Promise.resolve(
-      deps.spawnDaemon({ workdir, handle: input.handle, port, daemonToken }),
+      deps.spawnDaemon({
+        workdir,
+        handle: input.handle,
+        port,
+        daemonToken,
+        // Offload SSRF allowlist from the cluster's trusted ensure body.
+        // Defaults fail closed (empty list, no loopback) so a daemon spawned
+        // by an older cluster that doesn't push these stays safe.
+        offloadAllowedHosts: input.offloadAllowedHosts ?? [],
+        offloadAllowSameHostDev: input.offloadAllowSameHostDev ?? false,
+      }),
     );
     try {
       try {

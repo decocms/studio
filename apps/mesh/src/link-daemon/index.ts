@@ -95,6 +95,14 @@ export async function startLinkDaemon(
         APP_ROOT: args.workdir,
         PROXY_PORT: String(args.port),
         DAEMON_TOKEN: args.daemonToken,
+        // Message-offload SSRF allowlist, pushed by the cluster via the ensure
+        // body (trusted config — never a request frame). The daemon reads
+        // these at boot (`packages/sandbox/daemon/entry.ts`) and rejects any
+        // offload fetch whose host isn't listed. Empty = fail closed.
+        OFFLOAD_ALLOWED_HOSTS: args.offloadAllowedHosts.join(","),
+        ...(args.offloadAllowSameHostDev
+          ? { OFFLOAD_ALLOW_SAME_HOST_DEV: "1" }
+          : {}),
       };
       return innerSpawn({
         workdir: args.workdir,
