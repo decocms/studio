@@ -50,6 +50,7 @@ export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
 import { buildOnTitleUpdated } from "./on-title-updated";
+import { interceptTitleChunks } from "./title-interceptor";
 import {
   checkModelPermission,
   fetchModelPermissions,
@@ -863,7 +864,7 @@ async function prepareRun(
         //   - `runsIn === "cluster"` — runs in-cluster. When `sandbox`
         //     is `"user-desktop"` the sandbox tool calls are forwarded
         //     to the user's link daemon; the harness still runs here.
-        let harnessChunks;
+        let rawHarnessChunks;
         if (target.runsIn === "user-desktop") {
           // Unify with SANDBOX_START: resolve the sandbox via `ensureSandbox` so
           // claude-code/codex runs share the workdir SANDBOX_START already
@@ -875,7 +876,7 @@ async function prepareRun(
             { agent: input.agent, branch: mem.thread.branch ?? input.branch },
             ctx,
           );
-          harnessChunks = remoteDispatch(
+          rawHarnessChunks = remoteDispatch(
             harnessId,
             harnessInput,
             input.userId,
@@ -883,8 +884,24 @@ async function prepareRun(
             { dispatch: getDispatch() },
           );
         } else {
-          harnessChunks = localDispatch(harnessId, harnessInput, ctx);
+          rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);
         }
+
+        // Tap the harness chunk stream for `data-title-input` chunks emitted by
+        // harnesses that want the cluster to title the thread. Until Task 6
+        // migrates the decopilot harness, decopilot still titles inline; the
+        // interceptor is a no-op for streams that never emit the chunk.
+        const harnessChunks = interceptTitleChunks(rawHarnessChunks, {
+          ctx,
+          processLocal,
+          models: input.models,
+          currentThreadTitle: mem.thread.title,
+          threadId: mem.thread.id,
+          writer,
+          registerPendingOp: processLocal.registerPendingOp,
+          registrySignal,
+          onTitleUpdated: processLocal.onTitleUpdated,
+        });
         const harnessStream = asReadableStream(harnessChunks);
 
         // Cast: the outer createUIMessageStream is typed via ChatMessage so
