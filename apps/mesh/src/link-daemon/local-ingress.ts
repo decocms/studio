@@ -83,13 +83,28 @@ export async function startLocalIngress(
     websocket: {
       async open(ws) {
         const { sandboxPort, upstreamPath, upstreamProtocols } = ws.data;
-        const upstream =
-          upstreamProtocols.length > 0
-            ? new WebSocket(
-                `ws://127.0.0.1:${sandboxPort}${upstreamPath}`,
-                upstreamProtocols,
-              )
-            : new WebSocket(`ws://127.0.0.1:${sandboxPort}${upstreamPath}`);
+        const upstreamUrl = `ws://127.0.0.1:${sandboxPort}${upstreamPath}`;
+        // Mirror preview-proxy.ts: a synchronous throw from the WebSocket
+        // constructor (malformed URL, transient dial failure) would leave the
+        // client WS open with no upstream and let `pendingMessages` accumulate
+        // toward the 256-frame cap. Close the client bridge with 1011 instead.
+        let upstream: WebSocket;
+        try {
+          upstream =
+            upstreamProtocols.length > 0
+              ? new WebSocket(upstreamUrl, upstreamProtocols)
+              : new WebSocket(upstreamUrl);
+        } catch (err) {
+          console.warn(
+            `[local-ingress] failed to dial upstream ${upstreamUrl}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          try {
+            ws.close(1011, "upstream dial failed");
+          } catch {
+            /* */
+          }
+          return;
+        }
         upstream.binaryType = "arraybuffer";
         ws.data.upstream = upstream;
         ws.data.pendingMessages = [];

@@ -254,6 +254,74 @@ describe("local-ingress WS proxying", () => {
     expect(closeEvent.reason).toBe("deliberate test close");
   });
 
+  test("closes client with 1011 when upstream WS ctor throws synchronously", async () => {
+    // Provoke a synchronous throw from `new WebSocket(...)` inside the
+    // daemon's `open` handler by sending a Sec-WebSocket-Protocol header
+    // with duplicate tokens. Bun's WebSocket constructor rejects duplicate
+    // subprotocols with "WebSocket protocols contain duplicates". The
+    // browser-style WebSocket client rejects this client-side too, so we
+    // send the upgrade over raw TCP. Without the try/catch around the ctor
+    // the client would be left open with no upstream until close-on-timeout.
+    const { createConnection } = await import("node:net");
+    ingress = await startLocalIngress({
+      port: 0,
+      // Sandbox port is irrelevant — the ctor throws before any dial happens.
+      lookupSandboxPort: () => 1,
+    });
+    const ingressPort = ingress.port;
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const sock = createConnection(
+        { port: ingressPort, host: "127.0.0.1" },
+        () => {
+          const req = [
+            "GET / HTTP/1.1",
+            `Host: abc.localhost:${ingressPort}`,
+            "Upgrade: websocket",
+            "Connection: Upgrade",
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+            "Sec-WebSocket-Version: 13",
+            // Two identical tokens — the daemon parses these into
+            // ["dup", "dup"], which `new WebSocket(url, [...])` rejects.
+            "Sec-WebSocket-Protocol: dup, dup",
+            "",
+            "",
+          ].join("\r\n");
+          sock.write(req);
+        },
+      );
+      const chunks: Buffer[] = [];
+      const t = setTimeout(() => {
+        sock.destroy();
+        reject(new Error("no close frame within 5s"));
+      }, 5000);
+      sock.on("data", (d: Buffer) => {
+        chunks.push(d);
+        const all = Buffer.concat(chunks);
+        // Find end of HTTP/1.1 101 headers.
+        const headerEnd = all.indexOf("\r\n\r\n");
+        if (headerEnd < 0) return;
+        // First WS frame begins right after \r\n\r\n. Close frame layout:
+        //   byte 0: 0x88  (FIN | opcode=8)
+        //   byte 1: payload length (server frames are not masked)
+        //   bytes 2-3: close code (big-endian uint16)
+        const frame = all.subarray(headerEnd + 4);
+        if (frame.length < 4) return;
+        if (frame[0] !== 0x88) return;
+        const len = frame[1]! & 0x7f;
+        if (len < 2 || frame.length < 2 + len) return;
+        const code = frame.readUInt16BE(2);
+        clearTimeout(t);
+        sock.destroy();
+        resolve(code);
+      });
+      sock.on("error", (err: Error) => {
+        clearTimeout(t);
+        reject(err);
+      });
+    });
+    expect(closeCode).toBe(1011);
+  });
+
   test("caps pre-handshake buffer and closes with 1011 on overflow", async () => {
     // Raw TCP sink: accepts the connection but never sends any HTTP/WS
     // response. The proxy's upstream WebSocket will stay in CONNECTING
