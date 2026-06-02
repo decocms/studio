@@ -44,7 +44,12 @@ export function ArrayField({
         : t === "object"
           ? {}
           : t === "block-ref"
-            ? { __resolveType: itemSchema?.anyOfRefs?.[0]?.resolveType ?? "" }
+            ? {
+                __resolveType:
+                  typeof itemSchema?.anyOfRefs?.[0]?.resolveType === "string"
+                    ? itemSchema.anyOfRefs[0].resolveType
+                    : "",
+              }
             : t === "number" || t === "integer"
               ? 0
               : t === "boolean"
