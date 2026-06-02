@@ -263,13 +263,9 @@ const settingsLayout = createRoute({
 const settingsIndexRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/",
-  beforeLoad: ({ params }) => {
-    throw redirect({
-      to: "/$org/settings/general",
-      params: { org: params.org },
-    });
-  },
-  component: () => null,
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/index-redirect.tsx"),
+  ),
 });
 
 // Operations: Connections

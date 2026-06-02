@@ -47,6 +47,7 @@ import {
   getTargetKey,
   type RoleEditorTarget,
 } from "@/web/views/settings/org-role-detail.tsx";
+import { RequirePrivileged } from "@/web/components/require-privileged";
 
 // ============================================================================
 // Role color helpers
@@ -426,7 +427,7 @@ function RolesPageContent() {
   );
 }
 
-export default function RolesPage() {
+function RolesPage() {
   return (
     <ErrorBoundary
       fallback={
@@ -454,5 +455,15 @@ export default function RolesPage() {
         <RolesPageContent />
       </Suspense>
     </ErrorBoundary>
+  );
+}
+
+export default function RolesRoute() {
+  // Role-definition CRUD (listRoles/createRole/…) is owner/admin-only in Better
+  // Auth, so gate on privilege rather than a grantable capability.
+  return (
+    <RequirePrivileged area="roles">
+      <RolesPage />
+    </RequirePrivileged>
   );
 }

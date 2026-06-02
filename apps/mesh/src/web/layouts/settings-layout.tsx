@@ -49,6 +49,7 @@ import {
   HardDrive,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
+import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Suspense } from "react";
 import { pluginSettingsSidebarItems } from "@/web/index";
@@ -67,6 +68,11 @@ interface SettingsNavItem {
   label: string;
   icon: React.ReactNode;
   to: string;
+  /** Capability required to see this item. Omitted = visible to every member. */
+  requires?: CapabilityId;
+  /** Restrict to privileged built-in roles (owner/admin). For screens backed
+   *  by owner/admin-only APIs (e.g. role management). */
+  privilegedOnly?: boolean;
 }
 
 interface SettingsNavGroup {
@@ -77,6 +83,7 @@ interface SettingsNavGroup {
 function useSettingsSidebarGroups(): SettingsNavGroup[] {
   const currentProject = useProjectContext().project;
   const enabledPlugins = currentProject.enabledPlugins ?? [];
+  const { capabilities, isPrivileged, loading, error } = useCapabilities();
 
   const enabledSettingsItems = pluginSettingsSidebarItems
     .filter((item) => enabledPlugins.includes(item.pluginId))
@@ -91,36 +98,44 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "General",
           icon: <Building02 size={14} />,
           to: "/$org/settings/general",
+          requires: "org:manage",
         },
         {
           key: "brand-context",
           label: "Brand Context",
           icon: <BookOpen01 size={14} />,
           to: "/$org/settings/brand-context",
+          requires: "org:manage",
         },
         {
           key: "ai-providers",
           label: "AI Providers",
           icon: <CpuChip01 size={14} />,
           to: "/$org/settings/ai-providers",
+          requires: "ai-providers:manage",
         },
         {
           key: "secrets",
           label: "Secrets",
           icon: <Key01 size={14} />,
           to: "/$org/settings/secrets",
+          requires: "secrets:manage",
         },
         {
           key: "files",
           label: "Files",
           icon: <HardDrive size={14} />,
           to: "/$org/settings/files",
+          requires: "file-configs:manage",
         },
       ],
     },
     {
       label: "Build",
       items: [
+        // connections + agents map to heavy route components that aren't
+        // capability-guarded yet — gated fully (nav + route + actions) in a
+        // follow-up, so leave them visible here to avoid half-gating.
         {
           key: "connections",
           label: "Connections",
@@ -138,12 +153,14 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "Automations",
           icon: <Zap size={14} />,
           to: "/$org/settings/automations",
+          requires: "automations:manage",
         },
         {
           key: "store",
           label: "Store",
           icon: <PackageCheck size={14} />,
           to: "/$org/settings/store",
+          requires: "registry:manage",
         },
       ],
     },
@@ -151,6 +168,8 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
       label: "Manage",
       items: [
         {
+          // Monitor's route isn't capability-guarded yet (see Build note); gated
+          // fully in the follow-up. Visible to all members for now.
           key: "monitor",
           label: "Monitor",
           icon: <BarChart10 size={14} />,
@@ -161,18 +180,22 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "Members",
           icon: <Users03 size={14} />,
           to: "/$org/settings/members",
+          requires: "members:manage",
         },
         {
           key: "roles",
           label: "Roles",
           icon: <Shield01 size={14} />,
           to: "/$org/settings/roles",
+          // Role management uses owner/admin-only Better Auth APIs.
+          privilegedOnly: true,
         },
         {
           key: "sso",
           label: "Security",
           icon: <Lock01 size={14} />,
           to: "/$org/settings/sso",
+          requires: "org:manage",
         },
       ],
     },
@@ -184,6 +207,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "Plugins",
           icon: <Zap size={14} />,
           to: "/$org/settings/features",
+          requires: "org:manage",
         },
         ...enabledSettingsItems,
       ],
@@ -201,7 +225,24 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
     },
   ];
 
-  return groups;
+  // While capabilities load — or if the lookup errored — show every item
+  // optimistically. This avoids a flicker for the common privileged case and
+  // ensures a transient failure never hides nav from owners/admins. Once
+  // resolved, hide items the member's role can't open and drop any group left
+  // empty. Items without a `requires` (Profile, plugin items) are always shown.
+  if (loading || error) {
+    return groups;
+  }
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (item.privilegedOnly) return isPrivileged;
+        if (!item.requires) return true;
+        return isPrivileged || capabilities[item.requires];
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
 export function SettingsSidebar() {

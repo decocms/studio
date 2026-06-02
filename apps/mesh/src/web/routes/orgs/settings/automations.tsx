@@ -14,8 +14,9 @@ import {
 } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { track } from "@/web/lib/posthog-client";
+import { RequireCapability } from "@/web/components/require-capability";
 
-export default function SettingsAutomationsPage() {
+function SettingsAutomationsPage() {
   const { org } = useProjectContext();
   const { data: automations = [] } = useAutomations(undefined);
   const agents = useVirtualMCPs();
@@ -109,5 +110,13 @@ export default function SettingsAutomationsPage() {
         </Page.Body>
       </Page.Content>
     </Page>
+  );
+}
+
+export default function SettingsAutomationsRoute() {
+  return (
+    <RequireCapability capability="automations:manage" area="automations">
+      <SettingsAutomationsPage />
+    </RequireCapability>
   );
 }
