@@ -115,8 +115,10 @@ export function FileField({
 
   return (
     // See ImageField for the grid-cols-[minmax(0,1fr)] rationale —
-    // bulletproofs against any broken min-w-0 chain above.
-    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2 overflow-hidden">
+    // bulletproofs against any broken min-w-0 chain above. No
+    // `overflow-hidden`: it clips the input/button focus rings and right
+    // borders; the grid track already caps width.
+    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <div className="min-w-0 space-y-0.5">
         <Label htmlFor={path} className="text-muted-foreground">
           {label}

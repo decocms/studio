@@ -6,6 +6,7 @@ import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-life
 
 import {
   ChevronDown,
+  Code01,
   Code02,
   CursorClick01,
   DotsHorizontal,
@@ -14,6 +15,7 @@ import {
   LinkExternal01,
   Plus,
   SearchLg,
+  CreditCardSearch,
   TextInput,
   Loading01,
   Monitor04,
@@ -34,6 +36,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
@@ -71,6 +74,18 @@ import { track } from "@/web/lib/posthog-client";
 const SectionsEditor = lazy(() =>
   import("@/web/components/sections-editor/sections-editor").then((m) => ({
     default: m.SectionsEditor,
+  })),
+);
+
+const PageSeoSheet = lazy(() =>
+  import("@/web/components/sections-editor/page-seo-sheet").then((m) => ({
+    default: m.PageSeoSheet,
+  })),
+);
+
+const SiteSeoSheet = lazy(() =>
+  import("@/web/components/sections-editor/page-seo-sheet").then((m) => ({
+    default: m.SiteSeoSheet,
   })),
 );
 
@@ -122,6 +137,12 @@ export function PreviewContent() {
   // Current iframe path (for sections editor)
   const [currentPath, setCurrentPath] = useState("/");
 
+  // SEO panel state
+  const [seoPageKey, setSeoPageKey] = useState<string | null>(null);
+  const [siteSeoOpen, setSiteSeoOpen] = useState(false);
+  // File deep-link for "View JSON" — opens the page's block file in code mode.
+  const [codeFilePath, setCodeFilePath] = useState<string | null>(null);
+
   const virtualMcpId = inset?.entity?.id ?? null;
   const { org } = useProjectContext();
 
@@ -168,9 +189,13 @@ export function PreviewContent() {
       section.resolveType.toLowerCase().includes(q)
     );
   });
+  const currentPage = activeGlobalSection
+    ? null
+    : (pages.find((p) => normPath(p.path) === normPath(currentPath)) ?? null);
   const currentPageName = activeGlobalSection
     ? activeGlobalSection.name
-    : pages.find((p) => normPath(p.path) === normPath(currentPath))?.name;
+    : currentPage?.name;
+  const currentPageKey = currentPage?.key ?? null;
 
   const iframeSrcRef = useRef<string | null>(null);
   /** Path we navigated to programmatically; ignore stale iframe onLoad events. */
@@ -705,13 +730,43 @@ export function PreviewContent() {
                       <DotsHorizontal size={14} />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="w-44">
                     <DropdownMenuItem onClick={handleHardReload}>
                       Hard Reload
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleCopyUrl}>
                       Copy Current URL
                     </DropdownMenuItem>
+                    {decofile && meta && (
+                      <>
+                        <DropdownMenuSeparator />
+                        {currentPageKey && (
+                          <DropdownMenuItem
+                            onClick={() => setSeoPageKey(currentPageKey)}
+                          >
+                            <CreditCardSearch size={14} />
+                            Edit SEO
+                          </DropdownMenuItem>
+                        )}
+                        {currentPageKey && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setCodeFilePath(
+                                `/.deco/blocks/${currentPageKey}.json`,
+                              );
+                              setViewMode("code");
+                            }}
+                          >
+                            <Code01 size={14} />
+                            View JSON
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => setSiteSeoOpen(true)}>
+                          <CreditCardSearch size={14} />
+                          Site SEO
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -775,6 +830,10 @@ export function PreviewContent() {
                       iframe.addEventListener("load", restore);
                       setTimeout(restore, 3000);
                     }, DEV_SERVER_SETTLE_MS);
+                  }}
+                  onViewJsonFile={(pageKey) => {
+                    setCodeFilePath(`/.deco/blocks/${pageKey}.json`);
+                    setViewMode("code");
                   }}
                 />
               </Suspense>
@@ -853,6 +912,7 @@ export function PreviewContent() {
                   orgSlug={org.slug}
                   virtualMcpId={virtualMcpId}
                   branch={branch}
+                  openPath={codeFilePath}
                 />
               </Suspense>
             </div>
@@ -916,6 +976,37 @@ export function PreviewContent() {
         error={createPageError}
         onSubmit={handleCreatePage}
       />
+
+      {seoPageKey && decofile && meta && (
+        <Suspense fallback={null}>
+          <PageSeoSheet
+            open={!!seoPageKey}
+            onOpenChange={(open) => {
+              if (!open) setSeoPageKey(null);
+            }}
+            orgSlug={org.slug}
+            virtualMcpId={virtualMcpId ?? ""}
+            branch={branch ?? ""}
+            pageKey={seoPageKey}
+            decofile={decofile}
+            meta={meta}
+          />
+        </Suspense>
+      )}
+
+      {siteSeoOpen && decofile && meta && (
+        <Suspense fallback={null}>
+          <SiteSeoSheet
+            open={siteSeoOpen}
+            onOpenChange={setSiteSeoOpen}
+            orgSlug={org.slug}
+            virtualMcpId={virtualMcpId ?? ""}
+            branch={branch ?? ""}
+            decofile={decofile}
+            meta={meta}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

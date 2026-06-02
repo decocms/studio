@@ -3,10 +3,13 @@ import { useState, useRef } from "react";
 import Editor, { loader } from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
 import {
+  Brackets,
   ChevronDown,
   ChevronRight,
-  File06,
-  FolderClosed,
+  File02,
+  FileCode01,
+  Folder,
+  Image01,
   Loading01,
   SearchSm,
   XClose,
@@ -40,6 +43,12 @@ interface FileExplorerProps {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /**
+   * When set (or changed), opens this file path in the editor — expanding
+   * ancestor folders, selecting it, and loading its content. Used to deep-link
+   * into a file (e.g. "View JSON" opening a page's `.deco/blocks/<key>.json`).
+   */
+  openPath?: string | null;
 }
 
 function buildApiUrl(
@@ -56,10 +65,49 @@ function toDaemonPath(treePath: string) {
   return treePath.startsWith("/") ? treePath.slice(1) : treePath;
 }
 
+type FileIcon = React.ComponentType<{
+  size?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}>;
+
+/** Warm folder tone — reads well on both light and dark backgrounds. */
+const FOLDER_COLOR = "#d9a441";
+const DEFAULT_FILE_COLOR = "#94a3b8";
+
+/**
+ * Maps a filename to an icon + accent color by extension, so the tree reads at
+ * a glance (blue for TS, amber for JSON, purple for images, …). Colors are
+ * inline (not Tailwind scale tokens) and chosen to work in light and dark.
+ */
+function getFileVisual(name: string): { Icon: FileIcon; color: string } {
+  const n = name.toLowerCase();
+  if (n.endsWith(".tsx") || n.endsWith(".ts"))
+    return { Icon: FileCode01, color: "#3b82f6" };
+  if (
+    n.endsWith(".jsx") ||
+    n.endsWith(".js") ||
+    n.endsWith(".mjs") ||
+    n.endsWith(".cjs")
+  )
+    return { Icon: FileCode01, color: "#d9a441" };
+  if (n.endsWith(".json")) return { Icon: Brackets, color: "#cb9b3f" };
+  if (n.endsWith(".css") || n.endsWith(".scss"))
+    return { Icon: FileCode01, color: "#06b6d4" };
+  if (n.endsWith(".html") || n.endsWith(".xml"))
+    return { Icon: FileCode01, color: "#f97316" };
+  if (/\.(png|jpe?g|gif|webp|avif|ico|svg)$/.test(n))
+    return { Icon: Image01, color: "#a855f7" };
+  if (n.endsWith(".md") || n.endsWith(".mdx"))
+    return { Icon: File02, color: "#64748b" };
+  return { Icon: File02, color: DEFAULT_FILE_COLOR };
+}
+
 export function FileExplorer({
   orgSlug,
   virtualMcpId,
   branch,
+  openPath,
 }: FileExplorerProps) {
   // File tree state
   const [files, setFiles] = useState<string[]>([]);
@@ -94,6 +142,15 @@ export function FileExplorer({
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot fetch trigger
     loadTreeCalledRef.current = true;
     fetchFileTree();
+  }
+
+  // Deep-link: open the requested file when `openPath` is set or changes.
+  // The file opens via its path directly (read endpoint), so it works even
+  // when the tree hides the folder (e.g. dot-directories like `.deco`).
+  const [prevOpenPath, setPrevOpenPath] = useState<string | null>(null);
+  if (openPath && openPath !== prevOpenPath) {
+    setPrevOpenPath(openPath);
+    handleFileClick(openPath);
   }
 
   async function fetchFileTree() {
@@ -345,15 +402,19 @@ export function FileExplorer({
               const isExpanded = expandedDirs.has(node.path);
               const isSelected = selectedFile === node.path;
 
+              const { Icon: FileVisualIcon, color: fileColor } = getFileVisual(
+                node.name,
+              );
+
               return (
                 <button
                   key={node.path}
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-1 px-2 py-1 text-left text-xs hover:bg-accent transition-colors",
+                    "flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[13px] hover:bg-accent transition-colors",
                     isSelected && "bg-accent",
                   )}
-                  style={{ paddingLeft: `${depth * 12 + 8}px` }}
+                  style={{ paddingLeft: `${depth * 14 + 8}px` }}
                   onClick={() => {
                     if (isDir) {
                       toggleDir(node.path);
@@ -366,26 +427,28 @@ export function FileExplorer({
                     <>
                       {isExpanded ? (
                         <ChevronDown
-                          size={12}
+                          size={14}
                           className="shrink-0 text-muted-foreground"
                         />
                       ) : (
                         <ChevronRight
-                          size={12}
+                          size={14}
                           className="shrink-0 text-muted-foreground"
                         />
                       )}
-                      <FolderClosed
-                        size={14}
-                        className="shrink-0 text-muted-foreground"
+                      <Folder
+                        size={16}
+                        className="shrink-0"
+                        style={{ color: FOLDER_COLOR }}
                       />
                     </>
                   ) : (
                     <>
-                      <span className="w-3 shrink-0" />
-                      <File06
-                        size={14}
-                        className="shrink-0 text-muted-foreground"
+                      <span className="w-3.5 shrink-0" />
+                      <FileVisualIcon
+                        size={16}
+                        className="shrink-0"
+                        style={{ color: fileColor }}
                       />
                     </>
                   )}

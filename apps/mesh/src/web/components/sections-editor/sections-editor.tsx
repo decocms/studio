@@ -3,9 +3,11 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Code01,
   Flag01,
   Globe01,
   Loading01,
+  CreditCardSearch,
 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
@@ -78,6 +80,7 @@ import {
   updateMultivariateSectionVariantRule,
   updateMultivariateSectionVariantValue,
 } from "./section-variants";
+import { PageJsonDialog } from "./page-json-dialog";
 
 const AUTOSAVE_DELAY = 700;
 
@@ -419,6 +422,8 @@ export function SectionsEditor({
   activeGlobalBlockKey = null,
   externalSelectedIndex,
   onSaved,
+  onEditPageSeo,
+  onViewJsonFile,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -438,6 +443,18 @@ export function SectionsEditor({
   externalSelectedIndex?: number | null;
   /** Called after a successful auto-save so the parent can reload the preview. */
   onSaved?: () => void;
+  /**
+   * When provided, the page-header "Edit SEO" button delegates to the host
+   * (passing the page block key) — e.g. the Content tab opens its two-pane SEO
+   * editor with live previews. Hosts that omit it get the inline SEO mode.
+   */
+  onEditPageSeo?: (pageKey: string) => void;
+  /**
+   * When provided, "View JSON" opens the page's block file in the host's file
+   * view (passing the decofile block key) instead of the built-in JSON modal.
+   * Hosts without a file surface (Content tab) omit this and get the modal.
+   */
+  onViewJsonFile?: (pageKey: string) => void;
 }) {
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch }
@@ -475,6 +492,16 @@ export function SectionsEditor({
   );
   const [isVariantRuleOpen, setIsVariantRuleOpen] = useState(true);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
+
+  // Inline SEO editing mode — same breadcrumb UX as editing a section
+  const [editingSeo, setEditingSeo] = useState(false);
+  const [seoFormValue, setSeoFormValue] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [seoFieldBreadcrumbs, setSeoFieldBreadcrumbs] = useState<string[]>([]);
+  const [seoFormResetKey, setSeoFormResetKey] = useState(0);
   const [activeSectionVariantIndex, setActiveSectionVariantIndex] = useState(0);
   const [sectionRuleFormValue, setSectionRuleFormValue] = useState<Record<
     string,
@@ -511,6 +538,10 @@ export function SectionsEditor({
     setSectionRuleResolveType(null);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
+    setEditingSeo(false);
+    setSeoFormValue(null);
+    setSeoFieldBreadcrumbs([]);
+    setSeoFormResetKey((key) => key + 1);
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
@@ -522,6 +553,8 @@ export function SectionsEditor({
   const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const seoDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestSeoFormRef = useRef<Record<string, unknown> | null>(null);
   // Accumulates pending page header field changes to avoid losing edits
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
 
@@ -589,6 +622,15 @@ export function SectionsEditor({
     !isGlobalBlockMode && activePageKey && decofile[activePageKey]
       ? (decofile[activePageKey] as Record<string, unknown>)
       : null;
+
+  // SEO computed values
+  const seoData = pageData
+    ? (pageData.seo as Record<string, unknown> | undefined)
+    : undefined;
+  const seoResolveType =
+    typeof seoData?.__resolveType === "string" ? seoData.__resolveType : null;
+  const seoSchema = seoResolveType ? resolveSchema(seoResolveType, meta) : null;
+
   const pageVariants = isGlobalBlockMode
     ? [
         {
@@ -1507,11 +1549,17 @@ export function SectionsEditor({
       : [];
   // The global header still needs a crumb at the top level of a directly-opened
   // global block, where editingBreadcrumbs is empty — fall back to its name.
-  const headerCrumbs = showGlobalBanner
-    ? editingBreadcrumbs.length > 0
-      ? editingBreadcrumbs
-      : [globalBannerName]
-    : editingBreadcrumbs;
+  const seoBreadcrumbs =
+    editingSeo && activePage
+      ? [activePage.name, "SEO", ...seoFieldBreadcrumbs]
+      : [];
+  const headerCrumbs = editingSeo
+    ? seoBreadcrumbs
+    : showGlobalBanner
+      ? editingBreadcrumbs.length > 0
+        ? editingBreadcrumbs
+        : [globalBannerName]
+      : editingBreadcrumbs;
   const handleAddPageVariant = () => {
     if (!activePageKey) return;
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
@@ -1784,7 +1832,46 @@ export function SectionsEditor({
   const exitSectionEditing = () => {
     clearSectionEditing();
   };
+
+  const handleSeoFormChange = (next: unknown) => {
+    const nextRecord = next as Record<string, unknown>;
+    setSeoFormValue(nextRecord);
+    latestSeoFormRef.current = nextRecord;
+
+    if (seoDebounceRef.current) clearTimeout(seoDebounceRef.current);
+    seoDebounceRef.current = setTimeout(() => {
+      const value = latestSeoFormRef.current;
+      if (!value || !activePageKey || !pageData) return;
+      const updatedPageData = { ...pageData, seo: value };
+      saveBlock.mutate(
+        { blockKey: activePageKey, data: updatedPageData },
+        {
+          onSuccess: () => onSaved?.(),
+          onError: (err) => toast.error(`Save failed: ${err.message}`),
+        },
+      );
+    }, AUTOSAVE_DELAY);
+  };
+
   const handleBreadcrumbClick = (index: number) => {
+    if (editingSeo) {
+      if (index === 0) {
+        setEditingSeo(false);
+        setSeoFormValue(null);
+        setSeoFieldBreadcrumbs([]);
+        setSeoFormResetKey((key) => key + 1);
+        return;
+      }
+      if (index === 1) {
+        setSeoFieldBreadcrumbs([]);
+        setSeoFormResetKey((key) => key + 1);
+        return;
+      }
+      setSeoFieldBreadcrumbs(seoFieldBreadcrumbs.slice(0, index - 1));
+      setSeoFormResetKey((key) => key + 1);
+      return;
+    }
+
     if (isGlobalBlockMode) {
       setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index));
       setFormResetKey((key) => key + 1);
@@ -1819,7 +1906,7 @@ export function SectionsEditor({
         {/* When editing a reusable/global block (opened directly or from inside
             a page), the breadcrumb bar goes purple with a globe and a note that
             changes apply everywhere — so it never reads as a local edit. */}
-        {showGlobalBanner || isEditing ? (
+        {showGlobalBanner || isEditing || editingSeo ? (
           <div
             className={cn(
               "border-b px-3 py-2.5",
@@ -1927,6 +2014,44 @@ export function SectionsEditor({
                   type="button"
                   variant="ghost"
                   size="icon"
+                  aria-label="Edit SEO"
+                  className="size-7 shrink-0"
+                  onClick={() =>
+                    onEditPageSeo && activePageKey
+                      ? onEditPageSeo(activePageKey)
+                      : setEditingSeo(true)
+                  }
+                >
+                  <CreditCardSearch size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Edit SEO</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="View JSON"
+                  className="size-7 shrink-0"
+                  onClick={() =>
+                    onViewJsonFile && activePageKey
+                      ? onViewJsonFile(activePageKey)
+                      : setJsonOpen(true)
+                  }
+                >
+                  <Code01 size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">View JSON</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
                   aria-label="Add variant"
                   className="size-7 shrink-0"
                   style={{ color: "oklch(0.65 0.15 160)" }}
@@ -1942,7 +2067,7 @@ export function SectionsEditor({
       </div>
 
       {/* Variant selector (when page sections are multivariate) */}
-      {hasMultipleVariants && !isEditing && activePageKey && (
+      {hasMultipleVariants && !isEditing && !editingSeo && activePageKey && (
         <PageVariantTabs
           listKey={activePageKey}
           variants={pageVariants}
@@ -1958,8 +2083,23 @@ export function SectionsEditor({
         />
       )}
 
-      {/* Drill-down: section list OR section form */}
-      {isEditing ? (
+      {/* Drill-down: SEO form, section form, or section list */}
+      {editingSeo ? (
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+          <SchemaFormPanel
+            activeSchema={seoSchema}
+            formValue={seoFormValue ?? seoData ?? {}}
+            formResetKey={seoFormResetKey}
+            onFormChange={handleSeoFormChange}
+            onBreadcrumbChange={setSeoFieldBreadcrumbs}
+            emptyMessage={
+              !seoData
+                ? "This page has no SEO block configured."
+                : "No editable SEO fields found."
+            }
+          />
+        </ScrollArea>
+      ) : isEditing ? (
         <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
           {isEditingMultivariateSection && sectionFlagVariants.length > 0 && (
             <>
@@ -2116,6 +2256,15 @@ export function SectionsEditor({
           decofile={decofile}
           previewBaseUrl={previewUrl}
           onSelect={handleAddSection}
+        />
+      )}
+
+      {jsonOpen && activePageKey && decofile && (
+        <PageJsonDialog
+          open={jsonOpen}
+          onOpenChange={setJsonOpen}
+          pageKey={activePageKey}
+          decofile={decofile}
         />
       )}
 
