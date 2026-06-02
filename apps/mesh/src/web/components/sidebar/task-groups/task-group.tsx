@@ -240,15 +240,22 @@ function AgentExpandedBody({
     filters,
     groupVisibleCount,
   );
-  const { isFetching, loadMore, hasMore } = showMore;
+  const { isFetching, isProbing, loadMore, serverHasMore } = showMore;
 
   const [autoLoaded, setAutoLoaded] = useState(false);
-  if (!autoLoaded && threads.length === 0 && hasMore && !isFetching) {
+  if (
+    !autoLoaded &&
+    threads.length === 0 &&
+    serverHasMore === true &&
+    !isFetching &&
+    !isProbing
+  ) {
     setAutoLoaded(true);
     queueMicrotask(() => {
       void loadMore();
     });
   }
+  const { hasMore } = showMore;
 
   return (
     <>
@@ -286,19 +293,36 @@ function AgentExpandedBody({
 }
 
 function StatusExpandedBody({
+  status,
   threads,
   activeTaskId,
   onSelectTask,
   onArchiveTask,
-  showMore,
+  filters,
 }: {
+  status: StatusGroupData["status"];
   threads: Task[];
   activeTaskId: string | null;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
-  showMore: ReturnType<typeof useGroupShowMore>;
+  filters: SidebarFilters;
 }) {
-  const { isFetching, loadMore, hasMore } = showMore;
+  const { isFetching, isProbing, loadMore, hasMore, serverHasMore } =
+    useGroupShowMore("status", status, filters);
+
+  const [autoLoaded, setAutoLoaded] = useState(false);
+  if (
+    !autoLoaded &&
+    threads.length === 0 &&
+    serverHasMore === true &&
+    !isFetching &&
+    !isProbing
+  ) {
+    setAutoLoaded(true);
+    queueMicrotask(() => {
+      void loadMore();
+    });
+  }
 
   return (
     <>
@@ -342,19 +366,9 @@ export function StatusGroup({
   const config = STATUS_CONFIG[status];
   const StatusIcon = config.icon;
   const [expanded, setExpanded] = useGroupExpanded(`status-${status}`, false);
-  const showMore = useGroupShowMore("status", status, filters);
 
   function handleToggleExpanded() {
-    const next = !expanded;
-    setExpanded(next);
-    if (
-      next &&
-      threads.length === 0 &&
-      showMore.hasMore &&
-      !showMore.isFetching
-    ) {
-      void showMore.loadMore();
-    }
+    setExpanded(!expanded);
   }
 
   return (
@@ -391,11 +405,12 @@ export function StatusGroup({
       {expanded && (
         <div className="flex flex-col gap-0.5 pb-1 pl-4">
           <StatusExpandedBody
+            status={status}
             threads={threads}
             activeTaskId={activeTaskId}
             onSelectTask={onSelectTask}
             onArchiveTask={onArchiveTask}
-            showMore={showMore}
+            filters={filters}
           />
         </div>
       )}
