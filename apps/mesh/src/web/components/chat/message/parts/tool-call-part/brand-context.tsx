@@ -2,9 +2,8 @@
 
 import type { ToolUIPart } from "ai";
 import { LinkExternal01, Palette, Star01 } from "@untitledui/icons";
-import { formatDuration } from "@/web/lib/format-time.ts";
-import { ToolCallShell } from "./common.tsx";
-import { getEffectiveState } from "./utils.tsx";
+import { LatencyLabel, ToolCallShell } from "./common.tsx";
+import { getEffectiveState, unwrapResult } from "./utils.tsx";
 
 interface BrandColors {
   primary?: string;
@@ -45,29 +44,6 @@ const COLOR_LABELS: Record<keyof BrandColors, string> = {
   background: "Background",
   foreground: "Foreground",
 };
-
-// MCP tool results arrive as CallToolResult ({ content, structuredContent }).
-// Built-in tools (e.g. tool-brand_context_setup) skip the wrapper and pass
-// the raw object as `part.output`. This unwraps either shape.
-function unwrapResult<T>(output: unknown): T | undefined {
-  if (output == null || typeof output !== "object") return undefined;
-  const o = output as Record<string, unknown>;
-  if (o.structuredContent && typeof o.structuredContent === "object") {
-    return o.structuredContent as T;
-  }
-  if (Array.isArray(o.content)) {
-    const first = (o.content as Array<{ type?: string; text?: string }>)[0];
-    if (first?.type === "text" && typeof first.text === "string") {
-      try {
-        return JSON.parse(first.text) as T;
-      } catch {
-        return undefined;
-      }
-    }
-    return undefined;
-  }
-  return output as T;
-}
 
 function domainHref(domain: string): string {
   return domain.startsWith("http") ? domain : `https://${domain}`;
@@ -265,13 +241,6 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
   const isLoading = state === "loading";
   const failed = state === "error" || (result && result.success === false);
 
-  const latencyLabel =
-    latency != null && latency > 0 ? (
-      <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
-        {formatDuration(latency)}
-      </span>
-    ) : null;
-
   if (isLoading) {
     const input = part.input as { domain?: string } | undefined;
     return (
@@ -292,7 +261,7 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
         title="Brand extraction failed"
         summary={result?.error ?? "Unknown error"}
         state="error"
-        trailing={latencyLabel}
+        trailing={<LatencyLabel latency={latency} />}
       />
     );
   }
@@ -304,7 +273,7 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
         title={result?.name ? `Brand set: ${result.name}` : "Brand context set"}
         summary={result?.domain}
         state="idle"
-        trailing={latencyLabel}
+        trailing={<LatencyLabel latency={latency} />}
       />
       <BrandCard
         logo={result?.logo}
@@ -321,6 +290,8 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
 
 interface BrandContextRecord {
   id?: string;
+  success?: boolean;
+  error?: string;
   name?: string;
   domain?: string;
   overview?: string;
@@ -344,14 +315,7 @@ export function BrandContextGetPart({
   const state = getEffectiveState(part.state);
   const result = unwrapResult<BrandContextRecord>(part.output);
   const isLoading = state === "loading";
-  const failed = state === "error";
-
-  const latencyLabel =
-    latency != null && latency > 0 ? (
-      <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
-        {formatDuration(latency)}
-      </span>
-    ) : null;
+  const failed = state === "error" || (result && result.success === false);
 
   if (isLoading) {
     return (
@@ -369,7 +333,7 @@ export function BrandContextGetPart({
         icon={<Palette />}
         title="Couldn't load brand"
         state="error"
-        trailing={latencyLabel}
+        trailing={<LatencyLabel latency={latency} />}
       />
     );
   }
@@ -381,7 +345,7 @@ export function BrandContextGetPart({
         title={result.name ? `Brand · ${result.name}` : "Brand"}
         summary={result.domain}
         state="idle"
-        trailing={latencyLabel}
+        trailing={<LatencyLabel latency={latency} />}
       />
       <BrandCard
         logo={result.logo}
@@ -417,13 +381,6 @@ export function BrandContextListPart({
   const isLoading = state === "loading";
   const failed = state === "error";
 
-  const latencyLabel =
-    latency != null && latency > 0 ? (
-      <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
-        {formatDuration(latency)}
-      </span>
-    ) : null;
-
   if (isLoading) {
     return (
       <ToolCallShell
@@ -440,7 +397,7 @@ export function BrandContextListPart({
         icon={<Palette />}
         title="Couldn't load brands"
         state="error"
-        trailing={latencyLabel}
+        trailing={<LatencyLabel latency={latency} />}
       />
     );
   }
@@ -452,7 +409,7 @@ export function BrandContextListPart({
         title="No brands yet"
         summary="The organization hasn't set up any brand context."
         state="idle"
-        trailing={latencyLabel}
+        trailing={<LatencyLabel latency={latency} />}
       />
     );
   }
@@ -463,7 +420,7 @@ export function BrandContextListPart({
         icon={<Palette className="text-fuchsia-500" />}
         title={items.length === 1 ? "1 brand" : `${items.length} brands`}
         state="idle"
-        trailing={latencyLabel}
+        trailing={<LatencyLabel latency={latency} />}
       />
       <div className="mt-2 flex flex-col gap-1.5">
         {items.map((brand) => {

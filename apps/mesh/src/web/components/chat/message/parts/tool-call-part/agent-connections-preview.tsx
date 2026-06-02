@@ -1,3 +1,5 @@
+"use client";
+
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { useConnection } from "@decocms/mesh-sdk";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -92,13 +94,17 @@ export function AgentConnectionsPreview({
 
 AgentConnectionsPreview.Fallback = function AgentConnectionsPreviewFallback({
   maxVisibleIcons = 2,
+  totalCount,
   iconSize = "xs",
 }: {
   maxVisibleIcons?: number;
+  /** When provided, mirrors the real component's overflow badge logic. */
+  totalCount?: number;
   iconSize?: "xs" | "sm";
 }) {
   const sizeClass = iconSize === "sm" ? "size-6" : "size-5";
   const badgeSizeClass = iconSize === "sm" ? "size-8" : "size-6";
+  const showOverflow = totalCount !== undefined && totalCount > maxVisibleIcons;
   return (
     <div className="flex items-center -space-x-2">
       {Array.from({ length: maxVisibleIcons }).map((_, i) => (
@@ -109,19 +115,21 @@ AgentConnectionsPreview.Fallback = function AgentConnectionsPreviewFallback({
           <div className={cn(sizeClass, "rounded bg-muted animate-pulse")} />
         </div>
       ))}
-      <div
-        className={cn(
-          "shrink-0 bg-background ring-1 ring-background border border-border rounded-lg flex items-center justify-center",
-          badgeSizeClass,
-        )}
-      >
+      {showOverflow && (
         <div
           className={cn(
-            iconSize === "sm" ? "h-3.5 w-5" : "h-3 w-4",
-            "rounded bg-muted animate-pulse",
+            "shrink-0 bg-background ring-1 ring-background border border-border rounded-lg flex items-center justify-center",
+            badgeSizeClass,
           )}
-        />
-      </div>
+        >
+          <div
+            className={cn(
+              iconSize === "sm" ? "h-3.5 w-5" : "h-3 w-4",
+              "rounded bg-muted animate-pulse",
+            )}
+          />
+        </div>
+      )}
     </div>
   );
 };

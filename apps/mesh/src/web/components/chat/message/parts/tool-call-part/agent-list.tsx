@@ -21,6 +21,7 @@ const MAX_VISIBLE = 4;
 
 function AgentRow({ agent }: { agent: VirtualMCPEntity }) {
   const navigateToAgent = useNavigateToAgent();
+  if (!agent.id) return null;
   const connectionIds = (agent.connections ?? []).map((c) => c.connection_id);
 
   return (
@@ -46,6 +47,7 @@ function AgentRow({ agent }: { agent: VirtualMCPEntity }) {
             <AgentConnectionsPreview.Fallback
               iconSize="xs"
               maxVisibleIcons={3}
+              totalCount={connectionIds.length}
             />
           }
         >
@@ -67,7 +69,7 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
   const result = unwrapResult<{ items?: VirtualMCPEntity[] }>(part.output);
   const items = Array.isArray(result?.items) ? result.items : [];
 
-  if (state === "loading") {
+  if (state === "loading" || state === "approval") {
     return (
       <ToolCallShell
         icon={<UserCircle className="animate-pulse" />}
