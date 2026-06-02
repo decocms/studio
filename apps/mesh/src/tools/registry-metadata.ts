@@ -1029,6 +1029,16 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "SANDBOX_DELETE",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
+      // Chat threads — talking to an agent is the most basic usage of the
+      // product, so every member can CRUD their OWN threads. Per-thread access
+      // is scoped at the handler level (you only see your own threads unless
+      // you also hold the threads:view-all capability).
+      "COLLECTION_THREADS_CREATE",
+      "COLLECTION_THREADS_LIST",
+      "COLLECTION_THREADS_GET",
+      "COLLECTION_THREADS_UPDATE",
+      "COLLECTION_THREADS_DELETE",
+      "COLLECTION_THREAD_MESSAGES_LIST",
     ],
   },
   // Organization
