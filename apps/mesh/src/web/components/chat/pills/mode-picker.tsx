@@ -11,21 +11,36 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Check, ChevronDown, Cloud01 } from "@untitledui/icons";
+import { Check, ChevronDown, Cloud01, Lock01 } from "@untitledui/icons";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import type { HarnessId } from "@/harnesses";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { track } from "@/web/lib/posthog-client";
+import { useOptionalChatTask } from "../chat-context";
 import { ClaudeCodeIcon, CodexIcon } from "../agent-icons";
 import {
   type AgentMode,
   useAgentMode,
   useSetAgentMode,
 } from "../use-agent-mode";
+
+/**
+ * Human-readable label for each `HarnessId`. Used by the locked-state
+ * tooltip so the user sees "This chat is using Claude Code." rather than
+ * a raw id. Kept local to the picker because no other surface needs the
+ * mapping today — promote to a shared module if a second consumer
+ * appears.
+ */
+const HARNESS_LABEL: Record<HarnessId, string> = {
+  decopilot: "Decopilot",
+  "claude-code": "Claude Code",
+  codex: "Codex",
+};
 
 export interface ModePickerAvailability {
   claudeCode: boolean;
@@ -36,6 +51,14 @@ interface PureProps {
   mode: AgentMode;
   availability: ModePickerAvailability;
   locked: boolean;
+  /**
+   * Harness the thread is permanently bound to (from `threads.harness_id`).
+   * When non-null and `locked` is true, the trigger surfaces lock-affordance
+   * copy that names the runtime instead of the generic mode label. When null
+   * the trigger keeps its existing tooltip (the picker may be `locked` for
+   * unrelated reasons such as "has prior messages but no thread row yet").
+   */
+  lockedHarness?: HarnessId | null;
   onSelect: (mode: AgentMode) => void;
 }
 
@@ -97,11 +120,14 @@ export function ModePickerPure({
   mode,
   availability,
   locked,
+  lockedHarness,
   onSelect,
 }: PureProps) {
   const [open, setOpen] = useState(false);
   const { icon, text } = pillLabel(mode);
   const isLocal = mode !== "cloud-decopilot";
+  const isThreadLocked = locked && lockedHarness != null;
+  const harnessLabel = lockedHarness ? HARNESS_LABEL[lockedHarness] : null;
 
   const handleSelect = (m: AgentMode) => {
     onSelect(m);
@@ -118,8 +144,15 @@ export function ModePickerPure({
                 type="button"
                 variant="ghost"
                 size="default"
-                aria-label={text}
+                aria-label={
+                  isThreadLocked && harnessLabel
+                    ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
+                    : text
+                }
                 disabled={locked}
+                data-testid={
+                  isThreadLocked ? "harness-picker-locked" : "harness-picker"
+                }
                 className={cn(
                   baseClasses,
                   isLocal && localActiveClasses,
@@ -127,6 +160,9 @@ export function ModePickerPure({
                   locked ? "gap-0" : "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
+                {isThreadLocked && (
+                  <Lock01 className="h-3 w-3 shrink-0" aria-hidden="true" />
+                )}
                 {icon}
                 <span
                   className={cn(
@@ -147,7 +183,11 @@ export function ModePickerPure({
             </PopoverTrigger>
           </span>
         </TooltipTrigger>
-        <TooltipContent>{text}</TooltipContent>
+        <TooltipContent>
+          {isThreadLocked && harnessLabel
+            ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
+            : text}
+        </TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="p-1 w-64">
         <div role="menu" className="flex flex-col">
@@ -245,6 +285,13 @@ export function ModePicker({
     orgSlug: org.slug,
   });
   const startVm = useSandboxStart(mcpClient);
+  // Source the locked runtime from the active-thread row (Task 4 / Task 5
+  // pattern). When non-null we surface lock-affordance copy on the trigger;
+  // when null, the `locked` flag may still be true for unrelated reasons
+  // (e.g. message-count lock pre-thread-row) and the trigger keeps its
+  // existing tooltip.
+  const taskCtx = useOptionalChatTask();
+  const lockedHarness = taskCtx?.lockedHarness ?? null;
 
   const availability: ModePickerAvailability = {
     claudeCode: link.online && link.capabilities.includes("claude-code"),
@@ -268,6 +315,7 @@ export function ModePicker({
       mode={mode}
       availability={availability}
       locked={locked}
+      lockedHarness={lockedHarness}
       onSelect={handleSelect}
     />
   );
