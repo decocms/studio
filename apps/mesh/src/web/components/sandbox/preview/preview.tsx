@@ -23,7 +23,6 @@ import {
   Loading01,
   Monitor04,
   RefreshCw01,
-  Server01,
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -71,16 +70,11 @@ import {
   useSandboxReloadHandler,
 } from "../hooks/use-sandbox-events";
 import {
-  useIsSandboxStartPending,
   useSandboxStart,
   sandboxUserStop,
   type SandboxStartArgs,
 } from "../hooks/use-sandbox-start";
-import {
-  computePreviewState,
-  type LifecycleFailure,
-  type PreviewState,
-} from "./preview-state";
+import { computePreviewState, type PreviewState } from "./preview-state";
 import { SandboxStateCard } from "./state-card";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import {
@@ -88,7 +82,7 @@ import {
   readPersistedDrawerOpen,
   writePersistedDrawerOpen,
 } from "./drawer/drawer";
-import type { DrawerStatus } from "./drawer/toolbar";
+import type { DrawerStatus } from "./drawer/status-pill";
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { useQueryClient } from "@tanstack/react-query";
 import { track } from "@/web/lib/posthog-client";
@@ -108,20 +102,15 @@ const FileExplorer = lazy(() =>
 /** Delay before reloading the preview iframe after a save, giving the dev server time to pick up file changes. */
 const DEV_SERVER_SETTLE_MS = 500;
 
-function drawerStatusFromPreview(
-  state: PreviewState,
-  vmStartPending: boolean,
-): DrawerStatus {
-  if (state.kind === "errored") return "errored";
-  if (state.kind === "suspended") return "suspended";
-  if (state.kind === "starting-now" || vmStartPending) return "starting";
-  if (
-    state.kind === "iframe" ||
-    state.kind === "no-html" ||
-    state.kind === "crashed"
-  )
-    return "running";
-  return "idle";
+function drawerStatusFromPreview(state: PreviewState): DrawerStatus {
+  switch (state.kind) {
+    case "suspended":
+      return "suspended";
+    case "iframe":
+      return "running";
+    case "starting":
+      return "starting";
+  }
 }
 
 type PreviewViewMode = "preview" | "visual" | "cms" | "code";
@@ -240,43 +229,10 @@ export function PreviewContent() {
     iframe.src = src;
   });
 
-  // `running` lifecycle phase carries the live port + htmlSupport flag;
-  // `crashed` means the dev server stopped responding after coming up.
-  // Everything else maps to "booting" for the preview overlay.
-  //
-  // htmlSupport only lives on the `running` event — but we need it to be
-  // sticky across `running` → `crashed` so a transient drop doesn't flip a
-  // working preview to the "No web page" empty state. Latch the last seen
-  // value, keyed on previewUrl so a new VM resets it.
-  const htmlSupportRef = useRef<{ url: string; value: boolean }>({
-    url: "",
-    value: false,
-  });
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  if (previewUrl && htmlSupportRef.current.url !== previewUrl) {
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-    htmlSupportRef.current = { url: previewUrl, value: false };
-  }
-  if (vmEvents.lifecycle.phase === "running") {
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-    htmlSupportRef.current.value = vmEvents.lifecycle.htmlSupport;
-  }
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  const hasHtmlPreview = htmlSupportRef.current.value;
-  const upstreamStatus: "booting" | "online" | "offline" =
-    lifecyclePhase === "running"
-      ? "online"
-      : lifecyclePhase === "crashed"
-        ? "offline"
-        : "booting";
-  const suspended = vmEvents.suspended;
-
   // Only the user-pause state routes to the suspended overlay (resume
   // affordance). The daemon's `error` state means the dev script crashed
-  // — that's a failure, surfaced via the booting overlay's retry button
-  // (gated on `lifecycle.phase ∈ {clone-failed, install-failed, start-failed,
-  // crashed}`). Lumping the two would route every dev-script crash to the
-  // resume UI, which has no retry path.
+  // — that's a failure, but the daemon's HTTP proxy serves an auto-reloading
+  // HTML page for it, so the iframe surfaces it; no dedicated overlay.
   const appPaused = vmEvents.status.state === "paused";
 
   // One mutation, two triggers. Dedup differs by meaning:
@@ -289,11 +245,6 @@ export function PreviewContent() {
     orgSlug: org.slug,
   });
   const startVm = useSandboxStart(mcpClient);
-  const lastStartError = startVm.error?.message ?? null;
-  const vmStartPending = useIsSandboxStartPending(
-    virtualMcpId ?? undefined,
-    branch ?? undefined,
-  );
   const autoStartedForTaskRef = useRef<string | null>(null);
   const reprovisionedForVmIdRef = useRef<string | null>(null);
 
@@ -309,34 +260,9 @@ export function PreviewContent() {
     !!branch &&
     sandboxUserStop.isStopped(virtualMcpId, branch);
 
-  // Terminal lifecycle failures from the daemon (clone/install/dev script
-  // exited non-zero). Distinct from `lastStartError`, which is a SANDBOX_START
-  // mutation rejection — these come from the daemon AFTER it came online.
-  // The daemon also flips status.state to "error", but lifecycle.phase
-  // carries which step failed, which the card uses to pick a log source.
-  const lifecycleFailure: LifecycleFailure | null =
-    lifecyclePhase === "start-failed" ||
-    lifecyclePhase === "install-failed" ||
-    lifecyclePhase === "clone-failed"
-      ? lifecyclePhase
-      : null;
-  const lifecycleFailureError =
-    lifecycleFailure && "error" in vmEvents.lifecycle
-      ? (vmEvents.lifecycle.error ?? null)
-      : null;
-
   const previewState = computePreviewState({
     previewUrl,
-    status: upstreamStatus,
-    htmlSupport: hasHtmlPreview,
-    suspended,
     appPaused,
-    vmStartPending,
-    lastStartError,
-    lifecycleFailure,
-    lifecycleFailureError,
-    claimPhase,
-    notFound: vmEvents.notFound,
     userStopped,
   });
 
@@ -373,7 +299,7 @@ export function PreviewContent() {
     !!branch &&
     !vmEvents.notFound &&
     !userStopped &&
-    !suspended &&
+    !vmEvents.suspended &&
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
@@ -428,7 +354,6 @@ export function PreviewContent() {
     !!userId &&
     !!branch &&
     !vmEntry &&
-    !lastStartError &&
     !userStopped &&
     !startVm.isPending &&
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
@@ -445,14 +370,14 @@ export function PreviewContent() {
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — one-shot reprovision trigger gated on the notFound→deadVmId derivation
   useEffect(() => {
     if (!deadVmId || !virtualMcpId) return;
-    if (lastStartError || startVm.isPending) return;
+    if (startVm.isPending) return;
     if (reprovisionedForVmIdRef.current === deadVmId) return;
     // Don't self-heal a VM the user explicitly stopped: the SSE "gone" event
     // can arrive before the sandboxMap query refetch clears the stale entry.
     if (branch && sandboxUserStop.isStopped(virtualMcpId, branch)) return;
     reprovisionedForVmIdRef.current = deadVmId;
     triggerStartRef.current("self-heal");
-  }, [deadVmId, virtualMcpId, lastStartError, startVm.isPending, branch]);
+  }, [deadVmId, virtualMcpId, startVm.isPending, branch]);
 
   const retryAutoStart = () => {
     autoStartedForTaskRef.current = null;
@@ -481,21 +406,18 @@ export function PreviewContent() {
     lastHydratedKeyRef.current = drawerStorageKey;
     setDrawerOpen(readPersistedDrawerOpen(drawerStorageKey));
   }
-  // Collapse to toolbar-only when the sandbox isn't running. Covers Stop
-  // (transitions to never-started via sandboxUserStop) and the initial idle
-  // state. Persisted preference is untouched so the drawer restores to
-  // the user's last open/closed state once the sandbox boots again.
-  // `null` (pre-hydration) is treated as closed so the drawer doesn't
-  // flash open before the right key's value is read.
+  // Collapse to toolbar-only while the sandbox is still booting. Persisted
+  // preference is untouched so the drawer restores to the user's last
+  // open/closed state once the sandbox boots. `null` (pre-hydration) is
+  // treated as closed so the drawer doesn't flash open before the right
+  // key's value is read.
   const drawerOpenEffective =
-    previewState.kind === "never-started" ? false : (drawerOpen ?? false);
+    previewState.kind === "starting" ? false : (drawerOpen ?? false);
 
   const handleDrawerOpenChange = (next: boolean) => {
     setDrawerOpen(next);
     writePersistedDrawerOpen(drawerStorageKey, next);
   };
-
-  const openDrawer = () => handleDrawerOpenChange(true);
 
   // Stop / restart. SANDBOX_DELETE is best-effort; the sandboxMap query refetch is
   // what actually flips the UI to idle. SANDBOX_DELETE requires the kind because
@@ -1087,65 +1009,12 @@ export function PreviewContent() {
         )}
 
         <div className="flex-1 relative overflow-hidden">
-          {previewState.kind === "never-started" && (
+          {previewState.kind === "starting" && (
             <div className="absolute inset-0 z-30">
               <SandboxStateCard
-                kind="never-started"
-                onStart={() => {
-                  // Force the drawer closed so transitioning out of
-                  // never-started doesn't unmask a persisted "open" preference
-                  // and visually toggle the setup tab button.
-                  handleDrawerOpenChange(false);
-                  triggerStart("auto-start");
-                }}
-              />
-            </div>
-          )}
-
-          {previewState.kind === "starting-now" &&
-            !(viewMode === "code" && daemonReady) && (
-              <div className="absolute inset-0 z-30">
-                <SandboxStateCard
-                  kind="starting-now"
-                  progress={progress}
-                  claimPhase={claimPhase}
-                />
-              </div>
-            )}
-
-          {previewState.kind === "errored" && (
-            <div className="absolute inset-0 z-40">
-              <SandboxStateCard
-                kind="errored"
+                kind="starting"
                 progress={progress}
-                logSource="setup"
-                errorLine={
-                  previewState.error.split("\n")[0] ?? "Failed to start"
-                }
-                onRetry={retryAutoStart}
-                drawerOpen={drawerOpenEffective}
-              />
-            </div>
-          )}
-
-          {/* Dev-script (or install/clone) exited after the daemon came up.
-              Card overlay is suppressed in `code` mode so the user can drop
-              into the FileExplorer to debug what went wrong. */}
-          {previewState.kind === "dev-script-failed" && viewMode !== "code" && (
-            <div className="absolute inset-0 z-40">
-              <SandboxStateCard
-                kind="dev-script-failed"
-                progress={progress}
-                logSource={
-                  previewState.failure === "start-failed" ? "dev" : "setup"
-                }
-                errorLine={
-                  previewState.error.split("\n")[0] ?? "Dev script exited"
-                }
-                onRetry={retryAutoStart}
-                onOpenTerminal={openDrawer}
-                onBrowseFiles={() => setViewMode("code")}
-                drawerOpen={drawerOpenEffective}
+                claimPhase={claimPhase}
               />
             </div>
           )}
@@ -1153,27 +1022,6 @@ export function PreviewContent() {
           {previewState.kind === "suspended" && (
             <div className="absolute inset-0 z-30">
               <SandboxStateCard kind="suspended" onResume={retryAutoStart} />
-            </div>
-          )}
-
-          {previewState.kind === "crashed" && (
-            <div className="absolute inset-0 z-30">
-              <SandboxStateCard kind="crashed" onOpenTerminal={openDrawer} />
-            </div>
-          )}
-
-          {previewState.kind === "no-html" && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-background">
-              <Server01 size={48} className="text-muted-foreground/40" />
-              <h3 className="text-lg font-medium">No web page at this URL</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-sm">
-                The server is running, but doesn't serve a web page at /. This
-                preview only renders web pages.
-              </p>
-              <Button onClick={openDrawer}>
-                <Server01 size={14} />
-                View Logs
-              </Button>
             </div>
           )}
 
@@ -1274,7 +1122,7 @@ export function PreviewContent() {
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={branch}
-        status={drawerStatusFromPreview(previewState, vmStartPending)}
+        status={drawerStatusFromPreview(previewState)}
         scripts={vmEvents.scripts}
         open={drawerOpenEffective}
         onOpenChange={handleDrawerOpenChange}
