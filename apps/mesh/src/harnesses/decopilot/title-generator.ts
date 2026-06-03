@@ -40,7 +40,10 @@ const hasUsableText = (s: string): boolean => /[\p{L}\p{N}]/u.test(s);
 const POST_STREAM_GRACE_MS = 10_000;
 
 export function genTitle(config: {
-  abortSignal: AbortSignal;
+  /** Optional: aborts title generation when the parent stream is cancelled.
+   *  Undefined on the remote-dispatch path, where the wire input cannot carry
+   *  a (non-serializable) AbortSignal. */
+  abortSignal?: AbortSignal;
   model: LanguageModelV3;
   userMessage: string;
 }): { promise: Promise<string | null>; finish: () => void } {
@@ -48,9 +51,13 @@ export function genTitle(config: {
 
   const titleAbortController = new AbortController();
 
-  // Abort title generation if parent stream is aborted
+  // Abort title generation if parent stream is aborted. `abortSignal` is
+  // optional-at-runtime: on the remote-dispatch path the wire input omits the
+  // (non-serializable) AbortSignal, and a caller may legitimately have nothing
+  // to tie lifetime to. Guard so a missing signal degrades to "no parent abort
+  // wiring" instead of throwing `addEventListener of undefined`.
   const onParentAbort = () => titleAbortController.abort();
-  abortSignal.addEventListener("abort", onParentAbort, { once: true });
+  abortSignal?.addEventListener("abort", onParentAbort, { once: true });
 
   let graceTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -108,7 +115,7 @@ export function genTitle(config: {
       return fallbackTitle;
     } finally {
       clearTimeout(graceTimeoutId);
-      abortSignal.removeEventListener("abort", onParentAbort);
+      abortSignal?.removeEventListener("abort", onParentAbort);
     }
   })();
 

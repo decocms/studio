@@ -94,6 +94,21 @@ describe("genTitle fallback", () => {
     expect(result).toBe("New chat");
   });
 
+  test("missing abortSignal does not throw and still produces a fallback", async () => {
+    // Repro for the remote-dispatch crash: the wire input cannot carry a
+    // (non-serializable) AbortSignal, so genTitle may be called with
+    // `abortSignal: undefined`. It must degrade to "no parent abort wiring"
+    // instead of throwing `addEventListener of undefined`.
+    const handle = genTitle({
+      abortSignal: undefined,
+      model: makeFailingModel(new Error("boom")),
+      userMessage: "Fix the login button on mobile devices please",
+    });
+    handle.finish();
+    const result = await handle.promise;
+    expect(result).toBe("Fix the lo");
+  });
+
   test("parent abort resolves to null (no fallback emitted)", async () => {
     const abortController = new AbortController();
     abortController.abort();
