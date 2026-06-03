@@ -353,7 +353,12 @@ test.describe("Thread runtime is locked after first message", () => {
       expect(first.status()).toBe(202);
 
       // Navigate to the thread URL and confirm the locked chips render.
-      await page.goto(`/${orgSlug}/${threadId}`);
+      // Include `?virtualmcpid=` so `useChatNavigation` resolves the
+      // chat input against THIS agent (with its `metadata.githubRepo`)
+      // instead of falling back to the well-known decopilot agent,
+      // which has no clonable source and would suppress the
+      // harness/branch pickers entirely.
+      await page.goto(`/${orgSlug}/${threadId}?virtualmcpid=${agentId}`);
 
       const lockedHarness = page.getByTestId("harness-picker-locked");
       await expect(lockedHarness).toBeVisible({ timeout: 60_000 });
