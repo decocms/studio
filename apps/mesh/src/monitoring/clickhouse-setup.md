@@ -59,6 +59,12 @@ change (they must match `MONITORING_LOG_ATTR` in `monitoring/schema.ts`).
 The `ServiceName = 'studio'` filter assumes the default service name. If you run
 Studio with a custom `OTEL_SERVICE_NAME`, use that value instead.
 
+**Multiple deployments sharing one `otel_logs`** (e.g. staging + production in one
+event lake): all of them carry `ServiceName = 'studio'`, so also filter by the
+environment — `AND ResourceAttributes['deployment.environment'] = 'production'`
+(Studio sets `deployment.environment` per deployment) — and create one view per
+environment.
+
 ```sql
 CREATE OR REPLACE VIEW studio_monitoring_logs AS
 SELECT
