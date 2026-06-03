@@ -53,7 +53,6 @@ import {
   createDecoSitesOrgRoutes,
   createDecoSitesUserRoutes,
 } from "./routes/deco-sites";
-import { createVirtualMcpRoutes } from "./routes/virtual-mcp";
 import {
   createLegacyWellKnownProtectedResourceRoutes,
   createWellKnownAuthServerRoutes,
@@ -62,13 +61,11 @@ import {
   protectedResourceMetadataHandler,
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
-import { createProxyRoutes } from "./routes/proxy";
 import { createKVRoutes } from "./routes/kv";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import publicConfigRoutes from "./routes/public-config";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
-import { createSelfRoutes } from "./routes/self";
 import { shouldSkipMeshContext, SYSTEM_PATHS } from "./utils/paths";
 import {
   mountPluginRoutes,
@@ -1689,11 +1686,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
     return await next();
   };
-  app.use("/mcp/:connectionId?", mcpAuth);
-  app.use("/mcp/gateway/:virtualMcpId?", mcpAuth);
-  app.use("/mcp/virtual-mcp/:virtualMcpId?", mcpAuth);
-  app.use("/mcp/self", mcpAuth);
-
   // Local file storage MCP routes — mounted whenever DevObjectStorage is the
   // active object-storage backend (i.e. no S3 configured). Required so the
   // dev-assets pseudo-connection can satisfy the OBJECT_STORAGE binding.
@@ -1705,25 +1697,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     mountDevRoutes(app, mcpAuth);
   }
 
-  // Virtual MCP / Agent routes (must be before proxy to match /mcp/gateway and /mcp/virtual-mcp before /mcp/:connectionId)
-  // /mcp/gateway/:virtualMcpId (backward compat) or /mcp/virtual-mcp/:virtualMcpId
-  const legacyVirtualMcp = new Hono<Env>();
-  legacyVirtualMcp.use("*", createLogDeprecatedRoute({ mountPath: "/mcp" }));
-  legacyVirtualMcp.route("/", createVirtualMcpRoutes());
-  app.route("/mcp", legacyVirtualMcp);
-
-  // Self MCP routes (at /mcp/self) - exposes all management tools
-  const legacySelf = new Hono<Env>();
-  legacySelf.use("*", createLogDeprecatedRoute({ mountPath: "/mcp/self" }));
-  legacySelf.route("/", createSelfRoutes());
-  app.route("/mcp/self", legacySelf);
-
-  // MCP Proxy routes (connection-specific)
-  // Note: SELF MCP ({org}_self) is handled by proxy.ts with special case detection
-  const legacyProxy = new Hono<Env>();
-  legacyProxy.use("*", createLogDeprecatedRoute({ mountPath: "/mcp" }));
-  legacyProxy.route("/", createProxyRoutes());
-  app.route("/mcp", legacyProxy);
+  // Legacy unscoped MCP mounts (/mcp/self, /mcp/gateway, /mcp/virtual-mcp,
+  // /mcp/:connectionId) were removed — all MCP traffic uses the org-scoped
+  // /api/:org/mcp/* routes (see createOrgScopedApi in routes/org-scoped.ts).
 
   // Measure LLM models route latency
   app.use("/api/:org/models/*", async (c, next) => {

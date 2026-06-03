@@ -128,8 +128,12 @@ describe("MCP Proxy null-org bypass", () => {
     vi.restoreAllMocks();
   });
 
-  it("should reject proxy access when organization context is missing", async () => {
-    const response = await app.request("/mcp/conn_victim_123", {
+  it("should reject cross-org proxy access for a non-member", async () => {
+    // The legacy unscoped /mcp/:connectionId route was removed; MCP traffic now
+    // goes through /api/:org/mcp/:connectionId. The attacker targets the victim
+    // org's path directly, and resolveOrgFromPath rejects them as a non-member
+    // before the proxy handler ever runs.
+    const response = await app.request("/api/victim-org/mcp/conn_victim_123", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -149,6 +153,6 @@ describe("MCP Proxy null-org bypass", () => {
 
     expect(response.status).toBe(403);
     const body = await response.json();
-    expect(body.error).toContain("Organization context is required");
+    expect(body.error).toContain("not a member of organization");
   });
 });
