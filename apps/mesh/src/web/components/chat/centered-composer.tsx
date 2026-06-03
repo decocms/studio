@@ -59,7 +59,7 @@ export function CenteredComposerPure({
               // resolve their `@[320px]/chat-bottom:` queries here too
               // and render with full labels — same affordance as inside
               // the docked input.
-              className="@container/chat-bottom flex justify-start gap-2"
+              className="@container/chat-bottom flex justify-start gap-1"
             >
               {aboveRow}
             </div>
