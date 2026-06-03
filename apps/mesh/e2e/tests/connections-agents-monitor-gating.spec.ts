@@ -1,10 +1,12 @@
 /**
  * E2E: capability gating of the Connections, Agents and Monitor surfaces.
  *
- * Drives the real browser as a built-in "user" member (no gated capabilities):
+ * Drives the real browser as a built-in "user" member:
  *   - Monitor is capability-gated (monitoring:view) → no-access panel;
- *   - Connections + Agents stay viewable (basic-usage), but their create
- *     affordances are hidden (connections:manage / agents:manage).
+ *   - Connections stay viewable (basic-usage) but the create affordance is
+ *     hidden (connections:manage);
+ *   - Agents are manageable — the built-in user role is granted agents:manage
+ *     (USER_ROLE_CAPABILITY_IDS), so the create affordance is shown.
  */
 
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -64,7 +66,7 @@ test.describe("connections / agents / monitor gating", () => {
     await db?.end();
   });
 
-  test("a plain member can't manage connections, agents, or view monitoring", async ({
+  test("a plain member can't manage connections or view monitoring, but can manage agents", async ({
     page,
     playwright,
   }) => {
@@ -95,14 +97,15 @@ test.describe("connections / agents / monitor gating", () => {
       page.getByRole("button", { name: "Custom Connection" }),
     ).toHaveCount(0);
 
-    // Agents page loads but the create CTA is hidden without agents:manage.
+    // Agents page loads and the create CTA IS shown — the built-in user role
+    // is granted agents:manage (USER_ROLE_CAPABILITY_IDS).
     await page.goto(`/${owner.orgSlug}/settings/agents`);
     await expect(page.getByPlaceholder("Search for an agent...")).toBeVisible({
       timeout: 15_000,
     });
     await expect(
       page.getByRole("button", { name: "Create Agent" }),
-    ).toHaveCount(0);
+    ).toBeVisible();
 
     await ownerCtx.dispose();
   });
