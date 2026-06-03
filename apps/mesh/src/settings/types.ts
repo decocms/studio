@@ -26,7 +26,15 @@ export interface Settings {
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
 
   // Observability
+  // HTTP URL of the ClickHouse instance holding the OTel-native `otel_logs`
+  // table. When set, the monitoring dashboard queries it (logs AND metrics are
+  // derived from those rows) instead of the local NDJSON files via DuckDB.
+  // Traces/metrics tables are not read.
   clickhouseUrl: string | undefined;
+  // Dedicated OTLP collector base URL for monitoring/audit logs. Falls back to
+  // OTEL_EXPORTER_OTLP_ENDPOINT (shared with infra logs) when unset. The "/v1/logs"
+  // signal path is appended automatically.
+  monitoringOtlpEndpoint: string | undefined;
   otelServiceName: string;
 
   // Event Bus & Networking

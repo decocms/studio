@@ -112,7 +112,7 @@ describe("createMonitoringEngine", () => {
       clickhouseUrl: "http://localhost:8123",
     });
     expect(engine).toBeInstanceOf(ClickHouseClientEngine);
-    expect(source).toBe("monitoring_logs");
+    expect(source).toBe("studio_monitoring_logs");
   });
 
   it("should use custom tableName when clickhouseUrl is set", async () => {

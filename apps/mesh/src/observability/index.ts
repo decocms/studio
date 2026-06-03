@@ -39,11 +39,20 @@ import { getSettings } from "../settings";
 
 import {
   BatchLogRecordProcessor,
+  LoggerProvider,
   type LogRecordProcessor,
   type SdkLogRecord,
 } from "@opentelemetry/sdk-logs";
-import { resourceFromAttributes } from "@opentelemetry/resources";
+import {
+  detectResources,
+  envDetector,
+  hostDetector,
+  osDetector,
+  processDetector,
+  resourceFromAttributes,
+} from "@opentelemetry/resources";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { setMonitoringLoggerProvider } from "../monitoring/logger";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
   BatchSpanProcessor,
@@ -85,9 +94,9 @@ class SampledLogRecordProcessor implements LogRecordProcessor {
   }
 }
 
-// Truncates mesh.monitoring.output to 500 bytes before forwarding to the
-// wrapped exporter (OTLP/HyperDX). The NDJSON local exporter receives the
-// full value because it wraps a different inner processor.
+// Truncates studio.monitoring.output before forwarding to the wrapped exporter
+// (OTLP/ClickStack). The NDJSON local exporter receives the full value because
+// it lives on the monitoring provider's other processor.
 class TruncateMonitoringOutputProcessor implements LogRecordProcessor {
   constructor(
     private inner: LogRecordProcessor,
@@ -282,6 +291,10 @@ let monitoringLogExporter: NDJSONLogExporter | null = null;
 let monitoringTraceExporter: NDJSONTraceExporter | null = null;
 let monitoringMetricExporter: NDJSONMetricExporter | null = null;
 let monitoringMetricReader: PeriodicExportingMetricReader | null = null;
+// Logs run through two dedicated providers (not NodeSDK): infra/console logs on
+// the global provider, monitoring/audit logs on a separate one. See initObservability.
+let infraLoggerProvider: LoggerProvider | null = null;
+let monitoringLoggerProvider: LoggerProvider | null = null;
 let _initialized = false;
 
 /**
@@ -295,9 +308,11 @@ export function initObservability(): void {
 
   const _settings = getSettings();
 
-  const traceExporter = _settings.clickhouseUrl
-    ? new OTLPTraceExporter()
-    : undefined;
+  // OTLP export is enabled whenever a base collector endpoint is configured.
+  // Without it (local dev), telemetry stays on disk via the NDJSON exporters.
+  const otlpEnabled = !!process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+
+  const traceExporter = otlpEnabled ? new OTLPTraceExporter() : undefined;
 
   // Always create local NDJSON exporters (skip only in tests — they create
   // timers and write to disk, neither of which is needed when running `bun test`).
@@ -323,6 +338,7 @@ export function initObservability(): void {
       })
     : null;
 
+  const env = process.env.STUDIO_ENV ?? process.env.NODE_ENV ?? "unknown";
   // Only set deployment.environment if it isn't already supplied via
   // OTEL_RESOURCE_ATTRIBUTES (the env detector wins on conflict, so honoring an
   // externally-provided value).
@@ -330,8 +346,7 @@ export function initObservability(): void {
   if (
     !process.env.OTEL_RESOURCE_ATTRIBUTES?.includes("deployment.environment")
   ) {
-    resourceAttributes["deployment.environment"] =
-      process.env.STUDIO_ENV ?? process.env.NODE_ENV ?? "unknown";
+    resourceAttributes["deployment.environment"] = env;
   }
 
   const sdk = new NodeSDK({
@@ -364,30 +379,9 @@ export function initObservability(): void {
           ]
         : []),
     ],
-    logRecordProcessors: [
-      ...(_settings.clickhouseUrl
-        ? (() => {
-            const isProd =
-              (process.env.STUDIO_ENV ?? process.env.NODE_ENV) === "prod" ||
-              process.env.NODE_ENV === "production";
-            const logSampleRatio = isProd ? 1.0 : 0.1;
-            const batch = new BatchLogRecordProcessor(new OTLPLogExporter());
-            const truncated = new TruncateMonitoringOutputProcessor(
-              batch,
-              8_000,
-            );
-            return [new SampledLogRecordProcessor(truncated, logSampleRatio)];
-          })()
-        : []),
-      ...(monitoringLogExporter
-        ? [
-            new BatchLogRecordProcessor(monitoringLogExporter, {
-              scheduledDelayMillis: 60_000,
-              maxExportBatchSize: 1000,
-            }),
-          ]
-        : []),
-    ],
+    // Logs are intentionally NOT handled by NodeSDK. We run two dedicated
+    // LoggerProviders below (infra vs monitoring) so each can target its own
+    // OTLP collector and sampling policy.
     instrumentations: [new RuntimeNodeInstrumentation()],
   });
 
@@ -400,6 +394,91 @@ export function initObservability(): void {
   // import these get working instruments.
   meter = metrics.getMeter("studio", "1.0.0");
   tracer = trace.getTracer("studio", "1.0.0");
+
+  // ── Logger providers ────────────────────────────────────────────────────
+  // Shared resource for both infra and monitoring logs. Mirror the resource the
+  // NodeSDK builds for traces/metrics: auto-detected attributes (host.name,
+  // process.*, and anything in OTEL_RESOURCE_ATTRIBUTES such as service.version)
+  // merged with our explicit service.name + deployment.environment — so log
+  // records carry the same resource as the other signals. `resourceAttributes`
+  // only carries deployment.environment when it isn't already supplied via
+  // OTEL_RESOURCE_ATTRIBUTES (same conditional the NodeSDK resource uses).
+  const logResource = detectResources({
+    detectors: [envDetector, hostDetector, osDetector, processDetector],
+  }).merge(
+    resourceFromAttributes({
+      "service.name": _settings.otelServiceName,
+      ...resourceAttributes,
+    }),
+  );
+
+  // Infra logs: console.* interception (see emitLog). Registered as the GLOBAL
+  // provider so logs.getLogger("studio") routes here. Sampled — high volume,
+  // debug-oriented. ERROR/FATAL always pass (see SampledLogRecordProcessor).
+  const infraProcessors: LogRecordProcessor[] = [];
+  if (otlpEnabled) {
+    const isProd = env === "prod" || env === "production";
+    const defaultRatio = isProd ? 1.0 : 0.1;
+    const rawRatio = process.env.INFRA_LOG_SAMPLE_RATIO;
+    let ratio = defaultRatio;
+    if (rawRatio !== undefined) {
+      const parsed = Number(rawRatio);
+      // Guard invalid values: NaN would drop every non-error log; >1 disables
+      // sampling; <0 drops everything. Fall back to the default and warn.
+      if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) {
+        ratio = parsed;
+      } else {
+        console.warn(
+          `[observability] Ignoring invalid INFRA_LOG_SAMPLE_RATIO="${rawRatio}" (expected 0..1); using ${defaultRatio}`,
+        );
+      }
+    }
+    infraProcessors.push(
+      new SampledLogRecordProcessor(
+        new BatchLogRecordProcessor(new OTLPLogExporter()),
+        ratio,
+      ),
+    );
+  }
+  infraLoggerProvider = new LoggerProvider({
+    resource: logResource,
+    processors: infraProcessors,
+  });
+  logs.setGlobalLoggerProvider(infraLoggerProvider);
+  // Re-bind the console logger to the real provider (it was a no-op proxy at
+  // module load). Mirrors the meter/tracer reassignment above.
+  logger = infraLoggerProvider.getLogger("studio", "1.0.0");
+
+  // Monitoring logs: audit / tool-call / LLM-call records (emitMonitoringLog).
+  // Dedicated provider so it can ship to its own collector at 100% sampling,
+  // plus the local NDJSON archive (dev + self-hosted DuckDB query path).
+  const monitoringEndpoint =
+    _settings.monitoringOtlpEndpoint ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  const monitoringProcessors: LogRecordProcessor[] = [];
+  if (monitoringEndpoint) {
+    const base = monitoringEndpoint.replace(/\/$/, "");
+    const url = base.endsWith("/v1/logs") ? base : `${base}/v1/logs`;
+    monitoringProcessors.push(
+      new TruncateMonitoringOutputProcessor(
+        new BatchLogRecordProcessor(new OTLPLogExporter({ url })),
+        8_000,
+      ),
+    );
+    // No sampler: monitoring data is customer-facing, always 100%.
+  }
+  if (monitoringLogExporter) {
+    monitoringProcessors.push(
+      new BatchLogRecordProcessor(monitoringLogExporter, {
+        scheduledDelayMillis: 60_000,
+        maxExportBatchSize: 1000,
+      }),
+    );
+  }
+  monitoringLoggerProvider = new LoggerProvider({
+    resource: logResource,
+    processors: monitoringProcessors,
+  });
+  setMonitoringLoggerProvider(monitoringLoggerProvider);
 
   // Enable custom Bun fetch instrumentation (must be after SDK start)
   // This wraps global fetch with tracing since Bun's fetch doesn't use undici
@@ -423,9 +502,13 @@ export let tracer = trace.getTracer("studio", "1.0.0");
 export let meter = metrics.getMeter("studio", "1.0.0");
 
 /**
- * Get logger instance
+ * Console logger instance (infra logs).
+ *
+ * Uses `let` so initObservability() can re-bind it to the real infra
+ * LoggerProvider after registering it as the global provider. At module load
+ * this is a no-op proxy logger.
  */
-const logger = logs.getLogger("studio", "1.0.0");
+let logger = logs.getLogger("studio", "1.0.0");
 
 /**
  * Helper to emit a log record with current trace context
@@ -527,25 +610,24 @@ export const withRequest = (req: Request): Context => {
 export { type Exception, type Span };
 
 /**
- * Flush all buffered monitoring data to disk.
+ * Flush all buffered monitoring data.
  *
- * In local mode the SDK's BatchLogRecordProcessor and NDJSONLogExporter both
- * buffer records in memory.  Calling this drains both layers so that
- * monitoring queries see the most recent data without waiting for the
- * next timer-based flush (up to 60 s).
- *
- * In cloud mode (CLICKHOUSE_URL set) this flushes the OTLP exporters.
+ * Both the OTel BatchLogRecordProcessor and the NDJSONLogExporter buffer
+ * records in memory. Calling this drains both layers so that monitoring
+ * queries (DuckDB reading NDJSON, or ClickHouse via OTLP) see the most recent
+ * data without waiting for the next timer-based flush (up to 60 s).
  */
 export async function flushMonitoringData(): Promise<void> {
-  // Flush logs, traces, and metrics in parallel (each pair is independent).
-  // Within each pair the SDK processor must flush before the NDJSON exporter.
+  // Flush logs, traces, and metrics in parallel (each group is independent).
   // Use allSettled so one rejection doesn't prevent the other flushes from completing.
   const results = await Promise.allSettled([
-    // Logs
+    // Infra logs (global provider)
+    infraLoggerProvider ? infraLoggerProvider.forceFlush() : Promise.resolve(),
+    // Monitoring logs: drain the provider's processors (OTLP + NDJSON batch),
+    // then flush the NDJSON exporter's own buffer so DuckDB sees the rows.
     (async () => {
-      const logProvider = logs.getLoggerProvider();
-      if ("forceFlush" in logProvider) {
-        await (logProvider as { forceFlush(): Promise<void> }).forceFlush();
+      if (monitoringLoggerProvider) {
+        await monitoringLoggerProvider.forceFlush();
       }
       if (monitoringLogExporter) {
         await monitoringLogExporter.forceFlush();

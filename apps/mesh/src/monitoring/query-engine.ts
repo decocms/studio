@@ -114,7 +114,7 @@ export class ClickHouseClientEngine implements QueryEngine {
   }
 }
 
-const DEFAULT_TABLE_NAME = "monitoring_logs";
+const DEFAULT_TABLE_NAME = "studio_monitoring_logs";
 
 export interface MonitoringEngineConfig {
   clickhouseUrl?: string;

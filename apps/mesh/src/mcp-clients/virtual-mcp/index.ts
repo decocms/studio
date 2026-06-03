@@ -76,7 +76,7 @@ export async function createVirtualClientFrom(
 
   // Load all connections in parallel
   const allConnections = await ctx.tracer.startActiveSpan(
-    "mesh.virtual_mcp.load_connections",
+    "studio.virtual_mcp.load_connections",
     {
       attributes: {
         "virtual_mcp.id": virtualMcp.id ?? "decopilot",

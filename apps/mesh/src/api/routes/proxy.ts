@@ -100,7 +100,7 @@ export const createProxyRoutes = () => {
 
         // Fetch connection scoped to the caller's organization
         const connection = await ctx.tracer.startActiveSpan(
-          "mesh.connection.lookup",
+          "studio.connection.lookup",
           { attributes: { "connection.id": connectionId } },
           async (span) => {
             startTime(c, "mcp.find_connection");
@@ -164,7 +164,7 @@ export const createProxyRoutes = () => {
         }
         if (connection.connection_url && probe) {
           await ctx.tracer.startActiveSpan(
-            "mesh.connection.handshake",
+            "studio.connection.handshake",
             {
               attributes: {
                 "connection.id": connectionId,

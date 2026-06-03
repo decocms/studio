@@ -75,14 +75,14 @@ export const tracingMiddleware: MiddlewareHandler<Env> = async (c, next) => {
         const meshContext = c.get("meshContext");
         if (meshContext) {
           if (meshContext.auth.user?.id) {
-            span.setAttribute("mesh.user.id", meshContext.auth.user.id);
+            span.setAttribute("studio.user.id", meshContext.auth.user.id);
           }
           if (meshContext.auth.apiKey?.id) {
-            span.setAttribute("mesh.api_key.id", meshContext.auth.apiKey.id);
+            span.setAttribute("studio.api_key.id", meshContext.auth.apiKey.id);
           }
           if (meshContext.organization?.id) {
             span.setAttribute(
-              "mesh.organization.id",
+              "studio.organization.id",
               meshContext.organization.id,
             );
           }

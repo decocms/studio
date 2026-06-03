@@ -73,6 +73,7 @@ export function resolveConfig(
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,
+    monitoringOtlpEndpoint: envVars.MONITORING_OTLP_ENDPOINT,
     otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
     // Config files

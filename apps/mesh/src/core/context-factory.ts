@@ -1077,15 +1077,19 @@ export async function createMeshContextFactory(
   const logsBasePath = resolve(getLogsDir());
   const metricsBasePath = resolve(getMetricsDir());
 
+  // ClickHouse reads the studio_monitoring_logs VIEW (a flat projection of the
+  // OTel-native otel_logs table — provisioned manually, see
+  // monitoring/clickhouse-setup.md); DuckDB reads the local NDJSON files.
+  // Metrics (counts, durations, percentiles) are derived from the same
+  // monitoring log rows — each tool_call log carries duration_ms and is_error —
+  // so there is no separate metrics table to query.
   const logSourceFactory = isClickHouse
-    ? (_orgId: string) => "monitoring_logs"
+    ? (_orgId: string) => "studio_monitoring_logs"
     : (orgId: string) =>
         `read_ndjson('${logsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
 
-  const useMetricsRollup = process.env.USE_METRICS_ROLLUP !== "false";
   const metricSourceFactory = isClickHouse
-    ? (_orgId: string) =>
-        useMetricsRollup ? "monitoring_metrics_rollup_1m" : "monitoring_metrics"
+    ? (_orgId: string) => "studio_monitoring_logs"
     : (orgId: string) =>
         `read_ndjson('${metricsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
 
@@ -1152,7 +1156,7 @@ export async function createMeshContextFactory(
     // Authenticate request (OAuth session or API key)
     const authResult = req
       ? await config.observability.tracer.startActiveSpan(
-          "mesh.auth",
+          "studio.auth",
           async (span) => {
             try {
               const result = await authenticateRequest(
