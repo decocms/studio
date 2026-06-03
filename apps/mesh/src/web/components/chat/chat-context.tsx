@@ -550,14 +550,22 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's
   // global picker, modulo the existing clonable-source fallback.
+  //
+  // When the thread is locked but the (harness, sandbox) tuple doesn't map
+  // to a known AgentOption (legacy/trigger-created rows), we intentionally
+  // surface `null` here rather than falling through to the global picker.
+  // The submit path is server-enforced anyway; consumers (pills, etc.)
+  // should consult isThreadLocked for the "locked" affordance and avoid
+  // showing the global selection on a locked thread.
   const effectiveAgentOption: AgentOption | null =
-    lockedAgentOption ??
-    (pendingAgentOption === null
-      ? null
-      : !hasClonableSource &&
-          AGENT_OPTION_PINS[pendingAgentOption].sandbox === "user-desktop"
-        ? "decopilot"
-        : pendingAgentOption);
+    taskCtxForLock?.isThreadLocked
+      ? lockedAgentOption
+      : pendingAgentOption === null
+        ? null
+        : !hasClonableSource &&
+            AGENT_OPTION_PINS[pendingAgentOption].sandbox === "user-desktop"
+          ? "decopilot"
+          : pendingAgentOption;
 
   const effectivePins = effectiveAgentOption
     ? AGENT_OPTION_PINS[effectiveAgentOption]
