@@ -332,7 +332,6 @@ export async function startDevServer(
               rawLine,
             }),
         });
-      })()
       })();
 
   const shutdown = async (signal: NodeJS.Signals) => {
