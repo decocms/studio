@@ -30,6 +30,10 @@ const ALWAYS_INCLUDE = [
   "react",
   "react-dom",
   "@inkjs/ui",
+  // nft can't statically trace sdk-metrics' lazy require of resources, so it
+  // gets dropped from the bundle and the server crashes at runtime with
+  // "Cannot find module '@opentelemetry/resources'". Force it in.
+  "@opentelemetry/resources",
 ];
 const ALWAYS_EXCLUDE = [
   "kysely-codegen",
