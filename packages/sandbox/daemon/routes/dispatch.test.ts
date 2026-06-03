@@ -20,6 +20,8 @@ function makeDeps(
   return {
     daemonToken: DAEMON_TOKEN,
     lookupHarness: () => makeFakeHarness(),
+    allowedHosts: [],
+    allowSameHostDev: false,
     ...overrides,
   };
 }

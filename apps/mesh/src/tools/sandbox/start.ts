@@ -41,6 +41,8 @@ import {
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
+import { getSettings } from "../../settings";
 import { setSandboxMapEntry } from "./sandbox-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
@@ -345,12 +347,31 @@ async function provisionSandbox(
     branch,
   });
 
+  // Message-offload SSRF allowlist. The user-desktop daemon fails closed
+  // (empty allowlist) unless the cluster pushes the object-storage host it
+  // mints presigned offload URLs against. Derive it from the cluster's OWN
+  // trusted S3 config (never a request frame) and pass it through the ensure
+  // control channel so it lands in the spawned daemon's boot env. Only
+  // relevant for `user-desktop`; the cluster daemon reads its own S3 env.
+  const offload =
+    runner.kind === "user-desktop"
+      ? await deriveOffloadAllowlist(ctx.objectStorage, {
+          isProduction: getSettings().nodeEnv === "production",
+        })
+      : null;
+
   const sandbox = await runner.ensure(
     { userId, projectRef },
     {
       repo: repoOpts,
       workload,
       tenant: { orgId, userId },
+      ...(offload
+        ? {
+            offloadAllowedHosts: offload.hosts,
+            offloadAllowSameHostDev: offload.allowSameHostDev,
+          }
+        : {}),
     },
   );
 

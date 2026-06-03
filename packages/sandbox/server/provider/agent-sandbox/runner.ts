@@ -38,7 +38,6 @@ import type {
   UpDownCounter,
 } from "@opentelemetry/api";
 import {
-  daemonBash,
   postConfig,
   probeDaemonHealth,
   proxyDaemonRequest,
@@ -54,8 +53,6 @@ import {
 import type { RunnerStateStore, RunnerStateStoreOps } from "../state-store";
 import type {
   EnsureOptions,
-  ExecInput,
-  ExecOutput,
   ProxyRequestInit,
   Sandbox,
   SandboxId,
@@ -418,24 +415,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     );
   }
 
-  async exec(handle: string, input: ExecInput): Promise<ExecOutput> {
-    let rec = await this.requireRecord(handle);
-    try {
-      return await daemonBash(rec.daemonUrl, rec.token, input);
-    } catch (err) {
-      // A 401 means the cached record is stale — the pool pod was recreated
-      // and no longer holds our token (daemonBash encodes the status in its
-      // message). Drop it and re-resolve; rehydrate re-bootstraps the fresh
-      // daemon. Then retry once.
-      if (err instanceof Error && err.message.includes("returned 401")) {
-        this.invalidateRecord(handle);
-        rec = await this.requireRecord(handle);
-        return daemonBash(rec.daemonUrl, rec.token, input);
-      }
-      throw err;
-    }
-  }
-
   async delete(handle: string): Promise<void> {
     const rec = await this.getRecord(handle);
     this.records.delete(handle);
@@ -521,14 +500,13 @@ export class AgentSandboxProvider implements SandboxProvider {
     }
 
     // Operator may have evicted the claim+pod (15-min idle TTL) since the record
-    // was cached. Mirror exec()'s requireRecord(): resurrect from the persisted
-    // ensureOpts before giving up, so the agent's request path recovers the same
-    // way exec does instead of surfacing a 404. resurrectByHandle returns null
-    // only for genuine not-found cases (no state-store / no row / row predates
-    // ensureOpts) — those fall through to the 404 below. A real ensure() failure
-    // (K8s/provisioning/bootstrap) THROWS and must propagate: callers already
-    // treat a throw as unreachable, and swallowing it would mislabel a backend
-    // failure as a false 404 "sandbox not found".
+    // was cached. Resurrect from the persisted ensureOpts before giving up, so the
+    // proxy request path recovers and avoids surfacing a false 404.
+    // resurrectByHandle returns null only for genuine not-found cases (no
+    // state-store / no row / row predates ensureOpts) — those fall through to the
+    // 404 below. A real ensure() failure (K8s/provisioning/bootstrap) THROWS and
+    // must propagate: callers already treat a throw as unreachable, and swallowing
+    // it would mislabel a backend failure as a false 404 "sandbox not found".
     if (!rec) {
       rec = await this.resurrectByHandle(handle);
     }
@@ -1568,14 +1546,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     // is keyed on.
     await this.ensure(row.id, persistedOpts);
     return this.records.get(handle) ?? null;
-  }
-
-  private async requireRecord(handle: string): Promise<K8sRecord> {
-    const rec = await this.getRecord(handle);
-    if (rec) return rec;
-    const resurrected = await this.resurrectByHandle(handle);
-    if (resurrected) return resurrected;
-    throw new Error(`unknown sandbox handle ${handle}`);
   }
 
   /**

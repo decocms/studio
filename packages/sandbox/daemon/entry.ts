@@ -93,6 +93,21 @@ const bootConfig = {
   appRoot: APP_ROOT,
   repoDir: join(APP_ROOT, "repo"),
   proxyPort: parseInt(resolvedDaemonPort, 10),
+  // Offload re-inflate config for `/dispatch`. These gate which hosts an
+  // offloaded `messagesRef.url` may be fetched from (the SSRF allowlist) and
+  // whether http:// loopback is permitted for local dev. They come from the
+  // daemon's boot env, NEVER from the request frame.
+  //
+  // CONTRACT: mesh must populate these when spawning the daemon —
+  //   OFFLOAD_ALLOWED_HOSTS      comma-separated hostnames (object-store host(s))
+  //   OFFLOAD_ALLOW_SAME_HOST_DEV "1" to allow http:// loopback (dev only)
+  // The default is an EMPTY allowlist, which fails CLOSED: with no env wired,
+  // every offload fetch is rejected (safe — no SSRF surface).
+  offloadAllowedHosts: (process.env.OFFLOAD_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter((h) => h.length > 0),
+  offloadAllowSameHostDev: process.env.OFFLOAD_ALLOW_SAME_HOST_DEV === "1",
 };
 // Ensure repoDir exists so bash commands with the default cwd don't fail with
 // ENOENT when no repo has been cloned yet (tool-only sandboxes, no-repo agents).
@@ -581,6 +596,8 @@ async function vmRouteH(
     return handleDispatchRequest(req, {
       daemonToken: bootConfig.daemonToken,
       lookupHarness: lookupDispatchHarness,
+      allowedHosts: bootConfig.offloadAllowedHosts,
+      allowSameHostDev: bootConfig.offloadAllowSameHostDev,
     });
   }
   if (method === "DELETE" && vmPath.startsWith("/runs/")) {

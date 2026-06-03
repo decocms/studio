@@ -76,20 +76,22 @@ export interface EnsureOptions {
     orgId: string;
     userId: string;
   };
-}
-
-export interface ExecInput {
-  command: string;
-  timeoutMs?: number;
-  cwd?: string;
-  env?: Record<string, string>;
-}
-
-export interface ExecOutput {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timedOut: boolean;
+  /**
+   * Message-offload SSRF allowlist for the spawned daemon. When the cluster
+   * offloads an oversized dispatch body to object storage, the daemon
+   * re-inflates it by fetching a presigned URL — but ONLY if the URL's host is
+   * in this allowlist. The cluster derives these from its OWN trusted S3 config
+   * and pushes them down at spawn so the daemon can fail closed by default
+   * (empty allowlist = every offload fetch rejected). NEVER sourced from a
+   * request frame — that is the SSRF guarantee.
+   *
+   * Only the `user-desktop` runner consumes these (it spawns the daemon with
+   * the matching env). Other runners MUST ignore them (the cluster daemon
+   * shares the cluster's network and reads its own S3 env directly).
+   */
+  offloadAllowedHosts?: string[];
+  /** Permit http:// loopback offload refs (dev MinIO). false in production. */
+  offloadAllowSameHostDev?: boolean;
 }
 
 export interface ProxyRequestInit {
@@ -109,7 +111,6 @@ export interface SandboxProvider {
   readonly kind: SandboxProviderKind;
 
   ensure(id: SandboxId, opts?: EnsureOptions): Promise<Sandbox>;
-  exec(handle: string, input: ExecInput): Promise<ExecOutput>;
   delete(handle: string): Promise<void>;
   alive(handle: string): Promise<boolean>;
 

@@ -3,7 +3,7 @@
  * `SandboxProvider` call to a per-user link daemon running on the developer's
  * desktop over the NATS-backed dispatch channel.
  *
- * All control requests (ensure, exec, delete, alive, proxyDaemonRequest) are
+ * All control requests (ensure, delete, alive, proxyDaemonRequest) are
  * encoded as `DispatchRequest` objects and sent via `dispatch(userSub, req)`.
  * The daemon's in-process control handler (implemented in Task 11) receives
  * them on `links.dispatch.<userSub>` and writes back the response as one or
@@ -21,8 +21,6 @@ import type { ClaimPhase } from "../lifecycle-types";
 import type { RunnerStateStoreOps } from "../state-store";
 import type {
   EnsureOptions,
-  ExecInput,
-  ExecOutput,
   ProxyRequestInit,
   Sandbox,
   SandboxId,
@@ -131,6 +129,16 @@ export class DesktopSandboxProvider implements SandboxProvider {
       repo: opts.repo,
       branch: opts.repo?.branch,
       ...(opts.workload ? { workload: opts.workload } : {}),
+      // Message-offload SSRF allowlist, derived cluster-side from the
+      // cluster's own trusted S3 config and pushed down here so the spawned
+      // daemon can fetch offloaded `messagesRef` payloads. The daemon fails
+      // closed without these. NEVER sourced from a request frame.
+      ...(opts.offloadAllowedHosts
+        ? { offloadAllowedHosts: opts.offloadAllowedHosts }
+        : {}),
+      ...(opts.offloadAllowSameHostDev !== undefined
+        ? { offloadAllowSameHostDev: opts.offloadAllowSameHostDev }
+        : {}),
     });
     const responseText = await this.dispatchJson(
       "POST",
@@ -166,16 +174,6 @@ export class DesktopSandboxProvider implements SandboxProvider {
       });
     }
     return this.toSandbox(rec);
-  }
-
-  async exec(handle: string, input: ExecInput): Promise<ExecOutput> {
-    const body = JSON.stringify(input);
-    const responseText = await this.dispatchJson(
-      "POST",
-      `/_sandbox/${encodeURIComponent(handle)}/exec`,
-      body,
-    );
-    return JSON.parse(responseText) as ExecOutput;
   }
 
   async proxyDaemonRequest(

@@ -26,7 +26,6 @@ const stubCluster: SandboxProvider = {
     workdir: "/",
     previewUrl: "https://stub",
   }),
-  exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
   delete: async () => {},
   alive: async () => true,
   getPreviewUrl: async () => null,
