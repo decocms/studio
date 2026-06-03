@@ -37,13 +37,16 @@ export function CenteredComposerPure({
 }: PureProps) {
   return (
     <div
+      data-chat-centered="true"
       className={cn(
         "h-full w-full flex flex-col items-center justify-center px-4 gap-6",
       )}
     >
       <div className="w-full max-w-3xl flex flex-col gap-3">
         {!readOnly && aboveRow ? (
-          <div className="flex justify-center gap-2">{aboveRow}</div>
+          <div data-chat-above-row="true" className="flex justify-center gap-2">
+            {aboveRow}
+          </div>
         ) : null}
         {input}
         {!readOnly && iceBreakers ? (
