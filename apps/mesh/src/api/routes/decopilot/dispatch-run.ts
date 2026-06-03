@@ -216,15 +216,11 @@ function modelInfoFromResolvedTier(
   };
 }
 
-async function resolveCliTitleGenerationConfig(
+async function resolveDecopilotTitleConfig(
   ctx: MeshContext,
   organizationId: string,
-): Promise<{ provider: MeshProvider; models: ModelsConfig } | null> {
-  // CLI harnesses use synthetic `desktop:<harness>` credentials for the
-  // actual run. The cluster still needs a real cloud provider for the shared
-  // title interceptor, so resolve a title-only model from org chat tiers.
-  const resolved =
-    (await tryResolveTier(ctx, "fast")) ?? (await tryResolveTier(ctx, "smart"));
+): Promise<{ provider: MeshProvider; model: ModelsConfig["thinking"] } | null> {
+  const resolved = await tryResolveTier(ctx, "fast");
   if (!resolved) return null;
 
   const allowedModels = await fetchModelPermissions(
@@ -246,23 +242,12 @@ async function resolveCliTitleGenerationConfig(
   const provider = await ctx.aiProviders
     .activate(resolved.credentialId, organizationId)
     .catch((err) => {
-      console.warn(
-        "[title-interceptor] failed to activate CLI title provider",
-        err,
-      );
+      console.warn("[decopilot:title] failed to activate title provider", err);
       return null;
     });
   if (!provider) return null;
 
-  const model = modelInfoFromResolvedTier(resolved);
-  return {
-    provider,
-    models: {
-      credentialId: resolved.credentialId,
-      thinking: model,
-      fast: model,
-    },
-  };
+  return { provider, model: modelInfoFromResolvedTier(resolved) };
 }
 
 /**
@@ -602,43 +587,30 @@ async function prepareRun(
       !!deepResearchCredId &&
       deepResearchCredId !== chatCredId;
 
-    const [
-      virtualMcp,
-      provider,
-      imageProvider,
-      deepResearchProvider,
-      mem,
-      cliTitleGeneration,
-    ] = await Promise.all([
-      ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
-      harnessId === "decopilot"
-        ? ctx.aiProviders.activate(chatCredId, input.organizationId)
-        : Promise.resolve(null),
-      needsImageProvider
-        ? ctx.aiProviders.activate(imageCredId, input.organizationId)
-        : Promise.resolve(null),
-      needsDeepResearchProvider
-        ? ctx.aiProviders.activate(deepResearchCredId, input.organizationId)
-        : Promise.resolve(null),
-      createMemory(ctx.storage.threads, {
-        organization_id: input.organizationId,
-        thread_id: input.taskId,
-        userId: input.userId,
-        defaultWindowSize: windowSize,
-      }),
-      harnessId === "decopilot"
-        ? Promise.resolve(null)
-        : resolveCliTitleGenerationConfig(ctx, input.organizationId),
-    ]);
+    const [virtualMcp, provider, imageProvider, deepResearchProvider, mem] =
+      await Promise.all([
+        ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
+        harnessId === "decopilot"
+          ? ctx.aiProviders.activate(chatCredId, input.organizationId)
+          : Promise.resolve(null),
+        needsImageProvider
+          ? ctx.aiProviders.activate(imageCredId, input.organizationId)
+          : Promise.resolve(null),
+        needsDeepResearchProvider
+          ? ctx.aiProviders.activate(deepResearchCredId, input.organizationId)
+          : Promise.resolve(null),
+        createMemory(ctx.storage.threads, {
+          organization_id: input.organizationId,
+          thread_id: input.taskId,
+          userId: input.userId,
+          defaultWindowSize: windowSize,
+        }),
+      ]);
 
-    const titleProvider =
+    const decopilotTitleConfig =
       harnessId === "decopilot"
-        ? provider
-        : (cliTitleGeneration?.provider ?? null);
-    const titleModels =
-      harnessId === "decopilot"
-        ? input.models
-        : (cliTitleGeneration?.models ?? input.models);
+        ? await resolveDecopilotTitleConfig(ctx, input.organizationId)
+        : null;
 
     // Diagnostic (resume only): record whether the provider activated and
     // whether the optional model slots are present. Paired with the log in
@@ -885,9 +857,14 @@ async function prepareRun(
           currentThreadTitle: mem.thread.title,
           registrySignal,
           runRegistry,
-          provider: titleProvider,
+          provider,
           imageProvider: imageProvider ?? provider,
           deepResearchProvider: deepResearchProvider ?? provider,
+          titleProvider: decopilotTitleConfig?.provider ?? provider,
+          titleModel:
+            decopilotTitleConfig?.model ??
+            input.models.fast ??
+            input.models.thinking,
           htmlPageBuffer,
           registerPendingOp: (op) => {
             pendingOps.push(op);
@@ -987,19 +964,14 @@ async function prepareRun(
           rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);
         }
 
-        // Tap the harness chunk stream for `data-title-input` chunks emitted by
-        // harnesses that want the cluster to title the thread. Until Task 6
-        // migrates the decopilot harness, decopilot still titles inline; the
-        // interceptor is a no-op for streams that never emit the chunk.
+        // Tap harness-generated title result chunks so the cluster can keep
+        // persistence/SSE ownership while each harness owns title generation.
         const harnessChunks = interceptTitleChunks(rawHarnessChunks, {
           ctx,
           processLocal,
-          models: titleModels,
           currentThreadTitle: mem.thread.title,
           threadId: mem.thread.id,
           writer,
-          registerPendingOp: processLocal.registerPendingOp,
-          registrySignal,
           onTitleUpdated: processLocal.onTitleUpdated,
         });
         const harnessStream = asReadableStream(harnessChunks);

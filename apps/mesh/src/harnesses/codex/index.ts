@@ -39,7 +39,8 @@
 import { streamText, type UIMessageChunk } from "ai";
 import { createCodexModel, resolveCodexModelId } from "./model";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
-import { makeTitleInputChunk } from "../title-chunk";
+import { makeTitleResultChunk } from "../title-chunk";
+import { genTitle } from "../decopilot/title-generator";
 import type {
   Harness,
   HarnessContext,
@@ -47,6 +48,58 @@ import type {
   HarnessStreamInput,
 } from "../types";
 import { createUsageAccumulator } from "../usage-accumulator";
+
+async function* mergeTitleResult(
+  uiStream: AsyncIterable<UIMessageChunk>,
+  titleHandle: ReturnType<typeof genTitle>,
+): AsyncIterable<UIMessageChunk> {
+  type Settled =
+    | { kind: "main"; value: IteratorResult<UIMessageChunk> }
+    | { kind: "title"; value: UIMessageChunk | null };
+
+  const iter = uiStream[Symbol.asyncIterator]();
+  let mainDone = false;
+  let titleDone = false;
+  let mainPromise: Promise<Settled> = iter
+    .next()
+    .then((value) => ({ kind: "main" as const, value }));
+  const titlePromise: Promise<Settled> = titleHandle.promise
+    .then((title) => ({
+      kind: "title" as const,
+      value: title ? (makeTitleResultChunk(title) as UIMessageChunk) : null,
+    }))
+    .catch((err) => {
+      console.warn("[codex:title] title generation failed", err);
+      return { kind: "title" as const, value: null };
+    });
+
+  try {
+    while (!mainDone || !titleDone) {
+      const pending: Promise<Settled>[] = [];
+      if (!mainDone) pending.push(mainPromise);
+      if (!titleDone) pending.push(titlePromise);
+
+      const settled = await Promise.race(pending);
+      if (settled.kind === "main") {
+        if (settled.value.done) {
+          mainDone = true;
+          if (!titleDone) titleHandle.finish();
+          continue;
+        }
+        yield settled.value.value;
+        mainPromise = iter
+          .next()
+          .then((value) => ({ kind: "main" as const, value }));
+        continue;
+      }
+
+      titleDone = true;
+      if (settled.value) yield settled.value;
+    }
+  } finally {
+    if (!titleDone) titleHandle.finish();
+  }
+}
 
 export const codexHarnessFactory: HarnessFactory = {
   id: "codex",
@@ -95,15 +148,22 @@ export const codexHarnessFactory: HarnessFactory = {
           //    and would have thrown `InvalidPromptError` at runtime.
           const messages = await prepCliMessages(input.messages);
 
-          // 3a. Request cluster-side title generation. The harness emits a
-          //     single transient `data-title-input` chunk carrying the user
-          //     message text; the dispatch-layer interceptor
-          //     (apps/mesh/src/api/routes/decopilot/title-interceptor.ts) runs
-          //     genTitle against the cluster's pre-activated provider and
-          //     writes back a `data-thread-title` chunk + persists the title.
-          yield makeTitleInputChunk(
-            extractUserText(messages),
-          ) as UIMessageChunk;
+          // 3a. Start title generation with Codex's fast model. This uses a
+          //     separate app-server process so title generation can run in
+          //     parallel with the main Codex stream and close independently.
+          const { model: titleModel, provider: titleProvider } =
+            createCodexModel(resolveCodexModelId("codex:gpt-5.4-mini"), {
+              toolApprovalLevel: "readonly",
+              isPlanMode: true,
+            });
+          const titleHandle = genTitle({
+            abortSignal: input.signal,
+            model: titleModel,
+            userMessage: extractUserText(messages),
+          });
+          const titleProviderClosed = titleHandle.promise.finally(() =>
+            titleProvider.close().catch(() => {}),
+          );
 
           // 4. Run streamText. Codex's CLI manages its own tools and
           //    system prompt, so we explicitly DO NOT pass `tools` or
@@ -202,10 +262,12 @@ export const codexHarnessFactory: HarnessFactory = {
           });
 
           try {
-            for await (const chunk of uiStream) {
+            for await (const chunk of mergeTitleResult(uiStream, titleHandle)) {
               yield chunk;
             }
           } finally {
+            titleHandle.finish();
+            await titleProviderClosed.catch(() => {});
             // Report cumulative usage to the surrounding scope for
             // posthog's `chat_message_completed` event. Mirrors what
             // the decopilot harness does via

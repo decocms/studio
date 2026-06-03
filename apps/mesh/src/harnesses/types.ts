@@ -127,6 +127,12 @@ export interface HarnessProcessLocal {
    *  Cluster-only type. */
   deepResearchProvider?: unknown | null;
 
+  /** Already-activated provider/model used only for Decopilot auto-title.
+   *  May differ from the chat provider when the org fast tier is backed by a
+   *  different credential. Cluster-only type. */
+  titleProvider?: unknown | null;
+  titleModel?: unknown | null;
+
   /** Push callback for title-generation work. The streamText loop
    *  registers `titleHandle.promise.then(...)` as a pending op so the
    *  outer createUIMessageStream's `onFinish` can `await
