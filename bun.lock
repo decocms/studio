@@ -53,7 +53,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.373.12",
+      "version": "2.389.0",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -115,7 +115,7 @@
         "@opentelemetry/exporter-prometheus": "^0.208.0",
         "@opentelemetry/exporter-trace-otlp-proto": "^0.207.0",
         "@opentelemetry/instrumentation-runtime-node": "^0.24.0",
-        "@opentelemetry/resources": "^2.5.0",
+        "@opentelemetry/resources": "^2.6.0",
         "@opentelemetry/sdk-logs": "^0.211.0",
         "@opentelemetry/sdk-metrics": "^2.2.0",
         "@opentelemetry/sdk-node": "^0.207.0",
@@ -276,7 +276,7 @@
     },
     "packages/runtime": {
       "name": "@decocms/runtime",
-      "version": "1.6.2",
+      "version": "1.6.3",
       "dependencies": {
         "@ai-sdk/provider": "^3.0.10",
         "@cloudflare/workers-types": "^4.20250617.0",
@@ -298,7 +298,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "0.5.8",
+      "version": "0.6.1",
       "dependencies": {
         "@decocms/std": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",

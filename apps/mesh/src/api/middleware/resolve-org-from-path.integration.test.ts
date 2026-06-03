@@ -141,6 +141,57 @@ describe("resolveOrgFromPath", () => {
     expect(body.orgSlug).toBe("acme");
   });
 
+  it("returns 404 for an archived (soft-deleted) org, even for a member", async () => {
+    // The archived check runs before the membership check, so a member of
+    // their own just-deleted org still gets 404 (org is invisible to the API).
+    const now = new Date().toISOString();
+    await db.db
+      .insertInto("organization")
+      .values({
+        id: "org-archived",
+        slug: "archived-co",
+        name: "Archived Co",
+        metadata: JSON.stringify({ archived: true }),
+        createdAt: now,
+      } as never)
+      .execute();
+    await db.db
+      .insertInto("member")
+      .values({
+        id: "mem-arch",
+        userId: "user-1",
+        organizationId: "org-archived",
+        role: "owner",
+        createdAt: now,
+      } as never)
+      .execute();
+    const app = buildApp(db, { user: { id: "user-1" } });
+    const res = await app.request("/api/archived-co/probe");
+    expect(res.status).toBe(404);
+  });
+
+  it("redirects browser navigations to the SPA for an archived org", async () => {
+    // Sec-Fetch-Dest: document marks a top-level browser navigation, which
+    // should bounce into the SPA (branded ArchivedOrgScreen) rather than
+    // dumping JSON 404 in the address bar.
+    await db.db
+      .insertInto("organization")
+      .values({
+        id: "org-archived",
+        slug: "archived-co",
+        name: "Archived Co",
+        metadata: JSON.stringify({ archived: true }),
+        createdAt: new Date().toISOString(),
+      } as never)
+      .execute();
+    const app = buildApp(db, { user: { id: "user-1" } });
+    const res = await app.request("/api/archived-co/probe", {
+      headers: { "sec-fetch-dest": "document" },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/archived-co");
+  });
+
   it("exposes the caller's path-resolved role on ctx.organization", async () => {
     // AuthTransport constructs a fresh AccessControl per proxied tool call
     // and reads the role from ctx.organization?.role to decide the

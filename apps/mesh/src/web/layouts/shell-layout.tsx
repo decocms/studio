@@ -15,7 +15,7 @@ import {
   ProjectContextProvider,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import {
   Outlet,
   useMatch,
@@ -27,10 +27,12 @@ import { KEYS } from "../lib/query-keys";
 import { readCachedTaskBranch } from "../lib/read-cached-task-branch";
 import { useOptionalThreadManager } from "@/web/components/chat/store/hooks";
 import { isPerThreadTab } from "@/web/layouts/main-panel-tabs/tab-id";
-import { useOrganizationSettingsSuspense } from "../hooks/use-organization-settings";
+import { useOrganizationSettingsNonBlocking } from "../hooks/use-organization-settings";
+import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 import { ArchivedOrgScreen } from "../components/archived-org-screen";
+import { isOrgArchived } from "@/core/org-archived";
 
 // ---------------------------------------------------------------------------
 // ShellProjectProvider — fetches org settings and provides project context.
@@ -49,7 +51,7 @@ function ShellProjectProvider({
   org: NonNullable<Parameters<typeof ProjectContextProvider>[0]["org"]>;
   children: React.ReactNode;
 }) {
-  const orgSettings = useOrganizationSettingsSuspense(org.id, org.slug);
+  const orgSettings = useOrganizationSettingsNonBlocking(org.id, org.slug);
 
   const project = {
     id: org.id,
@@ -207,7 +209,13 @@ export function usePanelActions() {
 function ShellLayoutContent() {
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const org = orgMatch?.params.org;
+  const { taskId } = useParams({ strict: false }) as { taskId?: string };
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+
+  useQuery({
+    ...homeNextActionsQueryOptions(org ?? ""),
+    enabled: !!org && !taskId,
+  });
 
   // Session is guaranteed present here (this renders inside <SignedIn>), so the
   // user id is available synchronously to scope the org cache by principal.
@@ -255,9 +263,7 @@ function ShellLayoutContent() {
         });
 
       // Don't persist archived orgs — homeRoute would just redirect off them again
-      const isArchived =
-        (data as { metadata?: { archived?: boolean } } | null)?.metadata
-          ?.archived === true;
+      const isArchived = isOrgArchived(data);
 
       // Persist for fast redirect on next login (read by homeRoute beforeLoad)
       // Only write on success and only for active (non-archived) orgs
@@ -302,9 +308,7 @@ function ShellLayoutContent() {
     );
   }
 
-  const isArchivedOrg =
-    (activeOrg as { metadata?: { archived?: boolean } }).metadata?.archived ===
-    true;
+  const isArchivedOrg = isOrgArchived(activeOrg);
   if (isArchivedOrg) {
     // Clear stale slug so /home redirect doesn't bounce the user back here
     if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === org) {

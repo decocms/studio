@@ -1,6 +1,5 @@
 import { invalidateOrganizationListCache } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import { KEYS } from "@/web/lib/query-keys";
 import { track } from "@/web/lib/posthog-client";
 import {
   SELF_MCP_ALIAS_ID,
@@ -19,8 +18,7 @@ import {
 } from "@deco/ui/components/alert-dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useMutation } from "@tanstack/react-query";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -31,8 +29,6 @@ import { toast } from "sonner";
 
 export function DeleteOrganizationSection() {
   const { org } = useProjectContext();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmName, setConfirmName] = useState("");
 
@@ -68,18 +64,14 @@ export function DeleteOrganizationSection() {
       }
 
       // Drop the TTL-cached org list so the homeRoute loader doesn't redirect
-      // back to the just-deleted org (this path navigates client-side).
+      // back to the just-deleted org.
       invalidateOrganizationListCache();
 
-      // Drop active-org caches that might still hold the archived org
-      queryClient.removeQueries({
-        queryKey: KEYS.activeOrganization(org.slug),
-      });
-      queryClient.invalidateQueries({ queryKey: KEYS.organizations() });
-
       toast.success("Organization deleted");
-      // homeRoute redirects to next available org or onboarding
-      navigate({ to: "/" });
+      // Hard redirect — clears Better Auth nanostores atoms (useListOrganizations)
+      // which can't be invalidated via TanStack Query. Full reload is fine for
+      // a destructive org-delete action.
+      window.location.href = "/";
     },
     onError: (error) => {
       toast.error(

@@ -47,6 +47,7 @@ import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AccessControl } from "./access-control";
+import { isOrgArchived } from "./org-archived";
 import type {
   BetterAuthInstance,
   BoundAuthClient,
@@ -351,10 +352,15 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       list: async (userId?: string) => {
-        return auth.api.listOrganizations({
+        // Choke point: archived (soft-deleted) orgs are invisible to every
+        // API/UI surface, so filter them here — no caller of this method ever
+        // sees them. A future restore flow would read archived orgs from
+        // storage directly, not via this method.
+        const orgs = await auth.api.listOrganizations({
           headers,
           query: userId ? { userId } : undefined,
         });
+        return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
       },
 
       addMember: async (data) => {
@@ -501,6 +507,33 @@ export async function fetchRolePermissions(
  * 1. API Key / MCP OAuth → permissions are queried and returned
  * 2. Browser sessions → no permissions stored (use Better Auth's hasPermission API)
  */
+// Tiny TTL cache for org archived-status, keyed by org id. The mesh-JWT
+// (embedded name/slug) and API-key auth paths check this on every proxied
+// request, so caching keeps the lookup off the hot path. Archiving is a
+// one-way soft-delete, so a short TTL is plenty.
+const ARCHIVED_CACHE_TTL_MS = 60_000;
+const orgArchivedCache = new Map<string, { archived: boolean; at: number }>();
+
+async function isOrgArchivedCached(
+  db: Kysely<Database>,
+  timings: NonNullable<FactoryOptions["timings"]>,
+  organizationId: string,
+  spanName: string,
+): Promise<boolean> {
+  const hit = orgArchivedCache.get(organizationId);
+  if (hit && Date.now() - hit.at < ARCHIVED_CACHE_TTL_MS) return hit.archived;
+  const orgRow = await timings.measure(spanName, () =>
+    db
+      .selectFrom("organization")
+      .select(["metadata"])
+      .where("id", "=", organizationId)
+      .executeTakeFirst(),
+  );
+  const archived = isOrgArchived(orgRow);
+  orgArchivedCache.set(organizationId, { archived, at: Date.now() });
+  return archived;
+}
+
 async function authenticateRequest(
   req: Request,
   auth: BetterAuthInstance,
@@ -571,18 +604,8 @@ async function authenticateRequest(
         return base.executeTakeFirst();
       });
 
-      if (membership?.orgMetadata) {
-        try {
-          const meta = JSON.parse(membership.orgMetadata) as Record<
-            string,
-            unknown
-          >;
-          if (meta.archived === true) {
-            throw new Error("Organization is archived");
-          }
-        } catch (e) {
-          if ((e as Error).message === "Organization is archived") throw e;
-        }
+      if (isOrgArchived({ metadata: membership?.orgMetadata })) {
+        throw new Error("Organization is archived");
       }
 
       const role = membership?.role;
@@ -666,6 +689,19 @@ async function authenticateRequest(
           const metaName = meshJwtPayload.metadata?.organizationName;
           const metaSlug = meshJwtPayload.metadata?.organizationSlug;
           if (metaName || metaSlug) {
+            // Name/slug are embedded in the JWT, but we still need to verify the
+            // org isn't archived — the token may have been issued before
+            // deletion. Cached to keep this off the hot path.
+            if (
+              await isOrgArchivedCached(
+                db,
+                timings,
+                metaOrgId,
+                "auth_query_org_archived_for_mesh_jwt",
+              )
+            ) {
+              return { user: undefined };
+            }
             organization = { id: metaOrgId, name: metaName, slug: metaSlug };
           } else {
             const orgRow = await timings.measure(
@@ -673,10 +709,13 @@ async function authenticateRequest(
               () =>
                 db
                   .selectFrom("organization")
-                  .select(["id", "slug", "name"])
+                  .select(["id", "slug", "name", "metadata"])
                   .where("id", "=", metaOrgId)
                   .executeTakeFirst(),
             );
+            if (isOrgArchived(orgRow)) {
+              return { user: undefined };
+            }
             organization = orgRow
               ? { id: orgRow.id, slug: orgRow.slug, name: orgRow.name }
               : { id: metaOrgId };
@@ -717,6 +756,19 @@ async function authenticateRequest(
         const orgMetadata = result.key.metadata?.organization as
           | OrganizationContext
           | undefined;
+
+        // Block access if the org has been soft-deleted since the key was issued
+        if (
+          orgMetadata?.id &&
+          (await isOrgArchivedCached(
+            db,
+            timings,
+            orgMetadata.id,
+            "auth_query_org_for_api_key",
+          ))
+        ) {
+          return { user: undefined };
+        }
 
         // API keys have permissions stored directly on them
         const permissions = result.key.permissions as Permission | undefined;
@@ -835,6 +887,7 @@ async function authenticateRequest(
                 "organization.id as orgId",
                 "organization.slug as orgSlug",
                 "organization.name as orgName",
+                "organization.metadata as orgMetadata",
               ])
               .where("member.userId", "=", session.user.id);
             if (requestedOrgId) {
@@ -845,6 +898,10 @@ async function authenticateRequest(
             return q.executeTakeFirst();
           },
         );
+
+        if (isOrgArchived({ metadata: membership?.orgMetadata })) {
+          throw new Error("Organization is archived");
+        }
 
         if (membership) {
           organization = {
@@ -880,7 +937,7 @@ async function authenticateRequest(
         } | null;
 
         if (orgData) {
-          if (orgData.metadata?.archived === true) {
+          if (isOrgArchived(orgData)) {
             throw new Error("Organization is archived");
           }
 

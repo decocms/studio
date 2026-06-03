@@ -332,16 +332,19 @@ export function initObservability(): void {
     : null;
 
   const env = process.env.STUDIO_ENV ?? process.env.NODE_ENV ?? "unknown";
+  // Only set deployment.environment if it isn't already supplied via
+  // OTEL_RESOURCE_ATTRIBUTES (the env detector wins on conflict, so honoring an
+  // externally-provided value).
+  const resourceAttributes: Record<string, string> = {};
   if (
     !process.env.OTEL_RESOURCE_ATTRIBUTES?.includes("deployment.environment")
   ) {
-    process.env.OTEL_RESOURCE_ATTRIBUTES = process.env.OTEL_RESOURCE_ATTRIBUTES
-      ? `${process.env.OTEL_RESOURCE_ATTRIBUTES},deployment.environment=${env}`
-      : `deployment.environment=${env}`;
+    resourceAttributes["deployment.environment"] = env;
   }
 
   const sdk = new NodeSDK({
     serviceName: _settings.otelServiceName,
+    resource: resourceFromAttributes(resourceAttributes),
     metricReaders: [
       prometheusExporter,
       ...(monitoringMetricReader ? [monitoringMetricReader] : []),
