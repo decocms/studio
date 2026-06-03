@@ -24,8 +24,8 @@ export function ChatModeRowPure({ branchPill, modePicker }: PureProps) {
   if (!branchPill && !modePicker) return null;
   return (
     <>
-      {branchPill}
       {modePicker}
+      {branchPill}
     </>
   );
 }

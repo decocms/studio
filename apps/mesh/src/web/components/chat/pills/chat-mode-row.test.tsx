@@ -35,7 +35,7 @@ describe("ChatModeRowPure", () => {
     expect(queryByTestId("branch-pill")).toBeNull();
   });
 
-  it("renders both pills, BranchPill before ModePicker", () => {
+  it("renders both pills, ModePicker before BranchPill", () => {
     const { getByTestId } = render(
       <ChatModeRowPure
         branchPill={<span data-testid="branch-pill">branch</span>}
@@ -46,10 +46,10 @@ describe("ChatModeRowPure", () => {
     const mode = getByTestId("mode-picker");
     expect(branch).toBeInTheDocument();
     expect(mode).toBeInTheDocument();
-    // Branch comes first in document order so the user reads:
-    // "branch [main] using [Cloud]" left-to-right.
+    // Harness (ModePicker) reads first so the user sees:
+    // "using [Cloud] on branch [main]" left-to-right.
     expect(
-      branch.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING,
+      mode.compareDocumentPosition(branch) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 });
