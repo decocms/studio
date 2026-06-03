@@ -2,8 +2,13 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { AlertTriangle, RefreshCw01 } from "@untitledui/icons";
 import { captureException } from "@/web/lib/posthog-client";
+import { ArchivedOrgScreen } from "@/web/components/archived-org-screen";
 
 const CHUNK_RELOAD_KEY = "__mesh_chunk_reload_ts";
+
+function isArchivedOrgError(error: Error | null): boolean {
+  return error?.message === "Organization is archived";
+}
 
 /**
  * Detects errors caused by stale dynamic imports after a deployment.
@@ -87,6 +92,11 @@ export class ErrorBoundary extends Component<Props, State> {
         return fallback;
       }
 
+      // Org deleted / archived — show friendly screen instead of raw error
+      if (isArchivedOrgError(this.state.error)) {
+        return <ArchivedOrgScreen />;
+      }
+
       // Default fallback UI
       return (
         <div className="flex-1 flex flex-col items-center justify-center h-full p-6 text-center space-y-4">
@@ -167,6 +177,10 @@ export class ChunkErrorBoundary extends Component<
     }
 
     if (this.state.hasError) {
+      if (isArchivedOrgError(this.state.error)) {
+        return <ArchivedOrgScreen />;
+      }
+
       return (
         <div className="flex min-h-dvh flex-col items-center justify-center p-6 text-center space-y-4">
           <div className="bg-destructive/10 p-3 rounded-full">

@@ -136,19 +136,11 @@ const homeRoute = createRoute({
     const { data: orgs } = await listOrganizationsCached();
 
     // If the list call failed, skip redirect logic to avoid a misfire on a
-    // transient API failure.
+    // transient API failure. Archived orgs are already filtered by the helper.
     if (!orgs) return;
 
-    // Filter out archived organizations — they are soft-deleted and invisible to the UI
-    type OrgWithMeta = (typeof orgs)[number] & {
-      metadata?: { archived?: boolean } | null;
-    };
-    const activeOrgs = (orgs as OrgWithMeta[]).filter(
-      (o) => !o.metadata?.archived,
-    );
-
     // Redirect to first available org (every user gets a default org on signup)
-    const firstOrg = activeOrgs[0];
+    const firstOrg = orgs[0];
     if (firstOrg) {
       throw redirect({
         to: "/$org",
@@ -166,14 +158,9 @@ const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/onboarding",
   beforeLoad: async () => {
+    // Archived orgs are already filtered by the helper.
     const { data: orgs } = await listOrganizationsCached();
-    type OrgWithMeta = NonNullable<typeof orgs>[number] & {
-      metadata?: { archived?: boolean } | null;
-    };
-    const activeOrgs = (orgs as OrgWithMeta[] | undefined)?.filter(
-      (o) => !o.metadata?.archived,
-    );
-    if (activeOrgs && activeOrgs.length > 0) {
+    if (orgs && orgs.length > 0) {
       throw redirect({ to: "/" });
     }
   },

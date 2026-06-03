@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import type { MeshContext } from "../../core/mesh-context";
+import { isOrgArchived } from "../../core/org-archived";
 import { createBoundObjectStorage } from "../../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../../object-storage/dev-object-storage";
 import { decorateStorageWithAssetHoisting } from "../../object-storage/asset-hoister";
@@ -23,13 +24,24 @@ export const resolveOrgFromPath: MiddlewareHandler<{
 
   const org = await db
     .selectFrom("organization")
-    .select(["id", "slug", "name"])
+    .select(["id", "slug", "name", "metadata"])
     .where("slug", "=", slug)
     .executeTakeFirst();
 
   if (!org) {
     // Bounce browser navigations into the SPA so OrgAccessGate shows the
     // "Organization not found" screen instead of raw JSON.
+    if (isBrowserNavigation(c)) {
+      return c.redirect(`/${encodeURIComponent(slug)}`, 302);
+    }
+    return c.json({ error: `organization "${slug}" not found` }, 404);
+  }
+
+  // Archived (soft-deleted) orgs are invisible to the API. Treat them exactly
+  // like a missing org: bounce browser navigations into the SPA (the shell
+  // shows the branded "Organization unavailable" screen), and return JSON 404
+  // to machine clients such as the self-MCP proxy POST.
+  if (isOrgArchived(org)) {
     if (isBrowserNavigation(c)) {
       return c.redirect(`/${encodeURIComponent(slug)}`, 302);
     }

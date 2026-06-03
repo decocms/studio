@@ -39,7 +39,7 @@ import {
 } from "@untitledui/icons";
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { SidebarMenuButton } from "@deco/ui/components/sidebar.tsx";
-import { authClient } from "@/web/lib/auth-client";
+import { authClient, useActiveOrganizations } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
@@ -525,7 +525,7 @@ function AccountPopoverContent({
 
 export function AccountPopover() {
   const { data: session } = authClient.useSession();
-  const { data: organizations } = authClient.useListOrganizations();
+  const { data: organizations } = useActiveOrganizations();
   const navigate = useNavigate();
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const orgParam = orgMatch?.params.org;
