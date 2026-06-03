@@ -24,7 +24,10 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Loading01 } from "@untitledui/icons";
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useParams } from "@tanstack/react-router";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useQuery } from "@tanstack/react-query";
+import { homeNextActionsQueryOptions } from "@/web/hooks/use-home-next-actions";
 import { SidebarResizeHandle } from "@/web/components/sidebar/sidebar-resize-handle";
 import { useSidebarResize } from "@/web/hooks/use-sidebar-resize";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
@@ -48,6 +51,25 @@ function RouteFallback() {
   );
 }
 
+/**
+ * Warms the home feed during the shell render, before the home route's
+ * component mounts. The home tiles are gated on this fetch, and HomePage only
+ * mounts after the sidebar tree renders — so starting it here (scoped to the
+ * index route, deduped with HomePage's own read) lets the tile-gating request
+ * overlap the shell render instead of waiting behind it. Renders null.
+ */
+function HomeFeedPrefetch() {
+  const { org } = useProjectContext();
+  const { taskId } = useParams({ strict: false }) as { taskId?: string };
+  useQuery({
+    ...homeNextActionsQueryOptions(org.slug),
+    // Only the org index route (no taskId) is the home page; chat shares this
+    // shell but doesn't render the home feed.
+    enabled: !taskId,
+  });
+  return null;
+}
+
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
@@ -61,6 +83,7 @@ export default function OrgShellLayout() {
       <Toolbar.Provider>
         <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <ChatPrefsProvider>
+            <HomeFeedPrefetch />
             <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
               <Toolbar.Header>
                 <Toolbar.LeftColumn>
