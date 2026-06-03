@@ -33,6 +33,8 @@ import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { BrandContextStorage } from "../storage/brand-context";
 import { OrganizationDomainStorage } from "../storage/organization-domains";
+import { KyselyKVStorage } from "../storage/kv";
+import { KyselyInterestsStorage } from "../storage/interests";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import {
@@ -1090,6 +1092,7 @@ export async function createMeshContextFactory(
   // Create storage adapters once (singleton pattern)
   const threadDb = new SqlThreadStorage(config.db);
   const asyncResearchJobDb = new SqlAsyncResearchJobStorage(config.db);
+  const kvStorage = new KyselyKVStorage(config.db);
   const baseStorage = {
     connections: new ConnectionStorage(config.db, vault),
     organizationSettings: new OrganizationSettingsStorage(config.db),
@@ -1126,6 +1129,8 @@ export async function createMeshContextFactory(
     },
     brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
+    kv: kvStorage,
+    interests: new KyselyInterestsStorage(kvStorage),
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin
     // Note: Policies handled by Better Auth permissions directly
     // Note: API keys (tokens) managed by Better Auth API Key plugin

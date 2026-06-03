@@ -224,7 +224,8 @@ function collapsedCounts(
         messages++;
       } else if (
         (type === "dynamic-tool" || type?.startsWith("tool-")) &&
-        type !== "tool-todo_write"
+        type !== "tool-todo_write" &&
+        type !== "tool-update_interests"
       ) {
         toolCalls++;
       }
@@ -429,6 +430,8 @@ function MessagePart({
         />
       );
     case "tool-todo_write":
+      return null;
+    case "tool-update_interests":
       return null;
     case "tool-user_ask":
       return (

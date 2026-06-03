@@ -63,6 +63,8 @@ const createMockContext = (): MeshContext => ({
     registry: null as never,
     brandContext: null as never,
     organizationDomains: null as never,
+    kv: null as never,
+    interests: null as never,
   },
   vault: null as never,
   authInstance: null as never,

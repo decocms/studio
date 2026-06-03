@@ -31,6 +31,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   propose_plan: { readOnly: true, destructive: false },
   enable_tool: { readOnly: true, destructive: false },
   todo_write: { readOnly: false, destructive: false },
+  update_interests: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "./read-tool-output";
 import { createReadPromptTool } from "./prompts";
@@ -44,6 +45,7 @@ import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import { todoWriteTool } from "./todo-write";
+import { createUpdateInterestsTool } from "./update-interests";
 import { proposePlanTool } from "./propose-plan";
 import { createGenerateImageTool } from "./generate-image";
 import { createWebSearchTool } from "./web-search";
@@ -115,6 +117,9 @@ export interface BuiltinToolParams {
   /** Thread (task) id of the current run — needed by tools that persist
    *  thread-scoped state (e.g. web_search reconnecting to Gemini Deep Research). */
   taskId: string;
+  /** Current agent (virtual MCP) id — scopes the per-agent interests memory
+   *  written by `update_interests`. */
+  agentId: string;
 }
 
 export type { PendingImage };
@@ -145,12 +150,24 @@ async function buildAllTools(
     vmContext,
     htmlPageBuffer,
     taskId,
+    agentId,
   } = params;
   const approvalOpts = { isPlanMode };
+  const userId = ctx.auth?.user?.id;
   const tools: Record<string, unknown> = {
     user_ask: userAskTool,
     todo_write: todoWriteTool,
     propose_plan: proposePlanTool,
+    ...(userId
+      ? {
+          update_interests: createUpdateInterestsTool({
+            ctx,
+            orgId: organization.id,
+            agentId,
+            userId,
+          }),
+        }
+      : {}),
     read_tool_output: createReadToolOutputTool({
       toolOutputMap,
     }),
@@ -321,6 +338,7 @@ async function buildAllTools(
     user_ask: typeof userAskTool;
     todo_write: typeof todoWriteTool;
     propose_plan: typeof proposePlanTool;
+    update_interests: ReturnType<typeof createUpdateInterestsTool>;
     subtask: ReturnType<typeof createSubtaskTool>;
     read_tool_output: ReturnType<typeof createReadToolOutputTool>;
     sandbox: ReturnType<typeof createSandboxTool>;

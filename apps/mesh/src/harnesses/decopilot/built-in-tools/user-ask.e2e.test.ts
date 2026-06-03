@@ -32,6 +32,7 @@ const mockParams: BuiltinToolParams = {
   toolOutputMap: new Map(),
   pendingImages: [],
   taskId: "task_test",
+  agentId: "agent-test",
   passthroughClient: {
     listTools: () => Promise.resolve({ tools: [] }),
     callTool: () => Promise.resolve({ content: [] }),

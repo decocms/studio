@@ -55,6 +55,8 @@ export interface RunAgentLoopOptions {
   models: ModelsConfig;
   messages: ModelMessage[];
   systemAgentInstructions?: string;
+  /** Current thread id — excluded from the user-context "history" recall. */
+  currentThreadId?: string;
   kind: "agent" | "subagent";
   stepLimit?: number;
   toolApprovalLevel?: ToolApprovalLevel;
@@ -150,6 +152,7 @@ export async function runAgentLoop(
     planMode,
     isDecopilot: opts.isDecopilot,
     agentInstructions: opts.systemAgentInstructions,
+    currentThreadId: opts.currentThreadId,
     passthroughClient: opts.passthroughClient,
     connectionsData: opts.connectionsData,
   });

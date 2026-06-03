@@ -210,6 +210,7 @@ export async function assembleDecopilotTools(
         vmContext,
         htmlPageBuffer: extras.htmlPageBuffer,
         taskId: extras.threadId,
+        agentId: input.agent.id,
       },
       ctx,
     );

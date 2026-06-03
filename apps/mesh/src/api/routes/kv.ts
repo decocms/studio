@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { MeshContext } from "@/core/mesh-context";
 import type { KVStorage } from "@/storage/kv";
+import { INTERESTS_KEY_PREFIX } from "@/storage/interests";
 
 type Variables = {
   meshContext: MeshContext;
@@ -19,6 +20,14 @@ interface KVRouteDeps {
 }
 
 const MAX_VALUE_SIZE = 1_048_576; // 1MB
+
+/** Key prefixes that hold internal, per-user data and must never be reachable
+ *  through the generic kv REST API (other org members could otherwise read or
+ *  tamper with them). */
+const RESERVED_KEY_PREFIXES = [INTERESTS_KEY_PREFIX];
+
+const isReservedKey = (key: string) =>
+  RESERVED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
 
 export function createKVRoutes(deps: KVRouteDeps) {
   const app = new Hono<{ Variables: Variables }>();
@@ -31,6 +40,9 @@ export function createKVRoutes(deps: KVRouteDeps) {
     }
 
     const key = c.req.param("key");
+    if (isReservedKey(key)) {
+      return c.json({ error: "Reserved key" }, 403);
+    }
     const value = await deps.kvStorage.get(orgId, key);
 
     if (value === null) {
@@ -54,6 +66,9 @@ export function createKVRoutes(deps: KVRouteDeps) {
       }
 
       const key = c.req.param("key");
+      if (isReservedKey(key)) {
+        return c.json({ error: "Reserved key" }, 403);
+      }
 
       let body: Record<string, unknown>;
       try {
@@ -75,6 +90,9 @@ export function createKVRoutes(deps: KVRouteDeps) {
     }
 
     const key = c.req.param("key");
+    if (isReservedKey(key)) {
+      return c.json({ error: "Reserved key" }, 403);
+    }
     await deps.kvStorage.delete(orgId, key);
     return c.json({ ok: true });
   });
