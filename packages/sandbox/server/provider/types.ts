@@ -41,6 +41,16 @@ export interface Workload {
 
 export interface EnsureOptions {
   /**
+   * Branch slug for handle composition. The sandbox proxy
+   * (`apps/mesh/src/api/routes/sandbox-proxy.ts`) ALWAYS derives the claim
+   * handle from the URL-path branch, so the runner MUST agree or every
+   * proxy call 404s with `unknown handle`. Callers that also drive the
+   * proxy (i.e. SANDBOX_START / ensureSandbox) MUST pass this; `repo.branch`
+   * remains as a fallback only because legacy/test callers without a proxy
+   * surface still use it. When both are set, this top-level field wins.
+   */
+  branch?: string;
+  /**
    * Optional first-provisioning clone. Runners without clone support MUST
    * ignore (not error). `branch` post-clone: fetch-from-origin-or-create.
    */
