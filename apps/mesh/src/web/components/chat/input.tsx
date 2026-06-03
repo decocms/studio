@@ -618,10 +618,12 @@ export function ChatInput({
 
                     {/* Right Actions (branch/mode, model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <ChatModeRow
-                        virtualMcp={fullVm}
-                        currentBranch={taskCtx?.currentBranch ?? null}
-                      />
+                      {messages.length > 0 && (
+                        <ChatModeRow
+                          virtualMcp={fullVm}
+                          currentBranch={taskCtx?.currentBranch ?? null}
+                        />
+                      )}
                       <TierTrigger />
 
                       {/* Microphone button — kept mounted (and disabled)
