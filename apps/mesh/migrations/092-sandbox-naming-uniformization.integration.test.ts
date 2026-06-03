@@ -25,7 +25,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../src/database/test-db-pg";
-import type { MeshDatabase } from "../src/database";
+import type { StudioDatabase } from "../src/database";
 import { up as up092 } from "./092-sandbox-naming-uniformization";
 
 const USER = "user_test";
@@ -43,7 +43,7 @@ interface RunnerStateRow {
 }
 
 async function getMetadata(
-  database: MeshDatabase,
+  database: StudioDatabase,
   id: string,
 ): Promise<Record<string, unknown>> {
   const row = (await sql<ConnectionRow>`
@@ -55,7 +55,7 @@ async function getMetadata(
 }
 
 async function insertVirtualConnection(
-  database: MeshDatabase,
+  database: StudioDatabase,
   id: string,
   metadata: Record<string, unknown>,
 ): Promise<void> {
@@ -73,7 +73,7 @@ async function insertVirtualConnection(
 }
 
 async function listRunnerState(
-  database: MeshDatabase,
+  database: StudioDatabase,
 ): Promise<RunnerStateRow[]> {
   const res = (await sql<RunnerStateRow>`
     SELECT user_id, project_ref, sandbox_provider_kind, handle
@@ -84,7 +84,7 @@ async function listRunnerState(
 }
 
 async function insertRunnerState(
-  database: MeshDatabase,
+  database: StudioDatabase,
   handle: string,
   sandboxProviderKind: string,
 ): Promise<void> {
@@ -100,7 +100,7 @@ async function insertRunnerState(
 }
 
 describe("migration 092 — sandbox naming uniformization", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();

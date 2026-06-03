@@ -6,7 +6,7 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import openaiCompatRoutes from "./openai-compat";
 
 // ============================================================================
@@ -27,7 +27,7 @@ const ENDPOINT = `/${MOCK_ORG_SLUG}/v1/chat/completions`;
 // ============================================================================
 
 describe("OpenAI-compat: Schema Validation", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
@@ -181,7 +181,7 @@ describe("OpenAI-compat: Schema Validation", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Authentication", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
@@ -307,7 +307,7 @@ describe("OpenAI-compat: Authentication", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Authorization", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
@@ -363,7 +363,7 @@ describe("OpenAI-compat: Authorization", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Tools Schema", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
@@ -477,7 +477,7 @@ describe("OpenAI-compat: Tools Schema", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Response Format", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
@@ -580,7 +580,7 @@ describe("OpenAI-compat: Response Format", () => {
 // ============================================================================
 
 describe("OpenAI-compat: Message Formats", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {

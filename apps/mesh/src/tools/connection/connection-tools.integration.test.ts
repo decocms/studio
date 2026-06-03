@@ -5,7 +5,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { CredentialVault } from "../../encryption/credential-vault";
 import {
   COLLECTION_CONNECTIONS_CREATE,
@@ -38,7 +38,7 @@ const createMockBoundAuth = (): BoundAuthClient =>
   }) as unknown as BoundAuthClient;
 
 describe("Connection Tools", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let ctx: StudioContext;
   let vault: CredentialVault;
 

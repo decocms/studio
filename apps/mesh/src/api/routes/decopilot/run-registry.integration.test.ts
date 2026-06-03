@@ -27,7 +27,7 @@ import {
   expect,
   it,
 } from "bun:test";
-import type { MeshDatabase } from "@/database";
+import type { StudioDatabase } from "@/database";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
@@ -46,7 +46,7 @@ const USER = "user_1";
 const POD = "test-pod";
 const MAX_RUN_AGE_MS = 30 * 60 * 1000;
 
-let database: MeshDatabase;
+let database: StudioDatabase;
 let storage: SqlThreadStorage;
 const createdRegistries: RunRegistry[] = [];
 

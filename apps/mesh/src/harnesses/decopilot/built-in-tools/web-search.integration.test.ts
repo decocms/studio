@@ -31,7 +31,7 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "@/database/test-db-pg";
-import type { MeshDatabase } from "@/database";
+import type { StudioDatabase } from "@/database";
 import {
   OrgScopedAsyncResearchJobStorage,
   SqlAsyncResearchJobStorage,
@@ -194,7 +194,7 @@ function makeCtx(storage: OrgScopedAsyncResearchJobStorage): StudioContext {
 // ============================================================================
 
 describe("web_search async-research e2e", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let storage: OrgScopedAsyncResearchJobStorage;
   let mock: MockServer;
 

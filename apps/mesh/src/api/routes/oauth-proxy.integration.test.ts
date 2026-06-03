@@ -27,7 +27,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { createApp } from "../app";
 import type { EventBus } from "../../event-bus";
 import { auth } from "../../auth";
@@ -108,7 +108,7 @@ function createMockEventBus(): EventBus {
   };
 }
 
-let database: MeshDatabase;
+let database: StudioDatabase;
 let app: Awaited<ReturnType<typeof createApp>>;
 const connectionMap = new Map<string, string>();
 
