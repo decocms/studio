@@ -1,24 +1,33 @@
 import type { ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
-import { useOptionalChatStream } from "../context";
+import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { ModePicker } from "./mode-picker";
+import { BranchPill } from "./branch-pill";
+import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { authClient } from "@/web/lib/auth-client";
 
 interface PureProps {
-  clonable: boolean;
+  branchPill: ReactNode;
   modePicker: ReactNode;
 }
 
 /**
- * Pure layout — used by tests. Returns null when the virtual MCP isn't
- * clonable. Locking is owned by the child pills, not the row layout.
+ * Pure layout — used by tests. Each slot renders independently; the
+ * component returns null only when BOTH are null.
  *
  * Renders as a fragment (no wrapping div) so the pills sit in the
  * parent flex flow with the same gap as their siblings.
  */
-export function ChatModeRowPure({ clonable, modePicker }: PureProps) {
-  if (!clonable) return null;
-  return <>{modePicker}</>;
+export function ChatModeRowPure({ branchPill, modePicker }: PureProps) {
+  if (!branchPill && !modePicker) return null;
+  return (
+    <>
+      {branchPill}
+      {modePicker}
+    </>
+  );
 }
 
 interface SmartProps {
@@ -27,25 +36,56 @@ interface SmartProps {
 }
 
 /**
- * Smart wrapper. Renders the ModePicker for clonable agents. Branch
- * selection lives in the agent-shell header next to Save changes.
+ * Smart wrapper. Composes BranchPill + ModePicker. Each pill is gated
+ * by its own capability check:
+ *
+ *   - BranchPill:  agent has an active GitHub repo
+ *     (getActiveGithubRepo(virtualMcp) is non-null).
+ *   - ModePicker:  agent is clonable
+ *     (agentHasClonableSource(virtualMcp?.metadata)).
+ *
+ * Locked flag is derived once here from
+ * `useOptionalChatStream().messages.length > 0` and passed to both.
  */
 export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const stream = useOptionalChatStream();
   const locked = (stream?.messages ?? []).length > 0;
+  const taskCtx = useOptionalChatTask();
+  const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
 
   const clonable = agentHasClonableSource(virtualMcp?.metadata);
+  const githubRepo = getActiveGithubRepo(virtualMcp);
 
-  return (
-    <ChatModeRowPure
-      clonable={clonable}
-      modePicker={
-        <ModePicker
-          locked={locked}
-          currentBranch={currentBranch}
-          virtualMcpId={virtualMcp?.id ?? ""}
-        />
-      }
+  const { data: session } = authClient.useSession();
+  const userId = session?.user?.id ?? "";
+  const { org } = useProjectContext();
+
+  const branchPill = githubRepo ? (
+    <BranchPill
+      orgId={org.id}
+      orgSlug={org.slug}
+      userId={userId}
+      virtualMcpId={virtualMcp?.id ?? ""}
+      connectionId={githubRepo.connectionId ?? ""}
+      owner={githubRepo.owner}
+      repo={githubRepo.name}
+      sandboxMap={virtualMcp?.metadata?.sandboxMap}
+      value={currentBranch}
+      onChange={(next) => {
+        if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+      }}
+      locked={locked}
+      placement="chat"
     />
-  );
+  ) : null;
+
+  const modePicker = clonable ? (
+    <ModePicker
+      locked={locked}
+      currentBranch={currentBranch}
+      virtualMcpId={virtualMcp?.id ?? ""}
+    />
+  ) : null;
+
+  return <ChatModeRowPure branchPill={branchPill} modePicker={modePicker} />;
 }

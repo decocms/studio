@@ -49,8 +49,7 @@ describe("ChatModeRowPure", () => {
     // Branch comes first in document order so the user reads:
     // "branch [main] using [Cloud]" left-to-right.
     expect(
-      branch.compareDocumentPosition(mode) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      branch.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 });
