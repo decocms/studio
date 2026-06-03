@@ -86,6 +86,14 @@ import type { ClaimPhase } from "../lifecycle-types";
 const RUNNER_KIND = "cluster" as const;
 const LOG_LABEL = "AgentSandboxProvider";
 
+/**
+ * Response-header marker on the preview-proxy's "sandbox not ready" envelopes
+ * (404 "sandbox not found" in dev, 502 "sandbox daemon unreachable" in prod).
+ * The mesh edge (`apps/mesh/src/sandbox/preview-proxy.ts`) swaps these for an
+ * auto-reloading "connecting" page on top-level document navigations.
+ */
+export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
+
 // Shared-namespace topology for MVP; tenancy enforced by unguessable claim
 // names (sha256(userId:projectRef)). Per-org namespaces are deferred.
 const DEFAULT_NAMESPACE = "agent-sandbox-system";
@@ -665,7 +673,9 @@ export class AgentSandboxProvider implements SandboxProvider {
       const upstreamBase = await this.resolvePreviewUpstreamUrl(handle);
       if (!upstreamBase) {
         status = 404;
-        return jsonResponse(404, { error: "sandbox not found" });
+        const notReady = jsonResponse(404, { error: "sandbox not found" });
+        notReady.headers.set(PREVIEW_NOT_READY_HEADER, "1");
+        return notReady;
       }
 
       const reqUrl = new URL(request.url);
@@ -756,7 +766,11 @@ export class AgentSandboxProvider implements SandboxProvider {
         }
 
         status = 502;
-        return jsonResponse(502, { error: "sandbox daemon unreachable" });
+        const notReady502 = jsonResponse(502, {
+          error: "sandbox daemon unreachable",
+        });
+        notReady502.headers.set(PREVIEW_NOT_READY_HEADER, "1");
+        return notReady502;
       }
 
       const responseHeaders = new Headers();

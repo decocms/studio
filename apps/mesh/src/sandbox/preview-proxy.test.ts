@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { PREVIEW_NOT_READY_HEADER } from "@decocms/sandbox/provider/agent-sandbox";
 import {
   extractHandleFromHost,
   parsePreviewBaseDomain,
@@ -175,6 +176,126 @@ describe("tryHandlePreviewHttp", () => {
     expect(res!.status).toBe(200);
     expect(received).not.toBeNull();
     expect(received!.handle).toBe("myproj-deadbeef");
+  });
+
+  it("swaps not-ready marker + document GET for a 503 connecting page", async () => {
+    const fakeRunner = {
+      proxyPreviewRequest: async () =>
+        new Response(JSON.stringify({ error: "sandbox daemon unreachable" }), {
+          status: 502,
+          headers: {
+            "content-type": "application/json",
+            [PREVIEW_NOT_READY_HEADER]: "1",
+          },
+        }),
+    };
+    const req = new Request("https://myproj-deadbeef.preview.example.com/", {
+      headers: {
+        host: "myproj-deadbeef.preview.example.com",
+        accept: "text/html,application/xhtml+xml",
+      },
+    });
+    const res = await tryHandlePreviewHttp(req, {
+      baseDomain,
+      // biome-ignore lint/suspicious/noExplicitAny: structural duck-type
+      getRunner: async () => fakeRunner as any,
+    });
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(503);
+    expect(res!.headers.get("content-type")).toContain("text/html");
+    const body = await res!.text();
+    expect(body).toContain("Connecting to sandbox");
+  });
+
+  it("passes through not-ready marker + non-document request unchanged", async () => {
+    const fakeRunner = {
+      proxyPreviewRequest: async () =>
+        new Response(JSON.stringify({ error: "sandbox daemon unreachable" }), {
+          status: 502,
+          headers: {
+            "content-type": "application/json",
+            [PREVIEW_NOT_READY_HEADER]: "1",
+          },
+        }),
+    };
+    const req = new Request(
+      "https://myproj-deadbeef.preview.example.com/api/data",
+      {
+        headers: {
+          host: "myproj-deadbeef.preview.example.com",
+          accept: "application/json",
+        },
+      },
+    );
+    const res = await tryHandlePreviewHttp(req, {
+      baseDomain,
+      // biome-ignore lint/suspicious/noExplicitAny: structural duck-type
+      getRunner: async () => fakeRunner as any,
+    });
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(502);
+    // The internal marker must not leak to the browser on the passthrough path.
+    expect(res!.headers.get(PREVIEW_NOT_READY_HEADER)).toBeNull();
+    const body = await res!.json();
+    expect((body as { error: string }).error).toBe(
+      "sandbox daemon unreachable",
+    );
+  });
+
+  it("swaps the dev-mode 404 not-ready marker + document GET for the connecting page", async () => {
+    const fakeRunner = {
+      proxyPreviewRequest: async () =>
+        new Response(JSON.stringify({ error: "sandbox not found" }), {
+          status: 404,
+          headers: {
+            "content-type": "application/json",
+            [PREVIEW_NOT_READY_HEADER]: "1",
+          },
+        }),
+    };
+    const req = new Request("https://myproj-deadbeef.preview.example.com/", {
+      headers: {
+        host: "myproj-deadbeef.preview.example.com",
+        accept: "text/html,application/xhtml+xml",
+      },
+    });
+    const res = await tryHandlePreviewHttp(req, {
+      baseDomain,
+      // biome-ignore lint/suspicious/noExplicitAny: structural duck-type
+      getRunner: async () => fakeRunner as any,
+    });
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(503);
+    expect(res!.headers.get("content-type")).toContain("text/html");
+    expect(await res!.text()).toContain("Connecting to sandbox");
+  });
+
+  it("does not swap connecting page when there is no not-ready marker", async () => {
+    const fakeRunner = {
+      proxyPreviewRequest: async () =>
+        new Response("<html>app 404</html>", {
+          status: 404,
+          headers: { "content-type": "text/html" },
+        }),
+    };
+    const req = new Request(
+      "https://myproj-deadbeef.preview.example.com/missing",
+      {
+        headers: {
+          host: "myproj-deadbeef.preview.example.com",
+          accept: "text/html,application/xhtml+xml",
+        },
+      },
+    );
+    const res = await tryHandlePreviewHttp(req, {
+      baseDomain,
+      // biome-ignore lint/suspicious/noExplicitAny: structural duck-type
+      getRunner: async () => fakeRunner as any,
+    });
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(404);
+    const body = await res!.text();
+    expect(body).toContain("app 404");
   });
 });
 

@@ -66,7 +66,6 @@ export interface SandboxEventsValue {
   status: DaemonStatus;
   /** Git metadata (branch, dirty, divergence). `unknown` until the first compute. */
   branch: BranchMeta;
-  suspended: boolean;
   /** True after a `gone` event — handle gone, reprovision via SANDBOX_START. */
   notFound: boolean;
   scripts: string[];
@@ -83,7 +82,6 @@ const DEFAULT_VALUE: SandboxEventsValue = {
   lifecycle: { phase: "idle" },
   status: { state: "running" },
   branch: { kind: "unknown" },
-  suspended: false,
   notFound: false,
   scripts: [],
   activeProcesses: [],
@@ -113,11 +111,6 @@ class ChunkBuffer {
     this.data = "";
   }
 }
-
-// Keyed on connection state (NOT event silence) — a ready dev server has
-// nothing to emit. Mesh sends a 15s SSE heartbeat so EventSource.onerror
-// fires promptly when mesh or the daemon goes away.
-const SUSPENDED_AFTER_ERROR_MS = 60_000;
 
 const BASE_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -157,7 +150,6 @@ export function SandboxEventsProvider({
   const [lifecycle, setLifecycle] = useState<LifecycleState>({ phase: "idle" });
   const [status, setStatus] = useState<DaemonStatus>({ state: "running" });
   const [branchMeta, setBranchMeta] = useState<BranchMeta>({ kind: "unknown" });
-  const [suspended, setSuspended] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [scripts, setScripts] = useState<string[]>([]);
   const [activeProcesses, setActiveProcesses] = useState<string[]>([]);
@@ -187,7 +179,6 @@ export function SandboxEventsProvider({
     setStatus({ state: "running" });
     setBranchMeta({ kind: "unknown" });
     prevPortRef.current = null;
-    setSuspended(false);
     setNotFound(false);
     setScripts([]);
     setActiveProcesses([]);
@@ -200,25 +191,7 @@ export function SandboxEventsProvider({
     let disposed = false;
     let reconnectAttempt = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let suspendTimer: ReturnType<typeof setTimeout> | null = null;
     let es: EventSource | null = null;
-    /** Latched to true after a `failed` phase — terminal, no reconnect. */
-    let terminalFailure = false;
-
-    const enterSuspendTimerIfIdle = () => {
-      if (!suspendTimer) {
-        suspendTimer = setTimeout(() => {
-          setSuspended(true);
-        }, SUSPENDED_AFTER_ERROR_MS);
-      }
-    };
-
-    const clearSuspendTimer = () => {
-      if (suspendTimer) {
-        clearTimeout(suspendTimer);
-        suspendTimer = null;
-      }
-    };
 
     const handleClaimPhase = (e: MessageEvent) => {
       try {
@@ -229,10 +202,6 @@ export function SandboxEventsProvider({
         // settles back into the booting overlay.
         if (next.kind !== "failed") {
           setNotFound(false);
-        }
-        if (next.kind === "failed") {
-          terminalFailure = true;
-          es?.close();
         }
       } catch (err) {
         console.warn("[vm-events] bad phase payload", err);
@@ -343,24 +312,16 @@ export function SandboxEventsProvider({
     };
 
     function connect() {
-      if (disposed || terminalFailure) return;
+      if (disposed) return;
 
       es = new EventSource(sseUrl);
 
       es.onopen = () => {
         reconnectAttempt = 0;
-        clearSuspendTimer();
-        setSuspended(false);
       };
 
       es.onerror = () => {
         if (es?.readyState !== EventSource.CLOSED) return;
-        // After a terminal `failed` phase the connection is gone for good
-        // and the UI already shows a dedicated error state — surfacing
-        // `suspended` on top of that would just stack confusing overlays.
-        if (terminalFailure) return;
-        // Timer runs only while disconnected; onopen clears it on reconnect.
-        enterSuspendTimerIfIdle();
         scheduleReconnect();
       };
 
@@ -373,7 +334,7 @@ export function SandboxEventsProvider({
     }
 
     function scheduleReconnect() {
-      if (disposed || reconnectTimer || terminalFailure) return;
+      if (disposed || reconnectTimer) return;
 
       const delay = Math.min(
         BASE_RECONNECT_DELAY_MS * 2 ** reconnectAttempt,
@@ -395,7 +356,6 @@ export function SandboxEventsProvider({
       disposed = true;
       es?.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      clearSuspendTimer();
     };
   }, [virtualMcpId, branch, org.slug, enabled]);
 
@@ -404,7 +364,6 @@ export function SandboxEventsProvider({
     lifecycle,
     status,
     branch: branchMeta,
-    suspended,
     notFound,
     scripts,
     activeProcesses,
