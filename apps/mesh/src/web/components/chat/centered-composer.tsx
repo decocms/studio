@@ -51,7 +51,7 @@ export function CenteredComposerPure({
             // use inside the docked input bottom row. Without this the pills
             // stay in their collapsed (icon-only) form here because the
             // queries find no matching container ancestor.
-            className="@container/chat-bottom flex justify-center gap-2"
+            className="@container/chat-bottom flex justify-start gap-2"
           >
             {aboveRow}
           </div>
