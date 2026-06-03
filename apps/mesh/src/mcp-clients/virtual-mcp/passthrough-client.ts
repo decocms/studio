@@ -16,7 +16,7 @@ import type {
   ListPromptsRequest,
   ListPromptsResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import {
   findStudioPackAgentByMcpId,
   resolveStudioPackChecklist,
@@ -31,7 +31,7 @@ import type { VirtualClientOptions } from "./types";
 export class PassthroughClient extends GatewayClient {
   constructor(
     protected options: VirtualClientOptions,
-    protected ctx: MeshContext,
+    protected ctx: StudioContext,
   ) {
     // Build VirtualMCP connection lookup for per-client selection
     const vmcpConnMap = new Map(

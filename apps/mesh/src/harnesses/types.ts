@@ -6,7 +6,7 @@ import type { UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
  * These types intentionally avoid importing from cluster-only paths
  * (`@/core/*`, `@/storage/*`, `@/api/*`, etc.) so this file stays portable
  * into the desktop daemon's bundle. The cluster-side shapes (`ChatMessage`
- * with metadata + tools, full `MeshContext`, decopilot-only
+ * with metadata + tools, full `StudioContext`, decopilot-only
  * `HarnessProcessLocal` internals) flow in via structural compatibility:
  * the cluster passes its richer types where the harness expects a
  * UIMessage / HarnessContext / unknown-extras-bag, and TS accepts the
@@ -263,7 +263,7 @@ export interface Harness {
 
 /** Narrow context interface every Harness factory takes. Cluster-specific
  *  surface (DB, vault, auth, MCP gateway internals) lives on the wider
- *  MeshContext and is only safe to read inside a harness that gates its
+ *  StudioContext and is only safe to read inside a harness that gates its
  *  cluster-side code path on `HarnessStreamInput.processLocal` (today,
  *  only decopilot does this).
  *
@@ -272,7 +272,7 @@ export interface Harness {
  *  without depending on cluster-only modules.
  *
  *  Re-declared here (mirroring `apps/mesh/src/core/harness-context.ts`) so
- *  the package stays portable. The cluster's richer `MeshContext` is
+ *  the package stays portable. The cluster's richer `StudioContext` is
  *  structurally assignable to this shape. */
 export interface HarnessContext {
   tracer: import("@opentelemetry/api").Tracer;

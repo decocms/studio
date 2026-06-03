@@ -3,7 +3,7 @@
  *
  * These assertions used to live in a unit test that mocked resolveTier,
  * model-permissions, dispatch-queue, the sandbox-kind resolver, AND fabricated
- * a MeshContext — then drove the Hono route and checked the HTTP status. That
+ * a StudioContext — then drove the Hono route and checked the HTTP status. That
  * is the bad zone (a route handler with every dependency faked); per TESTING.md
  * a route belongs in e2e, exercised through the real front door.
  *

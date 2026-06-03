@@ -7,7 +7,7 @@
 
 import { extractConnectionPermissions } from "@/auth/configuration-scopes";
 import { issueMeshToken } from "@/auth/jwt";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { refreshAccessToken } from "@/oauth/token-refresh";
 import { resolveOriginTokenEndpoint } from "@/oauth/resolve-token-endpoint";
@@ -51,7 +51,7 @@ function stripBindingMetadata(
  */
 export async function buildRequestHeaders(
   connection: ConnectionEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
   superUser: boolean,
 ): Promise<Record<string, string>> {
   return ctx.tracer.startActiveSpan(
@@ -78,7 +78,7 @@ export async function buildRequestHeaders(
 
 async function _buildRequestHeaders(
   connection: ConnectionEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
   superUser: boolean,
 ): Promise<Record<string, string>> {
   const connectionId = connection.id;

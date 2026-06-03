@@ -17,7 +17,7 @@
 import { tool, zodSchema, generateImage, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { MeshProvider } from "@/ai-providers/types";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { getSettings } from "@/settings";
 import type { ModelInfo } from "../../../api/routes/decopilot/types";
 import {
@@ -87,7 +87,7 @@ function assertReferenceImageSize(bytes: number): void {
  */
 async function fetchImageBytes(
   url: string,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<Uint8Array> {
   // mesh-storage://{key} — read directly from object storage
   const meshKey = parseMeshStorageKey(url);
@@ -164,7 +164,7 @@ function validateExternalUrl(url: string): void {
 
 async function readFromObjectStorage(
   key: string,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<Uint8Array> {
   if (!ctx.objectStorage) {
     throw new Error("Object storage not available");
@@ -180,7 +180,7 @@ export function createGenerateImageTool(
   params: {
     provider: MeshProvider;
     imageModelInfo: ModelInfo;
-    ctx: MeshContext;
+    ctx: StudioContext;
   },
 ) {
   const { provider, imageModelInfo, ctx } = params;

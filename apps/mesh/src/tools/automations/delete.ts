@@ -13,7 +13,7 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
 
 export const AUTOMATION_DELETE = defineTool({

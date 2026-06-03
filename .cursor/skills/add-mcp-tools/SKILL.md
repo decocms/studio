@@ -100,7 +100,7 @@ Each tool file follows this pattern:
 ```typescript
 // apps/mesh/src/tools/<domain>/create.ts
 import { defineTool } from "../../core/define-tool";
-import { getUserId, requireAuth, requireOrganization } from "../../core/mesh-context";
+import { getUserId, requireAuth, requireOrganization } from "../../core/studio-context";
 import { MyCreateInputSchema, MyCreateOutputSchema } from "./schema";
 
 export const MY_DOMAIN_CREATE = defineTool({
@@ -255,10 +255,10 @@ apiKey({
 
 If your tools wrap Better Auth APIs, you need to:
 
-**a. Add types to `mesh-context.ts`:**
+**a. Add types to `studio-context.ts`:**
 
 ```typescript
-// apps/mesh/src/core/mesh-context.ts
+// apps/mesh/src/core/studio-context.ts
 
 // Add return types
 export type MyDomainCreateResult = Awaited<
@@ -391,3 +391,4 @@ Use the existing test patterns from `apps/mesh/src/tools/connection/` as referen
 4. **Missing default permissions** - Add to `auth/index.ts` if users should have access by default
 5. **Exposing sensitive data** - Only return secrets at creation time
 6. **Missing organization check** - Use `requireOrganization(ctx)` for org-scoped resources
+

@@ -6,7 +6,7 @@ import type {
   SandboxProvider,
 } from "@decocms/sandbox/provider";
 
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 import type {
   LinkClaim,
   LinkClaimRegistry,
@@ -70,7 +70,7 @@ function stubCtx(
     sandboxPreference?: "cluster-default" | "user-desktop";
     linkForCurrentRun?: LinkClaim;
   },
-): MeshContext {
+): StudioContext {
   const registry: LinkClaimRegistry = {
     get: async () => link,
   } as unknown as LinkClaimRegistry;
@@ -79,7 +79,7 @@ function stubCtx(
     db: {} as never,
     sandboxPreference: hints?.sandboxPreference,
     linkForCurrentRun: hints?.linkForCurrentRun,
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 }
 
 describe("resolveSandboxProvider", () => {

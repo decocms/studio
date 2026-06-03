@@ -1,7 +1,7 @@
 /**
  * Context Factory
  *
- * Creates MeshContext instances from HTTP requests (via Hono Context).
+ * Creates StudioContext instances from HTTP requests (via Hono Context).
  * Handles:
  * - API key verification
  * - Organization scope extraction (from Better Auth)
@@ -53,9 +53,9 @@ import { isOrgArchived } from "./org-archived";
 import type {
   BetterAuthInstance,
   BoundAuthClient,
-  MeshContext,
+  StudioContext,
   Timings,
-} from "./mesh-context";
+} from "./studio-context";
 
 // ============================================================================
 // Configuration
@@ -103,7 +103,7 @@ function parsePropertiesHeader(
   }
 }
 
-export interface MeshContextConfig {
+export interface StudioContextConfig {
   db: Kysely<Database>;
   auth: BetterAuthInstance;
   encryption: {
@@ -249,7 +249,7 @@ export interface AuthContext {
 
 /**
  * Create a bound auth client that encapsulates HTTP headers and auth context
- * MeshContext stays HTTP-agnostic while delegating all Better Auth calls
+ * StudioContext stays HTTP-agnostic while delegating all Better Auth calls
  *
  * Two permission flows:
  * 1. API Key / MCP OAuth → check directly against stored `permissions`
@@ -1009,7 +1009,7 @@ interface FactoryOptions {
 type FactoryFunction = (
   req?: Request,
   options?: FactoryOptions,
-) => Promise<MeshContext>;
+) => Promise<StudioContext>;
 
 let createContextFn: FactoryFunction;
 
@@ -1033,10 +1033,10 @@ const wellKnownForwardableHeaders = ["x-hub-signature-256"];
  * Create a context factory function
  *
  * The factory creates storage adapters once (singleton pattern) and
- * returns a function that creates MeshContext from Hono Context
+ * returns a function that creates StudioContext from Hono Context
  */
-export async function createMeshContextFactory(
-  config: MeshContextConfig,
+export async function createStudioContextFactory(
+  config: StudioContextConfig,
 ): Promise<FactoryFunction> {
   // Create vault instance for credential encryption
   const vault = new CredentialVault(config.encryption.key);
@@ -1056,7 +1056,7 @@ export async function createMeshContextFactory(
   if (config.monitoringEngines) {
     // Test-only path: caller supplied stubs to avoid loading
     // `@duckdb/node-api` (whose native finalizer trips a Bun teardown
-    // crash). See MeshContextConfig.monitoringEngines for the why.
+    // crash). See StudioContextConfig.monitoringEngines for the why.
     monitoringEngine = config.monitoringEngines.monitoringEngine;
     metricEngine = config.monitoringEngines.metricEngine;
   } else if (isClickHouse) {
@@ -1145,7 +1145,7 @@ export async function createMeshContextFactory(
   return async (
     req?: Request,
     options?: FactoryOptions,
-  ): Promise<MeshContext> => {
+  ): Promise<StudioContext> => {
     const timings = options?.timings ?? DEFAULT_TIMINGS;
 
     // Client pool scoped to this request — reuses connections within the same
@@ -1200,8 +1200,8 @@ export async function createMeshContextFactory(
       userId: authResult.user?.id, // For server-side API key operations
     });
 
-    // Build auth object for MeshContext
-    const meshAuth: MeshContext["auth"] = {
+    // Build auth object for StudioContext
+    const meshAuth: StudioContext["auth"] = {
       user: authResult.user,
     };
 
@@ -1268,7 +1268,7 @@ export async function createMeshContextFactory(
       orgSlug: organization?.slug,
     });
 
-    const ctx: MeshContext = {
+    const ctx: StudioContext = {
       timings,
       auth: meshAuth,
       connectionId,

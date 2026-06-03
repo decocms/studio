@@ -6,8 +6,8 @@ import {
 import type {
   BetterAuthInstance,
   BoundAuthClient,
-  MeshContext,
-} from "../../core/mesh-context";
+  StudioContext,
+} from "../../core/studio-context";
 import type { OrganizationSettings } from "../../storage/types";
 
 const SAMPLE_SIMPLE_MODE = {
@@ -41,7 +41,7 @@ const buildStoredSettings = (
 
 const createMockContext = (
   storedSettings: OrganizationSettings | null,
-): MeshContext => {
+): StudioContext => {
   const get = vi.fn().mockResolvedValue(storedSettings);
   const upsert = vi.fn(async (_orgId: string, data) => ({
     ...buildStoredSettings(storedSettings ?? undefined),

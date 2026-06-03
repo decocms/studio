@@ -11,7 +11,7 @@ import {
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { defineTool } from "../../core/define-tool";
-import { requireOrganization } from "../../core/mesh-context";
+import { requireOrganization } from "../../core/studio-context";
 import { getBaseUrl } from "../../core/server-constants";
 import {
   getMcpListCache,

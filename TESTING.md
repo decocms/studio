@@ -6,7 +6,7 @@ This document is the source of truth for how we test in this repo. Read it befor
 
 Every other rule here is a consequence of this one. A test earns its place when it is likely to catch a real bug at a price worth paying. Mocking a dependency you own destroys the first half of that trade: you stop testing the contract and start testing a fiction you typed yourself. The test then stays green precisely when the real code breaks — the worst possible outcome, because it costs maintenance while catching nothing.
 
-So the enemy is **not** infrastructure. Postgres, NATS, and Better Auth are real dependencies; testing against them is good. The enemy is the *mock of your own contract* — a stubbed `MeshContext`, a fake `storage` adapter, a hand-written `fetch` that returns a response shape you invented. If your test asserts against something you made up, delete it and test the real thing.
+So the enemy is **not** infrastructure. Postgres, NATS, and Better Auth are real dependencies; testing against them is good. The enemy is the *mock of your own contract* — a stubbed `StudioContext`, a fake `storage` adapter, a hand-written `fetch` that returns a response shape you invented. If your test asserts against something you made up, delete it and test the real thing.
 
 Concretely: a test that mocks all of `storage` and then asserts "the handler called `storage.claimRunStart`" is asserting that the code calls the function the code calls. It is tautological. It will not catch the broken SQL inside `claimRunStart`, which is the only bug that handler can actually have.
 
@@ -93,7 +93,7 @@ Everything else uses `authedPage`.
 
 Don't do any of these:
 
-- **Mocking your own code to make a test green.** The headline rule. Stubbing `storage`, `MeshContext`, `auth.api.getSession`, `SandboxProvider`, `clientFromConnection`, or `global.fetch` means the test belongs in storage-integration (drop the mocks, use real Postgres) or e2e (go through the front door). (An *inert* collaborator a code path never invokes — e.g. the unused `storage` a pure in-memory state-machine test must hand to a constructor — is not this: nothing the assertion depends on is faked. Keep it plain and unexercised, not a `mock()` with canned return values.)
+- **Mocking your own code to make a test green.** The headline rule. Stubbing `storage`, `StudioContext`, `auth.api.getSession`, `SandboxProvider`, `clientFromConnection`, or `global.fetch` means the test belongs in storage-integration (drop the mocks, use real Postgres) or e2e (go through the front door). (An *inert* collaborator a code path never invokes — e.g. the unused `storage` a pure in-memory state-machine test must hand to a constructor — is not this: nothing the assertion depends on is faked. Keep it plain and unexercised, not a `mock()` with canned return values.)
 - **Asserting "the handler called the function."** If the assertion is `expect(storage.foo).toHaveBeenCalled()` against a mocked `storage.foo`, the test is tautological. Test the *effect* against the real dependency instead.
 - **A route/handler test with a mocked DB.** The bad-zone middle. Move to e2e.
 - **A CLI/client test with a hand-written `fetch` mock** that returns an invented server-response shape. You're asserting against your own fiction; it won't break when the real server changes. Stand the real server up as a fixture and round-trip against it.
@@ -160,3 +160,4 @@ Adding a test is just choosing the right filename — it auto-routes.
 - Good e2e spec: [`apps/mesh/e2e/tests/connection-create.spec.ts`](apps/mesh/e2e/tests/connection-create.spec.ts)
 </content>
 </invoke>
+

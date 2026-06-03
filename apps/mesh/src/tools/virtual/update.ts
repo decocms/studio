@@ -10,7 +10,7 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 import { VirtualMCPEntitySchema, VirtualMCPUpdateDataSchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 

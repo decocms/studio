@@ -1,6 +1,6 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import type {
   LinkClaimRegistry,
   LinkClaim,
@@ -204,7 +204,7 @@ function makeCtx(overrides: {
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
   linkClaimRegistry?: LinkClaimRegistry;
-}): MeshContext {
+}): StudioContext {
   const {
     orgId = ORG_ID,
     userId = USER_ID,
@@ -267,7 +267,7 @@ function makeCtx(overrides: {
     pendingRevalidations: [],
     monitoring: null as never,
     linkClaimRegistry,
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 }
 
 describe("SANDBOX_START", () => {

@@ -33,7 +33,7 @@ import {
   AsyncResearchTerminalError,
   type MeshProvider,
 } from "@/ai-providers/types";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import type { ModelInfo } from "../../../api/routes/decopilot/types";
 import { createOutputPreview } from "./read-tool-output";
@@ -78,7 +78,7 @@ export function createWebSearchTool(
   params: {
     provider: MeshProvider;
     deepResearchModelInfo: ModelInfo;
-    ctx: MeshContext;
+    ctx: StudioContext;
     toolOutputMap: Map<string, string>;
     /** Current thread/task id — used to scope persisted research jobs. */
     taskId: string;
@@ -165,7 +165,7 @@ interface AsyncResearchInvocation {
   asyncResearch: NonNullable<MeshProvider["asyncResearch"]>;
   providerId: string;
   modelId: string;
-  ctx: MeshContext;
+  ctx: StudioContext;
   taskId: string;
   toolOutputMap: Map<string, string>;
   writeProgress: (text: string) => void;
@@ -477,7 +477,7 @@ interface StreamingInvocation {
   provider: MeshProvider;
   modelId: string;
   toolOutputMap: Map<string, string>;
-  ctx: MeshContext;
+  ctx: StudioContext;
   writeProgress: (text: string) => void;
 }
 

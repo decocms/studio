@@ -18,7 +18,7 @@
  */
 
 import type { UIMessageStreamWriter } from "ai";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import {
   createBoundObjectStorage,
   type BoundObjectStorage,
@@ -37,7 +37,7 @@ function matchHtmlPagePath(
   return { slug: m[1]!, key: normalized };
 }
 
-function resolveObjectStorage(ctx: MeshContext): BoundObjectStorage | null {
+function resolveObjectStorage(ctx: StudioContext): BoundObjectStorage | null {
   if (ctx.objectStorage) return ctx.objectStorage;
   const orgId = ctx.organization?.id;
   if (!orgId) return null;
@@ -81,7 +81,7 @@ export interface HtmlPageBuffer {
 }
 
 export function createHtmlPageBuffer(
-  ctx: MeshContext,
+  ctx: StudioContext,
   writer: UIMessageStreamWriter,
 ): HtmlPageBuffer {
   const pending = new Map<

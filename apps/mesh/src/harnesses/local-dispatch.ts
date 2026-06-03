@@ -1,7 +1,7 @@
 import type { UIMessageChunk } from "ai";
 import { getHarnessFactory } from "./registry";
 import type { HarnessId, HarnessStreamInput } from "./types";
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 
 /** Invoke a harness in-process. Looks up the factory, creates a harness with
  *  the provided `ctx`, and returns its stream. Throws synchronously if the id
@@ -13,7 +13,7 @@ import type { MeshContext } from "../core/mesh-context";
 export function localDispatch(
   id: HarnessId,
   input: HarnessStreamInput,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): AsyncIterable<UIMessageChunk> {
   const factory = getHarnessFactory(id);
   if (!factory) {

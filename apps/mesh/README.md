@@ -138,9 +138,9 @@ apps/mesh/
 │   │
 │   ├── core/                   # Core abstractions
 │   │   ├── access-control.ts   # Permission checking
-│   │   ├── context-factory.ts  # MeshContext factory
+│   │   ├── context-factory.ts  # StudioContext factory
 │   │   ├── define-tool.ts      # Tool definition helper
-│   │   └── mesh-context.ts     # Request context type
+│   │   └── studio-context.ts     # Request context type
 │   │
 │   ├── database/               # Kysely database setup
 │   ├── encryption/             # Credential vault (AES-256-GCM)
@@ -444,4 +444,5 @@ MIT License - see [LICENSE](../../LICENSE.md) for details.
 <p align="center">
   Built with 💚 by <a href="https://decocms.com">decocms.com</a>
 </p>
+
 

@@ -18,7 +18,7 @@
  * - Base64 inline         : data: URL kept as-is in parts — when ctx.objectStorage is null
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { toFilesUrl } from "@/object-storage/key-utils";
 import type { ChatMessage } from "./types";
 import {
@@ -107,7 +107,7 @@ async function uploadBytes(
   bytes: Uint8Array,
   key: string,
   mimeType: string,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<string | null> {
   if (!ctx.objectStorage) return null;
   try {
@@ -129,7 +129,7 @@ const S3_PRESIGNED_EXPIRES_IN = 7 * 24 * 3600; // 7 days (SigV4 max)
  */
 export async function generatePresignedGetUrl(
   key: string,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<string | null> {
   if (!ctx.objectStorage) return null;
   try {
@@ -158,7 +158,7 @@ export async function generatePresignedGetUrl(
  */
 export async function uploadFileParts(
   messages: ChatMessage[],
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<ChatMessage[]> {
   if (!ctx.organization) return messages;
   const orgSlug = ctx.organization.slug;
@@ -284,7 +284,7 @@ export async function uploadFileParts(
  */
 export async function resolveStorageRefs(
   messages: ChatMessage[],
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<ChatMessage[]> {
   if (!ctx.organization) return messages;
 
@@ -367,7 +367,7 @@ export async function resolveStorageRefs(
  */
 export async function resolveArgsStorageRefs(
   args: Record<string, unknown>,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<Record<string, unknown>> {
   // Collect all mesh-storage: keys present anywhere in the args tree
   const keysFound = new Set<string>();
@@ -436,7 +436,7 @@ function substituteValues(
  */
 async function legacyMaterialize(
   messages: ChatMessage[],
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<ChatMessage[]> {
   const lastUserIdx = messages.findLastIndex((m) => m.role === "user");
   if (lastUserIdx === -1) return messages;

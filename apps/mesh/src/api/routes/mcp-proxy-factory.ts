@@ -18,7 +18,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 
 // ============================================================================
 // Types
@@ -53,7 +53,7 @@ export function toServerClient(client: Client): ServerClient {
 
 async function createMCPProxyDoNotUseDirectly(
   connectionIdOrConnection: string | ConnectionEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
   { superUser }: { superUser: boolean }, // this is basically used for background workers that needs cross-organization access
 ): Promise<MCPProxyClient> {
   // Non-superUser callers (user-facing tools) must have org context;
@@ -149,7 +149,7 @@ async function createMCPProxyDoNotUseDirectly(
  */
 export async function createMCPProxy(
   connectionIdOrConnection: string | ConnectionEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ) {
   return createMCPProxyDoNotUseDirectly(connectionIdOrConnection, ctx, {
     superUser: false,
@@ -164,7 +164,7 @@ export async function createMCPProxy(
  */
 export async function dangerouslyCreateSuperUserMCPProxy(
   connectionIdOrConnection: string | ConnectionEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ) {
   return createMCPProxyDoNotUseDirectly(connectionIdOrConnection, ctx, {
     superUser: true,

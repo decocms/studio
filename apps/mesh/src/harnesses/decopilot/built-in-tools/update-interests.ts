@@ -9,7 +9,7 @@
 
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 
 const UpdateInterestsInputSchema = z.object({
   interests: z
@@ -38,7 +38,7 @@ const description =
   "that are clearly finished or abandoned. Order by importance, most first.";
 
 export function createUpdateInterestsTool(deps: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   orgId: string;
   agentId: string;
   userId: string;

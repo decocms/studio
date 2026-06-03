@@ -4,9 +4,9 @@
 
 import { ADMIN_ROLES, type BuiltinRole } from "../../auth/roles";
 import { ForbiddenError } from "../../core/access-control";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 
-export function requireOrgAdminForPinnedField(ctx: MeshContext): void {
+export function requireOrgAdminForPinnedField(ctx: StudioContext): void {
   const role = ctx.access.getRole();
   if (!role || !ADMIN_ROLES.includes(role as BuiltinRole)) {
     throw new ForbiddenError(

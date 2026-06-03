@@ -1,5 +1,5 @@
 import { defineTool } from "@/core/define-tool";
-import { requireOrganization } from "@/core/mesh-context";
+import { requireOrganization } from "@/core/studio-context";
 import { RegistryGetInputSchema, RegistryGetOutputSchema } from "./schema";
 
 export const REGISTRY_ITEM_GET = defineTool({

@@ -1,17 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import {
-  type MeshContext,
+  type StudioContext,
   getOrganizationId,
   getUserId,
   hasOrganization,
   isAuthenticated,
   requireAuth,
   requireOrganization,
-} from "./mesh-context";
+} from "./studio-context";
 import type { EventBus } from "../event-bus/interface";
 
 // Helper to create mock context
-const createMockContext = (overrides?: Partial<MeshContext>): MeshContext => ({
+const createMockContext = (
+  overrides?: Partial<StudioContext>,
+): StudioContext => ({
   timings: {
     measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
   },
@@ -74,7 +76,7 @@ const createMockContext = (overrides?: Partial<MeshContext>): MeshContext => ({
   ...overrides,
 });
 
-describe("MeshContext Utilities", () => {
+describe("StudioContext Utilities", () => {
   describe("hasOrganization", () => {
     it("should return true when organization is defined", () => {
       const ctx = createMockContext({

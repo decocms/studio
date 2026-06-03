@@ -16,7 +16,7 @@ import {
 } from "@decocms/sandbox/provider";
 import { delay } from "@decocms/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import { readSandboxMap, resolveVm } from "../../tools/sandbox/sandbox-map";
 import type { Env } from "../hono-env";
@@ -41,7 +41,7 @@ const PROXY_OPEN_RETRY_BUDGET_MS = 60_000;
 const PROXY_OPEN_RETRY_DELAY_MS = 500;
 
 export interface VmEventsHandlerArgs {
-  ctx: MeshContext;
+  ctx: StudioContext;
   claimName: string;
   runner: SandboxProvider;
   branch: string;
@@ -146,7 +146,7 @@ async function isStaleHandle(
 }
 
 async function cleanupStaleEntry(args: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   runner: SandboxProvider;
   claimName: string;
   userId: string;

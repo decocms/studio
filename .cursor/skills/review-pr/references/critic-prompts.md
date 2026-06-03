@@ -171,7 +171,7 @@ Critique these code changes from the ARCHITECTURE perspective.
 **Your role:** Assess whether the changes fit existing patterns and maintain clean layering.
 
 **Check:**
-- Do new tools use defineTool() and MeshContext correctly?
+- Do new tools use defineTool() and StudioContext correctly?
 - Are database operations going through ctx.storage (not raw Kysely)?
 - Are HTTP objects leaking into tool handlers?
 - Do new components follow existing UI patterns?
@@ -215,3 +215,4 @@ Critique these code changes from the SCOPE perspective.
 - **Recommendations:** what to remove, defer, or separate
 - **Verdict:** Ready / Needs changes / High risk
 ```
+

@@ -405,7 +405,7 @@ const lookupDispatchHarness = (id: string, input: unknown) => {
   if (!factory) throw new Error(`unknown harness: ${id}`);
   // Build a minimal HarnessContext. CLI harnesses don't read storage,
   // db, vault, or aiProviders — they only need tracer/meter for OTel
-  // and metadata for span attributes. The cluster's richer MeshContext
+  // and metadata for span attributes. The cluster's richer StudioContext
   // is structurally compatible with this shape (see
   // `apps/mesh/src/core/harness-context.ts`).
   const harnessInput = input as HarnessStreamInput;

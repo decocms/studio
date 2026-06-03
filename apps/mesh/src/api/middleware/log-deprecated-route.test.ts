@@ -1,21 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { Hono } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import {
   createLogDeprecatedRoute,
   logDeprecatedRoute,
 } from "./log-deprecated-route";
 
-type Variables = { meshContext: MeshContext };
+type Variables = { meshContext: StudioContext };
 
-const setMeshContext = async (
+const setStudioContext = async (
   c: import("hono").Context<{ Variables: Variables }>,
   next: () => Promise<void>,
 ) => {
   c.set("meshContext", {
     organization: { slug: "acme" },
     auth: { user: { id: "user-1" } },
-  } as unknown as MeshContext);
+  } as unknown as StudioContext);
   await next();
 };
 
@@ -26,7 +26,7 @@ describe("logDeprecatedRoute", () => {
   beforeEach(() => {
     logSpy = spyOn(console, "log").mockImplementation(() => {});
     app = new Hono<{ Variables: Variables }>();
-    app.use("*", setMeshContext);
+    app.use("*", setStudioContext);
     app.use("/api/legacy/:id", logDeprecatedRoute);
     app.get("/api/legacy/:id", (c) => c.json({ ok: true }));
   });

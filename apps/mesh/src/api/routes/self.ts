@@ -6,12 +6,12 @@
  */
 import { Hono } from "hono";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { managementMCP } from "../../tools";
 
 // Define Hono variables type
 type Variables = {
-  meshContext: MeshContext;
+  meshContext: StudioContext;
 };
 
 type SelfEnv = { Variables: Variables };

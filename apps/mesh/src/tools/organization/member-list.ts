@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { requireAuth } from "../../core/studio-context";
 
 export const ORGANIZATION_MEMBER_LIST = defineTool({
   name: "ORGANIZATION_MEMBER_LIST",

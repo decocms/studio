@@ -6,7 +6,7 @@
  */
 
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { SubscribeInputSchema, SubscribeOutputSchema } from "./schema";
 
 export const EVENT_SUBSCRIBE = defineTool({

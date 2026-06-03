@@ -7,7 +7,7 @@
 
 import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
-import { getUserId, requireAuth } from "../../core/mesh-context";
+import { getUserId, requireAuth } from "../../core/studio-context";
 import { ApiKeyDeleteInputSchema, ApiKeyDeleteOutputSchema } from "./schema";
 
 // Type for API key metadata with organization

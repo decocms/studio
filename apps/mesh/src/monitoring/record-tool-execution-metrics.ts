@@ -1,7 +1,7 @@
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 
 export function recordToolExecutionMetrics(params: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   organizationId: string;
   connectionId: string;
   toolName: string;

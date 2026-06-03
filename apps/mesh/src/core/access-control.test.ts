@@ -4,7 +4,7 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "./access-control";
-import type { BetterAuthInstance, BoundAuthClient } from "./mesh-context";
+import type { BetterAuthInstance, BoundAuthClient } from "./studio-context";
 import type { Permission } from "../storage/types";
 import { BASIC_USAGE_TOOLS } from "../tools/registry-metadata";
 

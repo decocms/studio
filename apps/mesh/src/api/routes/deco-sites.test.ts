@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import type { FileConfigInfo } from "../../storage/types";
 import {
   provisionDecoAssetsCredentials,
@@ -26,7 +26,7 @@ function fetchFail(status: number, body = ""): typeof globalThis.fetch {
 }
 
 function makeCtx(existing: FileConfigInfo[] = []): {
-  ctx: MeshContext;
+  ctx: StudioContext;
   createCalls: Array<Record<string, unknown>>;
 } {
   const createCalls: Array<Record<string, unknown>> = [];
@@ -39,7 +39,7 @@ function makeCtx(existing: FileConfigInfo[] = []): {
   };
   const ctx = {
     storage: { orgFileConfigs },
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
   return { ctx, createCalls };
 }
 

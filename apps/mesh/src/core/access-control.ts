@@ -11,7 +11,7 @@
 
 import { MCP_MESH_KEY } from "@/core/constants";
 import { BASIC_USAGE_TOOLS } from "@/tools/registry-metadata";
-import type { BetterAuthInstance, BoundAuthClient } from "./mesh-context";
+import type { BetterAuthInstance, BoundAuthClient } from "./studio-context";
 
 // ============================================================================
 // Types

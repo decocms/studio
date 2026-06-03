@@ -18,7 +18,7 @@ import { createServerFromClient, getDecopilotId } from "@decocms/mesh-sdk";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
 import type { Env } from "../hono-env";
@@ -30,7 +30,7 @@ import { guardResponseStream } from "../utils/stream-guard";
 
 export async function handleVirtualMcpRequest(
   c: {
-    get: (key: "meshContext") => MeshContext;
+    get: (key: "meshContext") => StudioContext;
     req: {
       header: (name: string) => string | undefined;
       param: (name: string) => string | undefined;

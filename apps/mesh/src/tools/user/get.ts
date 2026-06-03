@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { getUserId, requireAuth } from "../../core/mesh-context";
+import { getUserId, requireAuth } from "../../core/studio-context";
 
 const InputSchema = z.object({
   id: z.string().min(1),

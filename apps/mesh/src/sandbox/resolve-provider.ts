@@ -34,7 +34,7 @@ import {
   type SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 import { readSandboxMap } from "../tools/sandbox/sandbox-map";
 import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
 import { resolveDefaultSandboxProviderKind } from "./resolve-default-provider-kind";
@@ -61,7 +61,7 @@ export interface ResolvedSandboxProvider {
 }
 
 export async function resolveSandboxProvider(
-  ctx: MeshContext,
+  ctx: StudioContext,
   args: ResolveSandboxProviderArgs,
 ): Promise<ResolvedSandboxProvider> {
   const { userId, branch, virtualMcpMetadata, explicitKind } = args;
@@ -142,7 +142,7 @@ function readRecordedKinds(
  * SANDBOX_START with no explicit kind would have used.
  */
 async function pickRecordedKind(
-  ctx: MeshContext,
+  ctx: StudioContext,
   userId: string,
   first: SandboxProviderKind,
   rest: SandboxProviderKind[],
@@ -153,7 +153,7 @@ async function pickRecordedKind(
 }
 
 async function resolveDefaultKind(
-  ctx: MeshContext,
+  ctx: StudioContext,
   userId: string,
 ): Promise<SandboxProviderKind> {
   if (!ctx.linkClaimRegistry) return resolveSandboxProviderKindFromEnv();
@@ -164,7 +164,7 @@ async function resolveDefaultKind(
 }
 
 async function bindProviderForKind(
-  ctx: MeshContext,
+  ctx: StudioContext,
   userId: string,
   kind: SandboxProviderKind,
 ): Promise<SandboxProvider> {
@@ -172,7 +172,7 @@ async function bindProviderForKind(
 
   if (!ctx.linkClaimRegistry) {
     throw new Error(
-      "user-desktop sandbox provider requires ctx.linkClaimRegistry to be wired (set on MeshContextConfig).",
+      "user-desktop sandbox provider requires ctx.linkClaimRegistry to be wired (set on StudioContextConfig).",
     );
   }
   const link = await ctx.linkClaimRegistry.get(userId);

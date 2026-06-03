@@ -15,7 +15,7 @@ import { syncTriggerCreated } from "../../automations/dbos-sync";
 import { Cron } from "croner";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { webhookPermissionResource, webhookUrl } from "./webhook-trigger";
 

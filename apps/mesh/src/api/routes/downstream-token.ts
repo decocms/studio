@@ -6,7 +6,7 @@
  */
 
 import { Hono } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { resolveOriginTokenEndpoint } from "../../oauth/resolve-token-endpoint";
 import {
   DownstreamTokenStorage,
@@ -15,7 +15,7 @@ import {
 
 // Define Hono variables type
 type Variables = {
-  meshContext: MeshContext;
+  meshContext: StudioContext;
 };
 
 export const createDownstreamTokenRoutes = () => {

@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 import { resolveTier } from "../core/resolve-tier";
 
 export interface CommitSuggestion {
@@ -262,7 +262,7 @@ export function parseCommitSuggestionJson(
 }
 
 export async function suggestCommitMessageWithLlm(
-  ctx: MeshContext,
+  ctx: StudioContext,
   status: GitStatusLike,
   diff: GitDiffLike,
 ): Promise<CommitSuggestion> {

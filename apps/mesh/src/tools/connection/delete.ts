@@ -15,7 +15,7 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { getMcpReadCache } from "../../mcp-clients/mcp-read-cache";
 import { ConnectionEntitySchema } from "./schema";

@@ -1,5 +1,5 @@
 /**
- * Unit tests for the title interceptor — pure logic, no MeshContext, no
+ * Unit tests for the title interceptor — pure logic, no StudioContext, no
  * provider, no storage. Injected `persistTitle` deps keep this at the unit
  * tier per TESTING.md.
  *

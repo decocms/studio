@@ -1,5 +1,5 @@
 import { defineTool } from "@/core/define-tool";
-import { requireOrganization, type MeshContext } from "@/core/mesh-context";
+import { requireOrganization, type StudioContext } from "@/core/studio-context";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import {
   generateText,
@@ -58,7 +58,7 @@ type MCPClientLike = {
   close?: () => Promise<void>;
 };
 
-type MonitorToolContext = MeshContext & {
+type MonitorToolContext = StudioContext & {
   organization: { id: string };
   storage: {
     connections: {
@@ -94,7 +94,7 @@ function logError(...msgParts: unknown[]): void {
   console.error(LOG_PREFIX, ...msgParts);
 }
 
-function resolveContext(ctx: MeshContext): MonitorToolContext {
+function resolveContext(ctx: StudioContext): MonitorToolContext {
   requireOrganization(ctx);
   return ctx as unknown as MonitorToolContext;
 }
@@ -1271,7 +1271,7 @@ function publishRequestToMonitorTarget(
 }
 
 async function startMonitorRun(
-  ctx: MeshContext,
+  ctx: StudioContext,
   config: RegistryMonitorConfig,
 ): Promise<{ run: { id: string } }> {
   const monitorCtx = resolveContext(ctx);

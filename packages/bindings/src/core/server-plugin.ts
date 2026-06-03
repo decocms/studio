@@ -16,9 +16,9 @@ import type { Hono } from "hono";
 import type { Kysely } from "kysely";
 
 /**
- * Subset of MeshContext exposed to server plugin tool handlers.
+ * Subset of StudioContext exposed to server plugin tool handlers.
  *
- * Plugins receive the full MeshContext at runtime but should only depend on
+ * Plugins receive the full StudioContext at runtime but should only depend on
  * these properties. This keeps the plugin contract stable and avoids coupling
  * plugins to Mesh internals (db, vault, tracer, etc.).
  */
