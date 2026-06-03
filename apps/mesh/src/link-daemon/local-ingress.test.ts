@@ -35,7 +35,7 @@ describe("local-ingress HTTP proxying", () => {
     expect(await res.text()).toBe("hello from /widget");
   });
 
-  test("unknown handle → 404", async () => {
+  test("unknown handle (HTTP) → 503 auto-reloading connecting page", async () => {
     ingress = await startLocalIngress({
       port: 0,
       lookupSandboxPort: () => null,
@@ -43,7 +43,29 @@ describe("local-ingress HTTP proxying", () => {
     const res = await fetch(`http://127.0.0.1:${ingress.port}/`, {
       headers: { host: `nope.localhost:${ingress.port}` },
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const body = await res.text();
+    expect(body).toContain("Connecting to sandbox");
+    expect(body).toContain("window.location.reload");
+  });
+
+  test("unknown handle (WebSocket upgrade) → 404 (no HTML)", async () => {
+    ingress = await startLocalIngress({
+      port: 0,
+      lookupSandboxPort: () => null,
+    });
+    // A WS upgrade to an unspawned handle must NOT receive the 503 HTML page
+    // (a WS client can't parse it) — the upgrade fails and the socket closes.
+    const ws = new WebSocket(`ws://nope.localhost:${ingress.port}/`);
+    const closeEvent = await new Promise<CloseEvent>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error("no close within 5s")), 5000);
+      ws.addEventListener("close", (e) => {
+        clearTimeout(t);
+        resolve(e);
+      });
+    });
+    expect(closeEvent.wasClean).toBe(false);
   });
 
   test("non-localhost host → 404", async () => {

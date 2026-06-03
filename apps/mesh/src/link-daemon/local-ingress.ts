@@ -21,6 +21,14 @@ import { parseHandleFromHost } from "./host-parser";
  */
 const MAX_PENDING_FRAMES = 256;
 
+/**
+ * Served for a valid `<handle>.localhost` whose sandbox isn't spawned yet
+ * (e.g. right after `deco link` relinks, before the cluster respawns it).
+ * Auto-reloads so the iframe flips to the live dev server as soon as the
+ * sandbox is up — no frontend state needed.
+ */
+const CONNECTING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting…</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fafafa;color:#555}div{text-align:center;max-width:420px;padding:24px}h3{margin:0 0 8px}p{margin:0;font-size:14px;color:#999;line-height:1.5}</style></head><body><div><h3>Connecting to sandbox…</h3><p>Waiting for the local sandbox to come online. This page refreshes automatically.</p></div><script>setTimeout(function(){window.location.reload()},1500)</script></body></html>`;
+
 export interface StartLocalIngressInput {
   port: number;
   lookupSandboxPort: (handle: string) => number | null;
@@ -50,7 +58,20 @@ export async function startLocalIngress(
       const handle = parseHandleFromHost(host);
       if (!handle) return new Response("not found", { status: 404 });
       const sandboxPort = input.lookupSandboxPort(handle);
-      if (!sandboxPort) return new Response("unknown handle", { status: 404 });
+      if (!sandboxPort) {
+        // WebSocket upgrades can't render HTML — fail them so the client retries.
+        if (req.headers.get("upgrade") === "websocket") {
+          return new Response("unknown handle", { status: 404 });
+        }
+        return new Response(CONNECTING_HTML, {
+          status: 503,
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+            "Retry-After": "1",
+          },
+        });
+      }
 
       if (req.headers.get("upgrade") === "websocket") {
         const reqUrl = new URL(req.url);
