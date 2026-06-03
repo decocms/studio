@@ -9,7 +9,6 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-  useSuspenseQuery,
   type MutateOptions,
   type UseMutationResult,
   type UseQueryResult,
@@ -118,25 +117,29 @@ function useOrganizationSettings<T = OrganizationSettings>(
 }
 
 /**
- * Suspense variant used by shell-layout, which mounts ProjectContextProvider
- * and therefore can't call useProjectContext() yet — so it passes `orgId`
- * explicitly. Same query key as the non-suspense variant — shares the cache.
+ * Non-blocking shell read. Used by shell-layout, which mounts
+ * ProjectContextProvider and therefore can't call useProjectContext() yet — so
+ * it passes `orgId`/`orgSlug` explicitly. Same query key as the other variants.
+ *
+ * Deliberately non-suspense: the shell must NOT block its whole subtree
+ * (sidebar, home, tiles) on the org-settings round-trip. `enabled_plugins` is
+ * the only field consumed downstream and every consumer is null-safe, so we
+ * render immediately with `null` and let the value fill in when the query
+ * resolves.
  */
-export function useOrganizationSettingsSuspense(
+export function useOrganizationSettingsNonBlocking(
   orgId: string,
   orgSlug: string,
-): OrganizationSettings {
+): OrganizationSettings | null {
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId,
     orgSlug,
   });
 
-  const { data } = useSuspenseQuery(
-    organizationSettingsQueryOptions(client, orgId),
-  );
+  const { data } = useQuery(organizationSettingsQueryOptions(client, orgId));
 
-  return data;
+  return data ?? null;
 }
 
 type OrgSettingsUpdateInput = Partial<
