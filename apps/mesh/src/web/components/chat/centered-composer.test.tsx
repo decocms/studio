@@ -22,12 +22,10 @@ describe("CenteredComposerPure", () => {
     expect(input).toBeInTheDocument();
     expect(ice).toBeInTheDocument();
     expect(
-      above.compareDocumentPosition(input) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      above.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      input.compareDocumentPosition(ice) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      input.compareDocumentPosition(ice) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
