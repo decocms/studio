@@ -38,6 +38,7 @@
 
 import { streamText, type UIMessageChunk } from "ai";
 import { createCodexModel, resolveCodexModelId } from "./model";
+import { resolveCliCwd } from "../cli-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { makeTitleResultChunk } from "../title-chunk";
 import { genTitle } from "../decopilot/title-generator";
@@ -100,7 +101,6 @@ async function* mergeTitleResult(
     if (!titleDone) titleHandle.finish();
   }
 }
-
 export const codexHarnessFactory: HarnessFactory = {
   id: "codex",
   create(_ctx: HarnessContext): Harness {
@@ -111,7 +111,26 @@ export const codexHarnessFactory: HarnessFactory = {
         //    name (e.g. `gpt-5.4`). Mirrors stream-core line 922.
         const sdkModelId = resolveCodexModelId(input.models.thinking.id);
 
-        // 2. Build the Codex language model. The MCP URL + headers are
+        // 2. Compute the working directory for the codex app-server
+        //    subprocess. Shared with the Claude Code harness via
+        //    `../cli-cwd` — github-linked agents resolve to the sandbox's
+        //    `<appRoot>/repo` checkout, ephemeral agents fall through to
+        //    undefined (SDK default = process.cwd()). Without this, the
+        //    codex CLI ran in the daemon's own cwd and file edits landed
+        //    outside the user's repo.
+        const cwd = await resolveCliCwd(input);
+
+        // Diagnostics: on the user-desktop path this runs inside the spawned
+        // sandbox daemon (stdout inherited by `deco link`), so these lines
+        // surface in the link terminal. They pin the three most common
+        // failure causes for a `decopilot.finish: failed` with no other
+        // signal — wrong cwd (CLI runs outside the checkout), an
+        // unreachable MCP endpoint, or a bad model id.
+        console.log(
+          `[codex] stream start model=${sdkModelId} cwd=${cwd ?? "(default)"} mcpUrl=${input.mcp.url} mode=${input.mode}`,
+        );
+
+        // 3. Build the Codex language model. The MCP URL + headers are
         //    already minted by the shared layer (it owns the
         //    temp-API-key lifecycle); the harness just forwards them.
         //    Mirrors stream-core lines 921–937 — all three options
@@ -136,6 +155,7 @@ export const codexHarnessFactory: HarnessFactory = {
           },
           toolApprovalLevel: input.toolApprovalLevel,
           isPlanMode: input.mode === "plan",
+          cwd,
         });
 
         try {
@@ -155,6 +175,7 @@ export const codexHarnessFactory: HarnessFactory = {
             createCodexModel(resolveCodexModelId("codex:gpt-5.4-mini"), {
               toolApprovalLevel: "readonly",
               isPlanMode: true,
+              cwd,
             });
           const titleHandle = genTitle({
             abortSignal: input.signal,
