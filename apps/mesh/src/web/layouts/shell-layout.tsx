@@ -25,7 +25,7 @@ import {
 } from "@tanstack/react-router";
 import { KEYS } from "../lib/query-keys";
 import { readCachedTaskBranch } from "../lib/read-cached-task-branch";
-import { useThreadActions } from "@/web/components/chat/store/hooks";
+import { useOptionalThreadManager } from "@/web/components/chat/store/hooks";
 import { isPerThreadTab } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useOrganizationSettingsSuspense } from "../hooks/use-organization-settings";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
@@ -75,7 +75,9 @@ function ShellProjectProvider({
 
 export function usePanelActions() {
   const navigate = useNavigate();
-  const { create } = useThreadActions();
+  // Optional: the settings route tree has no ThreadManagerProvider, so this is
+  // null there. Navigation actions work regardless; only createNewTask needs it.
+  const manager = useOptionalThreadManager();
   const { org, locator } = useProjectContext();
 
   const params = useParams({ strict: false }) as {
@@ -157,7 +159,9 @@ export function usePanelActions() {
       ? readCachedTaskBranch(org.slug, locator, currentTaskId)
       : null;
     try {
-      await create({
+      // No manager (settings tree): skip the eager create and let the
+      // /$org/$taskId route loader's ensure-fallback create the thread.
+      await manager?.create({
         id: newId,
         virtual_mcp_id: targetVmcp,
         ...(branch ? { branch } : {}),

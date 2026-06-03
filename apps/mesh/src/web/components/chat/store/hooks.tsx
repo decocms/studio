@@ -54,6 +54,16 @@ export function useThreadManager(): ThreadManagerStore {
   return m;
 }
 
+/**
+ * Non-throwing variant. Returns null outside a `ThreadManagerProvider` (e.g.
+ * the settings route tree, which mounts under `orgLayout` rather than
+ * `orgShellLayout`). Use this for navigation-only consumers that should work
+ * everywhere but only need the manager for thread mutations.
+ */
+export function useOptionalThreadManager(): ThreadManagerStore | null {
+  return useContext(ManagerContext);
+}
+
 export function useThreads(): {
   threads: Task[];
   status: ThreadsStatus;
