@@ -72,11 +72,11 @@ test.describe("clonable agent logo (settings tab)", () => {
     // and the icon-button assertion below would be testing the wrong thing.
     await expect(titleInput).toBeDisabled();
 
-    // The IconPicker trigger is the first <button> in the identity row,
-    // which is two ancestors up from the title input
-    // (input → col div → row div).
-    const identityRow = titleInput.locator("xpath=../..");
-    const iconButton = identityRow.locator("button").first();
+    // The IconPicker trigger button is tagged with data-testid so the
+    // locator doesn't depend on DOM-tree shape (button order, wrapper
+    // divs, etc.). The testid lives on the <button> at the root of
+    // <IconPicker> in apps/mesh/src/web/components/icon-picker.tsx.
+    const iconButton = page.getByTestId("icon-picker-trigger");
 
     // The assertion under test: the button must be enabled. Without the
     // fix, `disabled={hasGithubRepo}` makes this fail with the trigger

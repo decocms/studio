@@ -123,6 +123,7 @@ export function IconPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
+          data-testid="icon-picker-trigger"
           disabled={disabled}
           className={cn(
             "relative group overflow-hidden",
