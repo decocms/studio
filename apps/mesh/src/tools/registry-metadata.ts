@@ -1322,6 +1322,31 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set(
     ?.tools ?? [],
 );
 
+/**
+ * Gated capability ids additionally granted to the built-in `user` role, beyond
+ * basic-usage. EMPTY by default — every member is otherwise enforced down to
+ * basic-usage only. Add a capability id here (e.g. "agents:manage") to grant ALL
+ * of its tools to every member of every org. This is a GLOBAL change with no
+ * migration; for per-org grants use a custom role instead.
+ */
+const USER_ROLE_CAPABILITY_IDS: string[] = [];
+
+/**
+ * Tools the built-in `user` role gets beyond basic-usage, derived from
+ * USER_ROLE_CAPABILITY_IDS. Single source of truth for the two layers that must
+ * stay in sync:
+ *   - enforcement: baked into the `user` role's `self` grant (auth/index.ts)
+ *   - UI gating: the MY_CAPABILITIES endpoint (api/routes/auth.ts)
+ *
+ * List specific tool names only — never `"*"` — so the wildcard fallback in
+ * `createBoundAuthClient` can't be tricked into granting everything.
+ */
+export const USER_ROLE_TOOLS: ReadonlySet<string> = new Set(
+  PERMISSION_CAPABILITIES.filter((c) =>
+    USER_ROLE_CAPABILITY_IDS.includes(c.id),
+  ).flatMap((c) => c.tools),
+);
+
 export function getCapabilitySections(): Array<{
   section: string;
   capabilities: PermissionCapability[];
