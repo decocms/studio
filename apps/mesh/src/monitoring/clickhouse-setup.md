@@ -23,6 +23,12 @@ dashboard's `WHERE` predicates down into `otel_logs`. Metrics (counts, averages,
 percentiles) are derived from these same rows — there is no separate metrics
 table.
 
+The view scopes by `ServiceName` (Studio's OTel `service.name`, default
+`studio`). Because Studio emits the standard OTel-native schema, this means the
+view works whether you give Studio its own `otel_logs` table or point it at a
+**shared** `otel_logs` in a multi-app event lake — the `ServiceName` predicate
+keeps other applications' logs out.
+
 ## Prerequisites
 
 1. A ClickHouse instance reachable over HTTP, set as `CLICKHOUSE_URL` on the
@@ -33,8 +39,8 @@ table.
 ## Step 1 — verify the `otel_logs` schema
 
 The DDL below assumes the **standard OpenTelemetry ClickHouse exporter** schema:
-`Timestamp` (DateTime64), `SpanId` (String), and `LogAttributes`
-(`Map(String, String)`). Confirm with:
+`Timestamp` (DateTime64), `SpanId` (String), `ServiceName`
+(LowCardinality(String)), and `LogAttributes` (`Map(String, String)`). Confirm with:
 
 ```sql
 DESCRIBE TABLE otel_logs;
@@ -49,6 +55,9 @@ because the dashboard SQL depends on them.
 
 Run once. Safe to re-run with `CREATE OR REPLACE VIEW` if the attribute keys ever
 change (they must match `MONITORING_LOG_ATTR` in `monitoring/schema.ts`).
+
+The `ServiceName = 'studio'` filter assumes the default service name. If you run
+Studio with a custom `OTEL_SERVICE_NAME`, use that value instead.
 
 ```sql
 CREATE OR REPLACE VIEW studio_monitoring_logs AS
@@ -70,7 +79,8 @@ SELECT
   LogAttributes['studio.monitoring.virtual_mcp_id'] AS virtual_mcp_id,
   LogAttributes['studio.monitoring.properties'] AS properties
 FROM otel_logs
-WHERE LogAttributes['studio.monitoring.type'] IN ('tool_call', 'llm_call');
+WHERE ServiceName = 'studio'
+  AND LogAttributes['studio.monitoring.type'] IN ('tool_call', 'llm_call');
 ```
 
 ## Step 3 — sanity check
