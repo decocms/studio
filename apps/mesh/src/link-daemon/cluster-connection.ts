@@ -255,7 +255,7 @@ export async function connectToCluster(
     while (!stopped && attempt < maxAttempts) {
       const { shouldReconnect } = await runOnce();
       if (stopped || !shouldReconnect) break;
-      const backoffMs = computeBackoffMs(attempt);
+      const backoffMs = computeBackoffMs(Math.max(attempt, 1));
       console.log(
         `[cluster-connection] reconnecting in ${backoffMs}ms (attempt ${attempt})`,
       );
