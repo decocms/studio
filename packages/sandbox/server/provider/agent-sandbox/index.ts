@@ -19,7 +19,7 @@ export type {
   SandboxCondition,
   SandboxResource,
 } from "./client";
-export { AgentSandboxProvider } from "./runner";
+export { AgentSandboxProvider, PREVIEW_NOT_READY_HEADER } from "./runner";
 export type { AgentSandboxProviderOptions } from "./runner";
 // Lifecycle types live in their own module (no K8s deps) so type-only
 // consumers — notably the studio web bundle — can import them safely.
