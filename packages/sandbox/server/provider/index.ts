@@ -8,8 +8,6 @@ import type { SandboxProviderKind } from "./types";
 
 export type {
   EnsureOptions,
-  ExecInput,
-  ExecOutput,
   ProxyRequestInit,
   SandboxProviderKind,
   Sandbox,

@@ -26,6 +26,7 @@ import {
   type MsgHdrs,
   type NatsConnection,
 } from "nats";
+import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
 import type { StreamBuffer } from "./stream-buffer";
 
 const STREAM_NAME = "DECOPILOT_STREAMS";
@@ -34,13 +35,6 @@ const MAX_AGE_NS = 5 * 60 * 1_000_000_000; // 5 min
 const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
 const MAX_MSGS_PER_SUBJECT = 20_000; // ~20K chunks per thread
 
-// NATS rejects any single message larger than the server's `max_payload`
-// (default 1 MiB) with MAX_PAYLOAD_EXCEEDED, which would silently drop the
-// chunk and break the UI stream. We keep each published message comfortably
-// under that, and transparently split anything larger across multiple
-// fragment messages (reassembled by the tail consumer). Headroom below 1 MiB
-// covers the subject, JetStream headers, and the fragment headers below.
-const MAX_PUBLISH_BYTES = 768 * 1024;
 // Above this a single chunk is pathological (not a normal UI stream part).
 // Splitting it would hold tens of MB in memory on reassembly, so we drop it
 // loudly instead.

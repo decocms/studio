@@ -4,8 +4,17 @@ export const capabilitySchema = z.enum([
   "claude-code",
   "codex",
   "decopilot-sandbox",
+  "body-offload",
 ]);
 export type Capability = z.infer<typeof capabilitySchema>;
+
+// Per-element tolerant: unknown capabilities are dropped, known ones survive.
+export const capabilitiesArraySchema = z
+  .array(z.string())
+  .catch([])
+  .transform((arr) =>
+    arr.filter((c): c is Capability => capabilitySchema.safeParse(c).success),
+  );
 
 export const dispatchSSEEventSchema = z.discriminatedUnion("type", [
   z.object({

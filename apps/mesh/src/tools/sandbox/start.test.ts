@@ -37,7 +37,6 @@ async function* readyOnly() {
 const mockClusterRunner: SandboxProvider = {
   kind: "cluster",
   ensure: (id, opts) => mockEnsure(id, opts),
-  exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
   delete: (handle) => mockClusterDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
@@ -50,7 +49,6 @@ const mockDesktopDelete = mock(async (_handle: string) => {});
 const mockDesktopRunner: SandboxProvider = {
   kind: "user-desktop",
   ensure: (id, opts) => mockEnsure(id, opts),
-  exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
   delete: (handle) => mockDesktopDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",

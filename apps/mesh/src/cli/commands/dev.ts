@@ -147,6 +147,18 @@ export async function startDevServer(
       DECOCMS_HOME: settings.dataDir,
       DATA_DIR: settings.dataDir,
       DECO_CLI: "1",
+      // Object storage (managed MinIO or external S3). Pass from frozen
+      // settings so the child server resolves the real S3Service for the
+      // message-offload path instead of the DevObjectStorage fallback.
+      ...(settings.s3Endpoint
+        ? {
+            S3_ENDPOINT: settings.s3Endpoint,
+            S3_BUCKET: settings.s3Bucket ?? "",
+            S3_ACCESS_KEY_ID: settings.s3AccessKeyId ?? "",
+            S3_SECRET_ACCESS_KEY: settings.s3SecretAccessKey ?? "",
+            S3_FORCE_PATH_STYLE: String(settings.s3ForcePathStyle),
+          }
+        : {}),
       // Tell the cluster where to write the dev-link session file when
       // local-sandbox-provider is on, so the auto-spawned link daemon
       // finds session.json under its DATA_DIR.
