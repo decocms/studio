@@ -292,14 +292,13 @@ export function PreviewContent() {
   iframeSrcRef.current = iframeSrc;
 
   // Daemon is reachable independent of the dev script: ready claim, handle
-  // still present, not user-stopped/suspended. Gates surfaces (FileExplorer,
+  // still present, not user-stopped. Gates surfaces (FileExplorer,
   // terminal) that talk to the daemon's HTTP API and don't need a dev server.
   const daemonReady =
     !!virtualMcpId &&
     !!branch &&
     !vmEvents.notFound &&
     !userStopped &&
-    !vmEvents.suspended &&
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
