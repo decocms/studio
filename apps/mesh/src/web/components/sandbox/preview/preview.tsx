@@ -51,6 +51,7 @@ import {
   normalizePagePath,
   validatePagePath,
 } from "@/web/components/sections-editor/page-path-utils";
+import { decoBlockFileViewPath } from "@/web/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/web/components/sections-editor/section-catalog";
 import { buildGlobalSectionPreviewUrl } from "@/web/components/sections-editor/section-preview-url";
 import { useCreatePage } from "@/web/components/sections-editor/use-create-page";
@@ -748,10 +749,14 @@ export function PreviewContent() {
                         {currentPageKey && (
                           <DropdownMenuItem
                             onClick={() => {
-                              setCodeFilePath(
-                                `/.deco/blocks/${currentPageKey}.json`,
-                              );
-                              setViewMode("code");
+                              try {
+                                setCodeFilePath(
+                                  decoBlockFileViewPath(currentPageKey),
+                                );
+                                setViewMode("code");
+                              } catch {
+                                toast.error("Invalid page block key");
+                              }
                             }}
                           >
                             <Code01 size={14} />
@@ -828,9 +833,14 @@ export function PreviewContent() {
                       setTimeout(restore, 3000);
                     }, DEV_SERVER_SETTLE_MS);
                   }}
+                  onEditPageSeo={(pageKey) => setSeoPageKey(pageKey)}
                   onViewJsonFile={(pageKey) => {
-                    setCodeFilePath(`/.deco/blocks/${pageKey}.json`);
-                    setViewMode("code");
+                    try {
+                      setCodeFilePath(decoBlockFileViewPath(pageKey));
+                      setViewMode("code");
+                    } catch {
+                      toast.error("Invalid page block key");
+                    }
                   }}
                 />
               </Suspense>
@@ -986,6 +996,18 @@ export function PreviewContent() {
             branch={branch ?? ""}
             decofile={decofile}
             meta={meta}
+            onSaved={() => {
+              setTimeout(() => {
+                const iframe = previewIframeRef.current;
+                if (!iframe) return;
+                try {
+                  iframe.contentWindow?.location.reload();
+                } catch {
+                  const src = iframeSrcRef.current;
+                  if (src) iframe.src = src;
+                }
+              }, DEV_SERVER_SETTLE_MS);
+            }}
             target={{
               kind: "page",
               pageKey: seoPageKey,
@@ -1006,6 +1028,18 @@ export function PreviewContent() {
             branch={branch ?? ""}
             decofile={decofile}
             meta={meta}
+            onSaved={() => {
+              setTimeout(() => {
+                const iframe = previewIframeRef.current;
+                if (!iframe) return;
+                try {
+                  iframe.contentWindow?.location.reload();
+                } catch {
+                  const src = iframeSrcRef.current;
+                  if (src) iframe.src = src;
+                }
+              }, DEV_SERVER_SETTLE_MS);
+            }}
             target={{ kind: "site" }}
           />
         </Suspense>

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
 import { KEYS } from "@/web/lib/query-keys";
+import { decoBlockFilePath } from "./deco-block-key";
 
 /** Debounce window for form-driven block autosaves (ms). */
 export const AUTOSAVE_DELAY = 700;
@@ -80,7 +81,6 @@ export function useSaveBlock({
 }
 
 /**
-/**
  * The payload for a debounced save: either a ready object, or a builder
  * resolved at fire time. Pass a builder when the block is also written by
  * another debounced path (e.g. a page's name/path edits vs. its SEO edits) so
@@ -108,8 +108,33 @@ export function useDebouncedSaveBlock(
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestRef = useRef<{ blockKey: string; data: SaveData } | null>(null);
 
+  const runPendingSave = () => {
+    const pending = latestRef.current;
+    if (!pending) return;
+    const resolved =
+      typeof pending.data === "function" ? pending.data() : pending.data;
+    if (!resolved) return;
+    latestRef.current = null;
+    saveBlock.mutate(
+      { blockKey: pending.blockKey, data: resolved },
+      {
+        onSuccess: () => opts?.onSaved?.(),
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  };
+
+  const flush = () => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    runPendingSave();
+  };
+
   // Cancel a pending debounced save on unmount so it can't fire against a torn
-  // -down editor and persist a snapshot the user already navigated away from.
+  // -down editor after navigation. Call `flush()` explicitly when closing a sheet
+  // or leaving an editor so edits inside the debounce window still persist.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — timer lifecycle cleanup on unmount
   useEffect(() => {
     return () => {
@@ -121,20 +146,10 @@ export function useDebouncedSaveBlock(
     latestRef.current = { blockKey, data };
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const pending = latestRef.current;
-      if (!pending) return;
-      const resolved =
-        typeof pending.data === "function" ? pending.data() : pending.data;
-      if (!resolved) return;
-      saveBlock.mutate(
-        { blockKey: pending.blockKey, data: resolved },
-        {
-          onSuccess: () => opts?.onSaved?.(),
-          onError: (err) => toast.error(`Save failed: ${err.message}`),
-        },
-      );
+      debounceRef.current = null;
+      runPendingSave();
     }, AUTOSAVE_DELAY);
   };
 
-  return { save, isPending: saveBlock.isPending };
+  return { save, flush, isPending: saveBlock.isPending };
 }

@@ -21,6 +21,21 @@ function str(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v : undefined;
 }
 
+/** Only allow remote https images in the editor preview (blocks javascript:, data:, etc.). */
+function safePreviewImageUrl(
+  raw: string | undefined,
+  baseUrl: string | null | undefined,
+): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const url = baseUrl ? new URL(raw, baseUrl) : new URL(raw);
+    if (url.protocol !== "https:") return undefined;
+    return url.href;
+  } catch {
+    return undefined;
+  }
+}
+
 function readSeo(seo: Record<string, unknown> | null | undefined): SeoValues {
   if (!seo) return {};
   const rawTitle = str(seo.title);
@@ -83,6 +98,7 @@ function PreviewImage({
       <img
         src={src}
         alt=""
+        referrerPolicy="no-referrer"
         className={className}
         style={{ objectFit: "cover" }}
       />
@@ -323,7 +339,12 @@ export function SeoPreview({
   url: string | null | undefined;
   path?: string;
 }) {
-  const values = readSeo(seo);
+  const raw = readSeo(seo);
+  const values: SeoValues = {
+    ...raw,
+    image: safePreviewImageUrl(raw.image, url),
+    favicon: safePreviewImageUrl(raw.favicon, url),
+  };
   const host = hostFromUrl(url);
   const displayPath = path === "/" ? "" : path;
 

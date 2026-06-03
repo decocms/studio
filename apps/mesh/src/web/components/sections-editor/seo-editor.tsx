@@ -1,22 +1,15 @@
 import { useState } from "react";
 import { ChevronRight, CreditCardSearch, Loading01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@deco/ui/components/select.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
-import { useDebouncedSaveBlock } from "./use-save-block";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema } from "./resolve-schema";
 import type { LiveMeta } from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import type { SeoTarget } from "./seo-block";
+import { activeSeoResolveType, useSeoFormSave } from "./seo-save";
 import { SeoPreview } from "./seo-preview";
+import { SeoTypeSelect } from "./seo-type-select";
 
 export type { SeoTarget } from "./seo-block";
 
@@ -50,32 +43,40 @@ export function SeoEditor({
 }: SeoEditorProps) {
   const resolved = resolveSeoTarget(decofile, target, meta);
   const seoData = resolved?.seoData;
-  const seoSchema = resolved
-    ? resolveSchema(resolved.seoResolveType, meta)
-    : null;
 
   const targetId = target.kind === "site" ? "site" : target.pageKey;
   const [prevTargetId, setPrevTargetId] = useState(targetId);
   const [formValue, setFormValue] = useState<Record<string, unknown> | null>(
     null,
   );
+  const [formResetKey, setFormResetKey] = useState(0);
   if (prevTargetId !== targetId) {
     setPrevTargetId(targetId);
     setFormValue(null);
+    setFormResetKey((k) => k + 1);
   }
 
-  const { save, isPending } = useDebouncedSaveBlock(
-    { orgSlug, virtualMcpId, branch },
-    { onSaved },
-  );
+  const { persistSeo, flush, isPending } = useSeoFormSave({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    target,
+    resolved,
+    onSaved,
+  });
 
   const effectiveSeo = formValue ?? seoData ?? {};
+  const activeResolveType = resolved
+    ? activeSeoResolveType(effectiveSeo, resolved)
+    : null;
+  const seoSchema = activeResolveType
+    ? resolveSchema(activeResolveType, meta)
+    : null;
 
-  // For a page, the live result is the site default with the page's own
-  // (non-empty) values layered on top — that's what actually renders. The form
-  // still edits only the page's own values, so inheritance isn't baked in.
   const siteDefaultSeo =
-    target.kind === "page" ? (findSiteSeoEntry(decofile)?.seoData ?? {}) : {};
+    target.kind === "page"
+      ? (findSiteSeoEntry(decofile, meta)?.seoData ?? {})
+      : {};
   const previewSeo =
     target.kind === "page"
       ? mergeSeo(siteDefaultSeo, effectiveSeo)
@@ -85,7 +86,20 @@ export function SeoEditor({
     if (!resolved) return;
     const nextRecord = next as Record<string, unknown>;
     setFormValue(nextRecord);
-    save(resolved.blockKey, resolved.build(nextRecord));
+    persistSeo(nextRecord);
+  };
+
+  const handleSeoTypeChange = (nextType: string) => {
+    if (!resolved) return;
+    const nextRecord = { ...effectiveSeo, __resolveType: nextType };
+    setFormValue(nextRecord);
+    setFormResetKey((k) => k + 1);
+    persistSeo(nextRecord);
+  };
+
+  const handleBack = () => {
+    flush();
+    onBack?.();
   };
 
   const path = target.kind === "page" ? target.path : "/";
@@ -94,15 +108,21 @@ export function SeoEditor({
       ? safeUrl(path, previewBaseUrl)
       : (previewBaseUrl ?? null);
 
+  const emptyMessage =
+    target.kind === "site"
+      ? "No site-level SEO block found."
+      : seoSchema
+        ? "No editable SEO fields found."
+        : "SEO schema not found for this page.";
+
   return (
     <div className="flex h-full w-full flex-col">
-      {/* Header */}
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         {target.kind === "page" ? (
           <nav className="flex min-w-0 items-center gap-1 text-sm">
             <button
               type="button"
-              onClick={onBack}
+              onClick={handleBack}
               title={target.pageName}
               className="min-w-0 truncate rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             >
@@ -145,16 +165,9 @@ export function SeoEditor({
         </div>
       </div>
 
-      {/* Two-pane: form + live previews */}
-      {!resolved ? (
+      {!resolved || !seoSchema ? (
         <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-          No default SEO block found in this site.
-        </div>
-      ) : !seoSchema ? (
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-          {seoData
-            ? "SEO schema not found."
-            : "This page has no SEO block configured."}
+          {emptyMessage}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
@@ -166,38 +179,15 @@ export function SeoEditor({
                   resolved result.
                 </p>
               )}
-              {resolved.seoTypeOptions &&
-                resolved.seoTypeOptions.length > 1 && (
-                  <div className="mb-4 flex flex-col gap-1.5">
-                    <Label className="text-xs text-muted-foreground">
-                      SEO type
-                    </Label>
-                    <Select
-                      value={resolved.seoResolveType}
-                      onValueChange={(nextType) => {
-                        handleChange({
-                          ...effectiveSeo,
-                          __resolveType: nextType,
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select SEO type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {resolved.seoTypeOptions.map((option) => (
-                          <SelectItem
-                            key={option.resolveType}
-                            value={option.resolveType}
-                          >
-                            {option.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+              {resolved.seoTypeOptions && activeResolveType && (
+                <SeoTypeSelect
+                  options={resolved.seoTypeOptions}
+                  value={activeResolveType}
+                  onChange={handleSeoTypeChange}
+                />
+              )}
               <SchemaForm
+                key={formResetKey}
                 schema={seoSchema}
                 value={effectiveSeo}
                 onChange={handleChange}
@@ -226,15 +216,19 @@ function safeUrl(path: string, base: string): string | null {
   }
 }
 
-/**
- * Layers a page's own SEO over the site default — a field is overridden only
- * when the page sets a non-empty value, mirroring how deco resolves SEO at
- * render time. Used for the preview, never for the editable form value.
- */
 function mergeSeo(
   base: Record<string, unknown>,
   override: Record<string, unknown>,
 ): Record<string, unknown> {
+  const pageRt = override.__resolveType;
+  const siteRt = base.__resolveType;
+  if (
+    typeof pageRt === "string" &&
+    typeof siteRt === "string" &&
+    pageRt !== siteRt
+  ) {
+    return { ...override };
+  }
   const merged = { ...base };
   for (const [key, value] of Object.entries(override)) {
     if (key === "__resolveType") continue;

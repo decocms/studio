@@ -1,6 +1,8 @@
 import type { LiveMeta } from "./resolve-schema";
 import {
+  isSeoSectionResolveType,
   listPageSeoTypeOptions,
+  listSiteSeoTypeOptions,
   resolvePageSeoResolveType,
   resolveSiteSeoResolveType,
   type SeoTypeOption,
@@ -46,16 +48,13 @@ function isPlainObject(val: unknown): val is Record<string, unknown> {
   return typeof val === "object" && val !== null && !Array.isArray(val);
 }
 
-/** Matches SEO section resolveTypes, e.g. "website/sections/Seo/SeoV2.tsx". */
-function isSeoResolveType(rt: unknown): rt is string {
-  return (
-    typeof rt === "string" &&
-    (/\/Seo(V\d+)?\.tsx$/i.test(rt) || rt.includes("/sections/Seo"))
-  );
-}
-
 function looksLikeSeo(obj: Record<string, unknown>): boolean {
-  if (isSeoResolveType(obj.__resolveType)) return true;
+  if (
+    typeof obj.__resolveType === "string" &&
+    isSeoSectionResolveType(obj.__resolveType)
+  ) {
+    return true;
+  }
   return SEO_FIELD_HINTS.some((k) => k in obj);
 }
 
@@ -90,7 +89,8 @@ export function findSiteSeoEntry(
           blockData: obj,
           seoResolveType: meta
             ? resolveSiteSeoResolveType(meta, obj, seoObj)
-            : isSeoResolveType(seoObj.__resolveType)
+            : typeof seoObj.__resolveType === "string" &&
+                isSeoSectionResolveType(seoObj.__resolveType)
               ? seoObj.__resolveType
               : DEFAULT_SEO_RESOLVE_TYPE,
         };
@@ -102,7 +102,10 @@ export function findSiteSeoEntry(
   for (const [key, val] of Object.entries(decofile)) {
     if (!isPlainObject(val)) continue;
     const obj = val;
-    if (isSeoResolveType(obj.__resolveType)) {
+    if (
+      typeof obj.__resolveType === "string" &&
+      isSeoSectionResolveType(obj.__resolveType)
+    ) {
       return {
         blockKey: key,
         kind: "block",
@@ -133,7 +136,9 @@ export interface ResolvedSeo {
   seoData: Record<string, unknown> | undefined;
   /** resolveType to resolve the form schema with. */
   seoResolveType: string;
-  /** Page targets: SEO variants from the live page schema (when `meta` is passed). */
+  /** Site target only: how SEO is stored on the owning block. */
+  siteKind?: "block" | "nested";
+  /** SEO variants from the live schema (when `meta` is passed). */
   seoTypeOptions?: SeoTypeOption[];
   /** Builds the full decofile block payload to persist an edited SEO value. */
   build: (value: Record<string, unknown>) => Record<string, unknown>;
@@ -156,6 +161,10 @@ export function resolveSeoTarget(
       blockKey: entry.blockKey,
       seoData: entry.seoData,
       seoResolveType: entry.seoResolveType,
+      siteKind: entry.kind,
+      seoTypeOptions: meta
+        ? listSiteSeoTypeOptions(meta, entry.blockData)
+        : undefined,
       build: (value) => buildSiteSeoBlockData(entry, value),
     };
   }

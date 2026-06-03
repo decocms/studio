@@ -30,3 +30,8 @@ export function blockKeyToFileStem(blockKey: string): string {
 export function decoBlockFilePath(blockKey: string): string {
   return `.deco/blocks/${blockKeyToFileStem(blockKey)}.json`;
 }
+
+/** Path shape used by the sandbox file explorer deep-link (`openPath`). */
+export function decoBlockFileViewPath(blockKey: string): string {
+  return `/${decoBlockFilePath(blockKey)}`;
+}
