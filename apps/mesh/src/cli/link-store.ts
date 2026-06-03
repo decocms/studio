@@ -14,9 +14,6 @@ export interface SandboxRow {
   previewUrl: string | null;
   status: "spawning" | "ready" | "failed";
   error: string | null;
-  activeDispatchCount: number;
-  /** Wall-clock ms of the last event for this handle; drives the IDLE column. */
-  lastChangeAt: number;
 }
 
 // Not exported — mirrors cli-store's CliState.
@@ -43,7 +40,6 @@ const DEFAULT_CAP = 20;
 export function applySandboxEvent(
   sandboxes: Map<string, SandboxRow>,
   e: SandboxEvent,
-  now: number,
 ): Map<string, SandboxRow> {
   const next = new Map(sandboxes);
   if (e.phase === "evicted" || e.phase === "deleted") {
@@ -57,20 +53,8 @@ export function applySandboxEvent(
     previewUrl: e.previewUrl ?? prev?.previewUrl ?? null,
     status: e.phase, // "spawning" | "ready" | "failed"
     error: e.phase === "failed" ? (e.error ?? "failed") : null,
-    activeDispatchCount:
-      e.activeDispatchCount ?? prev?.activeDispatchCount ?? 0,
-    lastChangeAt: now,
   });
   return next;
-}
-
-/** Relative idle duration, coarse (`0s`/`5s`/`1m`/`1h`). */
-export function formatIdle(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h`;
 }
 
 let state: LinkState = {
@@ -133,7 +117,7 @@ export function setLogPath(path: string) {
 export function pushSandboxEvent(event: SandboxEvent) {
   state = {
     ...state,
-    sandboxes: applySandboxEvent(state.sandboxes, event, Date.now()),
+    sandboxes: applySandboxEvent(state.sandboxes, event),
   };
   emit();
 }
