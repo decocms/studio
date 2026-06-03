@@ -113,6 +113,14 @@ jobs:
 
       - name: Start NATS with JetStream
         run: |
+          # Pull explicitly with retry/backoff: the registry mirror occasionally
+          # answers `toomanyrequests: Rate exceeded`, and an inline pull inside
+          # `docker run` has no retry, so a transient 429 fails the whole job.
+          for attempt in 1 2 3 4 5; do
+            docker pull public.ecr.aws/docker/library/nats:2.10 && break
+            echo "docker pull public.ecr.aws/docker/library/nats:2.10 failed (attempt $attempt); retrying in $((attempt * 5))s"
+            sleep $((attempt * 5))
+          done
           docker run -d --name nats -p 4222:4222 public.ecr.aws/docker/library/nats:2.10 -js
           for i in $(seq 1 10); do nc -z localhost 4222 && break || sleep 1; done
           nc -z localhost 4222

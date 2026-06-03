@@ -8,11 +8,21 @@ import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { generateObject } from "ai";
 import { z } from "zod";
 
-import { TITLE_GENERATOR_PROMPT } from "../../api/routes/decopilot/constants";
-
 const TITLE_SCHEMA = z.object({
   title: z.string().describe("A concise, sentence-case title (3-7 words)"),
 });
+
+const TITLE_GENERATOR_PROMPT = `Generate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this session. Use sentence case: capitalize only the first word and proper nouns.
+
+Good examples:
+- Fix login button on mobile
+- Add OAuth authentication
+- Query product catalog data
+- Set up event subscriptions
+
+Bad (too vague): Help with task
+Bad (too long): Investigate and fix the issue where the login button does not respond on mobile devices
+Bad (wrong case): Fix Login Button On Mobile`;
 
 // A title is usable only if it contains at least one letter or number in any
 // script. Unicode-aware (\p{L}\p{N}) so non-Latin titles (CJK, Arabic, etc.)

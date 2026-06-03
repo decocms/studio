@@ -34,7 +34,7 @@ import type { MeshContext } from "../../core/mesh-context";
 import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
 import type { MeshProvider } from "../../ai-providers/types";
 import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
-import type { ChatMessage } from "../../api/routes/decopilot/types";
+import type { ChatMessage, ModelInfo } from "../../api/routes/decopilot/types";
 import type { ChatMode } from "../../api/routes/decopilot/mode-config";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 import { processConversation } from "../../api/routes/decopilot/conversation";
@@ -72,6 +72,10 @@ interface ClusterProcessLocal {
    *  keep working when the chat model is routed via LiteLLM/OpenRouter
    *  but the deep research tier is still Gemini. */
   deepResearchProvider: MeshProvider | null;
+  /** Provider/model used only for title generation. May differ from the
+   *  main chat provider when the org fast tier uses a different credential. */
+  titleProvider?: MeshProvider | null;
+  titleModel?: ModelInfo | null;
   registerPendingOp: (op: Promise<void>) => void;
   isStreamFinished: () => boolean;
   onUsageAggregated: (totalUsage: {
@@ -212,6 +216,9 @@ export const decopilotHarnessFactory: HarnessFactory = {
 
           yield* runDecopilotStream(effectiveInput, ctx, tools, prompt, {
             provider: pl.provider,
+            titleProvider: pl.titleProvider ?? pl.provider,
+            titleModel:
+              pl.titleModel ?? input.models.fast ?? input.models.thinking,
             registrySignal: pl.registrySignal,
             runRegistry: pl.runRegistry,
             processedSystemMessages,

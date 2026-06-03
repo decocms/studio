@@ -25,6 +25,8 @@
 import type { MeshContext } from "@/core/mesh-context";
 import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
+import type { MeshProvider } from "@/ai-providers/types";
+import { tryResolveTier, type ResolvedTier } from "@/core/resolve-tier";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
 import { offloadKey, sha256Hex } from "@/harnesses/offload-messages";
@@ -182,6 +184,71 @@ function lookupResumeSessionRef(
     }
   }
   return undefined;
+}
+
+function modelInfoFromResolvedTier(
+  resolved: ResolvedTier,
+): ModelsConfig["thinking"] {
+  return {
+    id: resolved.modelId,
+    title: resolved.modelMeta.title ?? resolved.modelId,
+    provider: resolved.modelMeta.providerId ?? null,
+    capabilities:
+      resolved.modelMeta.capabilities &&
+      resolved.modelMeta.capabilities.length > 0
+        ? {
+            vision:
+              resolved.modelMeta.capabilities.includes("vision") ||
+              resolved.modelMeta.capabilities.includes("image") ||
+              undefined,
+            text: resolved.modelMeta.capabilities.includes("text") || undefined,
+            reasoning:
+              resolved.modelMeta.capabilities.includes("reasoning") ||
+              undefined,
+          }
+        : undefined,
+    limits: resolved.modelMeta.limits
+      ? {
+          contextWindow: resolved.modelMeta.limits.contextWindow,
+          maxOutputTokens:
+            resolved.modelMeta.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  };
+}
+
+async function resolveDecopilotTitleConfig(
+  ctx: MeshContext,
+  organizationId: string,
+): Promise<{ provider: MeshProvider; model: ModelsConfig["thinking"] } | null> {
+  const resolved = await tryResolveTier(ctx, "fast");
+  if (!resolved) return null;
+
+  const allowedModels = await fetchModelPermissions(
+    ctx.db,
+    organizationId,
+    ctx.auth.user?.role,
+  );
+  if (
+    allowedModels !== undefined &&
+    !checkModelPermission(
+      allowedModels,
+      resolved.credentialId,
+      resolved.modelId,
+    )
+  ) {
+    return null;
+  }
+
+  const provider = await ctx.aiProviders
+    .activate(resolved.credentialId, organizationId)
+    .catch((err) => {
+      console.warn("[decopilot:title] failed to activate title provider", err);
+      return null;
+    });
+  if (!provider) return null;
+
+  return { provider, model: modelInfoFromResolvedTier(resolved) };
 }
 
 /**
@@ -541,6 +608,11 @@ async function prepareRun(
         }),
       ]);
 
+    const decopilotTitleConfig =
+      harnessId === "decopilot"
+        ? await resolveDecopilotTitleConfig(ctx, input.organizationId)
+        : null;
+
     // Diagnostic (resume only): record whether the provider activated and
     // whether the optional model slots are present. Paired with the log in
     // routes.ts:/attach orphan-resume; together they pinpoint whether tool
@@ -789,6 +861,11 @@ async function prepareRun(
           provider,
           imageProvider: imageProvider ?? provider,
           deepResearchProvider: deepResearchProvider ?? provider,
+          titleProvider: decopilotTitleConfig?.provider ?? provider,
+          titleModel:
+            decopilotTitleConfig?.model ??
+            input.models.fast ??
+            input.models.thinking,
           htmlPageBuffer,
           registerPendingOp: (op) => {
             pendingOps.push(op);
@@ -943,19 +1020,14 @@ async function prepareRun(
           rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);
         }
 
-        // Tap the harness chunk stream for `data-title-input` chunks emitted by
-        // harnesses that want the cluster to title the thread. Until Task 6
-        // migrates the decopilot harness, decopilot still titles inline; the
-        // interceptor is a no-op for streams that never emit the chunk.
+        // Tap harness-generated title result chunks so the cluster can keep
+        // persistence/SSE ownership while each harness owns title generation.
         const harnessChunks = interceptTitleChunks(rawHarnessChunks, {
           ctx,
           processLocal,
-          models: input.models,
           currentThreadTitle: mem.thread.title,
           threadId: mem.thread.id,
           writer,
-          registerPendingOp: processLocal.registerPendingOp,
-          registrySignal,
           onTitleUpdated: processLocal.onTitleUpdated,
         });
         const harnessStream = asReadableStream(harnessChunks);

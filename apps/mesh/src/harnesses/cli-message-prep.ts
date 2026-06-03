@@ -38,11 +38,9 @@ export function prepCliMessages(
 }
 
 /**
- * Pull the user-supplied text out of a prepared ModelMessage[] for the
- * `data-title-input` chunk. CLI harnesses call this right after
- * `prepCliMessages` and emit the result so the cluster's title
- * interceptor can title the thread without needing the UI-shape
- * messages.
+ * Pull the user-supplied text out of a prepared ModelMessage[] for
+ * harness-owned title generation. CLI harnesses call this right after
+ * `prepCliMessages` and pass the result into genTitle.
  *
  * Behaviour:
  *  - Walks the array end-to-start, returns the FIRST user message it
@@ -53,8 +51,8 @@ export function prepCliMessages(
  *    parts) returns "". The downstream `genTitle` handles the empty
  *    case via its existing `hasUsableText` guard.
  *
- * Returns a plain string (not JSON-encoded) so the interceptor and the
- * underlying `genTitle` see the user-visible text directly.
+ * Returns a plain string (not JSON-encoded) so `genTitle` sees the
+ * user-visible text directly.
  */
 export function extractUserText(messages: ModelMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {

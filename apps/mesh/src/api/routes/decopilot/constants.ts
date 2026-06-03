@@ -120,15 +120,3 @@ Git operations live in two layers:
   \`update_pull_request_branch\`, which merges instead of rebasing.
 </repo-environment>`;
 }
-
-export const TITLE_GENERATOR_PROMPT = `Generate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this session. Use sentence case: capitalize only the first word and proper nouns.
-
-Good examples:
-- Fix login button on mobile
-- Add OAuth authentication
-- Query product catalog data
-- Set up event subscriptions
-
-Bad (too vague): Help with task
-Bad (too long): Investigate and fix the issue where the login button does not respond on mobile devices
-Bad (wrong case): Fix Login Button On Mobile`;
