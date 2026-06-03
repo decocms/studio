@@ -3,8 +3,8 @@
  *
  * Lets the agent record what the user is durably working toward. Like
  * `todo_write`, the model passes the FULL list every call — it replaces the
- * stored one. The doc is per-(user, org) and shared across the user's
- * memory-enabled agents, so any of them can read it from the system prompt.
+ * stored one. The doc is scoped per (agent, user, org): each agent keeps its
+ * own view and reads it back from the system prompt.
  */
 
 import { tool, zodSchema } from "ai";
@@ -34,15 +34,19 @@ const description =
 export function createUpdateInterestsTool(deps: {
   ctx: MeshContext;
   orgId: string;
+  agentId: string;
   userId: string;
 }) {
   return tool({
     description,
     inputSchema: zodSchema(UpdateInterestsInputSchema),
     execute: async ({ interests }: UpdateInterestsInput) => {
-      await deps.ctx.storage.interests.setForUser(deps.orgId, deps.userId, {
-        interests,
-      });
+      await deps.ctx.storage.interests.setForAgent(
+        deps.orgId,
+        deps.agentId,
+        deps.userId,
+        { interests },
+      );
       return { ok: true as const, count: interests.length };
     },
   });

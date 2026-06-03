@@ -66,7 +66,6 @@ import type { AssembledPrompt } from "./prompt";
 import { sanitizeStreamError, stringifyError } from "./stream-error";
 import { runAgentLoop } from "./run-agent-loop";
 import { isDecopilot } from "@decocms/mesh-sdk";
-import { isUserMemoryEnabled } from "./user-memory";
 
 // ─────────────────────────────────────────────────────────────────────
 // Helpers
@@ -613,10 +612,6 @@ export async function* runDecopilotStream(
     isDecopilot: isDecopilot(input.agent.id) !== null,
     systemAgentInstructions: tools.serverInstructions,
     currentThreadId: threadId,
-    userMemoryEnabled: isUserMemoryEnabled(
-      input.agent.id,
-      input.virtualMcp.metadata,
-    ),
     writer,
     subtaskParams: {
       provider,

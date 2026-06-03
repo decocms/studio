@@ -57,9 +57,6 @@ export interface RunAgentLoopOptions {
   systemAgentInstructions?: string;
   /** Current thread id — excluded from the user-context "history" recall. */
   currentThreadId?: string;
-  /** When true, inject the personal "About this user" memory block. Gated to
-   *  decopilot + opted-in agents. */
-  userMemoryEnabled?: boolean;
   kind: "agent" | "subagent";
   stepLimit?: number;
   toolApprovalLevel?: ToolApprovalLevel;
@@ -156,7 +153,6 @@ export async function runAgentLoop(
     isDecopilot: opts.isDecopilot,
     agentInstructions: opts.systemAgentInstructions,
     currentThreadId: opts.currentThreadId,
-    userMemoryEnabled: opts.userMemoryEnabled,
     passthroughClient: opts.passthroughClient,
     connectionsData: opts.connectionsData,
   });

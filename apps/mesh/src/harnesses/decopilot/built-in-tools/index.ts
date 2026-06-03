@@ -117,9 +117,9 @@ export interface BuiltinToolParams {
   /** Thread (task) id of the current run — needed by tools that persist
    *  thread-scoped state (e.g. web_search reconnecting to Gemini Deep Research). */
   taskId: string;
-  /** When true, the `update_interests` tool is included so the agent can
-   *  persist the user's durable goals. Gated to decopilot + opted-in agents. */
-  userMemoryEnabled?: boolean;
+  /** Current agent (virtual MCP) id — scopes the per-agent interests memory
+   *  written by `update_interests`. */
+  agentId: string;
 }
 
 export type { PendingImage };
@@ -150,7 +150,7 @@ async function buildAllTools(
     vmContext,
     htmlPageBuffer,
     taskId,
-    userMemoryEnabled,
+    agentId,
   } = params;
   const approvalOpts = { isPlanMode };
   const userId = ctx.auth?.user?.id;
@@ -158,11 +158,12 @@ async function buildAllTools(
     user_ask: userAskTool,
     todo_write: todoWriteTool,
     propose_plan: proposePlanTool,
-    ...(userMemoryEnabled && userId
+    ...(userId
       ? {
           update_interests: createUpdateInterestsTool({
             ctx,
             orgId: organization.id,
+            agentId,
             userId,
           }),
         }

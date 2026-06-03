@@ -1,9 +1,10 @@
 /**
  * Interests storage
  *
- * Per-user "interests" memory, backed by the org-scoped `kv` table.
- * Reads fall back to an org-level doc when a user has none of their own.
- * The curator rewrites the whole list, so the shape is intentionally tiny.
+ * Per-(agent, user) "interests" memory, backed by the org-scoped `kv` table.
+ * Scoped by agent so each agent keeps its own view — agent A never sees or
+ * updates agent B's interests for the same user. The curator/agent rewrites
+ * the whole list, so the shape is intentionally tiny.
  */
 
 import type { KVStorage } from "./kv";
@@ -18,42 +19,45 @@ export interface InterestsDoc {
   interests: Interest[];
 }
 
-const ORG_KEY = "interests:org";
-const userKey = (userId: string) => `interests:user:${userId}`;
+const key = (agentId: string, userId: string) =>
+  `interests:${agentId}:${userId}`;
 
 export interface InterestsStorage {
-  /** User doc if present, else the org-level doc, else null. */
-  getForUser(orgId: string, userId: string): Promise<InterestsDoc | null>;
-  setForUser(orgId: string, userId: string, doc: InterestsDoc): Promise<void>;
-  getForOrg(orgId: string): Promise<InterestsDoc | null>;
+  getForAgent(
+    orgId: string,
+    agentId: string,
+    userId: string,
+  ): Promise<InterestsDoc | null>;
+  setForAgent(
+    orgId: string,
+    agentId: string,
+    userId: string,
+    doc: InterestsDoc,
+  ): Promise<void>;
 }
 
 export class KyselyInterestsStorage implements InterestsStorage {
   constructor(private kv: KVStorage) {}
 
-  async getForUser(
+  async getForAgent(
     orgId: string,
+    agentId: string,
     userId: string,
   ): Promise<InterestsDoc | null> {
-    const own = await this.kv.get(orgId, userKey(userId));
-    if (own) return own as unknown as InterestsDoc;
-    return this.getForOrg(orgId);
+    const row = await this.kv.get(orgId, key(agentId, userId));
+    return row ? (row as unknown as InterestsDoc) : null;
   }
 
-  async setForUser(
+  async setForAgent(
     orgId: string,
+    agentId: string,
     userId: string,
     doc: InterestsDoc,
   ): Promise<void> {
     await this.kv.set(
       orgId,
-      userKey(userId),
+      key(agentId, userId),
       doc as unknown as Record<string, unknown>,
     );
-  }
-
-  async getForOrg(orgId: string): Promise<InterestsDoc | null> {
-    const org = await this.kv.get(orgId, ORG_KEY);
-    return org ? (org as unknown as InterestsDoc) : null;
   }
 }

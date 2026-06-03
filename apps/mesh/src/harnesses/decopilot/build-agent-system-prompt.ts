@@ -76,10 +76,11 @@ Don't recap these unprompted, but use them so you recognize the user and pick up
 async function buildUserContextBlock(
   opts: BuildAgentSystemPromptOptions,
 ): Promise<string | null> {
-  if (opts.kind !== "agent" || !opts.userMemoryEnabled) return null;
+  if (opts.kind !== "agent") return null;
   const user = opts.ctx.auth?.user;
   const userId = user?.id;
   if (!userId) return null;
+  const agentId = opts.virtualMcp.id;
 
   const sections: string[] = [];
 
@@ -92,9 +93,9 @@ async function buildUserContextBlock(
 You're talking to ${name}${email}. Address them by name when it's natural.`);
   }
 
-  // Continuity — recent threads for this user, excluding the current one.
+  // Continuity — recent threads with THIS agent, excluding the current one.
   const recent = await opts.ctx.storage?.threads
-    ?.list(userId, { limit: 9 })
+    ?.list(userId, { limit: 9, agentId })
     .catch(() => null);
   if (recent && recent.total > 0) {
     const others = recent.threads
@@ -110,9 +111,9 @@ You're talking to ${name}${email}. Address them by name when it's natural.`);
     }
   }
 
-  // Interests — durable goals.
+  // Interests — durable goals, scoped to this agent.
   const doc = await opts.ctx.storage?.interests
-    ?.getForUser(opts.organization.id, userId)
+    ?.getForAgent(opts.organization.id, agentId, userId)
     .catch(() => null);
   if (doc && doc.interests.length > 0) {
     sections.push(
@@ -184,9 +185,6 @@ export interface BuildAgentSystemPromptOptions {
   /** Current thread id, excluded from the "history together" recall so the
    *  agent doesn't "remember" the conversation it's currently in. */
   currentThreadId?: string;
-  /** When true, inject the personal "About this user" memory block (identity,
-   *  history, interests). Gated to decopilot + opted-in agents. */
-  userMemoryEnabled?: boolean;
 
   // ── Optional runtime data ──────────────────────────────────────────
   // When provided, the prompts and connections blocks get included.
