@@ -48,19 +48,24 @@ export function CenteredComposerPure({
     >
       <div className="w-full max-w-3xl flex flex-col gap-6">
         {!readOnly && identity ? identity : null}
-        {!readOnly && aboveRow ? (
-          <div
-            data-chat-above-row="true"
-            // `@container/chat-bottom` so BranchPicker / ModePicker
-            // resolve their `@[320px]/chat-bottom:` queries here too
-            // and render with full labels — same affordance as inside
-            // the docked input.
-            className="@container/chat-bottom flex justify-start gap-2"
-          >
-            {aboveRow}
-          </div>
-        ) : null}
-        {input}
+        {/* above-row + input live in a tighter sub-stack (gap-2) so the
+            pills sit close to the input they configure. identity and
+            icebreakers stay at the outer gap-6 from this block. */}
+        <div className="flex flex-col gap-2">
+          {!readOnly && aboveRow ? (
+            <div
+              data-chat-above-row="true"
+              // `@container/chat-bottom` so BranchPicker / ModePicker
+              // resolve their `@[320px]/chat-bottom:` queries here too
+              // and render with full labels — same affordance as inside
+              // the docked input.
+              className="@container/chat-bottom flex justify-start gap-2"
+            >
+              {aboveRow}
+            </div>
+          ) : null}
+          {input}
+        </div>
         {!readOnly && iceBreakers ? (
           <div className="w-full">{iceBreakers}</div>
         ) : null}
