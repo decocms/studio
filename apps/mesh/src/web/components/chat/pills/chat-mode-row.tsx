@@ -53,7 +53,8 @@ interface SmartProps {
 export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const stream = useOptionalChatStream();
   const taskCtx = useOptionalChatTask();
-  const locked = (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
+  const locked =
+    (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
 
   const clonable = agentHasClonableSource(virtualMcp?.metadata);

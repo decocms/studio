@@ -527,7 +527,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // agents with no clonable repo, where the branch is purely an
       // isolation key.
       const branch = existingThread?.branch ?? input.branch ?? "ephemeral";
-      const branchWasDefaulted = !existingThread?.branch && !input.branch;
 
       // Determine the pinned (kind, harness). If the thread row has them,
       // use those. Otherwise this is the first message — derive defaults and
@@ -545,7 +544,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       let pinnedHarness = (existingThread?.harness_id ??
         null) as HarnessId | null;
 
-      if (!pinnedKind || !pinnedHarness || branchWasDefaulted) {
+      if (!pinnedKind || !pinnedHarness) {
         pinnedKind =
           pinnedKind ??
           input.sandboxProviderKind ??
@@ -557,10 +556,21 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
         if (existingThread) {
           try {
+            // Persist `branch` unconditionally on the initial pin write so
+            // the thread row is the single source of truth the lock guard
+            // (validate() / applyThreadLock) reads on every follow-up.
+            // Previously we only stored the synthetic "ephemeral" fallback
+            // (`branchWasDefaulted` path); a user who explicitly picked
+            // "main" on the first message would have it dropped here, and
+            // the lock would later resolve to null and dispatch against
+            // "ephemeral" instead. The lock contract (spec
+            // 2026-06-03-lock-thread-harness-and-branch-design.md) says
+            // all three locked fields are pinned together — branch is no
+            // exception.
             await ctx.storage.threads?.update?.(taskId, {
               sandbox_provider_kind: pinnedKind,
               harness_id: pinnedHarness,
-              ...(branchWasDefaulted ? { branch } : {}),
+              branch,
             });
           } catch (err) {
             console.warn(
