@@ -42,6 +42,7 @@ import {
   type LogRecordProcessor,
   type SdkLogRecord,
 } from "@opentelemetry/sdk-logs";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
@@ -322,17 +323,20 @@ export function initObservability(): void {
       })
     : null;
 
+  // Only set deployment.environment if it isn't already supplied via
+  // OTEL_RESOURCE_ATTRIBUTES (the env detector wins on conflict, so honoring an
+  // externally-provided value).
+  const resourceAttributes: Record<string, string> = {};
   if (
     !process.env.OTEL_RESOURCE_ATTRIBUTES?.includes("deployment.environment")
   ) {
-    const env = process.env.STUDIO_ENV ?? process.env.NODE_ENV ?? "unknown";
-    process.env.OTEL_RESOURCE_ATTRIBUTES = process.env.OTEL_RESOURCE_ATTRIBUTES
-      ? `${process.env.OTEL_RESOURCE_ATTRIBUTES},deployment.environment=${env}`
-      : `deployment.environment=${env}`;
+    resourceAttributes["deployment.environment"] =
+      process.env.STUDIO_ENV ?? process.env.NODE_ENV ?? "unknown";
   }
 
   const sdk = new NodeSDK({
     serviceName: _settings.otelServiceName,
+    resource: resourceFromAttributes(resourceAttributes),
     metricReaders: [
       prometheusExporter,
       ...(monitoringMetricReader ? [monitoringMetricReader] : []),
