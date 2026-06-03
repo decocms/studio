@@ -9,9 +9,10 @@
  * pure: computeIdempotencyKey takes a message and returns a string, no I/O.
  */
 
-import { describe, expect, test } from "bun:test";
-import { computeIdempotencyKey } from "./routes";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { applyThreadLock, computeIdempotencyKey } from "./routes";
 import type { ChatMessage } from "./types";
+import type { Thread } from "@/storage/types";
 
 describe("computeIdempotencyKey", () => {
   test("returns undefined for no message", () => {
@@ -94,5 +95,151 @@ describe("computeIdempotencyKey", () => {
     } as unknown as ChatMessage;
     const key = computeIdempotencyKey(msg);
     expect(key).toMatch(/^[0-9a-f]{40}$/);
+  });
+});
+
+// ============================================================================
+// applyThreadLock — the server-side enforcement point for the lock spec
+// (docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md).
+// Once a thread's `harness_id` is non-null the row wins over any
+// client-supplied harness / sandbox / branch values.
+// ============================================================================
+
+function makeLockedThread(
+  overrides: Partial<
+    Pick<Thread, "harness_id" | "sandbox_provider_kind" | "branch">
+  > = {},
+): Pick<Thread, "harness_id" | "sandbox_provider_kind" | "branch"> {
+  return {
+    harness_id: "codex",
+    sandbox_provider_kind: "user-desktop",
+    branch: "main",
+    ...overrides,
+  };
+}
+
+describe("applyThreadLock", () => {
+  let warnSpy: ReturnType<typeof mock>;
+  let originalWarn: typeof console.warn;
+
+  beforeEach(() => {
+    originalWarn = console.warn;
+    warnSpy = mock(() => {});
+    console.warn = warnSpy as unknown as typeof console.warn;
+  });
+
+  afterEach(() => {
+    console.warn = originalWarn;
+  });
+
+  test("locked thread: row beats client overrides for harness, sandbox, and branch", () => {
+    const result = applyThreadLock({
+      taskIdInput: "thread-abc",
+      thread: makeLockedThread(),
+      requestedHarnessId: "claude-code",
+      requestedSandboxProviderKind: "cluster",
+      requestedBranch: "feature-x",
+    });
+
+    expect(result.locked).toBe(true);
+    expect(result.harnessId).toBe("codex");
+    expect(result.sandboxProviderKind).toBe("user-desktop");
+    expect(result.branch).toBe("main");
+  });
+
+  test("locked thread: drifting client harness triggers a console.warn audit", () => {
+    applyThreadLock({
+      taskIdInput: "thread-abc",
+      thread: makeLockedThread(),
+      requestedHarnessId: "claude-code",
+      requestedSandboxProviderKind: "cluster",
+      requestedBranch: "feature-x",
+    });
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toBe(
+      "decopilot.submit: ignored harness override on locked thread",
+    );
+    expect(warnSpy.mock.calls[0]?.[1]).toMatchObject({
+      threadId: "thread-abc",
+      requested: "claude-code",
+      locked: "codex",
+    });
+  });
+
+  test("locked thread: matching client harness does not trigger an audit warn", () => {
+    applyThreadLock({
+      taskIdInput: "thread-abc",
+      thread: makeLockedThread(),
+      requestedHarnessId: "codex",
+      requestedSandboxProviderKind: "user-desktop",
+      requestedBranch: "main",
+    });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test("locked thread with null sandbox/branch: row's nulls win, not client values", () => {
+    const result = applyThreadLock({
+      taskIdInput: "thread-abc",
+      thread: makeLockedThread({
+        sandbox_provider_kind: null,
+        branch: null,
+      }),
+      requestedHarnessId: "claude-code",
+      requestedSandboxProviderKind: "cluster",
+      requestedBranch: "feature-x",
+    });
+
+    expect(result.locked).toBe(true);
+    expect(result.harnessId).toBe("codex");
+    expect(result.sandboxProviderKind).toBeUndefined();
+    expect(result.branch).toBeNull();
+  });
+
+  test("unlocked thread (harness_id=null): client values flow through", () => {
+    const result = applyThreadLock({
+      taskIdInput: "thread-abc",
+      thread: { harness_id: null, sandbox_provider_kind: null, branch: null },
+      requestedHarnessId: "claude-code",
+      requestedSandboxProviderKind: "cluster",
+      requestedBranch: "feature-x",
+    });
+
+    expect(result.locked).toBe(false);
+    expect(result.harnessId).toBe("claude-code");
+    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.branch).toBe("feature-x");
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test("no thread row (first message ever): client values flow through", () => {
+    const result = applyThreadLock({
+      taskIdInput: "thread-new",
+      thread: null,
+      requestedHarnessId: "claude-code",
+      requestedSandboxProviderKind: "cluster",
+      requestedBranch: "feature-x",
+    });
+
+    expect(result.locked).toBe(false);
+    expect(result.harnessId).toBe("claude-code");
+    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.branch).toBe("feature-x");
+  });
+
+  test("no taskIdInput (legacy callers): never touches the thread row", () => {
+    const result = applyThreadLock({
+      taskIdInput: undefined,
+      thread: makeLockedThread(),
+      requestedHarnessId: "claude-code",
+      requestedSandboxProviderKind: "cluster",
+      requestedBranch: "feature-x",
+    });
+
+    expect(result.locked).toBe(false);
+    expect(result.harnessId).toBe("claude-code");
+    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.branch).toBe("feature-x");
   });
 });
