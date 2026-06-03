@@ -105,10 +105,22 @@ describe("sandbox↔studio WS partition", () => {
   }, 90_000);
 
   test("WS restored → daemon reconnects and the sandbox responds again", async () => {
-    // Capture whatever claim exists now as the baseline (afterEach from a prior
-    // test may have re-enabled the proxy via resetAll; capture or fall back to 0).
-    const baseline = await getLinkClaim(testState.cookie);
-    const baselineConnectedAt = baseline?.connectedAt ?? 0;
+    // Self-contained: start from a connected state (afterEach from the prior
+    // test re-enabled the proxy), capture the baseline connectedAt, then sever
+    // and restore WITHIN this test so the reconnect is observable regardless of
+    // whatever proxy state the previous test left behind.
+    const before = await waitForLinkClaim(testState.cookie, 60_000);
+    const connectedAt0 = before.connectedAt;
+
+    await disableProxy(PROXY_NAMES.STUDIO_WS);
+    await pollUntil(
+      async () => (await getLinkClaim(testState.cookie)) === null,
+      {
+        timeoutMs: 30_000,
+        intervalMs: 1_000,
+        label: "link-offline-before-reconnect",
+      },
+    );
 
     await enableProxy(PROXY_NAMES.STUDIO_WS);
 
@@ -116,7 +128,7 @@ describe("sandbox↔studio WS partition", () => {
     await pollUntil(
       async () => {
         const claim = await getLinkClaim(testState.cookie);
-        return claim != null && claim.connectedAt > baselineConnectedAt;
+        return claim != null && claim.connectedAt > connectedAt0;
       },
       { timeoutMs: 60_000, intervalMs: 1_000, label: "link-reconnect" },
     );
@@ -139,5 +151,5 @@ describe("sandbox↔studio WS partition", () => {
       },
       { timeoutMs: 60_000, intervalMs: 2_000, label: "read-after-reconnect" },
     );
-  }, 150_000);
+  }, 240_000);
 });

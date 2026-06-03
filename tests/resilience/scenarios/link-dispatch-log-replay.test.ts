@@ -55,7 +55,7 @@ describe("sandbox log/event SSE replay", () => {
       }),
     });
     await sandboxPutConfig(orgSlug, vmId, BRANCH, testState.cookie, {
-      application: { packageManager: "npm" },
+      application: { packageManager: { name: "npm" } },
     });
   }, 180_000);
 

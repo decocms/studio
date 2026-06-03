@@ -31,7 +31,7 @@ export interface LinkClaim {
 }
 
 /** Run `docker compose -f <file> <args>`, optionally with extra env. */
-export async function composeExec(
+async function composeExec(
   args: string[],
   env?: Record<string, string>,
 ): Promise<string> {
