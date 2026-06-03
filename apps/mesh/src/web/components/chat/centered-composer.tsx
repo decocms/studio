@@ -44,7 +44,15 @@ export function CenteredComposerPure({
     >
       <div className="w-full max-w-3xl flex flex-col gap-3">
         {!readOnly && aboveRow ? (
-          <div data-chat-above-row="true" className="flex justify-center gap-2">
+          <div
+            data-chat-above-row="true"
+            // `@container/chat-bottom` makes BranchPicker / ModePicker expand
+            // their labels via the same `@[320px]/chat-bottom:` queries they
+            // use inside the docked input bottom row. Without this the pills
+            // stay in their collapsed (icon-only) form here because the
+            // queries find no matching container ancestor.
+            className="@container/chat-bottom flex justify-center gap-2"
+          >
             {aboveRow}
           </div>
         ) : null}
