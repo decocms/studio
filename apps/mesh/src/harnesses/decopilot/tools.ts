@@ -31,6 +31,7 @@ import {
   type VmContext,
 } from "./built-in-tools";
 import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
+import { isUserMemoryEnabled } from "./user-memory";
 import type { ConnectionsBlockTool } from "./connections-block";
 import { toolsFromMCP } from "../../api/routes/decopilot/helpers";
 import type { HarnessStreamInput } from "../types";
@@ -210,6 +211,10 @@ export async function assembleDecopilotTools(
         vmContext,
         htmlPageBuffer: extras.htmlPageBuffer,
         taskId: extras.threadId,
+        userMemoryEnabled: isUserMemoryEnabled(
+          input.agent.id,
+          input.virtualMcp.metadata,
+        ),
       },
       ctx,
     );

@@ -76,7 +76,7 @@ Don't recap these unprompted, but use them so you recognize the user and pick up
 async function buildUserContextBlock(
   opts: BuildAgentSystemPromptOptions,
 ): Promise<string | null> {
-  if (opts.kind !== "agent") return null;
+  if (opts.kind !== "agent" || !opts.userMemoryEnabled) return null;
   const user = opts.ctx.auth?.user;
   const userId = user?.id;
   if (!userId) return null;
@@ -120,7 +120,13 @@ You're talking to ${name}${email}. Address them by name when it's natural.`);
     );
   }
 
-  if (sections.length === 0) return null;
+  sections.push(
+    "When you learn a durable new goal the user is working toward — or clear progress on an existing one — call `update_interests` to keep this record current. Skip one-off questions.",
+  );
+
+  // Only the closing instruction with no identity/history/interests above it
+  // isn't worth a block of its own.
+  if (sections.length <= 1) return null;
   return `## About this user\n\n${sections.join("\n\n")}`;
 }
 
@@ -178,6 +184,9 @@ export interface BuildAgentSystemPromptOptions {
   /** Current thread id, excluded from the "history together" recall so the
    *  agent doesn't "remember" the conversation it's currently in. */
   currentThreadId?: string;
+  /** When true, inject the personal "About this user" memory block (identity,
+   *  history, interests). Gated to decopilot + opted-in agents. */
+  userMemoryEnabled?: boolean;
 
   // ── Optional runtime data ──────────────────────────────────────────
   // When provided, the prompts and connections blocks get included.

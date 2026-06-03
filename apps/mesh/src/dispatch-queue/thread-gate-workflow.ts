@@ -27,7 +27,6 @@ import type {
 } from "@/api/routes/decopilot/dispatch-run";
 import type { MeshContext } from "@/core/mesh-context";
 import { posthog } from "@/posthog";
-import { scheduleInterestCuration } from "@/harnesses/decopilot/interests-curator-workflow";
 
 export const THREAD_GATE_QUEUE = "thread-gate";
 
@@ -242,18 +241,6 @@ async function threadGateWorkflowFn(
     });
     throw err;
   }
-
-  // Schedule debounced interest curation. Called from the workflow body (NOT
-  // a step) because the Debouncer starts a workflow, which is illegal inside a
-  // step. Only for user messages — automation fires aren't user activity.
-  if (ctx.source === "user-message") {
-    await scheduleInterestCuration(
-      ctx.request.organizationId,
-      ctx.request.userId,
-      ctx.threadId,
-    );
-  }
-
   return { taskId: ctx.request.taskId ?? ctx.threadId };
 }
 

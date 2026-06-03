@@ -139,7 +139,6 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import { setInterestCuratorRuntime } from "../harnesses/decopilot/interests-curator-workflow";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
@@ -1364,10 +1363,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     meshContextFactory: automationContextFactory,
     deps: { runRegistry, cancelBroadcast, streamBuffer, sseHub },
   });
-
-  // Interest curator reuses the same membership-checked context factory to
-  // rebuild a MeshContext when its debounced workflow fires.
-  setInterestCuratorRuntime({ meshContextFactory: automationContextFactory });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();

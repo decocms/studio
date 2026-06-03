@@ -1,0 +1,49 @@
+/**
+ * update_interests Built-in Tool
+ *
+ * Lets the agent record what the user is durably working toward. Like
+ * `todo_write`, the model passes the FULL list every call — it replaces the
+ * stored one. The doc is per-(user, org) and shared across the user's
+ * memory-enabled agents, so any of them can read it from the system prompt.
+ */
+
+import { tool, zodSchema } from "ai";
+import { z } from "zod";
+import type { MeshContext } from "@/core/mesh-context";
+
+const UpdateInterestsInputSchema = z.object({
+  interests: z.array(
+    z.object({
+      title: z.string().describe("Short noun phrase, e.g. 'Learning Rust'"),
+      summary: z
+        .string()
+        .describe("One or two sentences of context, including any progress"),
+    }),
+  ),
+});
+
+export type UpdateInterestsInput = z.infer<typeof UpdateInterestsInputSchema>;
+
+const description =
+  "Record what the user is durably working toward (their goals/interests). " +
+  "Call this when you learn a real, lasting goal — NOT for one-off questions. " +
+  "Pass the FULL list every time: it replaces the stored one, so carry forward " +
+  "existing interests (fold progress into their summary) and drop only ones " +
+  "that are clearly finished or abandoned. Order by importance, most first.";
+
+export function createUpdateInterestsTool(deps: {
+  ctx: MeshContext;
+  orgId: string;
+  userId: string;
+}) {
+  return tool({
+    description,
+    inputSchema: zodSchema(UpdateInterestsInputSchema),
+    execute: async ({ interests }: UpdateInterestsInput) => {
+      await deps.ctx.storage.interests.setForUser(deps.orgId, deps.userId, {
+        interests,
+      });
+      return { ok: true as const, count: interests.length };
+    },
+  });
+}
