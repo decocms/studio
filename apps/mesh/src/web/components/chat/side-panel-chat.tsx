@@ -79,19 +79,14 @@ function ChatPanelContent() {
         )}
       >
         {isChatEmpty ? (
-          <Chat.Main
-            className={cn(
-              "flex flex-col items-center justify-center",
-              "animate-in fade-in-0 duration-200",
-            )}
-          >
+          <Chat.Main>
             <CenteredComposer
               onOpenContextPanel={() => setActivePanel("context")}
             />
           </Chat.Main>
         ) : (
           <>
-            <Chat.Main className="animate-in fade-in-0 duration-200">
+            <Chat.Main>
               <Chat.Messages />
             </Chat.Main>
             <Chat.Footer>
