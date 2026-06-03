@@ -25,6 +25,8 @@
 import type { MeshContext } from "@/core/mesh-context";
 import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
+import type { MeshProvider } from "@/ai-providers/types";
+import { tryResolveTier, type ResolvedTier } from "@/core/resolve-tier";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
 import { ensureSandbox } from "@/tools/sandbox/start";
@@ -181,6 +183,86 @@ function lookupResumeSessionRef(
     }
   }
   return undefined;
+}
+
+function modelInfoFromResolvedTier(
+  resolved: ResolvedTier,
+): ModelsConfig["thinking"] {
+  return {
+    id: resolved.modelId,
+    title: resolved.modelMeta.title ?? resolved.modelId,
+    provider: resolved.modelMeta.providerId ?? null,
+    capabilities:
+      resolved.modelMeta.capabilities &&
+      resolved.modelMeta.capabilities.length > 0
+        ? {
+            vision:
+              resolved.modelMeta.capabilities.includes("vision") ||
+              resolved.modelMeta.capabilities.includes("image") ||
+              undefined,
+            text: resolved.modelMeta.capabilities.includes("text") || undefined,
+            reasoning:
+              resolved.modelMeta.capabilities.includes("reasoning") ||
+              undefined,
+          }
+        : undefined,
+    limits: resolved.modelMeta.limits
+      ? {
+          contextWindow: resolved.modelMeta.limits.contextWindow,
+          maxOutputTokens:
+            resolved.modelMeta.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  };
+}
+
+async function resolveCliTitleGenerationConfig(
+  ctx: MeshContext,
+  organizationId: string,
+): Promise<{ provider: MeshProvider; models: ModelsConfig } | null> {
+  // CLI harnesses use synthetic `desktop:<harness>` credentials for the
+  // actual run. The cluster still needs a real cloud provider for the shared
+  // title interceptor, so resolve a title-only model from org chat tiers.
+  const resolved =
+    (await tryResolveTier(ctx, "fast")) ?? (await tryResolveTier(ctx, "smart"));
+  if (!resolved) return null;
+
+  const allowedModels = await fetchModelPermissions(
+    ctx.db,
+    organizationId,
+    ctx.auth.user?.role,
+  );
+  if (
+    allowedModels !== undefined &&
+    !checkModelPermission(
+      allowedModels,
+      resolved.credentialId,
+      resolved.modelId,
+    )
+  ) {
+    return null;
+  }
+
+  const provider = await ctx.aiProviders
+    .activate(resolved.credentialId, organizationId)
+    .catch((err) => {
+      console.warn(
+        "[title-interceptor] failed to activate CLI title provider",
+        err,
+      );
+      return null;
+    });
+  if (!provider) return null;
+
+  const model = modelInfoFromResolvedTier(resolved);
+  return {
+    provider,
+    models: {
+      credentialId: resolved.credentialId,
+      thinking: model,
+      fast: model,
+    },
+  };
 }
 
 /**
@@ -520,25 +602,43 @@ async function prepareRun(
       !!deepResearchCredId &&
       deepResearchCredId !== chatCredId;
 
-    const [virtualMcp, provider, imageProvider, deepResearchProvider, mem] =
-      await Promise.all([
-        ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
-        harnessId === "decopilot"
-          ? ctx.aiProviders.activate(chatCredId, input.organizationId)
-          : Promise.resolve(null),
-        needsImageProvider
-          ? ctx.aiProviders.activate(imageCredId, input.organizationId)
-          : Promise.resolve(null),
-        needsDeepResearchProvider
-          ? ctx.aiProviders.activate(deepResearchCredId, input.organizationId)
-          : Promise.resolve(null),
-        createMemory(ctx.storage.threads, {
-          organization_id: input.organizationId,
-          thread_id: input.taskId,
-          userId: input.userId,
-          defaultWindowSize: windowSize,
-        }),
-      ]);
+    const [
+      virtualMcp,
+      provider,
+      imageProvider,
+      deepResearchProvider,
+      mem,
+      cliTitleGeneration,
+    ] = await Promise.all([
+      ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
+      harnessId === "decopilot"
+        ? ctx.aiProviders.activate(chatCredId, input.organizationId)
+        : Promise.resolve(null),
+      needsImageProvider
+        ? ctx.aiProviders.activate(imageCredId, input.organizationId)
+        : Promise.resolve(null),
+      needsDeepResearchProvider
+        ? ctx.aiProviders.activate(deepResearchCredId, input.organizationId)
+        : Promise.resolve(null),
+      createMemory(ctx.storage.threads, {
+        organization_id: input.organizationId,
+        thread_id: input.taskId,
+        userId: input.userId,
+        defaultWindowSize: windowSize,
+      }),
+      harnessId === "decopilot"
+        ? Promise.resolve(null)
+        : resolveCliTitleGenerationConfig(ctx, input.organizationId),
+    ]);
+
+    const titleProvider =
+      harnessId === "decopilot"
+        ? provider
+        : (cliTitleGeneration?.provider ?? null);
+    const titleModels =
+      harnessId === "decopilot"
+        ? input.models
+        : (cliTitleGeneration?.models ?? input.models);
 
     // Diagnostic (resume only): record whether the provider activated and
     // whether the optional model slots are present. Paired with the log in
@@ -785,7 +885,7 @@ async function prepareRun(
           currentThreadTitle: mem.thread.title,
           registrySignal,
           runRegistry,
-          provider,
+          provider: titleProvider,
           imageProvider: imageProvider ?? provider,
           deepResearchProvider: deepResearchProvider ?? provider,
           htmlPageBuffer,
@@ -894,7 +994,7 @@ async function prepareRun(
         const harnessChunks = interceptTitleChunks(rawHarnessChunks, {
           ctx,
           processLocal,
-          models: input.models,
+          models: titleModels,
           currentThreadTitle: mem.thread.title,
           threadId: mem.thread.id,
           writer,
