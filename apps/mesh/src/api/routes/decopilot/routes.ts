@@ -53,6 +53,7 @@ import {
 } from "@decocms/sandbox/provider";
 import { resolveDefaultSandboxProviderKind } from "@/sandbox/resolve-default-provider-kind";
 import type { HarnessId } from "@/harnesses";
+import type { Thread } from "@/storage/types";
 
 // ============================================================================
 // Idempotency
@@ -221,6 +222,76 @@ async function resolvePerRequestModels(
 // ============================================================================
 
 /**
+ * Resolve the effective (harnessId, sandboxProviderKind, branch) for a
+ * dispatch, given the values the client supplied and the (possibly
+ * locked) thread row.
+ *
+ * Once a thread row carries a non-null `harness_id`, the thread's
+ * runtime is pinned for life: the row's values win and any
+ * client-provided override is silently dropped. If the row is unlocked
+ * (`harness_id == null`) or there's no thread at all (first message of
+ * a freshly-created thread, or `taskIdInput === undefined`) we fall
+ * back to the client values.
+ *
+ * Exported so the guard can be unit-tested without standing up the rest
+ * of `validate()` (model resolution, permission checks, Hono context).
+ *
+ * See spec:
+ * docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
+ */
+export function applyThreadLock(args: {
+  taskIdInput: string | undefined;
+  thread: Pick<
+    Thread,
+    "harness_id" | "sandbox_provider_kind" | "branch"
+  > | null;
+  requestedHarnessId: HarnessId | null | undefined;
+  requestedSandboxProviderKind: SandboxProviderKind | null | undefined;
+  requestedBranch: string | null | undefined;
+}): {
+  harnessId: HarnessId | null | undefined;
+  sandboxProviderKind: SandboxProviderKind | null | undefined;
+  branch: string | null | undefined;
+  locked: boolean;
+} {
+  const {
+    taskIdInput,
+    thread,
+    requestedHarnessId,
+    requestedSandboxProviderKind,
+    requestedBranch,
+  } = args;
+
+  if (!taskIdInput || !thread?.harness_id) {
+    return {
+      harnessId: requestedHarnessId,
+      sandboxProviderKind: requestedSandboxProviderKind,
+      branch: requestedBranch,
+      locked: false,
+    };
+  }
+
+  if (requestedHarnessId && requestedHarnessId !== thread.harness_id) {
+    console.warn(
+      "decopilot.submit: ignored harness override on locked thread",
+      {
+        threadId: taskIdInput,
+        requested: requestedHarnessId,
+        locked: thread.harness_id,
+      },
+    );
+  }
+
+  return {
+    harnessId: thread.harness_id as HarnessId,
+    sandboxProviderKind:
+      (thread.sandbox_provider_kind as SandboxProviderKind | null) ?? undefined,
+    branch: thread.branch ?? null,
+    locked: true,
+  };
+}
+
+/**
  * Parse + permission-check an HTTP request into a `DispatchRunInput`
  * ready to hand to `enqueueThreadRun` (POST /messages).
  *
@@ -273,7 +344,34 @@ async function validate(
     throw new HTTPException(401, { message: "User ID is required" });
   }
 
-  const resolvedModels = await resolvePerRequestModels(ctx, tier, harnessId);
+  // Lock guard: once a thread row carries a non-null `harness_id`, the
+  // thread's runtime (harness, sandbox provider, branch) is pinned for
+  // life. Any client-provided override is silently dropped, and the
+  // per-request model resolution below uses the locked harness so we
+  // never dispatch with mismatched (harness, models).
+  //
+  // See spec:
+  // docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
+  const lockedThread = taskIdInput
+    ? await ctx.storage.threads.get(taskIdInput)
+    : null;
+  const {
+    harnessId: effectiveHarnessId,
+    sandboxProviderKind: effectiveSandboxProviderKind,
+    branch: effectiveBranch,
+  } = applyThreadLock({
+    taskIdInput,
+    thread: lockedThread,
+    requestedHarnessId: harnessId,
+    requestedSandboxProviderKind: sandboxProviderKind,
+    requestedBranch: branch,
+  });
+
+  const resolvedModels = await resolvePerRequestModels(
+    ctx,
+    tier,
+    effectiveHarnessId,
+  );
 
   const allowedModels = await fetchModelPermissions(
     ctx.db,
@@ -309,9 +407,9 @@ async function validate(
     userId,
     taskId: taskIdInput,
     windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
-    branch: branch ?? null,
-    sandboxProviderKind: sandboxProviderKind ?? null,
-    harnessId: harnessId ?? null,
+    branch: effectiveBranch ?? null,
+    sandboxProviderKind: effectiveSandboxProviderKind ?? null,
+    harnessId: effectiveHarnessId ?? null,
   };
 }
 
@@ -429,7 +527,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // agents with no clonable repo, where the branch is purely an
       // isolation key.
       const branch = existingThread?.branch ?? input.branch ?? "ephemeral";
-      const branchWasDefaulted = !existingThread?.branch && !input.branch;
 
       // Determine the pinned (kind, harness). If the thread row has them,
       // use those. Otherwise this is the first message — derive defaults and
@@ -447,7 +544,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       let pinnedHarness = (existingThread?.harness_id ??
         null) as HarnessId | null;
 
-      if (!pinnedKind || !pinnedHarness || branchWasDefaulted) {
+      if (!pinnedKind || !pinnedHarness) {
         pinnedKind =
           pinnedKind ??
           input.sandboxProviderKind ??
@@ -459,10 +556,21 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
         if (existingThread) {
           try {
+            // Persist `branch` unconditionally on the initial pin write so
+            // the thread row is the single source of truth the lock guard
+            // (validate() / applyThreadLock) reads on every follow-up.
+            // Previously we only stored the synthetic "ephemeral" fallback
+            // (`branchWasDefaulted` path); a user who explicitly picked
+            // "main" on the first message would have it dropped here, and
+            // the lock would later resolve to null and dispatch against
+            // "ephemeral" instead. The lock contract (spec
+            // 2026-06-03-lock-thread-harness-and-branch-design.md) says
+            // all three locked fields are pinned together — branch is no
+            // exception.
             await ctx.storage.threads?.update?.(taskId, {
               sandbox_provider_kind: pinnedKind,
               harness_id: pinnedHarness,
-              ...(branchWasDefaulted ? { branch } : {}),
+              branch,
             });
           } catch (err) {
             console.warn(
