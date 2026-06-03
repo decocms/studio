@@ -31,7 +31,7 @@ import { useOrganizationSettingsSuspense } from "../hooks/use-organization-setti
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 import { ArchivedOrgScreen } from "../components/archived-org-screen";
-import { isOrgArchived } from "@/web/lib/org-archived";
+import { isOrgArchived } from "@/core/org-archived";
 
 // ---------------------------------------------------------------------------
 // ShellProjectProvider — fetches org settings and provides project context.

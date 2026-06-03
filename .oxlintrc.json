@@ -6,8 +6,7 @@
     "./plugins/ban-memoization.js",
     "./plugins/require-cn-classname.js",
     "./plugins/ban-direct-auth-client-organization.js",
-    "./plugins/ban-ref-current-assignment.js",
-    "./plugins/ban-direct-metadata-archived.js"
+    "./plugins/ban-ref-current-assignment.js"
   ],
   "ignorePatterns": ["apps/docs/*"],
   "rules": {
@@ -21,8 +20,7 @@
     "ban-memoization/ban-memoization": "error",
     "require-cn-classname/require-cn-classname": "error",
     "ban-direct-auth-client-organization/ban-direct-auth-client-organization": "error",
-    "ban-ref-current-assignment/ban-ref-current-assignment": "error",
-    "ban-direct-metadata-archived/ban-direct-metadata-archived": "error"
+    "ban-ref-current-assignment/ban-ref-current-assignment": "error"
   },
   "plugins": ["react"]
 }

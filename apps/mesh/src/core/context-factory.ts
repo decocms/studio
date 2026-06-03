@@ -507,6 +507,33 @@ export async function fetchRolePermissions(
  * 1. API Key / MCP OAuth → permissions are queried and returned
  * 2. Browser sessions → no permissions stored (use Better Auth's hasPermission API)
  */
+// Tiny TTL cache for org archived-status, keyed by org id. The mesh-JWT
+// (embedded name/slug) and API-key auth paths check this on every proxied
+// request, so caching keeps the lookup off the hot path. Archiving is a
+// one-way soft-delete, so a short TTL is plenty.
+const ARCHIVED_CACHE_TTL_MS = 60_000;
+const orgArchivedCache = new Map<string, { archived: boolean; at: number }>();
+
+async function isOrgArchivedCached(
+  db: Kysely<Database>,
+  timings: NonNullable<FactoryOptions["timings"]>,
+  organizationId: string,
+  spanName: string,
+): Promise<boolean> {
+  const hit = orgArchivedCache.get(organizationId);
+  if (hit && Date.now() - hit.at < ARCHIVED_CACHE_TTL_MS) return hit.archived;
+  const orgRow = await timings.measure(spanName, () =>
+    db
+      .selectFrom("organization")
+      .select(["metadata"])
+      .where("id", "=", organizationId)
+      .executeTakeFirst(),
+  );
+  const archived = isOrgArchived(orgRow);
+  orgArchivedCache.set(organizationId, { archived, at: Date.now() });
+  return archived;
+}
+
 async function authenticateRequest(
   req: Request,
   auth: BetterAuthInstance,
@@ -663,17 +690,16 @@ async function authenticateRequest(
           const metaSlug = meshJwtPayload.metadata?.organizationSlug;
           if (metaName || metaSlug) {
             // Name/slug are embedded in the JWT, but we still need to verify the
-            // org isn't archived — the token may have been issued before deletion.
-            const orgRow = await timings.measure(
-              "auth_query_org_archived_for_mesh_jwt",
-              () =>
-                db
-                  .selectFrom("organization")
-                  .select(["metadata"])
-                  .where("id", "=", metaOrgId)
-                  .executeTakeFirst(),
-            );
-            if (isOrgArchived(orgRow)) {
+            // org isn't archived — the token may have been issued before
+            // deletion. Cached to keep this off the hot path.
+            if (
+              await isOrgArchivedCached(
+                db,
+                timings,
+                metaOrgId,
+                "auth_query_org_archived_for_mesh_jwt",
+              )
+            ) {
               return { user: undefined };
             }
             organization = { id: metaOrgId, name: metaName, slug: metaSlug };
@@ -732,19 +758,16 @@ async function authenticateRequest(
           | undefined;
 
         // Block access if the org has been soft-deleted since the key was issued
-        if (orgMetadata?.id) {
-          const orgRow = await timings.measure(
+        if (
+          orgMetadata?.id &&
+          (await isOrgArchivedCached(
+            db,
+            timings,
+            orgMetadata.id,
             "auth_query_org_for_api_key",
-            () =>
-              db
-                .selectFrom("organization")
-                .select(["metadata"])
-                .where("id", "=", orgMetadata.id)
-                .executeTakeFirst(),
-          );
-          if (isOrgArchived(orgRow)) {
-            return { user: undefined };
-          }
+          ))
+        ) {
+          return { user: undefined };
         }
 
         // API keys have permissions stored directly on them
