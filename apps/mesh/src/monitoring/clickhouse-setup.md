@@ -63,13 +63,11 @@ At the end of the day the contract is just this: the app connects to the
 ClickHouse at `CLICKHOUSE_URL` and expects a `studio_monitoring_logs` view with
 the columns below. Where the view lives and what it reads from is your call.
 
-**Tip — separating environments.** Several Studio deployments can share one
-`otel_logs`; the dashboard already isolates them by `organization_id` (each
-deployment has independent org IDs), so one view usually suffices. If you'd
-rather separate them explicitly — or your deployments can share org IDs (e.g.
-staging seeded from a prod dump) — filter the view with
-`AND ResourceAttributes['deployment.environment'] = '<env>'` and create one per
-environment (each in its own database, so the fixed view name doesn't collide).
+**Tip — separating environments.** If several Studio deployments share one
+`otel_logs`, give each its own view filtered by environment —
+`AND ResourceAttributes['deployment.environment'] = '<env>'` — in its own
+database (so the fixed `studio_monitoring_logs` name doesn't collide), and point
+each deployment's `CLICKHOUSE_URL` at its database.
 
 ```sql
 CREATE OR REPLACE VIEW studio_monitoring_logs AS
