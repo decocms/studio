@@ -39,11 +39,10 @@ import {
 } from "@untitledui/icons";
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { SidebarMenuButton } from "@deco/ui/components/sidebar.tsx";
-import { authClient } from "@/web/lib/auth-client";
+import { authClient, useActiveOrganizations } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
-import { isOrgArchived } from "@/web/lib/org-archived";
 import { usePreferences, type ThemeMode } from "@/web/hooks/use-preferences.ts";
 import { toast } from "@deco/ui/components/sonner.js";
 
@@ -526,7 +525,7 @@ function AccountPopoverContent({
 
 export function AccountPopover() {
   const { data: session } = authClient.useSession();
-  const { data: organizations } = authClient.useListOrganizations();
+  const { data: organizations } = useActiveOrganizations();
   const navigate = useNavigate();
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const orgParam = orgMatch?.params.org;
@@ -543,13 +542,11 @@ export function AccountPopover() {
     (o: { slug: string }) => o.slug === orgParam,
   );
 
-  const sortedOrgs = [...(organizations ?? [])]
-    .filter((o) => !isOrgArchived(o))
-    .sort((a, b) => {
-      if (a.slug === orgParam) return -1;
-      if (b.slug === orgParam) return 1;
-      return a.name.localeCompare(b.name);
-    });
+  const sortedOrgs = [...(organizations ?? [])].sort((a, b) => {
+    if (a.slug === orgParam) return -1;
+    if (b.slug === orgParam) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   const handleSelectOrg = (orgSlug: string) => {
     setOpen(false);

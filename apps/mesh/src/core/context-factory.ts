@@ -352,10 +352,15 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       list: async (userId?: string) => {
-        return auth.api.listOrganizations({
+        // Choke point: archived (soft-deleted) orgs are invisible to every
+        // API/UI surface, so filter them here — no caller of this method ever
+        // sees them. A future restore flow would read archived orgs from
+        // storage directly, not via this method.
+        const orgs = await auth.api.listOrganizations({
           headers,
           query: userId ? { userId } : undefined,
         });
+        return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
       },
 
       addMember: async (data) => {
@@ -572,18 +577,8 @@ async function authenticateRequest(
         return base.executeTakeFirst();
       });
 
-      if (membership?.orgMetadata) {
-        try {
-          const meta = JSON.parse(membership.orgMetadata) as Record<
-            string,
-            unknown
-          >;
-          if (meta.archived === true) {
-            throw new Error("Organization is archived");
-          }
-        } catch (e) {
-          if ((e as Error).message === "Organization is archived") throw e;
-        }
+      if (isOrgArchived({ metadata: membership?.orgMetadata })) {
+        throw new Error("Organization is archived");
       }
 
       const role = membership?.role;
@@ -919,7 +914,7 @@ async function authenticateRequest(
         } | null;
 
         if (orgData) {
-          if (orgData.metadata?.archived === true) {
+          if (isOrgArchived(orgData)) {
             throw new Error("Organization is archived");
           }
 

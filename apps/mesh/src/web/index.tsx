@@ -20,7 +20,6 @@ import "../../index.css";
 
 import { listOrganizationsCached } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import { isOrgArchived } from "@/web/lib/org-archived";
 
 import { sourcePlugins } from "./plugins.ts";
 import type {
@@ -137,16 +136,11 @@ const homeRoute = createRoute({
     const { data: orgs } = await listOrganizationsCached();
 
     // If the list call failed, skip redirect logic to avoid a misfire on a
-    // transient API failure.
+    // transient API failure. Archived orgs are already filtered by the helper.
     if (!orgs) return;
 
-    // Filter out archived organizations — they are soft-deleted and invisible to the UI
-    const activeOrgs = orgs.filter(
-      (o: { slug: string; metadata?: unknown }) => !isOrgArchived(o),
-    );
-
     // Redirect to first available org (every user gets a default org on signup)
-    const firstOrg = activeOrgs[0];
+    const firstOrg = orgs[0];
     if (firstOrg) {
       throw redirect({
         to: "/$org",
@@ -164,11 +158,9 @@ const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/onboarding",
   beforeLoad: async () => {
+    // Archived orgs are already filtered by the helper.
     const { data: orgs } = await listOrganizationsCached();
-    const activeOrgs = orgs?.filter(
-      (o: { metadata?: unknown }) => !isOrgArchived(o),
-    );
-    if (activeOrgs && activeOrgs.length > 0) {
+    if (orgs && orgs.length > 0) {
       throw redirect({ to: "/" });
     }
   },
