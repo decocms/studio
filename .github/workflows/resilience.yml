@@ -43,6 +43,10 @@ jobs:
         if: failure()
         run: docker compose -f tests/resilience/docker-compose.yml logs studio
 
+      - name: Dump link-daemon logs
+        if: failure()
+        run: docker compose -f tests/resilience/docker-compose.yml --profile link logs link-daemon
+
       - name: Tear down infrastructure
         if: always()
         run: docker compose -f tests/resilience/docker-compose.yml down -v
