@@ -38,7 +38,7 @@ No backend, schema, storage, or fixture file changes. No new helpers.
 - The IconPicker's trigger is a `<button type="button">` containing an `AgentAvatar`. There is no `aria-label`; locate it by being the first interactive `<button>` inside the settings page's "Agent identity header" row, where the agent title input lives. The title input has `placeholder="Agent name"` regardless of its value, so `page.getByPlaceholder("Agent name")` is the robust anchor (`getByPlaceholder` matches the HTML `placeholder` attribute, which React doesn't strip when a value is set).
 - The disabled state on the trigger sets `disabled` + `opacity-50` (`apps/mesh/src/web/components/icon-picker.tsx` ≈ line 126). The Playwright matcher `toBeEnabled()` reads `disabled`.
 
-- [ ] **Step 1: Create the test file with the full failing test**
+- [x] **Step 1: Create the test file with the full failing test**
 
 Create `apps/mesh/e2e/tests/clonable-agent-logo.spec.ts` with this exact content:
 
@@ -134,7 +134,7 @@ test.describe("clonable agent logo (settings tab)", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run from the repo root (no `cd` needed):
 
@@ -146,7 +146,7 @@ Expected: 1 test, 1 failed. The failure should be Playwright's `expect(iconButto
 
 If the failure is anything else — `toBeVisible` for the title input, navigation timeout, or "no element matches the locator" — STOP and fix the locator before proceeding. A test that fails for the wrong reason can't prove the fix works.
 
-- [ ] **Step 3: Commit the failing test**
+- [x] **Step 3: Commit the failing test**
 
 ```bash
 git add apps/mesh/e2e/tests/clonable-agent-logo.spec.ts
@@ -160,7 +160,7 @@ git commit -m "test(virtual-mcp): add failing e2e for clonable agent logo editin
 **Files:**
 - Modify: `apps/mesh/src/web/views/virtual-mcp/index.tsx` (≈ line 1592 — inside the "Agent identity header" block, the `<IconPicker>` render under the `name="icon"` Controller)
 
-- [ ] **Step 1: Edit the file**
+- [x] **Step 1: Edit the file**
 
 Open `apps/mesh/src/web/views/virtual-mcp/index.tsx`. Find the `<IconPicker>` render inside the `Controller` with `name="icon"` (it sits between the `{!hideOwnTitle && <Page.Title>...}` block and the title/description Controllers). It currently looks like:
 
@@ -217,7 +217,7 @@ Do NOT touch any other `disabled={hasGithubRepo}` usage in the file. The complet
 
 The local variable `const hasGithubRepo = agentHasConnectedGithub(virtualMcp);` (~ line 1118) stays as-is — it's still used by the five places above.
 
-- [ ] **Step 2: Run the e2e to verify it now passes**
+- [x] **Step 2: Run the e2e to verify it now passes**
 
 ```bash
 bun run --cwd=apps/mesh test:e2e -- clonable-agent-logo.spec.ts --reporter=line
@@ -225,7 +225,7 @@ bun run --cwd=apps/mesh test:e2e -- clonable-agent-logo.spec.ts --reporter=line
 
 Expected: 1 test, 1 passed.
 
-- [ ] **Step 3: Run lint and formatter**
+- [x] **Step 3: Run lint and formatter**
 
 ```bash
 bun run fmt && bun run lint
@@ -233,7 +233,7 @@ bun run fmt && bun run lint
 
 Expected: both exit 0. Biome formatting and oxlint (including the project's custom plugins) must pass. If `bun run fmt` modifies files, that's fine — they'll be included in the next commit step.
 
-- [ ] **Step 4: Run a broader smoke check**
+- [x] **Step 4: Run a broader smoke check**
 
 ```bash
 bun run check
@@ -241,7 +241,7 @@ bun run check
 
 Expected: TypeScript check passes across all workspaces. (Removing a prop can't introduce a type error here — `IconPicker.disabled` is optional — but `bun run check` is cheap and the CI rule says "CI errors are always on your branch.")
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/mesh/src/web/views/virtual-mcp/index.tsx
