@@ -1,6 +1,14 @@
 import { useState } from "react";
 import { ChevronRight, CreditCardSearch, Loading01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
+import { Label } from "@deco/ui/components/label.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { useDebouncedSaveBlock } from "./use-save-block";
 import { SchemaForm } from "./schema-form";
@@ -40,7 +48,7 @@ export function SeoEditor({
   onEditDefaultSeo,
   onBack,
 }: SeoEditorProps) {
-  const resolved = resolveSeoTarget(decofile, target);
+  const resolved = resolveSeoTarget(decofile, target, meta);
   const seoData = resolved?.seoData;
   const seoSchema = resolved
     ? resolveSchema(resolved.seoResolveType, meta)
@@ -158,6 +166,37 @@ export function SeoEditor({
                   resolved result.
                 </p>
               )}
+              {resolved.seoTypeOptions &&
+                resolved.seoTypeOptions.length > 1 && (
+                  <div className="mb-4 flex flex-col gap-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      SEO type
+                    </Label>
+                    <Select
+                      value={resolved.seoResolveType}
+                      onValueChange={(nextType) => {
+                        handleChange({
+                          ...effectiveSeo,
+                          __resolveType: nextType,
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select SEO type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {resolved.seoTypeOptions.map((option) => (
+                          <SelectItem
+                            key={option.resolveType}
+                            value={option.resolveType}
+                          >
+                            {option.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               <SchemaForm
                 schema={seoSchema}
                 value={effectiveSeo}

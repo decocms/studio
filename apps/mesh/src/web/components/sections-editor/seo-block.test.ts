@@ -38,7 +38,7 @@ describe("findSiteSeoEntry", () => {
     expect(entry?.seoResolveType).toBe(DEFAULT_SEO_RESOLVE_TYPE);
   });
 
-  test("infers seoResolveType from another block when inlined props lack one", () => {
+  test("without meta, inlined site seo does not scan other blocks for resolveType", () => {
     const decofile = {
       config: {
         __resolveType: "website/loaders/config.ts",
@@ -50,7 +50,7 @@ describe("findSiteSeoEntry", () => {
       },
     };
     const entry = findSiteSeoEntry(decofile);
-    expect(entry?.seoResolveType).toBe("website/sections/Seo/SeoV3.tsx");
+    expect(entry?.seoResolveType).toBe(DEFAULT_SEO_RESOLVE_TYPE);
   });
 
   test("finds a standalone SEO block when no nested SEO exists", () => {
@@ -237,5 +237,62 @@ describe("resolveSeoTarget", () => {
 
   test("site target resolves to null when no site SEO exists", () => {
     expect(resolveSeoTarget({}, { kind: "site" })).toBeNull();
+  });
+
+  test("page target uses manifest seo union when meta is provided", () => {
+    const meta = {
+      manifest: {
+        blocks: {
+          pages: {
+            "website/pages/Page.tsx": { $ref: "#/definitions/Page" },
+          },
+          sections: {
+            "website/sections/Seo/SeoPDPV2.tsx": {
+              $ref: "#/definitions/SeoPDP",
+            },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Page: {
+            type: "object",
+            properties: {
+              seo: {
+                anyOf: [{ $ref: "#/definitions/SeoPDPSection" }],
+              },
+            },
+          },
+          SeoPDPSection: {
+            allOf: [
+              {
+                properties: {
+                  __resolveType: {
+                    enum: ["website/sections/Seo/SeoPDPV2.tsx"],
+                  },
+                },
+              },
+            ],
+            title: "PDP",
+          },
+          SeoPDP: {},
+        },
+      },
+    };
+    const resolved = resolveSeoTarget(
+      {
+        pdp: {
+          __resolveType: "website/pages/Page.tsx",
+          name: "PDP",
+          path: "/p",
+        },
+      },
+      { kind: "page", pageKey: "pdp", pageName: "PDP", path: "/p" },
+      meta,
+    );
+    expect(resolved?.seoResolveType).toBe("website/sections/Seo/SeoPDPV2.tsx");
+    expect(resolved?.seoTypeOptions?.map((o) => o.resolveType)).toEqual([
+      "website/sections/Seo/SeoPDPV2.tsx",
+    ]);
   });
 });

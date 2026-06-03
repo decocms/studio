@@ -43,7 +43,7 @@ export function SeoSheet({
   target,
   onSaved,
 }: SeoSheetProps) {
-  const resolved = resolveSeoTarget(decofile, target);
+  const resolved = resolveSeoTarget(decofile, target, meta);
   const seoSchema = resolved
     ? resolveSchema(resolved.seoResolveType, meta)
     : null;

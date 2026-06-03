@@ -1,9 +1,17 @@
+import type { LiveMeta } from "./resolve-schema";
+import {
+  listPageSeoTypeOptions,
+  resolvePageSeoResolveType,
+  resolveSiteSeoResolveType,
+  type SeoTypeOption,
+} from "./seo-schema";
+
 const PAGE_RESOLVE_TYPES = new Set([
   "website/pages/Page.tsx",
   "$live/pages/LivePage.tsx",
 ]);
 
-/** Default deco SEO section type — schema fallback for inlined SEO props. */
+/** Default deco SEO section type when manifest schemas are unavailable. */
 export const DEFAULT_SEO_RESOLVE_TYPE = "website/sections/Seo/SeoV2.tsx";
 
 /** Props that mark an object as SEO config even without a `__resolveType`. */
@@ -52,24 +60,6 @@ function looksLikeSeo(obj: Record<string, unknown>): boolean {
 }
 
 /**
- * The SEO section resolveType used somewhere in this decofile (pages reference
- * it via `seo.__resolveType`), so the site default's inlined props get the
- * right form schema. Falls back to the deco default.
- */
-function inferSeoResolveType(decofile: Record<string, unknown>): string {
-  for (const val of Object.values(decofile)) {
-    if (!isPlainObject(val)) continue;
-    const obj = val;
-    if (isSeoResolveType(obj.__resolveType)) return obj.__resolveType;
-    const seo = obj.seo;
-    if (isPlainObject(seo) && isSeoResolveType(seo.__resolveType)) {
-      return seo.__resolveType;
-    }
-  }
-  return DEFAULT_SEO_RESOLVE_TYPE;
-}
-
-/**
  * Finds the site-level (default) SEO that pages inherit from. Deco sites store
  * this in one of a few shapes, checked in order:
  *
@@ -81,6 +71,7 @@ function inferSeoResolveType(decofile: Record<string, unknown>): string {
  */
 export function findSiteSeoEntry(
   decofile: Record<string, unknown>,
+  meta?: LiveMeta,
 ): SiteSeoEntry | null {
   // 1) SEO nested on a non-page config block.
   for (const [key, val] of Object.entries(decofile)) {
@@ -97,9 +88,11 @@ export function findSiteSeoEntry(
           kind: "nested",
           seoData: seoObj,
           blockData: obj,
-          seoResolveType: isSeoResolveType(seoObj.__resolveType)
-            ? seoObj.__resolveType
-            : inferSeoResolveType(decofile),
+          seoResolveType: meta
+            ? resolveSiteSeoResolveType(meta, obj, seoObj)
+            : isSeoResolveType(seoObj.__resolveType)
+              ? seoObj.__resolveType
+              : DEFAULT_SEO_RESOLVE_TYPE,
         };
       }
     }
@@ -140,6 +133,8 @@ export interface ResolvedSeo {
   seoData: Record<string, unknown> | undefined;
   /** resolveType to resolve the form schema with. */
   seoResolveType: string;
+  /** Page targets: SEO variants from the live page schema (when `meta` is passed). */
+  seoTypeOptions?: SeoTypeOption[];
   /** Builds the full decofile block payload to persist an edited SEO value. */
   build: (value: Record<string, unknown>) => Record<string, unknown>;
 }
@@ -152,9 +147,10 @@ export interface ResolvedSeo {
 export function resolveSeoTarget(
   decofile: Record<string, unknown>,
   target: SeoTarget,
+  meta?: LiveMeta,
 ): ResolvedSeo | null {
   if (target.kind === "site") {
-    const entry = findSiteSeoEntry(decofile);
+    const entry = findSiteSeoEntry(decofile, meta);
     if (!entry) return null;
     return {
       blockKey: entry.blockKey,
@@ -172,10 +168,12 @@ export function resolveSeoTarget(
   return {
     blockKey: target.pageKey,
     seoData: seo,
-    seoResolveType:
-      typeof seo?.__resolveType === "string"
+    seoResolveType: meta
+      ? resolvePageSeoResolveType(meta, seo)
+      : typeof seo?.__resolveType === "string"
         ? seo.__resolveType
         : DEFAULT_SEO_RESOLVE_TYPE,
+    seoTypeOptions: meta ? listPageSeoTypeOptions(meta) : undefined,
     build: (value) => ({ ...blockData, seo: value }),
   };
 }

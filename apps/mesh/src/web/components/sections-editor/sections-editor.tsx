@@ -35,6 +35,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema, type SchemaProperty } from "./resolve-schema";
+import { resolvePageSeoResolveType } from "./seo-schema";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
@@ -631,9 +632,14 @@ export function SectionsEditor({
   const seoData = pageData
     ? (pageData.seo as Record<string, unknown> | undefined)
     : undefined;
-  const seoResolveType =
-    typeof seoData?.__resolveType === "string" ? seoData.__resolveType : null;
-  const seoSchema = seoResolveType ? resolveSchema(seoResolveType, meta) : null;
+  const seoResolveType = pageData
+    ? resolvePageSeoResolveType(
+        meta,
+        seoData as Record<string, unknown> | undefined,
+      )
+    : null;
+  const seoSchema =
+    pageData && seoResolveType ? resolveSchema(seoResolveType, meta) : null;
 
   const pageVariants = isGlobalBlockMode
     ? [
@@ -2101,8 +2107,8 @@ export function SectionsEditor({
             onFormChange={handleSeoFormChange}
             onBreadcrumbChange={setSeoFieldBreadcrumbs}
             emptyMessage={
-              !seoData
-                ? "This page has no SEO block configured."
+              !seoSchema
+                ? "SEO schema not found for this site."
                 : "No editable SEO fields found."
             }
           />
