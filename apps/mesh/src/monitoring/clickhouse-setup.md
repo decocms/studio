@@ -59,11 +59,17 @@ change (they must match `MONITORING_LOG_ATTR` in `monitoring/schema.ts`).
 The `ServiceName = 'studio'` filter assumes the default service name. If you run
 Studio with a custom `OTEL_SERVICE_NAME`, use that value instead.
 
-**Multiple deployments sharing one `otel_logs`** (e.g. staging + production in one
-event lake): all of them carry `ServiceName = 'studio'`, so also filter by the
-environment — `AND ResourceAttributes['deployment.environment'] = 'production'`
-(Studio sets `deployment.environment` per deployment) — and create one view per
-environment.
+At the end of the day the contract is just this: the app connects to the
+ClickHouse at `CLICKHOUSE_URL` and expects a `studio_monitoring_logs` view with
+the columns below. Where the view lives and what it reads from is your call.
+
+**Tip — separating environments.** Several Studio deployments can share one
+`otel_logs`; the dashboard already isolates them by `organization_id` (each
+deployment has independent org IDs), so one view usually suffices. If you'd
+rather separate them explicitly — or your deployments can share org IDs (e.g.
+staging seeded from a prod dump) — filter the view with
+`AND ResourceAttributes['deployment.environment'] = '<env>'` and create one per
+environment (each in its own database, so the fixed view name doesn't collide).
 
 ```sql
 CREATE OR REPLACE VIEW studio_monitoring_logs AS
