@@ -38,14 +38,26 @@ describe("sandbox↔studio WS partition", () => {
   beforeAll(async () => {
     // setup's beforeAll already minted testState.apiKey/cookie/orgId.
     orgSlug = await getOrgSlug(testState.orgId, testState.cookie);
+    console.log(`[ws-partition] orgSlug=${orgSlug} orgId=${testState.orgId}`);
     vmId = await createAgent(
       testState.orgId,
       testState.cookie,
       "WS Partition Agent",
     );
+    console.log(`[ws-partition] vmId=${vmId} branch=${BRANCH}`);
     await startLinkDaemonContainer(testState.apiKey);
-    await waitForLinkClaim(testState.cookie, 90_000);
-    await sandboxStart(testState.orgId, testState.cookie, vmId, BRANCH);
+    console.log(`[ws-partition] link-daemon container started`);
+    const claim = await waitForLinkClaim(testState.cookie, 90_000);
+    console.log(`[ws-partition] link claim=${JSON.stringify(claim)}`);
+    const sandboxResult = await sandboxStart(
+      testState.orgId,
+      testState.cookie,
+      vmId,
+      BRANCH,
+    );
+    console.log(
+      `[ws-partition] SANDBOX_START result=${JSON.stringify(sandboxResult)}`,
+    );
   }, 180_000);
 
   afterAll(async () => {
@@ -61,6 +73,15 @@ describe("sandbox↔studio WS partition", () => {
       testState.cookie,
       { path: FILE_PATH, content: FILE_CONTENT },
     );
+    if (write.status >= 300) {
+      const body = await write
+        .clone()
+        .text()
+        .catch(() => "<unreadable>");
+      console.error(
+        `[ws-partition] /write FAILED status=${write.status} body=${body} url=/api/${orgSlug}/sandbox/${vmId}/${BRANCH}/write`,
+      );
+    }
     expect(write.status).toBeLessThan(300);
 
     const read = await sandboxPost(
@@ -71,6 +92,15 @@ describe("sandbox↔studio WS partition", () => {
       testState.cookie,
       { path: FILE_PATH },
     );
+    if (read.status !== 200) {
+      const body = await read
+        .clone()
+        .text()
+        .catch(() => "<unreadable>");
+      console.error(
+        `[ws-partition] /read FAILED status=${read.status} body=${body}`,
+      );
+    }
     expect(read.status).toBe(200);
     const text = await read.text();
     expect(text).toContain(FILE_CONTENT);

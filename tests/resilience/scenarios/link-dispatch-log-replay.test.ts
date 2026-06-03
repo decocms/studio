@@ -36,27 +36,70 @@ let vmId = "";
 describe("sandbox log/event SSE replay", () => {
   beforeAll(async () => {
     orgSlug = await getOrgSlug(testState.orgId, testState.cookie);
+    console.log(`[log-replay] orgSlug=${orgSlug} orgId=${testState.orgId}`);
     vmId = await createAgent(
       testState.orgId,
       testState.cookie,
       "Log Replay Agent",
     );
+    console.log(`[log-replay] vmId=${vmId} branch=${BRANCH}`);
     await startLinkDaemonContainer(testState.apiKey);
-    await waitForLinkClaim(testState.cookie, 90_000);
-    await sandboxStart(testState.orgId, testState.cookie, vmId, BRANCH);
+    console.log(`[log-replay] link-daemon container started`);
+    const claim = await waitForLinkClaim(testState.cookie, 90_000);
+    console.log(`[log-replay] link claim=${JSON.stringify(claim)}`);
+    const sandboxResult = await sandboxStart(
+      testState.orgId,
+      testState.cookie,
+      vmId,
+      BRANCH,
+    );
+    console.log(
+      `[log-replay] SANDBOX_START result=${JSON.stringify(sandboxResult)}`,
+    );
 
     // Configure exec: a packageManager + a package.json with a `marker` script.
-    await sandboxPost(orgSlug, vmId, BRANCH, "/write", testState.cookie, {
-      path: "package.json",
-      content: JSON.stringify({
-        name: "resilience-fixture",
-        packageManager: "npm@10.0.0",
-        scripts: { marker: `echo ${MARKER}` },
-      }),
-    });
-    await sandboxPutConfig(orgSlug, vmId, BRANCH, testState.cookie, {
-      application: { packageManager: { name: "npm" } },
-    });
+    const writeRes = await sandboxPost(
+      orgSlug,
+      vmId,
+      BRANCH,
+      "/write",
+      testState.cookie,
+      {
+        path: "package.json",
+        content: JSON.stringify({
+          name: "resilience-fixture",
+          packageManager: "npm@10.0.0",
+          scripts: { marker: `echo ${MARKER}` },
+        }),
+      },
+    );
+    if (writeRes.status >= 300) {
+      const body = await writeRes
+        .clone()
+        .text()
+        .catch(() => "<unreadable>");
+      console.error(
+        `[log-replay] beforeAll /write FAILED status=${writeRes.status} body=${body} url=/api/${orgSlug}/sandbox/${vmId}/${BRANCH}/write`,
+      );
+    }
+    const configRes = await sandboxPutConfig(
+      orgSlug,
+      vmId,
+      BRANCH,
+      testState.cookie,
+      {
+        application: { packageManager: { name: "npm" } },
+      },
+    );
+    if (configRes.status >= 300) {
+      const body = await configRes
+        .clone()
+        .text()
+        .catch(() => "<unreadable>");
+      console.error(
+        `[log-replay] beforeAll PUT /config FAILED status=${configRes.status} body=${body}`,
+      );
+    }
   }, 180_000);
 
   afterAll(async () => {
@@ -73,6 +116,15 @@ describe("sandbox log/event SSE replay", () => {
       testState.cookie,
       {},
     );
+    if (exec.status >= 400) {
+      const body = await exec
+        .clone()
+        .text()
+        .catch(() => "<unreadable>");
+      console.error(
+        `[log-replay] /exec/marker FAILED status=${exec.status} body=${body} url=/api/${orgSlug}/sandbox/${vmId}/${BRANCH}/exec/marker`,
+      );
+    }
     expect(exec.status).toBeLessThan(400);
 
     await pollUntil(
