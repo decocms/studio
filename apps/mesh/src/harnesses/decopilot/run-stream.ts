@@ -611,6 +611,7 @@ export async function* runDecopilotStream(
     planMode: modeConfig.isPlanMode,
     isDecopilot: isDecopilot(input.agent.id) !== null,
     systemAgentInstructions: tools.serverInstructions,
+    currentThreadId: threadId,
     writer,
     subtaskParams: {
       provider,
