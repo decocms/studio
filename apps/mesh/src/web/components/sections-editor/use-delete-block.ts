@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
-import { assertSafeDecoBlockKey, decoBlockFilePath } from "./deco-block-key";
+import { decoBlockFilePath } from "./deco-block-key";
 
 interface UseDeleteBlockParams {
   orgSlug: string;
@@ -23,7 +23,6 @@ export function useDeleteBlock({
 
   return useMutation({
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
-      assertSafeDecoBlockKey(blockKey);
       const path = decoBlockFilePath(blockKey);
       const res = await fetch(
         `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/unlink`,
