@@ -93,18 +93,26 @@ async function buildUserContextBlock(
 You're talking to ${name}${email}. Address them by name when it's natural.`);
   }
 
+  // Continuity + interests are independent reads — fetch in parallel so the
+  // prompt build doesn't pay two serial round-trips.
+  const [recent, doc] = await Promise.all([
+    opts.ctx.storage?.threads
+      ?.list(userId, { limit: 9, agentId })
+      .catch(() => null),
+    opts.ctx.storage?.interests
+      ?.getForAgent(opts.organization.id, agentId, userId)
+      .catch(() => null),
+  ]);
+
   // Continuity — recent threads with THIS agent, excluding the current one.
-  const recent = await opts.ctx.storage?.threads
-    ?.list(userId, { limit: 9, agentId })
-    .catch(() => null);
   if (recent && recent.total > 0) {
     const others = recent.threads
       .filter((t) => t.id !== opts.currentThreadId)
       .slice(0, 8);
     if (others.length > 0) {
-      // Subtract the current thread from the count if it's in the set.
-      const inList = recent.threads.some((t) => t.id === opts.currentThreadId);
-      const total = inList ? recent.total - 1 : recent.total;
+      // The current thread is always part of the user's total, so exclude it
+      // from the count whenever we know which one it is.
+      const total = opts.currentThreadId ? recent.total - 1 : recent.total;
       if (total > 0) {
         sections.push(renderRecentThreadsSection(total, others));
       }
@@ -112,9 +120,6 @@ You're talking to ${name}${email}. Address them by name when it's natural.`);
   }
 
   // Interests — durable goals, scoped to this agent.
-  const doc = await opts.ctx.storage?.interests
-    ?.getForAgent(opts.organization.id, agentId, userId)
-    .catch(() => null);
   if (doc && doc.interests.length > 0) {
     sections.push(
       renderInterestsSection(doc.interests.slice(0, MAX_INJECTED_INTERESTS)),

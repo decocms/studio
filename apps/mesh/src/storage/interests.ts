@@ -19,8 +19,22 @@ export interface InterestsDoc {
   interests: Interest[];
 }
 
+/** Reserved `kv` key prefix for interests docs. The generic kv REST API
+ *  rejects keys under this prefix so per-agent memory can't be read or
+ *  tampered with by other org members through `/api/:org/kv/:key`. */
+export const INTERESTS_KEY_PREFIX = "interests:";
+
 const key = (agentId: string, userId: string) =>
-  `interests:${agentId}:${userId}`;
+  `${INTERESTS_KEY_PREFIX}${agentId}:${userId}`;
+
+/** Defensively coerce a raw kv row into a doc — guards against malformed or
+ *  externally-written values that don't match the expected shape. */
+function toInterestsDoc(
+  row: Record<string, unknown> | null,
+): InterestsDoc | null {
+  if (!row || !Array.isArray(row.interests)) return null;
+  return { interests: row.interests as Interest[] };
+}
 
 export interface InterestsStorage {
   getForAgent(
@@ -45,7 +59,7 @@ export class KyselyInterestsStorage implements InterestsStorage {
     userId: string,
   ): Promise<InterestsDoc | null> {
     const row = await this.kv.get(orgId, key(agentId, userId));
-    return row ? (row as unknown as InterestsDoc) : null;
+    return toInterestsDoc(row);
   }
 
   async setForAgent(

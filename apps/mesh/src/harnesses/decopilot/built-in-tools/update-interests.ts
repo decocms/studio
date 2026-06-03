@@ -12,14 +12,20 @@ import { z } from "zod";
 import type { MeshContext } from "@/core/mesh-context";
 
 const UpdateInterestsInputSchema = z.object({
-  interests: z.array(
-    z.object({
-      title: z.string().describe("Short noun phrase, e.g. 'Learning Rust'"),
-      summary: z
-        .string()
-        .describe("One or two sentences of context, including any progress"),
-    }),
-  ),
+  interests: z
+    .array(
+      z.object({
+        title: z
+          .string()
+          .max(120)
+          .describe("Short noun phrase, e.g. 'Learning Rust'"),
+        summary: z
+          .string()
+          .max(500)
+          .describe("One or two sentences of context, including any progress"),
+      }),
+    )
+    .max(10),
 });
 
 export type UpdateInterestsInput = z.infer<typeof UpdateInterestsInputSchema>;
