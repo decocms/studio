@@ -175,7 +175,11 @@ async function createAgentAndThread(
         // clone, but the UI now believes the agent has a repo and
         // renders the pickers (locked or unlocked) accordingly.
         metadata: {
-          githubRepo: { url: "https://github.com/decocms/lock-e2e-fixture" },
+          githubRepo: {
+            url: "https://github.com/decocms/lock-e2e-fixture",
+            owner: "decocms",
+            name: "lock-e2e-fixture",
+          },
         },
       },
     },
