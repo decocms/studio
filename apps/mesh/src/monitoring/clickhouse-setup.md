@@ -133,7 +133,7 @@ org attribute keeps scans cheap, e.g.:
 ```sql
 ALTER TABLE otel_logs
   ADD INDEX idx_studio_org
-  mapValues(LogAttributes)['studio.monitoring.organization_id']
+  LogAttributes['studio.monitoring.organization_id']
   TYPE bloom_filter GRANULARITY 4;
 ```
 

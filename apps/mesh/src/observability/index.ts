@@ -43,7 +43,14 @@ import {
   type LogRecordProcessor,
   type SdkLogRecord,
 } from "@opentelemetry/sdk-logs";
-import { resourceFromAttributes } from "@opentelemetry/resources";
+import {
+  detectResources,
+  envDetector,
+  hostDetector,
+  osDetector,
+  processDetector,
+  resourceFromAttributes,
+} from "@opentelemetry/resources";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { setMonitoringLoggerProvider } from "../monitoring/logger";
 import { NodeSDK } from "@opentelemetry/sdk-node";
@@ -389,12 +396,21 @@ export function initObservability(): void {
   tracer = trace.getTracer("studio", "1.0.0");
 
   // ── Logger providers ────────────────────────────────────────────────────
-  // Shared resource so both infra and monitoring logs carry service.name +
-  // deployment.environment (used to filter in HyperDX/ClickStack).
-  const logResource = resourceFromAttributes({
-    "service.name": _settings.otelServiceName,
-    "deployment.environment": env,
-  });
+  // Shared resource for both infra and monitoring logs. Mirror the resource the
+  // NodeSDK builds for traces/metrics: auto-detected attributes (host.name,
+  // process.*, and anything in OTEL_RESOURCE_ATTRIBUTES such as service.version)
+  // merged with our explicit service.name + deployment.environment — so log
+  // records carry the same resource as the other signals. `resourceAttributes`
+  // only carries deployment.environment when it isn't already supplied via
+  // OTEL_RESOURCE_ATTRIBUTES (same conditional the NodeSDK resource uses).
+  const logResource = detectResources({
+    detectors: [envDetector, hostDetector, osDetector, processDetector],
+  }).merge(
+    resourceFromAttributes({
+      "service.name": _settings.otelServiceName,
+      ...resourceAttributes,
+    }),
+  );
 
   // Infra logs: console.* interception (see emitLog). Registered as the GLOBAL
   // provider so logs.getLogger("studio") routes here. Sampled — high volume,
@@ -402,12 +418,21 @@ export function initObservability(): void {
   const infraProcessors: LogRecordProcessor[] = [];
   if (otlpEnabled) {
     const isProd = env === "prod" || env === "production";
-    const ratio =
-      process.env.INFRA_LOG_SAMPLE_RATIO !== undefined
-        ? Number(process.env.INFRA_LOG_SAMPLE_RATIO)
-        : isProd
-          ? 1.0
-          : 0.1;
+    const defaultRatio = isProd ? 1.0 : 0.1;
+    const rawRatio = process.env.INFRA_LOG_SAMPLE_RATIO;
+    let ratio = defaultRatio;
+    if (rawRatio !== undefined) {
+      const parsed = Number(rawRatio);
+      // Guard invalid values: NaN would drop every non-error log; >1 disables
+      // sampling; <0 drops everything. Fall back to the default and warn.
+      if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) {
+        ratio = parsed;
+      } else {
+        console.warn(
+          `[observability] Ignoring invalid INFRA_LOG_SAMPLE_RATIO="${rawRatio}" (expected 0..1); using ${defaultRatio}`,
+        );
+      }
+    }
     infraProcessors.push(
       new SampledLogRecordProcessor(
         new BatchLogRecordProcessor(new OTLPLogExporter()),
