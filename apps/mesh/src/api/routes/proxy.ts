@@ -16,7 +16,7 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Context, Hono } from "hono";
 import { endTime, startTime } from "hono/timing";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { managementMCP } from "../../tools";
 import { guardResponseStream } from "../utils/stream-guard";
 import { handleAuthError } from "./oauth-proxy";
@@ -27,7 +27,7 @@ export { toServerClient, type MCPProxyClient } from "./mcp-proxy-factory";
 
 // Define Hono variables type
 type Variables = {
-  meshContext: MeshContext;
+  meshContext: StudioContext;
 };
 
 type ProxyEnv = { Variables: Variables };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { createInMemoryLinkClaimRegistry } from "../../links/link-claim-registry";
 import type { LinkClaim } from "../../links/link-claim-registry";
 import { LINK_CURRENT_GET } from "./get-current";
@@ -17,9 +17,9 @@ const USER_ID = "user_1";
 
 function makeCtx(
   overrides: Partial<
-    Pick<MeshContext, "linkClaimRegistry" | "auth" | "access">
+    Pick<StudioContext, "linkClaimRegistry" | "auth" | "access">
   > = {},
-): MeshContext {
+): StudioContext {
   return {
     auth: {
       user: {
@@ -70,7 +70,7 @@ function makeCtx(
     pendingRevalidations: [],
     monitoring: null as never,
     ...overrides,
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 }
 
 describe("LINK_CURRENT_GET", () => {

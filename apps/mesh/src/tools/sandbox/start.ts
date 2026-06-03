@@ -21,8 +21,8 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-  type MeshContext,
-} from "../../core/mesh-context";
+  type StudioContext,
+} from "../../core/studio-context";
 import {
   requireVmEntry,
   resolveRuntimeConfig,
@@ -173,7 +173,7 @@ export async function ensureSandbox(
     branch: string;
     sandboxProviderKind: SandboxProviderKind;
   },
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<SandboxRecord> {
   // Inline auth + lookup; the standard `requireVmEntry` runs
   // `ctx.access.check()`, which expects resource scoping that the
@@ -249,7 +249,7 @@ export async function ensureSandbox(
 }
 
 type StartParams = {
-  ctx: MeshContext;
+  ctx: StudioContext;
   userId: string;
   orgId: string;
   virtualMcpId: string;
@@ -460,7 +460,7 @@ async function provisionSandbox(
  * readers (resolveRuntimeConfig, any client inspectors) keep working.
  */
 async function persistDetectedRuntime(
-  ctx: MeshContext,
+  ctx: StudioContext,
   virtualMcpId: string,
   actingUserId: string,
   packageManager: string,

@@ -8,7 +8,7 @@
  */
 
 import type { ToolAnnotations } from "@/core/define-tool";
-import { MeshContext } from "@/core/mesh-context";
+import { StudioContext } from "@/core/studio-context";
 import {
   collectPluginTools,
   filterToolsByEnabledPlugins,
@@ -201,8 +201,8 @@ interface CombinedTool {
   annotations?: ToolAnnotations;
   _meta?: Record<string, unknown>;
   modelSummary?: (result: unknown) => string;
-  handler: (input: unknown, ctx: MeshContext) => Promise<unknown>;
-  execute: (input: unknown, ctx: MeshContext) => Promise<unknown>;
+  handler: (input: unknown, ctx: StudioContext) => Promise<unknown>;
+  execute: (input: unknown, ctx: StudioContext) => Promise<unknown>;
 }
 
 // All available tools — core + plugin tools
@@ -217,7 +217,7 @@ export type MCPMeshTools = typeof ALL_TOOLS;
 // Derive tool name type from ALL_TOOLS
 export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
 
-export const managementMCP = async (ctx: MeshContext) => {
+export const managementMCP = async (ctx: StudioContext) => {
   // Get enabled plugins for this organization to filter plugin tools
   // Check both org settings (legacy) and all virtual MCPs
   let enabledPlugins: string[] | null = null;
@@ -451,7 +451,7 @@ export const managementMCP = async (ctx: MeshContext) => {
  * connecting a client to the management server over InMemoryTransport.
  */
 export async function listManagementTools(
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<McpTool[]> {
   const server = await managementMCP(ctx);
   const [clientTransport, serverTransport] =

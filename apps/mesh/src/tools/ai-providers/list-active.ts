@@ -1,6 +1,6 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { getProviders } from "../../ai-providers/registry";
 
 export const AI_PROVIDERS_ACTIVE = defineTool({

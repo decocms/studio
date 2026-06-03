@@ -14,7 +14,7 @@
  * layer their existing per-automation and global gates above this
  * per-thread one; user messages enter here directly.
  *
- * Runtime dependencies (dispatch fn, mesh-context factory, dispatch deps)
+ * Runtime dependencies (dispatch fn, studio-context factory, dispatch deps)
  * are looked up via a module-level registry. App boot wires them via
  * `setThreadGateRuntime` BEFORE `DBOS.launch()`. The workflow is registered
  * at import time so the recovery executor can replay it after a crash.
@@ -25,7 +25,7 @@ import type {
   DispatchRunDeps,
   DispatchRunInput,
 } from "@/api/routes/decopilot/dispatch-run";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 
 export const THREAD_GATE_QUEUE = "thread-gate";
@@ -72,18 +72,18 @@ export type ThreadGateOutcome = { taskId: string };
 
 export type DispatchRunAndWaitFn = (
   input: DispatchRunInput,
-  ctx: MeshContext,
+  ctx: StudioContext,
   deps: DispatchRunDeps,
 ) => Promise<{ taskId: string }>;
 
-export type MeshContextFactory = (
+export type StudioContextFactory = (
   orgId: string,
   userId: string,
-) => Promise<MeshContext | null>;
+) => Promise<StudioContext | null>;
 
 export interface ThreadGateRuntime {
   dispatchRunFn: DispatchRunAndWaitFn;
-  meshContextFactory: MeshContextFactory;
+  meshContextFactory: StudioContextFactory;
   deps: Pick<
     DispatchRunDeps,
     "runRegistry" | "cancelBroadcast" | "streamBuffer" | "sseHub"

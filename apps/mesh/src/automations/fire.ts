@@ -1,10 +1,10 @@
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { Cron } from "croner";
 
-export type MeshContextFactory = (
+export type StudioContextFactory = (
   orgId: string,
   userId: string,
-) => Promise<MeshContext | null>;
+) => Promise<StudioContext | null>;
 
 export function computeNextRunAt(
   cronExpression: string,

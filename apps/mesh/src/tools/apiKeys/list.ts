@@ -6,7 +6,7 @@
  */
 
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { requireAuth } from "../../core/studio-context";
 import {
   ApiKeyListInputSchema,
   ApiKeyListOutputSchema,

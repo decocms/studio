@@ -15,7 +15,7 @@ import { Hono } from "hono";
 import { createHmac } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { getSettings } from "../../settings";
 
 // Base directory for dev assets (relative to cwd)
@@ -128,7 +128,7 @@ export function getContentType(key: string): string {
 // Routes
 // ============================================================================
 
-type DevAssetsVariables = { meshContext: MeshContext };
+type DevAssetsVariables = { meshContext: StudioContext };
 
 interface CreateDevAssetsRoutesOptions {
   /**

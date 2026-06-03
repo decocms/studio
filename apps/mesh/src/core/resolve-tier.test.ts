@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from "bun:test";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { resolveTier, TierUnavailableError } from "./resolve-tier";
 
 interface ProviderKeyFixture {
@@ -27,7 +27,7 @@ function makeCtx(opts: {
   providerKeys?: ProviderKeyFixture[];
   models?: Record<string, ModelFixture[]>;
   listModelsThrows?: boolean;
-}): MeshContext {
+}): StudioContext {
   return {
     organization: { id: "org_1" },
     storage: {
@@ -59,7 +59,7 @@ function makeCtx(opts: {
         return Promise.resolve(opts.models?.[keyId] ?? []);
       }),
     },
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 }
 
 describe("resolveTier", () => {

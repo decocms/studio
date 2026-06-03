@@ -3,7 +3,7 @@
  *
  * The POST /messages dispatch/link-gating behavior that used to live here was
  * a route handler with every dependency mocked (resolveTier, model-permissions,
- * dispatch-queue, the sandbox-kind resolver, and a fabricated MeshContext) —
+ * dispatch-queue, the sandbox-kind resolver, and a fabricated StudioContext) —
  * the bad zone. It now runs through the real front door in
  * apps/mesh/e2e/tests/decopilot-messages.spec.ts. What remains is genuinely
  * pure: computeIdempotencyKey takes a message and returns a string, no I/O.

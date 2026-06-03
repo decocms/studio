@@ -12,7 +12,7 @@ import {
 } from "@decocms/bindings/collections";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireOrganization } from "../../core/mesh-context";
+import { requireOrganization } from "../../core/studio-context";
 import { type VirtualMCPEntity, VirtualMCPEntitySchema } from "./schema";
 
 /**

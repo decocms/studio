@@ -11,11 +11,11 @@
  * cost savings and hit ratios. A counter is only emitted for non-zero kinds.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { DECOPILOT_CONNECTION_ID } from "./schema";
 
 export function recordLlmCallMetrics(params: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   organizationId: string;
   modelId: string;
   durationMs: number;

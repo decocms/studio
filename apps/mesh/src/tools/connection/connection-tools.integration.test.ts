@@ -14,7 +14,7 @@ import {
   COLLECTION_CONNECTIONS_UPDATE,
   CONNECTION_TEST,
 } from "./index";
-import type { BoundAuthClient, MeshContext } from "../../core/mesh-context";
+import type { BoundAuthClient, StudioContext } from "../../core/studio-context";
 import { ConnectionStorage } from "../../storage/connection";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
 import type { EventBus } from "../../event-bus/interface";
@@ -39,7 +39,7 @@ const createMockBoundAuth = (): BoundAuthClient =>
 
 describe("Connection Tools", () => {
   let database: MeshDatabase;
-  let ctx: MeshContext;
+  let ctx: StudioContext;
   let vault: CredentialVault;
 
   beforeAll(async () => {

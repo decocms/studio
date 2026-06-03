@@ -7,12 +7,12 @@
 
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import type { KVStorage } from "@/storage/kv";
 import { INTERESTS_KEY_PREFIX } from "@/storage/interests";
 
 type Variables = {
-  meshContext: MeshContext;
+  meshContext: StudioContext;
 };
 
 interface KVRouteDeps {

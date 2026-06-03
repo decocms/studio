@@ -36,7 +36,7 @@ import {
   OrgScopedAsyncResearchJobStorage,
   SqlAsyncResearchJobStorage,
 } from "@/storage/async-research-jobs";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { googleAdapter } from "@/ai-providers/adapters/google";
 import { AsyncResearchTerminalError } from "@/ai-providers/types";
 import type { ModelInfo } from "@/api/routes/decopilot/types";
@@ -153,7 +153,7 @@ function startMockServer(defaults: SubmitOptions): MockServer {
 }
 
 // ============================================================================
-// Test harness — minimal MeshContext, real storage, real google adapter
+// Test harness — minimal StudioContext, real storage, real google adapter
 // ============================================================================
 
 const ORG_ID = "org_e2e_async_research";
@@ -179,14 +179,14 @@ function makeWriter(): {
   return { writer, events };
 }
 
-function makeCtx(storage: OrgScopedAsyncResearchJobStorage): MeshContext {
+function makeCtx(storage: OrgScopedAsyncResearchJobStorage): StudioContext {
   // The async path only reads `ctx.storage.asyncResearchJobs` and
   // `ctx.objectStorage`. Everything else can stay undefined behind the
   // unknown cast — this is a focused test, not an integration spec.
   return {
     storage: { asyncResearchJobs: storage },
     objectStorage: null,
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 }
 
 // ============================================================================

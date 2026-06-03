@@ -11,12 +11,12 @@
  */
 
 import { Hono } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
-import { getUserId } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
+import { getUserId } from "../../core/studio-context";
 import { generatePrefixedId } from "../../shared/utils/generate-id";
 import { fetchToolsFromMCP } from "../../tools/connection/fetch-tools";
 
-type Variables = { meshContext: MeshContext };
+type Variables = { meshContext: StudioContext };
 
 interface SupabaseSite {
   name: string;
@@ -362,7 +362,7 @@ export async function provisionDecoAssetsCredentials(
  * the user. Caller treats this as best-effort.
  */
 export async function provisionDecoAssetsFileConfig(params: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   orgId: string;
   userId: string;
   siteName: string;

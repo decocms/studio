@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, mock, beforeEach } from "bun:test";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 
@@ -76,7 +76,7 @@ function createMockTransportAndCtx() {
       createHistogram,
       createCounter,
     },
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 
   const transport = new MonitoringTransport(innerTransport, {
     ctx,

@@ -2,7 +2,7 @@ import { sql } from "kysely";
 import type { Kysely } from "kysely";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { requireAuth } from "../../core/studio-context";
 
 const QueryResult = z.object({
   results: z.array(z.unknown()).optional(),

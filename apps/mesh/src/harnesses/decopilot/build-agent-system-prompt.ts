@@ -13,7 +13,7 @@
  * are stubs returning null (wired up fully in Stage 2.3).
  */
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
@@ -167,7 +167,7 @@ End with a structured summary:
 This report is all the parent agent sees.`;
 
 export interface BuildAgentSystemPromptOptions {
-  ctx: MeshContext;
+  ctx: StudioContext;
   organization: OrganizationScope;
   virtualMcp: {
     id: string;

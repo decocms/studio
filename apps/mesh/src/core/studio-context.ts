@@ -1,5 +1,5 @@
 /**
- * MeshContext - Core abstraction for all tools
+ * StudioContext - Core abstraction for all tools
  *
  * Provides tools with access to all necessary services without coupling them
  * to HTTP frameworks or database drivers.
@@ -68,7 +68,7 @@ export type UpdateApiKeyResult = Awaited<
 
 /**
  * Bound auth client for Better Auth operations
- * Encapsulates HTTP context internally, keeping MeshContext HTTP-agnostic
+ * Encapsulates HTTP context internally, keeping StudioContext HTTP-agnostic
  * Return types are derived from BetterAuthInstance.api using Awaited<ReturnType<>>
  */
 export interface BoundAuthClient {
@@ -314,7 +314,7 @@ export interface MeshStorage {
 }
 
 // ============================================================================
-// MeshContext Interface
+// StudioContext Interface
 // ============================================================================
 
 export interface Timings {
@@ -322,12 +322,12 @@ export interface Timings {
 }
 
 /**
- * MeshContext - The core abstraction passed to every tool handler
+ * StudioContext - The core abstraction passed to every tool handler
  *
  * This provides access to all necessary services without coupling
  * to implementation details.
  */
-export interface MeshContext extends HarnessContext {
+export interface StudioContext extends HarnessContext {
   // Connection ID (from url)
   connectionId?: string;
 
@@ -445,21 +445,21 @@ export interface MeshContext extends HarnessContext {
 /**
  * Check if context has organization scope
  */
-export function hasOrganization(ctx: MeshContext): boolean {
+export function hasOrganization(ctx: StudioContext): boolean {
   return ctx.organization !== undefined;
 }
 
 /**
  * Get organization ID or null
  */
-export function getOrganizationId(ctx: MeshContext): string | null {
+export function getOrganizationId(ctx: StudioContext): string | null {
   return ctx.organization?.id ?? null;
 }
 
 /**
  * Require organization scope (throws if not organization-scoped)
  */
-export function requireOrganization(ctx: MeshContext): OrganizationScope {
+export function requireOrganization(ctx: StudioContext): OrganizationScope {
   if (!ctx.organization) {
     throw new Error("This operation requires organization scope");
   }
@@ -469,21 +469,21 @@ export function requireOrganization(ctx: MeshContext): OrganizationScope {
 /**
  * Get user ID (from user or API key)
  */
-export function getUserId(ctx: MeshContext): string | undefined {
+export function getUserId(ctx: StudioContext): string | undefined {
   return ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
 }
 
 /**
  * Check if user is authenticated
  */
-export function isAuthenticated(ctx: MeshContext): boolean {
+export function isAuthenticated(ctx: StudioContext): boolean {
   return !!(ctx.auth.user || ctx.auth.apiKey);
 }
 
 /**
  * Require authentication (throws if not authenticated)
  */
-export function requireAuth(ctx: MeshContext): void {
+export function requireAuth(ctx: StudioContext): void {
   if (!isAuthenticated(ctx)) {
     throw new Error("Authentication required");
   }

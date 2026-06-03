@@ -14,7 +14,7 @@
 
 import { Hono } from "hono";
 import { ContextFactory } from "../../core/context-factory";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { retry, RetryError } from "@decocms/std";
 import {
   authorizationServerMetadataUrls,
@@ -33,7 +33,7 @@ import {
 
 // Define Hono variables type
 type Variables = {
-  meshContext: MeshContext;
+  meshContext: StudioContext;
 };
 
 type HonoEnv = { Variables: Variables };
@@ -50,7 +50,7 @@ type HonoEnv = { Variables: Variables };
  */
 async function getConnectionUrl(
   connectionId: string,
-  ctx: MeshContext,
+  ctx: StudioContext,
   organizationId?: string,
 ): Promise<string | null> {
   const connection = await ctx.storage.connections.findById(
@@ -217,13 +217,13 @@ async function getOriginAuthServer(
 }
 
 /**
- * Ensure MeshContext is available, creating it if necessary
+ * Ensure StudioContext is available, creating it if necessary
  */
 async function ensureContext(c: {
   req: { raw: Request };
-  get: (key: "meshContext") => MeshContext | undefined;
-  set: (key: "meshContext", value: MeshContext) => void;
-}): Promise<MeshContext> {
+  get: (key: "meshContext") => StudioContext | undefined;
+  set: (key: "meshContext", value: StudioContext) => void;
+}): Promise<StudioContext> {
   let ctx = c.get("meshContext");
   if (!ctx) {
     ctx = await ContextFactory.create(c.req.raw);
@@ -335,8 +335,8 @@ export const protectedResourceMetadataHandler = async (c: {
     raw: Request;
     url: string;
   };
-  get: (key: "meshContext") => MeshContext | undefined;
-  set: (key: "meshContext", value: MeshContext) => void;
+  get: (key: "meshContext") => StudioContext | undefined;
+  set: (key: "meshContext", value: StudioContext) => void;
   json: (data: unknown, status?: number) => Response;
 }) => {
   const connectionId = c.req.param("connectionId");
@@ -661,8 +661,8 @@ export async function fetchAuthorizationServerMetadata(
  */
 const authServerMetadataHandler = async (c: {
   req: { param: (key: string) => string; raw: Request; url: string };
-  get: (key: "meshContext") => MeshContext | undefined;
-  set: (key: "meshContext", value: MeshContext) => void;
+  get: (key: "meshContext") => StudioContext | undefined;
+  set: (key: "meshContext", value: StudioContext) => void;
   json: (data: unknown, status?: number) => Response;
 }) => {
   const connectionId = c.req.param("connectionId");

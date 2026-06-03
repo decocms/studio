@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { Hono } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
@@ -28,7 +28,7 @@ const ENDPOINT = `/${MOCK_ORG_SLUG}/v1/chat/completions`;
 
 describe("OpenAI-compat: Schema Validation", () => {
   let database: MeshDatabase;
-  let app: Hono<{ Variables: { meshContext: MeshContext } }>;
+  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -46,7 +46,7 @@ describe("OpenAI-compat: Schema Validation", () => {
           throw new Error("not mocked for schema tests");
         }),
       },
-    } as unknown as MeshContext;
+    } as unknown as StudioContext;
 
     app = new Hono();
     app.use("*", async (c, next) => {
@@ -182,7 +182,7 @@ describe("OpenAI-compat: Schema Validation", () => {
 
 describe("OpenAI-compat: Authentication", () => {
   let database: MeshDatabase;
-  let app: Hono<{ Variables: { meshContext: MeshContext } }>;
+  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -204,7 +204,7 @@ describe("OpenAI-compat: Authentication", () => {
           throw new Error("not mocked");
         }),
       },
-    } as unknown as MeshContext;
+    } as unknown as StudioContext;
 
     app = new Hono();
     app.use("*", async (c, next) => {
@@ -240,7 +240,7 @@ describe("OpenAI-compat: Authentication", () => {
           throw new Error("not mocked");
         }),
       },
-    } as unknown as MeshContext;
+    } as unknown as StudioContext;
 
     app = new Hono();
     app.use("*", async (c, next) => {
@@ -275,7 +275,7 @@ describe("OpenAI-compat: Authentication", () => {
           throw new Error("not mocked");
         }),
       },
-    } as unknown as MeshContext;
+    } as unknown as StudioContext;
 
     app = new Hono();
     app.use("*", async (c, next) => {
@@ -308,7 +308,7 @@ describe("OpenAI-compat: Authentication", () => {
 
 describe("OpenAI-compat: Authorization", () => {
   let database: MeshDatabase;
-  let app: Hono<{ Variables: { meshContext: MeshContext } }>;
+  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -330,7 +330,7 @@ describe("OpenAI-compat: Authorization", () => {
           throw new Error("not mocked");
         }),
       },
-    } as unknown as MeshContext;
+    } as unknown as StudioContext;
 
     app = new Hono();
     app.use("*", async (c, next) => {
@@ -364,7 +364,7 @@ describe("OpenAI-compat: Authorization", () => {
 
 describe("OpenAI-compat: Tools Schema", () => {
   let database: MeshDatabase;
-  let app: Hono<{ Variables: { meshContext: MeshContext } }>;
+  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -379,7 +379,7 @@ describe("OpenAI-compat: Tools Schema", () => {
           throw new Error("not mocked");
         }),
       },
-    } as unknown as MeshContext;
+    } as unknown as StudioContext;
 
     app = new Hono();
     app.use("*", async (c, next) => {
@@ -478,7 +478,7 @@ describe("OpenAI-compat: Tools Schema", () => {
 
 describe("OpenAI-compat: Response Format", () => {
   let database: MeshDatabase;
-  let app: Hono<{ Variables: { meshContext: MeshContext } }>;
+  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -493,7 +493,7 @@ describe("OpenAI-compat: Response Format", () => {
           throw new Error("not mocked");
         }),
       },
-    } as unknown as MeshContext;
+    } as unknown as StudioContext;
 
     app = new Hono();
     app.use("*", async (c, next) => {
@@ -581,7 +581,7 @@ describe("OpenAI-compat: Response Format", () => {
 
 describe("OpenAI-compat: Message Formats", () => {
   let database: MeshDatabase;
-  let app: Hono<{ Variables: { meshContext: MeshContext } }>;
+  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -596,7 +596,7 @@ describe("OpenAI-compat: Message Formats", () => {
           throw new Error("not mocked");
         }),
       },
-    } as unknown as MeshContext;
+    } as unknown as StudioContext;
 
     app = new Hono();
     app.use("*", async (c, next) => {

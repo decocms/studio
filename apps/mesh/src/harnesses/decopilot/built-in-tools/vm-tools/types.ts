@@ -1,5 +1,5 @@
 import type { SandboxProvider } from "@decocms/sandbox/provider";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import type { PendingImage } from "../take-screenshot";
 import type { HtmlPageBuffer } from "./html-page-buffer";
 
@@ -45,7 +45,7 @@ export interface VmToolsParams {
    * org's object storage (`copy_to_sandbox`, `share_with_user`) or
    * resolve the org id for stable file URLs.
    */
-  readonly ctx: MeshContext;
+  readonly ctx: StudioContext;
   /**
    * Current chat thread id. `share_with_user` writes artifacts under
    * `model-outputs/<threadId>/<filename>` so the chat UI can list them.

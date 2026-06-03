@@ -114,7 +114,7 @@ bun run --cwd=apps/mesh start
 
 ### Core Abstractions
 
-**MeshContext** (`apps/mesh/src/core/mesh-context.ts`)
+**StudioContext** (`apps/mesh/src/core/studio-context.ts`)
 The central runtime interface injected into all tools. Provides:
 - `auth`: Authentication state (user, session, organization)
 - `access`: Access control layer (RBAC checks)
@@ -123,7 +123,7 @@ The central runtime interface injected into all tools. Provides:
 - `tracer`: OpenTelemetry distributed tracing
 - `meter`: OpenTelemetry metrics collection
 
-Tools NEVER access HTTP objects, database drivers, or environment variables directly—all dependencies flow through MeshContext.
+Tools NEVER access HTTP objects, database drivers, or environment variables directly—all dependencies flow through StudioContext.
 
 **defineTool()** (`apps/mesh/src/core/define-tool.ts`)
 Declarative API for creating type-safe, auditable MCP tools. Automatically provides:
@@ -155,7 +155,7 @@ The workspace is managed via Bun workspaces. The main application lives in `apps
 **apps/mesh/** - Main full-stack application
 - `src/api/` - Hono HTTP routes + MCP proxy routes
 - `src/auth/` - Better Auth (OAuth 2.1 + SSO + API keys)
-- `src/core/` - MeshContext, AccessControl, defineTool
+- `src/core/` - StudioContext, AccessControl, defineTool
 - `src/tools/` - Built-in MCP management tools (organized by domain)
 - `src/storage/` - Kysely database adapters and operations
 - `src/event-bus/` - Pub/sub event delivery system (CloudEvents v1.0)
@@ -348,14 +348,14 @@ See [`TESTING.md`](./TESTING.md) for the testing philosophy and rules.
 - **Unit (`bun test`)** — pure logic only. No mocks, no DB, no network. Co-located `*.test.ts` next to source.
 - **E2E (Playwright)** — everything else. Real Postgres + NATS + Better Auth. Lives in `apps/mesh/e2e/tests/`.
 
-If a test needs `vi.mock`, `mock.module`, a stubbed `MeshContext`, or a fake `fetch` — it's not a unit test. Move it to e2e.
+If a test needs `vi.mock`, `mock.module`, a stubbed `StudioContext`, or a fake `fetch` — it's not a unit test. Move it to e2e.
 
 ## Working with Tools
 
 When creating new MCP tools:
 1. Use `defineTool()` from `apps/mesh/src/core/define-tool.ts`
 2. Place tools in appropriate domain folder under `apps/mesh/src/tools/`
-3. Always inject `MeshContext` as second parameter
+3. Always inject `StudioContext` as second parameter
 4. Call `await ctx.access.check()` for authorization
 5. Use `ctx.storage` for database operations (never access Kysely directly)
 6. Define Zod schemas for input/output validation
@@ -397,8 +397,8 @@ PRs should include:
 
 ## Common Gotchas
 
-1. **Never access environment variables directly in tools**—use MeshContext
-2. **Never access HTTP context in tools**—use MeshContext for all state
+1. **Never access environment variables directly in tools**—use StudioContext
+2. **Never access HTTP context in tools**—use StudioContext for all state
 3. **Database migrations**: Remember to run both Kysely migrations (`bun run migrate`) and Better Auth migrations (`bun run better-auth:migrate`)
 4. **Event bus**: The worker doesn't poll internally—it relies on NotifyStrategy to trigger processing
 5. **Formatting**: The pre-commit hook will reject commits if code isn't formatted with Biome
@@ -433,3 +433,4 @@ Sustainable Use License (SUL):
 - ⚠️ Commercial license required for SaaS or revenue-generating production systems
 
 See LICENSE.md for details. Questions: contact@decocms.com
+

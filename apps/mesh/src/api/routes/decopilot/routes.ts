@@ -6,7 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import {
   TierUnavailableError,
   resolveTier,
@@ -82,7 +82,7 @@ export function computeIdempotencyKey(
 // ============================================================================
 
 async function validateRequest(
-  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  c: Context<{ Variables: { meshContext: StudioContext } }>,
 ) {
   const organization = ensureOrganization(c);
   const rawPayload = await c.req.json();
@@ -112,7 +112,7 @@ async function validateRequest(
  * to "decopilot" (matches the existing prepareRun behavior).
  */
 async function resolveProviderId(
-  ctx: MeshContext,
+  ctx: StudioContext,
   credentialId: string,
   organizationId: string,
 ): Promise<string | undefined> {
@@ -168,7 +168,7 @@ function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
  * duplicating the tier-resolution + tryResolve fallback logic.
  */
 async function resolvePerRequestModels(
-  ctx: MeshContext,
+  ctx: StudioContext,
   tier: SimpleModeTier | undefined,
   harnessId: HarnessId | null | undefined,
 ): Promise<ModelsConfig> {
@@ -305,7 +305,7 @@ export function applyThreadLock(args: {
  * Legacy callers that supply the id in the body alone are unaffected.
  */
 async function validate(
-  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  c: Context<{ Variables: { meshContext: StudioContext } }>,
   threadIdParam: string | undefined,
 ): Promise<
   DispatchRunInput & {
@@ -433,7 +433,7 @@ export interface DecopilotDeps {
 export function createDecopilotRoutes(deps: DecopilotDeps) {
   const { cancelBroadcast, streamBuffer, runRegistry, linkClaimRegistry } =
     deps;
-  const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
+  const app = new Hono<{ Variables: { meshContext: StudioContext } }>();
 
   // ============================================================================
   // Allowed Models Endpoint

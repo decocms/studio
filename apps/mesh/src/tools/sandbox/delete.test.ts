@@ -1,6 +1,6 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import type {
   SandboxProvider,
   SandboxProviderKind,
@@ -85,7 +85,7 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
-}): MeshContext {
+}): StudioContext {
   const {
     orgId = "org_1",
     userId = "user-1",
@@ -146,7 +146,7 @@ function makeCtx(overrides: {
     getOrCreateClient: null as never,
     pendingRevalidations: [],
     monitoring: null as never,
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 }
 
 describe("SANDBOX_DELETE", () => {

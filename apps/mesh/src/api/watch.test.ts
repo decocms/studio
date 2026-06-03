@@ -10,7 +10,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { watchHandler } from "./app";
 import type { Env } from "./hono-env";
 import type { Thread } from "@/storage/types";
@@ -41,7 +41,7 @@ function makeWatchApp(opts?: {
         },
       },
     },
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 
   const app = new Hono<Env>();
   app.use("*", async (c, next) => {

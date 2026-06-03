@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { ForbiddenError } from "../../core/access-control";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 
-function ctxWithRole(role: string | undefined): MeshContext {
+function ctxWithRole(role: string | undefined): StudioContext {
   return {
     access: {
       getRole: () => role,
     },
-  } as MeshContext;
+  } as StudioContext;
 }
 
 describe("requireOrgAdminForPinnedField", () => {

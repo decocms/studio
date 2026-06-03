@@ -29,7 +29,7 @@ import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { getBaseUrl } from "../../core/server-constants";
-import { requireOrganization } from "../../core/mesh-context";
+import { requireOrganization } from "../../core/studio-context";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   getMcpListCache,

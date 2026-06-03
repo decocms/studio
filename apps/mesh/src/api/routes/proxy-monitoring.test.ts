@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "bun:test";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { createProxyMonitoringMiddleware } from "./proxy-monitoring";
 
 function createMockSpan() {
@@ -57,7 +57,7 @@ function createMockCtx(overrides?: {
       createHistogram,
       createCounter,
     },
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 
   return { ctx, spans, createHistogram, createCounter };
 }

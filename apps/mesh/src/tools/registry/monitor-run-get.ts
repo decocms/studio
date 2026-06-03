@@ -1,5 +1,5 @@
 import { defineTool } from "@/core/define-tool";
-import { requireOrganization } from "@/core/mesh-context";
+import { requireOrganization } from "@/core/studio-context";
 import type { z } from "zod";
 import {
   RegistryMonitorRunGetInputSchema,

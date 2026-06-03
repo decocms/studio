@@ -5,7 +5,7 @@
  * These use AI SDK tool() function and are registered directly in the decopilot API.
  */
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import type { UIMessageStreamWriter } from "ai";
 import {
@@ -134,7 +134,7 @@ export type BuiltInToolSet = Awaited<ReturnType<typeof buildAllTools>>;
 async function buildAllTools(
   writer: UIMessageStreamWriter,
   params: BuiltinToolParams,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ) {
   const {
     provider,
@@ -361,7 +361,7 @@ async function buildAllTools(
 export function instrumentBuiltIns<T extends Record<string, unknown>>(
   tools: T,
   params: BuiltinToolParams,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): T {
   const orgId = params.organization.id;
   const userId = ctx.auth?.user?.id;
@@ -440,7 +440,7 @@ export function instrumentBuiltIns<T extends Record<string, unknown>>(
 export async function getBuiltInTools(
   writer: UIMessageStreamWriter,
   params: BuiltinToolParams,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ) {
   const raw = await buildAllTools(writer, params, ctx);
   const tools = instrumentBuiltIns(raw, params, ctx) as typeof raw;
@@ -465,7 +465,7 @@ export async function getBuiltInTools(
  * these tools that don't apply for the current agent kind.
  */
 export interface BuildBuiltInToolsOptions {
-  ctx: MeshContext;
+  ctx: StudioContext;
   writer: UIMessageStreamWriter;
   toolOutputMap: Map<string, string>;
   subtaskParams: import("./subtask").SubtaskParams;

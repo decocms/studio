@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
-import { getUserId, requireAuth } from "../../core/mesh-context";
+import { getUserId, requireAuth } from "../../core/studio-context";
 
 export const ORGANIZATION_MEMBER_REMOVE = defineTool({
   name: "ORGANIZATION_MEMBER_REMOVE",

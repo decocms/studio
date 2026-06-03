@@ -54,7 +54,7 @@ describe("onTitleUpdated callback", () => {
           get: getThread,
         },
       },
-    } as unknown as import("@/core/mesh-context").MeshContext;
+    } as unknown as import("@/core/studio-context").StudioContext;
 
     const onTitleUpdated = buildOnTitleUpdated({
       ctx,
@@ -96,7 +96,7 @@ describe("onTitleUpdated callback", () => {
           get: getThread,
         },
       },
-    } as unknown as import("@/core/mesh-context").MeshContext;
+    } as unknown as import("@/core/studio-context").StudioContext;
 
     const onTitleUpdated = buildOnTitleUpdated({
       ctx,
@@ -132,7 +132,7 @@ describe("onTitleUpdated callback", () => {
           get: getThread,
         },
       },
-    } as unknown as import("@/core/mesh-context").MeshContext;
+    } as unknown as import("@/core/studio-context").StudioContext;
 
     const onTitleUpdated = buildOnTitleUpdated({
       ctx,
@@ -164,7 +164,7 @@ describe("onTitleUpdated callback", () => {
           get: getThread,
         },
       },
-    } as unknown as import("@/core/mesh-context").MeshContext;
+    } as unknown as import("@/core/studio-context").StudioContext;
 
     const onTitleUpdated = buildOnTitleUpdated({
       ctx,

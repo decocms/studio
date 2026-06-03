@@ -60,7 +60,7 @@ import {
   buildStreamRequest,
   type ResolvedAutomationModel,
 } from "./build-stream-request";
-import { computeNextRunAt, type MeshContextFactory } from "./fire";
+import { computeNextRunAt, type StudioContextFactory } from "./fire";
 
 export const AUTOMATIONS_GATE_QUEUE = "automations-gate";
 export const AUTOMATIONS_GLOBAL_QUEUE = "automations-global";
@@ -106,7 +106,7 @@ export async function ensureOrgQueue(orgId: string): Promise<void> {
 
 export interface AutomationRuntime {
   storage: AutomationsStorage;
-  meshContextFactory: MeshContextFactory;
+  meshContextFactory: StudioContextFactory;
   runTimeoutMs?: number;
 }
 

@@ -9,7 +9,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { getMcpListCache } from "../mcp-list-cache";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { VirtualMCPEntity } from "../../tools/virtual/schema";
 import { PassthroughClient } from "./passthrough-client";
@@ -38,7 +38,7 @@ function isSelfReferencingVirtual(
  */
 export async function createVirtualClient(
   connection: ConnectionEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
   superUser = false,
 ): Promise<Client> {
   // Virtual MCP ID is the connection ID
@@ -66,7 +66,7 @@ export async function createVirtualClient(
  */
 export async function createVirtualClientFrom(
   virtualMcp: VirtualMCPEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
   _strategy: "passthrough",
   superUser = false,
   options?: { listTimeoutMs?: number },

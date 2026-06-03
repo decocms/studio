@@ -24,7 +24,7 @@ import {
   ListResourcesRequestSchema,
   ListResourceTemplatesRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 import { createLazyClient } from "./lazy-client";
 import { getMcpListCache } from "./mcp-list-cache";
 import { fallbackOnMethodNotFoundError } from "./utils";
@@ -64,7 +64,7 @@ const DEFAULT_SERVER_CAPABILITIES = {
  */
 export function serverFromConnection(
   connection: ConnectionEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
   superUser: boolean,
 ): McpServer {
   // Create lazy client — no MCP connection is established until needed

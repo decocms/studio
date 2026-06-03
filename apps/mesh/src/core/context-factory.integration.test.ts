@@ -7,8 +7,8 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import type { MeshDatabase } from "../database";
-import { createMeshContextFactory } from "./context-factory";
-import type { BetterAuthInstance } from "./mesh-context";
+import { createStudioContextFactory } from "./context-factory";
+import type { BetterAuthInstance } from "./studio-context";
 import type { EventBus } from "../event-bus/interface";
 import type { QueryEngine } from "../monitoring/query-engine";
 
@@ -46,7 +46,7 @@ const createMockEventBus = (): EventBus => ({
   isRunning: vi.fn().mockReturnValue(false),
 });
 
-describe("createMeshContextFactory", () => {
+describe("createStudioContextFactory", () => {
   let database: MeshDatabase;
 
   beforeAll(async () => {
@@ -97,7 +97,7 @@ describe("createMeshContextFactory", () => {
 
   describe("factory creation", () => {
     it("should create context factory function", async () => {
-      const factory = await createMeshContextFactory({
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: createMockAuth() as unknown as BetterAuthInstance,
@@ -123,9 +123,9 @@ describe("createMeshContextFactory", () => {
     },
   });
 
-  describe("MeshContext creation", () => {
-    it("should create MeshContext from Request", async () => {
-      const factory = await createMeshContextFactory({
+  describe("StudioContext creation", () => {
+    it("should create StudioContext from Request", async () => {
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
@@ -154,7 +154,7 @@ describe("createMeshContextFactory", () => {
     });
 
     it("should derive base URL from request", async () => {
-      const factory = await createMeshContextFactory({
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
@@ -178,7 +178,7 @@ describe("createMeshContextFactory", () => {
     });
 
     it("should populate request metadata", async () => {
-      const factory = await createMeshContextFactory({
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
@@ -209,7 +209,7 @@ describe("createMeshContextFactory", () => {
 
   describe("organization scope", () => {
     it("should extract organization from Better Auth", async () => {
-      const factory = await createMeshContextFactory({
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: createMockAuth() as unknown as BetterAuthInstance,
@@ -248,7 +248,7 @@ describe("createMeshContextFactory", () => {
         },
       };
 
-      const factory = await createMeshContextFactory({
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: authWithoutOrg as unknown as BetterAuthInstance,
@@ -270,7 +270,7 @@ describe("createMeshContextFactory", () => {
 
   describe("storage initialization", () => {
     it("should create storage adapters", async () => {
-      const factory = await createMeshContextFactory({
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
@@ -297,7 +297,7 @@ describe("createMeshContextFactory", () => {
 
   describe("access control initialization", () => {
     it("should create AccessControl instance", async () => {
-      const factory = await createMeshContextFactory({
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: createMinimalMockAuth() as unknown as BetterAuthInstance,
@@ -349,7 +349,7 @@ describe("createMeshContextFactory", () => {
         },
       };
 
-      const factory = await createMeshContextFactory({
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: mockAuthWithOrgInApiKey as unknown as BetterAuthInstance,
@@ -392,7 +392,7 @@ describe("createMeshContextFactory", () => {
         },
       };
 
-      const factory = await createMeshContextFactory({
+      const factory = await createStudioContextFactory({
         db: database.db,
 
         auth: mockAuthWithoutOrg as unknown as BetterAuthInstance,
@@ -435,7 +435,7 @@ describe("createMeshContextFactory", () => {
         },
       };
 
-      const factoryA = await createMeshContextFactory({
+      const factoryA = await createStudioContextFactory({
         db: database.db,
 
         auth: mockAuthOrgA as unknown as BetterAuthInstance,
@@ -474,7 +474,7 @@ describe("createMeshContextFactory", () => {
         },
       };
 
-      const factoryB = await createMeshContextFactory({
+      const factoryB = await createStudioContextFactory({
         db: database.db,
 
         auth: mockAuthOrgB as unknown as BetterAuthInstance,

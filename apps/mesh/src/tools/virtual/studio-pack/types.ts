@@ -1,8 +1,8 @@
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 
 export type RuntimeResolveContext = {
   orgId: string;
-  ctx: MeshContext;
+  ctx: StudioContext;
 };
 
 export type ResolvedRuntime = {
@@ -16,7 +16,7 @@ export type ResolveRuntime = (
 
 export type ChecklistContext = {
   orgId: string;
-  ctx: MeshContext;
+  ctx: StudioContext;
 };
 
 /**

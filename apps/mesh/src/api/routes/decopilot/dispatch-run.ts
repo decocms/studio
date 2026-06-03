@@ -22,7 +22,7 @@
  * the drain reader consumes the result.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
 import type { MeshProvider } from "@/ai-providers/types";
@@ -218,7 +218,7 @@ function modelInfoFromResolvedTier(
 }
 
 async function resolveDecopilotTitleConfig(
-  ctx: MeshContext,
+  ctx: StudioContext,
   organizationId: string,
 ): Promise<{ provider: MeshProvider; model: ModelsConfig["thinking"] } | null> {
   const resolved = await tryResolveTier(ctx, "fast");
@@ -267,7 +267,7 @@ async function resolveDecopilotTitleConfig(
 const MCP_KEY_TTL_SECONDS = 3600;
 
 async function mintMcpEndpoint(
-  ctx: MeshContext,
+  ctx: StudioContext,
   agentId: string,
   organization: { id: string; slug?: string; name?: string },
   apiKeyName: string,
@@ -400,7 +400,7 @@ function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
  */
 export async function dispatchRunAndWait(
   input: DispatchRunInput,
-  ctx: MeshContext,
+  ctx: StudioContext,
   deps: DispatchRunDeps,
 ): Promise<DispatchRunResult> {
   return traced(
@@ -481,7 +481,7 @@ interface PreparedRun {
  */
 async function prepareRun(
   input: DispatchRunInput,
-  ctx: MeshContext,
+  ctx: StudioContext,
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
 ): Promise<PreparedRun> {
@@ -1241,7 +1241,7 @@ async function prepareRun(
  */
 export async function resolveRemoteCliSandboxUrl(
   input: { agent: { id: string }; branch?: string | null },
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<string> {
   const { previewUrl } = await resolveRemoteCliSandboxHandle(input, ctx);
   return previewUrl;
@@ -1255,7 +1255,7 @@ export async function resolveRemoteCliSandboxUrl(
  */
 async function resolveRemoteCliSandboxHandle(
   input: { agent: { id: string }; branch?: string | null },
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<{ sandboxHandle: string; previewUrl: string }> {
   const entry = await ensureSandbox(
     {

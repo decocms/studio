@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 
 const InputSchema = z.object({
   ids: z.array(z.string()).describe("Virtual MCP ids to look up"),

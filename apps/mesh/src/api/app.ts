@@ -21,9 +21,9 @@ import { auth } from "../auth";
 import { createMemberRoleCache } from "../auth/member-role-cache";
 import {
   ContextFactory,
-  createMeshContextFactory,
+  createStudioContextFactory,
 } from "../core/context-factory";
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 import { closeDatabase, getDb, type MeshDatabase } from "../database";
 import { createEventBus, type EventBus } from "../event-bus";
 import {
@@ -69,7 +69,7 @@ import publicConfigRoutes from "./routes/public-config";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
-import { shouldSkipMeshContext, SYSTEM_PATHS } from "./utils/paths";
+import { shouldSkipStudioContext, SYSTEM_PATHS } from "./utils/paths";
 import {
   mountPluginRoutes,
   initializePluginStorage,
@@ -231,7 +231,7 @@ let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
  * @param organizationId - The organization ID to search for the registry connection
  */
 async function getDecoStoreProjectLocator(
-  ctx: MeshContext,
+  ctx: StudioContext,
   organizationId: string,
 ): Promise<string | null> {
   // Find registry connection by URL within the organization
@@ -1280,13 +1280,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   );
 
   // ============================================================================
-  // MeshContext Injection Middleware
+  // StudioContext Injection Middleware
   // ============================================================================
 
   // Create context factory with the provided database and event bus
   // Context factory only needs the Kysely instance, not the full MeshDatabase
   const memberRoleCache = createMemberRoleCache({ ttlMs: 2 * 60 * 1000 });
-  const factory = await createMeshContextFactory({
+  const factory = await createStudioContextFactory({
     db: database.db,
     auth,
     encryption: {
@@ -1367,7 +1367,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
 
-  const automationRunner: MeshContext["automationRunner"] = async (
+  const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
     orgId,
     _userId,
@@ -1542,10 +1542,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   cleanupExpiredApiKeys();
   setInterval(cleanupExpiredApiKeys, 24 * 60 * 60 * 1000).unref();
 
-  // Inject MeshContext into requests
-  // Skip auth routes, static files, health check, and metrics - they don't need MeshContext
+  // Inject StudioContext into requests
+  // Skip auth routes, static files, health check, and metrics - they don't need StudioContext
   app.use("*", async (c, next) => {
-    if (shouldSkipMeshContext(c.req.path)) {
+    if (shouldSkipStudioContext(c.req.path)) {
       return next();
     }
 
@@ -1614,7 +1614,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       return next();
     }
 
-    const ctx = c.get("meshContext") as MeshContext | undefined;
+    const ctx = c.get("meshContext") as StudioContext | undefined;
     if (!ctx?.organization?.id || !ctx?.auth?.user?.id) {
       return next();
     }
@@ -1644,7 +1644,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Legacy mount at /api/org-sso with deprecation log; the new
   // /api/:org/org-sso mount is wired in a later task.
   const legacyOrgSso = new Hono<{
-    Variables: { meshContext: MeshContext };
+    Variables: { meshContext: StudioContext };
   }>();
   legacyOrgSso.use(
     "*",
@@ -1874,7 +1874,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
   // is wired in a later task.
   const legacyThreadOutputsRoutes = new Hono<{
-    Variables: { meshContext: MeshContext };
+    Variables: { meshContext: StudioContext };
   }>();
   legacyThreadOutputsRoutes.use(
     "*",
@@ -1890,7 +1890,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Legacy mount at /api/trigger-callback with deprecation log; the new
   // /api/:org/trigger-callback mount is wired in a later task.
   const legacyTriggerCallback = new Hono<{
-    Variables: { meshContext: MeshContext };
+    Variables: { meshContext: StudioContext };
   }>();
   legacyTriggerCallback.use(
     "*",
@@ -1910,7 +1910,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // is wired in a later task.
   const kvStorage = new KyselyKVStorage(database.db);
   const legacyKVRoutes = new Hono<{
-    Variables: { meshContext: MeshContext };
+    Variables: { meshContext: StudioContext };
   }>();
   legacyKVRoutes.use("*", createLogDeprecatedRoute({ mountPath: "/api" }));
   legacyKVRoutes.route("/", createKVRoutes({ kvStorage }));
@@ -1925,7 +1925,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
   // is wired in a later task.
   const legacyDownstreamTokenRoutes = new Hono<{
-    Variables: { meshContext: MeshContext };
+    Variables: { meshContext: StudioContext };
   }>();
   legacyDownstreamTokenRoutes.use(
     "*",
@@ -1943,7 +1943,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // at /api/deco-sites with a deprecation log; the new /api/:org/deco-sites
   // mount is wired in a later task.
   const legacyDecoSitesOrg = new Hono<{
-    Variables: { meshContext: MeshContext };
+    Variables: { meshContext: StudioContext };
   }>();
   legacyDecoSitesOrg.use(
     "*",
@@ -1959,7 +1959,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Legacy mount at /api/vm-events with deprecation log; the new
   // /api/:org/vm-events mount is wired in a later task.
   const legacyVmEvents = new Hono<{
-    Variables: { meshContext: MeshContext };
+    Variables: { meshContext: StudioContext };
   }>();
   legacyVmEvents.use(
     "*",

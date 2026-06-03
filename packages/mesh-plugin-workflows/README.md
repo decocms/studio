@@ -347,7 +347,7 @@ mesh-plugin-workflows/
 ├── shared.ts                    # Plugin constants (ID, description)
 ├── server/
 │   ├── index.ts                 # Plugin registration + startup recovery
-│   ├── types.ts                 # Type definitions, MeshContext interface
+│   ├── types.ts                 # Type definitions, StudioContext interface
 │   ├── engine/
 │   │   ├── orchestrator.ts      # Core: claim, dispatch, complete, forEach
 │   │   ├── code-step.ts         # QuickJS sandbox execution
@@ -395,3 +395,4 @@ bun test --cwd packages/mesh-plugin-workflows
 ## License
 
 See [LICENSE.md](../../LICENSE.md) in the repository root.
+

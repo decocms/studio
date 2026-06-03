@@ -4,7 +4,7 @@
  * Lists monitoring logs for the organization with filtering options.
  */
 
-import { requireOrganization } from "@/core/mesh-context";
+import { requireOrganization } from "@/core/studio-context";
 import { flushMonitoringData } from "@/observability";
 import { defineTool } from "../../core/define-tool";
 import { z } from "zod";

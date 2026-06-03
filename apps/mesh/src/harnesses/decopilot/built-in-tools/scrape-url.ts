@@ -12,7 +12,7 @@
 
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
 import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
 import {
@@ -29,7 +29,7 @@ export type ScrapeUrlInput = z.infer<typeof ScrapeUrlInputSchema>;
 export function createScrapeUrlTool(
   writer: UIMessageStreamWriter,
   params: {
-    ctx: MeshContext;
+    ctx: StudioContext;
     toolOutputMap: Map<string, string>;
   },
 ) {

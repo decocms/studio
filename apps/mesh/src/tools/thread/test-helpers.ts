@@ -18,14 +18,14 @@ import {
   OrgScopedThreadStorage,
 } from "../../storage/threads";
 import { VirtualMCPStorage } from "../../storage/virtual";
-import type { BoundAuthClient, MeshContext } from "../../core/mesh-context";
+import type { BoundAuthClient, StudioContext } from "../../core/studio-context";
 
 const ORG_ID = "org_test";
 const USER_ID = "user_test";
 
 export interface ThreadTestEnv {
   database: MeshDatabase;
-  ctx: MeshContext;
+  ctx: StudioContext;
   orgId: string;
   userId: string;
   close: () => Promise<void>;
@@ -134,7 +134,7 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
     createMCPProxy: vi.fn().mockResolvedValue({}),
     getOrCreateClient: vi.fn().mockResolvedValue({}),
     pendingRevalidations: [],
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 
   return {
     database,

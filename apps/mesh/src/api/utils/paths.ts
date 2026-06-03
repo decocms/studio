@@ -77,18 +77,18 @@ export function isServerPath(path: string): boolean {
 }
 
 /**
- * Check if a path should skip MeshContext injection
+ * Check if a path should skip StudioContext injection
  * Used in the context middleware to avoid creating contexts for
  * paths that don't need database access
  */
-export function shouldSkipMeshContext(path: string): boolean {
+export function shouldSkipStudioContext(path: string): boolean {
   return (
     path === "/" ||
     path.startsWith(PATH_PREFIXES.API_AUTH) ||
     path === "/api/trigger-callback" ||
     isSystemPath(path) ||
     // Static file extension check only applies to non-API paths (e.g. Vite assets).
-    // API paths like /api/:org/files/image.jpeg still need MeshContext for auth.
+    // API paths like /api/:org/files/image.jpeg still need StudioContext for auth.
     (!isApiPath(path) && isStaticFilePath(path))
   );
 }

@@ -1,7 +1,7 @@
 import z from "zod";
 import { capabilitySchema } from "@/links/protocol";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { requireAuth } from "../../core/studio-context";
 
 export const LINK_CURRENT_GET = defineTool({
   name: "LINK_CURRENT_GET",

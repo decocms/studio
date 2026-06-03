@@ -163,7 +163,7 @@ Every tool call gets input/output validation, access control, audit logging, and
 │   │   ├── src/
 │   │   │   ├── api/         # Hono HTTP + MCP proxy routes
 │   │   │   ├── auth/        # Better Auth (OAuth + API keys)
-│   │   │   ├── core/        # MeshContext, AccessControl, defineTool
+│   │   │   ├── core/        # StudioContext, AccessControl, defineTool
 │   │   │   ├── tools/       # Built-in MCP management tools
 │   │   │   ├── storage/     # Kysely DB adapters
 │   │   │   ├── event-bus/   # Pub/sub event delivery system
@@ -293,3 +293,4 @@ See `AGENTS.md` for coding guidelines.
 <div align="center">
   <sub>Made with care by the <a href="https://decocms.com">deco</a> community</sub>
 </div>
+

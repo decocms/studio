@@ -13,8 +13,8 @@ import {
 import type {
   BetterAuthInstance,
   BoundAuthClient,
-  MeshContext,
-} from "../../core/mesh-context";
+  StudioContext,
+} from "../../core/studio-context";
 
 // Mock Better Auth instance (for legacy authInstance property)
 const createMockAuth = () => ({
@@ -163,7 +163,7 @@ const createMockBoundAuth = (
 
 const createMockContext = (
   authInstance: ReturnType<typeof createMockAuth> = createMockAuth(),
-): MeshContext => {
+): StudioContext => {
   const boundAuth = createMockBoundAuth(authInstance);
   return {
     timings: {
