@@ -466,7 +466,7 @@ and `es.onopen`:
 - [ ] **Step 3: Type-check**
 
 Run: `bun run check`
-Expected: errors only where `vmEvents.suspended` is still referenced in `preview.tsx` (resolved in Task 5). If you do Task 5 in the same branch, the final `bun run check` is green; otherwise temporarily leave `suspended: false` in the context value to keep the build green between tasks. Prefer doing Task 5 next.
+Expected: PASS. **Task 5 runs before Task 4**, so both `preview.tsx` and `content-browser.tsx` have already stopped reading `vmEvents.suspended` — removing `suspended` from the context type/value here is clean (no remaining consumers). Confirm with `bun run check` + `bun run lint` (knip) green.
 
 - [ ] **Step 4: Manual verification (SSE recovers)**
 
@@ -488,10 +488,18 @@ git commit -m "fix(sandbox): keep sandbox-events SSE reconnecting; drop terminal
 
 **Why:** Reduce 8 latched states to 3 (`starting` / `suspended` / `iframe`); always render the iframe when a `previewUrl` exists so the daemon's served HTML is the source of truth.
 
+**SCOPE CORRECTION (discovered during execution):** the collapse touches 8 files, not 2 — `computePreviewState` has a second consumer (`content-browser.tsx`, with its own local `SandboxStateRenderer`), and the `PreviewState` kinds drive the shared `SandboxStateCard` (`state-card.tsx` + `state-card-types.ts` + `state-card-helpers.ts` + its test). It is committed **atomically** (all 8 files, one commit, `bun run check`/`lint` green only at the end). It runs **before Task 4**, because Task 4 removes `suspended` from the SSE context and both `preview.tsx` and `content-browser.tsx` must stop reading `vmEvents.suspended` first. Files NOT changing (confirmed: they use `LifecycleState.phase`/`ClaimPhase.kind`/`DrawerStatus`, different enums): `drawer/{drawer,status-pill,toolbar}.tsx`, `derive-phase-progress.ts`, `thread/github/panel-state.ts`.
+
+Micro-decisions: the `starting` card keeps showing claim-phase progress (so `derive-phase-progress.ts` stays used); `SandboxStateCard`/`StateCardKind` collapse to `starting | suspended` and the now-dead variant sub-components are deleted (knip must stay green — remove dead code, don't suppress).
+
 **Files:**
 - Modify: `apps/mesh/src/web/components/sandbox/preview/preview-state.ts`
 - Modify: `apps/mesh/src/web/components/sandbox/preview/preview-state.test.ts`
 - Modify: `apps/mesh/src/web/components/sandbox/preview/preview.tsx`
+- Modify: `apps/mesh/src/web/components/sandbox/content/content-browser.tsx` (its `computePreviewState` call + local `SandboxStateRenderer`)
+- Modify: `apps/mesh/src/web/components/sandbox/preview/state-card.tsx` (gut variants to `starting`/`suspended`)
+- Modify: `apps/mesh/src/web/components/sandbox/preview/state-card-types.ts` (`StateCardKind = "starting" | "suspended"`)
+- Modify: `apps/mesh/src/web/components/sandbox/preview/state-card-helpers.ts` (+ `.test.ts`) (`headlineFor` cases)
 
 - [ ] **Step 1: Rewrite the pure state test for the reduced model**
 
