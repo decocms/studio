@@ -69,7 +69,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -113,7 +113,7 @@ jobs:
 
       - name: Start NATS with JetStream
         run: |
-          docker run -d --name nats -p 4222:4222 nats:2.10 -js
+          docker run -d --name nats -p 4222:4222 public.ecr.aws/docker/library/nats:2.10 -js
           for i in $(seq 1 10); do nc -z localhost 4222 && break || sleep 1; done
           nc -z localhost 4222
 
