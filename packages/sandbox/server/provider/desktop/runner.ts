@@ -84,8 +84,14 @@ export class DesktopSandboxProvider implements SandboxProvider {
     // computeHandle produces a 16-hex-char hash — the handle is used as a
     // public subdomain prefix (e.g. `<handle>.localhost:<port>`), and the
     // cluster's `computeClaimHandle` derives the same handle so its
-    // state-store lookup matches.
-    const handle = computeHandle(id, opts.repo?.branch);
+    // state-store lookup matches. Prefer the top-level `opts.branch` (which
+    // the sandbox-proxy also uses) over `opts.repo?.branch` so that a
+    // repo-less SANDBOX_START (no GitHub connection) still produces a handle
+    // whose slug matches the URL — otherwise `repo` being undefined would
+    // make this fall back to `s-<hash>` while the proxy looks up
+    // `<branch>-<hash>` and every call 404s.
+    const branch = opts.branch ?? opts.repo?.branch;
+    const handle = computeHandle(id, branch);
 
     // Probe before trusting cached records — a dead daemon leaves a stale URL.
     const cached = this.records.get(handle);
@@ -127,7 +133,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
     const body = JSON.stringify({
       handle,
       repo: opts.repo,
-      branch: opts.repo?.branch,
+      branch,
       ...(opts.workload ? { workload: opts.workload } : {}),
       // Message-offload SSRF allowlist, derived cluster-side from the
       // cluster's own trusted S3 config and pushed down here so the spawned

@@ -412,10 +412,17 @@ export class AgentSandboxProvider implements SandboxProvider {
   // ---- SandboxProvider surface ------------------------------------------------
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
-    // Branch is the slug source; absent when caller didn't pass `repo`
-    // (tool-only sandboxes, smoke tests). The shared computeHandle falls
-    // back to a bare hash in that case, preserving stable identity.
-    const handle = composeBranchHandle(id, opts.repo?.branch ?? null);
+    // Branch is the slug source. Prefer the explicit top-level `opts.branch`
+    // (which `sandbox-proxy.ts`'s `computeClaimHandle` also uses) over
+    // `opts.repo?.branch` so a repo-less SANDBOX_START — i.e. a virtual MCP
+    // with no GitHub connection — still composes the same handle the proxy
+    // looks up. The fallback to bare-hash (`s-<hash>`) survives only for
+    // legacy tool-only / smoke-test callers that drive `ensure` without
+    // ever touching the sandbox-proxy.
+    const handle = composeBranchHandle(
+      id,
+      opts.branch ?? opts.repo?.branch ?? null,
+    );
     return this.inflight.run(handle, () =>
       withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
         this.ensureLocked(id, handle, opts, ops),

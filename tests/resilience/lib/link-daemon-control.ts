@@ -63,6 +63,25 @@ export async function startLinkDaemonContainer(apiKey: string): Promise<void> {
 
 /** Stop + remove the link-daemon container (best effort). */
 export async function stopLinkDaemonContainer(): Promise<void> {
+  // DIAGNOSTIC: dump container logs into the test output BEFORE removal.
+  // The CI workflow's "Dump link-daemon logs" step runs after this cleanup,
+  // by which point the container is gone and the dump produces nothing.
+  try {
+    const logs = await composeExec([
+      "--profile",
+      "link",
+      "logs",
+      "--no-color",
+      "--tail",
+      "500",
+      "link-daemon",
+    ]);
+    console.log("===== link-daemon logs (captured before rm) =====");
+    console.log(logs.trimEnd() || "(no logs)");
+    console.log("===== end link-daemon logs =====");
+  } catch (err) {
+    console.warn("[stopLinkDaemonContainer] failed to dump logs:", err);
+  }
   try {
     await composeExec(["--profile", "link", "rm", "-sf", "link-daemon"]);
   } catch {
