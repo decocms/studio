@@ -37,7 +37,6 @@ export interface SandboxEvent {
   previewUrl?: string;
   /** Set on `failed`. */
   error?: string;
-  activeDispatchCount?: number;
 }
 
 export interface SpawnResult {
@@ -413,7 +412,6 @@ export function createDesktopSandboxProvider(
       phase: "ready",
       port,
       previewUrl,
-      activeDispatchCount: 0,
     });
 
     // Watchdog: clear the map entry if the daemon process exits unexpectedly.
@@ -493,11 +491,6 @@ export function createDesktopSandboxProvider(
       const s = sandboxes.get(handle);
       if (!s) return () => {};
       s.activeDispatchCount += 1;
-      emit({
-        handle,
-        phase: "ready",
-        activeDispatchCount: s.activeDispatchCount,
-      });
       let released = false;
       return () => {
         if (released) return;
@@ -505,11 +498,6 @@ export function createDesktopSandboxProvider(
         const cur = sandboxes.get(handle);
         if (cur) {
           cur.activeDispatchCount = Math.max(0, cur.activeDispatchCount - 1);
-          emit({
-            handle,
-            phase: "ready",
-            activeDispatchCount: cur.activeDispatchCount,
-          });
         }
       };
     },
