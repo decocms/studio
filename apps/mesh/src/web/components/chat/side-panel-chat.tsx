@@ -1,16 +1,17 @@
+import { IntegrationIcon } from "@/web/components/integration-icon";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
+import { Users03 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { ErrorBoundary } from "../error-boundary";
 
 import { Chat } from "./index";
 import { useChatStream, useChatPrefs } from "./context";
 import { ChatContextPanel } from "./context-panel";
-import { CenteredComposer } from "./centered-composer";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
 import {
@@ -20,6 +21,40 @@ import {
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
+
+// ---------- Default sidebar empty state ----------
+
+function SidebarEmptyState() {
+  const { selectedVirtualMcp } = useChatPrefs();
+  const { org } = useProjectContext();
+
+  const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
+  const displayAgent = selectedVirtualMcp ?? defaultAgent;
+
+  return (
+    <div className="h-full w-full flex flex-col items-center justify-center gap-6 px-4">
+      <div className="flex flex-col items-center justify-center gap-2 md:gap-4 text-center">
+        <IntegrationIcon
+          icon={displayAgent.icon}
+          name={displayAgent.title}
+          size="lg"
+          fallbackIcon={<Users03 size={32} />}
+          className="size-10 min-w-10 md:size-[60px]! md:min-w-[60px] rounded-xl md:rounded-[18px]!"
+        />
+        <h3 className="text-base md:text-xl font-medium text-foreground">
+          {displayAgent.title}
+        </h3>
+        <div className="text-muted-foreground text-center text-base max-w-md line-clamp-2">
+          {displayAgent.description ??
+            "Ask anything about configuring model providers or using MCP Mesh."}
+        </div>
+      </div>
+      <div className="w-full max-w-3xl mx-auto">
+        <Chat.IceBreakers />
+      </div>
+    </div>
+  );
+}
 
 // ---------- Panel content ----------
 
@@ -78,24 +113,12 @@ function ChatPanelContent() {
             : "opacity-100",
         )}
       >
-        {isChatEmpty ? (
-          <Chat.Main>
-            <CenteredComposer
-              onOpenContextPanel={() => setActivePanel("context")}
-            />
-          </Chat.Main>
-        ) : (
-          <>
-            <Chat.Main>
-              <Chat.Messages />
-            </Chat.Main>
-            <Chat.Footer>
-              <Chat.Input
-                onOpenContextPanel={() => setActivePanel("context")}
-              />
-            </Chat.Footer>
-          </>
-        )}
+        <Chat.Main>
+          {!isChatEmpty ? <Chat.Messages /> : <SidebarEmptyState />}
+        </Chat.Main>
+        <Chat.Footer>
+          <Chat.Input onOpenContextPanel={() => setActivePanel("context")} />
+        </Chat.Footer>
       </div>
 
       {/* Context view */}
