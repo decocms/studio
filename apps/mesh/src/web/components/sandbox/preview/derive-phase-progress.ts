@@ -24,8 +24,8 @@ export interface PhaseProgressInput {
 
 /**
  * Single source of truth for the boot lifecycle state. Returns the current
- * step + its status. Other consumers project this into a per-tick status
- * (`phaseStatusFor`) or an active card index (`activePhaseIndex`).
+ * step + its status. Consumers project this into an active card index
+ * (`activePhaseIndex`).
  *
  * Lifecycle is authoritative once it leaves `idle`; we only fall back to
  * `claimPhase` for the pre-daemon "provision" slot.
