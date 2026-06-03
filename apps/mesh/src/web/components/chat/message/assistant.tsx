@@ -318,6 +318,15 @@ function CollapsedSection({
 
 interface MessageAssistantProps {
   message: ChatMessage | null;
+  /**
+   * Top-level `created_at` of the user message that opened this turn. Used as
+   * the anchor for the live elapsed-time chronometer so the value is stable
+   * across page reload, thread switch, and SSE resume (the user row is
+   * inserted once and never re-stamped). Null when there's no preceding user
+   * message in the pair (assistant-initiated welcomes, async-research stubs),
+   * in which case the chronometer falls back to `Date.now()` at mount.
+   */
+  turnStartedAt?: string | Date | null;
   status?: "streaming" | "submitted" | "ready" | "error";
   className?: string;
   isLast: boolean;
@@ -627,6 +636,7 @@ function Container({
 
 export function MessageAssistant({
   message,
+  turnStartedAt,
   status,
   className,
   isLast = false,
@@ -637,17 +647,22 @@ export function MessageAssistant({
   const isSubmitted = status === "submitted";
   const isLoading = isStreaming || isSubmitted;
 
-  // Track when this message's generation started for the live elapsed timer.
+  // Track when this turn started for the live elapsed-time chronometer.
   //
-  // Prefer the server-stamped stream start (`metadata.created_at`, set on the
-  // first stream chunk in run-stream.ts and persisted in thread_messages).
-  // This makes the chronometer survive a page refresh — it resumes counting
-  // from the real start time instead of restarting at 0 on remount.
+  // Anchor on the user message's top-level `created_at` (passed in via
+  // `turnStartedAt` from MessagePair). This timestamp is set once when the
+  // user row is inserted on the server and never re-stamped, so it survives
+  // page reload, thread switch, and SSE resume cleanly — the chronometer
+  // resumes counting from the real turn-start instead of restarting on
+  // remount. It's also the most semantically meaningful anchor: the chron
+  // shows how long the user has been waiting since *they* submitted.
   //
-  // Client fallback (`Date.now()`) covers the brief "submitted but no chunks
-  // yet" window where the server hasn't sent a `start` chunk; once that
-  // chunk arrives the server time takes over via the `??` below.
-  const serverStartedAt = toEpochMs(message?.metadata?.created_at);
+  // Client fallback (`Date.now()`) covers two cases:
+  //   1. The brief optimistic-submit window where the user row exists locally
+  //      but the server hasn't yet inserted it (no top-level `created_at`).
+  //   2. Assistant-only pairs (welcomes, async-research stubs) where there's
+  //      no preceding user message at all.
+  const turnEpochMs = toEpochMs(turnStartedAt);
   const [clientFallbackStartedAt, setClientFallbackStartedAt] = useState<
     number | null
   >(() => (isLoading ? Date.now() : null));
@@ -656,7 +671,7 @@ export function MessageAssistant({
     setPrevIsLoading(isLoading);
     setClientFallbackStartedAt(isLoading ? Date.now() : null);
   }
-  const startedAt = serverStartedAt ?? clientFallbackStartedAt;
+  const startedAt = turnEpochMs ?? clientFallbackStartedAt;
 
   // Handle null message or empty parts
   const hasContent = message !== null && message.parts.length > 0;

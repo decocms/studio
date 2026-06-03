@@ -31,11 +31,12 @@ export function toEpochMs(
 /**
  * Compute elapsed milliseconds since `start`, clamped at 0.
  *
- * The clamp matters when `start` is a server-stamped timestamp (e.g.
- * `message.metadata.created_at` from the streaming pipeline) and the server
- * clock is ahead of the client clock — without it, `Date.now() - start`
- * would be negative and the live elapsed timer would briefly render a
- * negative duration like "-0.3s" until the client clock catches up.
+ * The clamp matters when `start` is a server-stamped timestamp (e.g. the
+ * user message's `created_at` row column, used to anchor the chat live
+ * elapsed-time chronometer) and the server clock is ahead of the client
+ * clock — without it, `Date.now() - start` would be negative and the
+ * timer would briefly render a negative duration like "-0.3s" until the
+ * client clock catches up.
  */
 export function computeElapsedMs(start: number, now: number): number {
   const diff = now - start;
