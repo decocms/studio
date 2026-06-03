@@ -14,7 +14,7 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../database/test-db-pg";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import type { EventBus } from "../event-bus";
 import type { Permission } from "../storage/types";
 import { createApp } from "./app";
@@ -104,7 +104,7 @@ interface MCPRequest {
 // ============================================================================
 
 describe("Access Control Integration Tests", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
   let testUsers: Map<string, TestUser>;
   let testOrganizations: Map<string, TestOrganization>;

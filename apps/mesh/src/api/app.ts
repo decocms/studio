@@ -24,7 +24,7 @@ import {
   createStudioContextFactory,
 } from "../core/context-factory";
 import type { StudioContext } from "../core/studio-context";
-import { closeDatabase, getDb, type MeshDatabase } from "../database";
+import { closeDatabase, getDb, type StudioDatabase } from "../database";
 import { createEventBus, type EventBus } from "../event-bus";
 import {
   flushMonitoringData,
@@ -811,7 +811,7 @@ interface ResourceServerMetadata {
  */
 export interface CreateAppOptions {
   /** Custom database instance (for testing) */
-  database?: MeshDatabase;
+  database?: StudioDatabase;
   /** Custom event bus instance (for testing) */
   eventBus?: EventBus;
 }
@@ -1284,7 +1284,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ============================================================================
 
   // Create context factory with the provided database and event bus
-  // Context factory only needs the Kysely instance, not the full MeshDatabase
+  // Context factory only needs the Kysely instance, not the full StudioDatabase
   const memberRoleCache = createMemberRoleCache({ ttlMs: 2 * 60 * 1000 });
   const factory = await createStudioContextFactory({
     db: database.db,

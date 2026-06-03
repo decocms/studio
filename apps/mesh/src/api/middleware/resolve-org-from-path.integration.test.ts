@@ -6,7 +6,7 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { resolveOrgFromPath } from "./resolve-org-from-path";
 
 type Variables = { meshContext: StudioContext };
@@ -22,7 +22,7 @@ interface BuildAppOptions {
 }
 
 const buildApp = (
-  db: MeshDatabase,
+  db: StudioDatabase,
   auth: FakeAuth,
   opts: BuildAppOptions = {},
 ) => {
@@ -83,7 +83,7 @@ const buildApp = (
 };
 
 describe("resolveOrgFromPath", () => {
-  let db: MeshDatabase;
+  let db: StudioDatabase;
 
   beforeEach(async () => {
     db = await connectTestPgDatabase();

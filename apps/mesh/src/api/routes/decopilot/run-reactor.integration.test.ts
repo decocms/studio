@@ -26,7 +26,7 @@ import {
   afterAll,
   beforeEach,
 } from "bun:test";
-import type { MeshDatabase } from "@/database";
+import type { StudioDatabase } from "@/database";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
@@ -43,7 +43,7 @@ import type { StreamBuffer } from "./stream-buffer";
 const ORG = "org_1";
 const USER = "user_1";
 
-let database: MeshDatabase;
+let database: StudioDatabase;
 let storage: SqlThreadStorage;
 
 beforeAll(async () => {

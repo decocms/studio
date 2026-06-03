@@ -14,7 +14,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import { CredentialVault } from "../encryption/credential-vault";
 import { DownstreamTokenStorage } from "../storage/downstream-token";
 import { ConnectionStorage } from "../storage/connection";
@@ -32,7 +32,7 @@ mock.module("./refresh-access-token", () => ({
 const { refreshAndStore } = await import("./token-refresh");
 
 describe("refreshAndStore", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let vault: CredentialVault;
   let tokenStorage: DownstreamTokenStorage;
   const connectionId = "conn_refresh_test";

@@ -6,7 +6,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import { CredentialVault } from "../encryption/credential-vault";
 import {
   DownstreamTokenStorage,
@@ -14,7 +14,7 @@ import {
 } from "./downstream-token";
 
 describe("DownstreamTokenStorage", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let storage: DownstreamTokenStorage;
 
   beforeAll(async () => {

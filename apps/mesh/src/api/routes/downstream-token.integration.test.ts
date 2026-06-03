@@ -8,11 +8,11 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { createDownstreamTokenRoutes } from "./downstream-token";
 
 describe("Downstream Token Routes", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {

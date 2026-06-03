@@ -11,7 +11,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { CredentialVault } from "../../encryption/credential-vault";
 import {
   SqlThreadStorage,
@@ -24,7 +24,7 @@ const ORG_ID = "org_test";
 const USER_ID = "user_test";
 
 export interface ThreadTestEnv {
-  database: MeshDatabase;
+  database: StudioDatabase;
   ctx: StudioContext;
   orgId: string;
   userId: string;

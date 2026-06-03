@@ -2,7 +2,7 @@
  * Database Factory for MCP Mesh
  *
  * Creates a configured Kysely instance backed by PostgreSQL.
- * Returns a MeshDatabase that includes the Kysely instance and the
+ * Returns a StudioDatabase that includes the Kysely instance and the
  * shared Pool (reusable for LISTEN/NOTIFY).
  */
 
@@ -13,7 +13,7 @@ import { getSettings } from "../settings";
 import { meter } from "../observability";
 
 // ============================================================================
-// MeshDatabase Types
+// StudioDatabase Types
 // ============================================================================
 
 const queryDurationHistogram = meter.createHistogram("db.query.duration", {
@@ -50,7 +50,7 @@ const log = (event: LogEvent) => {
  * PostgreSQL database connection.
  * Includes the Pool for reuse (e.g., LISTEN/NOTIFY in EventBus).
  */
-export interface MeshDatabase {
+export interface StudioDatabase {
   type: "postgres";
   db: Kysely<DatabaseSchema>;
   pool: Pool;
@@ -84,7 +84,7 @@ function getPoolMax(): number {
   }
 }
 
-function createPostgresDatabase(connectionString: string): MeshDatabase {
+function createPostgresDatabase(connectionString: string): StudioDatabase {
   const pool = new Pool({
     connectionString,
     max: getPoolMax(),
@@ -122,12 +122,12 @@ export function getDbDialect(databaseUrl?: string): Dialect {
   });
 }
 
-export function createDatabase(databaseUrl?: string): MeshDatabase {
+export function createDatabase(databaseUrl?: string): StudioDatabase {
   const url = databaseUrl || getDatabaseUrl();
   return createPostgresDatabase(url);
 }
 
-export async function closeDatabase(database: MeshDatabase): Promise<void> {
+export async function closeDatabase(database: StudioDatabase): Promise<void> {
   await database.db.destroy();
 
   if (!database.pool.ended) {
@@ -139,9 +139,9 @@ export async function closeDatabase(database: MeshDatabase): Promise<void> {
   }
 }
 
-let dbInstance: MeshDatabase | null = null;
+let dbInstance: StudioDatabase | null = null;
 
-export function getDb(): MeshDatabase {
+export function getDb(): StudioDatabase {
   if (!dbInstance) {
     dbInstance = createDatabase(getDatabaseUrl());
   }

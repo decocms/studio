@@ -22,7 +22,7 @@
 import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 import type { Database as DatabaseSchema } from "../storage/types";
-import type { MeshDatabase } from "./index";
+import type { StudioDatabase } from "./index";
 
 const DEFAULT_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:5432/postgres";
@@ -31,7 +31,7 @@ const DEFAULT_DATABASE_URL =
  * Connect to the real Postgres test database. Honors `DATABASE_URL` first,
  * falls back to the standard local-dev shape.
  */
-export async function connectTestPgDatabase(): Promise<MeshDatabase> {
+export async function connectTestPgDatabase(): Promise<StudioDatabase> {
   const connectionString = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
   const pool = new Pool({ connectionString });
   const dialect = new PostgresDialect({ pool });
@@ -43,7 +43,7 @@ export async function connectTestPgDatabase(): Promise<MeshDatabase> {
  * Close the test database, releasing the connection pool.
  */
 export async function closeTestPgDatabase(
-  database: MeshDatabase,
+  database: StudioDatabase,
 ): Promise<void> {
   await database.db.destroy();
   if (!database.pool.ended) {
@@ -61,7 +61,7 @@ export async function closeTestPgDatabase(
  * test only needs its own bespoke seed, skip this helper entirely.
  */
 export async function seedCommonTestPgFixtures(
-  database: MeshDatabase,
+  database: StudioDatabase,
 ): Promise<void> {
   const now = new Date().toISOString();
   for (const userId of ["user_1", "user_123", "user_test", "test_user"]) {
@@ -90,7 +90,7 @@ export async function seedCommonTestPgFixtures(
  * remember to update a cleanup list.
  */
 export async function resetTestPgDatabase(
-  database: MeshDatabase,
+  database: StudioDatabase,
 ): Promise<void> {
   const result = await sql<{
     tablename: string;

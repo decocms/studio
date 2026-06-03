@@ -5,12 +5,12 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../database/test-db-pg";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import { VirtualMCPStorage } from "./virtual";
 import { getDecopilotId } from "@decocms/mesh-sdk";
 
 describe("VirtualMCPStorage.findById (Decopilot)", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let storage: VirtualMCPStorage;
   const orgId = "org_decopilot_test";
 

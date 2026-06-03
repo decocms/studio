@@ -5,12 +5,12 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../database/test-db-pg";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import { SqlThreadStorage } from "./threads";
 import type { ThreadMessage } from "./types";
 
 describe("SqlThreadStorage", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let storage: SqlThreadStorage;
 
   beforeAll(async () => {
