@@ -144,6 +144,22 @@ describe("MCP OAuth Proxy E2E", () => {
       },
     } as never);
 
+    // The non-OAuth 401 test hits /api/:org/mcp/:connectionId, which runs
+    // resolveOrgFromPath — seed the mock principal's membership in org_test so
+    // it isn't rejected as a non-member before reaching the proxy.
+    const { sql } = await import("kysely");
+    const nowIso = new Date().toISOString();
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES ('test-user-id', 'test-user-id@test.com', false, 'Test User', ${nowIso}, ${nowIso})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+    await sql`
+      INSERT INTO "member" (id, "organizationId", "userId", role, "createdAt")
+      VALUES ('mem_test_user_org_test', ${orgId}, 'test-user-id', 'member', ${nowIso})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+
     // Create a connection for each MCP server (OAuth-supporting)
     for (const server of MCP_SERVERS) {
       const connectionId = `conn_${server.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}`;
@@ -334,7 +350,7 @@ describe("MCP OAuth Proxy E2E", () => {
           const connectionId = connectionMap.get(server.url)!;
 
           // Try to access the MCP endpoint with auth - should get 401 from origin without WWW-Authenticate
-          const res = await app.request(`/mcp/${connectionId}`, {
+          const res = await app.request(`/api/org_test/mcp/${connectionId}`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

@@ -75,6 +75,7 @@ interface TestApiKey {
   key: string;
   userId: string;
   permissions: Permission;
+  orgSlug?: string;
 }
 
 interface BetterAuthApiKeyResult {
@@ -270,6 +271,9 @@ describe("Access Control Integration Tests", () => {
       key,
       userId,
       permissions,
+      orgSlug: organizationId
+        ? testOrganizations.get(organizationId)?.slug
+        : undefined,
     };
 
     // Store for verification
@@ -307,6 +311,19 @@ describe("Access Control Integration Tests", () => {
       } as BetterAuthApiKeyResult;
     }) as never);
 
+    // Org-scoped MCP routes run resolveOrgFromPath, which requires the
+    // authenticated principal to be a member of the org. Seed membership so
+    // API-key requests reach the AccessControl layer (idempotent per user+org).
+    if (organizationId) {
+      const { sql } = await import("kysely");
+      const role = testUsers.get(userId)?.role === "admin" ? "admin" : "member";
+      await sql`
+        INSERT INTO "member" (id, "organizationId", "userId", role, "createdAt")
+        VALUES (${`mem_${userId}_${organizationId}`}, ${organizationId}, ${userId}, ${role}, ${new Date().toISOString()})
+        ON CONFLICT (id) DO NOTHING
+      `.execute(database.db);
+    }
+
     return apiKey;
   }
 
@@ -328,7 +345,8 @@ describe("Access Control Integration Tests", () => {
       id: 1,
     };
 
-    return await app.request("/mcp", {
+    const orgSlug = testApiKeys.get(apiKey)?.orgSlug;
+    return await app.request(`/api/${orgSlug}/mcp/self`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -358,7 +376,8 @@ describe("Access Control Integration Tests", () => {
       id: 1,
     };
 
-    return await app.request(`/mcp/${connectionId}`, {
+    const orgSlug = testApiKeys.get(apiKey)?.orgSlug;
+    return await app.request(`/api/${orgSlug}/mcp/${connectionId}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
