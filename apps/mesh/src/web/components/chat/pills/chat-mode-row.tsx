@@ -39,8 +39,11 @@ interface SmartProps {
  * Smart wrapper. Composes BranchPill + ModePicker. Each pill is gated
  * by its own capability check:
  *
- *   - BranchPill:  agent has an active GitHub repo
- *     (getActiveGithubRepo(virtualMcp) is non-null).
+ *   - BranchPill:  agent was imported from GitHub — `metadata.githubRepo`
+ *     exists AND has an attached `connectionId` (authenticated user
+ *     repo, not a public-template clone). Start Website agents
+ *     populate `metadata.githubRepo.url` for the template but leave
+ *     `connectionId` unset; branches aren't meaningful there.
  *   - ModePicker:  agent is clonable
  *     (agentHasClonableSource(virtualMcp?.metadata)).
  *
@@ -55,29 +58,31 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   const clonable = agentHasClonableSource(virtualMcp?.metadata);
   const githubRepo = getActiveGithubRepo(virtualMcp);
+  const connectionId = githubRepo?.connectionId;
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
   const { org } = useProjectContext();
 
-  const branchPill = githubRepo ? (
-    <BranchPill
-      orgId={org.id}
-      orgSlug={org.slug}
-      userId={userId}
-      virtualMcpId={virtualMcp?.id ?? ""}
-      connectionId={githubRepo.connectionId ?? ""}
-      owner={githubRepo.owner}
-      repo={githubRepo.name}
-      sandboxMap={virtualMcp?.metadata?.sandboxMap}
-      value={currentBranch}
-      onChange={(next) => {
-        if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
-      }}
-      locked={locked}
-      placement="chat"
-    />
-  ) : null;
+  const branchPill =
+    githubRepo && connectionId ? (
+      <BranchPill
+        orgId={org.id}
+        orgSlug={org.slug}
+        userId={userId}
+        virtualMcpId={virtualMcp?.id ?? ""}
+        connectionId={connectionId}
+        owner={githubRepo.owner}
+        repo={githubRepo.name}
+        sandboxMap={virtualMcp?.metadata?.sandboxMap}
+        value={currentBranch}
+        onChange={(next) => {
+          if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+        }}
+        locked={locked}
+        placement="chat"
+      />
+    ) : null;
 
   const modePicker = clonable ? (
     <ModePicker
