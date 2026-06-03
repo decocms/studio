@@ -9,25 +9,27 @@
  *
  *   - A member with a restrictive CUSTOM role (not owner/admin, and whose
  *     stored permission does NOT list the tool) can still call a basic-usage
- *     tool, yet is denied a non-basic tool it was never granted — including an
- *     agents:manage tool, which only the built-in user role gets. This is the
- *     test that actually exercises the runtime grant.
- *   - A member on the built-in "user" role gets basic-usage AND agents:manage
- *     (USER_ROLE_CAPABILITY_IDS) — so it can create an agent — but is still
- *     denied other gated tools and org management via Better Auth's native
- *     endpoints (invite-member). Guards two regressions: the `self: ["*"]` grant
- *     + wildcard fallback re-granting every tool, and the `user` role spreading
- *     `adminAc` (org-admin statements) instead of member-level `memberAc`.
+ *     tool, yet is denied tools it was never granted — including agents:manage
+ *     and connections:manage tools, which only the built-in user role gets. This
+ *     is the test that actually exercises the runtime grant.
+ *   - A member on the built-in "user" role gets basic-usage AND agents:manage +
+ *     connections:manage (USER_ROLE_CAPABILITY_IDS) — so it can create an agent
+ *     and a connection — but is still denied other gated tools and org
+ *     management via Better Auth's native endpoints (invite-member). Guards two
+ *     regressions: the `self: ["*"]` grant + wildcard fallback re-granting every
+ *     tool, and the `user` role spreading `adminAc` (org-admin statements)
+ *     instead of member-level `memberAc`.
  *   - A NON-member cannot call a basic-usage tool against the org — the grant
  *     must never leak past membership.
  *
- * Tool choices (denials use all-optional input schemas, so a denial surfaces as
- * an access error rather than a schema-validation error):
- *   - AUTOMATION_LIST            → basic-usage
- *   - MONITORING_STATS           → NOT basic-usage (monitoring:view capability)
- *   - COLLECTION_VIRTUAL_MCP_CREATE → agents:manage; granted to the built-in
- *     user role only. Sent with valid `data` so the custom-role denial is an
- *     access error, not validation.
+ * Tool choices (denials use all-optional input schemas, or valid `data`, so a
+ * denial surfaces as an access error rather than a schema-validation error):
+ *   - AUTOMATION_LIST               → basic-usage
+ *   - MONITORING_STATS              → NOT basic-usage (monitoring:view)
+ *   - COLLECTION_VIRTUAL_MCP_CREATE → agents:manage (built-in user role only)
+ *   - COLLECTION_CONNECTIONS_CREATE → connections:manage (built-in user role
+ *     only). Sent with valid `data`; an unreachable URL is swallowed server-side
+ *     so the user's create still succeeds.
  */
 
 import type { Client } from "pg";
@@ -55,6 +57,26 @@ const agentCreateBody = () => ({
   params: {
     name: "COLLECTION_VIRTUAL_MCP_CREATE",
     arguments: { data: { title: "gating probe", connections: [] } },
+  },
+});
+
+// COLLECTION_CONNECTIONS_CREATE (connections:manage) with VALID minimal data, so
+// a denial is an access error rather than input validation. The handler swallows
+// an unreachable URL (fetchToolsFromMCP().catch(() => null)), so a granted call
+// still creates the row.
+const connectionCreateBody = () => ({
+  jsonrpc: "2.0" as const,
+  id: 1,
+  method: "tools/call",
+  params: {
+    name: "COLLECTION_CONNECTIONS_CREATE",
+    arguments: {
+      data: {
+        title: "gating probe conn",
+        connection_type: "HTTP",
+        connection_url: "https://example.com/mcp",
+      },
+    },
   },
 });
 
@@ -199,6 +221,25 @@ test.describe("runtime basic-usage grant", () => {
     ).toBe(true);
     expect(agentErr).toMatch(/access denied|permission/i);
 
+    // connections:manage is likewise NOT granted to this custom role → denied.
+    const connRes = await memberCtx.post(`/api/${owner.orgSlug}/mcp/self`, {
+      data: connectionCreateBody(),
+      headers: MCP_HEADERS,
+    });
+    const connDenied = (await connRes.json()) as {
+      result?: { isError?: boolean; content?: Array<{ text?: string }> };
+      error?: { message?: string };
+    };
+    const connErr =
+      connDenied.result?.content?.[0]?.text ?? connDenied.error?.message ?? "";
+    expect(
+      connDenied.result?.isError === true || !!connDenied.error,
+      `expected COLLECTION_CONNECTIONS_CREATE to be denied for the custom role, got: ${JSON.stringify(
+        connDenied,
+      )}`,
+    ).toBe(true);
+    expect(connErr).toMatch(/access denied|permission/i);
+
     await ownerCtx.dispose();
     await memberCtx.dispose();
   });
@@ -262,6 +303,22 @@ test.describe("runtime basic-usage grant", () => {
       { data: { title: "user-managed agent", connections: [] } },
     );
     expect(created.item?.id).toBeTruthy();
+
+    // connections:manage IS granted to the built-in user role too → creating a
+    // connection succeeds (the unreachable URL is swallowed server-side).
+    const createdConn = await callSelfMcpTool<{ item: { id: string } }>(
+      memberCtx,
+      owner.orgSlug,
+      "COLLECTION_CONNECTIONS_CREATE",
+      {
+        data: {
+          title: "user-managed conn",
+          connection_type: "HTTP",
+          connection_url: "https://example.com/mcp",
+        },
+      },
+    );
+    expect(createdConn.item?.id).toBeTruthy();
 
     // Gated tool (monitoring:view) → denied. Before enforcing the user role,
     // the `self: ["*"]` grant + wildcard fallback leaked full access here.

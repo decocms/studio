@@ -1329,7 +1329,10 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set(
  * of its tools to every member of every org. This is a GLOBAL change with no
  * migration; for per-org grants use a custom role instead.
  */
-const USER_ROLE_CAPABILITY_IDS: string[] = ["agents:manage"];
+const USER_ROLE_CAPABILITY_IDS: string[] = [
+  "agents:manage",
+  "connections:manage",
+];
 
 /**
  * Tools the built-in `user` role gets beyond basic-usage, derived from
