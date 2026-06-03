@@ -260,6 +260,16 @@ export async function handleDispatchRequest(
 
         activeRuns.set(input.runId, ctrl);
 
+        // Re-inject the per-run AbortSignal. `HarnessStreamInput.signal` is an
+        // AbortSignal and therefore NOT JSON-serializable, so it never survives
+        // the wire (see `harnessStreamInputSchema`, which omits it). The daemon
+        // reconstructs cancellation locally via `ctrl`; wire its signal back
+        // onto the input so the harness's `streamText({ abortSignal })` and
+        // `genTitle({ abortSignal })` receive a real signal instead of
+        // `undefined` (which crashes genTitle's `addEventListener`) — and so a
+        // DELETE /_sandbox/runs/:id actually aborts the in-flight model call.
+        (input as { signal?: AbortSignal }).signal = ctrl.signal;
+
         console.log(
           `[dispatch] received (offload) harness=${harnessId} runId=${input.runId} threadId=${input.threadId} bytes=${messagesRef.bytes}`,
         );
@@ -331,6 +341,11 @@ export async function handleDispatchRequest(
 
   const ctrl = new AbortController();
   activeRuns.set(input.runId, ctrl);
+
+  // Re-inject the per-run AbortSignal — see the offload path above for the full
+  // rationale. The wire input never carries `signal` (not serializable), so the
+  // harness would otherwise see `input.signal === undefined`.
+  (input as { signal?: AbortSignal }).signal = ctrl.signal;
 
   console.log(
     `[dispatch] received harness=${harnessId} runId=${input.runId} threadId=${input.threadId}`,

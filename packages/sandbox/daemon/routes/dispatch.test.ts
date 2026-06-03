@@ -186,6 +186,53 @@ describe("POST /_sandbox/dispatch", () => {
     expect(crashed).toBe(false);
   });
 
+  it("injects a live AbortSignal into the harness input (cancel aborts it)", async () => {
+    // The wire input cannot carry a (non-serializable) AbortSignal, so the
+    // daemon must reconstruct `input.signal` from its per-run AbortController.
+    // Without this, harnesses see `input.signal === undefined` — which crashed
+    // `genTitle`'s `addEventListener` and silently dropped cancellation.
+    const runId = "run-signal-inject";
+    let captured: { signal?: AbortSignal } | undefined;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+
+    const deps = makeDeps({
+      lookupHarness: (_id, input) => {
+        captured = input as { signal?: AbortSignal };
+        return {
+          async *stream() {
+            yield { type: "start", id: "m1" } as const;
+            await gate; // hold the run open so cancel can land
+          },
+        };
+      },
+    });
+
+    const body = JSON.stringify({
+      harnessId: "fake",
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId },
+    });
+    const res = await handleDispatchRequest(authedDispatch(body), deps);
+    expect(res.status).toBe(200);
+
+    const reader = res.body!.getReader();
+    await reader.read(); // ensure start() ran → lookupHarness called
+
+    expect(captured?.signal).toBeInstanceOf(AbortSignal);
+    expect(captured?.signal?.aborted).toBe(false);
+
+    // Cancelling the run must flip the injected signal.
+    await handleCancelRequest(authedCancel(runId), {
+      daemonToken: DAEMON_TOKEN,
+    });
+    expect(captured?.signal?.aborted).toBe(true);
+
+    release();
+    await reader.cancel();
+  });
+
   it("wraps harness errors as an error SSE event followed by done", async () => {
     const harnessId = "throws";
     const body = JSON.stringify({
