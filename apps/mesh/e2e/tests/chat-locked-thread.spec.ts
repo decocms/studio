@@ -184,13 +184,46 @@ async function createAgentAndThread(
       },
     },
   );
+  // Pass `branch: "main"` explicitly: COLLECTION_THREADS_CREATE auto-
+  // picks a branch when the agent has `metadata.githubRepo`
+  // (`pickWarmBranchFromSandboxMap` → `generateBranchName()`), which
+  // would beat the body's "main" in the route handler's
+  // `existingThread?.branch ?? input.branch` resolution and pin the row
+  // to a synthetic name like "deco/keen-forge". Seed the row at "main"
+  // so the lock assertions can check against a stable value.
   const thread = await callSelfMcpTool<{ item: { id: string } }>(
     api,
     orgSlug,
     "COLLECTION_THREADS_CREATE",
-    { data: { virtual_mcp_id: agent.item.id, title: "E2E Locked Thread" } },
+    {
+      data: {
+        virtual_mcp_id: agent.item.id,
+        title: "E2E Locked Thread",
+        branch: "main",
+      },
+    },
   );
   return { agentId: agent.item.id, threadId: thread.item.id };
+}
+
+/**
+ * Seed an AI provider key on the org so the thread route renders the
+ * chat composer (and its harness / branch pills) instead of
+ * `NoAiProviderEmptyState`. The key value is never exercised — the
+ * lock e2e never triggers a real model call — but `useAiProviderKeys()`
+ * must return at least one row for `HomePage` / the thread route to
+ * skip the empty-state short-circuit. Same trick `chat-input-draft`
+ * uses.
+ */
+async function seedAiProviderKey(
+  api: APIRequestContext,
+  orgSlug: string,
+): Promise<void> {
+  await callSelfMcpTool(api, orgSlug, "AI_PROVIDER_KEY_CREATE", {
+    providerId: "anthropic",
+    label: "chat-locked-thread-e2e",
+    apiKey: "sk-ant-e2e-fake-key-do-not-use",
+  });
 }
 
 test.describe("Thread runtime is locked after first message", () => {
@@ -294,11 +327,18 @@ test.describe("Thread runtime is locked after first message", () => {
     const apiKey = await mintApiKey(api, orgSlug);
     const cluster = await connectLink(api, apiKey, ["claude-code"]);
     try {
+      // Seed an AI provider key so the thread route renders the
+      // composer instead of `NoAiProviderEmptyState`. Without this,
+      // `harness-picker-locked` never mounts because the chat input
+      // itself is short-circuited away.
+      await seedAiProviderKey(api, orgSlug);
+
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
 
-      // Pin the thread by POSTing the first message directly. Avoids the
-      // composer / AI-provider-key dance — the lock is a property of the
-      // thread row, not of how the row was populated.
+      // Pin the thread by POSTing the first message directly. The lock
+      // is a property of the thread row, not of how the row was
+      // populated — driving the composer via Tiptap would only add
+      // flakiness here.
       const first = await postMessage(
         api,
         orgSlug,
