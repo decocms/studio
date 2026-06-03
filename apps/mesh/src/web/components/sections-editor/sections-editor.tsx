@@ -1,10 +1,25 @@
 import { useState, useRef } from "react";
-import { ChevronRight, Loading01 } from "@untitledui/icons";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Flag01,
+  Globe01,
+  Loading01,
+} from "@untitledui/icons";
+import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { VariantRenameDialog } from "./variant-rename-dialog";
 import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
+import { useDeleteBlock } from "./use-delete-block";
 import { useSaveBlock } from "./use-save-block";
 import { extractPages, globalSectionLabel } from "./page-list";
 import { normalizePagePath } from "./page-path-utils";
@@ -13,13 +28,37 @@ import { isLazyResolveType } from "./section-lazy";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
-import { resolveSchema } from "./resolve-schema";
+import { resolveSchema, type SchemaProperty } from "./resolve-schema";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
+import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
-import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
+import {
+  ALWAYS_MATCHER_RESOLVE_TYPE,
+  labelFromResolveType,
+  type RawSection,
+} from "./section-types";
+import {
+  buildMatcherBlockData,
+  buildMatcherBlockReference,
+  getSavedMatcherBlockKey,
+  inlineMatcherRule,
+  isSavedMatcherBlockReference,
+  readMatcherRuleFormState,
+  resolveEffectiveMatcherRule,
+  resolveVariantRuleLabel,
+  unwrapMatcherRule,
+} from "./matcher-rules";
+import {
+  appendPageVariantSections,
+  buildPageSectionsFromVariants,
+  countSavedMatcherBlockReferences,
+  getLastVariantIndex,
+  parsePageVariants,
+  type PageVariant,
+} from "./page-variants";
 import {
   buildPageDataWithSections,
   cloneSection,
@@ -31,8 +70,10 @@ import {
   duplicateMultivariateSectionVariant,
   flattenMultivariateSection,
   getMultivariateSectionObject,
+  hideSection,
   parseSectionFlagVariants,
   rebuildSectionWithMultivariate,
+  showSection,
   unwrapVariantSectionValue,
   updateMultivariateSectionVariantRule,
   updateMultivariateSectionVariantValue,
@@ -40,24 +81,78 @@ import {
 
 const AUTOSAVE_DELAY = 700;
 
-interface PageVariant {
-  label: string;
-  sections: RawSection[];
-  rule?: Record<string, unknown>;
+function SchemaFormPanel({
+  activeSchema,
+  formValue,
+  formResetKey,
+  onFormChange,
+  onBreadcrumbChange,
+  emptyMessage,
+}: {
+  activeSchema: SchemaProperty | null | undefined;
+  formValue: unknown;
+  formResetKey: number;
+  onFormChange: (v: unknown) => void;
+  onBreadcrumbChange: (path: string[]) => void;
+  emptyMessage: string;
+}) {
+  return (
+    <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
+      <div className="mx-auto max-w-2xl">
+        {activeSchema && formValue ? (
+          <SchemaForm
+            key={formResetKey}
+            schema={activeSchema}
+            value={formValue}
+            onChange={onFormChange}
+            basePath=""
+            breadcrumbPath={[]}
+            onBreadcrumbChange={onBreadcrumbChange}
+          />
+        ) : (
+          <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
+
+const VARIANT_TAB_ACTIVE_CLASS =
+  "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
 
 const capitalize = (s: string) =>
   s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
-function labelFromResolveType(rt: string): string {
-  const segments = rt.split("/");
-  const filename = segments[segments.length - 1] ?? rt;
-  return (
-    filename
-      .replace(/\.(tsx?|jsx?)$/, "")
-      .replace(/[-_]/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
-  );
+/**
+ * Render a `start`/`end` ISO-date pair as a compact range — used by deco's
+ * built-in date matcher AND by any custom matcher whose rule happens to
+ * carry the same field names (e.g. project-defined `Date` / `Birthday`
+ * matchers that don't share resolveType with the website package). Returns
+ * null when the rule has no readable date fields so callers can fall back.
+ */
+function formatDateRange(rule: Record<string, unknown>): string | null {
+  const { start, end } = rule as { start?: unknown; end?: unknown };
+  const startStr = typeof start === "string" ? start : "";
+  const endStr = typeof end === "string" ? end : "";
+  if (!startStr && !endStr) return null;
+  const fmt = new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const tryFormat = (iso: string): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return fmt.format(d);
+  };
+  const startFmt = tryFormat(startStr);
+  const endFmt = tryFormat(endStr);
+  if (startFmt && endFmt) return `${startFmt} → ${endFmt}`;
+  if (startFmt) return `From ${startFmt}`;
+  if (endFmt) return `Until ${endFmt}`;
+  return null;
 }
 
 function formatMatcher(rule: Record<string, unknown> | undefined): string {
@@ -97,36 +192,8 @@ function formatMatcher(rule: Record<string, unknown> | undefined): string {
     }
 
     case "website/matchers/date.ts":
-    case "$live/matchers/MatchDate.ts": {
-      const { start, end } = rule as { start?: string; end?: string };
-      if (!start && !end) return labelFromResolveType(rt);
-      const fmt = new Intl.DateTimeFormat("en", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
-      if (start && end) {
-        try {
-          return `${fmt.format(new Date(start))} \u2192 ${fmt.format(new Date(end))}`;
-        } catch {
-          return labelFromResolveType(rt);
-        }
-      }
-      if (start) {
-        try {
-          return `From ${fmt.format(new Date(start))}`;
-        } catch {
-          return labelFromResolveType(rt);
-        }
-      }
-      if (end) {
-        try {
-          return `Until ${fmt.format(new Date(end))}`;
-        } catch {
-          return labelFromResolveType(rt);
-        }
-      }
-      return labelFromResolveType(rt);
-    }
+    case "$live/matchers/MatchDate.ts":
+      return formatDateRange(rule) ?? labelFromResolveType(rt);
 
     case "website/matchers/random.ts":
     case "$live/matchers/MatchRandom.ts": {
@@ -202,35 +269,22 @@ function formatMatcher(rule: Record<string, unknown> | undefined): string {
       return labelFromResolveType(rt);
     }
 
-    default:
+    default: {
+      // Project-defined matchers (e.g. "Date", "Birthday") don't share
+      // resolveType with the website package, so generic field inspection
+      // is the only way to surface their actual configuration on the tab.
+      const range = formatDateRange(rule);
+      if (range) return range;
       return labelFromResolveType(rt) || "Default";
+    }
   }
 }
 
-/**
- * Parse page-level `sections` into an array of variants.
- * - Plain array → single variant labelled "Default"
- * - Multivariate flag object → one variant per entry in `variants`
- */
-function parsePageVariants(sections: unknown): PageVariant[] {
-  if (Array.isArray(sections)) {
-    return [{ label: "Default", sections }];
-  }
-  if (sections && typeof sections === "object") {
-    const obj = sections as Record<string, unknown>;
-    if (Array.isArray(obj.variants)) {
-      const raw = obj.variants as Array<{
-        rule?: Record<string, unknown>;
-        value?: unknown;
-      }>;
-      return raw.map((v, i) => ({
-        label: formatMatcher(v.rule) || `Variant ${i + 1}`,
-        sections: Array.isArray(v.value) ? (v.value as RawSection[]) : [],
-        rule: v.rule,
-      }));
-    }
-  }
-  return [];
+function parsePageVariantsForEditor(
+  sections: unknown,
+  decofile: Record<string, unknown>,
+): PageVariant[] {
+  return parsePageVariants(sections, decofile, formatMatcher);
 }
 
 /**
@@ -361,6 +415,7 @@ export function SectionsEditor({
   previewReady = true,
   previewUrl,
   currentPath,
+  activePageBlockKey = null,
   activeGlobalBlockKey = null,
   externalSelectedIndex,
   onSaved,
@@ -373,6 +428,10 @@ export function SectionsEditor({
   /** Sandbox preview base URL used for section gallery previews. */
   previewUrl?: string;
   currentPath: string;
+  /** When set, identifies the page by its unique decofile block key. Takes
+   * precedence over `currentPath` for selection — required when multiple
+   * pages share the same `path`. */
+  activePageBlockKey?: string | null;
   /** When set, edits a saved global block instead of a page. */
   activeGlobalBlockKey?: string | null;
   /** Section index selected via click-through from the preview iframe. */
@@ -411,6 +470,10 @@ export function SectionsEditor({
   const [makeReusableIndex, setMakeReusableIndex] = useState<number | null>(
     null,
   );
+  const [renameVariantIndex, setRenameVariantIndex] = useState<number | null>(
+    null,
+  );
+  const [isVariantRuleOpen, setIsVariantRuleOpen] = useState(true);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [activeSectionVariantIndex, setActiveSectionVariantIndex] = useState(0);
   const [sectionRuleFormValue, setSectionRuleFormValue] = useState<Record<
@@ -426,10 +489,16 @@ export function SectionsEditor({
 
   // Reset form state when the active page or global block changes
   const [prevPath, setPrevPath] = useState(currentPath);
+  const [prevPageBlockKey, setPrevPageBlockKey] = useState(activePageBlockKey);
   const [prevGlobalBlockKey, setPrevGlobalBlockKey] =
     useState(activeGlobalBlockKey);
-  if (prevPath !== currentPath || prevGlobalBlockKey !== activeGlobalBlockKey) {
+  if (
+    prevPath !== currentPath ||
+    prevPageBlockKey !== activePageBlockKey ||
+    prevGlobalBlockKey !== activeGlobalBlockKey
+  ) {
     setPrevPath(currentPath);
+    setPrevPageBlockKey(activePageBlockKey);
     setPrevGlobalBlockKey(activeGlobalBlockKey);
     setSelectedSectionIndex(null);
     setFormValue(null);
@@ -445,6 +514,8 @@ export function SectionsEditor({
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -468,7 +539,7 @@ export function SectionsEditor({
   }>({
     rawSections: [],
     parsedSections: [],
-    decofile: {},
+    decofile: {} as Record<string, unknown>,
     activePageKey: null,
     pageVariants: [],
     variantIndex: 0,
@@ -497,7 +568,9 @@ export function SectionsEditor({
   const isGlobalBlockMode = !!activeGlobalBlockKey;
   const activePage = isGlobalBlockMode
     ? null
-    : pages.find((p) => norm(p.path) === norm(currentPath));
+    : activePageBlockKey
+      ? (pages.find((p) => p.key === activePageBlockKey) ?? null)
+      : (pages.find((p) => norm(p.path) === norm(currentPath)) ?? null);
   const activePageKey = isGlobalBlockMode
     ? activeGlobalBlockKey
     : (activePage?.key ?? null);
@@ -523,7 +596,7 @@ export function SectionsEditor({
           sections: [{ __resolveType: activeGlobalBlockKey! } as RawSection],
         },
       ]
-    : parsePageVariants(pageData?.sections);
+    : parsePageVariantsForEditor(pageData?.sections, decofile ?? {});
   const hasMultipleVariants = pageVariants.length > 1;
   const safeVariantIndex = Math.min(
     activeVariantIndex,
@@ -564,7 +637,7 @@ export function SectionsEditor({
   latestRef.current = {
     rawSections,
     parsedSections,
-    decofile,
+    decofile: decofile ?? ({} as Record<string, unknown>),
     activePageKey,
     pageVariants,
     variantIndex: safeVariantIndex,
@@ -600,14 +673,13 @@ export function SectionsEditor({
     setFormValue(unwrapped?.data ?? null);
     setActiveResolveType(unwrapped?.resolveType ?? null);
 
-    const ruleRt = (variant.rule?.__resolveType as string) ?? "";
-    setSectionRuleResolveType(ruleRt);
-    if (variant.rule) {
-      const { __resolveType: _, ...ruleData } = variant.rule;
-      setSectionRuleFormValue(ruleData);
-    } else {
-      setSectionRuleFormValue(null);
-    }
+    const { resolveType, formValue } = readMatcherRuleFormState(
+      variant.rule,
+      decofile,
+      meta ?? undefined,
+    );
+    setSectionRuleResolveType(resolveType);
+    setSectionRuleFormValue(formValue);
   };
 
   // Auto-select section when parent signals a click-through from the preview.
@@ -903,6 +975,26 @@ export function SectionsEditor({
     savePageSections(updatedSections);
   };
 
+  // Hide/show a section via the multivariate+never wrapper (see hideSection /
+  // showSection). Round-trips normal, lazy, and saved-block sections.
+  // Multivariate sections (real variants) are managed through the variant UI.
+  const handleToggleHidden = (index: number) => {
+    if (!activePageKey) return;
+    const rawSection = rawSections[index];
+    const parsed = parsedSections[index];
+    if (!rawSection || !parsed || parsed.isMultivariate) return;
+
+    const next = parsed.isHidden
+      ? showSection(rawSection)
+      : hideSection(rawSection);
+    if (!next) return;
+
+    const updatedSections = [...rawSections];
+    updatedSections[index] = next;
+    if (selectedSectionIndex === index) clearSectionEditing();
+    savePageSections(updatedSections);
+  };
+
   const handleAddSection = (entry: SectionCatalogEntry) => {
     if (!activePageKey) return;
 
@@ -1129,7 +1221,6 @@ export function SectionsEditor({
 
   // Sync rule form state when variant changes
   const activeRule = activeVariant?.rule;
-  const activeRuleRt = (activeRule?.__resolveType as string) ?? "";
   // Initialize rule form state when switching variants
   if (
     hasMultipleVariants &&
@@ -1137,9 +1228,13 @@ export function SectionsEditor({
     ruleResolveType === null &&
     activeRule
   ) {
-    setRuleResolveType(activeRuleRt);
-    const { __resolveType: _, ...ruleData } = activeRule;
-    setRuleFormValue(ruleData);
+    const { resolveType, formValue } = readMatcherRuleFormState(
+      activeRule,
+      decofile ?? {},
+      meta ?? undefined,
+    );
+    setRuleResolveType(resolveType);
+    setRuleFormValue(formValue);
   }
 
   const availableMatchers = meta ? extractMatchers(meta) : [];
@@ -1148,6 +1243,35 @@ export function SectionsEditor({
 
   const ruleSchema =
     ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
+
+  const cancelPendingRuleSaves = () => {
+    if (ruleDebounceRef.current) {
+      clearTimeout(ruleDebounceRef.current);
+      ruleDebounceRef.current = null;
+    }
+    if (sectionRuleDebounceRef.current) {
+      clearTimeout(sectionRuleDebounceRef.current);
+      sectionRuleDebounceRef.current = null;
+    }
+  };
+
+  const cleanupOrphanMatcherBlock = async (
+    blockKey: string,
+    projectedDecofile: Record<string, unknown>,
+  ) => {
+    if (
+      countSavedMatcherBlockReferences(projectedDecofile, blockKey, meta) > 0
+    ) {
+      return;
+    }
+    try {
+      await deleteBlock.mutateAsync({ blockKey });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not delete matcher block",
+      );
+    }
+  };
 
   const scheduleRuleSave = (newRule: Record<string, unknown>) => {
     if (ruleDebounceRef.current) clearTimeout(ruleDebounceRef.current);
@@ -1168,9 +1292,41 @@ export function SectionsEditor({
       const variants = [
         ...((mv.variants as Array<Record<string, unknown>>) ?? []),
       ];
-      if (variants[latestVariantIndex]) {
+      const currentVariant = variants[latestVariantIndex];
+      const currentRule = currentVariant?.rule as
+        | Record<string, unknown>
+        | undefined;
+
+      if (isSavedMatcherBlockReference(currentRule, latestDecofile, meta)) {
+        const blockKey = (currentRule?.__resolveType as string) ?? "";
+        const existingBlock = latestDecofile[blockKey] as
+          | Record<string, unknown>
+          | undefined;
+        const displayName =
+          typeof existingBlock?.name === "string"
+            ? existingBlock.name
+            : blockKey;
+        const { __resolveType: matcherRt, ...matcherData } = newRule;
+        saveBlock.mutate(
+          {
+            blockKey,
+            data: buildMatcherBlockData(
+              (matcherRt as string) ?? "",
+              matcherData,
+              displayName,
+            ),
+          },
+          {
+            onSuccess: () => onSaved?.(),
+            onError: (err) => toast.error(`Save failed: ${err.message}`),
+          },
+        );
+        return;
+      }
+
+      if (currentVariant) {
         variants[latestVariantIndex] = {
-          ...variants[latestVariantIndex],
+          ...currentVariant,
           rule: newRule,
         };
       }
@@ -1322,6 +1478,16 @@ export function SectionsEditor({
   const isEditing =
     isEditingSection &&
     (isEditingMultivariateSection || !!(activeSchema && formValue));
+  // A reusable/global section reached from inside a page (purple in the list).
+  // Editing it writes back to the shared block definition, so changes apply
+  // everywhere it's used — surface the same global banner as the dedicated
+  // global-section route.
+  const isEditingSavedBlock =
+    isEditing && !isGlobalBlockMode && selectedParsed?.isSavedBlock === true;
+  const showGlobalBanner = isGlobalBlockMode || isEditingSavedBlock;
+  const globalBannerName = isGlobalBlockMode
+    ? globalBlockName
+    : (selectedParsed?.label ?? "");
   const sectionRuleSchema =
     sectionRuleResolveType && meta
       ? resolveSchema(sectionRuleResolveType, meta)
@@ -1339,6 +1505,282 @@ export function SectionsEditor({
             ...fieldBreadcrumbs,
           ]
       : [];
+  // The global header still needs a crumb at the top level of a directly-opened
+  // global block, where editingBreadcrumbs is empty — fall back to its name.
+  const headerCrumbs = showGlobalBanner
+    ? editingBreadcrumbs.length > 0
+      ? editingBreadcrumbs
+      : [globalBannerName]
+    : editingBreadcrumbs;
+  const handleAddPageVariant = () => {
+    if (!activePageKey) return;
+    const fullPageData = decofile[activePageKey] as Record<string, unknown>;
+    const updatedSections = appendPageVariantSections(
+      fullPageData.sections,
+      rawSections,
+    );
+    if (!updatedSections) return;
+
+    const newVariantIndex = getLastVariantIndex(updatedSections);
+    saveBlock.mutate(
+      {
+        blockKey: activePageKey,
+        data: { ...fullPageData, sections: updatedSections },
+      },
+      {
+        onSuccess: () => {
+          setActiveVariantIndex(newVariantIndex);
+          setSelectedSectionIndex(null);
+          setFormValue(null);
+          setActiveResolveType(null);
+          setFieldBreadcrumbs([]);
+          setRuleFormValue(null);
+          setRuleResolveType(null);
+        },
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  };
+
+  /**
+   * Read the page's variants array, apply a transform, then persist the
+   * modified shape. Shared by delete variant flows.
+   */
+  const mutatePageVariants = (
+    transform: (
+      variants: Array<Record<string, unknown>>,
+    ) => Array<Record<string, unknown>> | null,
+    onSaved?: () => void,
+    orphanMatcherBlockKey?: string | null,
+  ) => {
+    if (!activePageKey) return;
+    const fullPageData = decofile[activePageKey] as Record<string, unknown>;
+    const current = fullPageData.sections;
+    if (!current || typeof current !== "object" || Array.isArray(current))
+      return;
+    const obj = current as Record<string, unknown>;
+    if (!Array.isArray(obj.variants)) return;
+    const next = transform([
+      ...(obj.variants as Array<Record<string, unknown>>),
+    ]);
+    if (!next) return;
+    const updatedSections = buildPageSectionsFromVariants(obj, next);
+    const projectedDecofile = {
+      ...decofile,
+      [activePageKey]: { ...fullPageData, sections: updatedSections },
+    };
+    saveBlock.mutate(
+      {
+        blockKey: activePageKey,
+        data: projectedDecofile[activePageKey] as Record<string, unknown>,
+      },
+      {
+        onSuccess: () => {
+          onSaved?.();
+          if (orphanMatcherBlockKey) {
+            void cleanupOrphanMatcherBlock(
+              orphanMatcherBlockKey,
+              projectedDecofile,
+            );
+          }
+        },
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  };
+
+  const selectPageVariant = (index: number) => {
+    setRenameVariantIndex(null);
+    setActiveVariantIndex(index);
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+    setFieldBreadcrumbs([]);
+    const variantRule = pageVariants[index]?.rule;
+    const { resolveType, formValue } = readMatcherRuleFormState(
+      variantRule,
+      decofile ?? {},
+      meta ?? undefined,
+    );
+    setRuleResolveType(resolveType);
+    setRuleFormValue(formValue);
+  };
+
+  const handleReorderPageVariants = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    if (safeVariantIndex === fromIndex) {
+      setActiveVariantIndex(toIndex);
+    } else if (fromIndex < safeVariantIndex && toIndex >= safeVariantIndex) {
+      setActiveVariantIndex(safeVariantIndex - 1);
+    } else if (fromIndex > safeVariantIndex && toIndex <= safeVariantIndex) {
+      setActiveVariantIndex(safeVariantIndex + 1);
+    }
+
+    mutatePageVariants((variants) => arrayMove(variants, fromIndex, toIndex));
+  };
+
+  const handleDeletePageVariant = (variantIndex: number) => {
+    const deletedRule = pageVariants[variantIndex]?.rule;
+    const orphanMatcherBlockKey = getSavedMatcherBlockKey(
+      deletedRule,
+      decofile ?? {},
+      meta ?? undefined,
+    );
+
+    mutatePageVariants(
+      (variants) => {
+        if (variants.length <= 1) return null;
+        variants.splice(variantIndex, 1);
+        return variants;
+      },
+      () => {
+        // After delete, keep the user on a valid neighboring variant.
+        const collapsing = pageVariants.length - 1 === 1;
+        if (collapsing) {
+          setActiveVariantIndex(0);
+        } else if (variantIndex < safeVariantIndex) {
+          setActiveVariantIndex(safeVariantIndex - 1);
+        } else if (variantIndex === safeVariantIndex) {
+          setActiveVariantIndex(Math.max(0, variantIndex - 1));
+        }
+        setSelectedSectionIndex(null);
+        setFormValue(null);
+        setActiveResolveType(null);
+        setFieldBreadcrumbs([]);
+        setRuleFormValue(null);
+        setRuleResolveType(null);
+      },
+      orphanMatcherBlockKey,
+    );
+  };
+
+  const handleRenamePageVariant = async (
+    variantIndex: number,
+    nextName: string,
+  ) => {
+    cancelPendingRuleSaves();
+
+    const pageKey = latestRef.current.activePageKey;
+    const latestDecofile: Record<string, unknown> = latestRef.current.decofile;
+    if (!pageKey) return;
+
+    const fullPageData = latestDecofile[pageKey] as Record<string, unknown>;
+    const current = fullPageData.sections;
+    if (!current || typeof current !== "object" || Array.isArray(current))
+      return;
+    const obj = current as Record<string, unknown>;
+    if (!Array.isArray(obj.variants)) return;
+
+    const variants = [...(obj.variants as Array<Record<string, unknown>>)];
+    const target = variants[variantIndex];
+    if (!target?.rule || typeof target.rule !== "object") {
+      toast.error("This variant has no matcher rule to rename.");
+      return;
+    }
+    const targetRule = target.rule as Record<string, unknown>;
+
+    const trimmed = nextName.trim();
+    setRenameVariantPending(true);
+
+    try {
+      if (!trimmed) {
+        if (!isSavedMatcherBlockReference(targetRule, latestDecofile, meta)) {
+          setRenameVariantIndex(null);
+          return;
+        }
+
+        const blockKey = (targetRule.__resolveType as string) ?? "";
+        variants[variantIndex] = {
+          ...target,
+          rule: inlineMatcherRule(targetRule, latestDecofile, meta),
+        };
+
+        const projectedDecofile = {
+          ...latestDecofile,
+          [pageKey]: { ...fullPageData, sections: { ...obj, variants } },
+        };
+
+        await saveBlock.mutateAsync({
+          blockKey: pageKey,
+          data: projectedDecofile[pageKey] as Record<string, unknown>,
+        });
+        await cleanupOrphanMatcherBlock(blockKey, projectedDecofile);
+        setRenameVariantIndex(null);
+        onSaved?.();
+        return;
+      }
+
+      const unwrapped = unwrapMatcherRule(targetRule, latestDecofile, meta);
+      if (!unwrapped) {
+        toast.error("Could not read this variant's matcher rule.");
+        return;
+      }
+
+      if (unwrapped.blockKey) {
+        await saveBlock.mutateAsync({
+          blockKey: unwrapped.blockKey,
+          data: buildMatcherBlockData(
+            unwrapped.resolveType,
+            unwrapped.data,
+            trimmed,
+          ),
+        });
+        setRenameVariantIndex(null);
+        onSaved?.();
+        return;
+      }
+
+      const blockId = suggestBlockId(trimmed);
+      const validationError = validateBlockId(blockId, latestDecofile);
+      if (validationError) {
+        toast.error(validationError);
+        return;
+      }
+
+      const blockData = buildMatcherBlockData(
+        unwrapped.resolveType,
+        unwrapped.data,
+        trimmed,
+      );
+
+      let createdBlockId: string | null = null;
+      try {
+        await saveBlock.mutateAsync({ blockKey: blockId, data: blockData });
+        createdBlockId = blockId;
+        variants[variantIndex] = {
+          ...target,
+          rule: buildMatcherBlockReference(blockId),
+        };
+        await saveBlock.mutateAsync({
+          blockKey: pageKey,
+          data: {
+            ...fullPageData,
+            sections: { ...obj, variants },
+          },
+        });
+        createdBlockId = null;
+      } catch (err) {
+        if (createdBlockId) {
+          await deleteBlock
+            .mutateAsync({ blockKey: createdBlockId })
+            .catch(() => {});
+        }
+        throw err;
+      }
+
+      setRenameVariantIndex(null);
+      toast.success(`Saved matcher as global block "${trimmed}"`);
+      onSaved?.();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to rename variant",
+      );
+    } finally {
+      setRenameVariantPending(false);
+    }
+  };
+
   const exitSectionEditing = () => {
     clearSectionEditing();
   };
@@ -1373,101 +1815,152 @@ export function SectionsEditor({
   return (
     <div className="flex h-full min-w-0 w-full flex-col">
       {/* Page header */}
-      <div className="px-3 py-2.5 border-b shrink-0">
-        {isEditing && (!isGlobalBlockMode || fieldBreadcrumbs.length > 0) ? (
-          <div className="flex min-w-0 items-center overflow-hidden">
-            <nav
-              aria-label="Editing breadcrumb"
-              className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
-            >
-              {editingBreadcrumbs.map((crumb, index) => {
-                const isLast = index === editingBreadcrumbs.length - 1;
-
-                return (
-                  <span
-                    key={`${crumb}-${index}`}
-                    className="flex min-w-0 items-center gap-1 overflow-hidden"
-                  >
-                    {index > 0 && (
-                      <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
+      <div className="shrink-0">
+        {/* When editing a reusable/global block (opened directly or from inside
+            a page), the breadcrumb bar goes purple with a globe and a note that
+            changes apply everywhere — so it never reads as a local edit. */}
+        {showGlobalBanner || isEditing ? (
+          <div
+            className={cn(
+              "border-b px-3 py-2.5",
+              showGlobalBanner &&
+                "border-global-section/22 bg-global-section/12 dark:bg-global-section/16",
+            )}
+          >
+            <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+              {!isGlobalBlockMode && hasMultipleVariants && activeVariant && (
+                <button
+                  type="button"
+                  onClick={exitSectionEditing}
+                  title={`Editing in variant: ${activeVariant.label}`}
+                  className={cn(
+                    "shrink-0 inline-flex items-center gap-1 rounded-md h-6 px-1.5 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80",
+                    VARIANT_TAB_ACTIVE_CLASS,
+                  )}
+                >
+                  <VariantTabIcon
+                    rule={resolveEffectiveMatcherRule(
+                      activeVariant.rule,
+                      decofile ?? {},
+                      meta ?? undefined,
                     )}
-                    <button
-                      type="button"
-                      onClick={() => handleBreadcrumbClick(index)}
-                      title={crumb}
-                      className={cn(
-                        "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
-                        isLast
-                          ? "font-medium text-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {crumb}
-                    </button>
+                    matchers={availableMatchers}
+                  />
+                  <span className="max-w-[160px] truncate">
+                    {activeVariant.label}
                   </span>
-                );
-              })}
-            </nav>
-          </div>
-        ) : isGlobalBlockMode ? (
-          <div className="space-y-0.5">
-            <div className="text-sm font-medium truncate">
-              {globalBlockName}
+                </button>
+              )}
+              <nav
+                aria-label="Editing breadcrumb"
+                className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
+              >
+                {headerCrumbs.map((crumb, index) => {
+                  const isLast = index === headerCrumbs.length - 1;
+
+                  return (
+                    <span
+                      key={`${crumb}-${index}`}
+                      className="flex min-w-0 items-center gap-1 overflow-hidden"
+                    >
+                      {index > 0 && (
+                        <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleBreadcrumbClick(index)}
+                        title={crumb}
+                        className={cn(
+                          "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors",
+                          isLast
+                            ? showGlobalBanner
+                              ? "font-semibold text-global-section-fg dark:text-global-section-fg-dark"
+                              : "font-medium text-foreground"
+                            : showGlobalBanner
+                              ? "text-foreground/80"
+                              : "text-muted-foreground",
+                          showGlobalBanner
+                            ? "hover:bg-global-section/15"
+                            : "hover:bg-accent hover:text-accent-foreground",
+                        )}
+                      >
+                        {crumb}
+                      </button>
+                    </span>
+                  );
+                })}
+              </nav>
+              {showGlobalBanner && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="shrink-0 cursor-help">
+                      <Globe01 className="size-4 text-global-section-fg dark:text-global-section-fg-dark" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[260px]">
+                    A global section is a reusable block shared across your
+                    site. Editing it here updates it everywhere it's used.
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
-            <div className="text-xs text-muted-foreground">
-              Global component
-            </div>
+            {showGlobalBanner && (
+              <p className="mt-1.5 py-1.5 pl-1 text-sm leading-snug text-foreground">
+                This is a global section. Changes apply everywhere this section
+                is used across your site.
+              </p>
+            )}
           </div>
         ) : (
-          <PageHeaderInputs
-            pageKey={activePageKey!}
-            initialName={activePage!.name}
-            initialPath={activePage!.path}
-            onFieldChange={savePageField}
-          />
+          <div className="flex items-center gap-2 border-b px-3 py-2.5">
+            <div className="flex-1 min-w-0">
+              <PageHeaderInputs
+                pageKey={activePageKey!}
+                initialName={activePage!.name}
+                initialPath={activePage!.path}
+                onFieldChange={savePageField}
+              />
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Add variant"
+                  className="size-7 shrink-0"
+                  style={{ color: "oklch(0.65 0.15 160)" }}
+                  onClick={handleAddPageVariant}
+                >
+                  <Flag01 size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Add variant</TooltipContent>
+            </Tooltip>
+          </div>
         )}
       </div>
 
       {/* Variant selector (when page sections are multivariate) */}
-      {hasMultipleVariants && !isEditing && (
-        <div className="flex gap-1 px-3 py-1.5 border-b shrink-0 overflow-x-auto">
-          {pageVariants.map((variant, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => {
-                setActiveVariantIndex(i);
-                setSelectedSectionIndex(null);
-                setFormValue(null);
-                setActiveResolveType(null);
-                setFieldBreadcrumbs([]);
-                const variantRule = pageVariants[i]?.rule;
-                const variantRuleRt =
-                  (variantRule?.__resolveType as string) ?? "";
-                setRuleResolveType(variantRuleRt);
-                if (variantRule) {
-                  const { __resolveType: _, ...ruleData } = variantRule;
-                  setRuleFormValue(ruleData);
-                } else {
-                  setRuleFormValue(null);
-                }
-              }}
-              className={cn(
-                "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                i === safeVariantIndex
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              {variant.label}
-            </button>
-          ))}
-        </div>
+      {hasMultipleVariants && !isEditing && activePageKey && (
+        <PageVariantTabs
+          listKey={activePageKey}
+          variants={pageVariants}
+          activeIndex={safeVariantIndex}
+          decofile={decofile ?? {}}
+          meta={meta}
+          matchers={availableMatchers}
+          onSelect={selectPageVariant}
+          onReorder={handleReorderPageVariants}
+          onRename={setRenameVariantIndex}
+          onDelete={handleDeletePageVariant}
+          onAdd={handleAddPageVariant}
+        />
       )}
 
       {/* Drill-down: section list OR section form */}
       {isEditing ? (
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
           {isEditingMultivariateSection && sectionFlagVariants.length > 0 && (
             <>
               <SectionVariantList
@@ -1506,71 +1999,84 @@ export function SectionsEditor({
               )}
             </>
           )}
-          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
-            {activeSchema && formValue ? (
-              <SchemaForm
-                key={formResetKey}
-                schema={activeSchema}
-                value={formValue}
-                onChange={handleFormChange}
-                basePath=""
-                breadcrumbPath={[]}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-              />
-            ) : (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                No editable fields for this variant.
-              </div>
-            )}
-          </div>
+          <SchemaFormPanel
+            activeSchema={activeSchema}
+            formValue={formValue}
+            formResetKey={formResetKey}
+            onFormChange={handleFormChange}
+            onBreadcrumbChange={setFieldBreadcrumbs}
+            emptyMessage="No editable fields for this variant."
+          />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
-            {activeSchema && formValue ? (
-              <SchemaForm
-                key={formResetKey}
-                schema={activeSchema}
-                value={formValue}
-                onChange={handleFormChange}
-                basePath=""
-                breadcrumbPath={[]}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-              />
-            ) : (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                No editable fields for this global block.
-              </div>
-            )}
-          </div>
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+          <SchemaFormPanel
+            activeSchema={activeSchema}
+            formValue={formValue}
+            formResetKey={formResetKey}
+            onFormChange={handleFormChange}
+            onBreadcrumbChange={setFieldBreadcrumbs}
+            emptyMessage="No editable fields for this global block."
+          />
         </ScrollArea>
       ) : (
-        <ScrollArea className="flex-1 min-h-0">
-          {/* Variant rule editor */}
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+          {/* Variant rule editor (collapsible so users can reclaim space) */}
           {hasMultipleVariants && ruleResolveType !== null && (
-            <div className="px-3 py-3 border-b space-y-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Variant rule
-              </span>
-              <MatcherPicker
-                currentRt={ruleResolveType}
-                currentLabel={formatMatcher(activeVariant?.rule)}
-                matchers={availableMatchers}
-                onSelect={handleMatcherTypeChange}
-              />
-              {ruleSchema && ruleFormValue && (
-                <div className="pt-1">
-                  <SchemaForm
-                    schema={ruleSchema}
-                    value={ruleFormValue}
-                    onChange={handleRuleFormChange}
-                    basePath=""
+            <div
+              className={cn(
+                "px-3 border-b",
+                isVariantRuleOpen ? "pt-3 pb-5 space-y-3" : "py-2",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => setIsVariantRuleOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 text-left cursor-pointer rounded-sm py-0.5 hover:bg-muted/40"
+                aria-expanded={isVariantRuleOpen}
+              >
+                <span className="text-xs font-medium text-muted-foreground">
+                  Variant rule
+                </span>
+                {isVariantRuleOpen ? (
+                  <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                )}
+              </button>
+              {isVariantRuleOpen && (
+                <div
+                  className={cn(
+                    "space-y-3",
+                    renameVariantPending && "pointer-events-none opacity-50",
+                  )}
+                >
+                  <MatcherPicker
+                    currentRt={ruleResolveType}
+                    currentLabel={resolveVariantRuleLabel(
+                      activeVariant?.rule,
+                      decofile ?? {},
+                      formatMatcher,
+                      meta ?? undefined,
+                    )}
+                    matchers={availableMatchers}
+                    onSelect={handleMatcherTypeChange}
                   />
+                  {ruleSchema && ruleFormValue && (
+                    <div className="space-y-3">
+                      <SchemaForm
+                        schema={ruleSchema}
+                        value={ruleFormValue}
+                        onChange={handleRuleFormChange}
+                        basePath=""
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
-          <div className="p-2">
+          <div className="p-2 pt-3">
             <SectionList
               listKey={`${activePageKey ?? ""}-${safeVariantIndex}`}
               sections={parsedSections}
@@ -1580,6 +2086,7 @@ export function SectionsEditor({
               onDelete={handleDeleteSection}
               onDuplicate={handleDuplicateSection}
               onMakeReusable={setMakeReusableIndex}
+              onToggleHidden={handleToggleHidden}
               onAddSection={() => setAddSectionOpen(true)}
               canAddSection={canAddSection}
             />
@@ -1609,6 +2116,40 @@ export function SectionsEditor({
           decofile={decofile}
           previewBaseUrl={previewUrl}
           onSelect={handleAddSection}
+        />
+      )}
+
+      {renameVariantIndex !== null && (
+        <VariantRenameDialog
+          open
+          initialName={
+            isSavedMatcherBlockReference(
+              pageVariants[renameVariantIndex]?.rule,
+              decofile ?? {},
+              meta ?? undefined,
+            )
+              ? resolveVariantRuleLabel(
+                  pageVariants[renameVariantIndex]?.rule,
+                  decofile ?? {},
+                  formatMatcher,
+                  meta ?? undefined,
+                )
+              : ""
+          }
+          autoLabel={formatMatcher(
+            resolveEffectiveMatcherRule(
+              pageVariants[renameVariantIndex]?.rule,
+              decofile ?? {},
+              meta ?? undefined,
+            ),
+          )}
+          isPending={renameVariantPending}
+          onSubmit={async (name) => {
+            await handleRenamePageVariant(renameVariantIndex, name);
+          }}
+          onOpenChange={(open) => {
+            if (!open && !renameVariantPending) setRenameVariantIndex(null);
+          }}
         />
       )}
     </div>

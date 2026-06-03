@@ -4,8 +4,8 @@
  * The decopilot harness's streamText loop, extracted from
  * `stream-core.ts` (~lines 780–1582) into a standalone async generator.
  * Owns:
- *  - Background title generation (kicked off in parallel with the main
- *    LLM stream, gated on `currentThreadTitle === DEFAULT_THREAD_TITLE`).
+ *  - Background title generation with the harness fast model, kicked off in
+ *    parallel with the main LLM stream.
  *  - `streamText` invocation with the full set of callbacks: `prepareStep`
  *    (todo-write strip + inject, image injection, plan-mode tool gating,
  *    forced-first-step toolChoice), `onFinish`/`onError`/`onAbort`
@@ -13,8 +13,9 @@
  *  - `result.toUIMessageStream({ messageMetadata })` chunk producer that
  *    decorates chunks with start/step/finish metadata (model id, usage,
  *    cache token details, coding-agent session ids).
- *  - Auto-title chunk emission (`data-thread-title`) — yielded through
- *    the same async iterator as the main stream chunks.
+ *  - Auto-title result emission (`data-title-result`) — yielded through the
+ *    same async iterator as the main stream chunks. The dispatch interceptor
+ *    persists it and writes the UI-facing `data-thread-title` chunk.
  *  - Abort-time `message-metadata` re-emission so the UI keeps the
  *    accumulated usage that the SDK would otherwise reset to its
  *    pre-stream state.
@@ -30,16 +31,11 @@
  * is intended to be byte-for-byte the same as the inline version.
  *
  * Important difference from the inline original: the original calls
- * `writer.write(chunk)` from `onAbort` and from the auto-title `then`
- * callback to push side-channel chunks into the merged UI message
- * stream. The async-generator shape doesn't have a writer to call back
- * into, so this module hosts a tiny internal queue: callbacks push
- * chunks onto it, and the main yield loop drains it alongside the
- * `toUIMessageStream` output. The queue closes when the streamText
- * stream ends, so any callback firing after that point (today: only
- * `genTitle.promise.then` if the title resolves post-stream) is a no-op
- * for the SSE channel — mirroring the inline original's `streamFinished`
- * guard.
+ * `writer.write(chunk)` from `onAbort` to push side-channel chunks into the
+ * merged UI message stream. The async-generator shape doesn't have a writer
+ * to call back into, so this module hosts a tiny internal queue: callbacks
+ * push chunks onto it, and the main yield loop drains it alongside the
+ * `toUIMessageStream` output.
  */
 
 import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
@@ -57,15 +53,13 @@ import type { MeshProvider } from "@/ai-providers/types";
 import { createEnableToolTool } from "./built-in-tools/enable-tool";
 import type { PendingImage } from "./built-in-tools";
 import { createUsageAccumulator } from "../usage-accumulator";
-import {
-  DEFAULT_THREAD_TITLE,
-  generateMessageId,
-} from "../../api/routes/decopilot/constants";
+import { generateMessageId } from "../../api/routes/decopilot/constants";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
+import { makeTitleResultChunk } from "../title-chunk";
+import { createLanguageModel } from "@/ai-providers/language-model";
 import { genTitle } from "./title-generator";
-import type { ChatMessage } from "../../api/routes/decopilot/types";
+import type { ChatMessage, ModelInfo } from "../../api/routes/decopilot/types";
 import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
-import { createLanguageModel } from "../../ai-providers/language-model";
 import type { HarnessStreamInput } from "../types";
 import type { AssembledTools } from "./tools";
 import type { AssembledPrompt } from "./prompt";
@@ -142,6 +136,12 @@ export interface RunDecopilotStreamExtras {
    * line ~288 via `Promise.all([... ctx.aiProviders.activate(...) ...])`.
    */
   provider: MeshProvider;
+
+  /** Provider/model used only for title generation. This lets Decopilot use
+   *  the org fast tier even when the main chat model uses another tier or
+   *  credential. */
+  titleProvider?: MeshProvider | null;
+  titleModel?: ModelInfo | null;
 
   /**
    * Run-registry abort signal for this run. Listened to by streamText
@@ -307,7 +307,7 @@ export interface RunDecopilotStreamExtras {
 /**
  * Tiny single-producer, single-consumer chunk queue used to merge
  * side-channel chunks (today: abort-time `message-metadata` and the
- * auto-title `data-thread-title`) into the main `for await` iteration
+ * abort-time `message-metadata`) into the main `for await` iteration
  * over `result.toUIMessageStream()`. Closing the queue ends any
  * in-flight wait so the generator can return promptly.
  */
@@ -362,11 +362,10 @@ function makeChunkQueue(): {
  * Run the decopilot streamText loop and yield its UIMessageChunk
  * stream. The generator owns the LLM-call lifetime; on completion (or
  * abort) it tears down the otel span and resolves any background title
- * work registered through `extras.registerPendingOp`.
+ * work before closing.
  *
- * Side-channel chunks (auto-title chunk + abort-time message-metadata
- * chunk) are pushed onto an internal queue and interleaved into the
- * main yield loop, matching the inline `writer.write` semantics
+ * Side-channel chunks are pushed onto an internal queue and interleaved into
+ * the main yield loop, matching the inline `writer.write` semantics
  * byte-for-byte.
  */
 export async function* runDecopilotStream(
@@ -378,15 +377,13 @@ export async function* runDecopilotStream(
 ): AsyncGenerator<UIMessageChunk> {
   const {
     provider,
+    titleProvider,
+    titleModel,
     registrySignal,
     processedSystemMessages,
     processedMessages,
     originalMessages,
     threadId,
-    currentThreadTitle,
-    registerPendingOp,
-    isStreamFinished,
-    onTitleUpdated,
     writer,
   } = extras;
 
@@ -397,71 +394,25 @@ export async function* runDecopilotStream(
   // Side-channel chunk queue — see `makeChunkQueue` jsdoc for why.
   const chunkQueue = makeChunkQueue();
 
-  // ── Auto-title: kick off in parallel with the main stream ─────────
-  //
-  // Title generation only runs when the thread is still using the
-  // default name AND we have a non-CLI provider (we always do here —
-  // the CLI branches live in their own harness). When the title
-  // promise resolves, persist the new value and push the
-  // `data-thread-title` chunk onto the queue — so it interleaves with
-  // the main streamText output via the generator's yield loop.
-  let titleHandle: ReturnType<typeof genTitle> | null = null;
-  const shouldGenerateTitle = currentThreadTitle === DEFAULT_THREAD_TITLE;
-  if (shouldGenerateTitle) {
-    const titleInput = JSON.stringify(processedMessages[0]?.content);
-    titleHandle = genTitle({
-      abortSignal: registrySignal,
-      model: createLanguageModel(
-        provider,
-        input.models.fast ?? input.models.thinking,
-      ),
-      userMessage: titleInput,
+  // ── Auto-title: generate with this harness's fast model. The cluster
+  //    interceptor only persists/broadcasts the generated result.
+  const userMessageText = JSON.stringify(processedMessages[0]?.content ?? "");
+  const titleHandle = genTitle({
+    abortSignal: registrySignal,
+    model: createLanguageModel(
+      titleProvider ?? provider,
+      titleModel ?? input.models.fast ?? input.models.thinking,
+    ) as never,
+    userMessage: userMessageText,
+  });
+  const titlePromise = titleHandle.promise
+    .then((title) => {
+      return title ? (makeTitleResultChunk(title) as UIMessageChunk) : null;
+    })
+    .catch((err) => {
+      console.warn("[decopilot:title] title generation failed", err);
+      return null;
     });
-    const titleOp = titleHandle.promise
-      .then(async (title) => {
-        if (!title) return;
-
-        await ctx.storage.threads.update(threadId, { title }).catch((error) => {
-          console.error(
-            "[decopilot:stream] Error updating thread title",
-            error,
-          );
-        });
-
-        // Notify subscribers outside the per-thread /stream (other tabs,
-        // panels). Best-effort: a publish failure must not break the run.
-        try {
-          await onTitleUpdated?.(title);
-        } catch (err) {
-          console.error(
-            "[decopilot:stream] onTitleUpdated callback failed",
-            err,
-          );
-        }
-
-        if (!isStreamFinished()) {
-          chunkQueue.push({
-            type: "data-thread-title",
-            data: { title },
-            transient: true,
-          });
-          console.log(
-            "[decopilot:title-debug] SSE title event sent threadId=%s",
-            threadId,
-          );
-        } else {
-          console.warn(
-            "[decopilot:title-debug] Stream already finished, title SSE NOT sent threadId=%s title=%j",
-            threadId,
-            title,
-          );
-        }
-      })
-      .catch((error) => {
-        console.warn("[decopilot:stream] Title generation failed:", error);
-      });
-    registerPendingOp(titleOp);
-  }
 
   // ── Mode + tool gating state shared between prepareStep and the
   //    `tools` argument to streamText ───────────────────────────────
@@ -998,40 +949,56 @@ export async function* runDecopilotStream(
     | {
         kind: "queue";
         value: { done: false; value: UIMessageChunk } | { done: true };
-      };
+      }
+    | { kind: "title"; value: UIMessageChunk | null };
   const iter = uiMessageStream[Symbol.asyncIterator]();
+  let mainDone = false;
+  let titleDone = false;
   let mainPromise: Promise<Settled> = iter
     .next()
     .then((v) => ({ kind: "main" as const, value: v }));
   let queuePromise: Promise<Settled> = chunkQueue
     .next()
     .then((v) => ({ kind: "queue" as const, value: v }));
+  const titleResultPromise: Promise<Settled> = titlePromise.then((value) => ({
+    kind: "title" as const,
+    value,
+  }));
   try {
     while (true) {
-      const settled = await Promise.race([mainPromise, queuePromise]);
+      if (mainDone && titleDone) {
+        // Main stream and title generation are both settled. Close the queue
+        // so the outstanding queue waiter resolves, then drain anything
+        // buffered by side-channel callbacks.
+        chunkQueue.close();
+        while (true) {
+          const remaining = await chunkQueue.next();
+          if (remaining.done) break;
+          yield remaining.value;
+        }
+        break;
+      }
+
+      const pending = [queuePromise];
+      if (!mainDone) pending.push(mainPromise);
+      if (!titleDone) pending.push(titleResultPromise);
+
+      const settled = await Promise.race(pending);
       if (settled.kind === "main") {
         if (settled.value.done) {
-          // Main stream finished. Close the queue so the outstanding
-          // queue waiter resolves with `done: true`, then drain any
-          // remaining buffered chunks (the abort-time
-          // `message-metadata` chunk in particular fires synchronously
-          // inside `onAbort` and may already be sitting in the queue
-          // at this point).
-          chunkQueue.close();
-          // Drain in lockstep: each `chunkQueue.next()` either returns
-          // the next buffered chunk or `done: true` (the queue is
-          // closed and the buffer is empty).
-          while (true) {
-            const remaining = await chunkQueue.next();
-            if (remaining.done) break;
-            yield remaining.value;
+          mainDone = true;
+          if (!titleDone) {
+            titleHandle.finish();
           }
-          break;
+          continue;
         }
         yield settled.value.value;
         mainPromise = iter
           .next()
           .then((v) => ({ kind: "main" as const, value: v }));
+      } else if (settled.kind === "title") {
+        titleDone = true;
+        if (settled.value) yield settled.value;
       } else {
         // Queue-side resolution. The queue is only closed by us
         // (inside the main-done branch above), so a `done: true`
@@ -1048,11 +1015,8 @@ export async function* runDecopilotStream(
   } finally {
     // Defensive: make sure the queue is closed so any callback fired
     // after we exit can't hang the consumer.
+    if (!titleDone) titleHandle.finish();
     chunkQueue.close();
-    // Signal to the title-gen helper that the main stream is done.
-    // Starts its 10s grace period before aborting — mirroring the
-    // outer onFinish/onError handlers in the inline original.
-    titleHandle?.finish();
   }
 
   // Note about posthog: the original `chat_message_completed` /

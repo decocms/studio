@@ -64,13 +64,24 @@ export async function connectToCluster(
     cancellers.set(frame.reqId, () => ac.abort());
 
     const sendErrorFrame = (err: unknown): void => {
+      const message = err instanceof Error ? err.message : String(err);
+      // This boundary was previously silent, which made daemon→cluster
+      // `handler_error` frames invisible in the link log. Log the code +
+      // message + originating request so a `handler_error: …` surfaced in the
+      // cluster (via dispatcher.ts) can be traced back to the exact handler
+      // path that threw on this daemon.
+      console.error(
+        `[cluster-connection] handler_error reqId=${frame.reqId} method=${frame.method} path=${frame.path} name=${
+          err instanceof Error ? err.name : typeof err
+        } message=${message}`,
+      );
       try {
         ws.send(
           encodeFrame({
             type: "error",
             reqId: frame.reqId,
             code: "handler_error",
-            message: err instanceof Error ? err.message : String(err),
+            message,
           }),
         );
       } catch {
@@ -115,6 +126,17 @@ export async function connectToCluster(
 
       try {
         const res = await input.controlHandler.handle(frame);
+        if (res.status >= 400) {
+          console.warn(
+            `[cluster-connection] lifecycle ${frame.method} ${frame.path} → ${res.status}${
+              res.body ? ` body=${res.body.slice(0, 200)}` : ""
+            }`,
+          );
+        } else {
+          console.log(
+            `[cluster-connection] lifecycle ${frame.method} ${frame.path} → ${res.status}`,
+          );
+        }
         ws.send(
           encodeFrame({
             type: "headers",
@@ -155,6 +177,11 @@ export async function connectToCluster(
         // next reconnect. Successive failures within one reconnect cycle
         // still ramp up normally.
         attempt = 0;
+        console.log(
+          `[cluster-connection] ws open → ${input.url} machineId=${input.hello.machineId} previewPort=${input.hello.previewPort} capabilities=${
+            input.hello.capabilities.join(",") || "(none)"
+          }`,
+        );
         ws.send(
           encodeFrame({
             type: "hello",
@@ -176,12 +203,22 @@ export async function connectToCluster(
         let frame: DispatchFrame;
         try {
           frame = decodeFrame(text);
-        } catch {
+        } catch (err) {
+          console.error(
+            `[cluster-connection] failed to decode frame (${text.length} bytes): ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
           return;
         }
         if (frame.type === "request") {
           void handleRequest(ws, frame);
         } else if (frame.type === "cancel") {
+          console.log(
+            `[cluster-connection] cancel reqId=${frame.reqId} active=${cancellers.has(
+              frame.reqId,
+            )}`,
+          );
           cancellers.get(frame.reqId)?.();
         }
       });
@@ -189,13 +226,27 @@ export async function connectToCluster(
       ws.addEventListener("close", (ev) => {
         activeWs = null;
         if (stopped) {
+          console.log(
+            `[cluster-connection] ws closed code=${ev.code} reason="${ev.reason}" — shutting down (no reconnect)`,
+          );
           resolve({ shouldReconnect: false });
           return;
         }
-        resolve({ shouldReconnect: shouldReconnectOnClose(ev.code) });
+        const willReconnect = shouldReconnectOnClose(ev.code);
+        console.warn(
+          `[cluster-connection] ws closed code=${ev.code} reason="${ev.reason}" reconnect=${willReconnect}`,
+        );
+        resolve({ shouldReconnect: willReconnect });
       });
-      ws.addEventListener("error", () => {
-        // close handler picks up
+      ws.addEventListener("error", (ev) => {
+        // The close handler drives the reconnect decision; we log here so a
+        // transient WS error (DNS, TLS, connection refused) stays visible even
+        // when a close event follows immediately after.
+        const detail =
+          (ev as { message?: string }).message ??
+          (ev as { error?: { message?: string } }).error?.message ??
+          "unknown";
+        console.error(`[cluster-connection] ws error: ${detail}`);
       });
     });
   };
@@ -204,8 +255,15 @@ export async function connectToCluster(
     while (!stopped && attempt < maxAttempts) {
       const { shouldReconnect } = await runOnce();
       if (stopped || !shouldReconnect) break;
-      await new Promise((r) => setTimeout(r, computeBackoffMs(attempt)));
+      const backoffMs = computeBackoffMs(attempt);
+      console.log(
+        `[cluster-connection] reconnecting in ${backoffMs}ms (attempt ${attempt})`,
+      );
+      await new Promise((r) => setTimeout(r, backoffMs));
     }
+    console.log(
+      `[cluster-connection] connection loop ended (stopped=${stopped} attempt=${attempt} maxAttempts=${maxAttempts})`,
+    );
     resolveClosed();
   })();
 

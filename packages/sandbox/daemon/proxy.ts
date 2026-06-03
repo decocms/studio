@@ -1,6 +1,6 @@
 import { BOOTSTRAP_SCRIPT } from "./constants";
 import type { Broadcaster } from "./events/broadcast";
-import { fetchLoopback } from "./upstream-fetch";
+import { fetchLoopback } from "../proxy/http";
 
 export interface ProxyDeps {
   broadcaster: Broadcaster;
@@ -8,6 +8,8 @@ export interface ProxyDeps {
 }
 
 const NO_UPSTREAM_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>No dev server</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fafafa;color:#555}div{text-align:center;max-width:420px;padding:24px}h3{margin:0 0 8px}p{margin:0;font-size:14px;color:#999;line-height:1.5}code{background:#eee;padding:2px 6px;border-radius:4px;font-size:13px;color:#333}</style></head><body><div><h3>No dev server running</h3><p>Start one in this sandbox (e.g. <code>bun run dev</code>) and the preview will appear here automatically.</p></div><script>setTimeout(function(){window.location.reload()},2000)</script></body></html>`;
+
+const NO_WEB_PAGE_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>No web page</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fafafa;color:#555}div{text-align:center;max-width:420px;padding:24px}h3{margin:0 0 8px}p{margin:0;font-size:14px;color:#999;line-height:1.5}code{background:#eee;padding:2px 6px;border-radius:4px;font-size:13px;color:#333}</style></head><body><div><h3>No web page at this URL</h3><p>The dev server is running but doesn't serve HTML at <code>/</code>. The preview only renders web pages — open the logs to see what's running.</p></div></body></html>`;
 
 export function makeProxyHandler({ broadcaster, getDevPort }: ProxyDeps) {
   function log(...args: string[]) {
@@ -118,6 +120,25 @@ export function makeProxyHandler({ broadcaster, getDevPort }: ProxyDeps) {
       return new Response(html, {
         status: upstream.status,
         headers: respHeaders,
+      });
+    }
+    // Root document that isn't HTML: render the dedicated "no web page" notice
+    // instead of dumping raw JSON/text into the iframe. Sub-paths (assets, API
+    // calls the app makes) pass through untouched. Also catches a missing
+    // Content-Type at `/` (a response with no type isn't a web page either).
+    if (url.pathname === "/") {
+      try {
+        await upstream.body?.cancel();
+      } catch {
+        /* ignore */
+      }
+      return new Response(NO_WEB_PAGE_HTML, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*",
+        },
       });
     }
     return new Response(upstream.body, {

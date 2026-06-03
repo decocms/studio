@@ -20,6 +20,8 @@ function makeDeps(
   return {
     daemonToken: DAEMON_TOKEN,
     lookupHarness: () => makeFakeHarness(),
+    allowedHosts: [],
+    allowSameHostDev: false,
     ...overrides,
   };
 }
@@ -111,6 +113,124 @@ describe("POST /_sandbox/dispatch", () => {
     });
     const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
     expect(res.status).toBe(410);
+  });
+
+  it("does not crash with ERR_INVALID_STATE when the consumer cancels mid-stream", async () => {
+    // Repro for the link-daemon crash: a long-lived run whose SSE consumer
+    // (browser → cluster → link WS) disconnects mid-stream. The harness keeps
+    // producing chunks; without a guard the writer enqueues on the now-closed
+    // controller and throws "Controller is already closed", crashing the run
+    // (surfaced as `harness_crashed`) instead of stopping cleanly.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let settleHarness!: () => void;
+    const harnessDone = new Promise<void>((r) => {
+      settleHarness = r;
+    });
+
+    const errorArgs: unknown[][] = [];
+    const originalConsoleError = console.error;
+    console.error = (...args: unknown[]) => {
+      errorArgs.push(args);
+    };
+
+    try {
+      const deps = makeDeps({
+        lookupHarness: () => ({
+          async *stream() {
+            try {
+              yield { type: "start", id: "m1" } as const;
+              // Pause until the consumer has cancelled, then keep producing —
+              // these post-cancel chunks are what used to crash the writer.
+              await gate;
+              for (let i = 0; i < 25; i++) {
+                yield { type: "text-delta", id: "m1", delta: "x" } as const;
+              }
+            } finally {
+              settleHarness();
+            }
+          },
+        }),
+      });
+
+      const body = JSON.stringify({
+        harnessId: "fake",
+        input: {
+          ...fixtures.FIXTURE_MINIMAL_INPUT,
+          runId: "run-cancel-midstream",
+        },
+      });
+      const res = await handleDispatchRequest(authedDispatch(body), deps);
+      expect(res.status).toBe(200);
+
+      const reader = res.body!.getReader();
+      await reader.read(); // consume the first chunk
+      await reader.cancel(); // simulate consumer disconnect → stream cancel()
+      release(); // let the harness produce more after the consumer is gone
+      await harnessDone; // the generator's `finally` ran → loop fully unwound
+      await Promise.resolve();
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    const crashed = errorArgs.some((args) =>
+      args.some(
+        (a) =>
+          (typeof a === "string" && a.includes("harness crashed")) ||
+          (a instanceof Error &&
+            a.message.includes("Controller is already closed")),
+      ),
+    );
+    expect(crashed).toBe(false);
+  });
+
+  it("injects a live AbortSignal into the harness input (cancel aborts it)", async () => {
+    // The wire input cannot carry a (non-serializable) AbortSignal, so the
+    // daemon must reconstruct `input.signal` from its per-run AbortController.
+    // Without this, harnesses see `input.signal === undefined` — which crashed
+    // `genTitle`'s `addEventListener` and silently dropped cancellation.
+    const runId = "run-signal-inject";
+    let captured: { signal?: AbortSignal } | undefined;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+
+    const deps = makeDeps({
+      lookupHarness: (_id, input) => {
+        captured = input as { signal?: AbortSignal };
+        return {
+          async *stream() {
+            yield { type: "start", id: "m1" } as const;
+            await gate; // hold the run open so cancel can land
+          },
+        };
+      },
+    });
+
+    const body = JSON.stringify({
+      harnessId: "fake",
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId },
+    });
+    const res = await handleDispatchRequest(authedDispatch(body), deps);
+    expect(res.status).toBe(200);
+
+    const reader = res.body!.getReader();
+    await reader.read(); // ensure start() ran → lookupHarness called
+
+    expect(captured?.signal).toBeInstanceOf(AbortSignal);
+    expect(captured?.signal?.aborted).toBe(false);
+
+    // Cancelling the run must flip the injected signal.
+    await handleCancelRequest(authedCancel(runId), {
+      daemonToken: DAEMON_TOKEN,
+    });
+    expect(captured?.signal?.aborted).toBe(true);
+
+    release();
+    await reader.cancel();
   });
 
   it("wraps harness errors as an error SSE event followed by done", async () => {

@@ -1,142 +1,18 @@
 name: Release Tagging
 
 on:
-  pull_request_target:
-    types: [opened, synchronize]
-    paths:
-      - "apps/mesh/**"
-      - "packages/mesh-plugin-*/**"
-      - "packages/sandbox/**"
   push:
     branches:
       - main
     paths:
       - "apps/mesh/**"
-      - "packages/mesh-plugin-*/**"
-      - "packages/sandbox/**"
+      - "packages/**"
 
 permissions:
   contents: write
-  pull-requests: write
-  actions: write
+  pull-requests: read
 
 jobs:
-  tag-discussion:
-    if: github.event_name == 'pull_request_target'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref }}
-          repository: ${{ github.event.pull_request.base.repo.full_name }}
-
-      - name: Find existing Release Options comment
-        uses: peter-evans/find-comment@v3
-        id: find_comment
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body-includes: "## Release Options"
-
-      - name: Calculate new versions
-        id: calculate_versions
-        run: |
-          # Get current version from package.json
-          CURRENT_VERSION=$(node -p "require('./apps/mesh/package.json').version")
-          echo "Current version: $CURRENT_VERSION"
-
-          # Parse version components
-          # Handle prerelease versions like 1.0.0-alpha.23
-          if [[ "$CURRENT_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([a-zA-Z]+)\.([0-9]+))?$ ]]; then
-            MAJOR="${BASH_REMATCH[1]}"
-            MINOR="${BASH_REMATCH[2]}"
-            PATCH="${BASH_REMATCH[3]}"
-            PRERELEASE_TAG="${BASH_REMATCH[5]}"
-            PRERELEASE_NUM="${BASH_REMATCH[6]}"
-          else
-            echo "Could not parse version: $CURRENT_VERSION"
-            exit 1
-          fi
-
-          echo "Parsed: MAJOR=$MAJOR, MINOR=$MINOR, PATCH=$PATCH, PRERELEASE_TAG=$PRERELEASE_TAG, PRERELEASE_NUM=$PRERELEASE_NUM"
-
-          # Calculate next versions
-          if [ -n "$PRERELEASE_TAG" ]; then
-            # Currently a prerelease version
-            NEW_PRERELEASE_VERSION="$MAJOR.$MINOR.$PATCH-$PRERELEASE_TAG.$((PRERELEASE_NUM + 1))"
-          else
-            # Currently a stable version, bump to alpha.1
-            NEW_PRERELEASE_VERSION="$MAJOR.$MINOR.$((PATCH + 1))-alpha.1"
-          fi
-
-          NEW_PATCH_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-          NEW_MINOR_VERSION="$MAJOR.$((MINOR + 1)).0"
-          NEW_MAJOR_VERSION="$((MAJOR + 1)).0.0"
-
-          echo "prerelease_version=$NEW_PRERELEASE_VERSION" >> $GITHUB_OUTPUT
-          echo "patch_version=$NEW_PATCH_VERSION" >> $GITHUB_OUTPUT
-          echo "minor_version=$NEW_MINOR_VERSION" >> $GITHUB_OUTPUT
-          echo "major_version=$NEW_MAJOR_VERSION" >> $GITHUB_OUTPUT
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Auto-suggest version bump from PR title 
-        id: suggest_bump
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          # Parse conventional commit prefix from PR title (treat as untrusted input)
-          if [[ "$PR_TITLE" =~ ^(fix|feat|chore|docs|refactor|ci|test|perf|build|style)(\(.+\))?\!?: ]]; then
-            PREFIX="${BASH_REMATCH[1]}"
-            case "$PREFIX" in
-              fix)
-                echo "suggested_type=Patch" >> $GITHUB_OUTPUT
-                echo "suggested_version=${{ steps.calculate_versions.outputs.patch_version }}" >> $GITHUB_OUTPUT
-                echo "suggested_prefix=fix:" >> $GITHUB_OUTPUT
-                ;;
-              feat)
-                echo "suggested_type=Minor" >> $GITHUB_OUTPUT
-                echo "suggested_version=${{ steps.calculate_versions.outputs.minor_version }}" >> $GITHUB_OUTPUT
-                echo "suggested_prefix=feat:" >> $GITHUB_OUTPUT
-                ;;
-              *)
-                echo "suggested_type=Patch" >> $GITHUB_OUTPUT
-                echo "suggested_version=${{ steps.calculate_versions.outputs.patch_version }}" >> $GITHUB_OUTPUT
-                echo "suggested_prefix=${PREFIX}:" >> $GITHUB_OUTPUT
-                ;;
-            esac
-          else
-            # No conventional commit prefix matched — default to patch
-            echo "suggested_type=Patch" >> $GITHUB_OUTPUT
-            echo "suggested_version=${{ steps.calculate_versions.outputs.patch_version }}" >> $GITHUB_OUTPUT
-            echo "suggested_prefix=" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Post Release Options Comment
-        uses: peter-evans/create-or-update-comment@v4
-        id: comment
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-id: ${{ steps.find_comment.outputs.comment-id }}
-          edit-mode: replace
-          body: |
-            ## Release Options
-
-            **Suggested**: ${{ steps.suggest_bump.outputs.suggested_type }} (`${{ steps.suggest_bump.outputs.suggested_version }}`)${{ steps.suggest_bump.outputs.suggested_prefix != '' && format(' — based on `{0}` prefix', steps.suggest_bump.outputs.suggested_prefix) || ' — default (no conventional commit prefix detected)' }}
-
-            React with an emoji to override the release type:
-
-            | Reaction | Type | Next Version |
-            |----------|------|--------------|
-            | :+1: | Prerelease | `${{ steps.calculate_versions.outputs.prerelease_version }}` |
-            | :tada: | Patch | `${{ steps.calculate_versions.outputs.patch_version }}` |
-            | :heart: | Minor | `${{ steps.calculate_versions.outputs.minor_version }}` |
-            | :rocket: | Major | `${{ steps.calculate_versions.outputs.major_version }}` |
-
-            Current version: `${{ steps.calculate_versions.outputs.current_version }}`
-
-            > **Note**: If multiple reactions exist, the smallest bump wins. If no reactions, the suggested bump is used (default: patch).
-
   determine-tag:
     # Skip release-bump commits so the bot's own push (made with the GitHub App
     # token, which — unlike GITHUB_TOKEN — re-triggers workflows) does not loop.
@@ -144,9 +20,6 @@ jobs:
       github.event_name == 'push' &&
       !startsWith(github.event.head_commit.message, '[release]:')
     runs-on: ubuntu-latest
-    outputs:
-      new_version: ${{ steps.determine_version.outputs.new_version }}
-      deploy_to_production: ${{ steps.determine_version.outputs.deploy_to_production }}
     steps:
       - name: Generate app token
         id: app-token
@@ -160,174 +33,206 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Find the Merged Pull Request
+      - name: Find the merged pull request
         id: find_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Find the most recently merged PR to main (include title for conventional commit detection)
-          PR_DATA=$(gh pr list --state merged --base main --json number,mergedAt,title --jq 'sort_by(.mergedAt) | reverse | .[0]')
+          set -euo pipefail
+
+          PR_DATA=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+            --jq 'map(select(.merged_at != null)) | sort_by(.merged_at) | reverse | .[0] // {}')
 
           PR_NUMBER=$(echo "$PR_DATA" | jq -r '.number // empty')
           PR_TITLE=$(echo "$PR_DATA" | jq -r '.title // empty')
 
-          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" == "null" ]; then
-            echo "No recently merged PR found"
-            echo "pr_number=" >> $GITHUB_OUTPUT
-            echo "pr_title=" >> $GITHUB_OUTPUT
-          else
-            echo "Found merged PR #$PR_NUMBER: $PR_TITLE"
-            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-            echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No merged PR associated with ${{ github.sha }}; skipping release bump."
+            echo "pr_number=" >> "$GITHUB_OUTPUT"
+            echo "pr_title=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-      - name: Get current version
-        id: get_current_version
-        run: |
-          CURRENT_VERSION=$(node -p "require('./apps/mesh/package.json').version")
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Found merged PR #$PR_NUMBER: $PR_TITLE"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "pr_title=$PR_TITLE" >> "$GITHUB_OUTPUT"
 
-      - name: Determine the next version based on reactions
-        id: determine_version
+      - name: Determine bump type from PR title
+        id: bump_type
         if: steps.find_pr.outputs.pr_number != ''
         env:
+          PR_TITLE: ${{ steps.find_pr.outputs.pr_title }}
+        run: |
+          set -euo pipefail
+
+          BUMP_TYPE=$(node <<'NODE'
+          const title = process.env.PR_TITLE ?? "";
+          const match = title.match(/^([a-z]+)(\([^)]+\))?(!)?:/);
+
+          if (!match) {
+            console.log("patch");
+          } else if (match[3]) {
+            console.log("major");
+          } else if (match[1] === "feat") {
+            console.log("minor");
+          } else {
+            console.log("patch");
+          }
+          NODE
+          )
+
+          echo "Bump type from PR title: $BUMP_TYPE"
+          echo "bump_type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
+
+      - name: Find changed workspace package manifests
+        id: changed_workspaces
+        if: steps.find_pr.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.find_pr.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          FILES=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${PR_NUMBER}/files" \
+            --jq '.[].filename')
+
+          echo "Changed files:"
+          echo "$FILES"
+
+          PACKAGE_MANIFESTS=$(FILES="$FILES" node <<'NODE'
+          const fs = require("fs");
+          const files = (process.env.FILES ?? "").split("\n").filter(Boolean);
+          const manifests = new Set();
+
+          for (const file of files) {
+            if (file.startsWith("apps/mesh/")) {
+              manifests.add("apps/mesh/package.json");
+              continue;
+            }
+
+            const match = file.match(/^packages\/([^/]+)\//);
+            if (match) {
+              manifests.add(`packages/${match[1]}/package.json`);
+            }
+          }
+
+          const existing = [...manifests]
+            .filter((manifest) => fs.existsSync(manifest))
+            .filter((manifest) => {
+              const pkg = JSON.parse(fs.readFileSync(manifest, "utf8"));
+              return typeof pkg.version === "string";
+            })
+            .sort();
+
+          console.log(JSON.stringify(existing));
+          NODE
+          )
+
+          echo "Workspace manifests to bump: $PACKAGE_MANIFESTS"
+          echo "package_manifests=$PACKAGE_MANIFESTS" >> "$GITHUB_OUTPUT"
+
+      - name: Update package.json versions
+        id: update_versions
+        if: >-
+          steps.find_pr.outputs.pr_number != '' &&
+          steps.changed_workspaces.outputs.package_manifests != '' &&
+          steps.changed_workspaces.outputs.package_manifests != '[]'
+        env:
+          BUMP_TYPE: ${{ steps.bump_type.outputs.bump_type }}
+          PACKAGE_MANIFESTS: ${{ steps.changed_workspaces.outputs.package_manifests }}
           PR_NUMBER: ${{ steps.find_pr.outputs.pr_number }}
           PR_TITLE: ${{ steps.find_pr.outputs.pr_title }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CURRENT_VERSION: ${{ steps.get_current_version.outputs.current_version }}
         run: |
-          # Always deploy to production
-          echo "deploy_to_production=true" >> $GITHUB_OUTPUT
+          set -euo pipefail
 
-          # Parse current version
-          if [[ "$CURRENT_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([a-zA-Z]+)\.([0-9]+))?$ ]]; then
-            MAJOR="${BASH_REMATCH[1]}"
-            MINOR="${BASH_REMATCH[2]}"
-            PATCH="${BASH_REMATCH[3]}"
-            PRERELEASE_TAG="${BASH_REMATCH[5]}"
-            PRERELEASE_NUM="${BASH_REMATCH[6]}"
-          else
-            echo "Could not parse version: $CURRENT_VERSION"
-            exit 1
-          fi
+          node <<'NODE'
+          const fs = require("fs");
 
-          # Determine suggested bump from PR title (conventional commits)
-          SUGGESTED_BUMP=""
-          if [[ "$PR_TITLE" =~ ^(fix|feat|chore|docs|refactor|ci|test|perf|build|style)(\(.+\))?\!?: ]]; then
-            PREFIX="${BASH_REMATCH[1]}"
-            case "$PREFIX" in
-              fix) SUGGESTED_BUMP="patch" ;;
-              feat) SUGGESTED_BUMP="minor" ;;
-              *) SUGGESTED_BUMP="patch" ;;
-            esac
-          else
-            SUGGESTED_BUMP="patch"
-          fi
-          echo "Suggested bump from PR title: $SUGGESTED_BUMP"
+          const bumpType = process.env.BUMP_TYPE;
+          const manifests = JSON.parse(process.env.PACKAGE_MANIFESTS ?? "[]");
 
-          # Load maintainers list and check reactions
-          REACTIONS=""
-          if [ -f "MAINTAINERS.txt" ]; then
-            ALLOWED_USERS=$(grep -v '^#' MAINTAINERS.txt | grep -v '^$' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            echo "Maintainers list: $ALLOWED_USERS"
+          const nextVersion = (version) => {
+            const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.(\d+))?$/);
+            if (!match) {
+              throw new Error(`Could not parse version: ${version}`);
+            }
 
-            # Fetch comments and find the Release Options comment
-            COMMENT_DATA=$(gh api graphql -f query='
-              query {
-                repository(owner:"${{ github.repository_owner }}", name:"${{ github.event.repository.name }}") {
-                  pullRequest(number: '${PR_NUMBER}') {
-                    comments(last: 100) {
-                      nodes {
-                        body
-                        id
-                        reactions(last: 100) {
-                          nodes {
-                            content
-                            user {
-                              login
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }')
+            const major = Number(match[1]);
+            const minor = Number(match[2]);
+            const patch = Number(match[3]);
 
-            # Extract reactions from the Release Options comment, filtered by maintainers
-            REACTIONS=$(echo "$COMMENT_DATA" | jq -r --argjson allowed_users "$ALLOWED_USERS" '
-              .data.repository.pullRequest.comments.nodes[] |
-              select(.body | contains("## Release Options")) |
-              .reactions.nodes[] |
-              select(.user.login | IN($allowed_users[])) |
-              .content' | tr '[:lower:]' '[:upper:]')
+            switch (bumpType) {
+              case "major":
+                return `${major + 1}.0.0`;
+              case "minor":
+                return `${major}.${minor + 1}.0`;
+              case "patch":
+                return `${major}.${minor}.${patch + 1}`;
+              default:
+                throw new Error(`Unsupported bump type: ${bumpType}`);
+            }
+          };
 
-            echo "Captured reactions: $REACTIONS"
-          else
-            echo "MAINTAINERS.txt not found, using suggested bump from PR title"
-          fi
+          const updated = manifests.map((manifest) => {
+            const pkg = JSON.parse(fs.readFileSync(manifest, "utf8"));
+            const currentVersion = pkg.version;
+            const newVersion = nextVersion(currentVersion);
+            pkg.version = newVersion;
+            fs.writeFileSync(manifest, `${JSON.stringify(pkg, null, 2)}\n`);
+            return {
+              manifest,
+              name: pkg.name ?? manifest,
+              currentVersion,
+              newVersion,
+            };
+          });
 
-          # Determine version bump based on reactions (priority: smallest wins — prerelease > patch > minor > major)
-          NEW_VERSION=""
-          if echo "$REACTIONS" | grep -q "THUMBS_UP"; then
-            if [ -n "$PRERELEASE_TAG" ]; then
-              NEW_VERSION="$MAJOR.$MINOR.$PATCH-$PRERELEASE_TAG.$((PRERELEASE_NUM + 1))"
-            else
-              NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))-alpha.1"
-            fi
-            echo "Prerelease bump selected (smallest wins)"
-          elif echo "$REACTIONS" | grep -q "HOORAY"; then
-            NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-            echo "Patch bump selected"
-          elif echo "$REACTIONS" | grep -q "HEART"; then
-            NEW_VERSION="$MAJOR.$((MINOR + 1)).0"
-            echo "Minor bump selected"
-          elif echo "$REACTIONS" | grep -q "ROCKET"; then
-            NEW_VERSION="$((MAJOR + 1)).0.0"
-            echo "Major bump selected"
-          else
-            # No maintainer reactions — use suggested bump from PR title
-            echo "No maintainer reactions found. Using suggested bump: $SUGGESTED_BUMP"
-            case "$SUGGESTED_BUMP" in
-              patch)
-                NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-                ;;
-              minor)
-                NEW_VERSION="$MAJOR.$((MINOR + 1)).0"
-                ;;
-            esac
-          fi
+          const summary = updated
+            .map(({ name, manifest, currentVersion, newVersion }) =>
+              `- ${name} (${manifest}): ${currentVersion} -> ${newVersion}`,
+            )
+            .join("\n");
 
-          echo "New version: $NEW_VERSION"
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          const commitMessage = [
+            `[release]: bump changed workspace versions`,
+            "",
+            `PR: #${process.env.PR_NUMBER} ${process.env.PR_TITLE}`,
+            `Bump type: ${bumpType}`,
+            "",
+            summary,
+          ].join("\n");
 
-      - name: Update package.json version
-        if: steps.determine_version.outputs.new_version != ''
-        run: |
-          NEW_VERSION="${{ steps.determine_version.outputs.new_version }}"
+          fs.writeFileSync(".release-commit-message", `${commitMessage}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `updated=true\n`);
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `changed_paths=${updated.map(({ manifest }) => manifest).join(" ")}\n`,
+          );
 
-          # Update version in package.json using node
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('./apps/mesh/package.json', 'utf8'));
-            pkg.version = '$NEW_VERSION';
-            fs.writeFileSync('./apps/mesh/package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-
-          echo "Updated apps/mesh/package.json to version $NEW_VERSION"
+          console.log(summary);
+          NODE
 
       - name: Commit and push version bump
-        id: commit
-        if: steps.determine_version.outputs.new_version != ''
+        if: steps.update_versions.outputs.updated == 'true'
         run: |
+          set -euo pipefail
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add apps/mesh/package.json
-          git commit -m "[release]: bump to ${{ steps.determine_version.outputs.new_version }}"
+          git add ${{ steps.update_versions.outputs.changed_paths }}
+
+          if git diff --cached --quiet; then
+            echo "No version changes to commit."
+            exit 0
+          fi
+
+          git commit -F .release-commit-message
           git push origin main
           # No [skip ci], no API dispatch: this push (made with the App token,
-          # which re-triggers workflows) is itself what kicks off release-mesh.
-          # release-mesh runs on this exact commit, so it always reads the
-          # version it's releasing — no HEAD race, and no cross-workflow
-          # dispatch token/permission to silently 403. The heavy
-          # test/multi-pod/resilience suites skip [release]: commits via guards.
+          # which re-triggers workflows) is itself what kicks off release-mesh
+          # and the package publish workflows for the package.json files that
+          # changed. The heavy test/multi-pod/resilience suites skip [release]:
+          # commits via guards.

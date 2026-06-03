@@ -20,6 +20,8 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:simpleModeTier:${locator}`,
   chatAutosend: (locator: ProjectLocator | string, taskId: string) =>
     `mesh:chat:autosend:${locator}:${taskId}`,
+  chatDraft: (locator: ProjectLocator | string, taskKey: string) =>
+    `mesh:chat:draft:${locator}:${taskKey}`,
   assistantChatActiveTask: (locator: ProjectLocator) =>
     `mesh:assistant-chat:active-task:${locator}`,
   decoChatPanelWidth: () => `mesh:decochat:panel-width`,
@@ -34,4 +36,7 @@ export const LOCALSTORAGE_KEYS = {
   connectionsTab: (org: string) => `mesh:connections:tab:${org}`,
   taskLastViewed: (locator: ProjectLocator) =>
     `mesh:chat:task-last-viewed:${locator}`,
+  sidebarGroupOrder: (orgId: string, userId: string) =>
+    `sidebar.group-order.${orgId}.${userId}`,
+  sidebarOrgPinnedOrder: (orgId: string) => `sidebar.org-pinned-order.${orgId}`,
 } as const;

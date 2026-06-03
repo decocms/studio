@@ -7,6 +7,7 @@
  */
 import { tmpdir } from "node:os";
 import { join } from "path";
+import { sleep } from "@decocms/std";
 import type { Subprocess } from "bun";
 import { buildSettings } from "../../settings/pipeline";
 import {
@@ -146,6 +147,18 @@ export async function startDevServer(
       DECOCMS_HOME: settings.dataDir,
       DATA_DIR: settings.dataDir,
       DECO_CLI: "1",
+      // Object storage (managed MinIO or external S3). Pass from frozen
+      // settings so the child server resolves the real S3Service for the
+      // message-offload path instead of the DevObjectStorage fallback.
+      ...(settings.s3Endpoint
+        ? {
+            S3_ENDPOINT: settings.s3Endpoint,
+            S3_BUCKET: settings.s3Bucket ?? "",
+            S3_ACCESS_KEY_ID: settings.s3AccessKeyId ?? "",
+            S3_SECRET_ACCESS_KEY: settings.s3SecretAccessKey ?? "",
+            S3_FORCE_PATH_STYLE: String(settings.s3ForcePathStyle),
+          }
+        : {}),
       // Tell the cluster where to write the dev-link session file when
       // local-sandbox-provider is on, so the auto-spawned link daemon
       // finds session.json under its DATA_DIR.
@@ -185,83 +198,79 @@ export async function startDevServer(
   // hits the outer .git, refuses to clone, and the daemon crashes
   // mid-bootstrap. The tmpdir-rooted path keyed by workspace slug also
   // keeps concurrent worktrees from fighting over the same sandboxes dir.
-  const linkChild: Promise<Subprocess | null> = !options.localSandboxProvider
-    ? Promise.resolve(null)
-    : (async (): Promise<Subprocess | null> => {
-        const { ensureLink } = await import("../../services/ensure-services");
-        try {
-          const { info, proc } = await ensureLink({
-            home: settings.dataDir,
-            clusterUrl: serverUrl,
-            linkDataDir,
-            repoRoot,
-            stdio: [
-              "inherit",
-              useInherit ? "inherit" : "pipe",
-              useInherit ? "inherit" : "pipe",
-            ],
-            onSpawn: (proc) => {
-              if (useInherit) return;
-              pipeToLogStore(proc.stdout as ReadableStream<Uint8Array>);
-              pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
-            },
-            beforeSpawn: async () => {
-              // Wait for the cluster's HTTP port before spawning the link
-              // daemon so it can immediately reach the WS gateway.
-              await waitForPort(Number(settings.port), { intervalMs: 500 });
-              // Then wait for the cluster's `bootstrapDevLinkSession` to
-              // drop session.json into linkDataDir, since the link CLI's
-              // `ensureSession` errors out (non-TTY auto-spawn) if it's
-              // missing.
-              const sessionPath = join(linkDataDir, "session.json");
-              const deadline = Date.now() + 30_000;
-              while (Date.now() < deadline) {
-                if (await Bun.file(sessionPath).exists()) return;
-                await new Promise((r) => setTimeout(r, 250));
-              }
-              throw new Error(
-                `[dev-link] session.json not minted at ${sessionPath} after 30s — check cluster logs for [dev-link] errors`,
-              );
-            },
-          });
-          // Mark Sandbox ready once the link binary's HTTP server accepts
-          // connections on its port. Fire-and-forget; if the link never
-          // comes up (e.g. no admin user yet for session bootstrap), the
-          // status stays "pending" and the user sees a spinner — useful
-          // signal that something's wrong rather than silent failure.
-          void waitForPort(info.port, { intervalMs: 500 })
-            .then(() => {
-              updateService({
-                name: "Sandbox",
-                status: "ready",
-                port: info.port,
-              });
-            })
-            .catch(() => {
-              /* link never came up — leave status pending as a signal */
-            });
-          return proc;
-        } catch (err) {
-          addLogEntry({
-            method: "",
-            path: "",
-            status: 0,
-            duration: 0,
-            timestamp: new Date(),
-            rawLine: `[link] failed to start: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          });
-          return null;
-        }
+  //
+  // Supervise the daemon for the whole session rather than spawning it once.
+  // The daemon's WS self-heals (cluster-connection reconnects forever); only a
+  // process exit is unrecoverable, and an unsupervised exit silently expires
+  // the NATS link claim (60s TTL) → every user-desktop dispatch 409s with
+  // `user_desktop_link_offline` while the UI still reads "ready". superviseLink
+  // respawns on exit with backoff and drives Sandbox status from real liveness.
+  const linkAbort = new AbortController();
+  const linkSupervisor: Promise<void> = !options.localSandboxProvider
+    ? Promise.resolve()
+    : (async () => {
+        const { superviseLink } = await import(
+          "../../services/ensure-services"
+        );
+        await superviseLink({
+          home: settings.dataDir,
+          clusterUrl: serverUrl,
+          linkDataDir,
+          repoRoot,
+          signal: linkAbort.signal,
+          stdio: [
+            "inherit",
+            useInherit ? "inherit" : "pipe",
+            useInherit ? "inherit" : "pipe",
+          ],
+          onSpawn: (proc) => {
+            if (useInherit) return;
+            pipeToLogStore(proc.stdout as ReadableStream<Uint8Array>);
+            pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
+          },
+          beforeSpawn: async () => {
+            // Wait for the cluster's HTTP port before spawning the link
+            // daemon so it can immediately reach the WS gateway.
+            await waitForPort(Number(settings.port), { intervalMs: 500 });
+            // Then wait for the cluster's `bootstrapDevLinkSession` to drop
+            // session.json into linkDataDir, since the link CLI's
+            // `ensureSession` errors out (non-TTY auto-spawn) if it's missing.
+            const sessionPath = join(linkDataDir, "session.json");
+            const deadline = Date.now() + 30_000;
+            while (Date.now() < deadline) {
+              if (await Bun.file(sessionPath).exists()) return;
+              await sleep(250);
+            }
+            throw new Error(
+              `[dev-link] session.json not minted at ${sessionPath} after 30s — check cluster logs for [dev-link] errors`,
+            );
+          },
+          // Drive Sandbox status from real liveness: "ready" when the daemon's
+          // HTTP port answers, "pending" (spinner) while it's down/respawning
+          // so a crash isn't masked by a stale "ready".
+          onReady: (port) =>
+            updateService({ name: "Sandbox", status: "ready", port }),
+          onDown: () =>
+            updateService({ name: "Sandbox", status: "pending", port: 0 }),
+          onLog: (rawLine) =>
+            addLogEntry({
+              method: "",
+              path: "",
+              status: 0,
+              duration: 0,
+              timestamp: new Date(),
+              rawLine,
+            }),
+        });
       })();
 
   const shutdown = async (signal: NodeJS.Signals) => {
-    // Wait for any in-flight link spawn to settle so we don't orphan a
-    // process that gets spawned right after we've torn down everything
-    // else. On a normal shutdown the spawn has long since resolved.
-    await linkChild.catch(() => null);
-    // Stop the link first — it talks to the cluster on shutdown
+    // Stop the supervisor first so it can't respawn the daemon we're about to
+    // tear down, then wait for its loop to settle (it may be mid-spawn). This
+    // also prevents orphaning a process spawned right as we shut down.
+    linkAbort.abort();
+    await linkSupervisor.catch(() => null);
+    // Stop the link next — it talks to the cluster on shutdown
     // (DELETE /api/links/me), so giving it a window before we tear down
     // the API server reduces orphaned registry entries. stopLink reads
     // the state file written by ensureLink, signals the daemon, waits

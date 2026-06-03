@@ -31,7 +31,9 @@
 
 import { streamText, type UIMessageChunk } from "ai";
 import { createClaudeCodeModel, resolveClaudeCodeModelId } from "./model";
-import { prepCliMessages } from "../cli-message-prep";
+import { extractUserText, prepCliMessages } from "../cli-message-prep";
+import { makeTitleResultChunk } from "../title-chunk";
+import { genTitle } from "../decopilot/title-generator";
 import type {
   Harness,
   HarnessContext,
@@ -78,6 +80,58 @@ async function resolveClaudeCodeCwd(
   const resolveCwd = input.processLocal.resolveCwd;
   if (!resolveCwd) return undefined;
   return await resolveCwd();
+}
+
+async function* mergeTitleResult(
+  uiStream: AsyncIterable<UIMessageChunk>,
+  titleHandle: ReturnType<typeof genTitle>,
+): AsyncIterable<UIMessageChunk> {
+  type Settled =
+    | { kind: "main"; value: IteratorResult<UIMessageChunk> }
+    | { kind: "title"; value: UIMessageChunk | null };
+
+  const iter = uiStream[Symbol.asyncIterator]();
+  let mainDone = false;
+  let titleDone = false;
+  let mainPromise: Promise<Settled> = iter
+    .next()
+    .then((value) => ({ kind: "main" as const, value }));
+  let titlePromise: Promise<Settled> = titleHandle.promise
+    .then((title) => ({
+      kind: "title" as const,
+      value: title ? (makeTitleResultChunk(title) as UIMessageChunk) : null,
+    }))
+    .catch((err) => {
+      console.warn("[claude-code:title] title generation failed", err);
+      return { kind: "title" as const, value: null };
+    });
+
+  try {
+    while (!mainDone || !titleDone) {
+      const pending: Promise<Settled>[] = [];
+      if (!mainDone) pending.push(mainPromise);
+      if (!titleDone) pending.push(titlePromise);
+
+      const settled = await Promise.race(pending);
+      if (settled.kind === "main") {
+        if (settled.value.done) {
+          mainDone = true;
+          if (!titleDone) titleHandle.finish();
+          continue;
+        }
+        yield settled.value.value;
+        mainPromise = iter
+          .next()
+          .then((value) => ({ kind: "main" as const, value }));
+        continue;
+      }
+
+      titleDone = true;
+      if (settled.value) yield settled.value;
+    }
+  } finally {
+    if (!titleDone) titleHandle.finish();
+  }
 }
 
 export const claudeCodeHarnessFactory: HarnessFactory = {
@@ -136,6 +190,21 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    a previous `as never` cast hid this mismatch and would have
         //    thrown `InvalidPromptError` at runtime.
         const messages = await prepCliMessages(input.messages);
+
+        // 4a. Start title generation with Claude Code's fast model. The
+        //     cluster interceptor only persists/broadcasts the result chunk.
+        const titleHandle = genTitle({
+          abortSignal: input.signal,
+          model: createClaudeCodeModel(
+            resolveClaudeCodeModelId("claude-code:haiku"),
+            {
+              toolApprovalLevel: "readonly",
+              isPlanMode: true,
+              cwd,
+            },
+          ),
+          userMessage: extractUserText(messages),
+        });
 
         // 5. Run streamText. Claude Code's CLI manages its own tools
         //    and system prompt, so we explicitly DO NOT pass `tools` or
@@ -230,7 +299,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         });
 
         try {
-          for await (const chunk of uiStream) {
+          for await (const chunk of mergeTitleResult(uiStream, titleHandle)) {
             yield chunk;
           }
         } catch (err) {

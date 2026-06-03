@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { subSeconds } from "date-fns";
-import { formatDuration, formatTimeAgo } from "./format-time";
+import {
+  computeElapsedMs,
+  formatDuration,
+  formatTimeAgo,
+  toEpochMs,
+} from "./format-time";
 
 describe("formatTimeAgo", () => {
   test("returns <1m for dates less than 60 seconds ago", () => {
@@ -68,5 +73,56 @@ describe("formatDuration", () => {
   test("does not produce 60.0s at minute boundaries", () => {
     expect(formatDuration(119.95)).toBe("2m 0.0s");
     expect(formatDuration(179.96)).toBe("3m 0.0s");
+  });
+});
+
+describe("toEpochMs", () => {
+  test("returns null for undefined", () => {
+    expect(toEpochMs(undefined)).toBeNull();
+  });
+
+  test("returns null for null", () => {
+    expect(toEpochMs(null)).toBeNull();
+  });
+
+  test("returns null for empty string", () => {
+    expect(toEpochMs("")).toBeNull();
+  });
+
+  test("returns epoch ms for an ISO date string", () => {
+    expect(toEpochMs("2024-01-01T00:00:00.000Z")).toBe(Date.UTC(2024, 0, 1));
+  });
+
+  test("returns getTime() for a Date instance", () => {
+    const d = new Date("2024-06-01T12:34:56.000Z");
+    expect(toEpochMs(d)).toBe(d.getTime());
+  });
+
+  test("returns null for an unparseable string", () => {
+    expect(toEpochMs("not-a-date")).toBeNull();
+  });
+
+  test("returns null for an Invalid Date instance", () => {
+    expect(toEpochMs(new Date("invalid"))).toBeNull();
+  });
+});
+
+describe("computeElapsedMs", () => {
+  test("returns positive elapsed when now is after start", () => {
+    expect(computeElapsedMs(1_000, 3_500)).toBe(2_500);
+  });
+
+  test("returns 0 when now equals start", () => {
+    expect(computeElapsedMs(1_000, 1_000)).toBe(0);
+  });
+
+  test("clamps to 0 when start is ahead of now (server clock skew)", () => {
+    // serverStartedAt > Date.now() — e.g. server clock 30s ahead of client.
+    // Without the clamp, the live timer would render "-30.0s".
+    expect(computeElapsedMs(30_000, 0)).toBe(0);
+  });
+
+  test("clamps to 0 for small sub-second skew", () => {
+    expect(computeElapsedMs(1_500, 1_200)).toBe(0);
   });
 });

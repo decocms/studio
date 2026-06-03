@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
 
@@ -16,7 +17,7 @@ function getItemLabel(item: unknown, index: number): string {
     return String(item);
   if (item && typeof item === "object" && !Array.isArray(item)) {
     const obj = item as Record<string, unknown>;
-    for (const key of ["name", "label", "title", "text", "href", "id"]) {
+    for (const key of ["name", "label", "title", "alt", "text", "href", "id"]) {
       if (typeof obj[key] === "string" && obj[key]) return obj[key] as string;
     }
   }
@@ -43,13 +44,21 @@ export function ArrayField({
         ? itemSchema.default
         : t === "object"
           ? {}
-          : t === "number" || t === "integer"
-            ? 0
-            : t === "boolean"
-              ? false
-              : t === "array"
-                ? []
-                : "";
+          : t === "block-ref"
+            ? (() => {
+                const rt = itemSchema?.anyOfRefs?.[0]?.resolveType;
+                if (typeof rt !== "string" || isEmbeddedUnionResolveType(rt)) {
+                  return {};
+                }
+                return { __resolveType: rt };
+              })()
+            : t === "number" || t === "integer"
+              ? 0
+              : t === "boolean"
+                ? false
+                : t === "array"
+                  ? []
+                  : "";
     const next = [...items, defaultVal];
     onChange(next);
     const nextIndex = next.length - 1;

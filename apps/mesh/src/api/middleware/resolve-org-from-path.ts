@@ -5,6 +5,8 @@ import { DevObjectStorage } from "../../object-storage/dev-object-storage";
 import { decorateStorageWithAssetHoisting } from "../../object-storage/asset-hoister";
 import { getObjectStorageS3Service } from "../../object-storage/factory";
 
+import { isBrowserNavigation } from "../utils/browser-navigation";
+
 export const resolveOrgFromPath: MiddlewareHandler<{
   Variables: { meshContext: MeshContext };
 }> = async (c, next) => {
@@ -26,6 +28,11 @@ export const resolveOrgFromPath: MiddlewareHandler<{
     .executeTakeFirst();
 
   if (!org) {
+    // Bounce browser navigations into the SPA so OrgAccessGate shows the
+    // "Organization not found" screen instead of raw JSON.
+    if (isBrowserNavigation(c)) {
+      return c.redirect(`/${encodeURIComponent(slug)}`, 302);
+    }
     return c.json({ error: `organization "${slug}" not found` }, 404);
   }
 
@@ -52,6 +59,12 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       .executeTakeFirst();
 
     if (!membership) {
+      // Bounce browser navigations into the SPA so OrgAccessGate shows the
+      // styled "No access" screen (with invite/auto-join handling) instead of
+      // raw JSON in the address bar.
+      if (isBrowserNavigation(c)) {
+        return c.redirect(`/${encodeURIComponent(org.slug)}`, 302);
+      }
       return c.json({ error: "forbidden: not a member of organization" }, 403);
     }
     pathRole = membership.role;

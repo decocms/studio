@@ -12,6 +12,7 @@ import {
   requireOrganization,
 } from "../../core/mesh-context";
 import { VirtualMCPEntitySchema, VirtualMCPUpdateDataSchema } from "./schema";
+import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 
 /**
  * Input schema for updating a virtual MCP
@@ -71,6 +72,10 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
     const data = { ...input.data };
     if (data.metadata && existing.metadata) {
       data.metadata = { ...existing.metadata, ...data.metadata };
+    }
+
+    if (data.pinned !== undefined && data.pinned !== existing.pinned) {
+      requireOrgAdminForPinnedField(ctx);
     }
 
     const virtualMcp = await ctx.storage.virtualMcps.update(

@@ -1,6 +1,13 @@
 @import "@deco/ui/styles/global.css";
 @import "@daveyplate/better-auth-ui/css";
 
+@theme {
+  /* Global/reusable section indicator — purple hue 289 */
+  --color-global-section: oklch(0.7278 0.151 289);
+  --color-global-section-fg: oklch(0.45 0.15 289);
+  --color-global-section-fg-dark: oklch(0.78 0.15 289);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

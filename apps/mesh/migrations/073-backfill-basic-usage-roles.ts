@@ -1,7 +1,15 @@
 /**
  * Backfill basic-usage tools into existing custom roles.
  *
- * The role editor now bakes BASIC_USAGE_TOOLS (defined in registry-metadata)
+ * SUPERSEDED: basic-usage tools are now granted at runtime by AccessControl
+ * (`checkResource`), not baked into stored role permissions. This migration is
+ * kept as immutable history; its effect (extra valid entries in
+ * `permission.self`) is harmless and redundant. Do NOT write new backfill
+ * migrations when the basic-usage set changes — edit the capability list in
+ * registry-metadata and the runtime grant picks it up immediately.
+ *
+ * --- Original note (no longer accurate) ---
+ * The role editor bakes BASIC_USAGE_TOOLS (defined in registry-metadata)
  * into the saved `permission.self` array of every custom role at submit time.
  * Roles created before this change are missing those tools and would lose
  * access until someone re-saves them via the UI.
@@ -11,9 +19,7 @@
  * grant everything and are left untouched.
  *
  * NOTE: The list below is a SNAPSHOT — it must not import the live
- * BASIC_USAGE_TOOLS constant. Migrations are immutable history. If
- * BASIC_USAGE_TOOLS changes in the future, write a new migration with the
- * tools added since this one.
+ * BASIC_USAGE_TOOLS constant. Migrations are immutable history.
  */
 
 import { type Kysely, sql } from "kysely";

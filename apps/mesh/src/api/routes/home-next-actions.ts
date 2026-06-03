@@ -15,7 +15,7 @@
 
 import { Hono } from "hono";
 import { slugify } from "@decocms/mcp-utils/aggregate";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { getHomeTiles, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import type { MeshContext } from "@/core/mesh-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
@@ -96,33 +96,33 @@ async function defaultHomeAgentNextActions(
 
   const perId = await Promise.all(
     uniqueIds.map(
-      async (
-        id,
-      ): Promise<{ prompts: PromptEntry[]; tile: TileEntry | null }> => {
+      async (id): Promise<{ prompts: PromptEntry[]; tiles: TileEntry[] }> => {
         const virtualMcp = await ctx.storage.virtualMcps.findById(id);
-        if (!virtualMcp) return { prompts: [], tile: null };
+        if (!virtualMcp) return { prompts: [], tiles: [] };
 
-        const homeTile = virtualMcp.metadata?.ui?.homeTile;
-        const tile: TileEntry | null =
-          homeTile?.resourceUri && homeTile.connectionId
-            ? {
-                agentId: id,
-                agentName: virtualMcp.title,
-                agentIcon: virtualMcp.icon,
-                connectionId: homeTile.connectionId,
-                resourceUri: homeTile.resourceUri,
-                minHeight: homeTile.minHeight,
-                maxHeight: homeTile.maxHeight,
-              }
-            : null;
+        const tiles: TileEntry[] = getHomeTiles(virtualMcp.metadata?.ui)
+          .filter((t) => t?.resourceUri && t.connectionId)
+          .map((t) => ({
+            agentId: id,
+            agentName: virtualMcp.title,
+            agentIcon: virtualMcp.icon,
+            connectionId: t.connectionId as string,
+            resourceUri: t.resourceUri,
+            minHeight: t.minHeight,
+            maxHeight: t.maxHeight,
+          }));
 
+        // Quick-access agent card (no prompt). The home chip shows the
+        // agent name as the title and its description as the subtitle, so
+        // map the fields that way rather than hoisting the description up
+        // into the title slot.
         const fallback = (): PromptEntry => ({
           agentId: id,
           agentName: virtualMcp.title,
           agentIcon: virtualMcp.icon,
           promptName: "",
-          title: virtualMcp.description || "Start a new chat",
-          description: "",
+          title: virtualMcp.title,
+          description: virtualMcp.description || "Start a new chat",
           hasArguments: false,
         });
 
@@ -136,7 +136,17 @@ async function defaultHomeAgentNextActions(
           );
           try {
             const { prompts } = await client.listPrompts();
-            const entries = prompts
+            // `homePrompts: null/undefined` means "all prompts"; an
+            // explicit `[]` means "none". The fallback "Start a new
+            // chat" card only fires for the unspecified case so an
+            // intentionally-empty curated list stays empty.
+            const curated = virtualMcp.metadata?.ui?.homePrompts;
+            const filtered = Array.isArray(curated)
+              ? (curated
+                  .map((name) => prompts.find((p) => p.name === name))
+                  .filter(Boolean) as typeof prompts)
+              : prompts;
+            const entries = filtered
               .slice(0, MAX_PROMPTS_PER_AGENT)
               .map((prompt) => ({
                 agentId: id,
@@ -149,9 +159,11 @@ async function defaultHomeAgentNextActions(
                 arguments: prompt.arguments,
                 _meta: prompt._meta,
               }));
+            const showFallback =
+              entries.length === 0 && !Array.isArray(curated);
             return {
-              prompts: entries.length > 0 ? entries : [fallback()],
-              tile,
+              prompts: showFallback ? [fallback()] : entries,
+              tiles,
             };
           } finally {
             await client.close();
@@ -161,7 +173,7 @@ async function defaultHomeAgentNextActions(
             agentId: id,
             error,
           });
-          return { prompts: [fallback()], tile };
+          return { prompts: [fallback()], tiles };
         }
       },
     ),
@@ -169,7 +181,7 @@ async function defaultHomeAgentNextActions(
 
   return {
     prompts: perId.flatMap((r) => r.prompts),
-    tiles: perId.map((r) => r.tile).filter((t): t is TileEntry => t !== null),
+    tiles: perId.flatMap((r) => r.tiles),
   };
 }
 
@@ -184,13 +196,22 @@ export function createHomeNextActionsRoutes() {
     const promptByName = indexPromptsByName();
 
     const perAgent = await Promise.all(
-      STUDIO_PACK_AGENTS.map(async (agent) => ({
-        agent,
-        items: await resolveStudioPackChecklist(agent, {
-          orgId,
-          ctx: mesh,
-        }),
-      })),
+      STUDIO_PACK_AGENTS.map(async (agent) => {
+        const agentId = agent.getId(orgId);
+        const [items, virtualMcp] = await Promise.all([
+          resolveStudioPackChecklist(agent, { orgId, ctx: mesh }),
+          mesh.storage.virtualMcps.findById(agentId),
+        ]);
+        return {
+          agent,
+          agentId,
+          items,
+          // `null` keeps default behaviour (all checklist items shown).
+          curated: Array.isArray(virtualMcp?.metadata?.ui?.homePrompts)
+            ? new Set(virtualMcp.metadata.ui.homePrompts)
+            : null,
+        };
+      }),
     );
 
     // Studio Pack guide prompts are registered on the org's "self" MCP and
@@ -201,11 +222,13 @@ export function createHomeNextActionsRoutes() {
     const namespacePrefix = `${slugify(selfClientId)}_`;
 
     const prompts: PromptEntry[] = [];
-    for (const { agent, items } of perAgent) {
+    for (const { agent, items, curated } of perAgent) {
       for (const item of items) {
         if (item.completed) continue;
         const meta = promptByName.get(item.action.promptName);
         if (!meta) continue;
+        const namespacedName = `${namespacePrefix}${meta.name}`;
+        if (curated && !curated.has(namespacedName)) continue;
         const args = meta.arguments?.map((a) => ({
           name: a.name,
           description: a.description,
@@ -215,7 +238,7 @@ export function createHomeNextActionsRoutes() {
           agentId: agent.getId(orgId),
           agentName: agent.title,
           agentIcon: agent.icon,
-          promptName: `${namespacePrefix}${meta.name}`,
+          promptName: namespacedName,
           title: meta.title,
           description: meta.description,
           hasArguments: (args?.length ?? 0) > 0,
@@ -231,6 +254,22 @@ export function createHomeNextActionsRoutes() {
     const { prompts: defaultPrompts, tiles } =
       await defaultHomeAgentNextActions(orgId, mesh, studioPackAgentIds);
     prompts.push(...defaultPrompts);
+
+    const settings = await mesh.storage.organizationSettings.get(orgId);
+    const pinnedIds = new Set(settings?.default_home_agents?.ids ?? []);
+    const agentIdsWithCard = new Set(prompts.map((p) => p.agentId));
+    for (const { agent, agentId } of perAgent) {
+      if (!pinnedIds.has(agentId) || agentIdsWithCard.has(agentId)) continue;
+      prompts.push({
+        agentId,
+        agentName: agent.title,
+        agentIcon: agent.icon,
+        promptName: "",
+        title: agent.title,
+        description: "Start a new chat",
+        hasArguments: false,
+      });
+    }
 
     c.header("Cache-Control", "private, max-age=10");
     return c.json({ prompts, tiles });

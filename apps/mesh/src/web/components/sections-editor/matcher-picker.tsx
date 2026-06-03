@@ -12,6 +12,7 @@ import {
 import { resolveBlockSchemaMetadata, type LiveMeta } from "./resolve-schema";
 import { MatcherIcon, resolveMatcherIconName } from "./matcher-icons";
 import { labelFromResolveType } from "./section-types";
+import { getIconComponent } from "../agent-icon";
 
 export interface MatcherEntry {
   resolveType: string;
@@ -80,6 +81,7 @@ export function MatcherPicker({
 }) {
   const [open, setOpen] = useState(false);
   const currentIconName = resolveCurrentMatcherIcon(currentRt, matchers);
+  const CurrentIcon = getIconComponent(currentIconName);
 
   const handleSelect = (rt: string) => {
     onSelect(rt);
@@ -91,9 +93,11 @@ export function MatcherPicker({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-left text-sm shadow-xs transition-colors hover:bg-accent/40"
+        className="flex h-10 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-left text-sm shadow-xs transition-colors hover:bg-accent/40 cursor-pointer"
       >
-        <MatcherIcon iconName={currentIconName} size="sm" />
+        {CurrentIcon && (
+          <CurrentIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+        )}
         <span className="flex-1 truncate">{currentLabel}</span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       </button>

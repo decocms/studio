@@ -29,7 +29,11 @@ import {
   type RuntimeConfigMeta,
 } from "./helpers";
 import { resolveAndPushEnv } from "./resolve-env";
-import { readSandboxMap, resolveVm } from "./sandbox-map";
+import {
+  readSandboxMap,
+  removeSandboxMapEntry,
+  resolveVm,
+} from "./sandbox-map";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
@@ -41,6 +45,8 @@ import {
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
+import { getSettings } from "../../settings";
 import { setSandboxMapEntry } from "./sandbox-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
@@ -74,10 +80,10 @@ export const SANDBOX_START = defineTool({
       .describe(
         "Optional git branch to check out. When omitted the handler generates `deco/<adjective>-<noun>` and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
-    // Canonical-only. Migration 091 swept persisted legacy values; clients
-    // ship canonical strings after the SDK narrowed its union in Task 15.
+    // Canonical-only. Migrations 092/097 swept persisted legacy values;
+    // clients ship canonical strings after the SDK narrowed its union.
     sandboxProviderKind: z
-      .enum(["local-docker", "cluster", "user-desktop"])
+      .enum(["cluster", "user-desktop"])
       .optional()
       .describe(
         "Explicit runtime choice. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the cluster env kind.",
@@ -88,7 +94,7 @@ export const SANDBOX_START = defineTool({
     sandboxHandle: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    sandboxProviderKind: z.enum(["local-docker", "cluster", "user-desktop"]),
+    sandboxProviderKind: z.enum(["cluster", "user-desktop"]),
   }),
 
   handler: async (input, ctx) => {
@@ -153,7 +159,7 @@ export const SANDBOX_START = defineTool({
 
 /**
  * Lazy provisioner for the always-on sandbox tools path. Mirrors SANDBOX_START's
- * flow but: (a) tolerates a missing GitHub repo (boots blank under Docker),
+ * flow but: (a) tolerates a missing GitHub repo (boots a blank sandbox),
  * and (b) takes a fast path when the existing sandboxMap entry already
  * matches the requested kind — avoiding a full `provider.ensure` round-trip
  * on every fresh stream when the sandbox is already registered.
@@ -192,23 +198,39 @@ export async function ensureSandbox(
 
   const providerKind = input.sandboxProviderKind;
 
-  // Fast path: sandboxMap already has an entry under the requested kind.
-  // No reap needed: with kind in the key, there's no stale-kind entry to
-  // tear down. Different kinds coexist as siblings.
-  if (existing) {
-    return existing;
-  }
-
-  // ensureSandbox is called from the always-on VM tools path which doesn't
-  // pre-resolve the runner. `resolveSandboxProvider` here honors the
-  // explicit kind from the caller (POST /messages already decided) and
-  // binds the user's link for `desktop`.
+  // Resolve the runner up front: for user-desktop we must verify the cached
+  // entry against the live daemon before trusting it (the daemon may have
+  // restarted via `deco link` relink, leaving the sandboxMap pointing at a
+  // dead handle). resolveSandboxProvider is cheap and idempotent.
   const { provider: runner } = await resolveSandboxProvider(ctx, {
     userId,
     branch: input.branch,
     virtualMcpMetadata: metadata,
     explicitKind: providerKind,
   });
+
+  // Fast path: trust a cluster entry directly. For user-desktop, probe the
+  // daemon first — a relinked daemon has an empty sandbox map and answers the
+  // liveness probe with 404, which means we must reap the stale entry and
+  // re-provision (runner.ensure spawns a fresh sandbox on the new daemon).
+  if (existing) {
+    if (providerKind !== "user-desktop") return existing;
+    const alive = await runner.alive(existing.sandboxHandle).catch(() => false);
+    if (alive) return existing;
+    await removeSandboxMapEntry(
+      ctx.storage.virtualMcps,
+      input.virtualMcpId,
+      userId,
+      userId,
+      input.branch,
+      providerKind,
+    ).catch((err) => {
+      console.warn(
+        "[ensureSandbox] failed to reap stale user-desktop entry",
+        err,
+      );
+    });
+  }
 
   const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
   const { entry } = await provisionSandbox({
@@ -324,10 +346,11 @@ async function provisionSandbox(
     };
   }
 
-  // Missing workload = clone-only. Docker lets the runner pick its default.
+  // Missing workload = clone-only; the runner picks its default.
   // `devPort` is omitted unless the user explicitly pinned one — leaves
-  // runners free to assign a unique dynamic port (host runner needs this;
-  // multiple sandboxes share the host network and can't all bind 3000).
+  // runners free to assign a unique dynamic port (user-desktop needs this;
+  // multiple sandboxes on the user's machine share the host network and
+  // can't all bind 3000).
   const workload: Workload | undefined =
     runtime && packageManager
       ? {
@@ -344,12 +367,31 @@ async function provisionSandbox(
     branch,
   });
 
+  // Message-offload SSRF allowlist. The user-desktop daemon fails closed
+  // (empty allowlist) unless the cluster pushes the object-storage host it
+  // mints presigned offload URLs against. Derive it from the cluster's OWN
+  // trusted S3 config (never a request frame) and pass it through the ensure
+  // control channel so it lands in the spawned daemon's boot env. Only
+  // relevant for `user-desktop`; the cluster daemon reads its own S3 env.
+  const offload =
+    runner.kind === "user-desktop"
+      ? await deriveOffloadAllowlist(ctx.objectStorage, {
+          isProduction: getSettings().nodeEnv === "production",
+        })
+      : null;
+
   const sandbox = await runner.ensure(
     { userId, projectRef },
     {
       repo: repoOpts,
       workload,
       tenant: { orgId, userId },
+      ...(offload
+        ? {
+            offloadAllowedHosts: offload.hosts,
+            offloadAllowSameHostDev: offload.allowSameHostDev,
+          }
+        : {}),
     },
   );
 

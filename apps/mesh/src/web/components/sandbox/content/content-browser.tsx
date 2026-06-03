@@ -4,6 +4,7 @@ import {
   Copy01,
   DotsHorizontal,
   Edit01,
+  Flag01,
   Globe02,
   LayoutAlt01,
   Loading01,
@@ -57,21 +58,21 @@ import {
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
 import { normalizePagePath } from "@/web/components/sections-editor/page-path-utils";
+import {
+  appendPageVariantSections,
+  getPageVariantCount,
+  getPageVariantSectionsAt,
+} from "@/web/components/sections-editor/page-variants";
 import type { SectionCatalogEntry } from "@/web/components/sections-editor/section-catalog";
-import { useNavigate } from "@tanstack/react-router";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
   sandboxUserStop,
-  useIsSandboxStartPending,
   useSandboxStart,
   type SandboxStartArgs,
 } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { SandboxStateCard } from "@/web/components/sandbox/preview/state-card";
 import { derivePhaseProgress } from "@/web/components/sandbox/preview/derive-phase-progress";
-import {
-  computePreviewState,
-  type LifecycleFailure,
-} from "@/web/components/sandbox/preview/preview-state";
+import { computePreviewState } from "@/web/components/sandbox/preview/preview-state";
 import {
   buildDuplicatePage,
   buildEmptyPage,
@@ -95,10 +96,12 @@ const AddSectionModal = lazy(() =>
   })),
 );
 
+const VARIANT_GREEN = "oklch(0.65 0.15 160)";
+
 type CollectionId = "pages" | "sections";
 
 type Selection =
-  | { collection: "pages"; path: string }
+  | { collection: "pages"; key: string; path: string }
   | { collection: "sections"; key: string }
   | null;
 
@@ -134,7 +137,6 @@ export function ContentBrowser() {
   const previewUrl = vmEntry?.previewUrl ?? null;
 
   const vmEvents = useSandboxEvents();
-  const lifecyclePhase = vmEvents.lifecycle.phase;
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -142,11 +144,6 @@ export function ContentBrowser() {
     orgSlug: org.slug,
   });
   const startVm = useSandboxStart(mcpClient);
-  const vmStartPending = useIsSandboxStartPending(
-    virtualMcpId ?? undefined,
-    branch ?? undefined,
-  );
-  const navigate = useNavigate();
 
   const triggerStart = () => {
     if (!virtualMcpId) return;
@@ -156,66 +153,25 @@ export function ContentBrowser() {
   };
 
   // Mirror Preview's state machine so both tabs agree on what the
-  // sandbox is doing. Without this Content would always show
-  // "never-started" even when the sandbox is suspended/crashed/errored.
-  const lifecycleFailure: LifecycleFailure | null =
-    lifecyclePhase === "start-failed" ||
-    lifecyclePhase === "install-failed" ||
-    lifecyclePhase === "clone-failed"
-      ? lifecyclePhase
-      : null;
-  const lifecycleFailureError =
-    lifecycleFailure && "error" in vmEvents.lifecycle
-      ? (vmEvents.lifecycle.error ?? null)
-      : null;
-  const upstreamStatus =
-    lifecyclePhase === "running"
-      ? "online"
-      : lifecyclePhase === "crashed"
-        ? "offline"
-        : "booting";
+  // sandbox is doing. Without this Content would always show "starting"
+  // even when the sandbox is suspended.
   const userStopped =
     !!virtualMcpId &&
     !!branch &&
     sandboxUserStop.isStopped(virtualMcpId, branch);
   const sandboxState = computePreviewState({
     previewUrl,
-    status: upstreamStatus,
-    // Content doesn't render an iframe, so the iframe/no-html branches
-    // are dead. Pass `true` to short-circuit them to "iframe" (= ready).
-    htmlSupport: true,
-    suspended: vmEvents.suspended,
     appPaused: vmEvents.status.state === "paused",
-    vmStartPending,
-    lastStartError: startVm.error?.message ?? null,
-    lifecycleFailure,
-    lifecycleFailureError,
-    claimPhase: vmEvents.phase,
-    notFound: vmEvents.notFound,
     userStopped,
   });
 
-  // Send the user to Preview for terminal/file inspection — Content has
-  // neither surface, so the dev-script-failed / crashed buttons would be
-  // dead ends here.
-  const openPreview = () =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: "preview" }),
-      replace: true,
-    });
-
-  // `no-html` can't happen here — htmlSupport is hard-coded to true so
-  // computePreviewState routes "dev server is up" to `iframe`. Keep both
-  // in the guard so TS narrows correctly.
-  if (sandboxState.kind !== "iframe" && sandboxState.kind !== "no-html") {
+  if (sandboxState.kind !== "iframe") {
     return (
       <SandboxStateRenderer
         state={sandboxState}
         claimPhase={vmEvents.phase}
         lifecycle={vmEvents.lifecycle}
         onStart={triggerStart}
-        onOpenPreview={openPreview}
       />
     );
   }
@@ -306,6 +262,33 @@ function ContentBrowserReady({
   const takenPageNames = new Set(pages.map((p) => p.name));
   const takenSectionNames = new Set(globalSections.map((s) => s.name));
 
+  // ------------------ Variant ------------------
+  const handleAddPageVariant = async (page: PageEntry) => {
+    const fullPageData = decofile[page.key] as Record<string, unknown>;
+    if (!fullPageData) return;
+    const variantCount = getPageVariantCount(decofile, page.key);
+    const seedSections = getPageVariantSectionsAt(
+      decofile,
+      page.key,
+      Math.max(0, variantCount - 1),
+    );
+    const updatedSections = appendPageVariantSections(
+      fullPageData.sections,
+      seedSections,
+    );
+    if (!updatedSections) return;
+    try {
+      await saveBlock.mutateAsync({
+        blockKey: page.key,
+        data: { ...fullPageData, sections: updatedSections },
+      });
+      toast.success(`Variant added to "${page.name}"`);
+      setSelection({ collection: "pages", key: page.key, path: page.path });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not add variant");
+    }
+  };
+
   // ------------------ Page CRUD ------------------
   const openCreatePage = () => {
     setPageDialogError(undefined);
@@ -346,7 +329,7 @@ function ContentBrowserReady({
         const key = generateUniquePageBlockKey(decofile, values.name);
         await saveBlock.mutateAsync({ blockKey: key, data });
         toast.success(`Created "${values.name}"`);
-        setSelection({ collection: "pages", path: values.path });
+        setSelection({ collection: "pages", key, path: values.path });
       } else if (mode === "duplicate" && sourceKey) {
         const source = decofile[sourceKey] as
           | Record<string, unknown>
@@ -360,7 +343,7 @@ function ContentBrowserReady({
         });
         await saveBlock.mutateAsync({ blockKey: key, data });
         toast.success(`Duplicated as "${values.name}"`);
-        setSelection({ collection: "pages", path: values.path });
+        setSelection({ collection: "pages", key, path: values.path });
       } else if (mode === "rename" && sourceKey) {
         const source = decofile[sourceKey] as
           | Record<string, unknown>
@@ -373,12 +356,12 @@ function ContentBrowserReady({
         };
         await saveBlock.mutateAsync({ blockKey: sourceKey, data });
         toast.success("Page updated");
-        if (
-          selection?.collection === "pages" &&
-          normalizePagePath(selection.path) ===
-            normalizePagePath(pageDialog.initialPath)
-        ) {
-          setSelection({ collection: "pages", path: values.path });
+        if (selection?.collection === "pages" && selection.key === sourceKey) {
+          setSelection({
+            collection: "pages",
+            key: sourceKey,
+            path: values.path,
+          });
         }
       }
       setPageDialog(null);
@@ -478,12 +461,7 @@ function ContentBrowserReady({
       await deleteBlock.mutateAsync({ blockKey: key });
       toast.success(`Deleted "${label}"`);
       if (kind === "page") {
-        const deletedPath = pages.find((p) => p.key === key)?.path;
-        if (
-          deletedPath &&
-          selection?.collection === "pages" &&
-          normalizePagePath(selection.path) === normalizePagePath(deletedPath)
-        ) {
+        if (selection?.collection === "pages" && selection.key === key) {
           setSelection(null);
         }
       } else if (
@@ -513,6 +491,7 @@ function ContentBrowserReady({
         activeCollection={activeCollection}
         pages={pages}
         sections={globalSections}
+        decofile={decofile}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         selection={selection}
@@ -529,6 +508,7 @@ function ContentBrowserReady({
         }}
         onDuplicatePage={openDuplicatePage}
         onRenamePage={openRenamePage}
+        onAddPageVariant={handleAddPageVariant}
         onDeletePage={(page) =>
           setDeleteTarget({ kind: "page", key: page.key, label: page.name })
         }
@@ -553,7 +533,7 @@ function ContentBrowserReady({
             <SectionsEditor
               key={
                 selection.collection === "pages"
-                  ? `page:${selection.path}`
+                  ? `page:${selection.key}`
                   : `section:${selection.key}`
               }
               orgSlug={orgSlug}
@@ -563,6 +543,9 @@ function ContentBrowserReady({
               previewUrl={previewUrl ?? undefined}
               currentPath={
                 selection.collection === "pages" ? selection.path : "/"
+              }
+              activePageBlockKey={
+                selection.collection === "pages" ? selection.key : null
               }
               activeGlobalBlockKey={
                 selection.collection === "sections" ? selection.key : null
@@ -764,6 +747,7 @@ function ItemList({
   activeCollection,
   pages,
   sections,
+  decofile,
   previewUrl,
   searchQuery,
   onSearchChange,
@@ -772,6 +756,7 @@ function ItemList({
   onCreate,
   onDuplicatePage,
   onRenamePage,
+  onAddPageVariant,
   onDeletePage,
   onDuplicateSection,
   onRenameSection,
@@ -780,6 +765,7 @@ function ItemList({
   activeCollection: CollectionId;
   pages: PageEntry[];
   sections: GlobalSectionEntry[];
+  decofile: Record<string, unknown>;
   previewUrl: string | null;
   searchQuery: string;
   onSearchChange: (q: string) => void;
@@ -788,6 +774,7 @@ function ItemList({
   onCreate: () => void;
   onDuplicatePage: (page: PageEntry) => void;
   onRenamePage: (page: PageEntry) => void;
+  onAddPageVariant: (page: PageEntry) => void;
   onDeletePage: (page: PageEntry) => void;
   onDuplicateSection: (section: GlobalSectionEntry) => void;
   onRenameSection: (section: GlobalSectionEntry) => void;
@@ -866,7 +853,8 @@ function ItemList({
               filteredPages.map((page) => {
                 const isActive =
                   selection?.collection === "pages" &&
-                  selection.path === page.path;
+                  selection.key === page.key;
+                const variantCount = getPageVariantCount(decofile, page.key);
                 return (
                   <ItemRow
                     key={page.key}
@@ -874,13 +862,19 @@ function ItemList({
                     title={page.name}
                     subtitle={page.path}
                     active={isActive}
+                    variantCount={variantCount}
                     onClick={() =>
-                      onSelect({ collection: "pages", path: page.path })
+                      onSelect({
+                        collection: "pages",
+                        key: page.key,
+                        path: page.path,
+                      })
                     }
                     menu={
                       <ItemActions
                         onDuplicate={() => onDuplicatePage(page)}
                         onRename={() => onRenamePage(page)}
+                        onAddVariant={() => onAddPageVariant(page)}
                         onDelete={() => onDeletePage(page)}
                       />
                     }
@@ -935,13 +929,19 @@ function ItemRow({
   title,
   subtitle,
   active,
+  variantCount,
   onClick,
   menu,
 }: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ComponentType<{
+    size?: number;
+    className?: string;
+    style?: React.CSSProperties;
+  }>;
   title: string;
   subtitle: string;
   active: boolean;
+  variantCount?: number;
   onClick: () => void;
   menu?: React.ReactNode;
 }) {
@@ -957,13 +957,28 @@ function ItemRow({
         onClick={onClick}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer"
       >
-        <Icon
-          size={16}
-          className={cn(
-            "shrink-0",
-            active ? "text-accent-foreground" : "text-muted-foreground",
-          )}
-        />
+        {variantCount && variantCount > 1 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Icon
+                size={16}
+                className="shrink-0"
+                style={{ color: VARIANT_GREEN }}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {variantCount} variants
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <Icon
+            size={16}
+            className={cn(
+              "shrink-0",
+              active ? "text-accent-foreground" : "text-muted-foreground",
+            )}
+          />
+        )}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{title}</span>
           <span
@@ -993,10 +1008,12 @@ function ItemRow({
 function ItemActions({
   onDuplicate,
   onRename,
+  onAddVariant,
   onDelete,
 }: {
   onDuplicate: () => void;
   onRename: () => void;
+  onAddVariant?: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -1011,7 +1028,7 @@ function ItemActions({
           <DotsHorizontal size={14} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
+      <DropdownMenuContent align="end" className="w-44">
         <DropdownMenuItem onClick={onRename}>
           <Edit01 size={14} />
           Rename
@@ -1020,6 +1037,19 @@ function ItemActions({
           <Copy01 size={14} />
           Duplicate
         </DropdownMenuItem>
+        {onAddVariant && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={onAddVariant}
+              className="cursor-pointer"
+              style={{ color: VARIANT_GREEN }}
+            >
+              <Flag01 size={14} style={{ color: VARIANT_GREEN }} />
+              Add variant
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={onDelete}
@@ -1059,70 +1089,32 @@ function ListEmpty({
 /**
  * Renders the SandboxStateCard variant that matches the current
  * sandbox state. Mirrors Preview's switch so Content shows the same
- * "Sandbox is paused" / "Sandbox crashed" / etc. cards instead of
- * always falling back to "never-started".
- *
- * For card actions that don't make sense in Content (View logs,
- * Browse files), we redirect the user to the Preview tab — Content
- * has no terminal or file explorer of its own.
+ * "Starting your sandbox" / "Sandbox is paused" cards. The daemon's
+ * HTTP proxy serves every other "not live" case as auto-reloading
+ * HTML through the iframe, so Content only needs these two overlays.
  */
 function SandboxStateRenderer({
   state,
   claimPhase,
   lifecycle,
   onStart,
-  onOpenPreview,
 }: {
-  state: Exclude<
-    ReturnType<typeof computePreviewState>,
-    { kind: "iframe" } | { kind: "no-html" }
-  >;
+  state: { kind: "starting" } | { kind: "suspended" };
   claimPhase: ReturnType<typeof useSandboxEvents>["phase"];
   lifecycle: ReturnType<typeof useSandboxEvents>["lifecycle"];
   onStart: () => void;
-  onOpenPreview: () => void;
 }) {
-  const progress = derivePhaseProgress({ claimPhase, lifecycle });
-
   switch (state.kind) {
-    case "never-started":
-      return <SandboxStateCard kind="never-started" onStart={onStart} />;
-    case "starting-now":
+    case "starting":
       return (
         <SandboxStateCard
-          kind="starting-now"
-          progress={progress}
+          kind="starting"
+          progress={derivePhaseProgress({ claimPhase, lifecycle })}
           claimPhase={claimPhase}
         />
       );
     case "suspended":
       return <SandboxStateCard kind="suspended" onResume={onStart} />;
-    case "crashed":
-      return <SandboxStateCard kind="crashed" onOpenTerminal={onOpenPreview} />;
-    case "errored":
-      return (
-        <SandboxStateCard
-          kind="errored"
-          progress={progress}
-          logSource="setup"
-          errorLine={state.error.split("\n")[0] ?? "Failed to start"}
-          onRetry={onStart}
-          drawerOpen
-        />
-      );
-    case "dev-script-failed":
-      return (
-        <SandboxStateCard
-          kind="dev-script-failed"
-          progress={progress}
-          logSource={state.failure === "start-failed" ? "dev" : "setup"}
-          errorLine={state.error.split("\n")[0] ?? "Dev script exited"}
-          onRetry={onStart}
-          onOpenTerminal={onOpenPreview}
-          onBrowseFiles={onOpenPreview}
-          drawerOpen
-        />
-      );
   }
 }
 

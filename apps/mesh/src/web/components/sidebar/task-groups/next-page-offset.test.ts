@@ -2,7 +2,12 @@ import { describe, expect, it } from "bun:test";
 import type { Task } from "@/web/components/chat/task/types";
 import {
   buildShowMoreArgs,
+  buildGroupThreadCounts,
+  deriveGroupHasMore,
+  GROUP_PAGE_SIZE,
   nextPageOffset,
+  resolveGroupHasMore,
+  groupHasMoreFromTotal,
   type SidebarFilters,
 } from "./next-page-offset";
 
@@ -77,10 +82,48 @@ describe("nextPageOffset", () => {
   });
 });
 
+describe("deriveGroupHasMore", () => {
+  it("is true when the group already has a full page loaded", () => {
+    expect(deriveGroupHasMore(GROUP_PAGE_SIZE, false)).toBe(true);
+  });
+
+  it("is true when the global list may still hide rows for this group", () => {
+    expect(deriveGroupHasMore(2, true)).toBe(false);
+  });
+
+  it("is true for a partial group only after the server total is probed", () => {
+    expect(groupHasMoreFromTotal(2, 5)).toBe(true);
+    expect(groupHasMoreFromTotal(5, 5)).toBe(false);
+  });
+
+  it("is false when the group is partial and the global list is exhausted", () => {
+    expect(deriveGroupHasMore(3, false)).toBe(false);
+  });
+
+  it("is true for an empty group while the global list has more pages", () => {
+    expect(deriveGroupHasMore(0, true)).toBe(true);
+  });
+});
+
+describe("resolveGroupHasMore", () => {
+  it("hides the button after a per-group fetch confirms exhaustion", () => {
+    expect(resolveGroupHasMore(true, false)).toBe(false);
+  });
+
+  it("shows the button while the global hint applies and nothing was fetched yet", () => {
+    expect(resolveGroupHasMore(true, null)).toBe(true);
+  });
+
+  it("keeps the button when the server reports another page", () => {
+    expect(resolveGroupHasMore(false, true)).toBe(true);
+  });
+});
+
 describe("buildShowMoreArgs", () => {
   it("places virtual_mcp_id inside where for agent mode", () => {
     const args = buildShowMoreArgs("agent", "vm-a", 0, noFilters, 10);
     expect(args.where.virtual_mcp_id).toBe("vm-a");
+    expect(args.where.hidden).toBe(false);
     expect(args.status).toBeUndefined();
   });
 
@@ -162,5 +205,18 @@ describe("buildShowMoreArgs", () => {
     expect(args.orderBy).toEqual([
       { field: ["updated_at"], direction: "desc" },
     ]);
+  });
+});
+
+describe("buildGroupThreadCounts", () => {
+  it("counts per agent in one pass", () => {
+    const threads = [
+      t({ id: "1", virtual_mcp_id: "vm-a" }),
+      t({ id: "2", virtual_mcp_id: "vm-b" }),
+      t({ id: "3", virtual_mcp_id: "vm-a", hidden: true }),
+    ];
+    const counts = buildGroupThreadCounts(threads, "agent", noFilters);
+    expect(counts.get("vm-a")).toBe(1);
+    expect(counts.get("vm-b")).toBe(1);
   });
 });

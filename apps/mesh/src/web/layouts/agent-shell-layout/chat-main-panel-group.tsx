@@ -18,8 +18,7 @@ import {
   ResizablePanelGroup,
   type ImperativePanelGroupHandle,
 } from "@/web/components/resizable";
-import { useLocalStorage } from "@/web/hooks/use-local-storage";
-import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { useChatPanelWidth } from "@/web/hooks/use-chat-panel-width";
 import { computeChatMainSizes } from "@/web/hooks/use-layout-state";
 import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
@@ -29,19 +28,22 @@ function PersistentChatPanel({
   children,
   defaultSize,
   chatOpen,
-}: PropsWithChildren<{ defaultSize: number; chatOpen: boolean }>) {
+  chatPanelWidth,
+  onChatPanelResize,
+}: PropsWithChildren<{
+  defaultSize: number;
+  chatOpen: boolean;
+  chatPanelWidth: number;
+  onChatPanelResize: (size: number) => void;
+}>) {
   const [_isPending, startTransition] = useTransition();
-  const [storedChatPanelWidth, setChatPanelWidth] = useLocalStorage(
-    LOCALSTORAGE_KEYS.decoChatPanelWidth(),
-    45,
-  );
   // Only apply the stored width when both panels are open (non-extreme default).
   // When chat is solo (100) or closed (0), the caller's defaultSize wins.
   const effectiveDefaultSize =
-    defaultSize > 0 && defaultSize < 100 ? storedChatPanelWidth : defaultSize;
+    defaultSize > 0 && defaultSize < 100 ? chatPanelWidth : defaultSize;
   const handleResize = (size: number) =>
     startTransition(() => {
-      if (size > 0 && size < 100) setChatPanelWidth(size);
+      if (size > 0 && size < 100) onChatPanelResize(size);
     });
   return (
     <ResizablePanel
@@ -80,10 +82,7 @@ export function ChatMainPanelGroup({
   chatContent,
 }: ChatMainPanelGroupProps) {
   const sizes = computeChatMainSizes(chatOpen, mainOpen);
-  const [storedChatPanelWidth] = useLocalStorage(
-    LOCALSTORAGE_KEYS.decoChatPanelWidth(),
-    45,
-  );
+  const [chatPanelWidth, setChatPanelWidth] = useChatPanelWidth();
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — syncs panel layout from URL-derived state; imperative DOM API has no React 19 alternative
@@ -92,11 +91,10 @@ export function ChatMainPanelGroup({
     if (!handle) return;
     const s = computeChatMainSizes(chatOpen, mainOpen);
     // When both panels are open, honor the user's persisted chat width.
-    const chatSize = s.chat > 0 && s.chat < 100 ? storedChatPanelWidth : s.chat;
-    const mainSize =
-      s.chat > 0 && s.chat < 100 ? 100 - storedChatPanelWidth : s.main;
+    const chatSize = s.chat > 0 && s.chat < 100 ? chatPanelWidth : s.chat;
+    const mainSize = s.chat > 0 && s.chat < 100 ? 100 - chatPanelWidth : s.main;
     handle.setLayout([chatSize, mainSize]);
-  }, [chatOpen, mainOpen, storedChatPanelWidth]);
+  }, [chatOpen, mainOpen, chatPanelWidth]);
 
   return (
     <ResizablePanelGroup
@@ -106,7 +104,12 @@ export function ChatMainPanelGroup({
       className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0"
       style={{ overflow: "visible" }}
     >
-      <PersistentChatPanel defaultSize={sizes.chat} chatOpen={chatOpen}>
+      <PersistentChatPanel
+        defaultSize={sizes.chat}
+        chatOpen={chatOpen}
+        chatPanelWidth={chatPanelWidth}
+        onChatPanelResize={setChatPanelWidth}
+      >
         <div className="h-full p-0.5 pt-0.25">
           <div className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow">
             {chatContent ?? <ChatCenterPanel />}

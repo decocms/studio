@@ -18,7 +18,10 @@
  * the admin surface stays uncallable from preview hosts.
  */
 
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import {
+  PREVIEW_NOT_READY_HEADER,
+  type AgentSandboxProvider,
+} from "@decocms/sandbox/provider/agent-sandbox";
 
 /**
  * Cap on frames buffered between client upgrade and upstream WS open. Vite
@@ -27,6 +30,29 @@ import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandb
  * mesh memory.
  */
 const MAX_PENDING_FRAMES = 256;
+
+// Keep in sync with apps/mesh/src/link-daemon/local-ingress.ts CONNECTING_HTML.
+const CONNECTING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting…</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fafafa;color:#555}div{text-align:center;max-width:420px;padding:24px}h3{margin:0 0 8px}p{margin:0;font-size:14px;color:#999;line-height:1.5}</style></head><body><div><h3>Connecting to sandbox…</h3><p>Waiting for the sandbox to come online. This page refreshes automatically.</p></div><script>setTimeout(function(){window.location.reload()},1500)</script></body></html>`;
+
+/** A top-level document navigation (the iframe loading a page) — as opposed to
+ *  the app's own XHR/fetch/asset requests. We only swap the connecting page for
+ *  these so the app's fetches still see the real error. */
+function isPreviewDocumentNavigation(request: Request): boolean {
+  if (request.method !== "GET") return false;
+  return (request.headers.get("accept") ?? "").includes("text/html");
+}
+
+function connectingResponse(): Response {
+  return new Response(CONNECTING_HTML, {
+    status: 503,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": "1",
+      "access-control-allow-origin": "*",
+    },
+  });
+}
 
 /**
  * Parses the base preview hostname (e.g. `preview.decocms.com`) out of the
@@ -121,7 +147,21 @@ export async function tryHandlePreviewHttp(
   if (!runner) {
     return errorResponse(503, "preview proxy not configured");
   }
-  return runner.proxyPreviewRequest(handle, request);
+  const response = await runner.proxyPreviewRequest(handle, request);
+  // Unspawned / unreachable sandbox: serve an auto-reloading "connecting" page
+  // for top-level document navigations so the iframe shows a friendly reloading
+  // page (mirrors the desktop local-ingress) instead of raw JSON. The app's own
+  // fetches (non-document) keep the JSON error so they can handle/retry it.
+  if (
+    response.headers.get(PREVIEW_NOT_READY_HEADER) &&
+    isPreviewDocumentNavigation(request)
+  ) {
+    return connectingResponse();
+  }
+  // Keep the not-ready marker strictly internal — strip it before the response
+  // reaches the browser on the passthrough (non-document) path.
+  response.headers.delete(PREVIEW_NOT_READY_HEADER);
+  return response;
 }
 
 // Cross-origin error envelope. Studio runs under its own origin and reads

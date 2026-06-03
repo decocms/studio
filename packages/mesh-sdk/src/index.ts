@@ -72,9 +72,12 @@ export {
   // Virtual MCP hooks
   useVirtualMCPs,
   useVirtualMCP,
+  virtualMcpItemQueryOptions,
   useVirtualMCPActions,
+  useVirtualMCPsLastUsed,
   type VirtualMCPFilter,
   type UseVirtualMCPsOptions,
+  type VirtualMCPLastUsed,
 } from "./hooks";
 
 // Types
@@ -116,6 +119,8 @@ export {
   type VirtualMCPConnection,
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
+  type VirtualMcpHomeTile,
+  getHomeTiles,
   SandboxMapSchema,
   type SandboxMap,
   SandboxRecordSchema,

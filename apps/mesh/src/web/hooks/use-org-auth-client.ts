@@ -74,6 +74,7 @@ export function useOrgAuthClient() {
       deleteRole: withBodyOrgId("deleteRole"),
       cancelInvitation: withBodyOrgId("cancelInvitation"),
       update: withBodyOrgId("update"),
+      getActiveMember: withQueryOrgId("getActiveMember"),
 
       // ---- non-org-scoped pass-throughs ----
       // Invitations are scoped by their own id.

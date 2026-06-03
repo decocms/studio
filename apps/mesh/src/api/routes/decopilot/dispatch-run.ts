@@ -25,10 +25,13 @@
 import type { MeshContext } from "@/core/mesh-context";
 import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
+import type { MeshProvider } from "@/ai-providers/types";
+import { tryResolveTier, type ResolvedTier } from "@/core/resolve-tier";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
+import { offloadKey, sha256Hex } from "@/harnesses/offload-messages";
 import { ensureSandbox } from "@/tools/sandbox/start";
-import { getDispatch } from "@/api/app";
+import { buildDesktopProvider } from "@/sandbox/lifecycle";
 import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
@@ -50,6 +53,7 @@ export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
 import { buildOnTitleUpdated } from "./on-title-updated";
+import { interceptTitleChunks } from "./title-interceptor";
 import {
   checkModelPermission,
   fetchModelPermissions,
@@ -180,6 +184,71 @@ function lookupResumeSessionRef(
     }
   }
   return undefined;
+}
+
+function modelInfoFromResolvedTier(
+  resolved: ResolvedTier,
+): ModelsConfig["thinking"] {
+  return {
+    id: resolved.modelId,
+    title: resolved.modelMeta.title ?? resolved.modelId,
+    provider: resolved.modelMeta.providerId ?? null,
+    capabilities:
+      resolved.modelMeta.capabilities &&
+      resolved.modelMeta.capabilities.length > 0
+        ? {
+            vision:
+              resolved.modelMeta.capabilities.includes("vision") ||
+              resolved.modelMeta.capabilities.includes("image") ||
+              undefined,
+            text: resolved.modelMeta.capabilities.includes("text") || undefined,
+            reasoning:
+              resolved.modelMeta.capabilities.includes("reasoning") ||
+              undefined,
+          }
+        : undefined,
+    limits: resolved.modelMeta.limits
+      ? {
+          contextWindow: resolved.modelMeta.limits.contextWindow,
+          maxOutputTokens:
+            resolved.modelMeta.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  };
+}
+
+async function resolveDecopilotTitleConfig(
+  ctx: MeshContext,
+  organizationId: string,
+): Promise<{ provider: MeshProvider; model: ModelsConfig["thinking"] } | null> {
+  const resolved = await tryResolveTier(ctx, "fast");
+  if (!resolved) return null;
+
+  const allowedModels = await fetchModelPermissions(
+    ctx.db,
+    organizationId,
+    ctx.auth.user?.role,
+  );
+  if (
+    allowedModels !== undefined &&
+    !checkModelPermission(
+      allowedModels,
+      resolved.credentialId,
+      resolved.modelId,
+    )
+  ) {
+    return null;
+  }
+
+  const provider = await ctx.aiProviders
+    .activate(resolved.credentialId, organizationId)
+    .catch((err) => {
+      console.warn("[decopilot:title] failed to activate title provider", err);
+      return null;
+    });
+  if (!provider) return null;
+
+  return { provider, model: modelInfoFromResolvedTier(resolved) };
 }
 
 /**
@@ -539,6 +608,11 @@ async function prepareRun(
         }),
       ]);
 
+    const decopilotTitleConfig =
+      harnessId === "decopilot"
+        ? await resolveDecopilotTitleConfig(ctx, input.organizationId)
+        : null;
+
     // Diagnostic (resume only): record whether the provider activated and
     // whether the optional model slots are present. Paired with the log in
     // routes.ts:/attach orphan-resume; together they pinpoint whether tool
@@ -787,6 +861,11 @@ async function prepareRun(
           provider,
           imageProvider: imageProvider ?? provider,
           deepResearchProvider: deepResearchProvider ?? provider,
+          titleProvider: decopilotTitleConfig?.provider ?? provider,
+          titleModel:
+            decopilotTitleConfig?.model ??
+            input.models.fast ??
+            input.models.thinking,
           htmlPageBuffer,
           registerPendingOp: (op) => {
             pendingOps.push(op);
@@ -839,8 +918,8 @@ async function prepareRun(
         // dispatch runs the harness inside the desktop daemon, where the
         // daemon is spawned with workdir = sandbox path; remote-cli runs
         // claude-code in-process on the user's machine (no resolver
-        // needed). Production runners (docker, agent-sandbox, freestyle)
-        // don't surface a local FS to mesh.
+        // needed). The cluster (agent-sandbox) runner doesn't surface a
+        // local FS to mesh.
 
         // Dispatch through the registry. The harness produces a stream
         // of UIMessageChunk; we adapt it to a ReadableStream so it can
@@ -863,7 +942,7 @@ async function prepareRun(
         //   - `runsIn === "cluster"` — runs in-cluster. When `sandbox`
         //     is `"user-desktop"` the sandbox tool calls are forwarded
         //     to the user's link daemon; the harness still runs here.
-        let harnessChunks;
+        let rawHarnessChunks;
         if (target.runsIn === "user-desktop") {
           // Unify with SANDBOX_START: resolve the sandbox via `ensureSandbox` so
           // claude-code/codex runs share the workdir SANDBOX_START already
@@ -875,16 +954,82 @@ async function prepareRun(
             { agent: input.agent, branch: mem.thread.branch ?? input.branch },
             ctx,
           );
-          harnessChunks = remoteDispatch(
+          // Route through the unified `proxyDaemonRequest` seam: the desktop
+          // provider tunnels `/dispatch` over the same WS+NATS link transport
+          // the old raw `dispatch` dep used, but now consumes the returned
+          // streaming `Response` (DispatchFn is a private impl detail of the
+          // provider). `proxyDaemonRequest` expects a `ProxyRequestInit`
+          // (`headers: Headers`, `body: BodyInit | null`), so adapt our
+          // simpler `{ headers: Record<string,string>, body: string }` shape.
+          const provider = await buildDesktopProvider(ctx, input.userId);
+          // Body-offload: when the dispatch body exceeds the per-message
+          // budget, `remoteDispatch` writes `input.messages` to object
+          // storage and the daemon re-inflates from the ref. `supported`
+          // mirrors the daemon's advertised capability (from the link claim
+          // resolved on `target.link`); without object storage the seam is a
+          // hard "no" so an oversized body fails loudly rather than silently
+          // truncating.
+          const supported =
+            target.link?.capabilities?.includes("body-offload") ?? false;
+          const offload = ctx.objectStorage
+            ? {
+                supported,
+                put: async (reqId: string, messagesJson: string) => {
+                  const bytes = new TextEncoder().encode(messagesJson);
+                  const key = offloadKey(reqId);
+                  await ctx.objectStorage!.put(key, bytes, {
+                    contentType: "application/json",
+                  });
+                  const url = await ctx.objectStorage!.presignedGetUrl(
+                    key,
+                    600,
+                    { requireFetchable: true },
+                  );
+                  return {
+                    url,
+                    bytes: bytes.byteLength,
+                    sha256: await sha256Hex(bytes),
+                  };
+                },
+                cleanup: (key: string) =>
+                  ctx.objectStorage!.delete(key).then(() => {}),
+              }
+            : {
+                supported: false,
+                put: async () => {
+                  throw new Error("no object storage");
+                },
+                cleanup: async () => {},
+              };
+          rawHarnessChunks = remoteDispatch(
             harnessId,
             harnessInput,
-            input.userId,
             sandboxHandle,
-            { dispatch: getDispatch() },
+            {
+              proxyDaemonRequest: (h, p, init) =>
+                provider.proxyDaemonRequest(h, p, {
+                  method: init.method,
+                  headers: new Headers(init.headers),
+                  body: init.body ?? null,
+                  signal: init.signal,
+                }),
+              offload,
+            },
           );
         } else {
-          harnessChunks = localDispatch(harnessId, harnessInput, ctx);
+          rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);
         }
+
+        // Tap harness-generated title result chunks so the cluster can keep
+        // persistence/SSE ownership while each harness owns title generation.
+        const harnessChunks = interceptTitleChunks(rawHarnessChunks, {
+          ctx,
+          processLocal,
+          currentThreadTitle: mem.thread.title,
+          threadId: mem.thread.id,
+          writer,
+          onTitleUpdated: processLocal.onTitleUpdated,
+        });
         const harnessStream = asReadableStream(harnessChunks);
 
         // Cast: the outer createUIMessageStream is typed via ChatMessage so

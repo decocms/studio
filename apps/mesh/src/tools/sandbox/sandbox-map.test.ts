@@ -31,7 +31,7 @@ describe("readSandboxMap", () => {
 
   test("returns the sandboxMap when present", () => {
     // 3-level: userId → branch → kind → entry
-    const sandboxMap = { "user-1": { main: { "local-docker": ENTRY_A } } };
+    const sandboxMap = { "user-1": { main: { cluster: ENTRY_A } } };
     expect(readSandboxMap({ sandboxMap })).toEqual(sandboxMap);
   });
 
@@ -66,54 +66,48 @@ describe("readSandboxMap canonical reads", () => {
 
 describe("resolveVm", () => {
   test("returns null when user is absent", () => {
-    expect(resolveVm({}, "user-1", "main", "local-docker")).toBeNull();
+    expect(resolveVm({}, "user-1", "main", "cluster")).toBeNull();
   });
 
   test("returns null when branch is absent for that user", () => {
-    const sandboxMap = { "user-1": { main: { "local-docker": ENTRY_A } } };
-    expect(
-      resolveVm(sandboxMap, "user-1", "feat/x", "local-docker"),
-    ).toBeNull();
+    const sandboxMap = { "user-1": { main: { cluster: ENTRY_A } } };
+    expect(resolveVm(sandboxMap, "user-1", "feat/x", "cluster")).toBeNull();
   });
 
   test("returns the entry when userId, branch, and kind are all present", () => {
     const sandboxMap = {
       "user-1": {
-        main: { "local-docker": ENTRY_A },
-        "feat/x": { "local-docker": ENTRY_B },
+        main: { cluster: ENTRY_A },
+        "feat/x": { cluster: ENTRY_B },
       },
     };
-    expect(resolveVm(sandboxMap, "user-1", "feat/x", "local-docker")).toEqual(
+    expect(resolveVm(sandboxMap, "user-1", "feat/x", "cluster")).toEqual(
       ENTRY_B,
     );
   });
 
   test("isolates users from each other", () => {
     const sandboxMap = {
-      "user-1": { main: { "local-docker": ENTRY_A } },
-      "user-2": { main: { "local-docker": ENTRY_B } },
+      "user-1": { main: { cluster: ENTRY_A } },
+      "user-2": { main: { cluster: ENTRY_B } },
     };
-    expect(resolveVm(sandboxMap, "user-1", "main", "local-docker")).toEqual(
-      ENTRY_A,
-    );
-    expect(resolveVm(sandboxMap, "user-2", "main", "local-docker")).toEqual(
-      ENTRY_B,
-    );
+    expect(resolveVm(sandboxMap, "user-1", "main", "cluster")).toEqual(ENTRY_A);
+    expect(resolveVm(sandboxMap, "user-2", "main", "cluster")).toEqual(ENTRY_B);
   });
 
   test("returns null when the kind is absent but another kind exists", () => {
     const sandboxMap = {
-      "user-1": { main: { "local-docker": ENTRY_A } },
+      "user-1": { main: { "user-desktop": ENTRY_A } },
     };
-    // looking up "cluster" when only "local-docker" exists → null
+    // looking up "cluster" when only "user-desktop" exists → null
     expect(resolveVm(sandboxMap, "user-1", "main", "cluster")).toBeNull();
   });
 
   test("returns the entry for the requested kind when multiple kinds coexist", () => {
     const sandboxMap = {
-      "user-1": { main: { "local-docker": ENTRY_A, cluster: ENTRY_B } },
+      "user-1": { main: { "user-desktop": ENTRY_A, cluster: ENTRY_B } },
     };
-    expect(resolveVm(sandboxMap, "user-1", "main", "local-docker")).toEqual(
+    expect(resolveVm(sandboxMap, "user-1", "main", "user-desktop")).toEqual(
       ENTRY_A,
     );
     expect(resolveVm(sandboxMap, "user-1", "main", "cluster")).toEqual(ENTRY_B);

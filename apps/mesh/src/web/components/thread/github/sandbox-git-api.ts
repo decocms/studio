@@ -20,6 +20,12 @@ export interface GitStatus {
   current: string | null;
   tracking: string | null;
   detached: boolean;
+  base?: string;
+  aheadOfBase?: number;
+  behindBase?: number;
+  headSha?: string;
+  /** Commits on HEAD not on origin/<branch> (from /git/status). */
+  unpushed?: number;
 }
 
 export interface GitDiffEntry {
@@ -239,15 +245,24 @@ function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
   );
 }
 
-/** True when there is local work to commit or unpushed commits on the branch. */
+/** True when the branch still needs commit and/or push (ignores base…head PR diff). */
+export function hasLocalWorkToPush(
+  status: GitStatus | null | undefined,
+): boolean {
+  if (!status) return false;
+  return (
+    hasGitLocalWork(status) || status.ahead > 0 || (status.unpushed ?? 0) > 0
+  );
+}
+
+/** True when there is local work to commit, unpushed commits, or working-tree diff paths. */
 export function hasUnpublishedWork(
   status: GitStatus | null | undefined,
   diff: GitDiffResult | null | undefined,
 ): boolean {
   if (!status) return false;
   return (
-    hasGitLocalWork(status) ||
-    status.ahead > 0 ||
+    hasLocalWorkToPush(status) ||
     (diff != null && Object.keys(diff.diffs).length > 0)
   );
 }
@@ -256,6 +271,18 @@ export function hasUnpublishedWork(
  * Merge live `/git/status` into SSE `BranchMeta`. The status endpoint is
  * always fresh; branch SSE can lag when the daemon watcher misses a save.
  */
+function gitStatusUnpushed(gitStatus: GitStatus): number {
+  return Math.max(gitStatus.unpushed ?? 0, gitStatus.ahead);
+}
+
+function gitStatusAheadOfBase(gitStatus: GitStatus): number {
+  return gitStatus.aheadOfBase ?? 0;
+}
+
+function gitStatusBehindBase(gitStatus: GitStatus): number {
+  return gitStatus.behindBase ?? 0;
+}
+
 export function mergeBranchMetaWithGitStatus(
   branchMeta: BranchMeta,
   gitStatus: GitStatus | undefined,
@@ -264,26 +291,42 @@ export function mergeBranchMetaWithGitStatus(
 
   const gitDirty = hasGitLocalWork(gitStatus);
   const branchName = readGitHeadBranch(gitStatus);
+  const unpushed = gitStatusUnpushed(gitStatus);
+  const aheadOfBase = gitStatusAheadOfBase(gitStatus);
+  const behindBase = gitStatusBehindBase(gitStatus);
+  const base = gitStatus.base ?? "main";
+  const headSha = gitStatus.headSha ?? "";
 
   if (branchMeta.kind === "ready") {
     return {
       ...branchMeta,
       branch: branchName ?? branchMeta.branch,
+      base: gitStatus.base ?? branchMeta.base,
       workingTreeDirty: gitDirty,
-      unpushed: Math.max(branchMeta.unpushed, gitStatus.ahead),
+      unpushed: Math.max(branchMeta.unpushed, unpushed),
+      aheadOfBase: Math.max(branchMeta.aheadOfBase, aheadOfBase),
+      behindBase:
+        gitStatus.behindBase !== undefined
+          ? Math.max(branchMeta.behindBase, behindBase)
+          : branchMeta.behindBase,
+      headSha: headSha || branchMeta.headSha,
     };
   }
 
-  if (!branchName && !gitDirty) return branchMeta;
+  // SSE still unknown — only promote when git reports actionable divergence,
+  // not merely because `git status` can read the checked-out branch name.
+  if (!gitDirty && aheadOfBase === 0 && unpushed === 0) {
+    return branchMeta;
+  }
 
   return {
     kind: "ready",
     branch: branchName ?? "",
-    base: "main",
+    base,
     workingTreeDirty: gitDirty,
-    unpushed: gitStatus.ahead,
-    aheadOfBase: 0,
-    behindBase: gitStatus.behind,
-    headSha: "",
+    unpushed,
+    aheadOfBase,
+    behindBase,
+    headSha,
   };
 }

@@ -10,6 +10,7 @@ import { Page } from "@/web/components/page";
 import type { RegistryItem } from "@/web/components/store/types";
 import { DeleteConnectionDialogs } from "@/web/components/delete-connection-dialogs";
 import { useDeleteConnection } from "@/web/hooks/use-delete-connection";
+import { useCapability } from "@/web/hooks/use-capability";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
@@ -274,6 +275,8 @@ function ConnectionGroupCard({
 function BulkActionBar({
   count,
   total,
+  canManage,
+  canManageAgents,
   onSelectAll,
   onDeselectAll,
   onDelete,
@@ -283,6 +286,8 @@ function BulkActionBar({
 }: {
   count: number;
   total: number;
+  canManage: boolean;
+  canManageAgents: boolean;
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onDelete: () => void;
@@ -317,40 +322,46 @@ function BulkActionBar({
             Clear selection
           </Button>
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs px-2"
-          onClick={onAddToAgent}
-        >
-          <Plus size={13} />
-          Add to Agent
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs px-2"
-          onClick={() => onToggleStatus("active")}
-        >
-          Enable
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs px-2"
-          onClick={() => onToggleStatus("inactive")}
-        >
-          Disable
-        </Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          className="h-7 text-xs px-2"
-          onClick={onDelete}
-        >
-          <Trash01 size={13} />
-          Delete
-        </Button>
+        {canManageAgents && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs px-2"
+            onClick={onAddToAgent}
+          >
+            <Plus size={13} />
+            Add to Agent
+          </Button>
+        )}
+        {canManage && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs px-2"
+              onClick={() => onToggleStatus("active")}
+            >
+              Enable
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs px-2"
+              onClick={() => onToggleStatus("inactive")}
+            >
+              Disable
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-7 text-xs px-2"
+              onClick={onDelete}
+            >
+              <Trash01 size={13} />
+              Delete
+            </Button>
+          </>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -519,6 +530,7 @@ function isCommunityItem(item: RegistryItem): boolean {
 
 function CatalogItemCard({
   item,
+  canManage,
   allConnections,
   connectedAppNames,
   connectingItemId,
@@ -526,6 +538,7 @@ function CatalogItemCard({
   onConnect,
 }: {
   item: RegistryItem;
+  canManage: boolean;
   allConnections: ConnectionEntity[];
   connectedAppNames: Set<string>;
   connectingItemId: string | null;
@@ -568,7 +581,11 @@ function CatalogItemCard({
       }
       return;
     }
-    handleConnect();
+    // Connecting installs a connection (connections:manage). Members without it
+    // can browse the catalog but not connect.
+    if (canManage) {
+      handleConnect();
+    }
   };
 
   const handleConnect = () => {
@@ -612,22 +629,24 @@ function CatalogItemCard({
                 Connected
               </span>
             ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-3 rounded-lg text-sm font-medium"
-                disabled={connectingItemId !== null}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleConnect();
-                }}
-              >
-                {connectingItemId === item.id ? (
-                  <Loading01 size={14} className="animate-spin" />
-                ) : (
-                  "Connect"
-                )}
-              </Button>
+              canManage && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-3 rounded-lg text-sm font-medium"
+                  disabled={connectingItemId !== null}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleConnect();
+                  }}
+                >
+                  {connectingItemId === item.id ? (
+                    <Loading01 size={14} className="animate-spin" />
+                  ) : (
+                    "Connect"
+                  )}
+                </Button>
+              )
             )}
           </div>
         }
@@ -679,6 +698,8 @@ function ConnectionResults({
   const connections = useConnections(listState);
 
   const deleteConnection = useDeleteConnection();
+  const { granted: canManage } = useCapability("connections:manage");
+  const { granted: canManageAgents } = useCapability("agents:manage");
 
   // Selection / bulk-action state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1058,7 +1079,9 @@ function ConnectionResults({
               description={
                 listState.search
                   ? `No Connections match "${listState.search}"`
-                  : "Create a connection to get started."
+                  : canManage
+                    ? "Create a connection to get started."
+                    : "Ask an organization admin to add one."
               }
             />
           ) : (
@@ -1158,25 +1181,29 @@ function ConnectionResults({
                                 <Eye size={16} />
                                 Open
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleSelect(connection.id);
-                                }}
-                              >
-                                <CheckSquare size={16} />
-                                Select
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteConnection.requestDelete(connection);
-                                }}
-                              >
-                                <Trash01 size={16} />
-                                Delete
-                              </DropdownMenuItem>
+                              {(canManage || canManageAgents) && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSelect(connection.id);
+                                  }}
+                                >
+                                  <CheckSquare size={16} />
+                                  Select
+                                </DropdownMenuItem>
+                              )}
+                              {canManage && (
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteConnection.requestDelete(connection);
+                                  }}
+                                >
+                                  <Trash01 size={16} />
+                                  Delete
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -1190,6 +1217,7 @@ function ConnectionResults({
                 <CatalogItemCard
                   key={`catalog-${item._registryId}:${item.id}`}
                   item={item}
+                  canManage={canManage}
                   allConnections={connections}
                   connectedAppNames={connectedAppNames}
                   connectingItemId={connectingItemId}
@@ -1228,6 +1256,8 @@ function ConnectionResults({
         <BulkActionBar
           count={selectedIds.size}
           total={filteredConnections.length}
+          canManage={canManage}
+          canManageAgents={canManageAgents}
           onSelectAll={() => {
             setSelectedIds(new Set(filteredConnections.map((c) => c.id)));
           }}
@@ -1252,6 +1282,7 @@ function OrgMcpsContent() {
   const { data: session } = authClient.useSession();
   const { stdioEnabled } = useAuthConfig();
   const isMobile = useIsMobile();
+  const { granted: canManage } = useCapability("connections:manage");
 
   // Consolidated list UI state (search, filters, sorting, view mode)
   const listState = useListState<ConnectionEntity>({
@@ -1322,8 +1353,10 @@ function OrgMcpsContent() {
       registryItems,
     });
 
-  // Create dialog state is derived from search params
-  const isCreating = search.action === "create";
+  // Create dialog state is derived from search params, but gated on capability
+  // so it can't be opened by deep-linking to ?action=create without
+  // connections:manage (the write would fail server-side regardless).
+  const isCreating = canManage && search.action === "create";
 
   const openCreateDialog = () => {
     track("connections_custom_dialog_opened", {
@@ -1519,14 +1552,14 @@ function OrgMcpsContent() {
     }
   };
 
-  const ctaButton = (
+  const ctaButton = canManage ? (
     <div className="flex items-center gap-2">
       <Button variant="outline" onClick={openCreateDialog}>
         <Plus size={14} className="sm:hidden" />
         <span className="hidden sm:inline">Custom Connection</span>
       </Button>
     </div>
-  );
+  ) : null;
 
   return (
     <>

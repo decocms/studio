@@ -3,7 +3,7 @@
  * `SandboxProvider` call to a per-user link daemon running on the developer's
  * desktop over the NATS-backed dispatch channel.
  *
- * All control requests (ensure, exec, delete, alive, proxyDaemonRequest) are
+ * All control requests (ensure, delete, alive, proxyDaemonRequest) are
  * encoded as `DispatchRequest` objects and sent via `dispatch(userSub, req)`.
  * The daemon's in-process control handler (implemented in Task 11) receives
  * them on `links.dispatch.<userSub>` and writes back the response as one or
@@ -21,8 +21,6 @@ import type { ClaimPhase } from "../lifecycle-types";
 import type { RunnerStateStoreOps } from "../state-store";
 import type {
   EnsureOptions,
-  ExecInput,
-  ExecOutput,
   ProxyRequestInit,
   Sandbox,
   SandboxId,
@@ -42,7 +40,7 @@ export interface DesktopProviderOptions {
    * in-process tests that don't need cross-instance hydration; the
    * cluster MUST pass one (KyselySandboxProviderStateStore) so a
    * fresh provider per request can still find a previously-ensured
-   * sandbox. Same dependency the docker provider takes.
+   * sandbox. Same dependency the cluster provider takes.
    */
   stateStore?: RunnerStateStoreOps;
 }
@@ -83,13 +81,11 @@ export class DesktopSandboxProvider implements SandboxProvider {
   }
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
-    // hashLen=16 mirrors agent-sandbox and the cluster's `computeClaimHandle`
-    // — a 16-hex-char handle is used as a public subdomain prefix
-    // (e.g. `<handle>.localhost:<port>`) so a short hash keeps URLs readable.
-    // If this changes, the matching constant in
-    // `apps/mesh/src/sandbox/claim-handle.ts` must change too or the
-    // cluster's state-store lookup will silently miss.
-    const handle = computeHandle(id, opts.repo?.branch, { hashLen: 16 });
+    // computeHandle produces a 16-hex-char hash — the handle is used as a
+    // public subdomain prefix (e.g. `<handle>.localhost:<port>`), and the
+    // cluster's `computeClaimHandle` derives the same handle so its
+    // state-store lookup matches.
+    const handle = computeHandle(id, opts.repo?.branch);
 
     // Probe before trusting cached records — a dead daemon leaves a stale URL.
     const cached = this.records.get(handle);
@@ -133,6 +129,16 @@ export class DesktopSandboxProvider implements SandboxProvider {
       repo: opts.repo,
       branch: opts.repo?.branch,
       ...(opts.workload ? { workload: opts.workload } : {}),
+      // Message-offload SSRF allowlist, derived cluster-side from the
+      // cluster's own trusted S3 config and pushed down here so the spawned
+      // daemon can fetch offloaded `messagesRef` payloads. The daemon fails
+      // closed without these. NEVER sourced from a request frame.
+      ...(opts.offloadAllowedHosts
+        ? { offloadAllowedHosts: opts.offloadAllowedHosts }
+        : {}),
+      ...(opts.offloadAllowSameHostDev !== undefined
+        ? { offloadAllowSameHostDev: opts.offloadAllowSameHostDev }
+        : {}),
     });
     const responseText = await this.dispatchJson(
       "POST",
@@ -168,16 +174,6 @@ export class DesktopSandboxProvider implements SandboxProvider {
       });
     }
     return this.toSandbox(rec);
-  }
-
-  async exec(handle: string, input: ExecInput): Promise<ExecOutput> {
-    const body = JSON.stringify(input);
-    const responseText = await this.dispatchJson(
-      "POST",
-      `/_sandbox/${encodeURIComponent(handle)}/exec`,
-      body,
-    );
-    return JSON.parse(responseText) as ExecOutput;
   }
 
   async proxyDaemonRequest(

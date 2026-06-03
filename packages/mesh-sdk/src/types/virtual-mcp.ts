@@ -146,10 +146,45 @@ const VirtualMcpUISchema = z.object({
   themeColor: z.string().nullable().optional(),
   pinnedViews: z.array(VirtualMcpPinnedViewSchema).nullable().optional(),
   layout: VirtualMcpUILayoutSchema.nullable().optional(),
+  /**
+   * Legacy single-tile slot. Still honored by the home-next-actions
+   * endpoint when `homeTiles` is empty/absent. New writes go to
+   * `homeTiles` so agents can surface more than one UI on the home
+   * board.
+   */
   homeTile: VirtualMcpHomeTileSchema.nullable().optional(),
+  /**
+   * Multiple home tiles per agent. Each entry becomes its own tile on
+   * the org home board, rendered via MCPAppRenderer against the
+   * resource's owning connection.
+   */
+  homeTiles: z.array(VirtualMcpHomeTileSchema).nullable().optional(),
+  /**
+   * Curated list of prompt names to surface on the home board. When
+   * absent / null, the BE falls back to listing every prompt the
+   * agent's gateway exposes (today's behavior). An explicit empty
+   * array means "no prompts" — useful for an agent that only wants to
+   * surface its UI tiles.
+   */
+  homePrompts: z.array(z.string()).nullable().optional(),
 });
 
 export type VirtualMcpUI = z.infer<typeof VirtualMcpUISchema>;
+
+/**
+ * Canonical reader for an agent's pinned home tiles. Prefers the
+ * `homeTiles` array; falls back to the legacy single `homeTile` slot so
+ * agents written before the multi-tile migration still surface their
+ * tile. Returning `[]` (rather than null) keeps callers branchless.
+ */
+export function getHomeTiles(
+  ui: VirtualMcpUI | null | undefined,
+): VirtualMcpHomeTile[] {
+  const arr = ui?.homeTiles;
+  if (Array.isArray(arr) && arr.length > 0) return arr;
+  const legacy = ui?.homeTile;
+  return legacy ? [legacy] : [];
+}
 
 /**
  * Shell-portable env var name: must start with a letter or underscore and
@@ -251,9 +286,8 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
  * provider-issued handle plus the preview URL the UI renders.
  *
  * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
- *  - local-docker: daemon is reached via the mesh proxy at `/api/sandbox/<sandboxHandle>/_daemon/*`
- *  - cluster: daemon is reached via the mesh proxy (same transport as local-docker);
- *    preview URL is the per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
+ *  - cluster: daemon is reached via the mesh proxy; preview URL is the
+ *    per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
  *  - user-desktop: daemon is reached directly via the user's link binary.
  *
  * `previewUrl` is nullable: blank / tool sandboxes (no `workload`, no dev
@@ -273,14 +307,15 @@ export const SandboxRecordSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for providers that route through cluster ingress (local-docker, cluster).",
+      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for the cluster provider (routes through cluster ingress).",
     ),
   sandboxProviderKind: z
-    // Canonical set. Migration 091 rewrote every persisted legacy value
+    // Canonical set. Migration 092 rewrote every persisted legacy value
     // ("docker", "agent-sandbox", "desktop", "remote-user", "host",
-    // "freestyle") to one of these three; readers no longer accept the
-    // legacy strings — Zod will reject them at parse time.
-    .enum(["local-docker", "cluster", "user-desktop"])
+    // "freestyle") to a canonical kind, and migration 097 dropped the
+    // retired "local-docker" kind; readers no longer accept those strings —
+    // Zod will reject them at parse time.
+    .enum(["cluster", "user-desktop"])
     .optional(),
   createdAt: z
     .number()
@@ -324,7 +359,7 @@ export function parseSandboxRecord(raw: unknown): SandboxRecord {
 }
 
 /** The active sandbox provider kinds. */
-export type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
+export type SandboxProviderKind = "cluster" | "user-desktop";
 
 /**
  * Parse a `sandboxMap[user][branch]` cell into the kind-keyed v2 shape.
@@ -344,7 +379,7 @@ export function parseBranchMap(
   const out: Partial<Record<SandboxProviderKind, SandboxRecord>> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (!v || typeof v !== "object") continue;
-    if (k !== "local-docker" && k !== "cluster" && k !== "user-desktop") {
+    if (k !== "cluster" && k !== "user-desktop") {
       continue;
     }
     try {

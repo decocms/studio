@@ -12,10 +12,11 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   symlinkSync,
   writeFileSync,
 } from "fs";
-import { sleep } from "@decocms/std";
+import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import { chmod, unlink } from "fs/promises";
 import { createRequire } from "module";
 import { createConnection, createServer } from "net";
@@ -32,6 +33,13 @@ const PG_PASSWORD = "postgres";
 const PG_DATABASE = "postgres";
 
 const NATS_VERSION = "v2.10.24";
+
+// MinIO dev defaults. The root credentials mirror the e2e setup
+// (.github/actions/start-minio) so local dev and CI use the same contract.
+const MINIO_ROOT_USER = "minioadmin";
+const MINIO_ROOT_PASSWORD = "minioadmin";
+const MINIO_DEV_BUCKET = "studio-dev";
+const MINIO_DEFAULT_PORT = 9000;
 
 const IS_WINDOWS = platform() === "win32";
 const EXE_EXT = IS_WINDOWS ? ".exe" : "";
@@ -195,11 +203,16 @@ function probePort(port: number, host = "localhost"): Promise<boolean> {
   });
 }
 
-async function waitForPort(port: number, timeoutMs = 30_000): Promise<void> {
+async function waitForPort(
+  port: number,
+  timeoutMs = 30_000,
+  signal?: AbortSignal,
+): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    if (signal?.aborted) throw new Error(`Aborted waiting for port ${port}`);
     if (await probePort(port)) return;
-    await sleep(200);
+    await sleep(200, signal ? { signal } : undefined).catch(() => {});
   }
   throw new Error(`Timed out waiting for port ${port}`);
 }
@@ -683,6 +696,294 @@ async function stopNats(home: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// MinIO (auto-downloaded binary — S3-compatible object storage for dev)
+// ---------------------------------------------------------------------------
+//
+// Object storage is a hard dependency of the message-offload path. In dev we
+// auto-provision a real S3-compatible store (MinIO) so the offload code runs
+// against the production S3Service rather than the DevObjectStorage fallback,
+// mirroring how postgres and nats-server are managed above.
+//
+// MinIO publishes per-OS/arch *server* binaries at a stable URL:
+//   https://dl.min.io/server/minio/release/<os>-<arch>/minio[.exe]
+
+/**
+ * Build the MinIO server binary artifact name for an os/arch pair.
+ *
+ * Pure (no IO) so it is unit-testable. `os`/`arch` are the values returned by
+ * `os.platform()` / `os.arch()`. Only the platform name affects the artifact
+ * file name (`minio` vs `minio.exe`); the os/arch pair selects the release
+ * directory in {@link minioDownloadUrl}.
+ */
+export function minioArtifactName(os: string, _arch: string): string {
+  return os === "win32" ? "minio.exe" : "minio";
+}
+
+/**
+ * Build the MinIO server binary download URL for an os/arch pair.
+ *
+ * Pure (no IO) so it is unit-testable. Throws on an unsupported platform.
+ */
+export function minioDownloadUrl(os: string, arch: string): string {
+  const osMap: Record<string, string> = {
+    darwin: "darwin",
+    linux: "linux",
+    win32: "windows",
+  };
+
+  const archMap: Record<string, string> = {
+    arm64: "arm64",
+    x64: "amd64",
+  };
+
+  const osName = osMap[os];
+  const archName = archMap[arch];
+
+  if (!osName || !archName) {
+    throw new Error(`Unsupported platform for MinIO: ${os}/${arch}`);
+  }
+
+  const artifact = minioArtifactName(os, arch);
+  return `https://dl.min.io/server/minio/release/${osName}-${archName}/${artifact}`;
+}
+
+/**
+ * Resolve external-S3 path-style addressing from the env. Mirrors
+ * resolve-config.ts's default EXACTLY (unset/empty/"true"/"1" → true) so the
+ * in-process `buildSettings` path (deco serve / deco dev) agrees with the
+ * bundled-prod `initSettingsFromEnv` path. Pure (no IO) so it is unit-testable.
+ */
+function externalForcePathStyleFromEnv(raw: string | undefined): boolean {
+  return raw === undefined || raw === "" || raw === "true" || raw === "1";
+}
+
+function minioBinaryPath(home: string): string {
+  return join(servicesDir(home), "minio", "bin", `minio${EXE_EXT}`);
+}
+
+async function downloadMinio(home: string): Promise<string> {
+  const binPath = minioBinaryPath(home);
+  if (existsSync(binPath)) return binPath;
+
+  const binDir = join(servicesDir(home), "minio", "bin");
+  ensureDir(binDir);
+
+  const url = minioDownloadUrl(platform(), arch());
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download MinIO: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  // MinIO ships the raw executable (not an archive). Write to a temp path then
+  // atomically rename into place, so an interrupted/partial write never leaves a
+  // truncated binary at `binPath` that the existsSync guard above would return
+  // forever. Mirrors downloadNats's temp-then-materialize pattern.
+  const arrayBuffer = await response.arrayBuffer();
+  const tmpPath = `${binPath}.download-${process.pid}`;
+  writeFileSync(tmpPath, Buffer.from(arrayBuffer));
+
+  if (!IS_WINDOWS) {
+    await chmod(tmpPath, 0o755);
+  }
+
+  renameSync(tmpPath, binPath);
+
+  if (!existsSync(binPath)) {
+    throw new Error(`MinIO binary not found at ${binPath} after download`);
+  }
+
+  return binPath;
+}
+
+/** Poll MinIO's readiness endpoint — 200 means the object layer can serve. */
+async function waitForMinioReady(
+  port: number,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const url = `http://127.0.0.1:${port}/minio/health/ready`;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(url);
+      if (res.status === 200) return;
+    } catch {
+      // not up yet
+    }
+    await sleep(200).catch(() => {});
+  }
+  throw new Error(`Timed out waiting for MinIO readiness at ${url}`);
+}
+
+/**
+ * Create the dev bucket (idempotent). Uses the already-installed
+ * @aws-sdk/client-s3 so there's no `mc` version to keep in sync.
+ *
+ * Object-storage hygiene notes for dispatch offload objects:
+ * - The primary reclaimer for `link-dispatch/` offload objects is the eager
+ *   `finally` block in remote-dispatch.ts, which deletes the object on run
+ *   completion (success or failure).
+ * - An S3 lifecycle `Prefix` rule is left-anchored and literal. Real offload
+ *   object keys are `<orgId>/link-dispatch/<reqId>` (BoundObjectStorage
+ *   prepends `<orgId>/`), so a `Prefix: "link-dispatch/"` rule would never
+ *   match them. Rather than install a silently-broken rule here, we omit it.
+ * - Production operators who want automatic cleanup should configure a
+ *   lifecycle rule appropriate to their key layout, e.g. an object-tag-based
+ *   rule (tag offload objects on PUT and filter on that tag), or an
+ *   `<orgId>/link-dispatch/` prefix per org if their layout is known.
+ */
+async function provisionMinioBucket(endpoint: string): Promise<void> {
+  const { S3Client, CreateBucketCommand } = await import("@aws-sdk/client-s3");
+
+  const client = new S3Client({
+    endpoint,
+    region: "auto",
+    credentials: {
+      accessKeyId: MINIO_ROOT_USER,
+      secretAccessKey: MINIO_ROOT_PASSWORD,
+    },
+    forcePathStyle: true,
+  });
+
+  try {
+    await client.send(new CreateBucketCommand({ Bucket: MINIO_DEV_BUCKET }));
+  } catch (e: unknown) {
+    // BucketAlreadyOwnedByUs / BucketAlreadyExists — fine, it's persistent.
+    const name =
+      e && typeof e === "object" && "name" in e ? String(e.name) : "";
+    if (
+      name !== "BucketAlreadyOwnedByUs" &&
+      name !== "BucketAlreadyExists" &&
+      !(e instanceof Error && e.message.includes("already"))
+    ) {
+      // Genuine bucket-create failure: the offload feature requires the bucket,
+      // so let this propagate and abort startup.
+      client.destroy();
+      throw e;
+    }
+  }
+
+  client.destroy();
+}
+
+async function ensureMinio(home: string): Promise<ServiceInfo> {
+  const info: ServiceInfo = {
+    name: "MinIO",
+    state: "stopped",
+    pid: null,
+    port: 0,
+    owner: "none",
+  };
+
+  // Check state.json for an existing managed instance
+  const existing = readState(home, "minio");
+  if (existing !== null) {
+    if (isOwnedProcess(existing.pid, "minio")) {
+      info.state = "running";
+      info.pid = existing.pid;
+      info.port = existing.port;
+      info.owner = "managed";
+      // Always provision the bucket on every dev start — provisionMinioBucket
+      // is idempotent (bucket create swallows BucketAlreadyOwnedByUs/Exists;
+      // lifecycle PutBucketLifecycleConfiguration is declarative). This ensures
+      // the bucket exists even if a previous run wrote state.json but crashed
+      // before completing provisioning.
+      await provisionMinioBucket(`http://127.0.0.1:${existing.port}`);
+      return info;
+    }
+    // Dead process — clean up stale state
+    await removeState(home, "minio");
+  }
+
+  // Allocate a dynamic port
+  const port = await findAvailablePort();
+  info.port = port;
+
+  const binPath = await downloadMinio(home);
+  const dataDir = join(servicesDir(home), "minio", "data");
+  const logDir = join(servicesDir(home), "minio");
+  ensureDir(dataDir);
+
+  const logFile = Bun.file(join(logDir, "minio.log"));
+  const proc = Bun.spawn(
+    [binPath, "server", dataDir, "--address", `:${port}`],
+    {
+      env: {
+        ...process.env,
+        MINIO_ROOT_USER,
+        MINIO_ROOT_PASSWORD,
+      },
+      stdout: logFile,
+      stderr: logFile,
+    },
+  );
+
+  writeState(home, "minio", {
+    pid: proc.pid,
+    port,
+    startedAt: new Date().toISOString(),
+  });
+
+  await waitForMinioReady(port);
+  await provisionMinioBucket(`http://127.0.0.1:${port}`);
+
+  info.state = "running";
+  info.pid = proc.pid;
+  info.owner = "managed";
+  return info;
+}
+
+async function stopMinio(home: string): Promise<void> {
+  const state = readState(home, "minio");
+  if (state === null) {
+    console.log("MinIO: not running");
+    return;
+  }
+
+  const { pid } = state;
+
+  if (!isProcessAlive(pid)) {
+    console.log("MinIO: process already dead, cleaning up state");
+    await removeState(home, "minio");
+    return;
+  }
+
+  if (!isOwnedProcess(pid, "minio")) {
+    console.log(
+      `MinIO: PID ${pid} no longer belongs to minio (possible PID reuse), cleaning up state`,
+    );
+    await removeState(home, "minio");
+    return;
+  }
+
+  console.log(`MinIO: stopping (PID ${pid})...`);
+
+  if (IS_WINDOWS) {
+    Bun.spawn(["taskkill", "/PID", String(pid)]);
+  } else {
+    process.kill(pid, "SIGTERM");
+  }
+
+  const start = Date.now();
+  while (Date.now() - start < 5000 && isProcessAlive(pid)) {
+    await sleep(200);
+  }
+
+  if (isProcessAlive(pid) && isOwnedProcess(pid, "minio")) {
+    console.log("MinIO: force killing...");
+    if (IS_WINDOWS) {
+      Bun.spawn(["taskkill", "/PID", String(pid), "/F"]);
+    } else {
+      process.kill(pid, "SIGKILL");
+    }
+  }
+
+  await removeState(home, "minio");
+  console.log("MinIO stopped");
+}
+
+// ---------------------------------------------------------------------------
 // Link daemon (deco link, spawned via `bun run --cwd=apps/mesh src/cli.ts link`)
 // ---------------------------------------------------------------------------
 
@@ -867,11 +1168,148 @@ async function stopLink(home: string): Promise<void> {
   console.log("Link stopped");
 }
 
+// Respawn policy for a dev-session link daemon. Capped exponential backoff so
+// a daemon that crash-loops on a persistent fault doesn't busy-spin.
+const LINK_RESPAWN_BASE_MS = 500;
+const LINK_RESPAWN_CAP_MS = 30_000;
+// A daemon that stays up at least this long counts as healthy; its next exit
+// resets the backoff streak instead of escalating from a stale count.
+const LINK_HEALTHY_UPTIME_MS = 30_000;
+
+function linkRespawnBackoffMs(attempt: number): number {
+  return exponentialBackoffWithJitter(
+    LINK_RESPAWN_CAP_MS,
+    LINK_RESPAWN_BASE_MS,
+    attempt,
+    2,
+    0.5,
+  );
+}
+
+/** Resolve when the subprocess exits or `signal` aborts, whichever is first. */
+function exitedOrAborted(
+  proc: ReturnType<typeof Bun.spawn>,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void proc.exited.then(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    });
+  });
+}
+
+/** Poll a PID until it dies or `signal` aborts. Used for a reused daemon, where
+ *  we have no `Subprocess` handle to await. */
+async function waitUntilPidDead(
+  pid: number,
+  signal: AbortSignal,
+): Promise<void> {
+  while (!signal.aborted && isProcessAlive(pid)) {
+    await sleep(2_000, { signal }).catch(() => {});
+  }
+}
+
+export interface SuperviseLinkInputs extends EnsureLinkInputs {
+  /** Fired when the daemon's HTTP port is accepting connections. */
+  onReady?: (port: number) => void;
+  /** Fired when the daemon is down and a respawn is pending. */
+  onDown?: () => void;
+  /** Human-facing status lines (spawn failures, crash codes, respawn notices). */
+  onLog?: (line: string) => void;
+  /** Abort to stop supervising (orderly shutdown). */
+  signal: AbortSignal;
+}
+
+/**
+ * Keep the link daemon alive for the lifetime of a dev session.
+ *
+ * `ensureLink` spawns the daemon once and returns; nothing notices if it later
+ * dies. The daemon's *WebSocket* self-heals (cluster-connection.ts reconnects
+ * forever), so the one unrecoverable failure is the process itself exiting —
+ * after which its NATS link claim expires (60s TTL) and every user-desktop
+ * dispatch returns `user_desktop_link_offline` while the dev UI still shows the
+ * sandbox as ready. This loop closes that gap: respawn on unexpected exit with
+ * capped exponential backoff, and surface real liveness via the callbacks.
+ *
+ * Resolves when `signal` aborts (orderly shutdown). The caller is responsible
+ * for stopping the still-running daemon afterward (e.g. via `stopLink`).
+ */
+async function superviseLink(inputs: SuperviseLinkInputs): Promise<void> {
+  let attempt = 0;
+  while (!inputs.signal.aborted) {
+    const startedAt = Date.now();
+    let result: EnsureLinkResult;
+    try {
+      result = await ensureLink(inputs);
+    } catch (err) {
+      inputs.onDown?.();
+      inputs.onLog?.(
+        `[link] daemon failed to start: ${
+          err instanceof Error ? err.message : String(err)
+        } — retrying`,
+      );
+      if (inputs.signal.aborted) return;
+      await sleep(linkRespawnBackoffMs(attempt++), {
+        signal: inputs.signal,
+      }).catch(() => {});
+      continue;
+    }
+
+    // ensureLink already waited for the port on a fresh spawn; a reused daemon
+    // hasn't been probed here. Either way, confirm before declaring ready —
+    // but bind the probe to this daemon instance: cancel it when the daemon
+    // exits or we abort, so a slow/late probe can't emit a stale onReady for a
+    // dead daemon (each respawn gets a new port) or leak across respawns.
+    const readyAbort = new AbortController();
+    const cancelReady = () => readyAbort.abort();
+    inputs.signal.addEventListener("abort", cancelReady, { once: true });
+    void waitForPort(result.info.port, 30_000, readyAbort.signal)
+      .then(() => {
+        if (!readyAbort.signal.aborted) inputs.onReady?.(result.info.port);
+      })
+      .catch(() => {});
+
+    // Block until the daemon process is gone. Fresh spawn → await the
+    // Subprocess; reused managed daemon (proc === null) → poll its PID.
+    if (result.proc) {
+      await exitedOrAborted(result.proc, inputs.signal);
+    } else if (result.info.pid !== null) {
+      await waitUntilPidDead(result.info.pid, inputs.signal);
+    }
+
+    // Daemon is gone (or we're aborting): stop the readiness probe and drop the
+    // abort listener so iterations don't accumulate listeners on inputs.signal.
+    readyAbort.abort();
+    inputs.signal.removeEventListener("abort", cancelReady);
+
+    if (inputs.signal.aborted) return;
+
+    // Unexpected exit. ensureLink's next readState sees the dead PID and clears
+    // it, so the following iteration spawns fresh.
+    inputs.onDown?.();
+    const aliveMs = Date.now() - startedAt;
+    if (aliveMs >= LINK_HEALTHY_UPTIME_MS) attempt = 0;
+    inputs.onLog?.(
+      `[link] daemon exited after ${Math.round(aliveMs / 1000)}s — respawning`,
+    );
+    await sleep(linkRespawnBackoffMs(attempt++), {
+      signal: inputs.signal,
+    }).catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-export { ensureLink, stopLink };
+export { stopLink, superviseLink };
 
 function portFromUrl(url: string, fallback: number): number {
   try {
@@ -890,6 +1328,15 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
 
   const skipPostgres = inputs.externalDatabaseUrl !== null;
   const skipNats = inputs.externalNatsUrl !== null;
+  // Skip managed MinIO when an external S3 store is already configured (CI/prod
+  // set S3_ENDPOINT + bucket + credentials) or when the caller opts out.
+  const externalS3 = Boolean(
+    process.env.S3_ENDPOINT &&
+      process.env.S3_BUCKET &&
+      process.env.S3_ACCESS_KEY_ID &&
+      process.env.S3_SECRET_ACCESS_KEY,
+  );
+  const skipMinio = inputs.skipMinio === true || externalS3;
 
   const pgInfo: ServiceInfo = skipPostgres
     ? {
@@ -911,6 +1358,63 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       }
     : await ensureNats(inputs.home);
 
+  const services: ServiceInfo[] = [pgInfo, natsInfo];
+
+  // Object storage. Managed MinIO unless an external S3 store is configured.
+  let s3: ServiceOutputs["s3"] = null;
+  if (externalS3) {
+    services.push({
+      name: "MinIO",
+      state: "external",
+      pid: null,
+      port: portFromUrl(process.env.S3_ENDPOINT!, MINIO_DEFAULT_PORT),
+      owner: "external",
+    });
+    // For external S3, mirror resolve-config.ts's default so the in-process
+    // `buildSettings` path (deco serve / deco dev) agrees with the bundled-prod
+    // `initSettingsFromEnv` path: an unset/empty S3_FORCE_PATH_STYLE means
+    // path-style (true). A custom S3-compatible store (MinIO/Ceph) needs this;
+    // real AWS S3 (virtual-hosted-style) must set S3_FORCE_PATH_STYLE=false.
+    const externalForcePathStyle = externalForcePathStyleFromEnv(
+      process.env.S3_FORCE_PATH_STYLE,
+    );
+    s3 = {
+      endpoint: process.env.S3_ENDPOINT!,
+      bucket: process.env.S3_BUCKET!,
+      accessKeyId: process.env.S3_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
+      forcePathStyle: externalForcePathStyle,
+    };
+  } else if (!skipMinio) {
+    const minioInfo = await ensureMinio(inputs.home);
+    services.push(minioInfo);
+    s3 = {
+      endpoint: `http://127.0.0.1:${minioInfo.port}`,
+      bucket: MINIO_DEV_BUCKET,
+      accessKeyId: MINIO_ROOT_USER,
+      secretAccessKey: MINIO_ROOT_PASSWORD,
+      forcePathStyle: true,
+    };
+  }
+
+  // Mirror the resolved S3 config into process.env BEFORE the app constructs
+  // its S3Service. The in-process serve path reads frozen Settings (threaded
+  // via `outputs.s3` in pipeline.ts); the dev path spawns `dev:servers` as a
+  // child that re-derives Settings from the inherited process.env, so set both.
+  if (s3) {
+    process.env.S3_ENDPOINT = s3.endpoint;
+    process.env.S3_BUCKET = s3.bucket;
+    process.env.S3_ACCESS_KEY_ID = s3.accessKeyId;
+    process.env.S3_SECRET_ACCESS_KEY = s3.secretAccessKey;
+    // Mirror the resolved path-style choice into env so a spawned `dev:servers`
+    // child re-derives the same value. We only ever write "true" (managed MinIO,
+    // or external S3 defaulting to path-style when S3_FORCE_PATH_STYLE is unset);
+    // an explicit "false" the operator set is left untouched.
+    if (s3.forcePathStyle) {
+      process.env.S3_FORCE_PATH_STYLE = "true";
+    }
+  }
+
   const databaseUrl = skipPostgres
     ? inputs.externalDatabaseUrl!
     : pgConnectionString(pgInfo.port);
@@ -920,10 +1424,11 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
     : `nats://localhost:${natsInfo.port}`;
 
   return {
-    services: [pgInfo, natsInfo],
+    services,
     outputs: {
       databaseUrl,
       natsUrls: [natsUrl],
+      s3,
     },
   };
 }
@@ -934,6 +1439,7 @@ export async function stopServices(home: string): Promise<void> {
   await stopLink(home);
   await stopPostgres(home);
   await stopNats(home);
+  await stopMinio(home);
   console.log("\nAll managed services stopped.");
 }
 
@@ -973,6 +1479,26 @@ async function serviceStatus(home: string): Promise<ServiceInfo[]> {
     if (natsState !== null) await removeState(home, "nats");
     services.push({
       name: "NATS",
+      state: "stopped",
+      pid: null,
+      port: 0,
+      owner: "none",
+    });
+  }
+
+  const minioState = readState(home, "minio");
+  if (minioState !== null && isProcessAlive(minioState.pid)) {
+    services.push({
+      name: "MinIO",
+      state: "running",
+      pid: minioState.pid,
+      port: minioState.port,
+      owner: "managed",
+    });
+  } else {
+    if (minioState !== null) await removeState(home, "minio");
+    services.push({
+      name: "MinIO",
       state: "stopped",
       pid: null,
       port: 0,

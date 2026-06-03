@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { decoBlockFilePath } from "./deco-block-key";
 import { KEYS } from "@/web/lib/query-keys";
 
 interface UseSaveBlockParams {
@@ -22,7 +23,7 @@ export function useSaveBlock({
       blockKey: string;
       data: unknown;
     }) => {
-      const path = `.deco/blocks/${blockKey}.json`;
+      const path = decoBlockFilePath(blockKey);
       const content = JSON.stringify(data, null, 2);
       const res = await fetch(
         `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/write`,

@@ -1,6 +1,12 @@
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { calculateUsageStats } from "@/web/lib/usage-utils.ts";
 import { AUTOSEND_QUERY_VALUE, writeStoredAutosend } from "@/web/lib/autosend";
+import {
+  HOME_DRAFT_KEY,
+  clearChatDraft,
+  readChatDraft,
+  writeChatDraft,
+} from "@/web/lib/chat-draft";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
@@ -237,6 +243,8 @@ export function ChatInput({
   const isRunInProgress = stream?.isRunInProgress ?? false;
   const stop = stream?.stop ?? (() => {});
   const taskId = taskCtx?.taskId ?? "";
+  // Storage key for the per-thread (or home composer) draft.
+  const draftKey = taskId || HOME_DRAFT_KEY;
   const homeSubmit = useHomeSubmit();
   const {
     selectedModel,
@@ -251,7 +259,7 @@ export function ChatInput({
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
-  const { org } = useProjectContext();
+  const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const fullVm = useVirtualMCP(selectedVirtualMcp?.id ?? decopilotId);
   const playSwitchSound = useSound(question004Sound);
@@ -308,23 +316,41 @@ export function ChatInput({
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
   // the entire context tree. The ref on context lets IceBreakers read it.
-  const [tiptapDoc, setTiptapDocLocal] =
-    useState<Metadata["tiptapDoc"]>(undefined);
+  // The lazy initializer hydrates the draft from sessionStorage on mount.
+  const [tiptapDoc, setTiptapDocLocal] = useState<Metadata["tiptapDoc"]>(
+    () => readChatDraft(sessionStorage, locator, draftKey) ?? undefined,
+  );
 
   const setTiptapDoc = (doc: Metadata["tiptapDoc"]) => {
     setTiptapDocLocal(doc);
     tiptapDocRef.current = doc;
+    writeChatDraft(sessionStorage, locator, draftKey, doc, {
+      onQuotaExceeded: ({ docSizeBytes }) => {
+        track("chat_draft_quota_exceeded", {
+          thread_id: taskId || null,
+          doc_size_bytes: docSizeBytes,
+        });
+        console.warn(
+          "[chat-draft] sessionStorage quota exceeded; draft not saved",
+        );
+      },
+    });
   };
 
-  // Reset input when switching tasks (TiptapProvider also remounts via key)
+  // When switching tasks, rehydrate the new task's draft from storage
+  // (useState's lazy initializer only fires on mount). The previous
+  // task's draft is left in sessionStorage and will be picked up if the
+  // user navigates back.
   const prevTaskRef = useRef(taskId);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   if (prevTaskRef.current !== taskId) {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     prevTaskRef.current = taskId;
-    setTiptapDocLocal(undefined);
+    const restored =
+      readChatDraft(sessionStorage, locator, draftKey) ?? undefined;
+    setTiptapDocLocal(restored);
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-    tiptapDocRef.current = undefined;
+    tiptapDocRef.current = restored;
   }
 
   // Prefer per-turn modelLimits (Claude Code reports real window at turn end)
@@ -367,8 +393,6 @@ export function ChatInput({
   // model's context is much fuller than it actually is.
   const lastTotalTokens = lastUsage?.contextTokens ?? 0;
 
-  const playClickSound = useSound(question004Sound);
-
   const canSubmit =
     !isStreaming && !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
 
@@ -391,12 +415,12 @@ export function ChatInput({
         virtual_mcp_id: selectedVirtualMcp?.id ?? null,
         submission: e ? "button_or_enter" : "programmatic",
       });
-      playClickSound();
       if (stream) {
         void stream.sendMessage(tiptapDoc);
       } else {
         homeSubmit({ tiptapDoc, virtualMcp: selectedVirtualMcp });
       }
+      clearChatDraft(sessionStorage, locator, draftKey);
       setTiptapDoc(undefined);
     }
   };
@@ -437,7 +461,7 @@ export function ChatInput({
             <form
               onSubmit={handleSubmit}
               className={cn(
-                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-background dark:bg-muted card-shadow overflow-hidden",
+                "w-full relative rounded-2xl min-h-[110px] md:min-h-[130px] flex flex-col bg-card dark:bg-muted card-shadow overflow-hidden",
               )}
             >
               <FileDropZone

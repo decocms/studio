@@ -1,9 +1,11 @@
-# Simplified Dockerfile - uses pre-built npm package
+# Simplified Dockerfile - installs the locally-built decocms tarball (see below)
 # Uses debian-slim (not alpine) because @duckdb/node-bindings requires glibc
 FROM oven/bun:1-slim
 
-# Version to install (override with --build-arg MESH_VERSION=1.0.0)
-ARG MESH_VERSION=latest
+# The package tarball is built once by CI (build-dist job) and dropped into the
+# build context as decocms.tgz. Installing that exact tarball keeps this image
+# byte-identical to `bunx @decocms/mesh@<version>` and avoids any npm-registry
+# round-trip (and propagation race) at image-build time.
 
 # Install runtime dependencies (unzip needed by embedded-postgres) plus the
 # toolchain needed to compile node-pty from source. node-pty ships prebuilt
@@ -24,8 +26,9 @@ RUN groupadd -g 1001 bunapp && \
 USER bunuser
 WORKDIR /app/apps/mesh
 
-# Install the package locally during build (cached in image layer)
-RUN bun add decocms@${MESH_VERSION}
+# Install the locally-built package tarball (provided via the build context).
+COPY decocms.tgz /tmp/decocms.tgz
+RUN bun add /tmp/decocms.tgz
 
 # Drop the build toolchain now that native modules have been compiled.
 USER root

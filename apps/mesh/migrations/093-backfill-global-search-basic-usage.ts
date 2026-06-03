@@ -1,12 +1,18 @@
 /**
  * Backfill GLOBAL_SEARCH into existing custom roles.
  *
+ * SUPERSEDED: basic-usage tools are now granted at runtime by AccessControl
+ * (`checkResource`), not baked into stored role permissions. This migration is
+ * kept as immutable history; its effect is harmless and redundant. Do NOT
+ * write new backfill migrations when the basic-usage set changes — edit the
+ * capability list in registry-metadata instead.
+ *
+ * --- Original note (no longer accurate) ---
  * GLOBAL_SEARCH is the new cross-resource discovery tool added to the
- * basic-usage capability in registry-metadata. Per BASIC_USAGE_TOOLS'
- * contract, every newly-saved custom role bakes the basic-usage tool
- * snapshot into `permission.self`, but roles created before this change
- * are missing GLOBAL_SEARCH and would deny the command palette for any
- * non-admin member assigned to them.
+ * basic-usage capability in registry-metadata. Every newly-saved custom role
+ * baked the basic-usage tool snapshot into `permission.self`, but roles
+ * created before this change are missing GLOBAL_SEARCH and would deny the
+ * command palette for any non-admin member assigned to them.
  *
  * Mirrors the 073 backfill pattern. Roles whose `permission.self` is
  * `["*"]` already grant everything and are left untouched.

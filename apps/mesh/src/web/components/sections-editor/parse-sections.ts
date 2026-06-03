@@ -1,5 +1,11 @@
 import { isLazyResolveType } from "./section-lazy";
-import { labelFromResolveType, type RawSection } from "./section-types";
+import {
+  labelFromResolveType,
+  NEVER_MATCHER_RESOLVE_TYPE,
+  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+  SECTION_MULTIVARIATE_RESOLVE_TYPE,
+  type RawSection,
+} from "./section-types";
 
 export interface ParsedSection {
   index: number;
@@ -44,16 +50,17 @@ export function parseSections(
       : undefined;
     const mvRt = isLazy ? (innerSection?.__resolveType ?? "") : rt;
 
-    if (mvRt.includes("flags/multivariate")) {
+    if (
+      mvRt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
+      mvRt === SECTION_MULTIVARIATE_RESOLVE_TYPE
+    ) {
       const mvObj = (isLazy ? innerSection : s) as RawSection;
       const rawVariants = Array.isArray(mvObj?.variants) ? mvObj.variants : [];
 
-      const NEVER_TYPES = ["website/matchers/never.ts"];
       if (
         rawVariants.length === 1 &&
-        NEVER_TYPES.includes(
-          (rawVariants[0]?.rule?.__resolveType as string) ?? "",
-        )
+        ((rawVariants[0]?.rule?.__resolveType as string) ?? "") ===
+          NEVER_MATCHER_RESOLVE_TYPE
       ) {
         const innerValue = (rawVariants[0]?.value ?? {}) as Record<
           string,

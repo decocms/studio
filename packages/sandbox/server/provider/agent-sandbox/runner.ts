@@ -38,7 +38,6 @@ import type {
   UpDownCounter,
 } from "@opentelemetry/api";
 import {
-  daemonBash,
   postConfig,
   probeDaemonHealth,
   proxyDaemonRequest,
@@ -54,8 +53,6 @@ import {
 import type { RunnerStateStore, RunnerStateStoreOps } from "../state-store";
 import type {
   EnsureOptions,
-  ExecInput,
-  ExecOutput,
   ProxyRequestInit,
   Sandbox,
   SandboxId,
@@ -88,6 +85,14 @@ import type { ClaimPhase } from "../lifecycle-types";
 
 const RUNNER_KIND = "cluster" as const;
 const LOG_LABEL = "AgentSandboxProvider";
+
+/**
+ * Response-header marker on the preview-proxy's "sandbox not ready" envelopes
+ * (404 "sandbox not found" in dev, 502 "sandbox daemon unreachable" in prod).
+ * The mesh edge (`apps/mesh/src/sandbox/preview-proxy.ts`) swaps these for an
+ * auto-reloading "connecting" page on top-level document navigations.
+ */
+export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
 
 // Shared-namespace topology for MVP; tenancy enforced by unguessable claim
 // names (sha256(userId:projectRef)). Per-org namespaces are deferred.
@@ -125,8 +130,8 @@ const DEFAULT_IDLE_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Handle shape: `<slug>-<hash5>` when a branch is supplied, `<hash5>`
- * otherwise — identical to the docker/host runners' default from
- * `composeBranchHandle` (re-exported as `computeHandle`). With
+ * otherwise — the shared default from `composeBranchHandle` (re-exported
+ * as `computeHandle`). With
  * slug(≤24) + 1 + hash(5) = 30 chars max — well under K8s's 63-char DNS
  * label cap.
  */
@@ -410,30 +415,12 @@ export class AgentSandboxProvider implements SandboxProvider {
     // Branch is the slug source; absent when caller didn't pass `repo`
     // (tool-only sandboxes, smoke tests). The shared computeHandle falls
     // back to a bare hash in that case, preserving stable identity.
-    const handle = this.computeHandle(id, opts.repo?.branch ?? null);
+    const handle = composeBranchHandle(id, opts.repo?.branch ?? null);
     return this.inflight.run(handle, () =>
       withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
         this.ensureLocked(id, handle, opts, ops),
       ),
     );
-  }
-
-  async exec(handle: string, input: ExecInput): Promise<ExecOutput> {
-    let rec = await this.requireRecord(handle);
-    try {
-      return await daemonBash(rec.daemonUrl, rec.token, input);
-    } catch (err) {
-      // A 401 means the cached record is stale — the pool pod was recreated
-      // and no longer holds our token (daemonBash encodes the status in its
-      // message). Drop it and re-resolve; rehydrate re-bootstraps the fresh
-      // daemon. Then retry once.
-      if (err instanceof Error && err.message.includes("returned 401")) {
-        this.invalidateRecord(handle);
-        rec = await this.requireRecord(handle);
-        return daemonBash(rec.daemonUrl, rec.token, input);
-      }
-      throw err;
-    }
   }
 
   async delete(handle: string): Promise<void> {
@@ -506,7 +493,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     path: string,
     init: ProxyRequestInit,
   ): Promise<Response> {
-    const rec = await this.getRecord(handle);
+    let rec = await this.getRecord(handle);
 
     // rehydrate failed (port-forward is pod-local); route via in-cluster Service instead.
     if (!rec && this.previewUrlPattern && this.stateStore) {
@@ -518,6 +505,18 @@ export class AgentSandboxProvider implements SandboxProvider {
         const daemonUrl = `http://${adoptedName}.${this.namespace}.svc.cluster.local:${DAEMON_CONTAINER_PORT}`;
         return proxyDaemonRequest(daemonUrl, token, path, init);
       }
+    }
+
+    // Operator may have evicted the claim+pod (15-min idle TTL) since the record
+    // was cached. Resurrect from the persisted ensureOpts before giving up, so the
+    // proxy request path recovers and avoids surfacing a false 404.
+    // resurrectByHandle returns null only for genuine not-found cases (no
+    // state-store / no row / row predates ensureOpts) — those fall through to the
+    // 404 below. A real ensure() failure (K8s/provisioning/bootstrap) THROWS and
+    // must propagate: callers already treat a throw as unreachable, and swallowing
+    // it would mislabel a backend failure as a false 404 "sandbox not found".
+    if (!rec) {
+      rec = await this.resurrectByHandle(handle);
     }
 
     if (!rec) {
@@ -674,7 +673,9 @@ export class AgentSandboxProvider implements SandboxProvider {
       const upstreamBase = await this.resolvePreviewUpstreamUrl(handle);
       if (!upstreamBase) {
         status = 404;
-        return jsonResponse(404, { error: "sandbox not found" });
+        const notReady = jsonResponse(404, { error: "sandbox not found" });
+        notReady.headers.set(PREVIEW_NOT_READY_HEADER, "1");
+        return notReady;
       }
 
       const reqUrl = new URL(request.url);
@@ -765,7 +766,11 @@ export class AgentSandboxProvider implements SandboxProvider {
         }
 
         status = 502;
-        return jsonResponse(502, { error: "sandbox daemon unreachable" });
+        const notReady502 = jsonResponse(502, {
+          error: "sandbox daemon unreachable",
+        });
+        notReady502.headers.set(PREVIEW_NOT_READY_HEADER, "1");
+        return notReady502;
       }
 
       const responseHeaders = new Headers();
@@ -1557,14 +1562,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     return this.records.get(handle) ?? null;
   }
 
-  private async requireRecord(handle: string): Promise<K8sRecord> {
-    const rec = await this.getRecord(handle);
-    if (rec) return rec;
-    const resurrected = await this.resurrectByHandle(handle);
-    if (resurrected) return resurrected;
-    throw new Error(`unknown sandbox handle ${handle}`);
-  }
-
   /**
    * Drop the in-memory record cache for `handle`. Called when the cached
    * `daemonUrl` proves stale (e.g. fetch fails with connection refused after
@@ -1597,13 +1594,6 @@ export class AgentSandboxProvider implements SandboxProvider {
   }
 
   // ---- Identity + preview URL ----------------------------------------------
-
-  private computeHandle(id: SandboxId, branch: string | null): string {
-    // hashLen=16 (~64 bits) per handle.ts: runners that expose the handle as
-    // a public hostname must use longer hashes to resist brute-force. Also
-    // prevents DB handle collisions across users on the no-branch path.
-    return composeBranchHandle(id, branch, { hashLen: 16 });
-  }
 
   // Local mode: route preview traffic through the daemon port-forward, not
   // a separate dev forwarder. The daemon serves /_sandbox/* + /health
@@ -1945,7 +1935,7 @@ function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
 /**
  * Convert tenant struct to OTel attribute keys. `runner_kind` is constant for
  * a given runner instance but included on every attrs set so downstream
- * dashboards can pivot across runners (k8s vs docker) without re-aggregating.
+ * dashboards can pivot across runners without re-aggregating.
  */
 function tenantAttrs(tenant: RunnerTenant | null): {
   org_id: string;

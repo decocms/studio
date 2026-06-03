@@ -35,6 +35,12 @@ interface EnsureSandboxBody {
   handle: string;
   repo?: RepoRef;
   workload?: Workload;
+  /** Message-offload SSRF allowlist pushed by the cluster (trusted config,
+   *  never a request frame). Threaded into the spawned daemon's boot env so
+   *  it can fetch offloaded `messagesRef` payloads from these hosts only. */
+  offloadAllowedHosts?: string[];
+  /** Permit http:// loopback offload refs (dev MinIO). */
+  offloadAllowSameHostDev?: boolean;
 }
 
 export type StreamEvent =
@@ -143,9 +149,15 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
       const rest = sm[2] ?? "/";
       const port = deps.provider.proxyPort(handle);
       if (port == null) {
-        console.warn(
-          `[control] handleStream unknown handle=${handle} method=${req.method} rest=${rest} (no spawned sandbox for this handle)`,
-        );
+        // SSE-style endpoints (`/events`, `/idle`) auto-reconnect from the
+        // browser, so a handle with no spawned sandbox would flood the log on
+        // every retry. Stay quiet for those — same rationale as the verbose
+        // gate on the success path below.
+        if (rest !== "/events" && rest !== "/idle") {
+          console.warn(
+            `[control] handleStream unknown handle=${handle} method=${req.method} rest=${rest} (no spawned sandbox for this handle)`,
+          );
+        }
         return (async function* () {
           yield {
             type: "headers" as const,
@@ -219,6 +231,17 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
                 };
               }
             }
+          } catch (err) {
+            // Connect succeeded but the upstream body stream broke mid-flight
+            // (e.g. the spawned daemon crashed its SSE writer). Distinct from
+            // the connect-failure log above; this re-throw surfaces as a
+            // `handler_error` frame (see cluster-connection.ts sendErrorFrame).
+            console.error(
+              `[control] proxy ${req.method} ${rest} handle=${handle} port=${port} body stream error: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+            throw err;
           } finally {
             reader.releaseLock();
           }

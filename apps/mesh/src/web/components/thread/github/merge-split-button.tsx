@@ -7,9 +7,11 @@ import {
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { ChevronDown } from "@untitledui/icons";
+import { publishToBaseLabel } from "./publish-label.ts";
 
 interface Props {
-  prNumber: number;
+  /** PR base branch (e.g. main) — controls publish button copy. */
+  baseBranch: string;
   disabled: boolean;
   loading?: boolean;
   onPublish: () => void | Promise<void>;
@@ -21,11 +23,13 @@ interface Props {
  * uses the chat agent for a read-only review pass.
  */
 export function MergeSplitButton({
+  baseBranch,
   disabled,
   loading = false,
   onPublish,
   onReview,
 }: Props) {
+  const publishLabel = publishToBaseLabel(baseBranch);
   return (
     <div className="inline-flex items-stretch rounded-md">
       <Button
@@ -36,7 +40,7 @@ export function MergeSplitButton({
         onClick={() => void onPublish()}
       >
         {loading ? <Spinner size="xs" variant="default" /> : null}
-        Publish
+        {publishLabel}
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

@@ -25,6 +25,7 @@ import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getDb } from "@/database";
 import { auth } from "./index";
+import { getLocalAdminUser, isLocalMode } from "./local-mode";
 
 export interface DevLinkSession {
   target: string;
@@ -65,13 +66,29 @@ export async function bootstrapDevLinkSession(
   clusterBaseUrl: string,
 ): Promise<{ path: string; userSub: string } | null> {
   const path = devLinkSessionPath(homeDir);
+
+  // Resolve the user the link should represent. In local mode this is the
+  // seeded admin (the same user the browser auto-logs-in as), pinned by its
+  // stable `<username>@localhost.mesh` email. Pinning to the email — rather
+  // than "most-recently-created user" — prevents a leftover e2e run (which
+  // seeds throwaway `*@playwright.local` users with newer createdAt) from
+  // hijacking the dev link and producing a user_desktop_link_offline mismatch
+  // when dispatch looks the claim up under the browser's userId.
+  const db = getDb().db;
+  const user = isLocalMode()
+    ? await getLocalAdminUser()
+    : await db
+        .selectFrom("user")
+        .select(["id", "email", "name"])
+        .orderBy("createdAt", "desc")
+        .executeTakeFirst();
+  if (!user?.id) return null;
+
   if (existsSync(path)) {
-    // Re-use the existing session file iff its API key still verifies.
-    // If the key was deleted/rotated/expired (e.g. DB wipe, manual
-    // cleanup, expiresIn lapsed) the link daemon fails to register with
-    // an opaque 500 "no session". Verifying up front and re-minting on
-    // failure makes restarts self-healing without the developer having
-    // to manually delete the file.
+    // Re-use the existing session file iff it belongs to the resolved user
+    // *and* its API key still verifies. A user mismatch (stale file from a
+    // prior session/e2e run) or an invalid key (DB wipe, rotation, expiry)
+    // forces a re-mint, making restarts self-healing without manual cleanup.
     try {
       const file = Bun.file(path);
       const json = (await file.json()) as {
@@ -80,11 +97,7 @@ export async function bootstrapDevLinkSession(
       };
       const sub = json.user?.sub;
       const key = json.accessToken;
-      if (
-        typeof sub === "string" &&
-        sub.length > 0 &&
-        typeof key === "string"
-      ) {
+      if (sub === user.id && typeof key === "string") {
         const verified = await auth.api
           .verifyApiKey({ body: { key } })
           .then((r: { valid?: boolean } | null) => r?.valid === true)
@@ -95,17 +108,6 @@ export async function bootstrapDevLinkSession(
       // fall through and re-mint
     }
   }
-
-  const db = getDb().db;
-  // Most-recently-created admin user — local-mode seeds exactly one,
-  // but we don't pin to the local-mode email so a hand-created admin
-  // also works when DECOCMS_LOCAL_MODE is off.
-  const user = await db
-    .selectFrom("user")
-    .select(["id", "email", "name"])
-    .orderBy("createdAt", "desc")
-    .executeTakeFirst();
-  if (!user?.id) return null;
 
   let apiKey: { key?: string } | null = null;
   try {

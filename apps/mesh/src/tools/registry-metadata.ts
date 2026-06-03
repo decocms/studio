@@ -128,6 +128,7 @@ const ALL_TOOL_NAMES = [
   "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
   "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
   "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+  "VIRTUAL_MCP_LAST_USED_LIST",
 
   // Ai providers tools
   "AI_PROVIDERS_LIST",
@@ -636,6 +637,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Virtual MCPs",
   },
   {
+    name: "VIRTUAL_MCP_LAST_USED_LIST",
+    description: "Get last-used info for one or more virtual MCPs",
+    category: "Virtual MCPs",
+  },
+  {
     name: "AI_PROVIDERS_LIST",
     description: "List available AI providers",
     category: "AI Providers",
@@ -1005,23 +1011,55 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
       "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
+      "VIRTUAL_MCP_LAST_USED_LIST",
       // View automations
       "AUTOMATION_GET",
       "AUTOMATION_LIST",
-      // View AI providers
+      // View AI providers (read-only — every member needs to know which
+      // providers are configured so chat / agents can use them). KEY_LIST
+      // returns metadata only (no secret material); CREDITS is the balance
+      // shown in the chat header. TOPUP_URL returns a checkout link surfaced
+      // in the chat credits-exhausted banner so any member can self-serve.
       "AI_PROVIDERS_LIST",
       "AI_PROVIDERS_LIST_MODELS",
       "AI_PROVIDERS_ACTIVE",
+      "AI_PROVIDER_KEY_LIST",
+      "AI_PROVIDER_CREDITS",
+      "AI_PROVIDER_TOPUP_URL",
       // Object storage access
       "LIST_OBJECTS",
       "GET_OBJECT_METADATA",
       "GET_PRESIGNED_URL",
       "PUT_PRESIGNED_URL",
+      // Browse files in a configured bucket (file picker in the sandbox /
+      // content editor). Lists object keys only — no credentials returned.
+      "FILE_OBJECTS_LIST",
       // Sandbox previews
       "SANDBOX_START",
       "SANDBOX_DELETE",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
+      // App-shell essentials (read-only) — every member hits these on first
+      // paint or in the global chrome:
+      //   SETTINGS_GET → sidebar / plugins / model tiers loaded at shell boot
+      //   USER_GET     → resolve member display ("created by" on agents, etc.);
+      //                  handler scopes to shared-org members, no secrets
+      //   LINK_CURRENT_GET → caller's own desktop-link status (header poll)
+      //   BRAND_CONTEXT_LIST → org branding for the chat empty state
+      "ORGANIZATION_SETTINGS_GET",
+      "USER_GET",
+      "LINK_CURRENT_GET",
+      "BRAND_CONTEXT_LIST",
+      // Chat threads — talking to an agent is the most basic usage of the
+      // product, so every member can CRUD their OWN threads. Per-thread access
+      // is scoped at the handler level (you only see your own threads unless
+      // you also hold the threads:view-all capability).
+      "COLLECTION_THREADS_CREATE",
+      "COLLECTION_THREADS_LIST",
+      "COLLECTION_THREADS_GET",
+      "COLLECTION_THREADS_UPDATE",
+      "COLLECTION_THREADS_DELETE",
+      "COLLECTION_THREAD_MESSAGES_LIST",
     ],
   },
   // Organization
@@ -1270,17 +1308,14 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
 /**
  * Tools every authenticated org member can use by default.
  *
- * The role editor (`org-role-detail.tsx`) bakes these into every custom
- * role's saved `permission.self` array at submit time, so AccessControl
- * sees them as a normal Better Auth permission — no runtime bypass.
+ * Granted at runtime by AccessControl (`checkResource`) to every member
+ * regardless of role — NOT persisted into stored role permissions. To change
+ * the set, edit the `basic-usage` capability above; it takes effect
+ * immediately for all existing and new roles, with no backfill migration.
  *
- * ⚠️  Adding or removing a tool from the basic-usage capability above?
- *     You MUST also write a Kysely migration that backfills the change
- *     into existing custom roles in the `organizationRole` table.
- *     See `apps/mesh/migrations/073-backfill-basic-usage-roles.ts` for
- *     the pattern. Snapshot the tools you're adding inside the migration
- *     — do not import this constant from a migration (migrations are
- *     immutable history).
+ * (Migrations 073 and 093 backfilled basic-usage tools into roles under the
+ * older bake-in model. They are now redundant but harmless — the runtime
+ * grant supersedes them. No new backfill migrations are needed.)
  */
 export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set(
   PERMISSION_CAPABILITIES.find((c) => c.id === BASIC_USAGE_CAPABILITY_ID)
@@ -1326,6 +1361,66 @@ export function toggleCapabilityInTools(
   const toolSet = new Set(currentTools);
   for (const tool of cap.tools) toolSet.delete(tool);
   return Array.from(toolSet);
+}
+
+/**
+ * Map of gated capability id → granted, for the privileged built-in roles
+ * (owner / admin) which bypass every permission check. The hidden basic-usage
+ * capability is never part of the map — it's always-on and not UI-gated.
+ */
+export function allCapabilitiesGranted(): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const cap of PERMISSION_CAPABILITIES) {
+    if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
+    out[cap.id] = true;
+  }
+  return out;
+}
+
+/**
+ * Resolve which gated capabilities a stored role permission grants, as a
+ * capability id → boolean map. Pure: mirrors the wildcard rules AccessControl
+ * applies, so the UI can gate actions without re-deriving role logic.
+ *
+ * A capability is granted when every tool it lists appears in some resource
+ * bucket of the permission, or when the role holds an org-wide / self wildcard.
+ * The hidden basic-usage capability is excluded (always-on, never gated).
+ *
+ * Defensive by design: `permission` is JSON stored on the role, so buckets may
+ * be malformed despite the type — non-array buckets are treated as empty and
+ * never throw.
+ */
+export function resolveCapabilities(
+  permission: Record<string, string[]>,
+): Record<string, boolean> {
+  const perm = permission as Record<string, unknown>;
+  const arrayBucket = (key: string): string[] => {
+    const value = perm[key];
+    return Array.isArray(value) ? (value as string[]) : [];
+  };
+
+  // ONLY an org-wide (`*`) or full org-tool (`self`) wildcard is a GLOBAL grant
+  // across every capability. A `["*"]` inside any other bucket (e.g. a
+  // connection id) means "all tools on that resource" and must NOT light up
+  // unrelated management capabilities.
+  const hasGlobalGrant =
+    arrayBucket("*").includes("*") || arrayBucket("self").includes("*");
+
+  const grantedActions = new Set<string>();
+  if (!hasGlobalGrant) {
+    for (const actions of Object.values(perm)) {
+      if (!Array.isArray(actions)) continue;
+      for (const action of actions) grantedActions.add(action);
+    }
+  }
+
+  const out: Record<string, boolean> = {};
+  for (const cap of PERMISSION_CAPABILITIES) {
+    if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
+    out[cap.id] =
+      hasGlobalGrant || cap.tools.every((tool) => grantedActions.has(tool));
+  }
+  return out;
 }
 
 // ============================================================================

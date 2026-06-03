@@ -2,32 +2,31 @@
  * Provider singletons, one per kind. SANDBOX_DELETE dispatches on the entry's
  * recorded sandboxProviderKind (not env), so a pod that flipped STUDIO_SANDBOX_PROVIDER
  * between start and stop still tears down the right kind of sandbox.
- * Boot/shutdown sweeps are Docker-only — other providers' sandboxes outlive
- * mesh by design, so a generic sweep would nuke active user sandboxes.
  */
 
 import type { MeshContext } from "@/core/mesh-context";
 import {
-  DockerSandboxProvider,
   resolveSandboxProviderKindFromEnv,
   type SandboxProviderKind,
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
-import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import type {
+  ClaimPhase,
+  AgentSandboxProvider,
+} from "@decocms/sandbox/provider/agent-sandbox";
 import { getDb } from "@/database";
 import type { Kysely } from "kysely";
 import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
 import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
 
-// Stashed on globalThis so they survive Bun's `--hot` reload. The local
-// sandbox ingress is a long-lived `net.Server` registered at the top of
-// `apps/mesh/src/index.ts`; it isn't torn down when the entry point
-// re-evaluates, and its closure captures `getSharedSandboxProviderIfInit` from
-// whichever instance of this module was active at boot. Without the
-// global anchor, post-reload requests to `<handle>.localhost:7070` would
-// look up runners in a stale module's empty map → 503 "Sandbox Runner
-// Not Initialized". Symbol.for keeps the same key across module instances.
+// Stashed on globalThis so they survive Bun's `--hot` reload. The preview
+// reverse-proxy registered at the top of `apps/mesh/src/index.ts` is wired
+// into the long-lived `Bun.serve` handlers, whose closures capture
+// `getOrInitSharedRunner` from whichever instance of this module was active
+// at boot. Without the global anchor, post-reload preview requests would look
+// up runners in a stale module's empty map and re-provision needlessly.
+// Symbol.for keeps the same key across module instances.
 const RUNNERS_KEY = Symbol.for("decocms.sandbox.lifecycle.runners");
 const INFLIGHT_KEY = Symbol.for("decocms.sandbox.lifecycle.inflight");
 type LifecycleGlobal = {
@@ -68,7 +67,7 @@ function resolveOnce(
   return promise;
 }
 
-// Set in prod (k8s/docker behind ingress) so the provider skips the local
+// Set in prod (k8s behind ingress) so the provider skips the local
 // 127.0.0.1 port-forward path and emits a URL the user's browser can
 // actually reach. Empty/unset = local forwarder fallback (dev).
 function readPreviewUrlPattern(): string | undefined {
@@ -140,12 +139,10 @@ async function instantiate(
   const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   switch (kind) {
-    case "local-docker":
-      return new DockerSandboxProvider({ stateStore, previewUrlPattern });
     case "cluster": {
       // Dynamic import — @kubernetes/client-node is heavy and only needed
-      // when STUDIO_SANDBOX_PROVIDER=cluster. Local-docker deploys never
-      // load it.
+      // when STUDIO_SANDBOX_PROVIDER=cluster. Deploys that never select the
+      // cluster provider don't load it.
       const { AgentSandboxProvider } = await import(
         "@decocms/sandbox/provider/agent-sandbox"
       );
@@ -223,8 +220,13 @@ export function getSandboxProviderByKind(
  * today. Reads the provider kind from env and constructs without a
  * MeshContext (the state store only needs a Kysely instance). Returns null
  * when no provider kind is configured.
+ *
+ * `instantiate()` only ever yields the cluster `AgentSandboxProvider` (the
+ * sole env-instantiable provider — `user-desktop` is built per-run and
+ * throws here), so the resolved provider is always an `AgentSandboxProvider`.
+ * Typing it as such lets the preview proxy skip a redundant kind check + cast.
  */
-export async function getOrInitSharedRunner(): Promise<SandboxProvider | null> {
+export async function getOrInitSharedRunner(): Promise<AgentSandboxProvider | null> {
   let kind: SandboxProviderKind;
   try {
     kind = resolveSandboxProviderKindFromEnv();
@@ -235,29 +237,8 @@ export async function getOrInitSharedRunner(): Promise<SandboxProvider | null> {
     );
     return null;
   }
-  return resolveOnce(kind, () => instantiate(kind, getDb().db));
-}
-
-/**
- * Return the active provider iff already constructed — avoids forcing a
- * MeshContext (and DB connection) before any request touches a sandbox.
- * Returns null if env is unresolved.
- */
-export function getSharedSandboxProviderIfInit(): SandboxProvider | null {
-  let kind: SandboxProviderKind;
-  try {
-    kind = resolveSandboxProviderKindFromEnv();
-  } catch {
-    return null;
-  }
-  return runners[kind] ?? null;
-}
-
-/** Narrow to Docker for Docker-only methods (resolveDevPort / resolveDaemonPort). */
-export function asDockerRunner(
-  runner: SandboxProvider | null,
-): DockerSandboxProvider | null {
-  return runner instanceof DockerSandboxProvider ? runner : null;
+  const runner = await resolveOnce(kind, () => instantiate(kind, getDb().db));
+  return runner as AgentSandboxProvider;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +256,7 @@ export function asDockerRunner(
 // synchronously so they don't appear stuck on `claiming` while waiting for
 // the next watch event.
 //
-// For host/docker the source generator yields a single `ready` and
+// For user-desktop the source generator yields a single `ready` and
 // returns; the dedup machinery still works (each subscriber gets the phase
 // replayed) at near-zero cost.
 // ---------------------------------------------------------------------------

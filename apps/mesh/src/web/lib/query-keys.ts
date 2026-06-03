@@ -29,6 +29,10 @@ export const KEYS = {
   organizationRoles: (locator: ProjectLocator) =>
     [locator, "organization-roles"] as const,
 
+  // Current user's resolved capability bitmap within the active org
+  myCapabilities: (locator: ProjectLocator) =>
+    [locator, "my-capabilities"] as const,
+
   // Connections (scoped by project)
   connections: (locator: ProjectLocator) => [locator, "connections"] as const,
   connectionsByBinding: (locator: ProjectLocator, binding: string) =>
@@ -71,6 +75,13 @@ export const KEYS = {
 
   // Home next-actions — agent prompts under Chat.Input.
   homeNextActions: (orgSlug: string) => ["home-next-actions", orgSlug] as const,
+
+  // Home tile-board layout (positions/sizes/hidden), KV-backed per org.
+  boardLayout: (orgSlug: string) => ["board-layout", orgSlug] as const,
+
+  // Prompts exposed by an agent's gateway (drawer's prompt list).
+  agentPrompts: (orgId: string, agentId: string) =>
+    ["agent-prompts", orgId, agentId] as const,
 
   // Allowed models for current user (scoped by organization)
   allowedModels: (locator: ProjectLocator) =>
@@ -141,6 +152,10 @@ export const KEYS = {
 
   // Monitoring queries
   monitoringStats: () => ["monitoring", "stats"] as const,
+  monitoringStatsToolCalls: (orgId: string, paramsKey: string) =>
+    ["MONITORING_STATS", orgId, "tool-calls", paramsKey] as const,
+  monitoringStatsLlm: (orgId: string, paramsKey: string) =>
+    ["MONITORING_STATS", orgId, "llm", paramsKey] as const,
   monitoringLogs: (filters: {
     connectionId?: string;
     toolName?: string;
@@ -287,6 +302,8 @@ export const KEYS = {
 
   // AI provider stored keys (scoped by org)
   aiProviderKeys: (orgId: string) => ["ai-provider-keys", orgId] as const,
+  aiProviderKeyPreview: (keyId: string) =>
+    ["ai-provider-key-preview", keyId] as const,
 
   // Secrets (scoped by org; user-scope filtering happens server-side)
   secrets: (orgId: string) => ["secrets", orgId] as const,

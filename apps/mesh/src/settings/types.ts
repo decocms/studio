@@ -83,9 +83,28 @@ export interface ServiceInputs {
   home: string;
   externalDatabaseUrl: string | null;
   externalNatsUrl: string | null;
+  /**
+   * When true, skip auto-provisioning MinIO (e.g. an external S3 store is
+   * already configured via S3_* env). Defaults to provisioning MinIO.
+   */
+  skipMinio?: boolean;
 }
 
 export interface ServiceOutputs {
   databaseUrl: string;
   natsUrls: string[];
+  /**
+   * S3 object-storage config for the managed/external store, if any. Null when
+   * object storage is not configured (no managed MinIO, no external S3 env).
+   * Threaded into the frozen Settings so the in-process serve path resolves the
+   * real S3Service; also mirrored into process.env for spawned child servers.
+   */
+  s3: {
+    endpoint: string;
+    bucket: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    /** true for managed MinIO; reflects operator's S3_FORCE_PATH_STYLE for external S3. */
+    forcePathStyle: boolean;
+  } | null;
 }

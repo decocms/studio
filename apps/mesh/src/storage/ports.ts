@@ -93,6 +93,15 @@ export interface ThreadStoragePort {
   /** Release ownership for all runs owned by this pod (graceful shutdown). */
   orphanRunsByPod(podId: string): Promise<string[]>;
 
+  /**
+   * For each given virtual MCP id, return the timestamp and creator of the most recent thread.
+   * Used by the dedicated last-used endpoint; not on the agent fetch hot path.
+   */
+  findLastUsedByVirtualMcpIds(
+    organizationId: string,
+    virtualMcpIds: string[],
+  ): Promise<Map<string, { last_used_at: string; last_used_by: string }>>;
+
   // Message operations - upserts by id (updates existing rows)
   saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;
   listMessages(

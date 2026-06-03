@@ -39,6 +39,42 @@ describe("git routes", () => {
     expect(body.modified).toContain("README.md");
   });
 
+  it("status reports aheadOfBase on a feature branch", async () => {
+    const { appRoot, repoDir } = initRepo();
+    gitSync(["checkout", "-b", "feat/test"], { cwd: repoDir, asUser: false });
+    writeFileSync(join(repoDir, "feature.txt"), "x\n");
+    gitSync(["add", "feature.txt"], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "feature"], { cwd: repoDir, asUser: false });
+    const mainSha = gitSync(["rev-parse", "main"], {
+      cwd: repoDir,
+      asUser: false,
+    }).trim();
+    gitSync(["update-ref", "refs/remotes/origin/main", mainSha], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    const featureSha = gitSync(["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    }).trim();
+    gitSync(["update-ref", "refs/remotes/origin/feat/test", featureSha], {
+      cwd: repoDir,
+      asUser: false,
+    });
+
+    const handler = makeGitStatusHandler({ appRoot, repoDir });
+    const res = await handler(new Request("http://x/git/status"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      aheadOfBase: number;
+      base: string;
+      current: string | null;
+    };
+    expect(body.current).toBe("feat/test");
+    expect(body.base).toBe("main");
+    expect(body.aheadOfBase).toBeGreaterThan(0);
+  });
+
   it("diff returns before/after content", async () => {
     const { appRoot, repoDir } = initRepo();
     writeFileSync(join(repoDir, "README.md"), "hello world\n");

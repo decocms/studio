@@ -19,6 +19,8 @@ import {
 } from "./dispatch-frames";
 import type { LinkClaim, LinkClaimRegistry } from "./link-claim-registry";
 import type { Capability } from "./protocol";
+import { MAX_PUBLISH_BYTES, splitChunkData } from "../nats/payload-chunking";
+import type { LinkErrorCode } from "./protocol/error-codes";
 
 const WS_CLOSE_SUPERSEDED = 4001;
 const WS_CLOSE_POLICY = 1008;
@@ -292,6 +294,62 @@ function onCancelFromNats(
   ws.send(encodeFrame(frame));
 }
 
+/**
+ * Publish a frame to `reply`, splitting an oversized `chunk` into ordered
+ * sub-chunks (same reqId) so each NATS message stays under the payload limit.
+ * The dispatcher yields chunks in order and the consumer concatenates, so no
+ * reassembly is needed. Non-chunk frames (headers/end/error) are small.
+ */
+function publishFrame(
+  ws: ServerWebSocket<WsAttachData>,
+  reply: string,
+  frame: DispatchFrame,
+): void {
+  const nats = ws.data.deps.nats;
+  if (frame.type !== "chunk") {
+    nats.publish(reply, encoder.encode(encodeFrame(frame)));
+    return;
+  }
+  const encoded = encoder.encode(encodeFrame(frame));
+  if (encoded.length <= MAX_PUBLISH_BYTES) {
+    nats.publish(reply, encoded);
+    return;
+  }
+  const overhead = encoder.encode(
+    encodeFrame({ type: "chunk", reqId: frame.reqId, data: "" }),
+  ).length;
+  for (const piece of splitChunkData(frame.data, MAX_PUBLISH_BYTES, overhead)) {
+    nats.publish(
+      reply,
+      encoder.encode(
+        encodeFrame({ type: "chunk", reqId: frame.reqId, data: piece }),
+      ),
+    );
+  }
+}
+
+/** Best-effort clean error frame to a reply inbox. Returns whether it
+ *  actually published — callers use this to decide if the inflight entry can
+ *  be dropped or must be kept for the close-time fallback. */
+function publishErrorFrame(
+  ws: ServerWebSocket<WsAttachData>,
+  reply: string,
+  reqId: string,
+  message: string,
+  code: LinkErrorCode = "publish_failed",
+): boolean {
+  try {
+    ws.data.deps.nats.publish(
+      reply,
+      encoder.encode(encodeFrame({ type: "error", reqId, code, message })),
+    );
+    return true;
+  } catch {
+    /* reply inbox unreachable — nothing more we can do */
+    return false;
+  }
+}
+
 async function onAfterHello(
   ws: ServerWebSocket<WsAttachData>,
   frame: DispatchFrame,
@@ -306,7 +364,25 @@ async function onAfterHello(
   const entry = inflight.get(frame.reqId);
   if (!entry) return;
 
-  ws.data.deps.nats.publish(entry.reply, encoder.encode(encodeFrame(frame)));
+  try {
+    publishFrame(ws, entry.reply, frame);
+  } catch (err) {
+    // A NATS publish error (e.g. connection gone) — surface it cleanly to the
+    // waiting dispatcher instead of letting the throw escape the WS handler
+    // and silently break the stream.
+    const delivered = publishErrorFrame(
+      ws,
+      entry.reply,
+      frame.reqId,
+      err instanceof Error ? err.message : String(err),
+    );
+    // Only drop the inflight entry once the dispatcher has actually been told
+    // the request ended. If even the error frame failed to publish (e.g. NATS
+    // down), keep it so the close handler's ws_closed fallback can still fire —
+    // the dispatcher has no idle timeout once it has received any chunk.
+    if (delivered) inflight.delete(frame.reqId);
+    return;
+  }
 
   if (frame.type === "end" || frame.type === "error") {
     inflight.delete(frame.reqId);
@@ -355,13 +431,14 @@ export const gatewayWsHandlers = {
     if (inflight && inflight.size > 0) {
       for (const [reqId, entry] of inflight) {
         try {
+          const code: LinkErrorCode = "ws_closed";
           ws.data.deps.nats.publish(
             entry.reply,
             encoder.encode(
               encodeFrame({
                 type: "error",
                 reqId,
-                code: "ws_closed",
+                code,
                 message: "daemon WebSocket closed before response completed",
               }),
             ),

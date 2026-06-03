@@ -14,7 +14,6 @@ import {
   type SandboxProviderKind,
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
-import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { delay } from "@decocms/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { MeshContext } from "../../core/mesh-context";
@@ -201,17 +200,9 @@ async function emitLifecycle(args: {
 
     const watchdogTimer = setTimeout(() => {
       if (claimSeen || settled) return;
-      stream
-        .writeSSE({
-          event: "phase",
-          data: JSON.stringify({
-            kind: "failed",
-            reason: "claim-never-created",
-            message:
-              "Sandbox claim was never created. The SANDBOX_START call may have failed earlier — check the start error.",
-          } satisfies ClaimPhase),
-        })
-        .catch(() => {});
+      // No claim within budget — end the lifecycle phase quietly and let the
+      // proxy phase + client reconnect take over instead of latching a
+      // terminal failure in the UI.
       settle(false);
     }, NO_CLAIM_MAX_MS);
 
@@ -256,17 +247,17 @@ async function proxyDaemonEvents(args: {
         await delay(PROXY_OPEN_RETRY_DELAY_MS, { signal }).catch(() => {});
         continue;
       }
-      const message = err instanceof Error ? err.message : String(err);
-      await stream
-        .writeSSE({
-          event: "phase",
-          data: JSON.stringify({
-            kind: "failed",
-            reason: "unknown",
-            message: `Upstream daemon SSE error: ${message}`,
-          } satisfies ClaimPhase),
-        })
-        .catch(() => {});
+      // Daemon unreachable past the budget. Don't emit a terminal failure —
+      // end the stream so the client's EventSource reconnects (it will pick
+      // up logs / `gone` once the link is back). Latching here froze the
+      // preview across a `deco link` relink. Log once (per ~60s SSE attempt)
+      // so an operator can tell an expected `deco link` outage from a
+      // misconfig/crash without the client seeing a terminal failure.
+      console.warn(
+        `[vm-events] daemon unreachable past budget for ${claimName}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return;
     }
 
@@ -285,21 +276,16 @@ async function proxyDaemonEvents(args: {
     }
 
     if (!attempt.ok || !attempt.body) {
+      const status = attempt.status;
       try {
         await attempt.body?.cancel();
       } catch {
         /* ignore */
       }
-      await stream
-        .writeSSE({
-          event: "phase",
-          data: JSON.stringify({
-            kind: "failed",
-            reason: "unknown",
-            message: `Upstream daemon SSE failed (${attempt.status}).`,
-          } satisfies ClaimPhase),
-        })
-        .catch(() => {});
+      // Transient upstream error — end the stream and let the client reconnect.
+      console.warn(
+        `[vm-events] upstream daemon SSE bad status ${status} for ${claimName}`,
+      );
       return;
     }
 

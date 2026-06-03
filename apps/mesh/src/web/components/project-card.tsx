@@ -14,10 +14,15 @@ import {
 
 interface ProjectCardProps {
   project: VirtualMCPEntity;
+  lastUsedAt?: string;
   onDeleteClick?: (e: React.MouseEvent) => void;
 }
 
-export function ProjectCard({ project, onDeleteClick }: ProjectCardProps) {
+export function ProjectCard({
+  project,
+  lastUsedAt,
+  onDeleteClick,
+}: ProjectCardProps) {
   const navigateToAgent = useNavigateToAgent();
 
   return (
@@ -91,9 +96,9 @@ export function ProjectCard({ project, onDeleteClick }: ProjectCardProps) {
         <div className="border-t border-border mt-auto">
           <div className="h-10 flex items-center px-4.5">
             <p className="text-xs text-muted-foreground">
-              {formatDistanceToNow(new Date(project.updated_at), {
-                addSuffix: true,
-              })}
+              {lastUsedAt
+                ? `Last used ${formatDistanceToNow(new Date(lastUsedAt), { addSuffix: true })}`
+                : `Updated ${formatDistanceToNow(new Date(project.updated_at), { addSuffix: true })}`}
             </p>
           </div>
         </div>

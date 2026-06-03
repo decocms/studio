@@ -1,3 +1,4 @@
+import { formatDistanceToNow } from "date-fns";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
@@ -64,6 +65,7 @@ import {
   useProjectContext,
   useVirtualMCP,
   useVirtualMCPActions,
+  useVirtualMCPsLastUsed,
 } from "@decocms/mesh-sdk";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -598,6 +600,7 @@ function ConnectionItemSkeleton() {
 
 interface UITool {
   name: string;
+  title?: string;
   description?: string;
   resourceUri: string;
 }
@@ -656,6 +659,7 @@ function LayoutTabContent({
                 icon?: string | null;
                 tools?: Array<{
                   name: string;
+                  title?: string;
                   description?: string;
                   _meta?: Record<string, unknown>;
                 }> | null;
@@ -665,7 +669,12 @@ function LayoutTabContent({
               const resourceUri = getUIResourceUri(t._meta);
               if (!resourceUri) return [];
               return [
-                { name: t.name, description: t.description, resourceUri },
+                {
+                  name: t.name,
+                  title: t.title,
+                  description: t.description,
+                  resourceUri,
+                },
               ];
             });
             return {
@@ -704,8 +713,6 @@ function LayoutTabContent({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
-  const homeTile = form.watch("metadata.ui.homeTile") ?? null;
-
   // Convert the stored {type, id, toolName} object into the string composite
   // key used by the <Select> UI. Legacy tab types fold into "settings".
   const defaultMainView = (() => {
@@ -811,12 +818,15 @@ function LayoutTabContent({
         writeLayout({ defaultMainView: { type: "chat" } });
       }
     } else {
+      const toolTitle = connectionsData
+        .find((c) => c.id === connectionId)
+        ?.uiTools.find((t) => t.name === toolName)?.title;
       writePinned([
         ...pinnedViews,
         {
           connectionId,
           toolName,
-          label: toTitleCase(toolName),
+          label: toolTitle ?? toTitleCase(toolName),
           icon: null,
         },
       ]);
@@ -859,33 +869,6 @@ function LayoutTabContent({
 
   const handleDefaultMainViewChange = (value: string) => {
     writeLayout({ defaultMainView: parseDefaultMainView(value) });
-    flushAndSave();
-  };
-
-  // Flatten UI tools across connections so the home-tile picker can offer a
-  // single Select. We key by resourceUri (unique per ui:// URI) but also
-  // capture the owning connection — the home page opens a direct client to
-  // that connection so iframe tool calls hit bare tool names.
-  const homeTileOptions = connectionsData.flatMap((conn) =>
-    conn.uiTools.map((tool) => ({
-      resourceUri: tool.resourceUri,
-      connectionId: conn.id,
-      label: `${conn.title} — ${toTitleCase(tool.name)}`,
-    })),
-  );
-
-  const handleHomeTileChange = (value: string) => {
-    if (value === "none") {
-      form.setValue("metadata.ui.homeTile", null, { shouldDirty: true });
-    } else {
-      const opt = homeTileOptions.find((o) => o.resourceUri === value);
-      if (!opt) return;
-      form.setValue(
-        "metadata.ui.homeTile",
-        { resourceUri: opt.resourceUri, connectionId: opt.connectionId },
-        { shouldDirty: true },
-      );
-    }
     flushAndSave();
   };
 
@@ -983,40 +966,6 @@ function LayoutTabContent({
               )}
             </Tooltip>
           </div>
-
-          <div className="flex items-center justify-between gap-4">
-            <div className="space-y-0.5 min-w-0">
-              <Label className="font-normal text-foreground">Home tile</Label>
-              <p className="text-xs text-muted-foreground">
-                Render an interactive tool UI inside this agent's tile on the
-                org home page. Only takes effect when the agent is in the org's
-                default home agents.
-              </p>
-            </div>
-            <Select
-              value={homeTile?.resourceUri ?? "none"}
-              onValueChange={handleHomeTileChange}
-              disabled={homeTileOptions.length === 0}
-            >
-              <SelectTrigger className="w-56 h-8 text-sm shrink-0">
-                <SelectValue
-                  placeholder={
-                    homeTileOptions.length === 0
-                      ? "No interactive tools"
-                      : "None"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                {homeTileOptions.map((opt) => (
-                  <SelectItem key={opt.resourceUri} value={opt.resourceUri}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </CardContent>
 
         {hasPinnedContent && (
@@ -1095,7 +1044,7 @@ function LayoutTabContent({
                                   value={
                                     pinned && pinnedView
                                       ? pinnedView.label
-                                      : toTitleCase(tool.name)
+                                      : (tool.title ?? toTitleCase(tool.name))
                                   }
                                   onChange={(e) =>
                                     handleLabelChange(
@@ -1146,6 +1095,8 @@ function VirtualMcpDetailViewWithData({
 }) {
   const { org } = useProjectContext();
   const actions = useVirtualMCPActions();
+  const { data: lastUsedMap } = useVirtualMCPsLastUsed([virtualMcp.id]);
+  const lastUsedAt = lastUsedMap?.get(virtualMcp.id)?.last_used_at;
   const connectionActions = useConnectionActions();
   const queryClient = useQueryClient();
   const client = useMCPClient({
@@ -1724,19 +1675,26 @@ Define step-by-step how the agent should handle requests.
             </div>
 
             {/* Creator metadata */}
-            <div className="flex items-center gap-2 -mt-6 text-muted-foreground">
+            <div className="flex items-center gap-2 -mt-6 text-sm text-muted-foreground">
               <User
                 id={virtualMcp.created_by}
                 size="2xs"
                 className="text-sm text-muted-foreground"
               />
-              <span className="text-muted-foreground/50 text-sm">·</span>
-              <span className="text-sm">
+              <span className="text-muted-foreground/50">·</span>
+              <span>
+                Created{" "}
                 {new Date(virtualMcp.created_at).toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
                   year: "numeric",
                 })}
+              </span>
+              <span className="text-muted-foreground/50">·</span>
+              <span>
+                {lastUsedAt
+                  ? `Last used ${formatDistanceToNow(new Date(lastUsedAt), { addSuffix: true })}`
+                  : "Never used"}
               </span>
             </div>
 

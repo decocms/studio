@@ -3,6 +3,7 @@ import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-c
 import { CLAIM_PHASE_COPY } from "@/web/components/sandbox/claim-phase-copy";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
+import { publishToBaseLabel } from "./publish-label.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
 
 /**
@@ -293,7 +294,7 @@ export function selectHeaderButton(
     }
 
     return {
-      label: "Publish",
+      label: publishToBaseLabel(pr.base),
       action: "merge-split",
       variant: "success",
       tooltip: `Squash-merge PR #${pr.number} into ${pr.base}`,

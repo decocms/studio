@@ -4,9 +4,11 @@ import {
   useProjectContext,
   useVirtualMCPActions,
   useVirtualMCPs,
+  useVirtualMCPsLastUsed,
 } from "@decocms/mesh-sdk";
 import { Page } from "@/web/components/page";
 import { ProjectCard } from "@/web/components/project-card";
+import { useCapability } from "@/web/hooks/use-capability";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import {
@@ -52,6 +54,7 @@ export default function AgentsListPage() {
   } | null>(null);
   const [importDecoOpen, setImportDecoOpen] = useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
+  const { granted: canManageAgents } = useCapability("agents:manage");
 
   const lowerSearch = search.toLowerCase();
 
@@ -61,6 +64,10 @@ export default function AgentsListPage() {
       s.id !== org.id &&
       (s.title.toLowerCase().includes(lowerSearch) ||
         s.description?.toLowerCase().includes(lowerSearch)),
+  );
+
+  const { data: lastUsedMap } = useVirtualMCPsLastUsed(
+    filteredAgents.map((a) => a.id),
   );
 
   const confirmDelete = async () => {
@@ -95,53 +102,55 @@ export default function AgentsListPage() {
                   }
                 }}
               />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm">
-                    <Plus size={14} />
-                    Create Agent
-                  </Button>
-                </DropdownMenuTrigger>
-                <CreateAgentDropdownContent
-                  onCreateFromScratch={() => {
-                    track("agent_create_clicked", {
-                      source: "agents_list",
-                      method: "scratch",
-                    });
-                    createVirtualMCP();
-                  }}
-                  onCreateWebsite={() => {
-                    track("agent_create_clicked", {
-                      source: "agents_list",
-                      method: "website",
-                    });
-                    createFromTemplate(WEBSITE_TEMPLATE);
-                  }}
-                  onCreateHydrogenStore={() => {
-                    track("agent_create_clicked", {
-                      source: "agents_list",
-                      method: "hydrogen",
-                    });
-                    createFromTemplate(HYDROGEN_TEMPLATE);
-                  }}
-                  onImportGitHub={() => {
-                    track("agent_create_clicked", {
-                      source: "agents_list",
-                      method: "github",
-                    });
-                    setGithubPickerOpen(true);
-                  }}
-                  onImportDeco={() => {
-                    track("agent_create_clicked", {
-                      source: "agents_list",
-                      method: "deco",
-                    });
-                    setImportDecoOpen(true);
-                  }}
-                  isCreating={isCreating || isCreatingFromTemplate}
-                  align="end"
-                />
-              </DropdownMenu>
+              {canManageAgents && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm">
+                      <Plus size={14} />
+                      Create Agent
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <CreateAgentDropdownContent
+                    onCreateFromScratch={() => {
+                      track("agent_create_clicked", {
+                        source: "agents_list",
+                        method: "scratch",
+                      });
+                      createVirtualMCP();
+                    }}
+                    onCreateWebsite={() => {
+                      track("agent_create_clicked", {
+                        source: "agents_list",
+                        method: "website",
+                      });
+                      createFromTemplate(WEBSITE_TEMPLATE);
+                    }}
+                    onCreateHydrogenStore={() => {
+                      track("agent_create_clicked", {
+                        source: "agents_list",
+                        method: "hydrogen",
+                      });
+                      createFromTemplate(HYDROGEN_TEMPLATE);
+                    }}
+                    onImportGitHub={() => {
+                      track("agent_create_clicked", {
+                        source: "agents_list",
+                        method: "github",
+                      });
+                      setGithubPickerOpen(true);
+                    }}
+                    onImportDeco={() => {
+                      track("agent_create_clicked", {
+                        source: "agents_list",
+                        method: "deco",
+                      });
+                      setImportDecoOpen(true);
+                    }}
+                    isCreating={isCreating || isCreatingFromTemplate}
+                    align="end"
+                  />
+                </DropdownMenu>
+              )}
             </div>
           </div>
 
@@ -155,10 +164,13 @@ export default function AgentsListPage() {
                 description={
                   search
                     ? `No agents match "${search}"`
-                    : "Create an agent to get started."
+                    : canManageAgents
+                      ? "Create an agent to get started."
+                      : "Ask an organization admin to create one."
                 }
                 actions={
-                  !search && (
+                  !search &&
+                  canManageAgents && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="sm">
@@ -223,11 +235,15 @@ export default function AgentsListPage() {
                   <ProjectCard
                     key={agent.id}
                     project={agent}
-                    onDeleteClick={() =>
-                      setDeleteTarget({
-                        id: agent.id,
-                        title: agent.title,
-                      })
+                    lastUsedAt={lastUsedMap?.get(agent.id)?.last_used_at}
+                    onDeleteClick={
+                      canManageAgents
+                        ? () =>
+                            setDeleteTarget({
+                              id: agent.id,
+                              title: agent.title,
+                            })
+                        : undefined
                     }
                   />
                 ))}

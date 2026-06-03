@@ -106,7 +106,10 @@ export function createDispatcher(deps: CreateDispatcherDeps): DispatchFn {
           wake();
         });
 
+        let cleanedUp = false;
         const cleanup = (): void => {
+          if (cleanedUp) return;
+          cleanedUp = true;
           done = true;
           try {
             unsubscribe();
@@ -126,20 +129,29 @@ export function createDispatcher(deps: CreateDispatcherDeps): DispatchFn {
         };
         opts?.signal?.addEventListener("abort", onAbort, { once: true });
 
-        deps.nats.publish(
-          `links.dispatch.${userSub}`,
-          encoder.encode(
-            encodeFrame({
-              type: "request",
-              reqId,
-              method: req.method,
-              path: req.path,
-              headers: req.headers,
-              ...(req.body !== undefined ? { body: req.body } : {}),
-            }),
-          ),
-          { reply: inbox },
-        );
+        try {
+          deps.nats.publish(
+            `links.dispatch.${userSub}`,
+            encoder.encode(
+              encodeFrame({
+                type: "request",
+                reqId,
+                method: req.method,
+                path: req.path,
+                headers: req.headers,
+                ...(req.body !== undefined ? { body: req.body } : {}),
+              }),
+            ),
+            { reply: inbox },
+          );
+        } catch (err) {
+          // e.g. a request body over max_payload (follow-up F1 will chunk
+          // these). This path skips the finally below, so detach the abort
+          // listener and tear down the inbox subscription before surfacing.
+          opts?.signal?.removeEventListener("abort", onAbort);
+          cleanup();
+          throw err instanceof Error ? err : new Error(String(err));
+        }
 
         const firstReplyDeadline = Date.now() + timeoutMs;
         let receivedAny = false;

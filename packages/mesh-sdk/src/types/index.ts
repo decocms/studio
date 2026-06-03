@@ -27,6 +27,8 @@ export {
   type VirtualMCPConnection,
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
+  type VirtualMcpHomeTile,
+  getHomeTiles,
   type GithubRepo,
   SandboxMapSchema,
   type SandboxMap,

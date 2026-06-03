@@ -104,7 +104,7 @@ async function connectLink(
 
 interface MessageBodyOverrides {
   agentId?: string;
-  sandboxProviderKind?: "local-docker" | "cluster" | "user-desktop";
+  sandboxProviderKind?: "cluster" | "user-desktop";
   harnessId?: "claude-code" | "codex" | "decopilot";
 }
 
@@ -216,7 +216,7 @@ test.describe("POST /messages — dispatch target gating", () => {
     }
   });
 
-  test("cloud kind (local-docker) → 202 (no link required)", async ({
+  test("cloud kind (cluster) → 202 (no link required)", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -229,7 +229,7 @@ test.describe("POST /messages — dispatch target gating", () => {
       threadId,
       messageBody({
         agentId,
-        sandboxProviderKind: "local-docker",
+        sandboxProviderKind: "cluster",
         harnessId: "claude-code",
       }),
     );
@@ -301,7 +301,7 @@ test.describe("POST /messages — first-message pinning", () => {
       );
       expect(first.status()).toBe(202);
 
-      // Second message sends a conflicting sandbox kind (local-docker). The
+      // Second message sends a conflicting sandbox kind (cluster). The
       // thread row already pins user-desktop, which is the single source of
       // truth — the body's kind must be ignored. We keep harnessId
       // "claude-code" here on purpose: a non-CLI harness in the body (e.g.
@@ -315,14 +315,14 @@ test.describe("POST /messages — first-message pinning", () => {
         threadId,
         messageBody({
           agentId,
-          sandboxProviderKind: "local-docker",
+          sandboxProviderKind: "cluster",
           harnessId: "claude-code",
         }),
       );
       expect(second.status()).toBe(202);
 
       // The conflicting body did not overwrite the pinned values: the row is
-      // still user-desktop, not local-docker.
+      // still user-desktop, not cluster.
       const { rows } = await db.query(
         "SELECT sandbox_provider_kind, harness_id FROM threads WHERE id = $1",
         [threadId],

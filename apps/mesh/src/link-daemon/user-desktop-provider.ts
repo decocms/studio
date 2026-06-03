@@ -81,6 +81,17 @@ export interface EnsureSandboxInput {
   handle: string;
   repo?: RepoRef;
   workload?: Workload;
+  /**
+   * Message-offload SSRF allowlist, pushed by the cluster from its OWN trusted
+   * S3 config (never a request frame). Threaded into the spawned daemon's boot
+   * env (`OFFLOAD_ALLOWED_HOSTS`) so it can re-inflate offloaded `messagesRef`
+   * payloads — but only from these hosts. Absent/empty = the daemon fails
+   * closed (every offload fetch rejected).
+   */
+  offloadAllowedHosts?: string[];
+  /** Permit http:// loopback offload refs (dev MinIO over localhost). Maps to
+   *  the daemon's `OFFLOAD_ALLOW_SAME_HOST_DEV=1`. */
+  offloadAllowSameHostDev?: boolean;
 }
 
 export interface SandboxState {
@@ -130,6 +141,11 @@ export interface DesktopSandboxProviderDeps {
     handle: string;
     port: number;
     daemonToken: string;
+    /** Message-offload SSRF allowlist for the daemon's boot env. Empty = the
+     *  daemon fails closed. Sourced from the cluster's trusted ensure body. */
+    offloadAllowedHosts: string[];
+    /** Maps to the daemon's `OFFLOAD_ALLOW_SAME_HOST_DEV=1`. */
+    offloadAllowSameHostDev: boolean;
   }) => SpawnResult | Promise<SpawnResult>;
   postConfig: (
     port: number,
@@ -159,6 +175,40 @@ export interface DesktopSandboxProviderDeps {
   fetchImpl?: typeof fetch;
   /** Optional observability hook for lifecycle transitions (link TUI). */
   onEvent?: (event: SandboxEvent) => void;
+}
+
+/**
+ * Wrap a low-level bring-up step error in a user-facing message carrying the
+ * stable `sandbox failed to start:` marker. The chat web layer keys on this
+ * marker (`parseErrorMessage` in the highlight component) to show the real
+ * reason instead of the generic "took longer than expected". The original
+ * error is preserved as `cause` for the daemon log + the `failed` event.
+ */
+function markBringUpFailure(reason: string, cause: unknown): Error {
+  return new Error(`sandbox failed to start: ${reason}`, { cause });
+}
+
+/**
+ * True for runtime timeout aborts — notably the `AbortSignal.timeout()`
+ * `DOMException` ("The operation timed out.") that fires when the spawned
+ * daemon doesn't answer `POST /_sandbox/config` within `CONFIG_TIMEOUT_MS`.
+ */
+function isTimeoutLike(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === "TimeoutError" ||
+    /timed out|timeout|operation was aborted|aborted/i.test(err.message)
+  );
+}
+
+/** The original (pre-marker) cause message, for operator-facing logs/events. */
+function bringUpCauseMessage(err: unknown): string {
+  if (err instanceof Error) {
+    const cause = (err as { cause?: unknown }).cause;
+    if (cause instanceof Error && cause.message) return cause.message;
+    return err.message;
+  }
+  return String(err);
 }
 
 export function createDesktopSandboxProvider(
@@ -195,8 +245,18 @@ export function createDesktopSandboxProvider(
     const timer = setTimeout(() => ac.abort(), 1500);
     try {
       const res = await fetcher(`${sandboxUrl}/health`, { signal: ac.signal });
+      if (!res.ok) {
+        console.warn(
+          `[user-desktop] probe ${sandboxUrl}/health → ${res.status} (treating as dead)`,
+        );
+      }
       return res.ok;
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[user-desktop] probe ${sandboxUrl}/health failed: ${
+          err instanceof Error ? err.message : String(err)
+        } (treating as dead)`,
+      );
       return false;
     } finally {
       clearTimeout(timer);
@@ -204,6 +264,9 @@ export function createDesktopSandboxProvider(
   };
 
   const evictDead = (state: SandboxState): void => {
+    console.warn(
+      `[user-desktop] evicting dead daemon handle=${state.handle} port=${state.port}`,
+    );
     try {
       state.process.kill("SIGTERM");
     } catch {
@@ -237,8 +300,16 @@ export function createDesktopSandboxProvider(
     const candidates = [...sandboxes.values()]
       .filter((s) => s.activeDispatchCount === 0)
       .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-    if (candidates.length === 0) return; // every sandbox is pinned
+    if (candidates.length === 0) {
+      console.warn(
+        `[user-desktop] at cap ${sandboxes.size}/${cap} but every sandbox is pinned (active dispatch) — exceeding cap temporarily`,
+      );
+      return; // every sandbox is pinned
+    }
     const victim = candidates[0]!;
+    console.log(
+      `[user-desktop] evicting LRU victim handle=${victim.handle} port=${victim.port} (cap ${cap} reached, size=${sandboxes.size})`,
+    );
     try {
       victim.process.kill("SIGTERM");
     } catch {
@@ -268,19 +339,42 @@ export function createDesktopSandboxProvider(
       `[user-desktop] spawn handle=${input.handle} port=${port} devPort=${devPort} workdir=${workdir}`,
     );
     const spawned = await Promise.resolve(
-      deps.spawnDaemon({ workdir, handle: input.handle, port, daemonToken }),
+      deps.spawnDaemon({
+        workdir,
+        handle: input.handle,
+        port,
+        daemonToken,
+        // Offload SSRF allowlist from the cluster's trusted ensure body.
+        // Defaults fail closed (empty list, no loopback) so a daemon spawned
+        // by an older cluster that doesn't push these stays safe.
+        offloadAllowedHosts: input.offloadAllowedHosts ?? [],
+        offloadAllowSameHostDev: input.offloadAllowSameHostDev ?? false,
+      }),
     );
     try {
-      await deps.waitForHealth(port);
+      try {
+        await deps.waitForHealth(port);
+      } catch (err) {
+        throw markBringUpFailure("the sandbox didn't come online in time", err);
+      }
       console.log(
         `[user-desktop] healthy handle=${input.handle} port=${port} — posting config`,
       );
-      await deps.postConfig(
-        port,
-        devPort,
-        { repo: input.repo, workload: input.workload },
-        daemonToken,
-      );
+      try {
+        await deps.postConfig(
+          port,
+          devPort,
+          { repo: input.repo, workload: input.workload },
+          daemonToken,
+        );
+      } catch (err) {
+        throw markBringUpFailure(
+          isTimeoutLike(err)
+            ? "configuration timed out"
+            : "the sandbox rejected its configuration",
+          err,
+        );
+      }
     } catch (err) {
       console.error(
         `[user-desktop] sandbox bring-up failed handle=${input.handle} port=${port} (killing daemon):`,
@@ -294,7 +388,7 @@ export function createDesktopSandboxProvider(
       emit({
         handle: input.handle,
         phase: "failed",
-        error: err instanceof Error ? err.message : String(err),
+        error: bringUpCauseMessage(err),
       });
       throw err;
     }
@@ -329,8 +423,15 @@ export function createDesktopSandboxProvider(
       spawned.exited.then(() => {
         const current = sandboxes.get(input.handle);
         if (current === state) {
+          console.warn(
+            `[user-desktop] daemon process exited unexpectedly handle=${input.handle} port=${port} — removing from cache`,
+          );
           sandboxes.delete(input.handle);
           emit({ handle: input.handle, phase: "evicted" });
+        } else {
+          console.log(
+            `[user-desktop] daemon process exited handle=${input.handle} port=${port} (already replaced/removed)`,
+          );
         }
       });
     }
@@ -343,6 +444,9 @@ export function createDesktopSandboxProvider(
       const existing = sandboxes.get(input.handle);
       if (existing) {
         if (await probeAlive(existing.sandboxApiUrl)) {
+          console.log(
+            `[user-desktop] cache hit handle=${input.handle} port=${existing.port} (alive)`,
+          );
           existing.lastUsedAt = Date.now();
           return {
             sandboxApiUrl: existing.sandboxApiUrl,
@@ -352,10 +456,18 @@ export function createDesktopSandboxProvider(
         }
         // Cached entry is dead — tear it down before respawning so the new
         // entry's spawn isn't fighting the corpse for the same workdir.
+        console.warn(
+          `[user-desktop] cache stale handle=${input.handle} port=${existing.port} — respawning`,
+        );
         evictDead(existing);
       }
       const pending = inflight.get(input.handle);
-      if (pending) return pending;
+      if (pending) {
+        console.log(
+          `[user-desktop] joining in-flight ensure handle=${input.handle}`,
+        );
+        return pending;
+      }
       const promise = buildEntry(input).finally(() => {
         inflight.delete(input.handle);
       });
@@ -406,7 +518,13 @@ export function createDesktopSandboxProvider(
     },
     async deleteSandbox(handle) {
       const s = sandboxes.get(handle);
-      if (!s) return;
+      if (!s) {
+        console.log(
+          `[user-desktop] delete handle=${handle} (not found, no-op)`,
+        );
+        return;
+      }
+      console.log(`[user-desktop] delete handle=${handle} port=${s.port}`);
       try {
         s.process.kill("SIGTERM");
       } catch {
@@ -416,6 +534,9 @@ export function createDesktopSandboxProvider(
       emit({ handle, phase: "deleted" });
     },
     async shutdown() {
+      console.log(
+        `[user-desktop] shutdown — killing ${sandboxes.size} sandbox(es)`,
+      );
       for (const s of sandboxes.values()) {
         try {
           s.process.kill("SIGTERM");

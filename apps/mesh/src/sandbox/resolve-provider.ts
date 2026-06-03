@@ -15,9 +15,9 @@
  *
  *   3. **Recorded sandboxMap kind.** The post-provision source of truth: a
  *      sandbox provisioned via `user-desktop` stays addressable through
- *      `user-desktop` even on a cluster whose env kind is something else
- *      (`cluster`, `local-docker`, …). This is what the events/proxy
- *      route uses — no ctx hint, just the recorded entry.
+ *      `user-desktop` even on a cluster whose env kind is `cluster`. This
+ *      is what the events/proxy route uses — no ctx hint, just the recorded
+ *      entry.
  *
  *   4. **Default policy** (`resolveDefaultSandboxProviderKind`). Pre-
  *      provision fall-through: live link → `user-desktop`, else env kind.

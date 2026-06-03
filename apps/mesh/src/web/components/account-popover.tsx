@@ -28,12 +28,14 @@ import {
   Monitor01,
   Moon01,
   Plus,
+  SearchMd,
   Settings02,
   Shield01,
   Sun,
   Users03,
   VolumeMax,
   VolumeX,
+  XClose,
 } from "@untitledui/icons";
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { SidebarMenuButton } from "@deco/ui/components/sidebar.tsx";
@@ -153,22 +155,61 @@ function OrganizationsPanel({
   onSelectOrg: (slug: string) => void;
   onCreateOrg: () => void;
 }) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const q = query.toLowerCase();
+  const filtered = q
+    ? sortedOrgs.filter(
+        (o) =>
+          o.name.toLowerCase().includes(q) || o.slug.toLowerCase().includes(q),
+      )
+    : sortedOrgs;
+
+  const iconBtnClass =
+    "flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors";
+
+  function toggleSearch() {
+    if (searchOpen) setQuery("");
+    setSearchOpen((prev) => !prev);
+  }
+
   return (
     <>
       <div className="flex items-center justify-between px-4 py-3">
-        <span className="text-sm font-medium text-muted-foreground/60">
-          Your Organizations
-        </span>
-        <button
-          type="button"
-          onClick={onCreateOrg}
-          className="flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-        >
-          <Plus size={16} />
-        </button>
+        {searchOpen ? (
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && toggleSearch()}
+            placeholder="Search organizations..."
+            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+          />
+        ) : (
+          <span className="text-sm font-medium text-muted-foreground/60">
+            Your Organizations
+          </span>
+        )}
+        <div className="flex items-center gap-1 shrink-0">
+          <button type="button" onClick={toggleSearch} className={iconBtnClass}>
+            {searchOpen ? <XClose size={16} /> : <SearchMd size={16} />}
+          </button>
+          <button type="button" onClick={onCreateOrg} className={iconBtnClass}>
+            <Plus size={16} />
+          </button>
+        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5 flex flex-col gap-1">
-        {sortedOrgs.map((org) => (
+        {filtered.length === 0 && (
+          <p className="px-3 py-4 text-sm text-muted-foreground/60 text-center">
+            {query
+              ? `No organizations match "${query}"`
+              : "No organizations available"}
+          </p>
+        )}
+        {filtered.map((org) => (
           <button
             key={org.id}
             type="button"
@@ -215,6 +256,7 @@ function AccountPopoverContent({
   onCreateOrg,
   close,
   isMobile,
+  open,
 }: {
   user: { id?: string; name?: string; email?: string } | undefined;
   userImage?: string;
@@ -234,6 +276,7 @@ function AccountPopoverContent({
   onCreateOrg: () => void;
   close: () => void;
   isMobile: boolean;
+  open: boolean;
 }) {
   if (isMobile) {
     // Mobile: single-column scrollable layout
@@ -285,6 +328,7 @@ function AccountPopoverContent({
           {/* Org switcher */}
           <div className="border-b border-border pb-2">
             <OrganizationsPanel
+              key={String(open)}
               sortedOrgs={sortedOrgs}
               orgParam={orgParam}
               onSelectOrg={onSelectOrg}
@@ -468,6 +512,7 @@ function AccountPopoverContent({
       {/* Right panel - org selector */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         <OrganizationsPanel
+          key={String(open)}
           sortedOrgs={sortedOrgs}
           orgParam={orgParam}
           onSelectOrg={onSelectOrg}
@@ -600,6 +645,7 @@ export function AccountPopover() {
     },
     close,
     isMobile,
+    open,
   };
 
   return (

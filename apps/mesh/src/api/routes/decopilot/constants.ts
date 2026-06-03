@@ -120,17 +120,3 @@ Git operations live in two layers:
   \`update_pull_request_branch\`, which merges instead of rebasing.
 </repo-environment>`;
 }
-
-export const TITLE_GENERATOR_PROMPT = `Generate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this session. Use sentence case: capitalize only the first word and proper nouns.
-
-Return JSON with a single "title" field.
-
-Good examples:
-{"title": "Fix login button on mobile"}
-{"title": "Add OAuth authentication"}
-{"title": "Query product catalog data"}
-{"title": "Set up event subscriptions"}
-
-Bad (too vague): {"title": "Help with task"}
-Bad (too long): {"title": "Investigate and fix the issue where the login button does not respond on mobile devices"}
-Bad (wrong case): {"title": "Fix Login Button On Mobile"}`;

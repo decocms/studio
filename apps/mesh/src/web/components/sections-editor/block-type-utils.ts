@@ -12,6 +12,37 @@ export function parseSavedBlockSchemaTitle(
   };
 }
 
+/**
+ * Inline union variants in the same TS module (e.g. `ImageBanner | VideoBanner`
+ * inside `Carousel.tsx`) use schema enum values like
+ * `base64(fileUrl)@ImageBanner`. Those identifiers are for schema
+ * discrimination only — persisting them as `__resolveType` in decofile data
+ * makes deco treat the object as a loadable block and throws DanglingReference.
+ */
+export function isEmbeddedUnionResolveType(resolveType: string): boolean {
+  return resolveType.includes("@");
+}
+
+/** Block name suffix from an embedded union resolve type (`…@ImageBanner`). */
+export function embeddedUnionBlockId(resolveType: string): string | null {
+  const at = resolveType.lastIndexOf("@");
+  if (at < 0 || at === resolveType.length - 1) return null;
+  return resolveType.slice(at + 1);
+}
+
+export function unionRefMatchesValue(
+  refResolveType: string,
+  valueResolveType: string,
+): boolean {
+  if (refResolveType === valueResolveType) return true;
+  const refId = embeddedUnionBlockId(refResolveType);
+  if (!refId) return false;
+  return (
+    valueResolveType === refId ||
+    embeddedUnionBlockId(valueResolveType) === refId
+  );
+}
+
 function getManifestBlockType(
   meta: LiveMeta,
   resolveType: string,
@@ -29,6 +60,14 @@ export function isManifestSectionResolveType(
 ): boolean {
   const blockType = getManifestBlockType(meta, resolveType);
   return blockType !== null && blockType.includes("sections");
+}
+
+export function isManifestMatcherResolveType(
+  meta: LiveMeta,
+  resolveType: string,
+): boolean {
+  const blockType = getManifestBlockType(meta, resolveType);
+  return blockType !== null && blockType.includes("matchers");
 }
 
 /** Block id reference (no module path) — e.g. `Header`, not `site/sections/Header.tsx`. */

@@ -232,9 +232,9 @@ function DrawerBody({
   hasData: boolean;
   onRunActive: () => void;
 }) {
-  // When the sandbox isn't running, the preview area's never-started card
-  // owns the single empty-state CTA. Rendering anything here (xterm shell
-  // or "no output" copy) would compete with it.
+  // When the sandbox isn't running, the preview area shows a starting card
+  // (or suspended card) that owns the single empty-state CTA. Rendering
+  // anything here (xterm shell or "no output" copy) would compete with it.
   if (!vmId) return null;
   if (active === DEFAULT_TAB || hasData) {
     return <SandboxTerminal key={active} source={active} className="h-full" />;

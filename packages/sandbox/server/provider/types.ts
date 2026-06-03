@@ -1,6 +1,6 @@
 /**
  * Runner-agnostic interface. Callers never branch on kind; runner-specific
- * features (local-ingress ports, Docker volumes) live on concrete classes.
+ * features (e.g. local-ingress ports) live on concrete classes.
  */
 
 import type { ClaimPhase } from "./lifecycle-types";
@@ -30,8 +30,9 @@ export interface Workload {
   packageManager: "npm" | "pnpm" | "yarn" | "bun" | "deno";
   /**
    * User-pinned dev port. Omit when the user hasn't chosen one — runners
-   * pick a free port (host runner: avoids collisions across co-tenant
-   * sandboxes; container runners: fall back to their own default).
+   * pick a free port (user-desktop: avoids collisions across co-tenant
+   * sandboxes sharing the user's host network; cluster: falls back to its
+   * own default).
    */
   devPort?: number;
   /** Subdirectory inside the repo where the package manager manifest lives (e.g. `apps/web`). */
@@ -66,7 +67,7 @@ export interface EnsureOptions {
   env?: Record<string, string>;
   /**
    * Tenant identity for cost attribution. Runners MAY surface these as
-   * platform-native metadata (k8s pod labels, Docker container labels) so
+   * platform-native metadata (k8s pod labels) so
    * downstream metrics pipelines can attribute resource usage to the owning
    * org/user. Optional — callers without an org context (smoke tests, internal
    * tool sandboxes) leave it unset and pods get only platform-level labels.
@@ -75,20 +76,22 @@ export interface EnsureOptions {
     orgId: string;
     userId: string;
   };
-}
-
-export interface ExecInput {
-  command: string;
-  timeoutMs?: number;
-  cwd?: string;
-  env?: Record<string, string>;
-}
-
-export interface ExecOutput {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timedOut: boolean;
+  /**
+   * Message-offload SSRF allowlist for the spawned daemon. When the cluster
+   * offloads an oversized dispatch body to object storage, the daemon
+   * re-inflates it by fetching a presigned URL — but ONLY if the URL's host is
+   * in this allowlist. The cluster derives these from its OWN trusted S3 config
+   * and pushes them down at spawn so the daemon can fail closed by default
+   * (empty allowlist = every offload fetch rejected). NEVER sourced from a
+   * request frame — that is the SSRF guarantee.
+   *
+   * Only the `user-desktop` runner consumes these (it spawns the daemon with
+   * the matching env). Other runners MUST ignore them (the cluster daemon
+   * shares the cluster's network and reads its own S3 env directly).
+   */
+  offloadAllowedHosts?: string[];
+  /** Permit http:// loopback offload refs (dev MinIO). false in production. */
+  offloadAllowSameHostDev?: boolean;
 }
 
 export interface ProxyRequestInit {
@@ -102,13 +105,12 @@ export interface ProxyRequestInit {
  * Persisted on `sandboxMap` and `sandbox_runner_state.sandbox_provider_kind`.
  * When widening, keep `SandboxRecord.sandboxProviderKind` in sync.
  */
-export type SandboxProviderKind = "local-docker" | "cluster" | "user-desktop";
+export type SandboxProviderKind = "cluster" | "user-desktop";
 
 export interface SandboxProvider {
   readonly kind: SandboxProviderKind;
 
   ensure(id: SandboxId, opts?: EnsureOptions): Promise<Sandbox>;
-  exec(handle: string, input: ExecInput): Promise<ExecOutput>;
   delete(handle: string): Promise<void>;
   alive(handle: string): Promise<boolean>;
 
@@ -126,8 +128,9 @@ export interface SandboxProvider {
   getPreviewUrl(handle: string): Promise<string | null>;
 
   /**
-   * Passthrough to the daemon control plane. Path is daemon-internal; providers
-   * translate (Docker prepends `/_daemon`). Bearer tokens stay inside the provider.
+   * Passthrough to the daemon control plane. Path is daemon-internal; each
+   * provider translates it to its own daemon transport. Bearer tokens stay
+   * inside the provider.
    */
   proxyDaemonRequest(
     handle: string,

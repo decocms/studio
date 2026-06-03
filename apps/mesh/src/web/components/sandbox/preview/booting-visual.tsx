@@ -12,7 +12,7 @@ import {
 } from "./provision-rack";
 
 /**
- * The starting-now booting visual: a GridLoader pill with a phase-aware
+ * The starting booting visual: a GridLoader pill with a phase-aware
  * headline, plus a 4-card stacked illustration that advances as the runner
  * progresses through provision → cloning → install → dev. While the daemon
  * is still pre-claim (agent-sandbox lifecycle) the pill copy overlays

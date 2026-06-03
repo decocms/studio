@@ -15,7 +15,7 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 
 // Pin runner kind — the dev env flips STUDIO_SANDBOX_PROVIDER and SANDBOX_START
 // reads it at handler time.
-process.env.STUDIO_SANDBOX_PROVIDER = "local-docker";
+process.env.STUDIO_SANDBOX_PROVIDER = "cluster";
 
 // Mock runner BEFORE importing SANDBOX_START — handler is runner-agnostic.
 
@@ -27,18 +27,17 @@ const mockEnsure = mock(
   }),
 );
 
-const mockDockerDelete = mock(async (_handle: string) => {});
+const mockClusterDelete = mock(async (_handle: string) => {});
 const mockAgentSandboxDelete = mock(async (_handle: string) => {});
 
 async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-const mockDockerRunner: SandboxProvider = {
-  kind: "local-docker",
+const mockClusterRunner: SandboxProvider = {
+  kind: "cluster",
   ensure: (id, opts) => mockEnsure(id, opts),
-  exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
-  delete: (handle) => mockDockerDelete(handle),
+  delete: (handle) => mockClusterDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
   proxyDaemonRequest: async () => new Response(null, { status: 204 }),
@@ -50,7 +49,6 @@ const mockDesktopDelete = mock(async (_handle: string) => {});
 const mockDesktopRunner: SandboxProvider = {
   kind: "user-desktop",
   ensure: (id, opts) => mockEnsure(id, opts),
-  exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
   delete: (handle) => mockDesktopDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
@@ -59,18 +57,18 @@ const mockDesktopRunner: SandboxProvider = {
 };
 
 mock.module("../../sandbox/lifecycle", () => ({
+  // Only ever invoked for the cluster kind — the desktop path goes through
+  // `buildDesktopProvider` (below); user-desktop is never instantiated here.
   getSandboxProviderByKind: (
     _ctx: unknown,
-    kind: "local-docker" | "cluster",
-  ) => (kind === "local-docker" ? mockDockerRunner : mockDockerRunner),
+    _kind: "cluster" | "user-desktop",
+  ) => mockClusterRunner,
   // The unified resolver in `resolve-provider.ts` calls
   // `buildDesktopProvider` directly (no ctx side-effects), so a mock
   // is needed for SANDBOX_START's desktop path to construct the expected
   // runner under test.
   buildDesktopProvider: async () => mockDesktopRunner,
-  getSharedSandboxProviderIfInit: () => mockDockerRunner,
-  getOrInitSharedRunner: async () => mockDockerRunner,
-  asDockerRunner: () => null,
+  getOrInitSharedRunner: async () => mockClusterRunner,
   // Bun's mock.module persists across test files in the same shard. Other
   // tests in the shard (e.g. oauth-proxy.e2e.test.ts) load app.ts which
   // imports subscribeLifecycle from this module — keep the export shape
@@ -275,10 +273,10 @@ function makeCtx(overrides: {
 describe("SANDBOX_START", () => {
   beforeEach(() => {
     mockEnsure.mockReset();
-    mockDockerDelete.mockReset();
+    mockClusterDelete.mockReset();
     mockAgentSandboxDelete.mockReset();
     mockDesktopDelete.mockReset();
-    mockDockerDelete.mockImplementation(async () => {});
+    mockClusterDelete.mockImplementation(async () => {});
     mockAgentSandboxDelete.mockImplementation(async () => {});
     mockDesktopDelete.mockImplementation(async () => {});
     mockTokenGet.mockReset();
@@ -351,7 +349,7 @@ describe("SANDBOX_START", () => {
     expect(result.previewUrl).toBe("https://stub.preview/");
     expect(result.branch).toBe(BRANCH);
     expect(result.isNewVm).toBe(true);
-    expect(result.sandboxProviderKind).toBe("local-docker");
+    expect(result.sandboxProviderKind).toBe("cluster");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -360,11 +358,11 @@ describe("SANDBOX_START", () => {
     // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["local-docker"];
+    )?.["cluster"];
     expect(stored).toMatchObject({
       sandboxHandle: "vm_xyz",
       previewUrl: "https://stub.preview/",
-      sandboxProviderKind: "local-docker",
+      sandboxProviderKind: "cluster",
     });
     // Server-stamped; assert recency, not exact value.
     expect(typeof (stored as SandboxRecord)?.createdAt).toBe("number");
@@ -396,7 +394,7 @@ describe("SANDBOX_START", () => {
     // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["local-docker"] as SandboxRecord | undefined;
+    )?.["cluster"] as SandboxRecord | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: "pnpm",
       port: "4321",
@@ -436,7 +434,7 @@ describe("SANDBOX_START", () => {
     // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["local-docker"] as SandboxRecord | undefined;
+    )?.["cluster"] as SandboxRecord | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: null,
       port: null,
@@ -452,8 +450,8 @@ describe("SANDBOX_START", () => {
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
-      // 3-level: kind (docker) → entry
-      sandboxMap: { [USER_ID]: { [BRANCH]: { "local-docker": CACHED_ENTRY } } },
+      // 3-level: kind (cluster) → entry
+      sandboxMap: { [USER_ID]: { [BRANCH]: { cluster: CACHED_ENTRY } } },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -575,19 +573,19 @@ describe("SANDBOX_START", () => {
     expect(opts.repo?.cloneUrl).not.toContain("ghu_stale_token");
   });
 
-  it("provisions a new desktop VM even when a docker entry exists under the same branch — kinds are siblings", async () => {
+  it("provisions a new desktop VM even when a cluster entry exists under the same branch — kinds are siblings", async () => {
     // With kind-in-key, different kinds coexist — no teardown occurs.
-    const dockerEntry: SandboxRecord = {
-      sandboxHandle: "vm_docker_existing",
-      previewUrl: "https://docker.preview/",
-      sandboxProviderKind: "local-docker",
+    const clusterEntry: SandboxRecord = {
+      sandboxHandle: "vm_cluster_existing",
+      previewUrl: "https://cluster.preview/",
+      sandboxProviderKind: "cluster",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
-      // 3-level: docker entry lives under its own key
+      // 3-level: cluster entry lives under its own key
       sandboxMap: {
         [USER_ID]: {
-          [BRANCH]: { "local-docker": dockerEntry },
+          [BRANCH]: { cluster: clusterEntry },
         },
       },
     };
@@ -608,14 +606,14 @@ describe("SANDBOX_START", () => {
     };
     const ctx = makeCtx({ virtualMcp, linkClaimRegistry });
 
-    // Link is online → kind resolves to desktop; no docker entry for desktop → provision a new one
+    // Link is online → kind resolves to desktop; no desktop entry → provision a new one
     const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
       ctx,
     );
 
-    // No teardown of the docker entry (kinds are siblings)
-    expect(mockDockerDelete).not.toHaveBeenCalled();
+    // No teardown of the cluster entry (kinds are siblings)
+    expect(mockClusterDelete).not.toHaveBeenCalled();
     expect(mockEnsure).toHaveBeenCalledTimes(1);
     expect(result.sandboxProviderKind).toBe("user-desktop");
     expect(result.isNewVm).toBe(true);
@@ -623,15 +621,15 @@ describe("SANDBOX_START", () => {
 
   it("does not tear down anything when the existing entry is on the same runner", async () => {
     const sameRunnerEntry: SandboxRecord = {
-      sandboxHandle: "vm_docker_existing",
-      previewUrl: "https://docker.preview/",
-      sandboxProviderKind: "local-docker",
+      sandboxHandle: "vm_cluster_existing",
+      previewUrl: "https://cluster.preview/",
+      sandboxProviderKind: "cluster",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
       sandboxMap: {
         [USER_ID]: {
-          [BRANCH]: { "local-docker": sameRunnerEntry },
+          [BRANCH]: { cluster: sameRunnerEntry },
         },
       },
     };
@@ -641,7 +639,7 @@ describe("SANDBOX_START", () => {
     await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
 
     expect(mockAgentSandboxDelete).not.toHaveBeenCalled();
-    expect(mockDockerDelete).not.toHaveBeenCalled();
+    expect(mockClusterDelete).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
@@ -685,7 +683,7 @@ describe("SANDBOX_START", () => {
   });
 
   it("SANDBOX_START with no sandboxProviderKind picks env kind when no link", async () => {
-    // STUDIO_SANDBOX_PROVIDER is "local-docker" at module load time (top of file)
+    // STUDIO_SANDBOX_PROVIDER is "cluster" at module load time (top of file)
     const linkClaimRegistry: LinkClaimRegistry = {
       get: async (_userId: string) => null,
       put: async () => {},
@@ -701,19 +699,19 @@ describe("SANDBOX_START", () => {
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("local-docker");
+    expect(result.sandboxProviderKind).toBe("cluster");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
       .metadata;
     // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["local-docker"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("local-docker");
+    )?.["cluster"] as SandboxRecord | undefined;
+    expect(stored?.sandboxProviderKind).toBe("cluster");
   });
 
   it("SANDBOX_START with explicit sandboxProviderKind ignores defaults", async () => {
-    // Link is online, env is "local-docker" — but explicit "local-docker" must win (and user-desktop would also be overrideable).
+    // Link is online, env is "cluster" — but explicit "cluster" must win (and user-desktop would also be overrideable).
     const linkClaimRegistry: LinkClaimRegistry = {
       get: async (_userId: string) => STUB_LINK,
       put: async () => {},
@@ -728,20 +726,20 @@ describe("SANDBOX_START", () => {
       {
         virtualMcpId: VMCP_ID,
         branch: BRANCH,
-        sandboxProviderKind: "local-docker",
+        sandboxProviderKind: "cluster",
       },
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("local-docker");
+    expect(result.sandboxProviderKind).toBe("cluster");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
       .metadata;
     // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["local-docker"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("local-docker");
+    )?.["cluster"] as SandboxRecord | undefined;
+    expect(stored?.sandboxProviderKind).toBe("cluster");
   });
 
   it("throws RECONNECT_ERROR when refreshing an expired token fails", async () => {
