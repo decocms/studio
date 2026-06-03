@@ -29,7 +29,11 @@ import {
   type RuntimeConfigMeta,
 } from "./helpers";
 import { resolveAndPushEnv } from "./resolve-env";
-import { readSandboxMap, resolveVm } from "./sandbox-map";
+import {
+  readSandboxMap,
+  removeSandboxMapEntry,
+  resolveVm,
+} from "./sandbox-map";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
@@ -194,23 +198,39 @@ export async function ensureSandbox(
 
   const providerKind = input.sandboxProviderKind;
 
-  // Fast path: sandboxMap already has an entry under the requested kind.
-  // No reap needed: with kind in the key, there's no stale-kind entry to
-  // tear down. Different kinds coexist as siblings.
-  if (existing) {
-    return existing;
-  }
-
-  // ensureSandbox is called from the always-on VM tools path which doesn't
-  // pre-resolve the runner. `resolveSandboxProvider` here honors the
-  // explicit kind from the caller (POST /messages already decided) and
-  // binds the user's link for `desktop`.
+  // Resolve the runner up front: for user-desktop we must verify the cached
+  // entry against the live daemon before trusting it (the daemon may have
+  // restarted via `deco link` relink, leaving the sandboxMap pointing at a
+  // dead handle). resolveSandboxProvider is cheap and idempotent.
   const { provider: runner } = await resolveSandboxProvider(ctx, {
     userId,
     branch: input.branch,
     virtualMcpMetadata: metadata,
     explicitKind: providerKind,
   });
+
+  // Fast path: trust a cluster entry directly. For user-desktop, probe the
+  // daemon first — a relinked daemon has an empty sandbox map and answers the
+  // liveness probe with 404, which means we must reap the stale entry and
+  // re-provision (runner.ensure spawns a fresh sandbox on the new daemon).
+  if (existing) {
+    if (providerKind !== "user-desktop") return existing;
+    const alive = await runner.alive(existing.sandboxHandle).catch(() => false);
+    if (alive) return existing;
+    await removeSandboxMapEntry(
+      ctx.storage.virtualMcps,
+      input.virtualMcpId,
+      userId,
+      userId,
+      input.branch,
+      providerKind,
+    ).catch((err) => {
+      console.warn(
+        "[ensureSandbox] failed to reap stale user-desktop entry",
+        err,
+      );
+    });
+  }
 
   const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
   const { entry } = await provisionSandbox({

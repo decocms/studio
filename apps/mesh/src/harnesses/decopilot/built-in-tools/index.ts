@@ -205,12 +205,13 @@ async function buildAllTools(
       }
       return cached;
     };
-    // Ephemeral agents (no GitHub repo) run on a synthetic "ephemeral"
-    // branch — they have no server-button UI for the user to restart a
-    // dead sandbox, so the call layer is allowed to auto-restart on
-    // proxy failure. GitHub-linked agents keep the manual-recovery
-    // behavior; the user may have paused the sandbox intentionally.
-    const canAutoRestart = vmContext.branch === "ephemeral";
+    // Ephemeral agents have no restart button, so the call layer auto-restarts on
+    // proxy failure. user-desktop sandboxes also auto-restart: the local daemon
+    // can drop/relink under the user at any time, and the iframe + ingress already
+    // render the reconnecting state, so a dead-daemon proxy error should reap +
+    // respawn rather than surface a sticky failure.
+    const canAutoRestart =
+      vmContext.branch === "ephemeral" || providerKind === "user-desktop";
     const invalidateHandle = async () => {
       // Capture before clearing — we need the dead handle to flush the
       // captured runner's cache below.
