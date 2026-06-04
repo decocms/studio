@@ -223,27 +223,16 @@ export function SandboxLifecycleProvider({
   useEffect(() => {
     if (!autoStartEligible || !branch || !virtualMcpId) return;
     autoStartAttemptedForBranchRef.current.add(branch);
+    // Auto-start is gated on `!!branch` via shouldAutoStart, so the
+    // server-picks-a-branch flow (the onSuccess in self-heal + user start)
+    // is structurally unreachable here. No onSuccess needed.
     const args: SandboxStartArgs = { virtualMcpId, branch };
     startVmMutate(args, {
-      // When SANDBOX_START is invoked without a branch (new task → server
-      // picks/generates one), persist the server's choice onto the chat task.
-      // Mirrors the original onSuccess that lived on PreviewContent.triggerStart;
-      // without it, subsequent renders and the SSE provider lose track of which
-      // branch the VM is on.
-      onSuccess: (data) => {
-        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
-      },
       onError: (err) => {
         console.error("[sandbox-lifecycle] auto-start failed:", err);
       },
     });
-  }, [
-    autoStartEligible,
-    branch,
-    virtualMcpId,
-    startVmMutate,
-    setCurrentTaskBranch,
-  ]);
+  }, [autoStartEligible, branch, virtualMcpId, startVmMutate]);
 
   // Self-heal: SSE emits `gone` → reprovision via SANDBOX_START. Dedup by
   // dead handle so we don't loop on repeat 404s; a new dead handle is fine.
