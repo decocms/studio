@@ -7,11 +7,19 @@ import type { LogEntry } from "./log-emitter";
 
 const MAX_LOGS = 500;
 
+// Stored entries get a monotonic id assigned at insertion time. It's the
+// stable identity RequestLog uses as a React key — slice indices are not
+// stable across window shifts (every tick, position 0..79 maps to a
+// different entry), which would force Ink to remount every visible row.
+export interface StoredLogEntry extends LogEntry {
+  id: number;
+}
+
 interface CliState {
   services: ServiceStatus[];
   migrationsStatus: "pending" | "done";
   serverUrl: string | null;
-  logs: LogEntry[];
+  logs: StoredLogEntry[];
 }
 
 let state: CliState = {
@@ -63,8 +71,9 @@ export function setServerUrl(url: string) {
 // bounds the re-render rate to ~once per microtask boundary regardless of
 // how many lines a child pipes in, keeping the TUI hermetic — see comment
 // on stripAnsi in cli/commands/dev.ts for the broader hardening story.
-let pendingLogs: LogEntry[] = [];
+let pendingLogs: StoredLogEntry[] = [];
 let flushScheduled = false;
+let nextLogId = 0;
 
 function flushPendingLogs() {
   flushScheduled = false;
@@ -79,7 +88,7 @@ function flushPendingLogs() {
 }
 
 export function addLogEntry(entry: LogEntry) {
-  pendingLogs.push(entry);
+  pendingLogs.push({ ...entry, id: nextLogId++ });
   if (flushScheduled) return;
   flushScheduled = true;
   queueMicrotask(flushPendingLogs);

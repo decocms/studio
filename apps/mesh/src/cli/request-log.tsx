@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import type { LogEntry } from "./log-emitter";
+import type { StoredLogEntry } from "./cli-store";
 
 function statusColor(status: number): string {
   if (status >= 500) return "red";
@@ -16,15 +16,15 @@ function statusColor(status: number): string {
 // any realistic terminal height while still bounding the per-frame cost.
 const VISIBLE_LOG_LINES = 80;
 
-export function RequestLog({ logs }: { logs: LogEntry[] }) {
+export function RequestLog({ logs }: { logs: StoredLogEntry[] }) {
   const visible =
     logs.length > VISIBLE_LOG_LINES ? logs.slice(-VISIBLE_LOG_LINES) : logs;
   return (
     <Box flexDirection="column">
-      {visible.map((entry, i) => {
+      {visible.map((entry) => {
         if (entry.rawLine) {
           return (
-            <Text key={i} dimColor>
+            <Text key={entry.id} dimColor>
               {entry.rawLine}
             </Text>
           );
@@ -36,7 +36,7 @@ export function RequestLog({ logs }: { logs: LogEntry[] }) {
             : `${(entry.duration / 1000).toFixed(1)}s`;
 
         return (
-          <Text key={i}>
+          <Text key={entry.id}>
             <Text dimColor>
               {entry.method.padEnd(6)} {entry.path.padEnd(30)}{" "}
             </Text>

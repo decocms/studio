@@ -118,7 +118,15 @@ export async function startDevServer(
   const { apiPort, baseUrl, noTui } = options;
 
   const userPort = await findAvailablePort(Number(options.port));
-  const apiPortResolved = await findAvailablePort(Number(apiPort));
+  let apiPortResolved = await findAvailablePort(Number(apiPort));
+  // Guard against the API port colliding with the user-facing port. Both
+  // calls above only check availability at that instant — neither port is
+  // bound yet — so if the user passes the same value (or the requested
+  // ports happen to resolve to the same number) both children would race
+  // for the same socket. Bump until distinct.
+  while (apiPortResolved === userPort) {
+    apiPortResolved = await findAvailablePort(apiPortResolved + 1);
+  }
 
   const { settings, services, managedServiceNames } = await buildSettings({
     port: String(userPort),

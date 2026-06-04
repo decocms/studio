@@ -5,7 +5,7 @@ import { defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import pkg from "./package.json" with { type: "json" };
 
-const API_PORT = process.env.API_PORT ?? "3001";
+const API_PORT = Number.parseInt(process.env.API_PORT || "3001", 10) || 3001;
 const apiTarget = `http://127.0.0.1:${API_PORT}`;
 
 // ── Bun socket `destroySoon` polyfill ────────────────────────────────
@@ -76,7 +76,7 @@ export default defineConfig({
     // Vite binds PORT (user-facing). The CLI sets PORT=userPort for the
     // Vite child. Explicit here to override any default that
     // @decocms/vite-plugin's baseDecoPlugin might inject via server.port.
-    port: Number(process.env.PORT ?? "3000"),
+    port: Number.parseInt(process.env.PORT || "3000", 10) || 3000,
     // Bind dual-stack so `localhost` clients on either v4 (127.0.0.1) or
     // v6 (::1) connect successfully. On Linux/macOS with the default
     // `bindv6only=0`, a `[::]` socket also accepts IPv4-mapped traffic.
