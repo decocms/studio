@@ -126,21 +126,17 @@ jobs:
       # Static-side defense lives in apps/mesh/scripts/bundle-server-script.ts
       # (verifyBundlesShipExternals). This step is the publish-time backstop
       # that also catches npm-publish-side filtering of files/node_modules.
+      #
+      # The bin invocation is hidden inside the smoke-tarball.ts script (and
+      # not inlined here) because knip's "unlisted binaries" check scans
+      # workflow `run:` blocks for bare binary names — see the comment at
+      # the top of that script.
       - name: Smoke-test the packed tarball
         working-directory: apps/mesh
         run: |
           set -euxo pipefail
           TARBALL="$(pwd)/$(ls decocms-*.tgz | head -1)"
-          SCRATCH="$(mktemp -d)"
-          cd "$SCRATCH"
-          printf '{"name":"decocms-smoke","version":"0.0.0","private":true}\n' > package.json
-          bun add "$TARBALL"
-          # `--version` parses argv and exits 0 — but bun's ESM bundle has
-          # already eagerly imported every top-level external by then. If any
-          # require/import points at a package we forgot to ship, this errors
-          # before any output prints. Use the `deco` bin (from decocms's
-          # package.json `bin` field) so knip can resolve it.
-          ./node_modules/.bin/deco --version
+          bun run scripts/smoke-tarball.ts "$TARBALL"
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
