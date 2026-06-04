@@ -98,6 +98,7 @@ import {
 import type { SandboxMap } from "@decocms/mesh-sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
+import { useChatTask } from "@/web/components/chat/context";
 import {
   sandboxUserStop,
   useSandboxStart,
@@ -159,6 +160,7 @@ export function SandboxLifecycleProvider({
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
+  const { setCurrentTaskBranch } = useChatTask();
   const events = useSandboxEvents();
   const queryClient = useQueryClient();
 
@@ -225,11 +227,25 @@ export function SandboxLifecycleProvider({
     autoStartAttemptedForBranchRef.current.add(branch);
     const args: SandboxStartArgs = { virtualMcpId, branch };
     startVmMutate(args, {
+      // When SANDBOX_START is invoked without a branch (new task → server
+      // picks/generates one), persist the server's choice onto the chat task.
+      // Mirrors the original onSuccess that lived on PreviewContent.triggerStart;
+      // without it, subsequent renders and the SSE provider lose track of which
+      // branch the VM is on.
+      onSuccess: (data) => {
+        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
+      },
       onError: (err) => {
         console.error("[sandbox-lifecycle] auto-start failed:", err);
       },
     });
-  }, [autoStartEligible, branch, virtualMcpId, startVmMutate]);
+  }, [
+    autoStartEligible,
+    branch,
+    virtualMcpId,
+    startVmMutate,
+    setCurrentTaskBranch,
+  ]);
 
   // Self-heal: SSE emits `gone` → reprovision via SANDBOX_START. Dedup by
   // dead handle so we don't loop on repeat 404s; a new dead handle is fine.
@@ -250,11 +266,21 @@ export function SandboxLifecycleProvider({
     const args: SandboxStartArgs = { virtualMcpId };
     if (branch) args.branch = branch;
     startVmMutate(args, {
+      onSuccess: (data) => {
+        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
+      },
       onError: (err) => {
         console.error("[sandbox-lifecycle] self-heal failed:", err);
       },
     });
-  }, [selfHealEligible, deadVmId, virtualMcpId, branch, startVmMutate]);
+  }, [
+    selfHealEligible,
+    deadVmId,
+    virtualMcpId,
+    branch,
+    startVmMutate,
+    setCurrentTaskBranch,
+  ]);
 
   // User-driven actions.
   const start = () => {
@@ -262,6 +288,9 @@ export function SandboxLifecycleProvider({
     const args: SandboxStartArgs = { virtualMcpId };
     if (branch) args.branch = branch;
     startVmMutate(args, {
+      onSuccess: (data) => {
+        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
+      },
       onError: (err) => {
         console.error("[sandbox-lifecycle] user start failed:", err);
       },
