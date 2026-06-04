@@ -135,7 +135,7 @@ const DEFAULT_VALUE: SandboxLifecycleValue = {
   resume: () => {},
 };
 
-export const SandboxLifecycleContext =
+const SandboxLifecycleContext =
   createContext<SandboxLifecycleValue>(DEFAULT_VALUE);
 
 export function useSandboxLifecycle(): SandboxLifecycleValue {
