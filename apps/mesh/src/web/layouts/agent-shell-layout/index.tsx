@@ -78,6 +78,7 @@ import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
+import { SandboxLifecycleProvider } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 
 // ---------------------------------------------------------------------------
@@ -289,7 +290,16 @@ function VmEventsBridge({
       branch={currentBranch ?? null}
       enabled={shouldConnect}
     >
-      {children}
+      <SandboxLifecycleProvider
+        virtualMcpId={virtualMcpId}
+        branch={currentBranch ?? null}
+        userId={userId ?? null}
+        hasActiveGithubRepo={hasActiveGithubRepo}
+        sandboxMap={sandboxMap}
+        orgId={org.id}
+      >
+        {children}
+      </SandboxLifecycleProvider>
     </SandboxEventsProvider>
   );
 }
