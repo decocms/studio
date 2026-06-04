@@ -66,11 +66,6 @@ import {
 } from "../hooks/use-sandbox-events";
 import { SandboxStateCard } from "./state-card";
 import { derivePhaseProgress } from "./derive-phase-progress";
-import {
-  PreviewDrawer,
-  readPersistedDrawerOpen,
-  writePersistedDrawerOpen,
-} from "./drawer/drawer";
 import { track } from "@/web/lib/posthog-client";
 
 const SectionsEditor = lazy(() =>
@@ -250,38 +245,6 @@ export function PreviewContent() {
     (viewMode === "visual" || viewMode === "cms")
       ? "preview"
       : viewMode;
-
-  // Drawer state — open + height live here so state cards (Task 9) and the
-  // "View logs" buttons can request the drawer to open.
-  const drawerStorageKey = virtualMcpId ?? "__no-vmcp__";
-  // `null` = not yet hydrated for this VM. We hydrate (and re-hydrate on
-  // VM switch) via a render-time setState gated by `lastHydratedKeyRef`,
-  // so the stored value always tracks the *current* `drawerStorageKey`.
-  // Without this, `useState`'s init callback would freeze the initial
-  // key — if `virtualMcpId` was undefined at mount, the state would
-  // forever reflect the `__no-vmcp__` slot. React bails on equal state,
-  // and this is the idiomatic "derive state from a prop change" pattern
-  // in this codebase (useEffect is banned for this).
-  const [drawerOpen, setDrawerOpen] = useState<boolean | null>(null);
-  const lastHydratedKeyRef = useRef<string | null>(null);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  if (lastHydratedKeyRef.current !== drawerStorageKey) {
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-    lastHydratedKeyRef.current = drawerStorageKey;
-    setDrawerOpen(readPersistedDrawerOpen(drawerStorageKey));
-  }
-  // Collapse to toolbar-only while the sandbox is still booting. Persisted
-  // preference is untouched so the drawer restores to the user's last
-  // open/closed state once the sandbox boots. `null` (pre-hydration) is
-  // treated as closed so the drawer doesn't flash open before the right
-  // key's value is read.
-  const drawerOpenEffective =
-    previewState.kind === "starting" ? false : (drawerOpen ?? false);
-
-  const handleDrawerOpenChange = (next: boolean) => {
-    setDrawerOpen(next);
-    writePersistedDrawerOpen(drawerStorageKey, next);
-  };
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
   useEffect(() => {
@@ -946,25 +909,6 @@ export function PreviewContent() {
           )}
         </div>
       </div>
-      <PreviewDrawer
-        // key forces a fresh drawer on each new VM so per-tab state
-        // (active tab, scriptTabs, killingScripts, the auto-open ref)
-        // resets cleanly without per-state reset plumbing.
-        key={vmEntry?.sandboxHandle ?? "no-vm"}
-        vmId={vmEntry?.sandboxHandle ?? null}
-        orgSlug={org.slug}
-        virtualMcpId={virtualMcpId}
-        branch={branch}
-        status={lifecycle.status}
-        scripts={vmEvents.scripts}
-        open={drawerOpenEffective}
-        onOpenChange={handleDrawerOpenChange}
-        onStart={lifecycle.start}
-        onStop={lifecycle.stop}
-        onRestart={lifecycle.restart}
-        onResume={lifecycle.resume}
-        onRetry={lifecycle.retry}
-      />
       <CreatePageModal
         open={createPageDialogOpen}
         onOpenChange={setCreatePageDialogOpen}

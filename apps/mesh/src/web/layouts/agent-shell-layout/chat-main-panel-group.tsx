@@ -21,7 +21,7 @@ import {
 import { useChatPanelWidth } from "@/web/hooks/use-chat-panel-width";
 import { computeChatMainSizes } from "@/web/hooks/use-layout-state";
 import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
-import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
+import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
 
 function PersistentChatPanel({
   children,
@@ -137,7 +137,10 @@ export function ChatMainPanelGroup({
             )}
           >
             <div className="flex-1 min-h-0 overflow-hidden">
-              <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
+              <MainPanelWithDrawer
+                taskId={taskId}
+                virtualMcpId={virtualMcpId}
+              />
             </div>
           </div>
         </div>
