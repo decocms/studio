@@ -5,7 +5,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { GitBranch01, Lock01 } from "@untitledui/icons";
+import { GitBranch01 } from "@untitledui/icons";
 import { useOptionalChatTask } from "../chat-context";
 import { BranchPicker } from "../../thread/github/branch-picker";
 
@@ -58,7 +58,6 @@ export function BranchPill({ locked, placement, ...props }: Props) {
                 : "h-9 px-2",
             )}
           >
-            <Lock01 className="h-3 w-3 shrink-0" aria-hidden="true" />
             <GitBranch01 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span
               className={cn(

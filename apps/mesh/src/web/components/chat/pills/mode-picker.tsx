@@ -11,7 +11,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Check, ChevronDown, Cloud01, Lock01 } from "@untitledui/icons";
+import { Check, ChevronDown, Cloud01 } from "@untitledui/icons";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -160,9 +160,6 @@ export function ModePickerPure({
                   locked ? "gap-0" : "gap-0 @[320px]/chat-bottom:gap-1.5",
                 )}
               >
-                {isThreadLocked && (
-                  <Lock01 className="h-3 w-3 shrink-0" aria-hidden="true" />
-                )}
                 {icon}
                 <span
                   className={cn(
