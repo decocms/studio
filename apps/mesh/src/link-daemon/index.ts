@@ -22,6 +22,7 @@ import { createControlHandler } from "./control-handler";
 import { connectToCluster } from "./cluster-connection";
 import { startLocalIngress } from "./local-ingress";
 import { loadOrCreateMachineId } from "./machine-id";
+import { getValidSession } from "../cli/lib/get-valid-session";
 import type { Session } from "../cli/lib/session";
 import {
   createDesktopSandboxProvider,
@@ -182,6 +183,28 @@ export async function startLinkDaemon(
   const cluster = await connectToCluster({
     url: wsUrl,
     accessToken: session.accessToken,
+    // Re-resolve (and refresh) the bearer before each (re)connect so a
+    // reconnect after the startup token expired presents a fresh token rather
+    // than the dead one — the cause of the WS "Expected 101 status code" loop.
+    // getValidSession refreshes via the refresh token and rewrites disk; a
+    // transient failure propagates (cluster-connection retries with backoff),
+    // and a null result (no session / refresh token rejected) is fatal so the
+    // daemon stops and asks the user to re-auth instead of spinning forever.
+    getAccessToken: async () => {
+      const fresh = await getValidSession({
+        dataDir: opts.dataDir,
+        target: opts.clusterBaseUrl,
+      });
+      if (!fresh) {
+        throw Object.assign(
+          new Error(
+            `Session for ${opts.clusterBaseUrl} is no longer valid — run \`deco auth login --target ${opts.clusterBaseUrl}\` and restart \`deco link\`.`,
+          ),
+          { fatal: true },
+        );
+      }
+      return fresh.accessToken;
+    },
     hello: {
       previewPort: ingress.port,
       machineId,
