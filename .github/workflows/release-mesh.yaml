@@ -114,6 +114,32 @@ jobs:
       - name: Pack the npm tarball
         working-directory: apps/mesh
         run: npm pack
+      # Install the just-packed tarball into a scratch directory exactly the
+      # way a consumer would (`bun add decocms@<version>`), then load cli.js.
+      # `bun build --target bun` emits top-level ESM `import` for externals,
+      # so loading cli.js eagerly resolves every external — a missing one
+      # (e.g. an nft-traced OTel package that never got copied into
+      # dist/server/node_modules/) crashes here with "Cannot find module …",
+      # the exact decocms#2.393.0 production symptom. Catching it here means
+      # publish-npm + build-docker never see the bad artifact.
+      #
+      # Static-side defense lives in apps/mesh/scripts/bundle-server-script.ts
+      # (verifyBundlesShipExternals). This step is the publish-time backstop
+      # that also catches npm-publish-side filtering of files/node_modules.
+      - name: Smoke-test the packed tarball
+        working-directory: apps/mesh
+        run: |
+          set -euxo pipefail
+          TARBALL="$(pwd)/$(ls decocms-*.tgz | head -1)"
+          SCRATCH="$(mktemp -d)"
+          cd "$SCRATCH"
+          printf '{"name":"decocms-smoke","version":"0.0.0","private":true}\n' > package.json
+          bun add "$TARBALL"
+          # `--version` parses argv and exits 0 — but bun's ESM bundle has
+          # already eagerly imported every top-level external by then. If any
+          # require/import points at a package we forgot to ship, this errors
+          # before any output prints.
+          bun ./node_modules/decocms/dist/server/cli.js --version
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
