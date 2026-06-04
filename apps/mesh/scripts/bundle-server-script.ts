@@ -30,10 +30,39 @@ const ALWAYS_INCLUDE = [
   "react",
   "react-dom",
   "@inkjs/ui",
-  // nft can't statically trace sdk-metrics' lazy require of resources, so it
-  // gets dropped from the bundle and the server crashes at runtime with
-  // "Cannot find module '@opentelemetry/resources'". Force it in.
+  // OTel v2 packages use conditional `exports` maps and lazy `require()`s
+  // (e.g. sdk-metrics → resources) that @vercel/nft can't follow statically.
+  // When nft silently drops one, `bun build --target bun` still externalizes
+  // the `from "@opentelemetry/..."` call — so the published cli.js then
+  // crashes at startup with "Cannot find module '@opentelemetry/...'" and
+  // takes the deco bin down with it (decocms#2.393.0 incident).
+  //
+  // Force-include every `@opentelemetry/*` package that apps/mesh declares
+  // as a direct dependency, so each becomes its own nft entry point and
+  // gets copied into dist/server/node_modules/. Transitive-only OTel
+  // packages (context-async-hooks, otlp-exporter-base, otlp-transformer,
+  // semantic-conventions) are NOT listed here: bun's isolated install
+  // (node_modules/.bun/...) doesn't surface them at apps/mesh's level,
+  // so `Bun.resolveSync` would fail. They're still picked up by nft as
+  // transitives of the direct entries — verified by inspecting the 2.393.0
+  // tarball which shipped them despite neither version listing them
+  // directly. The static verifier at the end of main() will fail the build
+  // if any externalized `@opentelemetry/*` package goes missing.
+  //
+  // If you add a NEW direct `@opentelemetry/*` import to apps/mesh, add it
+  // both to apps/mesh/package.json AND to this list.
+  "@opentelemetry/api",
+  "@opentelemetry/api-logs",
+  "@opentelemetry/core",
+  "@opentelemetry/exporter-logs-otlp-proto",
+  "@opentelemetry/exporter-prometheus",
+  "@opentelemetry/exporter-trace-otlp-proto",
+  "@opentelemetry/instrumentation-runtime-node",
   "@opentelemetry/resources",
+  "@opentelemetry/sdk-logs",
+  "@opentelemetry/sdk-metrics",
+  "@opentelemetry/sdk-node",
+  "@opentelemetry/sdk-trace-base",
 ];
 const ALWAYS_EXCLUDE = [
   "kysely-codegen",
@@ -426,6 +455,213 @@ async function buildSandboxDaemon() {
   console.log(`✅ Sandbox daemon bundle ready at ${daemonBundle}`);
 }
 
+// Node built-ins — these don't need to be in dist/server/node_modules/.
+// Bun built-ins use the `bun:` prefix and are handled by string-prefix check.
+const NODE_BUILTINS = new Set([
+  "assert",
+  "async_hooks",
+  "buffer",
+  "child_process",
+  "cluster",
+  "console",
+  "constants",
+  "crypto",
+  "dgram",
+  "diagnostics_channel",
+  "dns",
+  "domain",
+  "events",
+  "fs",
+  "http",
+  "http2",
+  "https",
+  "inspector",
+  "module",
+  "net",
+  "os",
+  "path",
+  "perf_hooks",
+  "process",
+  "punycode",
+  "querystring",
+  "readline",
+  "repl",
+  "stream",
+  "string_decoder",
+  "sys",
+  "timers",
+  "tls",
+  "trace_events",
+  "tty",
+  "url",
+  "util",
+  "v8",
+  "vm",
+  "wasi",
+  "worker_threads",
+  "zlib",
+]);
+
+// bun build --target bun emits ESM `from "pkg"` for externals (and CJS
+// `require("pkg")` for the interop paths). Match both. The character class
+// `[\w.-]` is enough for npm specifiers — npm names can't contain anything
+// fancier. Tightened to require a quote-char terminator on both sides so we
+// don't accidentally match prefix substrings.
+const EXTERNAL_SPECIFIER_RES = [
+  /\bfrom\s*["']((?:@[\w.-]+\/)?[\w.-]+)["']/g,
+  /\bimport\s*\(\s*["']((?:@[\w.-]+\/)?[\w.-]+)["']\s*\)/g,
+  /\bimport\s+["']((?:@[\w.-]+\/)?[\w.-]+)["']/g,
+  /\brequire\s*\(\s*["']((?:@[\w.-]+\/)?[\w.-]+)["']\s*\)/g,
+];
+
+function extractExternalSpecifiers(bundleSource: string): Set<string> {
+  const specs = new Set<string>();
+  for (const re of EXTERNAL_SPECIFIER_RES) {
+    re.lastIndex = 0;
+    for (const m of bundleSource.matchAll(re)) {
+      specs.add(m[1]);
+    }
+  }
+  return specs;
+}
+
+// Prefixes whose packages the BUNDLER is solely responsible for shipping —
+// not the consumer's install. These are devDeps (so `bun add decocms` won't
+// install them) AND nft has a known blindspot for them (conditional exports
+// + lazy requires). If the bundle references one and we didn't ship it,
+// every consumer crashes at startup with "Cannot find module …".
+//
+// Other externals (e.g. `pg`, `node-fetch`, `react`) are resolved at runtime
+// from the consumer's `node_modules/` (installed by `bun add decocms` via
+// decocms's `dependencies` + their transitive closure). Trying to model
+// that closure statically is brittle, so we don't.
+const STRICT_SHIPPING_PREFIXES = ["@opentelemetry/"];
+
+/**
+ * Reads apps/mesh/package.json's runtime `dependencies` set. Anything listed
+ * here is installed by the consumer's `bun add decocms` (via npm's standard
+ * dependency resolution), so it does NOT need to be shipped inside
+ * dist/server/node_modules/. The bundler's job is to ship the *gap* — the
+ * devDeps + their transitive closure that the consumer install won't pull in.
+ */
+async function readConsumerInstalledDeps(): Promise<Set<string>> {
+  const pkgJson = JSON.parse(
+    await readFile(join(MESH_APP_ROOT, "package.json"), "utf-8"),
+  ) as {
+    dependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+  };
+  return new Set([
+    ...Object.keys(pkgJson.dependencies ?? {}),
+    ...Object.keys(pkgJson.optionalDependencies ?? {}),
+  ]);
+}
+
+/**
+ * Verifies every external `@opentelemetry/*` import in the built bundles
+ * is resolvable at runtime: either shipped in dist/server/node_modules/, or
+ * declared as a runtime `dependency` that the consumer's install resolves.
+ *
+ * Catches: "I added a new OTel import to observability/index.ts and forgot
+ * to add it to ALWAYS_INCLUDE, so nft silently dropped the package and the
+ * published cli.js crashes at startup with Cannot find module …". This is
+ * the regression vector that caused the decocms#2.393.0 incident.
+ *
+ * Scoped to STRICT_SHIPPING_PREFIXES (currently `@opentelemetry/`) because:
+ *   - All apps/mesh OTel devDeps go through nft's known-blindspot path
+ *     (conditional exports + lazy requires)
+ *   - Other packages (pg, react, …) are either runtime deps or consumer-
+ *     installed transitives; modeling that closure statically is brittle
+ *
+ * Failure aborts the build before npm pack runs.
+ */
+async function verifyBundlesShipExternals() {
+  console.log(
+    "🔍 Verifying every externalized @opentelemetry/* import is resolvable...",
+  );
+
+  const consumerInstalled = await readConsumerInstalledDeps();
+  const failures: { pkg: string; from: Set<string> }[] = [];
+  const byPkg = new Map<string, Set<string>>();
+
+  const entries = ["cli.js", "server.js", "migrate.js"];
+  for (const entry of entries) {
+    const entryPath = join(OUTPUT_DIR, entry);
+    if (!existsSync(entryPath)) continue;
+
+    const source = await readFile(entryPath, "utf-8");
+    const specs = extractExternalSpecifiers(source);
+
+    for (const spec of specs) {
+      const pkgName = spec.startsWith("@")
+        ? spec.split("/", 2).join("/")
+        : spec.split("/", 1)[0];
+
+      if (NODE_BUILTINS.has(pkgName)) continue;
+      if (pkgName.startsWith("node:")) continue;
+      if (pkgName.startsWith("bun:")) continue;
+      if (
+        !STRICT_SHIPPING_PREFIXES.some((prefix) => pkgName.startsWith(prefix))
+      ) {
+        continue;
+      }
+      // Consumer install resolves these — bundler doesn't need to ship them.
+      if (consumerInstalled.has(pkgName)) continue;
+
+      const pkgJsonPath = join(
+        OUTPUT_DIR,
+        "node_modules",
+        pkgName,
+        "package.json",
+      );
+      if (!existsSync(pkgJsonPath)) {
+        const seen = byPkg.get(pkgName) ?? new Set<string>();
+        seen.add(entry);
+        byPkg.set(pkgName, seen);
+      }
+    }
+  }
+  for (const [pkg, from] of byPkg) failures.push({ pkg, from });
+
+  if (failures.length > 0) {
+    console.error(
+      "\n❌ Bundle externalization mismatch — the build is broken.\n",
+    );
+    console.error(
+      "These packages are imported by the published bundles but neither",
+    );
+    console.error(
+      `shipped in ${OUTPUT_DIR}/node_modules/ nor declared as runtime`,
+    );
+    console.error(
+      "`dependencies` (so consumer install won't bring them in):\n",
+    );
+    for (const f of failures) {
+      console.error(
+        `   - ${f.pkg}   (referenced from: ${[...f.from].join(", ")})`,
+      );
+    }
+    console.error(
+      "\nFix: add the top-level package to ALWAYS_INCLUDE in this file so",
+    );
+    console.error(
+      "nft traces it as a root and copies it into dist/server/node_modules/.",
+    );
+    console.error(
+      "\nDo NOT silence by adding to ALWAYS_EXCLUDE — that's for packages the",
+    );
+    console.error(
+      "runtime never actually loads. These ARE loaded; the bundle references",
+    );
+    console.error("them.\n");
+    process.exit(1);
+  }
+
+  console.log(
+    `✅ Bundle externalization OK — every @opentelemetry/* import resolves.`,
+  );
+}
+
 async function main() {
   // Build sandbox daemon bundle so runner.ts's text-import has a file to embed.
   await buildSandboxDaemon();
@@ -443,6 +679,10 @@ async function main() {
 
   // Copy QuickJS WASM alongside bundles as a safety net for path resolution
   await copyQuickjsWasm();
+
+  // Defense in depth: fail the build if any external import points at a
+  // package that isn't on disk. See verifyBundlesShipExternals for context.
+  await verifyBundlesShipExternals();
 
   console.log("\n🎉 Build completed successfully!");
   console.log(`📦 Output directory: ${OUTPUT_DIR}`);
