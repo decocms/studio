@@ -21,6 +21,18 @@ import type { Capability } from "../links/protocol/schemas";
 export interface ClusterConnectionInput {
   url: string;
   accessToken: string;
+  /**
+   * Resolves the bearer token to present on the NEXT handshake. Called once per
+   * (re)connect so a refreshed token reaches a reconnect after the startup
+   * `accessToken` has expired. Without this, the reconnect loop re-presents the
+   * stale token forever (401 → "Expected 101 status code" → abnormal 1006 close
+   * → retry). Falls back to the static `accessToken` when omitted.
+   *
+   * A rejection carrying a truthy `fatal` property stops the reconnect loop
+   * (the session is unrecoverable — re-auth required); any other rejection is
+   * treated as transient and retried with backoff.
+   */
+  getAccessToken?: () => Promise<string>;
   hello: {
     previewPort: number;
     machineId: string;
@@ -40,6 +52,18 @@ export interface ClusterConnectionHandle {
   close(): Promise<void>;
   /** Resolves when the connection is permanently closed (e.g., 4001 or `close()`). */
   closed: Promise<void>;
+}
+
+/**
+ * A `getAccessToken` rejection carrying a truthy `fatal` property means the
+ * session is unrecoverable (e.g. the refresh token was rejected) — the
+ * reconnect loop stops so the daemon doesn't spin forever on a dead
+ * credential. Any other rejection is treated as transient and retried.
+ */
+function isFatalAuthError(err: unknown): boolean {
+  return Boolean(
+    err && typeof err === "object" && (err as { fatal?: unknown }).fatal,
+  );
 }
 
 export async function connectToCluster(
@@ -165,9 +189,31 @@ export async function connectToCluster(
 
   const runOnce = async (): Promise<{ shouldReconnect: boolean }> => {
     attempt += 1;
+    // Resolve the bearer token immediately before each (re)connect so a token
+    // refreshed since the last attempt reaches the handshake. Without this, a
+    // reconnect after the startup token expired re-presents the dead token
+    // forever (401 → "Expected 101 status code" → 1006 close → retry).
+    let accessToken: string;
+    try {
+      accessToken = input.getAccessToken
+        ? await input.getAccessToken()
+        : input.accessToken;
+    } catch (err) {
+      // The token resolver rejected. A fatal rejection (the session is
+      // unrecoverable — refresh token dead, re-login required) stops the loop
+      // so the daemon doesn't spin forever on a dead credential; anything else
+      // is treated as transient and retried with backoff.
+      const fatal = isFatalAuthError(err);
+      console.error(
+        `[cluster-connection] token resolution failed (${
+          fatal ? "fatal — stopping reconnect" : "transient — will retry"
+        }): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { shouldReconnect: !fatal };
+    }
     return new Promise<{ shouldReconnect: boolean }>((resolve) => {
       const ws = new WebSocket(input.url, {
-        headers: { authorization: `Bearer ${input.accessToken}` },
+        headers: { authorization: `Bearer ${accessToken}` },
       } as unknown as string);
       activeWs = ws;
 
