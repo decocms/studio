@@ -92,7 +92,6 @@ const SubscriptionEntitySchema = z.object({
   updatedAt: z.string().datetime().describe("Updated timestamp (ISO 8601)"),
 });
 
-
 /**
  * Output schema for listing subscriptions
  */

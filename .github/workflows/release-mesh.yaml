@@ -115,13 +115,13 @@ jobs:
         working-directory: apps/mesh
         run: npm pack
       # Install the just-packed tarball into a scratch directory exactly the
-      # way a consumer would (`bun add decocms@<version>`), then load cli.js.
-      # `bun build --target bun` emits top-level ESM `import` for externals,
-      # so loading cli.js eagerly resolves every external — a missing one
-      # (e.g. an nft-traced OTel package that never got copied into
-      # dist/server/node_modules/) crashes here with "Cannot find module …",
-      # the exact decocms#2.393.0 production symptom. Catching it here means
-      # publish-npm + build-docker never see the bad artifact.
+      # way a consumer would (`bun add decocms@<version>`), then invoke the
+      # `deco` bin. `bun build --target bun` emits top-level ESM `import`
+      # for externals, so loading cli.js eagerly resolves every external —
+      # a missing one (e.g. an nft-traced OTel package that never got copied
+      # into dist/server/node_modules/) crashes here with "Cannot find
+      # module …", the exact decocms#2.393.0 production symptom. Catching
+      # it here means publish-npm + build-docker never see the bad artifact.
       #
       # Static-side defense lives in apps/mesh/scripts/bundle-server-script.ts
       # (verifyBundlesShipExternals). This step is the publish-time backstop
@@ -138,8 +138,9 @@ jobs:
           # `--version` parses argv and exits 0 — but bun's ESM bundle has
           # already eagerly imported every top-level external by then. If any
           # require/import points at a package we forgot to ship, this errors
-          # before any output prints.
-          bun ./node_modules/decocms/dist/server/cli.js --version
+          # before any output prints. Use the `deco` bin (from decocms's
+          # package.json `bin` field) so knip can resolve it.
+          ./node_modules/.bin/deco --version
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
