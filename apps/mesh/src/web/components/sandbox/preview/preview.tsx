@@ -1,12 +1,7 @@
 import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
-import { authClient } from "@/web/lib/auth-client";
 import { useChatTask } from "@/web/components/chat/context";
-import {
-  useMCPClient,
-  useProjectContext,
-  SELF_MCP_ALIAS_ID,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 
 import {
@@ -69,12 +64,6 @@ import {
   useSandboxEvents,
   useSandboxReloadHandler,
 } from "../hooks/use-sandbox-events";
-import {
-  useSandboxStart,
-  sandboxUserStop,
-  type SandboxStartArgs,
-} from "../hooks/use-sandbox-start";
-import type { PreviewState } from "./preview-state";
 import { SandboxStateCard } from "./state-card";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import {
@@ -82,9 +71,6 @@ import {
   readPersistedDrawerOpen,
   writePersistedDrawerOpen,
 } from "./drawer/drawer";
-import type { DrawerStatus } from "./drawer/status-pill";
-import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
-import { useQueryClient } from "@tanstack/react-query";
 import { track } from "@/web/lib/posthog-client";
 
 const SectionsEditor = lazy(() =>
@@ -102,23 +88,11 @@ const FileExplorer = lazy(() =>
 /** Delay before reloading the preview iframe after a save, giving the dev server time to pick up file changes. */
 const DEV_SERVER_SETTLE_MS = 500;
 
-function drawerStatusFromPreview(state: PreviewState): DrawerStatus {
-  switch (state.kind) {
-    case "suspended":
-      return "suspended";
-    case "iframe":
-      return "running";
-    case "starting":
-      return "starting";
-  }
-}
-
 type PreviewViewMode = "preview" | "visual" | "cms" | "code";
 
 export function PreviewContent() {
   const inset = useInsetContext();
-  const { data: session } = authClient.useSession();
-  const { taskId, currentBranch: branch, setCurrentTaskBranch } = useChatTask();
+  const { currentBranch: branch } = useChatTask();
 
   // Visual editor state
   const [viewMode, setViewMode] = useState<PreviewViewMode>("preview");
@@ -152,8 +126,6 @@ export function PreviewContent() {
 
   // Current iframe path (for sections editor)
   const [currentPath, setCurrentPath] = useState("/");
-
-  const userId = session?.user?.id;
 
   const virtualMcpId = inset?.entity?.id ?? null;
   const { org } = useProjectContext();
@@ -223,19 +195,6 @@ export function PreviewContent() {
   // HTML page for it, so the iframe surfaces it; no dedicated overlay.
   const appPaused = vmEvents.status.state === "paused";
 
-  // One mutation, two triggers. Dedup differs by meaning:
-  //   auto-start: once per taskId
-  //   self-heal:  once per dead vmId (don't loop on repeat 404s; new vmId OK)
-  // A shared ref would conflate them.
-  const mcpClient = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: inset?.entity?.organization_id ?? "",
-    orgSlug: org.slug,
-  });
-  const startVm = useSandboxStart(mcpClient);
-  const autoStartedForTaskRef = useRef<string | null>(null);
-  const reprovisionedForVmIdRef = useRef<string | null>(null);
-
   const claimPhase = vmEvents.phase;
 
   const progress = derivePhaseProgress({
@@ -292,82 +251,8 @@ export function PreviewContent() {
       ? "preview"
       : viewMode;
 
-  // ref-latest pattern: effects below depend only on upstream signals, not
-  // on this closure's churning captures (branch, mutation, setter).
-  const triggerStart = (reason: "auto-start" | "self-heal") => {
-    if (!virtualMcpId) return;
-    const args: SandboxStartArgs = { virtualMcpId };
-    if (branch) args.branch = branch;
-    startVm.mutate(args, {
-      onSuccess: (data) => {
-        // Server-generated branch: persist so later renders resolve via sandboxMap.
-        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
-      },
-      onError: (err) => {
-        console.error(`[preview] ${reason} SANDBOX_START failed`, err);
-      },
-    });
-  };
-  const triggerStartRef = useRef(triggerStart);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  triggerStartRef.current = triggerStart;
-
-  // Auto-start = "arrive → provision one", NOT "always ensure exists". Once
-  // a vmEntry is seen for this taskId, explicit stop must NOT re-trigger (or
-  // it races the user's manual Start). Mark ref on first-sight, BEFORE
-  // evaluating shouldAutoStart, so a transient null can't sneak through.
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  if (taskId && vmEntry && autoStartedForTaskRef.current !== taskId) {
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-    autoStartedForTaskRef.current = taskId;
-  }
-  // Branch must be resolved before firing: VmEventsBridge keys auto-start on
-  // `currentBranch`, and `useSandboxStart` dedupes by (virtualMcpId, branch).
-  // Firing here with branch=null uses a different dedup key AND asks the
-  // server to generate a fresh branch — that's a different sandbox than the
-  // one the page is actually on.
-  // Respect explicit user-stop across component remounts — the module-level `userStoppedVms` flag survives remounts but `autoStartedForTaskRef` resets, so without this gate a navigate-away-and-back would resurrect the killed VM.
-  const shouldAutoStart =
-    !!taskId &&
-    !!virtualMcpId &&
-    !!userId &&
-    !!branch &&
-    !vmEntry &&
-    !userStopped &&
-    !startVm.isPending &&
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-    autoStartedForTaskRef.current !== taskId;
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — bridges external state (vmEntry derived from query cache, taskId from router) into a one-shot mutation; no render-time equivalent
-  useEffect(() => {
-    if (!shouldAutoStart || !taskId) return;
-    autoStartedForTaskRef.current = taskId;
-    triggerStartRef.current("auto-start");
-  }, [shouldAutoStart, taskId, userStopped]);
-
-  // Self-heal stale sandboxMap entries (SSE 404 → notFound). Dedup by dead handle.
-  const deadVmId = vmEvents.notFound ? (vmEntry?.sandboxHandle ?? null) : null;
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — one-shot reprovision trigger gated on the notFound→deadVmId derivation
-  useEffect(() => {
-    if (!deadVmId || !virtualMcpId) return;
-    if (startVm.isPending) return;
-    if (reprovisionedForVmIdRef.current === deadVmId) return;
-    // Don't self-heal a VM the user explicitly stopped: the SSE "gone" event
-    // can arrive before the sandboxMap query refetch clears the stale entry.
-    if (branch && sandboxUserStop.isStopped(virtualMcpId, branch)) return;
-    reprovisionedForVmIdRef.current = deadVmId;
-    triggerStartRef.current("self-heal");
-  }, [deadVmId, virtualMcpId, startVm.isPending, branch]);
-
-  const retryAutoStart = () => {
-    autoStartedForTaskRef.current = null;
-    reprovisionedForVmIdRef.current = null;
-    startVm.reset();
-    triggerStartRef.current("auto-start");
-  };
-
   // Drawer state — open + height live here so state cards (Task 9) and the
   // "View logs" buttons can request the drawer to open.
-  const queryClient = useQueryClient();
   const drawerStorageKey = virtualMcpId ?? "__no-vmcp__";
   // `null` = not yet hydrated for this VM. We hydrate (and re-hydrate on
   // VM switch) via a render-time setState gated by `lastHydratedKeyRef`,
@@ -397,44 +282,6 @@ export function PreviewContent() {
     setDrawerOpen(next);
     writePersistedDrawerOpen(drawerStorageKey, next);
   };
-
-  // Stop / restart. SANDBOX_DELETE is best-effort; the sandboxMap query refetch is
-  // what actually flips the UI to idle. SANDBOX_DELETE requires the kind because
-  // sandboxMap is keyed by (user, branch, kind); we delete whichever sibling the
-  // preview surface is currently displaying.
-  const handleStop = async () => {
-    if (!virtualMcpId) return;
-    const branchToStop = branch;
-    if (!branchToStop) return;
-    const kindToStop = vmEntry?.sandboxProviderKind;
-    if (!kindToStop) return;
-    sandboxUserStop.mark(virtualMcpId, branchToStop);
-    try {
-      await mcpClient.callTool({
-        name: "SANDBOX_DELETE",
-        arguments: {
-          virtualMcpId,
-          branch: branchToStop,
-          sandboxProviderKind: kindToStop,
-        },
-      });
-    } catch {
-      // Best effort
-    }
-    invalidateVirtualMcpQueries(queryClient);
-  };
-
-  const handleRestart = async () => {
-    await handleStop();
-    triggerStartRef.current("auto-start");
-  };
-
-  // Slated for removal in Task 5 alongside the local auto-start/self-heal
-  // effects. JSX prop wires now route through `lifecycle.*`; suppress
-  // TS6133 (unused-locals) until the next commit deletes them.
-  void handleRestart;
-  void retryAutoStart;
-  void drawerStatusFromPreview;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
   useEffect(() => {
