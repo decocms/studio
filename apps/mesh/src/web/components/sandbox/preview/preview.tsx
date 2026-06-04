@@ -6,8 +6,8 @@ import {
   useMCPClient,
   useProjectContext,
   SELF_MCP_ALIAS_ID,
-  parseBranchMap,
 } from "@decocms/mesh-sdk";
+import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 
 import {
   ChevronDown,
@@ -74,7 +74,7 @@ import {
   sandboxUserStop,
   type SandboxStartArgs,
 } from "../hooks/use-sandbox-start";
-import { computePreviewState, type PreviewState } from "./preview-state";
+import type { PreviewState } from "./preview-state";
 import { SandboxStateCard } from "./state-card";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import {
@@ -153,27 +153,15 @@ export function PreviewContent() {
   // Current iframe path (for sections editor)
   const [currentPath, setCurrentPath] = useState("/");
 
-  // sandboxMap[userId][branch][sandboxProviderKind] -> { sandboxHandle, previewUrl, ... }
-  // Use parseBranchMap to handle both legacy 2-level and current 3-level shapes.
-  // For the preview surface we pick the first non-desktop entry (cloud VMs
-  // have an accessible previewUrl), falling back to the first entry of any kind.
-  // There is typically only one entry per branch in normal usage.
   const userId = session?.user?.id;
-  const metadata = inset?.entity?.metadata;
-  const branchMap =
-    userId && branch
-      ? parseBranchMap(metadata?.sandboxMap?.[userId]?.[branch])
-      : {};
-  const branchMapEntries = Object.values(branchMap);
-  const vmEntry =
-    branchMapEntries.find((e) => e.sandboxProviderKind !== "user-desktop") ??
-    branchMapEntries[0];
-  const previewUrl = vmEntry?.previewUrl ?? null;
 
   const virtualMcpId = inset?.entity?.id ?? null;
   const { org } = useProjectContext();
 
   const vmEvents = useSandboxEvents();
+  const lifecycle = useSandboxLifecycle();
+  const vmEntry = lifecycle.vmEntry;
+  const previewUrl = lifecycle.previewUrl;
   const lifecyclePhase = vmEvents.lifecycle.phase;
   const devServerReady = lifecyclePhase === "running";
 
@@ -255,16 +243,8 @@ export function PreviewContent() {
     lifecycle: vmEvents.lifecycle,
   });
 
-  const userStopped =
-    !!virtualMcpId &&
-    !!branch &&
-    sandboxUserStop.isStopped(virtualMcpId, branch);
-
-  const previewState = computePreviewState({
-    previewUrl,
-    appPaused,
-    userStopped,
-  });
+  const previewState = lifecycle.previewState;
+  const userStopped = lifecycle.userStopped;
 
   const iframeSrc =
     previewState.kind === "iframe"
@@ -448,6 +428,13 @@ export function PreviewContent() {
     await handleStop();
     triggerStartRef.current("auto-start");
   };
+
+  // Slated for removal in Task 5 alongside the local auto-start/self-heal
+  // effects. JSX prop wires now route through `lifecycle.*`; suppress
+  // TS6133 (unused-locals) until the next commit deletes them.
+  void handleRestart;
+  void retryAutoStart;
+  void drawerStatusFromPreview;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
   useEffect(() => {
@@ -1020,7 +1007,7 @@ export function PreviewContent() {
 
           {previewState.kind === "suspended" && (
             <div className="absolute inset-0 z-30">
-              <SandboxStateCard kind="suspended" onResume={retryAutoStart} />
+              <SandboxStateCard kind="suspended" onResume={lifecycle.resume} />
             </div>
           )}
 
@@ -1121,15 +1108,15 @@ export function PreviewContent() {
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={branch}
-        status={drawerStatusFromPreview(previewState)}
+        status={lifecycle.status}
         scripts={vmEvents.scripts}
         open={drawerOpenEffective}
         onOpenChange={handleDrawerOpenChange}
-        onStart={() => triggerStart("auto-start")}
-        onStop={handleStop}
-        onRestart={handleRestart}
-        onResume={retryAutoStart}
-        onRetry={retryAutoStart}
+        onStart={lifecycle.start}
+        onStop={lifecycle.stop}
+        onRestart={lifecycle.restart}
+        onResume={lifecycle.resume}
+        onRetry={lifecycle.retry}
       />
       <CreatePageModal
         open={createPageDialogOpen}
