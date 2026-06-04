@@ -55,10 +55,12 @@ export function PreviewDrawerHost() {
     setDrawerOpen(readPersisted(storageKey));
   }
 
-  // Force-collapsed while the sandbox is still booting; the persisted
-  // preference restores once preview state leaves "starting".
-  const open =
-    lifecycle.previewState.kind === "starting" ? false : (drawerOpen ?? false);
+  // The drawer's open state is driven entirely by the user's persisted
+  // preference. The setup tab inside renders the daemon's clone+install
+  // log stream as soon as it's available, so expanding the drawer is
+  // valuable even while the sandbox is still booting — don't override
+  // the user's intent.
+  const open = drawerOpen ?? false;
 
   const handleOpenChange = (next: boolean) => {
     setDrawerOpen(next);

@@ -152,13 +152,24 @@ export function MainPanelContent({
 
   return (
     <ErrorBoundary key={activeTab}>
-      <TabBody
-        activeTab={activeTab}
-        virtualMcpId={virtualMcpId}
-        layoutTabs={layoutTabs}
-        expandedTools={expandedTools}
-        automationTabParsed={automationTabParsed}
-      />
+      <Suspense
+        fallback={
+          <div className="h-full w-full flex items-center justify-center">
+            <Loading01
+              size={20}
+              className="animate-spin text-muted-foreground"
+            />
+          </div>
+        }
+      >
+        <TabBody
+          activeTab={activeTab}
+          virtualMcpId={virtualMcpId}
+          layoutTabs={layoutTabs}
+          expandedTools={expandedTools}
+          automationTabParsed={automationTabParsed}
+        />
+      </Suspense>
     </ErrorBoundary>
   );
 }
