@@ -23,6 +23,7 @@ import {
   parsePinnedViewTabId,
   parseWebPageTabId,
 } from "./tab-id";
+import { ErrorBoundary } from "@/web/components/error-boundary";
 
 const AppViewContent = lazy(() =>
   import("@/web/routes/project-app-view").then((m) => ({
@@ -30,19 +31,21 @@ const AppViewContent = lazy(() =>
   })),
 );
 
-export function MainPanelContent({
-  taskId,
+function TabBody({
+  activeTab,
   virtualMcpId,
+  layoutTabs,
+  expandedTools,
+  automationTabParsed,
 }: {
-  taskId: string;
+  activeTab: string;
   virtualMcpId: string;
+  layoutTabs: ReturnType<typeof useMainPanelTabs>["layoutTabs"];
+  expandedTools: ReturnType<typeof useMainPanelTabs>["expandedTools"];
+  automationTabParsed: ReturnType<
+    typeof useMainPanelTabs
+  >["automationTabParsed"];
 }) {
-  const { activeTab, layoutTabs, expandedTools, automationTabParsed } =
-    useMainPanelTabs({
-      virtualMcpId,
-      taskId,
-    });
-
   if (isLegacySettingsTab(activeTab)) {
     return <SettingsTab virtualMcpId={virtualMcpId} />;
   }
@@ -119,4 +122,30 @@ export function MainPanelContent({
   }
 
   return <SettingsTab virtualMcpId={virtualMcpId} />;
+}
+
+export function MainPanelContent({
+  taskId,
+  virtualMcpId,
+}: {
+  taskId: string;
+  virtualMcpId: string;
+}) {
+  const { activeTab, layoutTabs, expandedTools, automationTabParsed } =
+    useMainPanelTabs({
+      virtualMcpId,
+      taskId,
+    });
+
+  return (
+    <ErrorBoundary key={activeTab}>
+      <TabBody
+        activeTab={activeTab}
+        virtualMcpId={virtualMcpId}
+        layoutTabs={layoutTabs}
+        expandedTools={expandedTools}
+        automationTabParsed={automationTabParsed}
+      />
+    </ErrorBoundary>
+  );
 }
