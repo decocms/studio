@@ -33,32 +33,36 @@ const ALWAYS_INCLUDE = [
   // OTel v2 packages use conditional `exports` maps and lazy `require()`s
   // (e.g. sdk-metrics → resources) that @vercel/nft can't follow statically.
   // When nft silently drops one, `bun build --target bun` still externalizes
-  // the `require("@opentelemetry/...")` call — so the published cli.js then
+  // the `from "@opentelemetry/..."` call — so the published cli.js then
   // crashes at startup with "Cannot find module '@opentelemetry/...'" and
   // takes the deco bin down with it (decocms#2.393.0 incident).
   //
-  // Force-include EVERY OTel package the runtime imports so all of them
-  // become nft entry points and get copied into dist/server/node_modules/.
-  // If you add a new `@opentelemetry/*` import anywhere reachable from
-  // src/index.ts or src/cli.ts, add it here too. The smoke test in
-  // .github/workflows/release-mesh.yaml will catch regressions before
-  // they ship — but only by reproducing the same missing-module error.
+  // Force-include every `@opentelemetry/*` package that apps/mesh declares
+  // as a direct dependency, so each becomes its own nft entry point and
+  // gets copied into dist/server/node_modules/. Transitive-only OTel
+  // packages (context-async-hooks, otlp-exporter-base, otlp-transformer,
+  // semantic-conventions) are NOT listed here: bun's isolated install
+  // (node_modules/.bun/...) doesn't surface them at apps/mesh's level,
+  // so `Bun.resolveSync` would fail. They're still picked up by nft as
+  // transitives of the direct entries — verified by inspecting the 2.393.0
+  // tarball which shipped them despite neither version listing them
+  // directly. The static verifier at the end of main() will fail the build
+  // if any externalized `@opentelemetry/*` package goes missing.
+  //
+  // If you add a NEW direct `@opentelemetry/*` import to apps/mesh, add it
+  // both to apps/mesh/package.json AND to this list.
   "@opentelemetry/api",
   "@opentelemetry/api-logs",
-  "@opentelemetry/context-async-hooks",
   "@opentelemetry/core",
   "@opentelemetry/exporter-logs-otlp-proto",
   "@opentelemetry/exporter-prometheus",
   "@opentelemetry/exporter-trace-otlp-proto",
   "@opentelemetry/instrumentation-runtime-node",
-  "@opentelemetry/otlp-exporter-base",
-  "@opentelemetry/otlp-transformer",
   "@opentelemetry/resources",
   "@opentelemetry/sdk-logs",
   "@opentelemetry/sdk-metrics",
   "@opentelemetry/sdk-node",
   "@opentelemetry/sdk-trace-base",
-  "@opentelemetry/semantic-conventions",
 ];
 const ALWAYS_EXCLUDE = [
   "kysely-codegen",
@@ -534,45 +538,52 @@ function extractExternalSpecifiers(bundleSource: string): Set<string> {
 const STRICT_SHIPPING_PREFIXES = ["@opentelemetry/"];
 
 /**
- * Two complementary checks, both addressing the decocms#2.393.0 incident:
+ * Reads apps/mesh/package.json's runtime `dependencies` set. Anything listed
+ * here is installed by the consumer's `bun add decocms` (via npm's standard
+ * dependency resolution), so it does NOT need to be shipped inside
+ * dist/server/node_modules/. The bundler's job is to ship the *gap* — the
+ * devDeps + their transitive closure that the consumer install won't pull in.
+ */
+async function readConsumerInstalledDeps(): Promise<Set<string>> {
+  const pkgJson = JSON.parse(
+    await readFile(join(MESH_APP_ROOT, "package.json"), "utf-8"),
+  ) as {
+    dependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+  };
+  return new Set([
+    ...Object.keys(pkgJson.dependencies ?? {}),
+    ...Object.keys(pkgJson.optionalDependencies ?? {}),
+  ]);
+}
+
+/**
+ * Verifies every external `@opentelemetry/*` import in the built bundles
+ * is resolvable at runtime: either shipped in dist/server/node_modules/, or
+ * declared as a runtime `dependency` that the consumer's install resolves.
  *
- *   1. Every entry in ALWAYS_INCLUDE must end up in dist/server/node_modules/.
- *      Catches: "I added a package to ALWAYS_INCLUDE but the cp silently
- *      failed" or "I deleted the package while debugging."
+ * Catches: "I added a new OTel import to observability/index.ts and forgot
+ * to add it to ALWAYS_INCLUDE, so nft silently dropped the package and the
+ * published cli.js crashes at startup with Cannot find module …". This is
+ * the regression vector that caused the decocms#2.393.0 incident.
  *
- *   2. Every external `@opentelemetry/*` import in the built bundles must
- *      end up in dist/server/node_modules/. Catches: "I added a new OTel
- *      import to observability/index.ts and forgot to add it to
- *      ALWAYS_INCLUDE." This is the regression vector that actually caused
- *      the #2.393.0 incident.
+ * Scoped to STRICT_SHIPPING_PREFIXES (currently `@opentelemetry/`) because:
+ *   - All apps/mesh OTel devDeps go through nft's known-blindspot path
+ *     (conditional exports + lazy requires)
+ *   - Other packages (pg, react, …) are either runtime deps or consumer-
+ *     installed transitives; modeling that closure statically is brittle
  *
- * Either failure aborts the build before npm pack runs.
+ * Failure aborts the build before npm pack runs.
  */
 async function verifyBundlesShipExternals() {
   console.log(
-    "🔍 Verifying every externalized require/import is shipped on disk...",
+    "🔍 Verifying every externalized @opentelemetry/* import is resolvable...",
   );
 
-  const failures: { reason: string; pkg: string; from?: string }[] = [];
+  const consumerInstalled = await readConsumerInstalledDeps();
+  const failures: { pkg: string; from: Set<string> }[] = [];
+  const byPkg = new Map<string, Set<string>>();
 
-  // (1) ALWAYS_INCLUDE entries must all be shipped.
-  for (const pkgName of ALWAYS_INCLUDE) {
-    const pkgJsonPath = join(
-      OUTPUT_DIR,
-      "node_modules",
-      pkgName,
-      "package.json",
-    );
-    if (!existsSync(pkgJsonPath)) {
-      failures.push({
-        reason: "ALWAYS_INCLUDE entry not shipped",
-        pkg: pkgName,
-      });
-    }
-  }
-
-  // (2) Every external matching STRICT_SHIPPING_PREFIXES in the bundles must
-  // be shipped.
   const entries = ["cli.js", "server.js", "migrate.js"];
   for (const entry of entries) {
     const entryPath = join(OUTPUT_DIR, entry);
@@ -594,6 +605,8 @@ async function verifyBundlesShipExternals() {
       ) {
         continue;
       }
+      // Consumer install resolves these — bundler doesn't need to ship them.
+      if (consumerInstalled.has(pkgName)) continue;
 
       const pkgJsonPath = join(
         OUTPUT_DIR,
@@ -602,39 +615,31 @@ async function verifyBundlesShipExternals() {
         "package.json",
       );
       if (!existsSync(pkgJsonPath)) {
-        failures.push({
-          reason:
-            "External not shipped (must be — see STRICT_SHIPPING_PREFIXES)",
-          pkg: pkgName,
-          from: entry,
-        });
+        const seen = byPkg.get(pkgName) ?? new Set<string>();
+        seen.add(entry);
+        byPkg.set(pkgName, seen);
       }
     }
   }
+  for (const [pkg, from] of byPkg) failures.push({ pkg, from });
 
   if (failures.length > 0) {
-    // Dedup by (reason, pkg) so the operator sees one line per unique issue.
-    const dedup = new Map<
-      string,
-      { reason: string; pkg: string; from: Set<string> }
-    >();
-    for (const f of failures) {
-      const key = `${f.reason}::${f.pkg}`;
-      const acc = dedup.get(key) ?? {
-        reason: f.reason,
-        pkg: f.pkg,
-        from: new Set<string>(),
-      };
-      if (f.from) acc.from.add(f.from);
-      dedup.set(key, acc);
-    }
-
     console.error(
       "\n❌ Bundle externalization mismatch — the build is broken.\n",
     );
-    for (const f of dedup.values()) {
-      const where = f.from.size ? `   (in ${[...f.from].join(", ")})` : "";
-      console.error(`   - [${f.reason}] ${f.pkg}${where}`);
+    console.error(
+      "These packages are imported by the published bundles but neither",
+    );
+    console.error(
+      `shipped in ${OUTPUT_DIR}/node_modules/ nor declared as runtime`,
+    );
+    console.error(
+      "`dependencies` (so consumer install won't bring them in):\n",
+    );
+    for (const f of failures) {
+      console.error(
+        `   - ${f.pkg}   (referenced from: ${[...f.from].join(", ")})`,
+      );
     }
     console.error(
       "\nFix: add the top-level package to ALWAYS_INCLUDE in this file so",
@@ -653,7 +658,7 @@ async function verifyBundlesShipExternals() {
   }
 
   console.log(
-    `✅ Bundle externalization OK — ALWAYS_INCLUDE + every @opentelemetry/* import is shipped.`,
+    `✅ Bundle externalization OK — every @opentelemetry/* import resolves.`,
   );
 }
 
