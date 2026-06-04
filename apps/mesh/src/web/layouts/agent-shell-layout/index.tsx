@@ -191,11 +191,11 @@ function MobileToolbar({
 }
 
 // ---------------------------------------------------------------------------
-// VmEventsBridge — passes (virtualMcpId, branch) to the unified VM events
-// SSE provider and runs auto-start. Lives inside Chat.Provider so it can
-// read useChatTask, which keeps the SSE connection in sync with the active
-// task as the user navigates between tasks (different tasks may pin
-// different branches).
+// VmEventsBridge — thin branch resolver. Derives (branch, shouldConnect) and
+// mounts SandboxEventsProvider + SandboxLifecycleProvider. Lives inside
+// Chat.Provider so it can read useChatTask, which keeps the SSE connection
+// and the lifecycle provider in sync with the active task as the user
+// navigates between tasks (different tasks may pin different branches).
 // ---------------------------------------------------------------------------
 
 function VmEventsBridge({
