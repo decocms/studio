@@ -38,9 +38,28 @@ export function SandboxTerminal({
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   sourceRef.current = source;
 
+  // Batch terminal writes within a single animation frame to coalesce rapid
+  // sequences (e.g. Ink TUI's \x1b[H\x1b[2J clear-screen + redraw) into one
+  // write call per frame.  Without batching, the clear and the new frame
+  // content arrive as separate chunks: xterm briefly shows a blank screen
+  // between them, producing the cursor-jumping flicker the user sees.
+  const writeQueueRef = useRef("");
+  const rafIdRef = useRef<number | null>(null);
+
   useSandboxChunkHandler((chunkSource, data) => {
     if (chunkSource !== sourceRef.current) return;
-    terminalRef.current?.write(data);
+    writeQueueRef.current += data;
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(() => {
+        const term = terminalRef.current;
+        const pending = writeQueueRef.current;
+        if (term && pending) {
+          term.write(pending);
+          writeQueueRef.current = "";
+        }
+        rafIdRef.current = null;
+      });
+    }
   });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — xterm.js lifecycle: create on mount, dispose on unmount
@@ -119,6 +138,13 @@ export function SandboxTerminal({
     observer.observe(el);
 
     return () => {
+      // Cancel any pending write batch before disposing the terminal so the
+      // RAF callback can't fire on a disposed xterm instance.
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+        writeQueueRef.current = "";
+      }
       selectionDisposable.dispose();
       observer.disconnect();
       terminalRef.current = null;

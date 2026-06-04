@@ -8,9 +8,24 @@ import { AuthSplitLayout } from "@/web/components/auth-split-layout";
 
 /**
  * Auto-login for local mode.
- * Calls the local-session endpoint and reloads to pick up the session cookie.
+ * Calls the local-session endpoint then signals the auth client to re-fetch
+ * the session in-place — no hard navigation, no Vite HMR reconnect.
+ *
+ * The previous approach (`window.location.href = safeRedirect`) caused a
+ * Vite HMR WebSocket disconnect+reconnect. When the child Studio is still
+ * in its startup phase (initial module compilation in-flight), Vite responds
+ * to every reconnect with a `full-reload`, bouncing the page back to /login
+ * before the session cookie can be used. This created an endless loop that
+ * only resolved once the child Studio was fully initialized — which is why
+ * opening the URL in a standalone tab (after startup) fixed it: Vite had
+ * settled, no more full-reloads, and the session cookie was now usable.
+ *
+ * `authClient.$store.notify("$sessionSignal")` flips the signal atom that
+ * `useSession()` subscribes to, causing it to re-fetch /api/auth/get-session
+ * without leaving the page. LoginRoute already renders `<Navigate to={next}>`
+ * once session.data is set, so no explicit redirect is needed here.
  */
-function AutoLogin({ redirectTo }: { redirectTo: string }) {
+function AutoLogin({ redirectTo: _redirectTo }: { redirectTo: string }) {
   const [error, setError] = useState<string | null>(null);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -35,12 +50,10 @@ function AutoLogin({ redirectTo }: { redirectTo: string }) {
           throw new Error(data?.error || "Auto-login failed");
         }
         if (!cancelled) {
-          // Only allow relative paths starting with "/" (not "//") to prevent open redirects
-          const safeRedirect =
-            redirectTo.startsWith("/") && !redirectTo.startsWith("//")
-              ? redirectTo
-              : "/";
-          window.location.href = safeRedirect;
+          // Trigger an in-place session re-fetch instead of a hard navigation.
+          // This avoids the Vite HMR reconnect → full-reload cycle that caused
+          // the auto-login loop when Studio runs inside a Studio iframe.
+          authClient.$store.notify("$sessionSignal");
         }
       } catch (err) {
         if (!cancelled) {
@@ -52,7 +65,7 @@ function AutoLogin({ redirectTo }: { redirectTo: string }) {
     return () => {
       cancelled = true;
     };
-  }, [redirectTo]);
+  }, []);
 
   if (error) {
     return (
