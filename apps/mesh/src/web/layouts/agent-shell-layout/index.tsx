@@ -22,8 +22,9 @@
  *
  * Mobile layout:
  *   Chat.Provider
- *   └── Chat.ActiveTaskProvider
- *       └── MainPanelContent OR ActiveTaskBoundary (sheet-based)
+ *   └── VmEventsBridge
+ *       └── Chat.ActiveTaskProvider
+ *           └── MainPanelWithDrawer OR ActiveTaskBoundary (sheet-based)
  */
 
 import {
@@ -209,7 +210,6 @@ function VmEventsBridge({
   sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
-  const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
@@ -242,7 +242,6 @@ function VmEventsBridge({
         userId={userId ?? null}
         hasActiveGithubRepo={hasActiveGithubRepo}
         sandboxMap={sandboxMap}
-        orgId={org.id}
       >
         {children}
       </SandboxLifecycleProvider>

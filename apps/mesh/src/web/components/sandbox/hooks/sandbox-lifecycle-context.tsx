@@ -148,7 +148,6 @@ export function SandboxLifecycleProvider({
   userId,
   hasActiveGithubRepo,
   sandboxMap,
-  orgId,
   children,
 }: {
   virtualMcpId: string | null;
@@ -156,7 +155,6 @@ export function SandboxLifecycleProvider({
   userId: string | null;
   hasActiveGithubRepo: boolean;
   sandboxMap: SandboxMap | undefined;
-  orgId: string;
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
@@ -166,7 +164,7 @@ export function SandboxLifecycleProvider({
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
-    orgId,
+    orgId: org.id,
     orgSlug: org.slug,
   });
   const startVm = useSandboxStart(mcpClient);
