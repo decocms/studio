@@ -23,6 +23,7 @@ import {
   parsePinnedViewTabId,
   parseWebPageTabId,
 } from "./tab-id";
+import { ErrorBoundary } from "@/web/components/error-boundary";
 
 const AppViewContent = lazy(() =>
   import("@/web/routes/project-app-view").then((m) => ({
@@ -30,18 +31,33 @@ const AppViewContent = lazy(() =>
   })),
 );
 
-export function MainPanelContent({
-  taskId,
+function TabBody({
+  activeTab,
   virtualMcpId,
+  layoutTabs,
+  expandedTools,
+  automationTabParsed,
 }: {
-  taskId: string;
+  activeTab: string;
   virtualMcpId: string;
+  layoutTabs: ReturnType<typeof useMainPanelTabs>["layoutTabs"];
+  expandedTools: ReturnType<typeof useMainPanelTabs>["expandedTools"];
+  automationTabParsed: ReturnType<
+    typeof useMainPanelTabs
+  >["automationTabParsed"];
 }) {
-  const { activeTab, layoutTabs, expandedTools, automationTabParsed } =
-    useMainPanelTabs({
-      virtualMcpId,
-      taskId,
-    });
+  // Test hook: e2e tests set window.__forceTabError = <activeTab> to deliberately
+  // crash the active tab and exercise the ErrorBoundary recovery flow.
+  // Dev-only — the guard ensures this code path is dead-stripped in production
+  // builds (Vite tree-shakes blocks guarded by `import.meta.env.DEV`).
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    (window as unknown as { __forceTabError?: string }).__forceTabError ===
+      activeTab
+  ) {
+    throw new Error(`forced tab error: ${activeTab}`);
+  }
 
   if (isLegacySettingsTab(activeTab)) {
     return <SettingsTab virtualMcpId={virtualMcpId} />;
@@ -119,4 +135,41 @@ export function MainPanelContent({
   }
 
   return <SettingsTab virtualMcpId={virtualMcpId} />;
+}
+
+export function MainPanelContent({
+  taskId,
+  virtualMcpId,
+}: {
+  taskId: string;
+  virtualMcpId: string;
+}) {
+  const { activeTab, layoutTabs, expandedTools, automationTabParsed } =
+    useMainPanelTabs({
+      virtualMcpId,
+      taskId,
+    });
+
+  return (
+    <ErrorBoundary key={activeTab}>
+      <Suspense
+        fallback={
+          <div className="h-full w-full flex items-center justify-center">
+            <Loading01
+              size={20}
+              className="animate-spin text-muted-foreground"
+            />
+          </div>
+        }
+      >
+        <TabBody
+          activeTab={activeTab}
+          virtualMcpId={virtualMcpId}
+          layoutTabs={layoutTabs}
+          expandedTools={expandedTools}
+          automationTabParsed={automationTabParsed}
+        />
+      </Suspense>
+    </ErrorBoundary>
+  );
 }
