@@ -46,6 +46,19 @@ function TabBody({
     typeof useMainPanelTabs
   >["automationTabParsed"];
 }) {
+  // Test hook: e2e tests set window.__forceTabError = <activeTab> to deliberately
+  // crash the active tab and exercise the ErrorBoundary recovery flow.
+  // Dev-only — the guard ensures this code path is dead-stripped in production
+  // builds (Vite tree-shakes blocks guarded by `import.meta.env.DEV`).
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    (window as unknown as { __forceTabError?: string }).__forceTabError ===
+      activeTab
+  ) {
+    throw new Error(`forced tab error: ${activeTab}`);
+  }
+
   if (isLegacySettingsTab(activeTab)) {
     return <SettingsTab virtualMcpId={virtualMcpId} />;
   }
