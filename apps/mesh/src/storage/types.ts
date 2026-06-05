@@ -929,6 +929,12 @@ export interface Thread {
    * Pinned on the thread row; read path forks on this value.
    */
   message_storage_version: number;
+  /**
+   * Transport selector for this thread's active run. null / 'ws' = legacy
+   * push path (default); 'pull' = Phase-B pull inversion (gated by this
+   * column AND message_storage_version === 2). Never changes mid-run.
+   */
+  link_transport: string | null;
 }
 
 /**

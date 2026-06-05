@@ -239,6 +239,13 @@ export interface HarnessStreamInput {
   // ===== Trace propagation =====
   traceparent?: string;
 
+  /**
+   * Single-writer fence token for this run (spec §3.5). Minted by
+   * prepareRun (Phase B) and included in every ingest append by the
+   * desktop daemon. Absent on ws-path runs.
+   */
+  runFenceToken?: string;
+
   /** Non-serializable extras for in-process dispatch. Remote dispatch
    *  strips this field — see `HarnessProcessLocal`. The decopilot
    *  harness REQUIRES this to be set and throws if missing; CLI harnesses

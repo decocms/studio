@@ -27,8 +27,55 @@ import type {
 } from "@/api/routes/decopilot/dispatch-run";
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
+import { sleep } from "@decocms/std";
+import type {
+  LinkWorkQueue,
+  WorkItem,
+} from "@/api/routes/decopilot/link-work-queue";
 
 export const THREAD_GATE_QUEUE = "thread-gate";
+
+/** Thread statuses that indicate a run has reached a terminal state. */
+export const TERMINAL_STATUSES = new Set([
+  "completed",
+  "failed",
+  "requires_action",
+] as const);
+
+export interface PollUntilTerminalOptions {
+  intervalMs: number;
+  maxAttempts: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * Poll `fetchStatus` until it returns a terminal status or `maxAttempts`
+ * is exhausted. Uses `sleep` from `@decocms/std` — never hand-rolled.
+ */
+export async function pollUntilTerminal(
+  fetchStatus: () => Promise<string>,
+  opts: PollUntilTerminalOptions,
+): Promise<string> {
+  for (let attempt = 0; attempt < opts.maxAttempts; attempt++) {
+    if (opts.signal?.aborted) {
+      throw opts.signal.reason ?? new Error("gate aborted");
+    }
+    const status = await fetchStatus();
+    if (
+      TERMINAL_STATUSES.has(
+        status as "completed" | "failed" | "requires_action",
+      )
+    ) {
+      return status;
+    }
+    if (attempt < opts.maxAttempts - 1) {
+      await sleep(opts.intervalMs, { signal: opts.signal }).catch(() => {});
+    }
+  }
+  throw new Error(
+    `[threadGate] gate timed out polling for terminal status (${opts.maxAttempts} attempts)`,
+  );
+}
 
 /**
  * Per-thread concurrent run cap (partition cap on the gate queue).
@@ -94,6 +141,27 @@ export interface ThreadGateRuntime {
    * installed.
    */
   runTimeoutMs?: number;
+  /**
+   * Pull-transport dependencies (Phase B). When present and a thread's
+   * link_transport === 'pull' AND message_storage_version === 2, the gate
+   * uses these instead of dispatchRunFn.
+   */
+  pullDispatchFn?: (
+    input: DispatchRunInput,
+    ctx: StudioContext,
+    deps: DispatchRunDeps,
+  ) => Promise<{ taskId: string; runFenceToken: string }>;
+  workQueue?: LinkWorkQueue;
+  /**
+   * Poll interval for the gate's status-polling loop (ms). Defaults to
+   * 3 000 ms in production; tests pass 0.
+   */
+  gatePollIntervalMs?: number;
+  /**
+   * Maximum poll attempts before the gate fails the run.
+   * Defaults to 1 200 (= 1 h at 3 s intervals).
+   */
+  gatePollMaxAttempts?: number;
 }
 
 let runtime: ThreadGateRuntime | null = null;
@@ -126,11 +194,50 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     throw new Error("user membership lost mid-dispatch");
   }
 
-  // Abort timer is opt-in. Automations supply a 5-min cap so a runaway
-  // cron can't pin a thread slot forever; user messages leave it unset
-  // because tool-using agent loops (Claude Code, deep research,
-  // multi-step assistants) routinely outlast any fixed cap, and were not
-  // bounded by the legacy fire-and-forget HTTP path.
+  // Resolve whether this thread should use the pull transport.
+  // Guards: link_transport === 'pull' AND message_storage_version === 2.
+  // Everything else falls through to the existing ws path (unchanged).
+  const thread = await meshCtx.storage.threads.get(
+    request.taskId ?? ctx.threadId,
+  );
+  const isPull =
+    thread?.link_transport === "pull" &&
+    thread?.message_storage_version === 2 &&
+    rt.pullDispatchFn != null &&
+    rt.workQueue != null;
+
+  if (!isPull) {
+    // ── Original ws path — unchanged ────────────────────────────────────
+    // Abort timer is opt-in. Automations supply a 5-min cap so a runaway
+    // cron can't pin a thread slot forever; user messages leave it unset
+    // because tool-using agent loops (Claude Code, deep research,
+    // multi-step assistants) routinely outlast any fixed cap, and were not
+    // bounded by the legacy fire-and-forget HTTP path.
+    const timeoutMs = ctx.timeoutMs ?? rt.runTimeoutMs;
+    const abortController = new AbortController();
+    const timeoutHandle =
+      timeoutMs != null
+        ? setTimeout(() => abortController.abort(), timeoutMs)
+        : null;
+
+    try {
+      // Dispatch errors propagate. `dispatchRunAndWait` guarantees the run
+      // is already force-finished to "failed" in the registry before
+      // throwing (see `prepareRun`), so application state stays consistent
+      // — DBOS just gets to see the failure too.
+      await rt.dispatchRunFn(
+        { ...request, abortSignal: abortController.signal },
+        meshCtx,
+        rt.deps,
+      );
+    } finally {
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+    }
+    return;
+  }
+
+  // ── Pull path (Phase B) ──────────────────────────────────────────────
+  // 1. Claim the run and mint the fence token.
   const timeoutMs = ctx.timeoutMs ?? rt.runTimeoutMs;
   const abortController = new AbortController();
   const timeoutHandle =
@@ -139,14 +246,46 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       : null;
 
   try {
-    // Dispatch errors propagate. `dispatchRunAndWait` guarantees the run
-    // is already force-finished to "failed" in the registry before
-    // throwing (see `prepareRun`), so application state stays consistent
-    // — DBOS just gets to see the failure too.
-    await rt.dispatchRunFn(
+    const { taskId, runFenceToken } = await rt.pullDispatchFn!(
       { ...request, abortSignal: abortController.signal },
       meshCtx,
       rt.deps,
+    );
+
+    // 2. Publish the work item idempotently (L1: keyed by runId).
+    const workItem: WorkItem = {
+      runId: taskId,
+      threadId: request.taskId ?? ctx.threadId,
+      orgId: request.organizationId,
+      userId: request.userId,
+      runFenceToken,
+      harnessInput: {
+        ...request,
+        runFenceToken,
+        // traceparent is already on request if set
+      } as Record<string, unknown>,
+    };
+    await rt.workQueue!.publish(request.userId, workItem);
+
+    // 3. Poll threads.status until terminal (L6, L7).
+    // The ingest finish handler transitions the run to a terminal status,
+    // which releases this polling loop. DBOS.setEvent/getEvent is
+    // documented as a future optimization; this polling approach is
+    // simpler, dissolves the workflowID-threading problem, and requires
+    // no new SDK patterns.
+    const pollIntervalMs = rt.gatePollIntervalMs ?? 3_000;
+    const pollMaxAttempts = rt.gatePollMaxAttempts ?? 1_200; // ~1 h
+
+    await pollUntilTerminal(
+      async () => {
+        const t = await meshCtx.storage.threads.get(taskId);
+        return t?.status ?? "unknown";
+      },
+      {
+        intervalMs: pollIntervalMs,
+        maxAttempts: pollMaxAttempts,
+        signal: abortController.signal,
+      },
     );
   } finally {
     if (timeoutHandle !== null) clearTimeout(timeoutHandle);

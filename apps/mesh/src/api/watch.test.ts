@@ -146,6 +146,7 @@ function makeThread(overrides: Partial<Thread>): Thread {
     updated_by: overrides.updated_by,
     hidden: overrides.hidden ?? false,
     message_storage_version: overrides.message_storage_version ?? 1,
+    link_transport: overrides.link_transport ?? null,
   };
 }
 

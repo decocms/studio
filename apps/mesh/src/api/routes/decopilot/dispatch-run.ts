@@ -507,6 +507,8 @@ interface PreparedRun {
   taskId: string;
   uiStream: ReadableStream<unknown>;
   registrySignal: AbortSignal;
+  /** Minted by prepareRun for pull-transport threads (spec §3.5). */
+  runFenceToken: string;
 }
 
 /**
@@ -780,6 +782,13 @@ async function prepareRun(
     }
     runStarted = true;
 
+    // Mint the single-writer fence token for this run. The token is
+    // included in HarnessStreamInput so the daemon presents it on every
+    // ingest append. Minting after START ensures the run is claimed before
+    // the token exists; clearing on FINISH is the gate's responsibility.
+    const runFenceToken = crypto.randomUUID();
+    await ctx.storage.threads.setRunFence(mem.thread.id, runFenceToken);
+
     const registrySignal = runRegistry.getAbortSignal(mem.thread.id);
     if (!registrySignal) {
       await runRegistry.execute({
@@ -985,6 +994,7 @@ async function prepareRun(
           currentThreadTitle: mem.thread.title,
           signal: registrySignal,
           processLocal,
+          runFenceToken,
         };
 
         // claude-code cwd resolution: with the `host` runner gone, the
@@ -1317,6 +1327,7 @@ async function prepareRun(
       taskId: mem.thread.id,
       uiStream: tapProgress(uiStream, ctx, mem.thread.id),
       registrySignal,
+      runFenceToken,
     };
   } catch (err) {
     if (runStarted && taskId) {
@@ -1333,6 +1344,38 @@ async function prepareRun(
 
     throw err;
   }
+}
+
+/**
+ * Pull-transport variant of `dispatchRunAndWait` (Phase B, spec §3.4).
+ *
+ * Claims the run and mints the fence (via prepareRun), then returns the
+ * fence token and task id for the gate step to thread into the work item
+ * published to the JetStream WorkQueue.
+ *
+ * IMPORTANT: `uiStream` from prepareRun is never consumed here — the
+ * local harness does NOT run for pull-transport threads (the daemon runs
+ * remotely). The uiStream will be garbage-collected naturally; the run
+ * transitions to terminal when the ingest finish handler fires FINISH.
+ */
+export async function pullDispatch(
+  input: DispatchRunInput,
+  ctx: StudioContext,
+  deps: DispatchRunDeps,
+): Promise<{ taskId: string; runFenceToken: string }> {
+  return traced(
+    "decopilot.pullDispatch",
+    async (_rootSpan) => {
+      const { taskId, runFenceToken } = await prepareRun(
+        input,
+        ctx,
+        deps,
+        _rootSpan,
+      );
+      return { taskId, runFenceToken };
+    },
+    dispatchRunSpanAttrs(input),
+  );
 }
 
 /**

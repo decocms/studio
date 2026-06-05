@@ -178,6 +178,15 @@ export class OrgScopedThreadStorage {
   getRunFence(threadId: string): Promise<string | null> {
     return this.inner.getRunFence(threadId);
   }
+
+  /**
+   * Set (or clear) the fence token for a run. Minted by `prepareRun` after
+   * the run is claimed (Phase B). Cleared by the ingest finish handler so
+   * late-arriving duplicate appends are rejected with 409.
+   */
+  setRunFence(threadId: string, token: string | null): Promise<void> {
+    return this.inner.setRunFence(threadId, token);
+  }
 }
 
 // ============================================================================
@@ -949,6 +958,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     updated_by: string | null;
     hidden: boolean | number | null;
     message_storage_version?: number | null;
+    link_transport?: string | null;
   }): Thread {
     let metadata: ThreadMetadata = {};
     if (row.metadata != null) {
@@ -993,6 +1003,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       // Defaults to 1 (legacy) when the column is absent/null so existing
       // threads keep reading from `thread_messages`.
       message_storage_version: row.message_storage_version ?? 1,
+      link_transport: row.link_transport ?? null,
     };
   }
 
