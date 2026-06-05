@@ -278,3 +278,15 @@ export function blockComponentName(resolveType: string): string {
   const base = resolveType.split("/").pop() ?? resolveType;
   return base.replace(/\.(tsx?|jsx?)$/, "");
 }
+
+const BLOG_POST_BLOCK_PREFIXES = [
+  "blog/sections/blocks/",
+  "site/sections/Blog/Post/",
+] as const;
+
+/** True when resolveType points at a blog post content block editor. */
+export function isBlogPostBlockResolveType(resolveType: string): boolean {
+  return BLOG_POST_BLOCK_PREFIXES.some((prefix) =>
+    resolveType.startsWith(prefix),
+  );
+}

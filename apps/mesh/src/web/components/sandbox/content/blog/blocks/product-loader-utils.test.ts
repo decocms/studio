@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  buildLoaderInvokeUrl,
-  parseLoaderInvokeRequest,
   readProductListIds,
   toInvokeLoaderBody,
   writeProductListIds,
@@ -73,32 +71,5 @@ describe("toInvokeLoaderBody", () => {
       __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
       props: { ids: ["149524", "151294"] },
     });
-  });
-});
-
-describe("parseLoaderInvokeRequest", () => {
-  test("maps block-ref to single invoke path payload", () => {
-    expect(
-      parseLoaderInvokeRequest({
-        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
-        props: { ids: ["149524"] },
-      }),
-    ).toEqual({
-      resolveType: "vtex/loaders/intelligentSearch/productList.ts",
-      payload: { props: { ids: ["149524"] } },
-    });
-  });
-});
-
-describe("buildLoaderInvokeUrl", () => {
-  test("targets path-based invoke endpoint", () => {
-    expect(
-      buildLoaderInvokeUrl(
-        "https://preview.example.com/",
-        "vtex/loaders/intelligentSearch/productList.ts",
-      ),
-    ).toBe(
-      "https://preview.example.com/deco/invoke/vtex/loaders/intelligentSearch/productList.ts",
-    );
   });
 });

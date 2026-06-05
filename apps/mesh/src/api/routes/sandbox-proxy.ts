@@ -34,7 +34,10 @@ import {
   type GitStatusLike,
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
-import { parseLoaderInvokeRequest } from "@/web/components/sandbox/content/blog/blocks/product-loader-utils";
+import {
+  buildLoaderInvokeUrl,
+  parseLoaderInvokeRequest,
+} from "../../lib/loader-invoke";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -68,6 +71,7 @@ function assertSandboxBranchParam(branch: string): void {
 }
 
 const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
+const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 // ---- Shared middleware ------------------------------------------------------
 
@@ -536,53 +540,63 @@ export const createSandboxRoutes = () => {
   });
 
   // -- Preview invoke (loader/action resolution) ------------------------------
-  app.post("/:virtualMcpId/:branch/preview-invoke", async (c) => {
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
+  app.post(
+    "/:virtualMcpId/:branch/preview-invoke",
+    bodyLimit({
+      maxSize: PREVIEW_INVOKE_MAX_BODY_BYTES,
+      onError: (c) => c.json({ error: "Payload too large" }, 413),
+    }),
+    async (c) => {
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
 
-    const { claimName } = c.get("vmClaim");
-    const previewUrl = await runner.getPreviewUrl(claimName);
-    if (!previewUrl) {
-      return c.json({ error: "Preview not available" }, 502);
-    }
+      const { claimName } = c.get("vmClaim");
+      const previewUrl = await runner.getPreviewUrl(claimName);
+      if (!previewUrl) {
+        return c.json({ error: "Preview not available" }, 502);
+      }
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
 
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
 
-    const invoke = parseLoaderInvokeRequest(body as Record<string, unknown>);
-    if (!invoke) {
-      return c.json({ error: "Missing __resolveType" }, 400);
-    }
+      const invoke = parseLoaderInvokeRequest(body as Record<string, unknown>);
+      if (!invoke) {
+        return c.json({ error: "Invalid or missing __resolveType" }, 400);
+      }
 
-    const base = previewUrl.replace(/\/+$/, "");
-    let upstream: Response;
-    try {
-      upstream = await fetch(`${base}/deco/invoke/${invoke.resolveType}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(invoke.payload),
+      let upstream: Response;
+      try {
+        upstream = await fetch(
+          buildLoaderInvokeUrl(previewUrl, invoke.resolveType),
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(invoke.payload),
+            signal: AbortSignal.timeout(30_000),
+          },
+        );
+      } catch {
+        return c.json({ error: "Preview unreachable" }, 502);
+      }
+
+      const text = await upstream.text();
+      return new Response(text, {
+        status: upstream.status,
+        headers: {
+          "content-type":
+            upstream.headers.get("content-type") ?? "application/json",
+        },
       });
-    } catch {
-      return c.json({ error: "Preview unreachable" }, 502);
-    }
-
-    const text = await upstream.text();
-    return new Response(text, {
-      status: upstream.status,
-      headers: {
-        "content-type":
-          upstream.headers.get("content-type") ?? "application/json",
-      },
-    });
-  });
+    },
+  );
 
   return app;
 };

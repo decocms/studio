@@ -45,39 +45,6 @@ export function readProductListResolveType(loader: unknown): string {
     : DEFAULT_VTEX_PRODUCT_LIST;
 }
 
-/**
- * Split a block-ref into the single-invoke target Deco expects:
- * POST /deco/invoke/<resolveType> with loader props as the JSON body.
- *
- * Posting to /deco/invoke without a path key is batch mode and treats each
- * top-level field as a separate handler name — hence the
- * "Unknown handler: __resolveType" error.
- */
-export function parseLoaderInvokeRequest(body: Record<string, unknown>): {
-  resolveType: string;
-  payload: Record<string, unknown>;
-} | null {
-  const resolveType =
-    typeof body.__resolveType === "string" ? body.__resolveType : null;
-  if (!resolveType) return null;
-
-  const props = asRecord(body.props);
-  if (props) {
-    return { resolveType, payload: { props } };
-  }
-
-  const { __resolveType: _, ...rest } = body;
-  return { resolveType, payload: rest };
-}
-
-export function buildLoaderInvokeUrl(
-  previewBaseUrl: string,
-  resolveType: string,
-): string {
-  const base = previewBaseUrl.replace(/\/+$/, "");
-  return `${base}/deco/invoke/${resolveType}`;
-}
-
 /** Update ids on a VTEX productList loader, preserving resolveType and props. */
 export function writeProductListIds(
   loader: unknown,
@@ -85,10 +52,7 @@ export function writeProductListIds(
 ): Record<string, unknown> {
   const existing = asRecord(loader) ?? {};
   const props = asRecord(existing.props) ?? {};
-  const resolveType =
-    typeof existing.__resolveType === "string"
-      ? existing.__resolveType
-      : DEFAULT_VTEX_PRODUCT_LIST;
+  const resolveType = readProductListResolveType(loader);
 
   return {
     ...existing,
