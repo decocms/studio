@@ -43,6 +43,8 @@ import {
   detectRepoRuntimeAnonymous,
 } from "../../shared/github-runtime-detect";
 import { generateBranchName } from "../../shared/branch-name";
+import { ensureRepoScopedToken } from "@/oauth/github-mint";
+import { getRepoScope } from "@/shared/github-repo-scope";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
@@ -292,6 +294,29 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
+    // Repo-scoped child connections carry a minted token with no refresh path,
+    // so re-mint it now if expired before it gets baked into the clone URL or
+    // used for the lockfile probe. No-op for org connections and public repos.
+    if (githubRepo.connectionId) {
+      const repoConn = await ctx.storage.connections.findById(
+        githubRepo.connectionId,
+        orgId,
+      );
+      if (repoConn && getRepoScope(repoConn)) {
+        try {
+          await ensureRepoScopedToken(ctx, repoConn);
+        } catch (err) {
+          // Swallow + log: a failed mint intentionally falls through to
+          // buildCloneInfo's own "No GitHub token found" throw below (sandbox
+          // start fails loudly — never an unauthenticated clone).
+          console.error("[provisionSandbox] repo-scoped token mint failed", {
+            connectionId: githubRepo.connectionId,
+            error: (err as Error).message,
+          });
+        }
+      }
+    }
+
     // Connection-backed (authenticated) vs public-clone (anonymous). The
     // daemon's clone behavior is identical — only the URL and identity
     // change. Push-back fails in the anonymous case; that's the documented
