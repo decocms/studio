@@ -282,7 +282,7 @@ const requireAuth = async (
   return next();
 };
 
-const ADMIN_MCP = "https://sites-admin-mcp.decocache.com/api/mcp";
+const ADMIN_MCP = "https://sites-admin-mcp.deco.site/api/mcp";
 const ADMIN_API = "https://admin.deco.cx";
 
 /**

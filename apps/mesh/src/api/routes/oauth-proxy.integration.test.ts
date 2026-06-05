@@ -52,7 +52,7 @@ const E2E_TIMEOUT = 15_000;
 /** MCP servers that support OAuth - all should pass OAuth discovery tests */
 const MCP_SERVERS = [
   { url: "https://mcp.stripe.com/", name: "Stripe" },
-  { url: "https://sites-openrouter.decocache.com/mcp", name: "OpenRouter" },
+  { url: "https://sites-openrouter.deco.site/mcp", name: "OpenRouter" },
   { url: "https://api.decocms.com/apps/deco/github/mcp", name: "Deco GitHub" },
   {
     url: "https://server.smithery.ai/@exa-labs/exa-code-mcp/mcp",
