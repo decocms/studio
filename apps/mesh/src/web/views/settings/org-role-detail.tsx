@@ -1570,13 +1570,7 @@ function RoleDetailPageInner({
               {activeTab === "members" && (
                 <MembersAddButton
                   readOnly={
-                    target.kind === "builtin" &&
-                    (target.role === "owner" || target.role === "user")
-                  }
-                  readOnlyMessage={
-                    target.kind === "builtin" && target.role === "user"
-                      ? "User is the default role — all members have it automatically"
-                      : "Owner membership cannot be changed"
+                    target.kind === "builtin" && target.role === "owner"
                   }
                   onOpen={() => setAddMemberDialogOpen(true)}
                 />
@@ -1652,7 +1646,7 @@ function RoleDetailPageInner({
                 }
                 readOnlyMessage={
                   target.kind === "builtin" && target.role === "user"
-                    ? "User is the default role — all members have it automatically"
+                    ? "User is the default role — members can't be removed from it; assign another role to change their access"
                     : "Owner membership cannot be changed"
                 }
                 searchQuery={searchQuery}
