@@ -13,7 +13,7 @@ import {
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useSuspenseInfiniteQuery } from "@tanstack/react-query";
+import { useSuspenseInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { memo, useDeferredValue, useRef, useState } from "react";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 
@@ -284,13 +284,37 @@ export function ToolSetSelector({
     string | null
   >(sortedConnections[0]?.id ?? null);
 
-  // Get selected connection
+  // Get selected connection (from list for metadata, tools fetched live below)
   const selectedConnection = selectedConnectionId
     ? (sortedConnections.find((c) => c.id === selectedConnectionId) ?? null)
     : null;
 
-  // Get tools for selected connection
-  const connectionTools = selectedConnection?.tools ?? [];
+  // Fetch tools for the selected connection via GET (list query omits tools)
+  const { data: selectedConnectionData, isFetching: isToolsFetching } =
+    useQuery({
+      queryKey: KEYS.collectionItem(
+        client,
+        org.id,
+        "",
+        "CONNECTIONS",
+        selectedConnectionId ?? "",
+      ),
+      queryFn: async () => {
+        if (!selectedConnectionId) return null;
+        const result = await client.callTool({
+          name: "COLLECTION_CONNECTIONS_GET",
+          arguments: { id: selectedConnectionId },
+        });
+        const parsed = result.structuredContent as {
+          item: { tools?: Array<{ name: string; description?: string }> | null } | null;
+        };
+        return parsed?.item ?? null;
+      },
+      enabled: !!selectedConnectionId,
+      staleTime: 30_000,
+    });
+
+  const connectionTools = selectedConnectionData?.tools ?? [];
 
   // Check if specific tool is enabled
   const isToolSelected = (connectionId: string, toolName: string): boolean => {
@@ -323,11 +347,12 @@ export function ToolSetSelector({
 
   // Toggle all tools for a connection
   const toggleConnection = (connectionId: string) => {
-    const connection = sortedConnections.find((c) => c.id === connectionId);
-    if (!connection?.tools) return;
+    const tools =
+      connectionId === selectedConnectionId ? connectionTools : [];
+    if (!tools.length) return;
 
     const currentTools = toolSet[connectionId] ?? [];
-    const allToolNames = connection.tools.map((t) => t.name);
+    const allToolNames = tools.map((t) => t.name);
     const allSelected =
       currentTools.length > 0 &&
       allToolNames.every((name) => currentTools.includes(name));
@@ -428,14 +453,20 @@ export function ToolSetSelector({
           ) : (
             <div className="p-2 space-y-1">
               {filteredConnections.map((connection) => {
-                const totalTools = connection.tools?.length ?? 0;
+                const isSelected = selectedConnectionId === connection.id;
+                const totalTools = isSelected
+                  ? connectionTools.length
+                  : 0;
                 const activeTools = toolSet[connection.id]?.length ?? 0;
 
                 return (
                   <ConnectionItem
                     key={connection.id}
-                    connection={connection}
-                    isSelected={selectedConnectionId === connection.id}
+                    connection={{
+                      ...connection,
+                      tools: isSelected ? connectionTools : connection.tools,
+                    }}
+                    isSelected={isSelected}
                     hasToolsEnabled={isConnectionSelected(connection.id)}
                     activeToolsCount={activeTools}
                     totalToolsCount={totalTools}
@@ -499,7 +530,14 @@ export function ToolSetSelector({
 
             {/* Tools List */}
             <div className="flex-1 overflow-auto p-4">
-              {connectionTools.length === 0 ? (
+              {isToolsFetching ? (
+                <div className="flex justify-center py-8">
+                  <Loading01
+                    size={18}
+                    className="animate-spin text-muted-foreground"
+                  />
+                </div>
+              ) : connectionTools.length === 0 ? (
                 <div className="text-sm text-muted-foreground text-center py-8">
                   This connection has no tools available
                 </div>

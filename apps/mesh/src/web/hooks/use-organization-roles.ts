@@ -17,7 +17,9 @@ const BUILTIN_ROLES = [
 ] as const;
 
 function formatRoleLabel(role: string): string {
-  return role.replace(/-/g, " ");
+  return role
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export interface OrganizationRole {
@@ -181,14 +183,20 @@ export function useOrganizationRoles() {
     isBuiltin: r.isBuiltin,
   }));
 
+  // Expose stored IDs for built-in roles (admin/user) that have DB entries,
+  // so the role editor uses updateRole on subsequent saves instead of upsert.
+  const builtinStoredIds: Record<string, string> = {};
+
   // Add custom roles from API response
   if (customRolesData && Array.isArray(customRolesData)) {
     for (const customRole of customRolesData) {
       const roleName = customRole.role;
       if (!roleName) continue;
 
-      // Skip if it's a built-in role name (owner, admin, user)
+      // For built-in roles that already have a DB entry, record their stored ID
+      // so the role editor knows to use updateRole on the next save.
       if (BUILTIN_ROLES.some((b) => b.value === roleName)) {
+        if (customRole.id) builtinStoredIds[roleName] = customRole.id;
         continue;
       }
 
@@ -233,6 +241,7 @@ export function useOrganizationRoles() {
     roles: allRoles,
     customRoles,
     builtinRoles: allRoles.filter((r) => r.isBuiltin),
+    builtinStoredIds,
     isLoading,
     error,
     refetch,

@@ -3,11 +3,16 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { AlertTriangle, RefreshCw01 } from "@untitledui/icons";
 import { captureException } from "@/web/lib/posthog-client";
 import { ArchivedOrgScreen } from "@/web/components/archived-org-screen";
+import { NoPermissionState } from "@/web/components/no-permission-state";
 
 const CHUNK_RELOAD_KEY = "__mesh_chunk_reload_ts";
 
 function isArchivedOrgError(error: Error | null): boolean {
   return error?.message === "Organization is archived";
+}
+
+function isAccessDeniedError(error: Error | null): boolean {
+  return !!error?.message?.includes("Access denied");
 }
 
 /**
@@ -95,6 +100,11 @@ export class ErrorBoundary extends Component<Props, State> {
       // Org deleted / archived — show friendly screen instead of raw error
       if (isArchivedOrgError(this.state.error)) {
         return <ArchivedOrgScreen />;
+      }
+
+      // Access denied — show permission blocker instead of raw error
+      if (isAccessDeniedError(this.state.error)) {
+        return <NoPermissionState />;
       }
 
       // Default fallback UI

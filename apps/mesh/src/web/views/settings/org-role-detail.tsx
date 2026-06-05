@@ -787,7 +787,7 @@ function AddMemberDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="sm:max-w-md p-0 overflow-hidden">
+      <AlertDialogContent className="sm:max-w-md p-0">
         <AlertDialogHeader className="px-6 pt-6">
           <AlertDialogTitle>Add Members to Role</AlertDialogTitle>
           <AlertDialogDescription>
@@ -891,6 +891,7 @@ function MembersTabContent({
   memberIds,
   onMemberIdsChange,
   readOnly = false,
+  readOnlyMessage = "Owner membership cannot be changed",
   searchQuery,
   addMemberDialogOpen,
   onAddMemberDialogOpenChange,
@@ -898,6 +899,7 @@ function MembersTabContent({
   memberIds: string[];
   onMemberIdsChange: (memberIds: string[]) => void;
   readOnly?: boolean;
+  readOnlyMessage?: string;
   searchQuery: string;
   addMemberDialogOpen: boolean;
   onAddMemberDialogOpenChange: (open: boolean) => void;
@@ -967,7 +969,7 @@ function MembersTabContent({
                         </div>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Owner membership cannot be changed</p>
+                        <p>{readOnlyMessage}</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -1003,6 +1005,7 @@ function MembersTab(props: {
   memberIds: string[];
   onMemberIdsChange: (memberIds: string[]) => void;
   readOnly?: boolean;
+  readOnlyMessage?: string;
   searchQuery: string;
   addMemberDialogOpen: boolean;
   onAddMemberDialogOpenChange: (open: boolean) => void;
@@ -1195,9 +1198,11 @@ function getInitialFormValues(
 
 function MembersAddButton({
   readOnly,
+  readOnlyMessage = "Owner membership cannot be changed",
   onOpen,
 }: {
   readOnly: boolean;
+  readOnlyMessage?: string;
   onOpen: () => void;
 }) {
   if (readOnly) {
@@ -1213,7 +1218,7 @@ function MembersAddButton({
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Owner membership cannot be changed</p>
+            <p>{readOnlyMessage}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -1273,7 +1278,7 @@ function RoleDetailPageInner({
   members: MemberLike[];
   connections: ConnectionEntity[];
 }) {
-  const { locator } = useProjectContext();
+  const { locator, org } = useProjectContext();
   const orgAuth = useOrgAuthClient();
   const queryClient = useQueryClient();
 
@@ -1305,9 +1310,9 @@ function RoleDetailPageInner({
         (formData.role.slug === "admin" || formData.role.slug === "user") &&
         !formData.role.id;
 
-      const syncMembers = async (currentSlug: string) => {
+      const syncMembers = async (currentSlug: string, lookupSlug?: string) => {
         const currentIds = members
-          .filter((m) => m.role === currentSlug)
+          .filter((m) => m.role === (lookupSlug ?? currentSlug))
           .map((m) => m.id);
         const toAdd = formData.memberIds.filter(
           (id) => !currentIds.includes(id),
@@ -1337,25 +1342,39 @@ function RoleDetailPageInner({
         await syncMembers("owner");
         return formData;
       } else if (formData.role.id) {
+        const newSlug = formData.role.label.toLowerCase().replace(/\s+/g, "-");
+        const oldSlug = formData.role.slug!;
+        const slugChanged = newSlug !== oldSlug;
         const r = await orgAuth.organization.updateRole({
           roleId: formData.role.id,
-          data: { permission },
+          data: {
+            permission,
+            ...(slugChanged ? { roleName: newSlug } : {}),
+          },
         });
         if (r?.error)
           throw new Error(r.error.message ?? "Something went wrong");
-        await syncMembers(formData.role.slug!);
-        return formData;
+        await syncMembers(slugChanged ? newSlug : oldSlug, slugChanged ? oldSlug : undefined);
+        return slugChanged
+          ? { ...formData, role: { ...formData.role, slug: newSlug } }
+          : formData;
       } else if (isEditableBuiltinFirstSave) {
-        const r = await orgAuth.organization.createRole({
-          role: formData.role.slug!,
-          permission,
+        // Better Auth blocks createRole for predefined role names (owner/admin/user).
+        // Use the custom upsert endpoint that writes directly to the DB.
+        const res = await fetch(`/api/${org.slug}/role-permissions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: formData.role.slug, permission }),
         });
-        if (r?.error)
-          throw new Error(r.error.message ?? "Something went wrong");
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(err.error ?? "Failed to save role permissions");
+        }
+        const { id } = await res.json() as { id: string };
         await syncMembers(formData.role.slug!);
         return {
           ...formData,
-          role: { ...formData.role, id: r.data?.roleData?.id },
+          role: { ...formData.role, id },
         };
       } else {
         const r = await orgAuth.organization.createRole({
@@ -1501,9 +1520,7 @@ function RoleDetailPageInner({
                     "size-2.5 rounded-full shrink-0",
                     target.kind === "builtin"
                       ? getRoleDotColor(target.role, true)
-                      : target.kind === "custom"
-                        ? getRoleDotColor(target.role.role, false)
-                        : getRoleColor(form.watch("role.label")),
+                      : getRoleColor(form.watch("role.label")),
                   )}
                 />
                 {isOwnerBuiltin && (
@@ -1512,12 +1529,12 @@ function RoleDetailPageInner({
                     className="text-muted-foreground shrink-0"
                   />
                 )}
-                {isNew ? (
+                {isNew || target.kind === "custom" ? (
                   <input
                     {...form.register("role.label")}
                     placeholder="Role name"
                     className="leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-64 placeholder:text-muted-foreground/50"
-                    autoFocus
+                    autoFocus={isNew}
                   />
                 ) : (
                   <span className="truncate">{roleName}</span>
@@ -1553,7 +1570,13 @@ function RoleDetailPageInner({
               {activeTab === "members" && (
                 <MembersAddButton
                   readOnly={
-                    target.kind === "builtin" && target.role === "owner"
+                    target.kind === "builtin" &&
+                    (target.role === "owner" || target.role === "user")
+                  }
+                  readOnlyMessage={
+                    target.kind === "builtin" && target.role === "user"
+                      ? "User is the default role — all members have it automatically"
+                      : "Owner membership cannot be changed"
                   }
                   onOpen={() => setAddMemberDialogOpen(true)}
                 />
@@ -1623,7 +1646,15 @@ function RoleDetailPageInner({
                 onMemberIdsChange={(v) =>
                   form.setValue("memberIds", v, { shouldDirty: true })
                 }
-                readOnly={target.kind === "builtin" && target.role === "owner"}
+                readOnly={
+                  target.kind === "builtin" &&
+                  (target.role === "owner" || target.role === "user")
+                }
+                readOnlyMessage={
+                  target.kind === "builtin" && target.role === "user"
+                    ? "User is the default role — all members have it automatically"
+                    : "Owner membership cannot be changed"
+                }
                 searchQuery={searchQuery}
                 addMemberDialogOpen={addMemberDialogOpen}
                 onAddMemberDialogOpenChange={setAddMemberDialogOpen}
