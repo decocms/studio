@@ -25,6 +25,9 @@ import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createLinkIngestRoutes } from "./decopilot/link-ingest-routes";
+import { createLinkWorkRoutes } from "./decopilot/link-work-routes";
+import type { LinkClaimRegistry } from "@/links/link-claim-registry";
+import type { LinkWorkQueue } from "./decopilot/link-work-queue";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -52,6 +55,14 @@ interface OrgScopedDeps {
    * connection's `organization_id` matches the resolved org).
    */
   oauthProxyHandler: MiddlewareHandler<Env>;
+  /**
+   * Link work-queue and claim registry for pull-transport work polling.
+   * Optional: when absent the GET /links/work route is not mounted.
+   */
+  linkWorkDeps?: {
+    linkClaimRegistry: LinkClaimRegistry;
+    workQueue: LinkWorkQueue;
+  };
   /**
    * Public events handler (defined in app.ts). Mounted at
    * `POST /api/:org/events/:type`.
@@ -94,6 +105,9 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   ); // /api/:org/trigger-callback
   app.route("/webhooks", createAutomationWebhookRoutes()); // /api/:org/webhooks/:triggerId[/:token]
   app.route("/", createLinkIngestRoutes({ streamBuffer: deps.streamBuffer })); // /api/:org/links/runs/:runId/stream
+  if (deps.linkWorkDeps) {
+    app.route("/", createLinkWorkRoutes(deps.linkWorkDeps)); // /api/:org/links/work
+  }
 
   if (deps.mountDevAssets) {
     app.route("/dev-assets", createDevAssetsRoutes({ orgFromPath: true }));

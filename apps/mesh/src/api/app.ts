@@ -152,6 +152,7 @@ import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
+import { LinkWorkQueue } from "./routes/decopilot/link-work-queue";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -851,6 +852,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   let cancelBroadcast: CancelBroadcast;
   let streamBuffer: StreamBuffer;
   let linkClaimRegistry: LinkClaimRegistry;
+  let linkWorkQueue: LinkWorkQueue | null = null;
   let natsProvider: NatsConnectionProvider | null = null;
 
   if (options.eventBus) {
@@ -927,6 +929,14 @@ export async function createApp(options: CreateAppOptions = {}) {
     natsClaimRegistry.init().catch(() => {});
     linkClaimRegistry = natsClaimRegistry;
 
+    linkWorkQueue = new LinkWorkQueue({
+      getJetStreamManager: async () => {
+        const nc = natsProvider!.getConnection();
+        return nc ? nc.jetstreamManager() : null;
+      },
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+
     eventBus = createEventBus(database, natsProvider);
 
     // When NATS connects, (re-)initialize all deferred consumers
@@ -945,6 +955,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       natsClaimRegistry.init().catch((err: unknown) => {
         console.warn(
           "[LinkClaimRegistry] Deferred init failed, link dispatch disabled:",
+          err,
+        );
+      });
+      linkWorkQueue!.init().catch((err: unknown) => {
+        console.warn(
+          "[LinkWorkQueue] Deferred init failed, pull-transport work queue disabled:",
           err,
         );
       });
@@ -2016,6 +2032,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     eventsHandler,
     watchHandler,
     betterAuthProtectedResourceHandler,
+    linkWorkDeps:
+      linkWorkQueue != null
+        ? {
+            linkClaimRegistry,
+            workQueue: linkWorkQueue,
+          }
+        : undefined,
   });
   app.route("/api/:org", orgScopedApi);
 
