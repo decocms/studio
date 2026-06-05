@@ -187,6 +187,11 @@ export class OrgScopedThreadStorage {
   setRunFence(threadId: string, token: string | null): Promise<void> {
     return this.inner.setRunFence(threadId, token);
   }
+
+  /** Pin the transport for a thread. Only set at thread-creation time. */
+  setLinkTransport(threadId: string, transport: "pull" | "ws"): Promise<void> {
+    return this.inner.setLinkTransport(threadId, transport);
+  }
 }
 
 // ============================================================================
@@ -928,6 +933,18 @@ export class SqlThreadStorage implements ThreadStoragePort {
     await this.db
       .updateTable("threads")
       .set({ run_fence_token: token })
+      .where("id", "=", threadId)
+      .execute();
+  }
+
+  /** Pin the transport for a thread. Only set at thread-creation time. */
+  async setLinkTransport(
+    threadId: string,
+    transport: "pull" | "ws",
+  ): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ link_transport: transport })
       .where("id", "=", threadId)
       .execute();
   }
