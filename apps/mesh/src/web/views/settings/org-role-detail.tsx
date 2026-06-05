@@ -72,12 +72,7 @@ import {
 // ============================================================================
 
 export type RoleEditorTarget =
-  | {
-      kind: "builtin";
-      role: "owner" | "admin" | "user";
-      storedId?: string;
-      storedPermission?: Record<string, string[]>;
-    }
+  | { kind: "builtin"; role: "owner" | "admin" | "user" }
   | { kind: "custom"; role: OrganizationRole }
   | { kind: "new" };
 
@@ -1172,9 +1167,7 @@ function getInitialFormValues(
     return loadBuiltinRoleIntoForm(
       target.role,
       members,
-      target.storedId != null
-        ? { id: target.storedId, permission: target.storedPermission }
-        : undefined,
+      undefined,
       connections,
     );
   }
@@ -1278,7 +1271,7 @@ function RoleDetailPageInner({
   members: MemberLike[];
   connections: ConnectionEntity[];
 }) {
-  const { locator, org } = useProjectContext();
+  const { locator } = useProjectContext();
   const orgAuth = useOrgAuthClient();
   const queryClient = useQueryClient();
 
@@ -1304,10 +1297,10 @@ function RoleDetailPageInner({
       const roleSlug =
         formData.role.slug ||
         formData.role.label.toLowerCase().replace(/\s+/g, "-");
-      const isOwnerBuiltinSave =
-        formData.role.slug === "owner" && !formData.role.id;
-      const isEditableBuiltinFirstSave =
-        (formData.role.slug === "admin" || formData.role.slug === "user") &&
+      const isBuiltinSave =
+        (formData.role.slug === "owner" ||
+          formData.role.slug === "admin" ||
+          formData.role.slug === "user") &&
         !formData.role.id;
 
       const syncMembers = async (currentSlug: string, lookupSlug?: string) => {
@@ -1338,8 +1331,8 @@ function RoleDetailPageInner({
         }
       };
 
-      if (isOwnerBuiltinSave) {
-        await syncMembers("owner");
+      if (isBuiltinSave) {
+        await syncMembers(formData.role.slug!);
         return formData;
       } else if (formData.role.id) {
         const newSlug = formData.role.label.toLowerCase().replace(/\s+/g, "-");
@@ -1361,26 +1354,6 @@ function RoleDetailPageInner({
         return slugChanged
           ? { ...formData, role: { ...formData.role, slug: newSlug } }
           : formData;
-      } else if (isEditableBuiltinFirstSave) {
-        // Better Auth blocks createRole for predefined role names (owner/admin/user).
-        // Use the custom upsert endpoint that writes directly to the DB.
-        const res = await fetch(`/api/${org.slug}/role-permissions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: formData.role.slug, permission }),
-        });
-        if (!res.ok) {
-          const err = (await res.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          throw new Error(err.error ?? "Failed to save role permissions");
-        }
-        const { id } = (await res.json()) as { id: string };
-        await syncMembers(formData.role.slug!);
-        return {
-          ...formData,
-          role: { ...formData.role, id },
-        };
       } else {
         const r = await orgAuth.organization.createRole({
           role: roleSlug,
