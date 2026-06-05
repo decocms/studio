@@ -38,6 +38,7 @@ import {
   STOREFRONT_GITHUB_AUTOMATIONS,
   setupStorefrontGithubAutomations,
 } from "@/tools/virtual/storefront-github-automations";
+import { GITHUB_SCOPED_PERMISSIONS } from "@/shared/github-repo-scope";
 
 export interface GitHubInstallation {
   installationId: number;
@@ -287,69 +288,179 @@ function PickerContent({
         throw new Error("No GitHub connection or installation");
       }
 
-      const connectionId = effectiveConnection.id;
+      const sourceConnectionId = effectiveConnection.id;
+      const installationId = selectedInstallation.installationId;
 
-      const result = (await selfClient.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_CREATE",
+      // 1. Mint a token scoped to ONLY this repo, via the org mcp-github connection.
+      const mintRes = (await githubClient.callTool({
+        name: "MINT_REPO_TOKEN",
+        arguments: {
+          installationId,
+          owner: repo.owner,
+          repo: repo.name,
+          permissions: GITHUB_SCOPED_PERMISSIONS,
+        },
+      })) as {
+        isError?: boolean;
+        structuredContent?: { token?: string; expiresAt?: string };
+        content?: Array<{ type?: string; text?: string }>;
+      };
+      const minted = mintRes.structuredContent;
+      if (mintRes.isError || !minted?.token) {
+        const detail = mintRes.content?.find((c) => c.type === "text")?.text;
+        throw new Error(
+          detail
+            ? `Failed to mint a repo-scoped GitHub token: ${detail}`
+            : "Failed to mint a repo-scoped GitHub token",
+        );
+      }
+      const parsedExpiry = minted.expiresAt
+        ? Date.parse(minted.expiresAt)
+        : NaN;
+      const expiresIn = Number.isFinite(parsedExpiry)
+        ? Math.max(0, Math.floor((parsedExpiry - Date.now()) / 1000))
+        : null;
+
+      // 2. Create a dedicated per-agent mcp-github child connection that carries
+      //    the mint recipe. Derive the new id from the create result (handles
+      //    both `{ item: { id } }` and `{ id }` response shapes). No
+      //    connection_token — the minted token is stored in downstream_tokens
+      //    (step 3); a connection_token would defeat the repo scoping.
+      const createRes = (await selfClient.callTool({
+        name: "COLLECTION_CONNECTIONS_CREATE",
         arguments: {
           data: {
-            title: repo.name,
-            description: repo.description || "Imported from GitHub",
-            pinned: true,
-            icon: null,
+            title: `GitHub: ${repo.owner}/${repo.name}`,
+            description: `Repo-scoped GitHub access for ${repo.owner}/${repo.name}`,
+            icon: effectiveConnection.icon,
+            app_name: effectiveConnection.app_name,
+            app_id: effectiveConnection.app_id,
+            connection_type: effectiveConnection.connection_type,
+            connection_url: effectiveConnection.connection_url,
+            configuration_scopes: effectiveConnection.configuration_scopes,
             metadata: {
-              githubRepo: {
+              repoScope: {
+                sourceConnectionId,
+                installationId,
                 owner: repo.owner,
-                name: repo.name,
-                url: repo.url,
-                installationId: selectedInstallation.installationId,
-                connectionId,
-              },
-              instructions: null,
-              // runtime is resolved server-side inside SANDBOX_START's lockfile
-              // probe (github-runtime-detect.ts). Writing a client-side
-              // sentinel here only re-created the race the probe fixed.
-              ui: {
-                pinnedViews: null,
-                layout: {
-                  defaultMainView: {
-                    type: "preview",
-                  },
-                  chatDefaultOpen: true,
-                },
+                repo: repo.name,
+                permissions: GITHUB_SCOPED_PERMISSIONS,
               },
             },
-            connections: [{ connection_id: connectionId }],
           },
         },
       })) as { structuredContent?: unknown };
-
-      const payload = (result.structuredContent ?? result) as {
-        item: { id: string; title: string };
+      const createdConn = (createRes.structuredContent ?? createRes) as {
+        item?: { id?: string };
+        id?: string;
       };
-
-      const virtualMcpId = payload.item.id;
-
-      if (effectiveSelectedKeys.size > 0) {
-        await setupGithubAutomations({
-          virtualMcpId,
-          repo,
-          connectionId,
-          selectedKeys: effectiveSelectedKeys,
-        }).catch((err) => {
-          console.error("Failed to set up GitHub automations:", err);
-          toast.warning(
-            "Imported repo, but failed to set up GitHub automations. You can add triggers manually from the automations view.",
-          );
-        });
+      const childConnectionId = createdConn.item?.id ?? createdConn.id;
+      if (!childConnectionId) {
+        throw new Error("Failed to create the repo-scoped GitHub connection");
       }
 
-      return {
-        virtualMcpId,
-        repo,
-        connectionId,
-        item: payload.item,
-      };
+      let createdAgentId: string | null = null;
+
+      try {
+        // 3. Persist the minted token on the child connection.
+        const tokenRes = await fetch(
+          `/api/${org.slug}/connections/${childConnectionId}/oauth-token`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ accessToken: minted.token, expiresIn }),
+          },
+        );
+        if (!tokenRes.ok) {
+          throw new Error("Failed to persist the repo-scoped token");
+        }
+
+        // 4. Create the agent wired to the CHILD connection (not the org one).
+        const result = (await selfClient.callTool({
+          name: "COLLECTION_VIRTUAL_MCP_CREATE",
+          arguments: {
+            data: {
+              title: repo.name,
+              description: repo.description || "Imported from GitHub",
+              pinned: true,
+              icon: null,
+              metadata: {
+                githubRepo: {
+                  owner: repo.owner,
+                  name: repo.name,
+                  url: repo.url,
+                  installationId,
+                  connectionId: childConnectionId,
+                },
+                instructions: null,
+                // runtime is resolved server-side inside SANDBOX_START's
+                // lockfile probe (github-runtime-detect.ts). Writing a
+                // client-side sentinel here only re-created the race the probe
+                // fixed.
+                ui: {
+                  pinnedViews: null,
+                  layout: {
+                    defaultMainView: { type: "preview" },
+                    chatDefaultOpen: true,
+                  },
+                },
+              },
+              connections: [{ connection_id: childConnectionId }],
+            },
+          },
+        })) as { structuredContent?: unknown };
+
+        const payload = (result.structuredContent ?? result) as {
+          item?: { id: string; title: string };
+        };
+        const virtualMcpId = payload.item?.id;
+        if (!payload.item || !virtualMcpId) {
+          throw new Error("Failed to create the imported agent");
+        }
+        createdAgentId = virtualMcpId;
+
+        // 5. Repoint automations at the per-agent child connection.
+        if (effectiveSelectedKeys.size > 0) {
+          await setupGithubAutomations({
+            virtualMcpId,
+            repo,
+            connectionId: childConnectionId,
+            selectedKeys: effectiveSelectedKeys,
+          }).catch((err) => {
+            console.error("Failed to set up GitHub automations:", err);
+            toast.warning(
+              "Imported repo, but failed to set up GitHub automations. You can add triggers manually from the automations view.",
+            );
+          });
+        }
+
+        return {
+          virtualMcpId,
+          repo,
+          connectionId: childConnectionId,
+          item: payload.item,
+        };
+      } catch (err) {
+        // Rollback: leave nothing behind. If the agent was created, delete it
+        // (which also tears down its repo-scoped child via server-side cleanup);
+        // always attempt the child delete as a harmless belt-and-suspenders.
+        if (createdAgentId) {
+          await selfClient
+            .callTool({
+              name: "COLLECTION_VIRTUAL_MCP_DELETE",
+              arguments: { id: createdAgentId },
+            })
+            .catch(() => {});
+        }
+        await selfClient
+          .callTool({
+            name: "COLLECTION_CONNECTIONS_DELETE",
+            arguments: { id: childConnectionId, force: true },
+          })
+          .catch(() => {});
+        throw err;
+      }
     },
     onSuccess: ({ virtualMcpId, repo, connectionId, item }) => {
       queryClient.setQueryData(
