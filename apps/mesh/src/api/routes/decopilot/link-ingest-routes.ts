@@ -92,6 +92,26 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     }
     await whenComplete;
 
+    // Transition the run to terminal status so the gate's polling loop unblocks
+    // (spec §L6). This is fungible-pod-safe: we write directly to durable storage
+    // instead of calling runRegistry.execute() which only works on the in-memory
+    // RunRegistry of the pod that owns the run (which may be a different pod).
+    //
+    // Mirrors only the durable side-effects from handleTerminalStatus in
+    // run-reactor.ts: update threads.status + clear run_owner_pod/run_config/
+    // run_started_at, then purge the live-edge stream buffer subject.
+    //
+    // Idempotent: setting an already-terminal status is a benign no-op UPDATE.
+    // Invariant R3 (parts committed first) is upheld because we only reach here
+    // after `await whenComplete`.
+    await ctx.storage.threads.update(runId, {
+      status: "completed",
+      run_owner_pod: null,
+      run_config: null,
+      run_started_at: null,
+    });
+    deps.streamBuffer.purge(runId);
+
     return c.json({ ok: true });
   });
 
