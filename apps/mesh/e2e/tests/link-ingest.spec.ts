@@ -75,6 +75,18 @@ async function fetchParts(
   return rows;
 }
 
+/** Fetch the durable thread status (terminal transition is Task 7's effect). */
+async function fetchThreadStatus(
+  db: Awaited<ReturnType<typeof connectDevDb>>,
+  threadId: string,
+): Promise<string | null> {
+  const { rows } = await db.query<{ status: string }>(
+    `SELECT status FROM threads WHERE id = $1`,
+    [threadId],
+  );
+  return rows[0]?.status ?? null;
+}
+
 /**
  * Build a minimal dispatch SSE body that carries a single assistant turn:
  *   start → start-step → text-start → text-delta → text-end → finish-step → finish
@@ -146,6 +158,10 @@ test.describe("POST /api/:org/links/runs/:runId/stream — link ingest", () => {
       const kinds = parts.map((p) => p.kind);
       expect(kinds).toContain("text");
       expect(kinds).toContain("finish");
+
+      // Task 7: a successful ingest transitions the run terminal (durably),
+      // which is what releases the pull gate's threads.status poll.
+      expect(await fetchThreadStatus(db, runId)).toBe("completed");
     } finally {
       await db.end();
     }
