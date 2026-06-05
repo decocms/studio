@@ -18,16 +18,18 @@
 
 ## ✅ Landing status (branch `tlgimenes/chat-message-dataflow`, PR #3698)
 
-**Tasks 1–6 LANDED, CI-green, dormant-safe.** Every pull branch is gated behind `link_transport='pull'` — which nothing sets yet (Phase D) — and nothing drains the WorkQueue yet, so the live ws/cloud path is byte-for-byte unchanged.
+**Tasks 1–7 LANDED — the cluster-side pull cycle is functionally complete, all CI-green, dormant-safe.** Every pull branch is gated behind `link_transport='pull'` — which nothing sets yet (Phase D) — and nothing drains the WorkQueue yet, so the live path is unchanged.
 
-- **T1** `link_transport` column + migration `100` (registered in manifest). **T2** optional `runFenceToken` wire field. **T3** `LinkWorkQueue` (JetStream WorkQueue stream). **T4** `GET /api/:org/links/work` long-poll + presence refresh. **T5+T6** (merged) fence minting in `prepareRun` + the gate's pull branch (publish work item → poll `threads.status` until terminal); ws path preserved and skips the extra thread-fetch; `pullDispatch` wired.
-- **Reviews caught + fixed real bugs:** the WorkQueue consumer create-race (TOCTOU) and pre-poll work loss (`DeliverPolicy.New`→`All`); the dangling `pullDispatch` knip failure.
+- **T1** `link_transport` column + migration `100` (registered). **T2** optional `runFenceToken` wire field. **T3** `LinkWorkQueue` (JetStream WorkQueue stream). **T4** `GET /api/:org/links/work` long-poll + presence refresh. **T5+T6** fence minting in `prepareRun` + the gate's pull branch (publish full work item → poll `threads.status`). **T7** the ingest transitions the run terminal (durable, fungible-pod-safe) after `whenComplete`, releasing the gate poll.
+- **Work-item builder (was the latent Critical) — CLOSED.** `pullDispatch` now builds + publishes the *full* wire `HarnessStreamInput` (mcp mint + materialized messages extracted eagerly out of `prepareRun`'s lazy stream-execute; existing dispatch behavior preserved — validated by CI `daemon-e2e`).
+- **Two-stage review caught + fixed real bugs:** WorkQueue consumer create-race (TOCTOU); pre-poll work loss (`DeliverPolicy.New`→`All`); a dangling-export **knip CI failure**; the work-item-completeness Critical.
+- **CI green** through these commits — including `e2e` (the link-ingest endpoint, with a Task-7 terminal-status assertion), `daemon-e2e` (WS push path intact), `multi-pod`, `storage-integration`.
 
-**⚠️ Deferred to Phase D — MUST land before any thread is set to `link_transport='pull'`.** These three are mutually dependent and only testable once the daemon pull loop exists, so they belong with Phase D:
+**Remaining for an end-to-end pull cycle — Phase D (the shipped `deco link` daemon):**
 
-1. **Work-item `HarnessStreamInput` completeness (latent Critical, flagged in-code).** The published work item currently carries the raw `DispatchRunInput`, NOT the full `HarnessStreamInput` the daemon needs (`mcp.url`+token, `virtualMcp`, materialized `messages`, `user`, `runId`) — that input is built only inside `prepareRun`'s lazy `createUIMessageStream` execute callback. Phase D must **extract that builder** (incl. `mintMcpEndpoint`) so `pullDispatch` returns and publishes the full input (spec §3.4). Until then a pull run cannot drive the harness.
-2. **Task 7 — ingest → terminal status.** After `whenComplete`, the ingest must transition the run terminal so the gate's poll releases — **fungible-pod-safely** (the run may have been claimed on a different pod; set the durable `threads.status` + reactor side-effects directly, do not rely on the local in-memory `RunRegistry`).
-3. **Task 8 — pull-cycle e2e** (`link-pull-cycle.spec.ts`). Only meaningful once (1)+(2)+the Phase D daemon pull loop exist.
+1. **Daemon pull loop ⚠️ SHIPPED DAEMON.** Long-poll `GET /api/:org/links/work` → on a work item, `ensureSandbox` + POST the `HarnessStreamInput` to the local `/_sandbox/dispatch` → stream the SSE result straight into `POST /api/:org/links/runs/:runId/stream` (with the `x-fence-token`). This is the only missing piece; the cluster side is ready to receive it.
+2. **Flip `link_transport` to `'pull'`** for codex/claude-code (a canary/cutover) — since ws is being hard-broken, this can be an aggressive default once the new daemon ships.
+3. **Full pull-cycle e2e** (`link-pull-cycle.spec.ts`): POST a message on a pull thread → gate publishes → drain `/links/work` → POST parts to the ingest → assert the gate released. (Can be written cluster-side by *simulating* the daemon with HTTP, without the real binary.)
 
 ---
 
