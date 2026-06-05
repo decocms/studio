@@ -876,6 +876,13 @@ export interface ThreadTable {
   >;
   /** Single-writer fence for the active run; null when none minted (Phase A). */
   run_fence_token: ColumnType<string | null, string | null, string | null>;
+  /**
+   * Transport selector for this thread's active run. null / 'ws' = legacy push
+   * path (default); 'pull' = Phase-B pull inversion (gated by this column AND
+   * message_storage_version === 2). Only 'pull' threads use the WorkQueue +
+   * ingest path. Never changes mid-run.
+   */
+  link_transport: ColumnType<string | null, string | null, string | null>;
 }
 
 export interface ThreadExpandedTool {
