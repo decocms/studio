@@ -1,7 +1,15 @@
 import { Suspense } from "react";
 import { toast } from "sonner";
-import { Loading01 } from "@untitledui/icons";
-import { isDecopilot, useVirtualMCPs } from "@decocms/mesh-sdk";
+import { AlertTriangle, Loading01 } from "@untitledui/icons";
+import {
+  isDecopilot,
+  useProjectContext,
+  useVirtualMCP,
+  useVirtualMCPActions,
+  useVirtualMCPs,
+  type VirtualMCPEntity,
+  WellKnownOrgMCPId,
+} from "@decocms/mesh-sdk";
 import {
   Select,
   SelectContent,
@@ -10,6 +18,8 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
+import { Alert, AlertDescription } from "@deco/ui/components/alert.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import {
   SettingsCard,
@@ -42,6 +52,94 @@ const makeAgentIcon =
   ({ className }: { className?: string }) => (
     <AgentAvatar icon={icon} name={name} size="2xs" className={className} />
   );
+
+// Tools the observer needs to read the conversations it's handed — exposed by
+// the Studio management ("self") connection.
+const OBSERVER_READING_TOOLS = [
+  "COLLECTION_THREAD_MESSAGES_LIST",
+  "COLLECTION_VIRTUAL_MCP_GET",
+];
+
+function agentHasReadingTools(
+  agent: VirtualMCPEntity,
+  selfConnectionId: string,
+): boolean {
+  const conn = agent.connections?.find(
+    (c) => c.connection_id === selfConnectionId,
+  );
+  if (!conn) return false;
+  // null selected_tools = every tool from that connection is included.
+  if (conn.selected_tools === null) return true;
+  const selected = conn.selected_tools;
+  return OBSERVER_READING_TOOLS.every((t) => selected.includes(t));
+}
+
+/**
+ * Warns when the chosen observer agent lacks the thread-reading tools, with a
+ * button that adds the Studio connection (scoped to just those two tools) to
+ * the agent. Self-suspends on the agent fetch, so wrap in <Suspense>.
+ */
+function ObserverToolsAdvisory({ agentId }: { agentId: string }) {
+  const { org } = useProjectContext();
+  const agent = useVirtualMCP(agentId);
+  const { update } = useVirtualMCPActions();
+  if (!agent) return null;
+
+  const selfConnId = WellKnownOrgMCPId.SELF(org.id);
+  if (agentHasReadingTools(agent, selfConnId)) return null;
+
+  const addReadingTools = () => {
+    const conns = agent.connections ?? [];
+    const existing = conns.find((c) => c.connection_id === selfConnId);
+    let next: VirtualMCPEntity["connections"];
+    if (!existing) {
+      next = [
+        ...conns,
+        {
+          connection_id: selfConnId,
+          selected_tools: OBSERVER_READING_TOOLS,
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ];
+    } else {
+      // existing.selected_tools is non-null here (null would have passed the
+      // check above) — union in the reading tools.
+      const merged = [
+        ...new Set([
+          ...(existing.selected_tools ?? []),
+          ...OBSERVER_READING_TOOLS,
+        ]),
+      ];
+      next = conns.map((c) =>
+        c.connection_id === selfConnId ? { ...c, selected_tools: merged } : c,
+      );
+    }
+    // useVirtualMCPActions toasts on success/error itself.
+    update.mutate({ id: agentId, data: { connections: next } });
+  };
+
+  return (
+    <Alert variant="warning" className="mt-3">
+      <AlertTriangle />
+      <AlertDescription className="flex items-center justify-between gap-3">
+        <span>
+          This agent can't read conversations yet — it's missing the Studio
+          reading tools.
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={addReadingTools}
+          disabled={update.isPending}
+          className="shrink-0"
+        >
+          {update.isPending ? "Adding…" : "Add reading tools"}
+        </Button>
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 function ObservationalControls() {
   const agents = useVirtualMCPs();
@@ -100,7 +198,13 @@ function ObservationalControls() {
             </SelectContent>
           </Select>
         }
-      />
+      >
+        {hasObserver && (
+          <Suspense fallback={null}>
+            <ObserverToolsAdvisory agentId={current.agentId} />
+          </Suspense>
+        )}
+      </SettingsCardItem>
       <SettingsCardItem
         title="Model"
         description="The model the observer runs with. Falls back to your fast tier if unset."
