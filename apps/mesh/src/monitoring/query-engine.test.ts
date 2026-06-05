@@ -164,19 +164,21 @@ describe("normalizeS3Endpoint", () => {
 });
 
 describe("buildOtlpFlatSource", () => {
+  // glob is **/* (not *.json) — the google_cloud_storage exporter writes
+  // extensionless objects (logs_<uuid>); read_json(format='auto') detects JSON.
   it("builds an s3:// glob with prefix", () => {
     const src = buildOtlpFlatSource({ bucket: "my-bucket", prefix: "logs" });
-    expect(src).toContain("s3://my-bucket/logs/**/*.json");
+    expect(src).toContain("s3://my-bucket/logs/**/*");
   });
 
   it("omits an empty prefix", () => {
     const src = buildOtlpFlatSource({ bucket: "my-bucket", prefix: "" });
-    expect(src).toContain("s3://my-bucket/**/*.json");
+    expect(src).toContain("s3://my-bucket/**/*");
   });
 
   it("trims slashes from the prefix", () => {
     const src = buildOtlpFlatSource({ bucket: "b", prefix: "/logs/" });
-    expect(src).toContain("s3://b/logs/**/*.json");
+    expect(src).toContain("s3://b/logs/**/*");
   });
 
   it("rejects injection in bucket/prefix", () => {

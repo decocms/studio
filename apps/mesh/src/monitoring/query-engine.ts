@@ -314,6 +314,12 @@ export function buildOtlpFlatSourceFromGlob(glob: string): string {
 /**
  * Build the GCS-backed OTLP flat source for a bucket/prefix. Org scoping is the
  * caller's outer WHERE (see buildOtlpFlatSourceFromGlob).
+ *
+ * The glob matches every object under the prefix (`**​/*`), not just `*.json`,
+ * because the OTel `google_cloud_storage` exporter writes objects with no file
+ * extension (e.g. `logs_<uuid>`). `read_json(format='auto')` detects the JSON
+ * content regardless. The prefix is therefore expected to be dedicated to the
+ * monitoring logs.
  */
 export function buildOtlpFlatSource(opts: {
   bucket: string;
@@ -324,7 +330,7 @@ export function buildOtlpFlatSource(opts: {
   }
   const prefix = opts.prefix.replace(/^\/+|\/+$/g, "");
   const glob = prefix
-    ? `s3://${opts.bucket}/${prefix}/**/*.json`
-    : `s3://${opts.bucket}/**/*.json`;
+    ? `s3://${opts.bucket}/${prefix}/**/*`
+    : `s3://${opts.bucket}/**/*`;
   return buildOtlpFlatSourceFromGlob(glob);
 }

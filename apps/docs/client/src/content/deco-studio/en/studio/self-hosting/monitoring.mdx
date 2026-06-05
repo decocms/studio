@@ -73,78 +73,88 @@ No `CLICKHOUSE_URL` is needed — DuckDB queries the NDJSON files on disk.
 
 ## Option C: Google Cloud Storage (OTLP via collector)
 
-For self-hosted deployments on GCP that want **no ClickHouse and no disk/sidecar**, Studio can read its monitoring data directly from a GCS bucket. Studio already emits monitoring data as standard OTLP logs over the network; you point those at an OpenTelemetry Collector that writes them to GCS, and the embedded DuckDB engine reads them back via GCS's S3-compatible endpoint.
+For self-hosted deployments on GCP that want **no ClickHouse and no disk/sidecar**, Studio can read its monitoring data directly from a GCS bucket. Studio already emits monitoring data as standard OTLP logs over the network; you point those at an OpenTelemetry Collector that writes them to GCS with the `google_cloud_storage` exporter, and the embedded DuckDB engine reads them back via GCS's S3-compatible endpoint.
 
 ```
-Studio ──OTLP logs──▶ OTel Collector ──awss3exporter (otlp_json)──▶ gs://bucket/<prefix>/...
-                                                                          ▲
-                                  embedded DuckDB reads + flattens at query time
+Studio ──OTLP logs──▶ OTel Collector ──google_cloud_storage exporter──▶ gs://bucket/<prefix>/...
+                              (OTLP JSON, native GCS client)                  ▲
+                                            embedded DuckDB reads + flattens at query time
 ```
+
+The collector **writes** with a Google service account (native GCS client — no S3 signing). Studio **reads** via DuckDB's `httpfs`, which speaks GCS's S3-compatible API, so it needs an HMAC key. Both can use the **same** service account.
+
+<Callout type="warning">
+  Do **not** use the `awss3` exporter for GCS. The AWS SDK v2's default request checksums are rejected by GCS (`SignatureDoesNotMatch`), and the env workaround does not take effect inside that exporter. Use `google_cloud_storage`.
+</Callout>
 
 Starting from scratch (no bucket yet)? The steps below use the `gcloud` CLI — set `PROJECT_ID` and a globally-unique `BUCKET` first.
 
-**1. Create the bucket.**
+**1. Create the bucket.** (Pre-create it — the exporter reuses it, see step 5.)
 
 ```bash
 gcloud storage buckets create "gs://${BUCKET}" \
   --project="${PROJECT_ID}" --location=us --uniform-bucket-level-access
 ```
 
-**2. Create a service account + HMAC key.** GCS's S3-compatible API authenticates with HMAC keys; the same key is used by the collector (write) and Studio (read).
+**2. Create a service account and grant bucket access.** Bucket-scoped `storage.admin` covers what the exporter needs (object writes **and** `storage.buckets.get`, which `reuse_if_exists` calls). No project-level `buckets.create` is required.
 
 ```bash
 gcloud iam service-accounts create studio-monitoring --project="${PROJECT_ID}"
 SA="studio-monitoring@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# Grant bucket access (objectAdmin covers both write and read).
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-  --member="serviceAccount:${SA}" --role="roles/storage.objectAdmin"
-
-# Create the HMAC key — capture BOTH values (the secret is shown only once).
-gcloud storage hmac keys create "${SA}" --project="${PROJECT_ID}"
-#  → accessId  = MONITORING_S3_ACCESS_KEY_ID  (GOOG1E...)
-#  → secret    = MONITORING_S3_SECRET_ACCESS_KEY
+  --member="serviceAccount:${SA}" --role="roles/storage.admin"
 ```
 
-<Callout type="tip">
-  For tighter separation you can use two HMAC keys — one with `objectCreator` for the collector, one with `objectViewer` for Studio. The single-key path above is the simplest.
-</Callout>
+On GKE, bind this SA to the collector's Kubernetes SA via **Workload Identity** (no key file needed). Off-GKE, create a key (`gcloud iam service-accounts keys create key.json --iam-account="${SA}"`) and mount it with `GOOGLE_APPLICATION_CREDENTIALS`.
 
-**3. Send Studio's monitoring logs to your collector.** Set `MONITORING_OTLP_ENDPOINT` (or enable the in-cluster collector) so Studio exports OTLP logs to it.
+**3. Create an HMAC key for Studio's read.** DuckDB reads via the S3-compatible API, which needs an HMAC key on the same SA:
 
-**4. Configure the collector to write OTLP-JSON to GCS.** Add an `awss3exporter` to the collector's **logs** pipeline, pointed at the GCS S3-compatible endpoint with the HMAC key as AWS credentials:
+```bash
+gcloud storage hmac keys create "${SA}" --project="${PROJECT_ID}"
+#  → accessId  = MONITORING_S3_ACCESS_KEY_ID  (GOOG1E...)
+#  → secret    = MONITORING_S3_SECRET_ACCESS_KEY   (shown only once)
+```
+
+**4. Send Studio's monitoring logs to your collector.** Set `MONITORING_OTLP_ENDPOINT` (or enable the in-cluster collector) so Studio exports OTLP logs to it.
+
+**5. Configure the collector to write OTLP-JSON to GCS.** Add the `google_cloud_storage` exporter to the collector's **logs** pipeline. It marshals to OTLP JSON by default — exactly what the dashboard reads.
 
 ```yaml
 exporters:
-  awss3:
-    marshaler: otlp_json        # DuckDB-readable (do NOT use otlp_proto)
-    s3uploader:
-      region: auto
-      s3_bucket: your-bucket
-      s3_prefix: logs            # must match MONITORING_S3_PREFIX
-      endpoint: https://storage.googleapis.com
-      s3_force_path_style: true
+  google_cloud_storage:
+    bucket:
+      name: your-bucket
+      project_id: your-project   # auto-detected on GKE; required off-GCP
+      region: us
+      reuse_if_exists: true      # use the pre-created bucket; required for restart-safety
+      file_prefix: logs
+      partition:
+        prefix: logs             # the read prefix (must match MONITORING_S3_PREFIX)
+        format: "year=%Y/month=%m/day=%d/hour=%H"
 service:
   pipelines:
     logs:
-      exporters: [awss3]
-# Provide the HMAC key to the collector as AWS credentials:
-#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+      exporters: [google_cloud_storage]
 ```
 
-**5. Point Studio's reader at the same bucket:**
+<Callout type="warning">
+  `reuse_if_exists: true` is required. With the default (`false`) the exporter tries to **create** the bucket on every startup and fails with a `409 Conflict` once it exists — so the collector won't restart.
+</Callout>
+
+**6. Point Studio's reader at the same bucket:**
 
 ```bash
 MONITORING_S3_BUCKET=your-bucket
-MONITORING_S3_PREFIX=logs
+MONITORING_S3_PREFIX=logs       # matches the collector's partition.prefix
 MONITORING_S3_ENDPOINT=https://storage.googleapis.com
 MONITORING_S3_ACCESS_KEY_ID=<hmac-key>
 MONITORING_S3_SECRET_ACCESS_KEY=<hmac-secret>
 ```
 
-When `MONITORING_S3_BUCKET` is set (and `CLICKHOUSE_URL` is not), the dashboard reads OTLP-JSON log files from the bucket. Metrics (calls, errors, latency percentiles) are derived from those same log rows, so there is no separate metrics store. The `httpfs` extension DuckDB needs is baked into the official image, so this works with strict outbound network policies.
+When `MONITORING_S3_BUCKET` is set (and `CLICKHOUSE_URL` is not), the dashboard reads the OTLP-JSON log files from the bucket. Metrics (calls, errors, latency percentiles) are derived from those same log rows, so there is no separate metrics store. The `httpfs` extension DuckDB needs is baked into the official image, so this works with strict outbound network policies.
 
-**6. Verify.** Make a few tool calls through Studio, then confirm files land (the collector flushes on its batch timeout) and the dashboard populates:
+**7. Verify.** Make a few tool calls through Studio, then confirm files land (the collector flushes on its batch timeout) and the dashboard populates:
 
 ```bash
 gcloud storage ls --recursive "gs://${BUCKET}/logs/" | head
@@ -163,9 +173,10 @@ gcloud storage buckets update "gs://${BUCKET}" --lifecycle-file=/tmp/lifecycle.j
 
 ### Troubleshooting
 
-- **Dashboard empty / "Monitoring stats unavailable":** check the collector logs for `awss3exporter` errors (credentials, endpoint, `s3_force_path_style`); confirm objects exist with `gcloud storage ls "gs://${BUCKET}/logs/"`; and confirm `MONITORING_S3_PREFIX` **exactly matches** the collector's `s3_prefix`.
-- **Studio fails to start with a config error:** when `MONITORING_S3_BUCKET` is set, the access key and secret are required (the DuckDB extension directory is baked into the official image).
-- **`otlp_proto` produces unreadable files:** DuckDB cannot read binary protobuf — the collector `marshaler` must be `otlp_json`.
+- **Collector won't start / `409 Conflict` on the bucket:** set `bucket.reuse_if_exists: true` and pre-create the bucket (step 1).
+- **`403 storage.buckets.get denied` on startup:** the collector's service account needs bucket-level `storage.admin` (or at least `storage.buckets.get` plus object write) — see step 2.
+- **Dashboard empty / "Monitoring stats unavailable":** confirm objects exist with `gcloud storage ls "gs://${BUCKET}/logs/"`, and confirm `MONITORING_S3_PREFIX` **exactly matches** the collector's `partition.prefix`.
+- **Studio fails to start with a config error:** when `MONITORING_S3_BUCKET` is set, the HMAC access key and secret are required (the DuckDB extension directory is baked into the official image).
 
 ## Environment Variables
 
