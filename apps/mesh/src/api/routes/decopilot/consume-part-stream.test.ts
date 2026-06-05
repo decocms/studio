@@ -9,6 +9,7 @@ function chunkStream(chunks: UIMessageChunk[]): AsyncIterable<UIMessageChunk> {
 }
 
 class CollectorEmitter implements PartEmitterLike {
+  steps = 0;
   finals: { id: string; text: string }[] = [];
   errors: string[] = [];
   private textOf(m: { id: string; parts?: unknown[] }) {
@@ -20,7 +21,9 @@ class CollectorEmitter implements PartEmitterLike {
     );
     return { id: m.id, text: t?.text ?? "" };
   }
-  async emitStepParts() {}
+  async emitStepParts() {
+    this.steps++;
+  }
   async emitFinal(m: { id: string; parts?: unknown[] }) {
     this.finals.push(this.textOf(m));
   }
@@ -42,23 +45,58 @@ async function drain(s: ReadableStream): Promise<void> {
 }
 
 describe("consumePartStream", () => {
-  it("assembles a text message and calls emitFinal", async () => {
+  it("assembles a text message, calls emitFinal, resolves whenComplete", async () => {
     const emitter = new CollectorEmitter();
-    // Chunk type names confirmed from ai@6.0.191 UIMessageChunk union:
-    //   'start', 'text-start', 'text-delta', 'text-end', 'finish'
-    // The 'start-step'/'finish-step' pair marks steps; 'start'/'finish' wrap the message.
     const chunks = chunkStream([
-      { type: "start" } as UIMessageChunk,
-      { type: "start-step" } as UIMessageChunk,
-      { type: "text-start", id: "t1" } as UIMessageChunk,
-      { type: "text-delta", id: "t1", delta: "hello " } as UIMessageChunk,
-      { type: "text-delta", id: "t1", delta: "world" } as UIMessageChunk,
-      { type: "text-end", id: "t1" } as UIMessageChunk,
-      { type: "finish-step" } as UIMessageChunk,
-      { type: "finish" } as UIMessageChunk,
-    ]);
-    const ui = consumePartStream(chunks, emitter);
-    await drain(ui);
+      { type: "start" },
+      { type: "start-step" },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "hello " },
+      { type: "text-delta", id: "t1", delta: "world" },
+      { type: "text-end", id: "t1" },
+      { type: "finish-step" },
+      { type: "finish" },
+    ] as UIMessageChunk[]);
+    const { uiStream, whenComplete } = consumePartStream(chunks, emitter);
+    await drain(uiStream);
+    await whenComplete;
     expect(emitter.finals.map((f) => f.text)).toEqual(["hello world"]);
+    expect(emitter.errors).toEqual([]);
+  });
+
+  it("calls emitStepParts once per finished step", async () => {
+    const emitter = new CollectorEmitter();
+    const chunks = chunkStream([
+      { type: "start" },
+      { type: "start-step" },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "a" },
+      { type: "text-end", id: "t1" },
+      { type: "finish-step" },
+      { type: "start-step" },
+      { type: "text-start", id: "t2" },
+      { type: "text-delta", id: "t2", delta: "b" },
+      { type: "text-end", id: "t2" },
+      { type: "finish-step" },
+      { type: "finish" },
+    ] as UIMessageChunk[]);
+    const { uiStream, whenComplete } = consumePartStream(chunks, emitter);
+    await drain(uiStream);
+    await whenComplete;
+    expect(emitter.steps).toBe(2);
+  });
+
+  it("on a throwing source: emitError exactly once, no emitFinal, whenComplete resolves", async () => {
+    const emitter = new CollectorEmitter();
+    async function* throwing(): AsyncIterable<UIMessageChunk> {
+      yield { type: "start" } as UIMessageChunk;
+      throw new Error("desktop boom");
+    }
+    const { uiStream, whenComplete } = consumePartStream(throwing(), emitter);
+    await drain(uiStream).catch(() => {});
+    await whenComplete;
+    expect(emitter.errors).toHaveLength(1);
+    expect(emitter.errors[0]).toContain("boom");
+    expect(emitter.finals).toEqual([]);
   });
 });
