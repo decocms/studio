@@ -404,6 +404,7 @@ export const createSandboxRoutes = () => {
       ctx: c.var.meshContext,
       claimName: claim.claimName,
       runner: claim.runner,
+      virtualMcpId: claim.virtualMcpId,
       branch: claim.branch,
       userId: claim.userId,
       projectRef: claim.projectRef,
