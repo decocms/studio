@@ -13,10 +13,10 @@ function sseStream(blocks: string[]): ReadableStream<Uint8Array> {
 }
 
 async function collect(
-  it: AsyncIterable<UIMessageChunk>,
+  stream: AsyncIterable<UIMessageChunk>,
 ): Promise<UIMessageChunk[]> {
   const out: UIMessageChunk[] = [];
-  for await (const c of it) out.push(c);
+  for await (const c of stream) out.push(c);
   return out;
 }
 
@@ -30,7 +30,7 @@ describe("parseDispatchSSEStream", () => {
     expect(chunks).toEqual([{ type: "text-delta", id: "m1", delta: "hi" }]);
   });
 
-  it("reassembles an event split across read boundaries", async () => {
+  it("reassembles an event split across chunk boundaries", async () => {
     const body = sseStream([
       'data: {"type":"ui-message-chunk","chunk":{"type":"text-',
       'delta","id":"m1","delta":"hi"}}\n\n',
