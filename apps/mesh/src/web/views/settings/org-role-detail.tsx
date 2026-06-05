@@ -1354,7 +1354,10 @@ function RoleDetailPageInner({
         });
         if (r?.error)
           throw new Error(r.error.message ?? "Something went wrong");
-        await syncMembers(slugChanged ? newSlug : oldSlug, slugChanged ? oldSlug : undefined);
+        await syncMembers(
+          slugChanged ? newSlug : oldSlug,
+          slugChanged ? oldSlug : undefined,
+        );
         return slugChanged
           ? { ...formData, role: { ...formData.role, slug: newSlug } }
           : formData;
@@ -1367,10 +1370,12 @@ function RoleDetailPageInner({
           body: JSON.stringify({ role: formData.role.slug, permission }),
         });
         if (!res.ok) {
-          const err = await res.json().catch(() => ({})) as { error?: string };
+          const err = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
           throw new Error(err.error ?? "Failed to save role permissions");
         }
-        const { id } = await res.json() as { id: string };
+        const { id } = (await res.json()) as { id: string };
         await syncMembers(formData.role.slug!);
         return {
           ...formData,

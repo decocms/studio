@@ -128,8 +128,11 @@ function RolesPageContent() {
   const { locator } = useProjectContext();
   const orgAuth = useOrgAuthClient();
   const queryClient = useQueryClient();
-  const { customRoles, builtinStoredIds, refetch: refetchRoles } =
-    useOrganizationRoles();
+  const {
+    customRoles,
+    builtinStoredIds,
+    refetch: refetchRoles,
+  } = useOrganizationRoles();
 
   const setActiveRole = (value: string | undefined) =>
     navigate({

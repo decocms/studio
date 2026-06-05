@@ -306,7 +306,9 @@ export function ToolSetSelector({
           arguments: { id: selectedConnectionId },
         });
         const parsed = result.structuredContent as {
-          item: { tools?: Array<{ name: string; description?: string }> | null } | null;
+          item: {
+            tools?: Array<{ name: string; description?: string }> | null;
+          } | null;
         };
         return parsed?.item ?? null;
       },
@@ -347,8 +349,7 @@ export function ToolSetSelector({
 
   // Toggle all tools for a connection
   const toggleConnection = (connectionId: string) => {
-    const tools =
-      connectionId === selectedConnectionId ? connectionTools : [];
+    const tools = connectionId === selectedConnectionId ? connectionTools : [];
     if (!tools.length) return;
 
     const currentTools = toolSet[connectionId] ?? [];
@@ -454,9 +455,7 @@ export function ToolSetSelector({
             <div className="p-2 space-y-1">
               {filteredConnections.map((connection) => {
                 const isSelected = selectedConnectionId === connection.id;
-                const totalTools = isSelected
-                  ? connectionTools.length
-                  : 0;
+                const totalTools = isSelected ? connectionTools.length : 0;
                 const activeTools = toolSet[connection.id]?.length ?? 0;
 
                 return (

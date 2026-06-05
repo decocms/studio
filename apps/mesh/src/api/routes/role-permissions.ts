@@ -43,7 +43,10 @@ export const createRolePermissionsRoutes = () => {
       .where("organizationId", "=", org.id)
       .executeTakeFirst();
 
-    if (!membership || !(ADMIN_ROLES as readonly string[]).includes(membership.role)) {
+    if (
+      !membership ||
+      !(ADMIN_ROLES as readonly string[]).includes(membership.role)
+    ) {
       return c.json({ error: "Insufficient permissions" }, 403);
     }
 
