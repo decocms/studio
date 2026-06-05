@@ -17,7 +17,7 @@ const BUILTIN_ROLES = [
 ] as const;
 
 function formatRoleLabel(role: string): string {
-  return role.replace(/-/g, " ");
+  return role.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export interface OrganizationRole {
