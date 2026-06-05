@@ -160,7 +160,7 @@ Quando `MONITORING_S3_BUCKET` está definida (e `CLICKHOUSE_URL` não), o dashbo
 gcloud storage ls --recursive "gs://${BUCKET}/logs/" | head
 ```
 
-**Retenção (opcional).** O Studio não aplica retenção ao bucket — adicione uma regra de ciclo de vida se quiser deletar objetos automaticamente, ex. após 30 dias:
+**Retenção (recomendado).** Cada query do dashboard varre o prefixo inteiro (ainda não há poda por data dos arquivos), então uma regra de ciclo de vida no bucket é a forma prática de limitar custo e latência conforme o histórico cresce. O Studio não aplica retenção sozinho — adicione uma regra pra deletar objetos automaticamente, ex. após 30 dias:
 
 ```bash
 echo '{"rule":[{"action":{"type":"Delete"},"condition":{"age":30}}]}' > /tmp/lifecycle.json

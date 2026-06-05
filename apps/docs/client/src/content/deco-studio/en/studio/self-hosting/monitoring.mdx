@@ -160,7 +160,7 @@ When `MONITORING_S3_BUCKET` is set (and `CLICKHOUSE_URL` is not), the dashboard 
 gcloud storage ls --recursive "gs://${BUCKET}/logs/" | head
 ```
 
-**Retention (optional).** Studio applies no retention to the bucket — add a lifecycle rule if you want objects auto-deleted, e.g. after 30 days:
+**Retention (recommended).** Each dashboard query scans the whole prefix (there is no time-based file pruning yet), so a bucket lifecycle rule is the practical way to bound query cost and latency as history accumulates. Studio applies no retention itself — add a rule to auto-delete objects, e.g. after 30 days:
 
 ```bash
 echo '{"rule":[{"action":{"type":"Delete"},"condition":{"age":30}}]}' > /tmp/lifecycle.json

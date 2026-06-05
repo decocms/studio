@@ -261,6 +261,14 @@ const MONITORING_ATTR_PREFIX = "studio.monitoring.";
  * than struct-field access: DuckDB infers the `value` struct shape from sampled
  * data, so a direct `value.intValue` reference bind-errors on files that only
  * contain `stringValue`. The JSON path returns NULL for absent fields instead.
+ *
+ * COST: the glob has no time-based pruning — every query reads every object in
+ * the prefix over httpfs, regardless of the dashboard's date range (the
+ * collector writes Hive-style `year=/month=/day=/hour=` partitions, but the
+ * query filters on the row-content `timestamp`, not the path). Bound the cost
+ * with a bucket lifecycle/retention rule (see monitoring docs). A future
+ * improvement is to thread the query date range in and prune via Hive
+ * partition predicates.
  */
 export function buildOtlpFlatSourceFromGlob(glob: string): string {
   const A = MONITORING_ATTR_PREFIX;
