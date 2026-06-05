@@ -21,10 +21,10 @@ Canary strategy: also supported — set `argoRollouts.strategy.canary` instead.
 Pick one; setting both throws at install time.
 
 IMPORTANT for stateful workloads (long-lived sessions, MCP / chat): destructive
-schema migrations during a blue/green window will break the old version. Pair
-this Rollout with `migrationJob.enabled: true` so migrations run before the new
-ReplicaSet is brought up, AND adopt expand-contract migration discipline so the
-overlap window between old and new code is safe.
+schema migrations during a blue/green window will break the old version. Adopt
+expand-contract migration discipline (migration N adds, code N+1 stops using
+the old shape, migration N+2 drops) so both old and new pods are safe to run
+against the migrated schema during the cutover window.
 */}}
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout

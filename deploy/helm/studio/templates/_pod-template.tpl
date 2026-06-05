@@ -40,8 +40,10 @@ spec:
       {{- end }}
       image: "{{ .Values.image.repository }}{{- if and .Values.image.tag (hasPrefix "sha256:" .Values.image.tag) }}@{{ .Values.image.tag }}{{- else }}:{{ .Values.image.tag | default .Chart.AppVersion }}{{- end }}"
       imagePullPolicy: {{ .Values.image.pullPolicy }}
+      {{- with .Values.image.command }}
       command:
-        {{- include "chart-deco-studio.podCommand" . | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       ports:
         - name: http
           containerPort: {{ .Values.service.targetPort | default 3000 }}
@@ -203,28 +205,3 @@ spec:
     {{- end }}
   {{- end }}
 {{- end }}
-
-{{/*
-Resolves the pod command, optionally appending `--skip-migrations` when
-the migration Job is enabled.
-
-When the chart runs migrations in a dedicated pre-sync Job, the runtime must
-NOT also run them on boot — otherwise N pods race against the lock and the
-Job's whole point (single execution point + pre-deploy gate) is undermined.
-The studio CLI already exposes `--skip-migrations` (see apps/mesh/src/cli.ts),
-so we append it to the configured command.
-
-Auto-append is gated on `migrationJob.injectSkipMigrationsFlag` (default true).
-Set that to `false` if `image.command` is overridden to a non-`deco` entrypoint
-(e.g. for debugging with `["sleep", "infinity"]`) where injecting the flag
-would either be silently ignored or break command parsing.
-*/}}
-{{- define "chart-deco-studio.podCommand" -}}
-{{- $cmd := default (list "bun" "run" "deco" "--no-local-mode") .Values.image.command -}}
-{{- $mj := default dict .Values.migrationJob -}}
-{{- $inject := and $mj.enabled (ne $mj.injectSkipMigrationsFlag false) -}}
-{{- if $inject -}}
-{{- $cmd = append $cmd "--skip-migrations" -}}
-{{- end -}}
-{{- toYaml $cmd -}}
-{{- end -}}
