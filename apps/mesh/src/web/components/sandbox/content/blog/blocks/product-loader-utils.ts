@@ -38,7 +38,7 @@ export function toInvokeLoaderBody(loader: unknown): Record<string, unknown> {
 }
 
 /** Resolve type for a productList block-ref. */
-export function readProductListResolveType(loader: unknown): string {
+function readProductListResolveType(loader: unknown): string {
   const existing = asRecord(loader) ?? {};
   return typeof existing.__resolveType === "string"
     ? existing.__resolveType
