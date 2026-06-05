@@ -895,6 +895,25 @@ export class SqlThreadStorage implements ThreadStoragePort {
     };
   }
 
+  /** Current fence token for a run (thread id == run id today). */
+  async getRunFence(threadId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select("run_fence_token")
+      .where("id", "=", threadId)
+      .executeTakeFirst();
+    return row?.run_fence_token ?? null;
+  }
+
+  /** Set (or clear) the fence token. Minted in a later phase. */
+  async setRunFence(threadId: string, token: string | null): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ run_fence_token: token })
+      .where("id", "=", threadId)
+      .execute();
+  }
+
   // ==========================================================================
   // Private Helper Methods
   // ==========================================================================

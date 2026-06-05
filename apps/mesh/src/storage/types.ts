@@ -874,6 +874,8 @@ export interface ThreadTable {
     Date | string | null,
     Date | string | null
   >;
+  /** Single-writer fence for the active run; null when none minted (Phase A). */
+  run_fence_token: ColumnType<string | null, string | null, string | null>;
 }
 
 export interface ThreadExpandedTool {
