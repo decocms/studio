@@ -868,6 +868,12 @@ export interface ThreadTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
   created_by: string; // User ID;
   updated_by: string | null;
+  message_storage_version: ColumnType<number, number | undefined, number>;
+  last_progress_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
 }
 
 export interface ThreadExpandedTool {
@@ -907,6 +913,13 @@ export interface Thread {
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
   metadata: ThreadMetadata;
+  /**
+   * Message storage format for this thread's history.
+   * 1 = legacy `thread_messages` rows (folded server-side as whole messages).
+   * 2 = `thread_message_parts` stream-of-record (folded via `foldParts`).
+   * Pinned on the thread row; read path forks on this value.
+   */
+  message_storage_version: number;
 }
 
 /**
@@ -1027,6 +1040,30 @@ export interface ThreadMessage extends ChatMessage {
   thread_id: string;
   created_at: string;
   updated_at: string;
+}
+
+export type PartKind =
+  | "text"
+  | "reasoning"
+  | "tool_call"
+  | "tool_result"
+  | "file"
+  | "error"
+  | "finish";
+
+export interface ThreadMessagePartTable {
+  id: string; // "<run_id>:<seq>"
+  seq: number; // integer, monotonic per run
+  org_id: string;
+  thread_id: string;
+  run_id: string;
+  message_id: string;
+  role: "user" | "assistant" | "system";
+  kind: PartKind;
+  payload: unknown; // jsonb
+  payload_ref: string | null;
+  metadata: unknown | null; // jsonb
+  created_at: string; // ISO; derived from durable seq order, NOT now+i
 }
 
 // ============================================================================
@@ -1316,6 +1353,7 @@ export interface Database {
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
+  thread_message_parts: ThreadMessagePartTable;
   async_research_jobs: AsyncResearchJobTable;
 
   // Member tags tables

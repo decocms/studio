@@ -5,10 +5,11 @@
  * Threads are organization-scoped, messages are thread-scoped.
  */
 
-import { type Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type { ThreadStoragePort } from "./ports";
+import { SqlThreadMessagePartStorage } from "./thread-message-parts";
 import type {
   Database,
   Thread,
@@ -128,6 +129,21 @@ export class OrgScopedThreadStorage {
     return this.inner.saveMessages(data, this.requireOrg());
   }
 
+  /** Stamp `last_progress_at = now()` (progress-liveness heartbeat). */
+  bumpProgress(taskId: string): Promise<void> {
+    return this.inner.bumpProgress(taskId, this.requireOrg());
+  }
+
+  /** Read progress-liveness columns (epoch-ms). */
+  getProgress(
+    taskId: string,
+  ): Promise<{
+    lastProgressAt: number | null;
+    runStartedAt: number | null;
+  } | null> {
+    return this.inner.getProgress(taskId, this.requireOrg());
+  }
+
   listMessages(
     taskId: string,
     options?: {
@@ -146,6 +162,15 @@ export class OrgScopedThreadStorage {
   }): Promise<Array<{ thread: Thread; lastMessage: ThreadMessage }>> {
     return this.inner.listWithLastMessage(this.requireOrg(), options);
   }
+
+  /**
+   * Stream-of-record part storage on the same connection. The v2 read path
+   * folds these into history. Access is org-guarded by the caller's prior
+   * org-scoped thread fetch (R23) — the part storage itself is not org-bound.
+   */
+  messageParts(): SqlThreadMessagePartStorage {
+    return this.inner.messageParts();
+  }
 }
 
 // ============================================================================
@@ -154,6 +179,16 @@ export class OrgScopedThreadStorage {
 
 export class SqlThreadStorage implements ThreadStoragePort {
   constructor(private db: Kysely<Database>) {}
+
+  /**
+   * Stream-of-record part storage backed by the same connection. Used by the
+   * v2 read path (`Memory.loadHistory`) to fold `thread_message_parts`.
+   * Part rows are not org-scoped here — callers MUST guard access with an
+   * org-scoped thread fetch first (the R23 predicate).
+   */
+  messageParts(): SqlThreadMessagePartStorage {
+    return new SqlThreadMessagePartStorage(this.db);
+  }
 
   // ==========================================================================
   // Thread Operations
@@ -277,6 +312,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
     if (data.harness_id !== undefined) {
       updateData.harness_id = data.harness_id;
+    }
+    if (data.message_storage_version !== undefined) {
+      updateData.message_storage_version = data.message_storage_version;
     }
     await this.db
       .updateTable("threads")
@@ -820,6 +858,45 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return rows.map((r) => r.id);
   }
 
+  async bumpProgress(taskId: string, organizationId: string): Promise<void> {
+    // Single-column heartbeat write — intentionally does NOT touch
+    // `updated_at` (that's the user-facing "last activity" timestamp; a
+    // per-chunk bump would churn the thread list ordering). `now()` is
+    // evaluated server-side so it's monotonic with the DB clock the reaper
+    // reads against.
+    await this.db
+      .updateTable("threads")
+      .set({ last_progress_at: sql`now()` })
+      .where("id", "=", taskId)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
+  async getProgress(
+    taskId: string,
+    organizationId: string,
+  ): Promise<{
+    lastProgressAt: number | null;
+    runStartedAt: number | null;
+  } | null> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select(["last_progress_at", "run_started_at"])
+      .where("id", "=", taskId)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row) return null;
+    const toMs = (v: Date | string | null | undefined): number | null => {
+      if (v == null) return null;
+      const ms = (v instanceof Date ? v : new Date(v)).getTime();
+      return Number.isNaN(ms) ? null : ms;
+    };
+    return {
+      lastProgressAt: toMs(row.last_progress_at),
+      runStartedAt: toMs(row.run_started_at),
+    };
+  }
+
   // ==========================================================================
   // Private Helper Methods
   // ==========================================================================
@@ -845,6 +922,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     created_by: string;
     updated_by: string | null;
     hidden: boolean | number | null;
+    message_storage_version?: number | null;
   }): Thread {
     let metadata: ThreadMetadata = {};
     if (row.metadata != null) {
@@ -886,6 +964,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       created_by: row.created_by,
       updated_by: row.updated_by ?? undefined,
       hidden: !!row.hidden,
+      // Defaults to 1 (legacy) when the column is absent/null so existing
+      // threads keep reading from `thread_messages`.
+      message_storage_version: row.message_storage_version ?? 1,
     };
   }
 
