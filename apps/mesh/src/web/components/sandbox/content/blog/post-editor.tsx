@@ -37,6 +37,7 @@ import {
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
+import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { InsertBlockDivider } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
 import { type RawBlock } from "./blocks/block-registry";
@@ -133,71 +134,77 @@ export function PostEditor({
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
-        <span className="truncate text-sm font-medium">
-          {str(post.title) || "Untitled post"}
-        </span>
-        <SaveStatus isPending={save.isPending} isError={save.isError} />
-      </div>
+    <BlogSandboxProvider
+      orgSlug={orgSlug}
+      virtualMcpId={virtualMcpId}
+      branch={branch}
+    >
+      <div className="flex h-full flex-col">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
+          <span className="truncate text-sm font-medium">
+            {str(post.title) || "Untitled post"}
+          </span>
+          <SaveStatus isPending={save.isPending} isError={save.isError} />
+        </div>
 
-      <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-8 py-8">
-          {/* Title — wraps onto multiple lines instead of truncating */}
-          <InlineText
-            value={str(post.title)}
-            onChange={(v) => setField("title", v)}
-            placeholder="Post title"
-            className="py-1 text-3xl font-bold text-foreground"
-          />
+        <div className="min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-8 py-8">
+            {/* Title — wraps onto multiple lines instead of truncating */}
+            <InlineText
+              value={str(post.title)}
+              onChange={(v) => setField("title", v)}
+              placeholder="Post title"
+              className="py-1 text-3xl font-bold text-foreground"
+            />
 
-          {/* Settings */}
-          <PostSettings post={post} decofile={decofile} onChange={setField} />
+            {/* Settings */}
+            <PostSettings post={post} decofile={decofile} onChange={setField} />
 
-          <div className="mt-6 border-t" />
+            <div className="mt-6 border-t" />
 
-          {/* Block document */}
-          <div className="mt-2">
-            {blocks.length === 0 && (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                This post has no content yet. Use ⊕ to add your first block.
-              </p>
-            )}
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={ids}
-                strategy={verticalListSortingStrategy}
+            {/* Block document */}
+            <div className="mt-2">
+              {blocks.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  This post has no content yet. Use ⊕ to add your first block.
+                </p>
+              )}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                <InsertBlockDivider
-                  blockTypes={blockTypes}
-                  onInsert={(rt) => insertAt(0, rt)}
-                  alwaysShow={blocks.length === 0}
-                />
-                {blockItems.map(({ id, block: blk }, index) => (
-                  <div key={id}>
-                    <BlockRow
-                      id={id}
-                      block={blk}
-                      meta={meta}
-                      onChange={(v) => updateAt(index, v)}
-                      onDelete={() => removeAt(index)}
-                    />
-                    <InsertBlockDivider
-                      blockTypes={blockTypes}
-                      onInsert={(rt) => insertAt(index + 1, rt)}
-                    />
-                  </div>
-                ))}
-              </SortableContext>
-            </DndContext>
+                <SortableContext
+                  items={ids}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <InsertBlockDivider
+                    blockTypes={blockTypes}
+                    onInsert={(rt) => insertAt(0, rt)}
+                    alwaysShow={blocks.length === 0}
+                  />
+                  {blockItems.map(({ id, block: blk }, index) => (
+                    <div key={id}>
+                      <BlockRow
+                        id={id}
+                        block={blk}
+                        meta={meta}
+                        onChange={(v) => updateAt(index, v)}
+                        onDelete={() => removeAt(index)}
+                      />
+                      <InsertBlockDivider
+                        blockTypes={blockTypes}
+                        onInsert={(rt) => insertAt(index + 1, rt)}
+                      />
+                    </div>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </BlogSandboxProvider>
   );
 }
 

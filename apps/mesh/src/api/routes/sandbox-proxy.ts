@@ -34,6 +34,7 @@ import {
   type GitStatusLike,
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
+import { parseLoaderInvokeRequest } from "@/web/components/sandbox/content/blog/blocks/product-loader-utils";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -520,6 +521,55 @@ export const createSandboxRoutes = () => {
     let upstream: Response;
     try {
       upstream = await fetch(`${base}${path}`);
+    } catch {
+      return c.json({ error: "Preview unreachable" }, 502);
+    }
+
+    const text = await upstream.text();
+    return new Response(text, {
+      status: upstream.status,
+      headers: {
+        "content-type":
+          upstream.headers.get("content-type") ?? "application/json",
+      },
+    });
+  });
+
+  // -- Preview invoke (loader/action resolution) ------------------------------
+  app.post("/:virtualMcpId/:branch/preview-invoke", async (c) => {
+    const runner = requireRunner(c);
+    if (runner instanceof Response) return runner;
+
+    const { claimName } = c.get("vmClaim");
+    const previewUrl = await runner.getPreviewUrl(claimName);
+    if (!previewUrl) {
+      return c.json({ error: "Preview not available" }, 502);
+    }
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const invoke = parseLoaderInvokeRequest(body as Record<string, unknown>);
+    if (!invoke) {
+      return c.json({ error: "Missing __resolveType" }, 400);
+    }
+
+    const base = previewUrl.replace(/\/+$/, "");
+    let upstream: Response;
+    try {
+      upstream = await fetch(`${base}/deco/invoke/${invoke.resolveType}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(invoke.payload),
+      });
     } catch {
       return c.json({ error: "Preview unreachable" }, 502);
     }

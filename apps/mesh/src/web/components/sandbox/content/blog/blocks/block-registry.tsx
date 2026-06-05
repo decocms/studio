@@ -20,14 +20,17 @@ import {
   StatGroupBlock,
   StepsBlock,
 } from "./list-blocks";
+import { ProductCardBlock, ProductShelfBlock } from "./product-blocks";
+import { blockComponentName } from "../blog-data";
 import { str } from "./primitives";
 
 export type RawBlock = { __resolveType?: string } & Record<string, unknown>;
 
 /**
  * Render a single block as its native, inline-editable representation
- * (Notion-style). Common blocks get bespoke editors; anything else falls
- * back to the schema-driven form so it stays editable.
+ * (Notion-style). Common blocks get bespoke editors matched by component
+ * filename (e.g. Paragraph.tsx), regardless of resolveType path prefix;
+ * anything else falls back to the schema-driven form so it stays editable.
  */
 export function BlockEditor({
   block,
@@ -39,9 +42,10 @@ export function BlockEditor({
   onChange: (next: RawBlock) => void;
 }) {
   const resolveType = block.__resolveType ?? "";
+  const componentName = blockComponentName(resolveType);
 
-  switch (resolveType) {
-    case "blog/sections/blocks/Paragraph.tsx":
+  switch (componentName) {
+    case "Paragraph":
       return (
         <RichTextBlock
           html={str(block.html)}
@@ -49,7 +53,7 @@ export function BlockEditor({
           onChange={(html) => onChange({ ...block, html })}
         />
       );
-    case "blog/sections/blocks/Heading.tsx":
+    case "Heading":
       return (
         <HeadingBlock
           text={str(block.text)}
@@ -57,14 +61,14 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
-    case "blog/sections/blocks/Quote.tsx":
+    case "Quote":
       return (
         <QuoteBlock
           quote={str(block.quote)}
           onChange={(quote) => onChange({ ...block, quote })}
         />
       );
-    case "blog/sections/blocks/Code.tsx":
+    case "Code":
       return (
         <CodeBlock
           code={str(block.code)}
@@ -72,7 +76,7 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
-    case "blog/sections/blocks/List.tsx":
+    case "List":
       return (
         <ListBlock
           items={str(block.items)}
@@ -80,9 +84,9 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
-    case "blog/sections/blocks/BlockImage.tsx":
+    case "BlockImage":
       return <BlockImageBlock block={block} onChange={onChange} />;
-    case "blog/sections/blocks/Video.tsx":
+    case "Video":
       return (
         <VideoBlock
           url={str(block.url)}
@@ -90,9 +94,9 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
-    case "blog/sections/blocks/Divider.tsx":
+    case "Divider":
       return <DividerBlock />;
-    case "blog/sections/blocks/Cta.tsx":
+    case "Cta":
       return (
         <CtaBlock
           text={str(block.text)}
@@ -100,7 +104,7 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
-    case "blog/sections/blocks/Callout.tsx":
+    case "Callout":
       return (
         <CalloutBlock
           title={str(block.title)}
@@ -109,7 +113,7 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
-    case "blog/sections/blocks/Stat.tsx":
+    case "Stat":
       return (
         <StatBlock
           value={str(block.value)}
@@ -118,14 +122,14 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
-    case "blog/sections/blocks/StatGroup.tsx":
+    case "StatGroup":
       return (
         <StatGroupBlock
           stats={str(block.stats)}
           onChange={(stats) => onChange({ ...block, stats })}
         />
       );
-    case "blog/sections/blocks/CardGroup.tsx":
+    case "CardGroup":
       return (
         <CardGroupBlock
           cards={
@@ -136,7 +140,7 @@ export function BlockEditor({
           onChange={(cards) => onChange({ ...block, cards })}
         />
       );
-    case "blog/sections/blocks/Checklist.tsx":
+    case "Checklist":
       return (
         <ChecklistBlock
           title={str(block.title)}
@@ -144,7 +148,7 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
-    case "blog/sections/blocks/Steps.tsx":
+    case "Steps":
       return (
         <StepsBlock
           title={str(block.title)}
@@ -152,7 +156,7 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
-    case "blog/sections/blocks/Comparison.tsx":
+    case "Comparison":
       return (
         <ComparisonBlock
           left={str(block.left)}
@@ -160,6 +164,10 @@ export function BlockEditor({
           onChange={(next) => onChange({ ...block, ...next })}
         />
       );
+    case "ProductCard":
+      return <ProductCardBlock block={block} onChange={onChange} />;
+    case "ProductShelf":
+      return <ProductShelfBlock block={block} onChange={onChange} />;
     default: {
       const schema = resolveType ? resolveSchema(resolveType, meta) : null;
       if (!schema) {

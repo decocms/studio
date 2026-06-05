@@ -264,7 +264,7 @@ export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
       const md = resolveBlockSchemaMetadata(resolveType, meta);
       out.push({
         resolveType,
-        title: md.title ?? blockTypeLabel(resolveType),
+        title: md.title ?? blockComponentName(resolveType),
         description: md.description,
         icon: md.icon,
       });
@@ -273,8 +273,8 @@ export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
   return out.sort((a, b) => a.title.localeCompare(b.title));
 }
 
-/** "blog/sections/blocks/Paragraph.tsx" -> "Paragraph" */
-function blockTypeLabel(resolveType: string): string {
+/** "site/sections/Blog/Post/Paragraph.tsx" -> "Paragraph" */
+export function blockComponentName(resolveType: string): string {
   const base = resolveType.split("/").pop() ?? resolveType;
   return base.replace(/\.(tsx?|jsx?)$/, "");
 }

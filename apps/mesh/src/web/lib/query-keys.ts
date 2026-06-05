@@ -354,6 +354,8 @@ export const KEYS = {
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
   liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
+  sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
+    ["sandbox-invoke", sandboxKey, loaderKey] as const,
 
   // Link daemon status (user-scoped; the cluster derives the userSub
   // from the bearer session, so we don't include it in the key).
