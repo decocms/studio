@@ -70,6 +70,12 @@ export const harnessStreamInputSchema = z
     triggerId: z.string().optional(),
     currentThreadTitle: z.string().optional(),
     traceparent: z.string().optional(),
+    /**
+     * Single-writer fence token for this run (spec §3.5). The desktop
+     * presents this on every POST .../stream append. Minted by
+     * prepareRun (Phase B), absent on ws-path runs.
+     */
+    runFenceToken: z.string().optional(),
   })
   .strip();
 
