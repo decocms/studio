@@ -51,15 +51,6 @@ export function InlineText({
   );
 }
 
-/** Faint field label used inside structured blocks. */
-export function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="mb-1 block text-[11px] font-medium text-muted-foreground/60">
-      {children}
-    </span>
-  );
-}
-
 export function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }

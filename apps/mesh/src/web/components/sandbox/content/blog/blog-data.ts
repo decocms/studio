@@ -141,7 +141,7 @@ export function scanBlogEntries(
 }
 
 /** Extract all blog records of a given kind, sorted by label. */
-export function extractBlogEntries(
+function extractBlogEntries(
   decofile: Record<string, unknown>,
   kind: BlogKind,
 ): BlogEntry[] {
@@ -157,17 +157,6 @@ export function listBlogPayloads(
     key: entry.key,
     payload: getBlogPayload(asRecord(decofile[entry.key]) ?? undefined, kind),
   }));
-}
-
-export function blogCounts(
-  decofile: Record<string, unknown>,
-): Record<BlogKind, number> {
-  const all = scanBlogEntries(decofile);
-  return {
-    posts: all.posts.length,
-    authors: all.authors.length,
-    categories: all.categories.length,
-  };
 }
 
 /** Read the editable payload (the `post`/`author`/`category` object). */
@@ -285,7 +274,7 @@ export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
 }
 
 /** "blog/sections/blocks/Paragraph.tsx" -> "Paragraph" */
-export function blockTypeLabel(resolveType: string): string {
+function blockTypeLabel(resolveType: string): string {
   const base = resolveType.split("/").pop() ?? resolveType;
   return base.replace(/\.(tsx?|jsx?)$/, "");
 }
