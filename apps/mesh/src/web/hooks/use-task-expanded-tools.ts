@@ -14,7 +14,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ThreadExpandedTool, ThreadMetadata } from "../../storage/types";
 import type { Task } from "../components/chat/task/types";
-import { useThreadManager } from "../components/chat/store/hooks";
+import { useOptionalThreadManager } from "../components/chat/store/hooks";
 import { KEYS } from "../lib/query-keys";
 
 export type { ThreadExpandedTool };
@@ -25,10 +25,10 @@ type ThreadGetItem = {
 
 type ThreadGetOutput = { item: ThreadGetItem };
 
-export function useTaskExpandedTools(taskId: string) {
+export function useTaskExpandedTools(taskId: string | null) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const manager = useThreadManager();
+  const manager = useOptionalThreadManager();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -37,6 +37,7 @@ export function useTaskExpandedTools(taskId: string) {
 
   const mutation = useMutation({
     mutationFn: async (tool: Omit<ThreadExpandedTool, "expandedAt">) => {
+      if (!taskId) throw new Error("useTaskExpandedTools: no task in context");
       const getResult = (await client.callTool({
         name: "COLLECTION_THREADS_GET",
         arguments: { id: taskId },
@@ -71,7 +72,7 @@ export function useTaskExpandedTools(taskId: string) {
       // the full Task row (shared with useEnsureTask + useTaskMetadata);
       // patch task.metadata.expanded_tools in place so reads via `select`
       // see the new entry.
-      const key = KEYS.ensureTask(org.id, taskId);
+      const key = KEYS.ensureTask(org.id, taskId ?? "");
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Task | null>(key);
       const currentTools: ThreadExpandedTool[] =
@@ -96,11 +97,11 @@ export function useTaskExpandedTools(taskId: string) {
     onSuccess: () => {
       // Thread update materializes from the next SSE event via ThreadManagerStore
       queryClient.invalidateQueries({
-        queryKey: KEYS.ensureTask(org.id, taskId),
+        queryKey: KEYS.ensureTask(org.id, taskId ?? ""),
       });
     },
     onError: (error, _tool, context) => {
-      const key = KEYS.ensureTask(org.id, taskId);
+      const key = KEYS.ensureTask(org.id, taskId ?? "");
       if (context?.previous === undefined) {
         queryClient.removeQueries({ queryKey: key, exact: true });
       } else {
@@ -120,6 +121,9 @@ export function useTaskExpandedTools(taskId: string) {
    * metadata (missing args) when the navigate() triggers a re-render.
    */
   const addOrReplaceEager = (tool: Omit<ThreadExpandedTool, "expandedAt">) => {
+    // No task/manager in context (e.g. read-only Monitor thread view) — the
+    // "open in panel" affordance is hidden there, so there is nothing to do.
+    if (!taskId || !manager) return;
     const key = KEYS.ensureTask(org.id, taskId);
     const previous = queryClient.getQueryData<Task | null>(key);
     const currentTools: ThreadExpandedTool[] =
