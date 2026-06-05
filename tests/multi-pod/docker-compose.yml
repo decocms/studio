@@ -97,6 +97,9 @@ services:
       # no sandbox is actually provisioned because ensureSandbox is lazy
       # (built-in-tools/index.ts) and the mock-ai test never emits tool calls.
       STUDIO_SANDBOX_PROVIDER: cluster
+      # Observe idle threads immediately (no settle delay) so the e2e doesn't
+      # have to wait; the threshold is a deployment-level knob, not per-org.
+      OBSERVATION_INACTIVE_MINUTES: "0"
     ports:
       - "127.0.0.1:13001:3000"
     # POD_NAME makes `run_owner_pod` match the compose service name

@@ -95,6 +95,33 @@ export type DefaultHomeAgentsConfig = z.infer<
 >;
 
 /**
+ * Observational agent config - per-org agent that observes idle threads.
+ */
+export const ObservationalConfigSchema = z.object({
+  agentId: z
+    .string()
+    .describe(
+      "Virtual MCP (agent) id that observes idle threads. Empty string disables observation.",
+    ),
+  skipAgentIds: z
+    .array(z.string())
+    .default([])
+    .describe("Agent ids whose threads the observer ignores."),
+  model: ModelSlotSchema.default(null).describe(
+    "Specific model the observer runs with (exact credential + model). When null, falls back to the org's fast tier.",
+  ),
+  configuredAt: z
+    .string()
+    .nullable()
+    .default(null)
+    .describe(
+      "ISO timestamp the observer was (re)enabled; the sweep only observes threads active at/after it. Set automatically server-side — observation is forward-only, never a history backfill.",
+    ),
+});
+
+export type ObservationalConfig = z.infer<typeof ObservationalConfigSchema>;
+
+/**
  * Brand context schema - org-scoped company profile
  */
 export const BrandContextSchema = z.object({

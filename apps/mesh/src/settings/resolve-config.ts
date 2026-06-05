@@ -52,6 +52,19 @@ export function resolveConfig(
 
   const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
 
+  // Observational-agent idle threshold (minutes). Deployment-level because it
+  // governs how much of the thread table the sweep scans / how many runs it
+  // fires. Allows 0 ("no settle delay"); defaults to 30 when unset/invalid.
+  const obsInactiveRaw = envVars.OBSERVATION_INACTIVE_MINUTES;
+  const obsInactiveNum =
+    obsInactiveRaw && obsInactiveRaw.trim() !== ""
+      ? Number(obsInactiveRaw)
+      : Number.NaN;
+  const observationInactiveMinutes =
+    Number.isFinite(obsInactiveNum) && obsInactiveNum >= 0
+      ? obsInactiveNum
+      : 30;
+
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
     nodeEnv,
@@ -85,6 +98,9 @@ export function resolveConfig(
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
+
+    // Observational agent
+    observationInactiveMinutes,
 
     // Object Storage (S3-compatible)
     s3Endpoint: envVars.S3_ENDPOINT,

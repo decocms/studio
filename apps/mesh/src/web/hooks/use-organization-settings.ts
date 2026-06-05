@@ -38,6 +38,14 @@ export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
 
+export interface ObservationalConfig {
+  agentId: string;
+  skipAgentIds: string[];
+  model: ModelSlot | null;
+  /** Set server-side on (re)enable; observation is forward-only from this instant. */
+  configuredAt: string | null;
+}
+
 export interface OrganizationSettings {
   organizationId: string;
   sidebar_items: unknown[] | null;
@@ -45,6 +53,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
+  observational_config: ObservationalConfig | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -56,6 +65,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   registry_config: null,
   simple_mode: null,
   default_home_agents: null,
+  observational_config: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -150,6 +160,7 @@ type OrgSettingsUpdateInput = Partial<
     | "registry_config"
     | "simple_mode"
     | "default_home_agents"
+    | "observational_config"
   >
 >;
 
@@ -356,6 +367,24 @@ export function useHomeAgentsWriter(): HomeAgentsWriter {
   };
 
   return { currentIds, apply };
+}
+
+export function useObservationalConfig(): ObservationalConfig | null {
+  const { data } = useOrganizationSettings((s) => s.observational_config);
+  return data ?? null;
+}
+
+export function useUpdateObservationalConfig() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutate: (config: ObservationalConfig, options?: OrgSettingsMutateOptions) =>
+      mutation.mutate({ observational_config: config }, options),
+    mutateAsync: (
+      config: ObservationalConfig,
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutateAsync({ observational_config: config }, options),
+  };
 }
 
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {

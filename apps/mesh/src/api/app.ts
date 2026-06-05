@@ -120,6 +120,12 @@ import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import type { Thread } from "../storage/types";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
+import {
+  OBSERVATION_GLOBAL_CONCURRENCY,
+  OBSERVATION_GLOBAL_QUEUE,
+  registerObservationSweepWorkflow,
+  setObservationalRuntime,
+} from "../observation";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
@@ -1367,6 +1373,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
 
+  // Observational agent sweep. Reuses the automation context factory + thread
+  // storage; the scheduled workflow must be registered before DBOS.launch().
+  setObservationalRuntime({
+    db: database.db,
+    threadStorage,
+    meshContextFactory: automationContextFactory,
+    inactiveMinutes: getSettings().observationInactiveMinutes,
+  });
+  registerObservationSweepWorkflow();
+
   const automationRunner: MeshContext["automationRunner"] = async (
     automationId,
     orgId,
@@ -2135,6 +2151,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     await DBOS.registerQueue(THREAD_GATE_QUEUE, {
       partitionQueue: true,
       concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
+    });
+    // Caps concurrently-executing observer runs cluster-wide; the sweep enqueues
+    // a per-fire wrapper here that holds a slot until its run completes.
+    await DBOS.registerQueue(OBSERVATION_GLOBAL_QUEUE, {
+      concurrency: OBSERVATION_GLOBAL_CONCURRENCY,
     });
     await reconcileAutomationSchedules(automationsStorage);
 

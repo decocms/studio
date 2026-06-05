@@ -152,6 +152,36 @@ export class OrgScopedThreadStorage {
 // Thread Storage Implementation
 // ============================================================================
 
+/**
+ * Narrow projection returned by {@link SqlThreadStorage.listObservableThreads}.
+ * Only the fields the observational sweep needs to build an observer run.
+ */
+export interface ObservableThread {
+  id: string;
+  title: string;
+  virtual_mcp_id: string;
+  created_by: string;
+  /** ISO text; passed back verbatim to markObserved as the watermark. */
+  updated_at: string;
+}
+
+export interface ListObservableThreadsParams {
+  organizationId: string;
+  /** The observer agent itself — never observe its own threads. */
+  observerAgentId: string;
+  /** Agent ids to skip (in addition to the observer). */
+  skipAgentIds: string[];
+  /** Threads with updated_at <= this ISO instant are considered idle. */
+  inactiveBeforeIso: string;
+  /**
+   * Lower bound (ISO): only threads with activity at/after this are eligible.
+   * The observer's configuredAt — makes observation forward-only, so enabling
+   * never backfills the org's pre-existing history.
+   */
+  observeFromIso: string;
+  limit: number;
+}
+
 export class SqlThreadStorage implements ThreadStoragePort {
   constructor(private db: Kysely<Database>) {}
 
@@ -821,6 +851,130 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   // ==========================================================================
+  // Observational Agent System Operations (not exposed via OrgScopedThreadStorage)
+  // ==========================================================================
+
+  /**
+   * Lists idle, observable threads for one org, oldest-idle first. Excludes the
+   * observer's own threads (loop prevention), skip-listed agents, hidden
+   * threads, automation/trigger threads, and threads already observed at their
+   * current activity watermark (last_observed_at >= updated_at). Bounded by
+   * `limit`. Backed by idx_threads_org_updated.
+   */
+  async listObservableThreads(
+    params: ListObservableThreadsParams,
+  ): Promise<ObservableThread[]> {
+    const {
+      organizationId,
+      observerAgentId,
+      skipAgentIds,
+      inactiveBeforeIso,
+      observeFromIso,
+    } = params;
+    let query = this.db
+      .selectFrom("threads")
+      .select(["id", "title", "virtual_mcp_id", "created_by", "updated_at"])
+      .where("organization_id", "=", organizationId)
+      .where("hidden", "=", false)
+      .where("trigger_id", "is", null)
+      // Exclude observer-run output threads structurally (not just by the
+      // current observer id) so reconfiguring the observer agent can't make the
+      // new observer observe the old observer's outputs.
+      .where("is_observation", "=", false)
+      .where("virtual_mcp_id", "!=", observerAgentId)
+      .where("virtual_mcp_id", "!=", "")
+      // forward-only: only activity at/after the observer was configured
+      .where("updated_at", ">=", observeFromIso as unknown as Date)
+      // idle: no activity since the cutoff (updated_at is ISO text — lexical compare)
+      .where("updated_at", "<=", inactiveBeforeIso as unknown as Date)
+      // not yet observed at the current activity watermark
+      .where((eb) =>
+        eb.or([
+          eb("last_observed_at", "is", null),
+          eb("last_observed_at", "<", eb.ref("updated_at")),
+        ]),
+      )
+      .orderBy("updated_at", "asc")
+      .limit(params.limit);
+
+    if (skipAgentIds.length > 0) {
+      query = query.where("virtual_mcp_id", "not in", skipAgentIds);
+    }
+
+    const rows = await query.execute();
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      virtual_mcp_id: row.virtual_mcp_id ?? "",
+      created_by: row.created_by,
+      updated_at: toIsoString(row.updated_at),
+    }));
+  }
+
+  /**
+   * Records the observational watermark. `observedAtIso` MUST be the thread's
+   * `updated_at` captured at selection time (NOT now()), so any activity
+   * arriving mid-sweep re-qualifies the thread on the next pass. Deliberately
+   * does NOT touch `updated_at` — bumping it would make idle threads look active.
+   */
+  async markObserved(
+    threadId: string,
+    organizationId: string,
+    observedAtIso: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ last_observed_at: observedAtIso })
+      .where("id", "=", threadId)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
+  /**
+   * Creates the (visible) thread row an observer run executes in. Mirrors
+   * AutomationsStorage.createAutomationRunThread: `created_by` is the observer
+   * agent's owner (REQUIRED — dispatch rejects mismatched ownership),
+   * `virtual_mcp_id` is the observer agent (which keeps these threads out of
+   * future sweeps), and metadata records which thread it observes.
+   *
+   * `taskId` is supplied by the caller and is deterministic per (source thread,
+   * activity watermark); combined with `onConflict doNothing` this makes the
+   * insert idempotent, so a DBOS step retry/replay can't orphan a duplicate
+   * observer thread. Returns the (possibly pre-existing) id.
+   */
+  async createObservationRunThread(params: {
+    taskId: string;
+    organizationId: string;
+    observerAgentId: string;
+    observerCreatedBy: string;
+    sourceThreadId: string;
+    sourceTitle: string;
+  }): Promise<string> {
+    const now = new Date().toISOString();
+    await this.db
+      .insertInto("threads")
+      .values({
+        id: params.taskId,
+        organization_id: params.organizationId,
+        title: `Observation: ${params.sourceTitle}`,
+        description: null,
+        status: "in_progress",
+        trigger_id: null,
+        virtual_mcp_id: params.observerAgentId,
+        hidden: false,
+        is_observation: true,
+        metadata: JSON.stringify({ observation_of: params.sourceThreadId }),
+        created_at: now,
+        updated_at: now,
+        created_by: params.observerCreatedBy,
+        updated_by: null,
+      })
+      .onConflict((oc) => oc.column("id").doNothing())
+      .execute();
+    return params.taskId;
+  }
+
+  // ==========================================================================
   // Private Helper Methods
   // ==========================================================================
 
@@ -839,6 +993,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     branch?: string | null;
     sandbox_provider_kind?: string | null;
     harness_id?: string | null;
+    last_observed_at?: string | Date | null;
     metadata?: ThreadMetadata | string | null;
     created_at: Date | string;
     updated_at: Date | string;
@@ -880,6 +1035,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       branch: row.branch ?? null,
       sandbox_provider_kind: row.sandbox_provider_kind ?? null,
       harness_id: row.harness_id ?? null,
+      last_observed_at: row.last_observed_at
+        ? toIsoString(row.last_observed_at)
+        : null,
       metadata,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),

@@ -152,6 +152,34 @@ export async function resolveTier(
   };
 }
 
+/**
+ * Resolve a specific (credential, model) pair the way {@link resolveTier}
+ * resolves a tier slot — for callers that pin an exact model instead of a tier
+ * (e.g. the observational agent). Returns null if the credential no longer
+ * exists, so the caller can fall back to a tier.
+ */
+export async function resolveExplicitModel(
+  ctx: MeshContext,
+  keyId: string,
+  modelId: string,
+  fallbackTitle?: string,
+): Promise<ResolvedTier | null> {
+  const orgId = ctx.organization?.id;
+  if (!orgId) {
+    throw new Error("resolveExplicitModel called without an organization");
+  }
+  const keys = await ctx.storage.aiProviderKeys.list({ organizationId: orgId });
+  if (!keys.some((k) => k.id === keyId)) return null;
+  const catalog = await fetchModelList(ctx, keyId, orgId).catch(
+    () => [] as AiProviderModel[],
+  );
+  return {
+    credentialId: keyId,
+    modelId,
+    modelMeta: metaFromCatalogEntry(catalog, modelId, fallbackTitle),
+  };
+}
+
 export async function tryResolveTier(
   ctx: MeshContext,
   tier: SimpleModeTier,

@@ -152,6 +152,21 @@ export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
 
+export interface ObservationalConfig {
+  /** Virtual MCP (agent) id that observes idle threads. Empty string disables the feature. */
+  agentId: string;
+  /** Agent ids whose threads the observer ignores. */
+  skipAgentIds: string[];
+  /** Specific model the observer runs with. null → fall back to the fast tier. */
+  model: SimpleModeModelSlot | null;
+  /**
+   * ISO timestamp the observer was (re)enabled. The sweep only considers threads
+   * with activity at/after this — observation is forward-only, never a history
+   * backfill. null when disabled. Set server-side by ORGANIZATION_SETTINGS_UPDATE.
+   */
+  configuredAt: string | null;
+}
+
 export interface OrganizationSettingsTable {
   organizationId: string;
   sidebar_items: JsonArray<SidebarItem[]> | null;
@@ -159,6 +174,7 @@ export interface OrganizationSettingsTable {
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
+  observational_config: JsonObject<ObservationalConfig> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -170,6 +186,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
+  observational_config: ObservationalConfig | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -862,6 +879,22 @@ export interface ThreadTable {
   sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
+  /**
+   * High-water mark (ISO text) of the last observational-sweep pass over this
+   * thread. NULL until first observed. Compared lexically against updated_at;
+   * typed like updated_at so column-to-column comparisons line up.
+   */
+  last_observed_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  /**
+   * True for observer-run output threads. Lets the observational sweep exclude
+   * them structurally (independent of the current observer agent id), the way
+   * automation threads are excluded via trigger_id.
+   */
+  is_observation: ColumnType<boolean, boolean | undefined, boolean>;
   /** Per-task UI state (e.g., expanded_tools for right-panel tabs) */
   metadata: ColumnType<ThreadMetadata, string | undefined, string>;
   created_at: ColumnType<Date, Date | string, never>;
@@ -906,6 +939,8 @@ export interface Thread {
   sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
+  /** High-water mark (ISO text) of the last observational-sweep pass; NULL until observed. */
+  last_observed_at: string | null;
   metadata: ThreadMetadata;
 }
 

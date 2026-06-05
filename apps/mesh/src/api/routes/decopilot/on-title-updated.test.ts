@@ -28,6 +28,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     branch: null,
     sandbox_provider_kind: null,
     harness_id: null,
+    last_observed_at: null,
     created_at: "2024-01-01T00:00:00.000Z",
     updated_at: "2024-01-02T00:00:00.000Z",
     run_owner_pod: null,

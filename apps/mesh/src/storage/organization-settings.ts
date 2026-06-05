@@ -45,6 +45,11 @@ export class OrganizationSettingsStorage
           ? JSON.parse(record.default_home_agents)
           : record.default_home_agents
         : null,
+      observational_config: record.observational_config
+        ? typeof record.observational_config === "string"
+          ? JSON.parse(record.observational_config)
+          : record.observational_config
+        : null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -60,6 +65,7 @@ export class OrganizationSettingsStorage
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
+        | "observational_config"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -79,6 +85,9 @@ export class OrganizationSettingsStorage
     const defaultHomeAgentsJson = data?.default_home_agents
       ? JSON.stringify(data.default_home_agents)
       : null;
+    const observationalConfigJson = data?.observational_config
+      ? JSON.stringify(data.observational_config)
+      : null;
 
     await this.db
       .insertInto("organization_settings")
@@ -89,6 +98,7 @@ export class OrganizationSettingsStorage
         registry_config: registryConfigJson,
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
+        observational_config: observationalConfigJson,
         createdAt: now,
         updatedAt: now,
       })
@@ -100,6 +110,9 @@ export class OrganizationSettingsStorage
           simple_mode: simpleModeJson ? simpleModeJson : undefined,
           default_home_agents: defaultHomeAgentsJson
             ? defaultHomeAgentsJson
+            : undefined,
+          observational_config: observationalConfigJson
+            ? observationalConfigJson
             : undefined,
           updatedAt: now,
         }),
@@ -116,6 +129,7 @@ export class OrganizationSettingsStorage
         registry_config: data?.registry_config ?? null,
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
+        observational_config: data?.observational_config ?? null,
         createdAt: now,
         updatedAt: now,
       };

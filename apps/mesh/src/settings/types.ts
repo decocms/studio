@@ -42,6 +42,10 @@ export interface Settings {
   // Feature Flags
   enableDecoImport: boolean;
 
+  // Observational agent — minutes a thread must be idle before it is observed.
+  // Deployment-level (drives sweep volume / DB load), not a per-org setting.
+  observationInactiveMinutes: number;
+
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;
   s3Bucket: string | undefined;

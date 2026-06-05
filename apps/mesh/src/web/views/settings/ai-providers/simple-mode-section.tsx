@@ -70,7 +70,7 @@ const TIER_ROWS = [
   },
 ] as const;
 
-function SimpleModeModelRow({
+export function SimpleModeModelRow({
   slot,
   onSlotChange,
   filterModels,
