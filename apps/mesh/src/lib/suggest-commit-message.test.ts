@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildCommitContextSummary,
   fallbackCommitSuggestion,
+  isGitStatusLike,
   parseCommitSuggestionJson,
 } from "./suggest-commit-message";
 
@@ -25,6 +26,26 @@ describe("parseCommitSuggestionJson", () => {
     const result = parseCommitSuggestionJson("Plain title\n\nMore detail");
     expect(result?.title).toBe("Plain title");
     expect(result?.body).toBe("More detail");
+  });
+});
+
+describe("isGitStatusLike", () => {
+  test("accepts valid status shape", () => {
+    expect(
+      isGitStatusLike({
+        modified: [],
+        created: [],
+        deleted: [],
+        not_added: [],
+      }),
+    ).toBe(true);
+  });
+
+  test("rejects non-objects and arrays", () => {
+    expect(isGitStatusLike(null)).toBe(false);
+    expect(isGitStatusLike("status")).toBe(false);
+    expect(isGitStatusLike([])).toBe(false);
+    expect(isGitStatusLike({ modified: [] })).toBe(false);
   });
 });
 

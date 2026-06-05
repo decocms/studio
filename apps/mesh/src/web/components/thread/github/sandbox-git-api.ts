@@ -250,8 +250,18 @@ export function hasLocalWorkToPush(
   status: GitStatus | null | undefined,
 ): boolean {
   if (!status) return false;
+  if (
+    hasGitLocalWork(status) ||
+    status.ahead > 0 ||
+    (status.unpushed ?? 0) > 0
+  ) {
+    return true;
+  }
+  // Legacy sandboxes omitted unpushed until origin/<branch> existed remotely.
   return (
-    hasGitLocalWork(status) || status.ahead > 0 || (status.unpushed ?? 0) > 0
+    status.unpushed === undefined &&
+    (status.aheadOfBase ?? 0) > 0 &&
+    status.tracking == null
   );
 }
 

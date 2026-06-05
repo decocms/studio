@@ -15,6 +15,19 @@ export interface GitStatusLike {
   not_added: string[];
 }
 
+export function isGitStatusLike(value: unknown): value is GitStatusLike {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.modified) &&
+    Array.isArray(record.created) &&
+    Array.isArray(record.deleted) &&
+    Array.isArray(record.not_added)
+  );
+}
+
 export interface GitDiffLike {
   diffs: Record<string, { from: string | null; to: string | null }>;
 }
