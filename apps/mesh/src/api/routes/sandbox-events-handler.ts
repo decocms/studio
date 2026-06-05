@@ -18,7 +18,11 @@ import { delay } from "@decocms/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { StudioContext } from "../../core/studio-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
-import { readSandboxMap, resolveVm } from "../../tools/sandbox/sandbox-map";
+import {
+  readSandboxMap,
+  removeSandboxMapEntry,
+  resolveVm,
+} from "../../tools/sandbox/sandbox-map";
 import type { Env } from "../hono-env";
 
 /**
@@ -44,6 +48,7 @@ export interface VmEventsHandlerArgs {
   ctx: StudioContext;
   claimName: string;
   runner: SandboxProvider;
+  virtualMcpId: string;
   branch: string;
   userId: string;
   projectRef: string;
@@ -55,6 +60,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     ctx,
     claimName,
     runner,
+    virtualMcpId,
     branch,
     userId,
     projectRef,
@@ -97,6 +103,8 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
             ctx,
             runner,
             claimName,
+            virtualMcpId,
+            branch,
             userId,
             projectRef,
             sandboxProviderKind: existingProviderKind ?? providerKind,
@@ -149,12 +157,42 @@ async function cleanupStaleEntry(args: {
   ctx: StudioContext;
   runner: SandboxProvider;
   claimName: string;
+  virtualMcpId: string;
+  branch: string;
   userId: string;
   projectRef: string;
   sandboxProviderKind: SandboxProviderKind;
 }): Promise<void> {
-  const { ctx, runner, claimName, userId, projectRef, sandboxProviderKind } =
-    args;
+  const {
+    ctx,
+    runner,
+    claimName,
+    virtualMcpId,
+    branch,
+    userId,
+    projectRef,
+    sandboxProviderKind,
+  } = args;
+  // Drop the sandboxMap entry first. Without this the dangling `sandboxHandle`
+  // stays in the virtualmcp metadata, so every client SSE reconnect re-enters
+  // this stale path and re-issues a DELETE against the already-gone claim — a
+  // 404 flood that only stops when the tab closes. Mirrors SANDBOX_DELETE.
+  try {
+    await removeSandboxMapEntry(
+      ctx.storage.virtualMcps,
+      virtualMcpId,
+      userId,
+      userId,
+      branch,
+      sandboxProviderKind,
+    );
+  } catch (err) {
+    console.warn(
+      `[vm-events] sandboxMap cleanup failed for ${virtualMcpId}/${branch}/${sandboxProviderKind}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
   try {
     await runner.delete(claimName);
   } catch (err) {
