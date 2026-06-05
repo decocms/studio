@@ -18,13 +18,22 @@ import { decide } from "./run-decider";
 import { project } from "./run-projector";
 import type { RunReactorDeps } from "./run-reactor";
 import { reactAll } from "./run-reactor";
+import { isRunStuck } from "./liveness";
 import type { Thread } from "@/storage/types";
 import { meter } from "@/observability";
 
 export type { RunReactorDeps };
 
 const REAP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const MAX_RUN_AGE_MS = 30 * 60 * 1000; // 30 minutes
+/**
+ * Idle timeout for the PROGRESS-based reaper. A run is reaped only after it has
+ * gone `RUN_IDLE_TIMEOUT_MS` with no progress (no `last_progress_at` bump and,
+ * as a fallback for runs that never bumped, no time since `startedAt`). This
+ * replaces the old absolute 30-min age cap so legitimate hours-long runs that
+ * keep streaming are never killed (A1), while a flapping run that resumes but
+ * makes no real progress still trips (A2).
+ */
+const RUN_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 /** Events that mark a new inflight run. */
 const INFLIGHT_START_EVENTS = new Set(["RUN_STARTED", "RUN_RESUMED"]);
@@ -50,10 +59,11 @@ export class RunRegistry {
     private readonly podId: string,
     private readonly clock: () => Date = () => new Date(),
   ) {
-    this.reaperTimer = setInterval(
-      () => this.reapStaleRuns(),
-      REAP_INTERVAL_MS,
-    );
+    this.reaperTimer = setInterval(() => {
+      this.reapStaleRuns().catch((err) => {
+        console.error("[RunRegistry] Reaper sweep failed", err);
+      });
+    }, REAP_INTERVAL_MS);
   }
 
   /**
@@ -252,24 +262,69 @@ export class RunRegistry {
     }
   }
 
-  private reapStaleRuns(): void {
+  /**
+   * Progress-based reaper. For each running run, read the thread's
+   * `last_progress_at` and force-fail only when `isRunStuck` — i.e. no progress
+   * within `RUN_IDLE_TIMEOUT_MS`. When `last_progress_at` is null (a brand-new
+   * run that hasn't streamed a chunk yet), the run's in-memory `startedAt` is
+   * the baseline, so a just-started run is never instakilled. A DB read failure
+   * is treated as "made progress" (skip) — the reaper must never kill a run on
+   * a transient storage blip.
+   *
+   * Async (the previous version was sync) because it reads progress per run;
+   * the timer fires it fire-and-forget.
+   */
+  private async reapStaleRuns(): Promise<void> {
     const now = this.clock().getTime();
-    for (const [taskId, state] of this.states) {
-      if (
-        state.status.tag === "running" &&
-        now - state.status.startedAt.getTime() > MAX_RUN_AGE_MS
-      ) {
-        console.warn(
-          `[RunRegistry] Reaping stale run for thread ${taskId} ...`,
-        );
-        this.execute({
-          type: "FORCE_FAIL",
+    // Snapshot to avoid mutating the map while iterating across awaits.
+    const running = [...this.states].filter(
+      ([, state]) => state.status.tag === "running",
+    );
+    for (const [taskId, state] of running) {
+      // Re-check liveness: the run may have finished during a prior await.
+      const current = this.states.get(taskId);
+      if (current?.status.tag !== "running") continue;
+
+      let lastProgressAt: number;
+      try {
+        const progress = await this.deps.storage.getProgress(
           taskId,
-          reason: "reaped",
-        }).catch((err) => {
-          console.error("[RunRegistry] Reaper execute failed", err);
-        });
+          state.orgId,
+        );
+        // Baseline when the run hasn't recorded progress yet: its in-memory
+        // start time. We use `state.status.startedAt` (this pod's clock, the
+        // same one the reaper reads `now` from) rather than the DB
+        // `run_started_at` (a wall-clock string written by whichever pod
+        // claimed the run) so the idle window is measured consistently and a
+        // brand-new run is never instakilled.
+        lastProgressAt =
+          progress?.lastProgressAt ?? state.status.startedAt.getTime();
+      } catch (err) {
+        // Storage blip — assume progress, skip this sweep for this run.
+        console.warn(
+          `[RunRegistry] Reaper progress read failed for ${taskId}; skipping`,
+          err,
+        );
+        continue;
       }
+
+      if (
+        !isRunStuck({ lastProgressAt, now, idleTimeoutMs: RUN_IDLE_TIMEOUT_MS })
+      )
+        continue;
+
+      console.warn(
+        `[RunRegistry] Reaping stuck run for thread ${taskId} (idle > ${
+          RUN_IDLE_TIMEOUT_MS / 60_000
+        }m) ...`,
+      );
+      await this.execute({
+        type: "FORCE_FAIL",
+        taskId,
+        reason: "reaped",
+      }).catch((err) => {
+        console.error("[RunRegistry] Reaper execute failed", err);
+      });
     }
   }
 }

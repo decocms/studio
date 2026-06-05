@@ -45,6 +45,8 @@ import {
 } from "@/harnesses/decopilot/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { loadAndMergeMessages } from "./conversation";
+import { PartEmitter } from "./part-emitter";
+import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import type { ToolApprovalLevel } from "./helpers";
 import { type ChatMode } from "./mode-config";
@@ -70,6 +72,46 @@ import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
 import { traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
+
+/**
+ * Process-wide progress-bump throttle (Task 9, A1/A2). One instance shared by
+ * every run on this pod — it dedupes `last_progress_at` writes to ≤1 per ~3s
+ * per task. Lives at module scope (not per-run) so its per-task last-bump map
+ * survives across the multiple `prepareRun` invocations a thread may see.
+ */
+const progressThrottle = new ProgressBumpThrottle();
+
+/**
+ * Tap a UI stream so each chunk drives a THROTTLED `last_progress_at` bump.
+ * Pure pass-through: every chunk is forwarded unchanged; the bump is a
+ * fire-and-forget side effect that never blocks or fails the stream. This is
+ * the run's liveness heartbeat — the reaper reads `last_progress_at` to decide
+ * whether a run is stuck.
+ */
+function tapProgress(
+  stream: ReadableStream<unknown>,
+  ctx: StudioContext,
+  taskId: string,
+): ReadableStream<unknown> {
+  return stream.pipeThrough(
+    new TransformStream<unknown, unknown>({
+      transform(chunk, controller) {
+        if (progressThrottle.shouldBump(taskId)) {
+          ctx.storage.threads.bumpProgress(taskId).catch(() => {
+            // Heartbeat is best-effort; a failed bump just means the reaper
+            // may rely on an older timestamp. Never surface to the stream.
+          });
+        }
+        controller.enqueue(chunk);
+      },
+      flush() {
+        // Run ended — drop this task's throttle state so the map can't grow
+        // unbounded across many short-lived threads.
+        progressThrottle.clear(taskId);
+      },
+    }),
+  );
+}
 
 /**
  * Classify a stream error into a small, stable taxonomy for analytics.
@@ -683,6 +725,26 @@ async function prepareRun(
       });
     };
 
+    // ── Stream-of-record v2 write path (canary-gated; OFF by default) ───────
+    // `isV2` is read straight off the thread row's pinned
+    // `message_storage_version`. When 1 (the default for every existing
+    // thread), `partEmitter` is null and the v1 `saveMessagesToThread` path
+    // below runs byte-for-byte unchanged. When 2 (only ever set on a
+    // brand-new thread by the canary at the first-message pin site in
+    // routes.ts), parts are emitted via the PartEmitter at the same hooks
+    // INSTEAD of `saveMessagesToThread`. The two paths are mutually exclusive
+    // — no thread is ever written through both.
+    const isV2 = mem.thread.message_storage_version === 2;
+    const partEmitter = isV2
+      ? new PartEmitter({
+          storage: ctx.storage.threads.messageParts(),
+          orgId: input.organizationId,
+          threadId: mem.thread.id,
+          // RunRegistry keys runs by taskId; the thread id is the run id.
+          runId: mem.thread.id,
+        })
+      : null;
+
     if (!virtualMcp) {
       throw new Error("Agent not found");
     }
@@ -771,7 +833,20 @@ async function prepareRun(
           "No user message found in input — expected at least one non-system message",
         );
       }
-      await saveMessagesToThread(materializedRequestMessage);
+      if (partEmitter) {
+        // v2: persist the user message's parts + a finish anchor so the
+        // message is immediately complete in the parts read path.
+        await partEmitter
+          .emitUserMessage(materializedRequestMessage)
+          .catch((error) => {
+            console.error(
+              "[decopilot:stream] v2 user-message emit failed",
+              error,
+            );
+          });
+      } else {
+        await saveMessagesToThread(materializedRequestMessage);
+      }
     }
 
     let streamFinished = false;
@@ -1046,7 +1121,15 @@ async function prepareRun(
         streamFinished = true;
 
         await Promise.allSettled(pendingOps);
-        await saveMessagesToThread(responseMessage);
+        if (partEmitter) {
+          // v2: persist any remaining final parts + close the assistant
+          // message with a finish anchor.
+          await partEmitter.emitFinal(responseMessage).catch((error) => {
+            console.error("[decopilot:stream] v2 onFinish emit failed", error);
+          });
+        } else {
+          await saveMessagesToThread(responseMessage);
+        }
 
         if (registrySignal.aborted) return;
 
@@ -1113,17 +1196,33 @@ async function prepareRun(
             }),
           );
         }
-        const stepEvent = transitions[0]?.event;
-        const shouldSave = input.isResume
-          ? stepEvent?.type === "STEP_COMPLETED"
-          : stepEvent?.type === "STEP_COMPLETED" &&
-            stepEvent.stepCount % 5 === 0;
-        if (shouldSave) {
+        if (partEmitter) {
+          // v2: a finished step's parts are FINAL — persist any newly-final
+          // parts every step (the durable incremental write). No finish
+          // anchor yet; the assistant message may continue in later steps.
           pendingOps.push(
-            saveMessagesToThread(responseMessage).catch((e) => {
-              console.error("[decopilot:stream] onStepFinish save failed", e);
+            partEmitter.emitStepParts(responseMessage).catch((e) => {
+              console.error(
+                "[decopilot:stream] v2 onStepFinish emit failed",
+                e,
+              );
             }),
           );
+        } else {
+          // v1 (unchanged): coarse whole-message checkpoints — every step on
+          // resume, every 5th step otherwise.
+          const stepEvent = transitions[0]?.event;
+          const shouldSave = input.isResume
+            ? stepEvent?.type === "STEP_COMPLETED"
+            : stepEvent?.type === "STEP_COMPLETED" &&
+              stepEvent.stepCount % 5 === 0;
+          if (shouldSave) {
+            pendingOps.push(
+              saveMessagesToThread(responseMessage).catch((e) => {
+                console.error("[decopilot:stream] onStepFinish save failed", e);
+              }),
+            );
+          }
         }
       },
       onError: (error) => {
@@ -1173,14 +1272,22 @@ async function prepareRun(
         // pairs user/assistant by created_at and drops orphan assistants.
         // Particularly important for background runs (cron/webhook/event
         // automations) where the user has no console to read the error from.
-        saveMessagesToThread({
-          id: crypto.randomUUID(),
-          role: "assistant",
-          parts: [{ type: "text", text: `Error: ${sanitized}` }],
-          metadata: { errorCategory: classifyStreamError(error) },
-        } as ChatMessage).catch((e) => {
-          console.error("[decopilot:stream] error-message save failed", e);
-        });
+        if (partEmitter) {
+          // v2: emit an `error` part + finish anchor for a fresh assistant
+          // message id.
+          partEmitter.emitError(generateMessageId(), sanitized).catch((e) => {
+            console.error("[decopilot:stream] v2 error emit failed", e);
+          });
+        } else {
+          saveMessagesToThread({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            parts: [{ type: "text", text: `Error: ${sanitized}` }],
+            metadata: { errorCategory: classifyStreamError(error) },
+          } as ChatMessage).catch((e) => {
+            console.error("[decopilot:stream] error-message save failed", e);
+          });
+        }
 
         runRegistry
           .execute({
@@ -1200,9 +1307,15 @@ async function prepareRun(
     // which drains it with a reader loop and resolves when the run
     // finishes. When a streamBuffer is configured the run also pumps into
     // JetStream so `/stream` tails see chunks live across runs and tabs.
+    //
+    // Wrap the stream with a throttled progress tap (Task 9): every chunk
+    // that flows out is "progress", collapsed to ≤1 `last_progress_at` write
+    // per ~3s per run. The single consumer downstream (pump or direct drain)
+    // pulls through this tap, so the heartbeat fires regardless of which
+    // consumption path runs.
     return {
       taskId: mem.thread.id,
-      uiStream,
+      uiStream: tapProgress(uiStream, ctx, mem.thread.id),
       registrySignal,
     };
   } catch (err) {

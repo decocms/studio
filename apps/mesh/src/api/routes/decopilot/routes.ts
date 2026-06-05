@@ -52,6 +52,7 @@ import {
   type SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 import { resolveDefaultSandboxProviderKind } from "@/sandbox/resolve-default-provider-kind";
+import { shouldPinV2FromEnv } from "./v2-canary";
 import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 
@@ -555,6 +556,28 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         pinnedHarness = pinnedHarness ?? input.harnessId ?? credentialHarness;
 
         if (existingThread) {
+          // Stream-of-record v2 canary (DEFAULTS OFF via
+          // STREAM_OF_RECORD_V2_PERCENT). Pin v2 ONLY when (a) the thread has
+          // no prior messages and is not already v2, AND (b) the deterministic
+          // canary predicate selects this thread id. Off by default → every
+          // thread stays message_storage_version=1 and the v1 path is
+          // byte-for-byte unchanged. The message-count probe runs only when
+          // the canary would otherwise fire, so the default path adds no DB
+          // read.
+          let pinV2 = false;
+          if (
+            existingThread.message_storage_version !== 2 &&
+            shouldPinV2FromEnv(taskId)
+          ) {
+            try {
+              const { total } = await ctx.storage.threads.listMessages(taskId, {
+                limit: 1,
+              });
+              pinV2 = total === 0;
+            } catch {
+              pinV2 = false;
+            }
+          }
           try {
             // Persist `branch` unconditionally on the initial pin write so
             // the thread row is the single source of truth the lock guard
@@ -571,6 +594,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               sandbox_provider_kind: pinnedKind,
               harness_id: pinnedHarness,
               branch,
+              ...(pinV2 ? { message_storage_version: 2 } : {}),
             });
           } catch (err) {
             console.warn(
