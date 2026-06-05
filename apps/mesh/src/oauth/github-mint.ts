@@ -32,8 +32,10 @@ interface MintedToken {
  *
  * NOTE: clientFromConnection is dynamically imported to avoid a static import
  * cycle (headers.ts → github-mint.ts → client.ts → outbound → headers.ts).
+ *
+ * Module-internal: the only public entry point is ensureRepoScopedToken.
  */
-export async function mintRepoToken(
+async function mintRepoToken(
   ctx: StudioContext,
   recipe: RepoScopeRecipe,
 ): Promise<MintedToken> {
