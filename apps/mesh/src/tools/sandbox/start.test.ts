@@ -233,6 +233,13 @@ function makeCtx(overrides: {
     },
     storage: {
       virtualMcps: { findById, update: updateSpy },
+      // Non-repo-scoped org connection: getRepoScope() returns null, so the
+      // repo-scoped mint path in provisionSandbox is skipped and these tests
+      // exercise the clone/token path unchanged. (Minting is covered by the
+      // e2e suite, github-import-repo-scope.spec.ts.)
+      connections: {
+        findById: mock(async (_id: string) => ({ metadata: null })),
+      },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
