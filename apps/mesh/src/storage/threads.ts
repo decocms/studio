@@ -135,9 +135,7 @@ export class OrgScopedThreadStorage {
   }
 
   /** Read progress-liveness columns (epoch-ms). */
-  getProgress(
-    taskId: string,
-  ): Promise<{
+  getProgress(taskId: string): Promise<{
     lastProgressAt: number | null;
     runStartedAt: number | null;
   } | null> {
