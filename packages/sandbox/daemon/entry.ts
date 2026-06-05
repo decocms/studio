@@ -326,7 +326,11 @@ const bashH = makeBashHandler({
   repoDir,
   taskManager,
 });
-const gitDeps = { appRoot, repoDir };
+const gitDeps = {
+  appRoot,
+  repoDir,
+  getCloneUrl: () => store.read()?.git?.repository?.cloneUrl ?? null,
+};
 const gitStatusH = makeGitStatusHandler(gitDeps);
 const gitDiffH = makeGitDiffHandler(gitDeps);
 const gitPublishH = makeGitPublishHandler(gitDeps);

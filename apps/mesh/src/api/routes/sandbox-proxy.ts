@@ -38,6 +38,11 @@ import {
   buildLoaderInvokeUrl,
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
+import {
+  GitPushAuthError,
+  parseGithubRepoFromMetadata,
+  refreshSandboxGitCredentials,
+} from "../../tools/sandbox/sync-git-credentials";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -433,12 +438,37 @@ export const createSandboxRoutes = () => {
       map404to410: true,
     }),
   );
-  app.post("/:virtualMcpId/:branch/git/publish", (c) =>
-    proxyDaemon(c, "/_sandbox/git/publish", {
+  app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
+    const runner = requireRunner(c);
+    if (runner instanceof Response) return runner;
+
+    const { claimName, virtualMcpId, virtualMcpMetadata } = c.get("vmClaim");
+    const ctx = c.var.meshContext;
+
+    try {
+      const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
+      const connectionIds =
+        virtualMcp?.connections?.map((conn) => conn.connection_id) ?? [];
+      const githubRepo = parseGithubRepoFromMetadata(
+        virtualMcpMetadata,
+        connectionIds,
+      );
+      if (githubRepo) {
+        await refreshSandboxGitCredentials(ctx, runner, claimName, githubRepo);
+      }
+    } catch (err) {
+      if (err instanceof GitPushAuthError) {
+        return c.json({ error: err.message }, 403, SANDBOX_PROXY_CACHE_HEADERS);
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+    }
+
+    return proxyDaemon(c, "/_sandbox/git/publish", {
       forwardJsonBody: true,
       map404to410: true,
-    }),
-  );
+    });
+  });
   app.post("/:virtualMcpId/:branch/git/discard", (c) =>
     proxyDaemon(c, "/_sandbox/git/discard", {
       forwardJsonBody: true,
@@ -470,20 +500,35 @@ export const createSandboxRoutes = () => {
       const ctx = c.var.meshContext;
 
       try {
-        const [status, diff] = await Promise.all([
-          fetchDaemonJson<GitStatusLike>(
-            runner,
-            claimName,
-            "/_sandbox/git/status",
-            "GET",
-          ),
-          fetchDaemonJson<GitDiffLike>(
-            runner,
-            claimName,
-            "/_sandbox/git/diff",
-            "GET",
-          ),
-        ]);
+        const body = (await c.req.json().catch(() => ({}))) as {
+          status?: GitStatusLike;
+          diff?: GitDiffLike;
+        };
+
+        const clientStatus = body.status;
+        const clientDiff = body.diff;
+        const hasClientDiff =
+          clientDiff != null &&
+          typeof clientDiff.diffs === "object" &&
+          clientDiff.diffs !== null;
+
+        const [status, diff] =
+          clientStatus && hasClientDiff
+            ? [clientStatus, clientDiff]
+            : await Promise.all([
+                fetchDaemonJson<GitStatusLike>(
+                  runner,
+                  claimName,
+                  "/_sandbox/git/status",
+                  "GET",
+                ),
+                fetchDaemonJson<GitDiffLike>(
+                  runner,
+                  claimName,
+                  "/_sandbox/git/diff",
+                  "GET",
+                ),
+              ]);
         const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
         return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {

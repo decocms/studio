@@ -100,6 +100,30 @@ describe("hasLocalWorkToPush", () => {
   test("true when ahead of tracking", () => {
     expect(hasLocalWorkToPush({ ...cleanStatus, ahead: 1 })).toBe(true);
   });
+
+  test("true when unpushed is set without upstream tracking", () => {
+    expect(
+      hasLocalWorkToPush({
+        ...cleanStatus,
+        tracking: null,
+        ahead: 0,
+        unpushed: 1,
+        aheadOfBase: 1,
+      }),
+    ).toBe(true);
+  });
+
+  test("true when ahead of base on a branch with no upstream", () => {
+    expect(
+      hasLocalWorkToPush({
+        ...cleanStatus,
+        tracking: null,
+        ahead: 0,
+        unpushed: 0,
+        aheadOfBase: 1,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("hasUnpublishedWork", () => {

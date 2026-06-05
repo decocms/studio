@@ -298,11 +298,20 @@ describe("selectHeaderButton", () => {
     expect(r.disabled).toBeFalsy();
   });
 
-  test("unpushed commits → Save changes", () => {
+  test("unpushed commits ahead of base with no PR → Submit for review", () => {
     const r = selectHeaderButton(
-      happyInput({ branch: ready({ unpushed: 2 }) }),
+      happyInput({ branch: ready({ unpushed: 2, aheadOfBase: 2 }) }),
+    );
+    expect(r.label).toBe("Submit for review");
+    expect(r.action).toBe("create-pr");
+  });
+
+  test("unpushed commits without base divergence → Save changes", () => {
+    const r = selectHeaderButton(
+      happyInput({ branch: ready({ unpushed: 2, aheadOfBase: 0 }) }),
     );
     expect(r.label).toBe("Save changes");
+    expect(r.action).toBe("commit-and-push");
   });
 
   test("ahead of base + closed non-merged PR → Reopen PR", () => {
