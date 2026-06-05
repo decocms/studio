@@ -13,4 +13,8 @@ describe("fenceMatches", () => {
     expect(fenceMatches("tok-2", "tok-1")).toBe(false);
     expect(fenceMatches("tok-2", null)).toBe(false);
   });
+  it("treats an empty-string fence as set (not null)", () => {
+    expect(fenceMatches("", "")).toBe(true);
+    expect(fenceMatches("", null)).toBe(false);
+  });
 });
