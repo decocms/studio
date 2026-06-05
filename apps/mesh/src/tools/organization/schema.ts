@@ -103,10 +103,18 @@ export const ObservationalConfigSchema = z.object({
     .describe(
       "Virtual MCP (agent) id that observes idle threads. Empty string disables observation.",
     ),
-  skipAgentIds: z
+  scopeMode: z
+    .enum(["all", "only"])
+    .default("all")
+    .describe(
+      "Which agents to observe: 'all' observes every agent except scopeAgentIds; 'only' observes just scopeAgentIds.",
+    ),
+  scopeAgentIds: z
     .array(z.string())
     .default([])
-    .describe("Agent ids whose threads the observer ignores."),
+    .describe(
+      "Agent ids the scope applies to — excluded when scopeMode is 'all', the allowlist when scopeMode is 'only'.",
+    ),
   model: ModelSlotSchema.default(null).describe(
     "Specific model the observer runs with (exact credential + model). When null, falls back to the org's fast tier.",
   ),

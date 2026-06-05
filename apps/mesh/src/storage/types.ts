@@ -155,8 +155,10 @@ export interface DefaultHomeAgentsConfig {
 export interface ObservationalConfig {
   /** Virtual MCP (agent) id that observes idle threads. Empty string disables the feature. */
   agentId: string;
-  /** Agent ids whose threads the observer ignores. */
-  skipAgentIds: string[];
+  /** "all" observes every agent except scopeAgentIds; "only" observes just them. */
+  scopeMode: "all" | "only";
+  /** Excluded agents when scopeMode is "all"; the allowlist when "only". */
+  scopeAgentIds: string[];
   /** Specific model the observer runs with. null → fall back to the fast tier. */
   model: SimpleModeModelSlot | null;
   /**

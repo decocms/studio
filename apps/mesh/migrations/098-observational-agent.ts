@@ -2,7 +2,8 @@
  * Observational Agent Migration
  *
  * - organization_settings.observational_config: JSON config for the per-org
- *   observational agent feature ({ agentId, skipAgentIds, inactiveMinutes }).
+ *   observational agent feature ({ agentId, scopeMode, scopeAgentIds, model,
+ *   configuredAt }).
  * - threads.last_observed_at: high-water mark (ISO text, mirrors updated_at's
  *   storage) of the last time the observational sweep processed this thread.
  *   Stored as `text` so `last_observed_at < updated_at` is a lexical ISO-8601

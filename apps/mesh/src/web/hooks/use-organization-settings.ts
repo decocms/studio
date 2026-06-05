@@ -40,7 +40,8 @@ export interface DefaultHomeAgentsConfig {
 
 export interface ObservationalConfig {
   agentId: string;
-  skipAgentIds: string[];
+  scopeMode: "all" | "only";
+  scopeAgentIds: string[];
   model: ModelSlot | null;
   /** Set server-side on (re)enable; observation is forward-only from this instant. */
   configuredAt: string | null;

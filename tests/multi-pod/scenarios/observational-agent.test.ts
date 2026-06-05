@@ -118,7 +118,6 @@ describe("observational agent (e2e through the real cluster)", () => {
       organizationId: session.orgId,
       observational_config: {
         agentId: observer.virtualMcpId,
-        skipAgentIds: [],
         model: { keyId: mock.keyId, modelId: mock.modelId },
       },
     });

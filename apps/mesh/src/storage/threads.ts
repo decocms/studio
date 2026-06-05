@@ -169,8 +169,10 @@ export interface ListObservableThreadsParams {
   organizationId: string;
   /** The observer agent itself — never observe its own threads. */
   observerAgentId: string;
-  /** Agent ids to skip (in addition to the observer). */
-  skipAgentIds: string[];
+  /** "all" observes every agent except scopeAgentIds; "only" observes just them. */
+  scopeMode: "all" | "only";
+  /** Excluded agents when scopeMode is "all"; the allowlist when "only". */
+  scopeAgentIds: string[];
   /** Threads with updated_at <= this ISO instant are considered idle. */
   inactiveBeforeIso: string;
   /**
@@ -867,7 +869,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
     const {
       organizationId,
       observerAgentId,
-      skipAgentIds,
+      scopeMode,
+      scopeAgentIds,
       inactiveBeforeIso,
       observeFromIso,
     } = params;
@@ -897,8 +900,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .orderBy("updated_at", "asc")
       .limit(params.limit);
 
-    if (skipAgentIds.length > 0) {
-      query = query.where("virtual_mcp_id", "not in", skipAgentIds);
+    if (scopeMode === "only") {
+      // Allowlist: an empty list means observe nothing.
+      if (scopeAgentIds.length === 0) return [];
+      query = query.where("virtual_mcp_id", "in", scopeAgentIds);
+    } else if (scopeAgentIds.length > 0) {
+      query = query.where("virtual_mcp_id", "not in", scopeAgentIds);
     }
 
     const rows = await query.execute();

@@ -26,7 +26,8 @@ import { SimpleModeModelRow } from "@/web/views/settings/ai-providers/simple-mod
 
 const DEFAULT_CONFIG: ObservationalConfig = {
   agentId: "",
-  skipAgentIds: [],
+  scopeMode: "all",
+  scopeAgentIds: [],
   model: null,
   configuredAt: null,
 };
@@ -59,8 +60,8 @@ function ObservationalControls() {
     );
   };
 
-  // The observer can never observe itself, so don't offer it in the skip list.
-  const skipOptions = selectableAgents
+  // The observer can never observe itself, so don't offer it in the scope list.
+  const scopeOptions = selectableAgents
     .filter((a) => a.id !== current.agentId)
     .map((a) => ({
       label: a.title,
@@ -69,12 +70,13 @@ function ObservationalControls() {
     }));
 
   const hasObserver = current.agentId !== "";
+  const onlyMode = current.scopeMode === "only";
 
   return (
     <SettingsCard>
       <SettingsCardItem
         title="Observer agent"
-        description="Runs on idle threads from every other agent, with the conversation as context. Give this agent the Studio connection so it can read threads and agents (COLLECTION_THREAD_MESSAGES_LIST, COLLECTION_VIRTUAL_MCP_GET)."
+        description="Runs on idle threads (per the scope below) with the conversation as context. Give this agent the Studio connection so it can read threads and agents (COLLECTION_THREAD_MESSAGES_LIST, COLLECTION_VIRTUAL_MCP_GET)."
         action={
           <Select
             value={hasObserver ? current.agentId : NONE_VALUE}
@@ -117,14 +119,37 @@ function ObservationalControls() {
         }
       />
       <SettingsCardItem
-        title="Skip agents"
-        description="Threads from these agents are never observed."
+        title="Observe"
+        description="Which agents' threads to observe."
+        action={
+          <Select
+            value={current.scopeMode}
+            onValueChange={(v) => persist({ scopeMode: v as "all" | "only" })}
+            disabled={!hasObserver}
+          >
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All agents</SelectItem>
+              <SelectItem value="only">Only selected agents</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+      />
+      <SettingsCardItem
+        title={onlyMode ? "Included agents" : "Excluded agents"}
+        description={
+          onlyMode
+            ? "Only threads from these agents are observed."
+            : "Threads from these agents are never observed."
+        }
         action={
           <MultiSelect
-            options={skipOptions}
-            defaultValue={current.skipAgentIds}
-            onValueChange={(ids) => persist({ skipAgentIds: ids })}
-            placeholder="None"
+            options={scopeOptions}
+            defaultValue={current.scopeAgentIds}
+            onValueChange={(ids) => persist({ scopeAgentIds: ids })}
+            placeholder={onlyMode ? "Select agents" : "None"}
             maxCount={3}
             className="w-56"
             disabled={!hasObserver}

@@ -1,5 +1,5 @@
 /**
- * Loop-prevention + skip-list guard for the observational sweep.
+ * Loop-prevention + agent-scope guard for the observational sweep.
  *
  * Pure so it can be unit-tested and re-applied at dispatch time as a defense
  * against config drift between thread selection and the actual observer fire.
@@ -12,8 +12,10 @@
 export interface ObservabilityGuard {
   /** The observer agent itself — never observe its own threads. */
   observerAgentId: string;
-  /** Agent ids the admin configured the observer to ignore. */
-  skipAgentIds: string[];
+  /** "all" observes every agent except scopeAgentIds; "only" observes just them. */
+  scopeMode: "all" | "only";
+  /** Excluded agents when scopeMode is "all"; the allowlist when "only". */
+  scopeAgentIds: string[];
 }
 
 export function isObservable(
@@ -22,7 +24,10 @@ export function isObservable(
 ): boolean {
   const agentId = thread.virtual_mcp_id;
   if (!agentId) return false;
+  // The observer can never observe its own threads (loop prevention), even if
+  // it somehow appears in an "only" allowlist.
   if (agentId === guard.observerAgentId) return false;
-  if (guard.skipAgentIds.includes(agentId)) return false;
-  return true;
+  return guard.scopeMode === "only"
+    ? guard.scopeAgentIds.includes(agentId)
+    : !guard.scopeAgentIds.includes(agentId);
 }

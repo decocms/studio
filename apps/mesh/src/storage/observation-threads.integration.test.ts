@@ -74,13 +74,15 @@ describe("SqlThreadStorage — observational sweep", () => {
 
   function list(
     inactiveBeforeIso = FAR_FUTURE,
-    skipAgentIds: string[] = [],
+    scopeAgentIds: string[] = [],
     observeFromIso = "2000-01-01T00:00:00.000Z",
+    scopeMode: "all" | "only" = "all",
   ) {
     return storage.listObservableThreads({
       organizationId: ORG,
       observerAgentId: OBSERVER,
-      skipAgentIds,
+      scopeMode,
+      scopeAgentIds,
       inactiveBeforeIso,
       observeFromIso,
       limit: 50,
@@ -121,6 +123,29 @@ describe("SqlThreadStorage — observational sweep", () => {
 
     const got = await list(FAR_FUTURE, ["vir_skip"]);
     expect(got.map((t) => t.id).sort()).toEqual([normal, reactivated].sort());
+  });
+
+  it("scopeMode 'only' observes just the allowlisted agents", async () => {
+    const a = await makeThread({
+      agentId: "vir_a",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    });
+    const b = await makeThread({
+      agentId: "vir_b",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    });
+    await makeThread({
+      agentId: "vir_c",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    });
+
+    // Allowlist [vir_a, vir_b] → only those (vir_c excluded).
+    const got = await list(FAR_FUTURE, ["vir_a", "vir_b"], undefined, "only");
+    expect(got.map((t) => t.id).sort()).toEqual([a, b].sort());
+
+    // Empty allowlist → observe nothing.
+    const none = await list(FAR_FUTURE, [], undefined, "only");
+    expect(none).toHaveLength(0);
   });
 
   it("only returns threads idle past the cutoff, oldest first", async () => {

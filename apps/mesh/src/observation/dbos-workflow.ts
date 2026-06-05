@@ -97,7 +97,8 @@ function requireRuntime(): ObservationalRuntime {
 interface ObservedOrg {
   organizationId: string;
   agentId: string;
-  skipAgentIds: string[];
+  scopeMode: "all" | "only";
+  scopeAgentIds: string[];
   /** Specific model to run the observer with; null → fall back to the fast tier. */
   model: SimpleModeModelSlot | null;
   /** Lower bound for observable activity — forward-only from when configured. */
@@ -168,7 +169,8 @@ async function listObservedOrgs(
     result.push({
       organizationId: row.organizationId,
       agentId,
-      skipAgentIds: config.skipAgentIds ?? [],
+      scopeMode: config.scopeMode ?? "all",
+      scopeAgentIds: config.scopeAgentIds ?? [],
       model: config.model ?? null,
       // Defensive: an enabled config always has configuredAt (stamped on enable).
       // If somehow missing, default to "now" so we never backfill history.
@@ -189,7 +191,8 @@ async function listObservableThreadsFor(
   return rt.threadStorage.listObservableThreads({
     organizationId: org.organizationId,
     observerAgentId: org.agentId,
-    skipAgentIds: org.skipAgentIds,
+    scopeMode: org.scopeMode,
+    scopeAgentIds: org.scopeAgentIds,
     inactiveBeforeIso,
     observeFromIso: org.configuredAt,
     limit: MAX_THREADS_PER_ORG,
@@ -244,7 +247,8 @@ async function buildObserverRun(
   if (
     !isObservable(thread, {
       observerAgentId: org.agentId,
-      skipAgentIds: org.skipAgentIds,
+      scopeMode: org.scopeMode,
+      scopeAgentIds: org.scopeAgentIds,
     })
   ) {
     return null;
