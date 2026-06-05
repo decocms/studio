@@ -225,4 +225,48 @@ test.describe("POST /api/:org/links/runs/:runId/stream — link ingest", () => {
       await db.end();
     }
   });
+
+  test("null fence (no active run) → 409 'no active run fence' and zero parts land", async ({
+    authedPage,
+  }) => {
+    // Asserts the INERT posture: when run_fence_token is null the endpoint
+    // must refuse to write anything, regardless of the presented token.
+    const { page, user, orgSlug } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const orgId = await orgIdForSlug(db, orgSlug);
+
+      // Seed a thread with NO fence token — simulates a thread that exists
+      // but for which no run has been started (the fence is never minted in
+      // this phase).
+      const runId = await seedV2Thread(db, {
+        orgId,
+        userId: user.userId,
+        runFenceToken: null,
+      });
+
+      const messageId = `msg_nofence_e2e_${Date.now()}`;
+      const sseBody = buildSseBody(messageId, "should not land");
+
+      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/stream`, {
+        headers: {
+          "content-type": "text/event-stream",
+          // Present any token — must still be rejected because current === null.
+          "x-fence-token": `any_token_${Date.now()}`,
+        },
+        data: sseBody,
+      });
+
+      expect(res.status()).toBe(409);
+      const json = await res.json();
+      expect(json).toMatchObject({ error: "no active run fence" });
+
+      // No parts should have been written.
+      const parts = await fetchParts(db, runId);
+      expect(parts).toHaveLength(0);
+    } finally {
+      await db.end();
+    }
+  });
 });

@@ -2,8 +2,14 @@
  * Link ingest — the RETURN path of the pull-inverted local link.
  * The desktop daemon runs the harness and POSTs its UIMessageChunk SSE stream
  * here; this endpoint commits completed parts to `thread_message_parts` (via
- * PartEmitter) and republishes chunks to the JetStream live edge. The fence
- * token rejects a stale producer's writes with 409.
+ * PartEmitter) and republishes chunks to the JetStream live edge.
+ *
+ * SECURITY POSTURE (this phase): run fences are not minted yet, so the endpoint
+ * is deliberately INERT — it requires an authenticated principal AND a non-null
+ * current fence, rejecting otherwise. It becomes write-capable only once a later
+ * phase mints fences in `prepareRun` and the daemon presents the token. NOTE for
+ * that phase: also org-scope the fence lookup (`getRunFence` currently resolves
+ * any thread id) and enforce thread ownership.
  */
 import { Hono } from "hono";
 import { parseDispatchSSEStream } from "@/harnesses/parse-dispatch-sse";
@@ -34,10 +40,23 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
 
   app.post("/links/runs/:runId/stream", async (c) => {
     const ctx = c.get("meshContext");
+
+    // resolveOrgFromPath does NOT require a principal — enforce auth here.
+    const userId = ctx.auth?.user?.id;
+    if (!userId) return c.json({ error: "unauthorized" }, 401);
+
     const runId = c.req.param("runId");
+    if (!/^[A-Za-z0-9_-]+$/.test(runId)) {
+      return c.json({ error: "invalid runId" }, 400);
+    }
     const presented = c.req.header("x-fence-token") ?? null;
 
     const current = await ctx.storage.threads.getRunFence(runId);
+    // Inert until a fence is minted (a later phase): no fence ⇒ reject, so this
+    // endpoint cannot write anything this phase.
+    if (current === null) {
+      return c.json({ error: "no active run fence" }, 409);
+    }
     if (!fenceMatches(current, presented)) {
       return c.json({ error: "fenced" }, 409);
     }
@@ -45,11 +64,9 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     const body = c.req.raw.body;
     if (!body) return c.json({ error: "missing body" }, 400);
 
-    const orgId = ctx.organization!.id;
-
     const partEmitter = new PartEmitter({
       storage: ctx.storage.threads.messageParts(),
-      orgId,
+      orgId: ctx.organization!.id,
       threadId: runId, // thread id == run id today
       runId,
     });
@@ -57,12 +74,22 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     const chunks = parseDispatchSSEStream(body);
     const { uiStream, whenComplete } = consumePartStream(chunks, partEmitter);
 
-    // Tee: one branch feeds the live edge (pump no-ops if NATS is down), the
-    // other is drained so the stream is consumed regardless. `whenComplete` is
-    // the authoritative "all parts committed" signal.
-    const [toPump, toConsume] = uiStream.tee();
-    deps.streamBuffer.pump(toPump, runId, c.req.raw.signal);
-    await drain(toConsume);
+    // `pump` is the SOLE consumer of `uiStream` (never tee it). Mirror
+    // dispatch-run: a non-null tail means JetStream is live (pump consumes
+    // uiStream + the tail mirrors it for /stream); a null tail means no
+    // JetStream, so drain uiStream directly so parts still commit. Either way
+    // `whenComplete` is the authoritative "all parts committed" signal.
+    const tail = await deps.streamBuffer.createTailStream(
+      runId,
+      c.req.raw.signal,
+      { deliverPolicy: "new", closeOnDone: true },
+    );
+    if (tail) {
+      deps.streamBuffer.pump(uiStream, runId, c.req.raw.signal);
+      await drain(tail).catch(() => {});
+    } else {
+      await drain(uiStream).catch(() => {});
+    }
     await whenComplete;
 
     return c.json({ ok: true });
