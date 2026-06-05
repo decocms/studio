@@ -786,6 +786,10 @@ async function prepareRun(
     // included in HarnessStreamInput so the daemon presents it on every
     // ingest append. Minting after START ensures the run is claimed before
     // the token exists; clearing on FINISH is the gate's responsibility.
+    // On DBOS replay this re-mints a new token while a queued work item carries the old one —
+    // reconcile when Phase D wires the publish off the persisted column.
+    // Note: a failed pull run leaves run_fence_token set until Task 7 clears it
+    // (harmless: next run overwrites; ws/cloud never read it).
     const runFenceToken = crypto.randomUUID();
     await ctx.storage.threads.setRunFence(mem.thread.id, runFenceToken);
 
@@ -1357,6 +1361,13 @@ async function prepareRun(
  * local harness does NOT run for pull-transport threads (the daemon runs
  * remotely). The uiStream will be garbage-collected naturally; the run
  * transitions to terminal when the ingest finish handler fires FINISH.
+ *
+ * ⚠️ PHASE B INCOMPLETE (dormant): this work item's `harnessInput` is the raw
+ * DispatchRunInput, NOT the full HarnessStreamInput the daemon needs (mcp.url+
+ * token, virtualMcp, materialized messages — built lazily inside prepareRun's
+ * stream-execute callback). Phase D MUST build the full input here (extract a
+ * builder, call mintMcpEndpoint) before any thread is set to link_transport=
+ * 'pull' and the daemon drains this queue. Until then a pull run cannot run.
  */
 export async function pullDispatch(
   input: DispatchRunInput,

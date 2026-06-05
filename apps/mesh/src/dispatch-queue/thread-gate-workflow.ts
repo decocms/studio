@@ -195,16 +195,19 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
   }
 
   // Resolve whether this thread should use the pull transport.
-  // Guards: link_transport === 'pull' AND message_storage_version === 2.
-  // Everything else falls through to the existing ws path (unchanged).
-  const thread = await meshCtx.storage.threads.get(
-    request.taskId ?? ctx.threadId,
-  );
-  const isPull =
-    thread?.link_transport === "pull" &&
-    thread?.message_storage_version === 2 &&
-    rt.pullDispatchFn != null &&
-    rt.workQueue != null;
+  // Guards: runtime must be pull-capable AND thread must be pull-configured.
+  // Skip the DB fetch entirely when pull isn't wired (no-NATS/test branch) —
+  // the ws path is unchanged and we avoid a redundant read on every dispatch.
+  const isPullCapable = rt.pullDispatchFn != null && rt.workQueue != null;
+  let isPull = false;
+  if (isPullCapable) {
+    const thread = await meshCtx.storage.threads.get(
+      request.taskId ?? ctx.threadId,
+    );
+    isPull =
+      thread?.link_transport === "pull" &&
+      thread?.message_storage_version === 2;
+  }
 
   if (!isPull) {
     // ── Original ws path — unchanged ────────────────────────────────────
@@ -253,6 +256,12 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     );
 
     // 2. Publish the work item idempotently (L1: keyed by runId).
+    // ⚠️ PHASE B INCOMPLETE (dormant): this work item's `harnessInput` is the raw
+    // DispatchRunInput, NOT the full HarnessStreamInput the daemon needs (mcp.url+
+    // token, virtualMcp, materialized messages — built lazily inside prepareRun's
+    // stream-execute callback). Phase D MUST build the full input here (extract a
+    // builder, call mintMcpEndpoint) before any thread is set to link_transport=
+    // 'pull' and the daemon drains this queue. Until then a pull run cannot run.
     const workItem: WorkItem = {
       runId: taskId,
       threadId: request.taskId ?? ctx.threadId,

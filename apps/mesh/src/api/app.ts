@@ -141,7 +141,10 @@ import {
 } from "../dispatch-queue";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { dispatchRunAndWait } from "./routes/decopilot/dispatch-run";
+import {
+  dispatchRunAndWait,
+  pullDispatch,
+} from "./routes/decopilot/dispatch-run";
 import {
   PersistedRunConfigSchema,
   toModelsConfig,
@@ -1378,6 +1381,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
     deps: { runRegistry, cancelBroadcast, streamBuffer, sseHub },
+    // Phase B: wire pull-transport dependencies. `linkWorkQueue` is null when
+    // NATS is not configured (test / no-NATS branch); the gate's
+    // `rt.pullDispatchFn != null && rt.workQueue != null` guard keeps the ws
+    // path active in that case, so no behavior changes for existing runs.
+    // The pull branch stays dormant until Phase D sets link_transport='pull'.
+    pullDispatchFn: pullDispatch,
+    workQueue: linkWorkQueue ?? undefined,
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
