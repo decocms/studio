@@ -503,12 +503,37 @@ export async function dispatchRunAndWait(
   );
 }
 
+/**
+ * The fully-assembled, JSON-serializable wire shape of a run's harness
+ * input — everything `HarnessStreamInput` carries EXCEPT the two
+ * non-serializable in-process fields (`signal`, `processLocal`). This is
+ * exactly what the desktop daemon validates against
+ * `harnessStreamInputSchema` and what the pull-transport work item carries.
+ *
+ * Built eagerly in `prepareRun`'s main body (mcp mint + message
+ * materialization + field assembly) so it's available without consuming
+ * `uiStream`. The in-cluster dispatch path layers the in-process extras on
+ * top inside the lazy `createUIMessageStream` execute callback:
+ * `{ ...wireHarnessInput, signal: registrySignal, processLocal }`.
+ */
+export type WireHarnessInput = Omit<
+  HarnessStreamInput,
+  "signal" | "processLocal"
+>;
+
 interface PreparedRun {
   taskId: string;
   uiStream: ReadableStream<unknown>;
   registrySignal: AbortSignal;
   /** Minted by prepareRun for pull-transport threads (spec §3.5). */
   runFenceToken: string;
+  /**
+   * Fully-assembled wire harness input (mcp minted, messages materialized,
+   * fence token attached). `dispatchRunAndWait` ignores this (it consumes
+   * `uiStream`); `pullDispatch` returns it so the gate can publish it as the
+   * pull work item's `harnessInput` (Phase D daemon pull loop consumes it).
+   */
+  wireHarnessInput: WireHarnessInput;
 }
 
 /**
@@ -890,45 +915,82 @@ async function prepareRun(
       totalTokens: number;
     } = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
+    // ── Build the wire HarnessStreamInput EAGERLY ───────────────────────────
+    // Everything the daemon's `harnessStreamInputSchema` needs (mcp endpoint,
+    // materialized messages, virtualMcp, fence token, …) is assembled here,
+    // before the lazy stream-execute callback runs. Two consumers read it:
+    //   - in-cluster dispatch (the `execute` callback below) layers the
+    //     non-serializable in-process extras on top:
+    //     `{ ...wireHarnessInput, signal: registrySignal, processLocal }`.
+    //   - `pullDispatch` returns it verbatim so the thread gate can publish
+    //     it as the pull work item's `harnessInput` (Phase D daemon loop).
+    // Moving the mcp mint + message materialization out of `execute` means
+    // they now run slightly earlier (eagerly) for the in-cluster path too —
+    // acceptable per the hard-break; behavior is otherwise identical.
+
+    // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
+    // Also handles legacy data: URLs from threads predating this pipeline.
+    // `processConversation` (which depends on the harness-owned tool set for
+    // `toModelOutput` handlers) runs inside the decopilot harness itself; we
+    // forward materialized UIMessages so each harness decides how to convert
+    // them.
+    const materializedMessages = await resolveStorageRefs(allMessages, ctx);
+
+    ensureModelCompatibility(input.models, materializedMessages);
+
+    // Build the MCP endpoint for CLI harnesses. Decopilot doesn't open an
+    // HTTP MCP connection (its passthrough client works in-process), so we
+    // skip the API-key mint for that path.
+    const mcp =
+      harnessId === "decopilot"
+        ? {
+            url: "",
+            headers: {} as Record<string, string>,
+            // Sentinel for the in-process decopilot path — its passthrough
+            // client doesn't consume mcp.* but the shared HarnessStreamInput
+            // type requires the field.
+            expiresAt: 0,
+          }
+        : await mintMcpEndpoint(
+            ctx,
+            input.agent.id,
+            organization,
+            harnessId === "claude-code"
+              ? "claude-code-session"
+              : "codex-session",
+            target.runsIn,
+          );
+
+    const wireHarnessInput: WireHarnessInput = {
+      threadId: mem.thread.id,
+      runId: mem.thread.id, // RunRegistry keys runs by taskId today
+      resumeSessionRef,
+      messages: materializedMessages,
+      models: input.models,
+      mcp,
+      mode: input.mode,
+      temperature: input.temperature,
+      toolApprovalLevel: input.toolApprovalLevel,
+      user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
+      organizationId: input.organizationId,
+      projectSlug: organization.slug,
+      virtualMcp,
+      agent: { id: input.agent.id },
+      branch: input.branch,
+      taskId: input.taskId,
+      triggerId: input.triggerId,
+      currentThreadTitle: mem.thread.title,
+      runFenceToken,
+    };
+
     const uiStream = createUIMessageStream({
       originalMessages: allMessages,
       execute: async ({ writer }) => {
-        // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
-        // Also handles legacy data: URLs from threads predating this pipeline.
-        // `processConversation` (which depends on the harness-owned tool
-        // set for `toModelOutput` handlers) runs inside the decopilot
-        // harness itself; we forward materialized UIMessages so each
-        // harness decides how to convert them.
-        const materializedMessages = await resolveStorageRefs(allMessages, ctx);
-
-        ensureModelCompatibility(input.models, materializedMessages);
-
-        // Build the MCP endpoint for CLI harnesses. Decopilot doesn't
-        // open an HTTP MCP connection (its passthrough client works
-        // in-process), so we skip the API-key mint for that path.
-        const mcp =
-          harnessId === "decopilot"
-            ? {
-                url: "",
-                headers: {} as Record<string, string>,
-                // Sentinel for the in-process decopilot path — its
-                // passthrough client doesn't consume mcp.* but the
-                // shared HarnessStreamInput type requires the field.
-                expiresAt: 0,
-              }
-            : await mintMcpEndpoint(
-                ctx,
-                input.agent.id,
-                organization,
-                harnessId === "claude-code"
-                  ? "claude-code-session"
-                  : "codex-session",
-                target.runsIn,
-              );
-
-        // Build the in-process extras that decopilot needs to participate
-        // in the surrounding `createUIMessageStream` scope. CLI harnesses
-        // ignore this field.
+        // The wire input (mcp endpoint + materialized messages + all
+        // serializable fields) was already assembled eagerly above. Here we
+        // only build the non-serializable in-process extras that decopilot
+        // needs to participate in the surrounding `createUIMessageStream`
+        // scope. CLI harnesses ignore this field.
         const toolOutputMap = new Map<string, string>();
         const pendingImages: PendingImage[] = [];
         // Per-turn buffer for coalesced HTML-page mirrors. The VM `write`/
@@ -977,28 +1039,14 @@ async function prepareRun(
             : undefined,
         };
 
+        // Layer the in-process extras onto the eagerly-built wire input.
+        // `signal` and `processLocal` are the only non-serializable members;
+        // everything else (mcp, materialized messages, fence token, …) was
+        // assembled above and is shared verbatim with the pull work item.
         const harnessInput: HarnessStreamInput = {
-          threadId: mem.thread.id,
-          runId: mem.thread.id, // RunRegistry keys runs by taskId today
-          resumeSessionRef,
-          messages: materializedMessages,
-          models: input.models,
-          mcp,
-          mode: input.mode,
-          temperature: input.temperature,
-          toolApprovalLevel: input.toolApprovalLevel,
-          user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
-          organizationId: input.organizationId,
-          projectSlug: organization.slug,
-          virtualMcp,
-          agent: { id: input.agent.id },
-          branch: input.branch,
-          taskId: input.taskId,
-          triggerId: input.triggerId,
-          currentThreadTitle: mem.thread.title,
+          ...wireHarnessInput,
           signal: registrySignal,
           processLocal,
-          runFenceToken,
         };
 
         // claude-code cwd resolution: with the `host` runner gone, the
@@ -1332,6 +1380,7 @@ async function prepareRun(
       uiStream: tapProgress(uiStream, ctx, mem.thread.id),
       registrySignal,
       runFenceToken,
+      wireHarnessInput,
     };
   } catch (err) {
     if (runStarted && taskId) {
@@ -1354,36 +1403,42 @@ async function prepareRun(
  * Pull-transport variant of `dispatchRunAndWait` (Phase B, spec §3.4).
  *
  * Claims the run and mints the fence (via prepareRun), then returns the
- * fence token and task id for the gate step to thread into the work item
- * published to the JetStream WorkQueue.
+ * fence token, task id, AND the fully-assembled wire `HarnessStreamInput`
+ * for the gate step to thread into the work item published to the JetStream
+ * WorkQueue.
  *
  * IMPORTANT: `uiStream` from prepareRun is never consumed here — the
  * local harness does NOT run for pull-transport threads (the daemon runs
  * remotely). The uiStream will be garbage-collected naturally; the run
  * transitions to terminal when the ingest finish handler fires FINISH.
  *
- * ⚠️ PHASE B INCOMPLETE (dormant): this work item's `harnessInput` is the raw
- * DispatchRunInput, NOT the full HarnessStreamInput the daemon needs (mcp.url+
- * token, virtualMcp, materialized messages — built lazily inside prepareRun's
- * stream-execute callback). Phase D MUST build the full input here (extract a
- * builder, call mintMcpEndpoint) before any thread is set to link_transport=
- * 'pull' and the daemon drains this queue. Until then a pull run cannot run.
+ * The work item's `harnessInput` is the complete `wireHarnessInput` that
+ * prepareRun now builds eagerly (mcp endpoint minted, messages
+ * materialized, virtualMcp + fence token attached) — exactly the shape the
+ * daemon validates against `harnessStreamInputSchema`. The non-serializable
+ * `signal`/`processLocal` members are intentionally absent (they only exist
+ * for the in-cluster dispatch path). This closes the prior work-item gap;
+ * the item is consumed by the Phase D daemon pull loop.
  */
 export async function pullDispatch(
   input: DispatchRunInput,
   ctx: StudioContext,
   deps: DispatchRunDeps,
-): Promise<{ taskId: string; runFenceToken: string }> {
+): Promise<{
+  taskId: string;
+  runFenceToken: string;
+  harnessInput: WireHarnessInput;
+}> {
   return traced(
     "decopilot.pullDispatch",
     async (_rootSpan) => {
-      const { taskId, runFenceToken } = await prepareRun(
+      const { taskId, runFenceToken, wireHarnessInput } = await prepareRun(
         input,
         ctx,
         deps,
         _rootSpan,
       );
-      return { taskId, runFenceToken };
+      return { taskId, runFenceToken, harnessInput: wireHarnessInput };
     },
     dispatchRunSpanAttrs(input),
   );

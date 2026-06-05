@@ -24,6 +24,7 @@ import { DBOS } from "@dbos-inc/dbos-sdk";
 import type {
   DispatchRunDeps,
   DispatchRunInput,
+  WireHarnessInput,
 } from "@/api/routes/decopilot/dispatch-run";
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
@@ -150,7 +151,11 @@ export interface ThreadGateRuntime {
     input: DispatchRunInput,
     ctx: StudioContext,
     deps: DispatchRunDeps,
-  ) => Promise<{ taskId: string; runFenceToken: string }>;
+  ) => Promise<{
+    taskId: string;
+    runFenceToken: string;
+    harnessInput: WireHarnessInput;
+  }>;
   workQueue?: LinkWorkQueue;
   /**
    * Poll interval for the gate's status-polling loop (ms). Defaults to
@@ -249,30 +254,27 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       : null;
 
   try {
-    const { taskId, runFenceToken } = await rt.pullDispatchFn!(
+    const { taskId, runFenceToken, harnessInput } = await rt.pullDispatchFn!(
       { ...request, abortSignal: abortController.signal },
       meshCtx,
       rt.deps,
     );
 
     // 2. Publish the work item idempotently (L1: keyed by runId).
-    // ⚠️ PHASE B INCOMPLETE (dormant): this work item's `harnessInput` is the raw
-    // DispatchRunInput, NOT the full HarnessStreamInput the daemon needs (mcp.url+
-    // token, virtualMcp, materialized messages — built lazily inside prepareRun's
-    // stream-execute callback). Phase D MUST build the full input here (extract a
-    // builder, call mintMcpEndpoint) before any thread is set to link_transport=
-    // 'pull' and the daemon drains this queue. Until then a pull run cannot run.
+    // `harnessInput` is the complete wire `HarnessStreamInput` that
+    // `pullDispatch` built eagerly (mcp endpoint minted, messages
+    // materialized, virtualMcp + fence token already on it) — exactly the
+    // shape the daemon validates against `harnessStreamInputSchema`. The
+    // prior gap (publishing the raw DispatchRunInput) is now closed.
+    // This work item is consumed by the Phase D daemon pull loop, which
+    // drains the per-user WorkQueue subject and runs the harness remotely.
     const workItem: WorkItem = {
       runId: taskId,
       threadId: request.taskId ?? ctx.threadId,
       orgId: request.organizationId,
       userId: request.userId,
       runFenceToken,
-      harnessInput: {
-        ...request,
-        runFenceToken,
-        // traceparent is already on request if set
-      } as Record<string, unknown>,
+      harnessInput: harnessInput as Record<string, unknown>,
     };
     await rt.workQueue!.publish(request.userId, workItem);
 
