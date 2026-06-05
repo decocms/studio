@@ -5,6 +5,7 @@ import {
   createMonitoringEngine,
   buildOtlpFlatSource,
   buildOtlpFlatSourceFromGlob,
+  normalizeS3Endpoint,
 } from "./query-engine";
 import { mkdtemp, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -129,6 +130,36 @@ describe("createMonitoringEngine", () => {
     });
     expect(engine).toBeInstanceOf(ClickHouseClientEngine);
     expect(source).toBe("custom_table");
+  });
+});
+
+describe("normalizeS3Endpoint", () => {
+  it("strips https scheme and keeps SSL on", () => {
+    expect(normalizeS3Endpoint("https://storage.googleapis.com")).toEqual({
+      host: "storage.googleapis.com",
+      useSsl: true,
+    });
+  });
+
+  it("strips http scheme and turns SSL off", () => {
+    expect(normalizeS3Endpoint("http://localhost:9000")).toEqual({
+      host: "localhost:9000",
+      useSsl: false,
+    });
+  });
+
+  it("defaults a scheme-less host to SSL", () => {
+    expect(normalizeS3Endpoint("storage.googleapis.com")).toEqual({
+      host: "storage.googleapis.com",
+      useSsl: true,
+    });
+  });
+
+  it("trims trailing slashes", () => {
+    expect(normalizeS3Endpoint("https://storage.googleapis.com/")).toEqual({
+      host: "storage.googleapis.com",
+      useSsl: true,
+    });
   });
 });
 

@@ -24,7 +24,12 @@ export interface QueryEngine {
  * SECRET` so `read_json('s3://…')` works against the bucket.
  */
 export interface DuckDBGcsConfig {
-  /** Host only, no scheme — e.g. "storage.googleapis.com". */
+  /**
+   * Object-storage endpoint. May include a scheme (e.g.
+   * "https://storage.googleapis.com" or "http://localhost:9000") — it is
+   * normalized to a bare host for DuckDB's `ENDPOINT`, and the scheme (if any)
+   * determines `USE_SSL`. A scheme-less value defaults to SSL.
+   */
   endpoint: string;
   /** "auto" or a concrete region. */
   region: string;
@@ -39,6 +44,24 @@ export interface DuckDBGcsConfig {
 /** Escape a value for a single-quoted DuckDB SQL literal. */
 function escSqlLiteral(value: string): string {
   return value.replace(/'/g, "''");
+}
+
+/**
+ * Normalize an object-storage endpoint for a DuckDB s3 secret. DuckDB's
+ * `ENDPOINT` is the bare host (no scheme) and the scheme is carried by
+ * `USE_SSL`; passing a scheme-prefixed endpoint yields a broken read URL
+ * (e.g. `https://https://...`). Strips the scheme to derive the host and
+ * `useSsl` (https → true, http → false, scheme-less → true).
+ */
+export function normalizeS3Endpoint(raw: string): {
+  host: string;
+  useSsl: boolean;
+} {
+  const trimmed = raw.trim();
+  const match = /^(https?):\/\//i.exec(trimmed);
+  const useSsl = match ? match[1]!.toLowerCase() === "https" : true;
+  const host = trimmed.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  return { host, useSsl };
 }
 
 /**
@@ -86,15 +109,17 @@ export class DuckDBEngine implements QueryEngine {
       ].join("\n"),
     );
 
+    // DuckDB's ENDPOINT is a bare host; the scheme is carried by USE_SSL.
+    const { host, useSsl } = normalizeS3Endpoint(gcs.endpoint);
     const secretSql = `CREATE OR REPLACE SECRET studio_gcs (
   TYPE s3,
   PROVIDER config,
   KEY_ID '${escSqlLiteral(gcs.accessKeyId)}',
   SECRET '${escSqlLiteral(gcs.secretAccessKey)}',
   REGION '${escSqlLiteral(gcs.region)}',
-  ENDPOINT '${escSqlLiteral(gcs.endpoint)}',
+  ENDPOINT '${escSqlLiteral(host)}',
   URL_STYLE 'path',
-  USE_SSL true
+  USE_SSL ${useSsl}
 );`;
     try {
       await connection.run(secretSql);
