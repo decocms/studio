@@ -1,9 +1,18 @@
+{{- $migrationJobEnabled := and .Values.migrationJob .Values.migrationJob.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "chart-deco-studio.fullname" . }}-config
   labels:
     {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  {{- if $migrationJobEnabled }}
+  # Sync this ConfigMap BEFORE the migration Job that runs at PreSync
+  # (sync-wave -1); the Job mounts envFrom this ConfigMap, so without an
+  # earlier wave the very first sync of a release with migrationJob.enabled
+  # fails because the Job's pod can't resolve its env references.
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  {{- end }}
 data:
   {{- toYaml .Values.configMap.meshConfig | nindent 2 }}
   {{- $autoNatsUrl := "" }}

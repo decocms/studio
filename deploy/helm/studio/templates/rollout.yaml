@@ -50,6 +50,9 @@ spec:
     {{- if and $bg.enabled $canary.enabled }}
     {{- fail "chart-deco-studio: argoRollouts.strategy.blueGreen.enabled and argoRollouts.strategy.canary.enabled are mutually exclusive — pick one." }}
     {{- end }}
+    {{- if not (or $bg.enabled $canary.enabled) }}
+    {{- fail "chart-deco-studio: argoRollouts.enabled=true requires exactly one of argoRollouts.strategy.blueGreen.enabled or argoRollouts.strategy.canary.enabled to be true." }}
+    {{- end }}
     {{- if $canary.enabled }}
     canary:
       {{- with $canary.canaryService }}

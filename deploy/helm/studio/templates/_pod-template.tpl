@@ -20,7 +20,9 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  {{- if .Values.terminationGracePeriodSeconds }}
+  {{- /* hasKey honors an explicit `0` (immediate termination); the
+        previous truthiness check silently dropped it. */}}
+  {{- if hasKey .Values "terminationGracePeriodSeconds" }}
   terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
   {{- end }}
   {{- with .Values.imagePullSecrets }}
@@ -203,17 +205,25 @@ spec:
 {{- end }}
 
 {{/*
-Resolves the pod command, appending `--skip-migrations` when migrationJob.enabled.
+Resolves the pod command, optionally appending `--skip-migrations` when
+the migration Job is enabled.
 
 When the chart runs migrations in a dedicated pre-sync Job, the runtime must
 NOT also run them on boot — otherwise N pods race against the lock and the
 Job's whole point (single execution point + pre-deploy gate) is undermined.
 The studio CLI already exposes `--skip-migrations` (see apps/mesh/src/cli.ts),
-so we just append it to the configured command.
+so we append it to the configured command.
+
+Auto-append is gated on `migrationJob.injectSkipMigrationsFlag` (default true).
+Set that to `false` if `image.command` is overridden to a non-`deco` entrypoint
+(e.g. for debugging with `["sleep", "infinity"]`) where injecting the flag
+would either be silently ignored or break command parsing.
 */}}
 {{- define "chart-deco-studio.podCommand" -}}
 {{- $cmd := default (list "bun" "run" "deco" "--no-local-mode") .Values.image.command -}}
-{{- if and .Values.migrationJob .Values.migrationJob.enabled -}}
+{{- $mj := default dict .Values.migrationJob -}}
+{{- $inject := and $mj.enabled (ne $mj.injectSkipMigrationsFlag false) -}}
+{{- if $inject -}}
 {{- $cmd = append $cmd "--skip-migrations" -}}
 {{- end -}}
 {{- toYaml $cmd -}}

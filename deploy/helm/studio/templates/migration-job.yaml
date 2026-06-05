@@ -3,25 +3,31 @@
 Pre-deploy migration Job — opt-in via `migrationJob.enabled: true`.
 
 Runs `bun run --cwd=apps/mesh migrate` ONCE before the workload (Deployment or
-Rollout) sees the new image. Both Helm and ArgoCD hook semantics are declared
-so the Job ordering is preserved whether the chart is installed via `helm
-upgrade` directly or synced by ArgoCD:
+Rollout) sees the new image. Ordering is driven by ArgoCD sync waves:
 
-  - helm.sh/hook: pre-install,pre-upgrade  (helm)
-  - argocd.argoproj.io/hook: PreSync       (argocd)
-  - sync-wave: -1                           (extra ordering hint)
+  - ConfigMap + Secret pinned to sync-wave -2 (so they exist first)
+  - This Job is PreSync hook at sync-wave -1 (runs after envFrom deps exist)
+  - Deployment / Rollout / Service stay at default wave 0
 
 When this Job is enabled, the workload pod command gets `--skip-migrations`
-appended (see _pod-template.tpl) so the runtime DOES NOT also run migrations on
-boot. This eliminates the race between N replicas trying to migrate simultaneously
-and gives an explicit pre-deploy gate: if the migration Job fails, the release
-is aborted before the new ReplicaSet is created.
+appended (see _pod-template.tpl, gated by `migrationJob.injectSkipMigrationsFlag`)
+so the runtime DOES NOT also run migrations on boot. This eliminates the race
+between N replicas trying to migrate simultaneously and gives an explicit
+pre-deploy gate: if the migration Job fails, the release is aborted before the
+new ReplicaSet is created.
+
+NOTE: this Job intentionally does NOT carry a helm `pre-install,pre-upgrade`
+hook annotation. Helm hooks run BEFORE non-hook resources, which would make
+the Job try to start before its envFrom ConfigMap/Secret exist on the very
+first install. The chart targets ArgoCD-orchestrated deployments (where sync
+waves give correct ordering). For plain `helm install` without ArgoCD, run
+with `--wait` so the Job and Deployment complete together; runtime pods are
+`--skip-migrations` either way.
 
 IMPORTANT: this Job moves migration ordering but does NOT eliminate the
 schema/code compatibility problem during the overlap window between old and
 new pods. Destructive migrations (DROP/RENAME/type changes) still require
-expand-contract discipline at the migration code level. See chart README for
-the migration playbook.
+expand-contract discipline at the migration code level.
 */}}
 apiVersion: batch/v1
 kind: Job
@@ -30,9 +36,6 @@ metadata:
   labels:
     {{- include "chart-deco-studio.labels" . | nindent 4 }}
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-weight": "-1"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
     "argocd.argoproj.io/hook": PreSync
     "argocd.argoproj.io/hook-delete-policy": BeforeHookCreation
     "argocd.argoproj.io/sync-wave": "-1"

@@ -95,20 +95,34 @@ argoRollouts:
       # steps: []
       # trafficRouting: {}
 
-# Pre-deploy migration Job (Helm pre-upgrade + ArgoCD PreSync hook).
+# Pre-deploy migration Job (ArgoCD PreSync hook + sync-wave ordering).
 #
 # When enabled, the chart renders a Job that runs `bun run --cwd=apps/mesh
-# migrate` ONCE before the workload (Deployment or Rollout) sees the new
-# image. The runtime pod command gets `--skip-migrations` appended (see
-# _pod-template.tpl) so pods don't also try to migrate on boot — eliminating
-# the race between N replicas migrating concurrently and giving a clear
-# pre-deploy gate (Job fails → release aborted).
+# migrate` ONCE before the workload (Deployment or Rollout) sees the new image.
+# Sync-wave ordering: ConfigMap+Secret at -2, Job at -1 (PreSync), workload
+# at default 0. ConfigMap/Secret get the lower wave automatically when this
+# flag is on.
+#
+# When this Job runs, the workload pod command gets `--skip-migrations`
+# appended (see `injectSkipMigrationsFlag` below) so pods don't also try to
+# migrate on boot — eliminating the race between N replicas migrating
+# concurrently and giving a clear pre-deploy gate (Job fails → release aborted).
 #
 # Critical companion to `argoRollouts.enabled: true` for blue-green safety:
 # migrations have already settled before the new ReplicaSet starts probing.
+#
+# IMPORTANT: this chart targets ArgoCD-orchestrated deployments. For plain
+# `helm install` (no ArgoCD), the Job has no helm hook annotation — it
+# installs as a regular resource. Run with `--wait` so helm waits for both
+# Job completion and Deployment readiness together.
 migrationJob:
   enabled: false
   # command: ["bun", "run", "--cwd=apps/mesh", "migrate"]  # override if needed
+  # When true (default), `--skip-migrations` is appended to the workload pod's
+  # `image.command` so the runtime doesn't ALSO run migrations on boot. Set
+  # false if you override `image.command` to a non-`deco` entrypoint where the
+  # flag would be silently ignored or misinterpreted (e.g. debug containers).
+  injectSkipMigrationsFlag: true
   backoffLimit: 0
   activeDeadlineSeconds: 600
   ttlSecondsAfterFinished: 300
