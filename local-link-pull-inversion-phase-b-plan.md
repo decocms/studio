@@ -16,6 +16,21 @@
 
 ---
 
+## ✅ Landing status (branch `tlgimenes/chat-message-dataflow`, PR #3698)
+
+**Tasks 1–6 LANDED, CI-green, dormant-safe.** Every pull branch is gated behind `link_transport='pull'` — which nothing sets yet (Phase D) — and nothing drains the WorkQueue yet, so the live ws/cloud path is byte-for-byte unchanged.
+
+- **T1** `link_transport` column + migration `100` (registered in manifest). **T2** optional `runFenceToken` wire field. **T3** `LinkWorkQueue` (JetStream WorkQueue stream). **T4** `GET /api/:org/links/work` long-poll + presence refresh. **T5+T6** (merged) fence minting in `prepareRun` + the gate's pull branch (publish work item → poll `threads.status` until terminal); ws path preserved and skips the extra thread-fetch; `pullDispatch` wired.
+- **Reviews caught + fixed real bugs:** the WorkQueue consumer create-race (TOCTOU) and pre-poll work loss (`DeliverPolicy.New`→`All`); the dangling `pullDispatch` knip failure.
+
+**⚠️ Deferred to Phase D — MUST land before any thread is set to `link_transport='pull'`.** These three are mutually dependent and only testable once the daemon pull loop exists, so they belong with Phase D:
+
+1. **Work-item `HarnessStreamInput` completeness (latent Critical, flagged in-code).** The published work item currently carries the raw `DispatchRunInput`, NOT the full `HarnessStreamInput` the daemon needs (`mcp.url`+token, `virtualMcp`, materialized `messages`, `user`, `runId`) — that input is built only inside `prepareRun`'s lazy `createUIMessageStream` execute callback. Phase D must **extract that builder** (incl. `mintMcpEndpoint`) so `pullDispatch` returns and publishes the full input (spec §3.4). Until then a pull run cannot drive the harness.
+2. **Task 7 — ingest → terminal status.** After `whenComplete`, the ingest must transition the run terminal so the gate's poll releases — **fungible-pod-safely** (the run may have been claimed on a different pod; set the durable `threads.status` + reactor side-effects directly, do not rely on the local in-memory `RunRegistry`).
+3. **Task 8 — pull-cycle e2e** (`link-pull-cycle.spec.ts`). Only meaningful once (1)+(2)+the Phase D daemon pull loop exist.
+
+---
+
 ## Open design decisions (resolved — do not reopen)
 
 | Unknown | Resolution baked into this plan |
