@@ -183,7 +183,7 @@ export function getWellKnownMcpStudioConnection(): ConnectionCreateData {
     app_name: "mcp-studio",
     app_id: "65a1b407-b6af-41e2-a89f-ce9450c05bbc",
     connection_type: "HTTP",
-    connection_url: "https://sites-vibemcp.deco.site/mcp",
+    connection_url: "https://sites-vibemcp.decocache.com/mcp",
     connection_token: null,
     connection_headers: null,
     oauth_config: null,
