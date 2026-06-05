@@ -1,26 +1,32 @@
 /**
- * E2E: v2 read path folds `thread_message_parts` into thread history.
+ * E2E: v2 read path — `COLLECTION_THREAD_MESSAGES_LIST` folds
+ * `thread_message_parts`.
  *
- * Task 7 of the stream-of-record plan forks `Memory.loadHistory`: when a
+ * Task 7 of the stream-of-record plan forks the thread-history readers (the
+ * `COLLECTION_THREAD_MESSAGES_LIST` tool + `Memory.loadHistory`): when a
  * thread's `message_storage_version === 2`, history is folded from the
- * `thread_message_parts` stream-of-record instead of the legacy
- * `thread_messages` rows. The org-scoped thread fetch (R23) is preserved —
- * the thread is loaded org-scoped first, so the id handed to the part storage
+ * append-only `thread_message_parts` stream-of-record instead of the legacy
+ * `thread_messages` rows. The org-scoped thread fetch (R23) is preserved — the
+ * thread is loaded org-scoped first, so the id handed to the part storage
  * always belongs to the bound org.
  *
- * This spec seeds, directly via `connectDevDb()`:
- *   - a v2 thread (message_storage_version = 2) owned by the authed user/org
- *   - one finished assistant message expressed as TWO parts: a `text` part
- *     (payload = the UI text part) + a `finish` part (payload = {}). This is
- *     the same shape `foldParts` expects (see thread-message-parts.integration
- *     test C1), which folds to `parts: [{ type: "text", text }]`.
+ * Like the sibling decopilot specs, this exercises the real HTTP/MCP front door
+ * (`callSelfMcpTool`) rather than rendering the chat UI: rendering a transcript
+ * needs model/credential onboarding the read-path fork is orthogonal to, so the
+ * list tool — the actual code under test — is the honest, robust surface.
  *
- * It then opens the thread in the browser and asserts the seeded assistant
- * text is present in the rendered transcript.
+ * Seeds, via `connectDevDb()`:
+ *   - a v2 thread (`message_storage_version = 2`) owned by the authed user/org
+ *   - one finished assistant message expressed as TWO parts: a `text` part
+ *     (payload = the UI text part) + a `finish` anchor (payload = {}).
+ *     `foldParts` folds these into `parts: [{ type: "text", text }]`, complete.
+ *
+ * It then calls the list tool and asserts the folded message comes back.
  */
 
 import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
 
 const SEED_TEXT = "stream-of-record fold marker 8f3a";
 
@@ -39,13 +45,11 @@ async function orgIdForSlug(
 }
 
 test.describe("v2 read path — folds thread_message_parts", () => {
-  // Cold Vite + signup + chat bootstrap can exceed the 30s default.
-  test.setTimeout(180_000);
-
-  test("a v2 thread renders an assistant message folded from parts", async ({
+  test("COLLECTION_THREAD_MESSAGES_LIST folds parts for a v2 thread", async ({
     authedPage,
   }) => {
     const { page, user, orgSlug } = authedPage;
+    const api = page.context().request;
     const db = await connectDevDb();
     try {
       const orgId = await orgIdForSlug(db, orgSlug);
@@ -67,7 +71,6 @@ test.describe("v2 read path — folds thread_message_parts", () => {
 
       // One finished assistant message expressed as two parts: a `text` part
       // (payload = the UI text part object) and a `finish` anchor (payload {}).
-      // foldParts → parts: [{ type: "text", text: SEED_TEXT }], status complete.
       await db.query(
         `INSERT INTO thread_message_parts
            (id, seq, org_id, thread_id, run_id, message_id, role, kind,
@@ -88,11 +91,22 @@ test.describe("v2 read path — folds thread_message_parts", () => {
         ],
       );
 
-      // Open the thread. The transcript should contain the folded text.
-      await page.goto(`/${orgSlug}/${threadId}`);
-      await expect(page.getByText(SEED_TEXT, { exact: false })).toBeVisible({
-        timeout: 60_000,
+      // The UI's history reader, through the real MCP front door. For a v2
+      // thread this folds thread_message_parts (our Task-7 fork); for v1 it
+      // would read the frozen thread_messages table.
+      const result = await callSelfMcpTool<{
+        items: Array<{ id: string; role: string; parts: unknown[] }>;
+        totalCount: number;
+      }>(api, orgSlug, "COLLECTION_THREAD_MESSAGES_LIST", {
+        thread_id: threadId,
       });
+
+      expect(result.totalCount).toBe(1);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.role).toBe("assistant");
+      // foldParts drops the `finish` anchor and folds the text part back into
+      // the message `parts` array.
+      expect(JSON.stringify(result.items[0]!.parts)).toContain(SEED_TEXT);
     } finally {
       await db.end();
     }
