@@ -337,7 +337,6 @@ function PickerContent({
             app_id: effectiveConnection.app_id,
             connection_type: effectiveConnection.connection_type,
             connection_url: effectiveConnection.connection_url,
-            configuration_scopes: effectiveConnection.configuration_scopes,
             metadata: {
               repoScope: {
                 sourceConnectionId,

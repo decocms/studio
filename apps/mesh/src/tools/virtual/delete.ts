@@ -77,6 +77,11 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
           childConnectionId,
           organization.id,
         );
+        // No need to check whether the child is aggregated under another agent:
+        // the import flow creates a fresh child per agent (1:1), and the
+        // ON DELETE RESTRICT FK on connection_aggregations.child_connection_id
+        // makes connections.delete throw (caught + logged below) rather than
+        // orphan a still-referenced child.
         if (child && getRepoScope(child)) {
           const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
           const tok = await tokenStorage.get(childConnectionId);
