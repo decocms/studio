@@ -1,16 +1,20 @@
 import { Suspense, lazy, useState } from "react";
 import {
   AlertCircle,
+  BookOpen01,
   Copy01,
   DotsHorizontal,
   Edit01,
+  File02,
   Flag01,
   Globe02,
   LayoutAlt01,
   Loading01,
   Plus,
   SearchLg,
+  Tag01,
   Trash01,
+  Users01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -83,6 +87,30 @@ import {
 } from "./content-mutations";
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
+import {
+  type BlogEntry,
+  type BlogKind,
+  BLOG_KINDS,
+  BLOG_SINGULAR,
+  buildBlogBlock,
+  emptyBlogPayload,
+  generateBlogKey,
+  getBlogPayload,
+  isBlogKind,
+  scanBlogEntries,
+} from "./blog/blog-data";
+import {
+  useDeleteBlogBlock,
+  useSaveBlogBlock,
+} from "./blog/use-blog-mutations";
+
+const PostEditor = lazy(() =>
+  import("./blog/post-editor").then((m) => ({ default: m.PostEditor })),
+);
+
+const RecordEditor = lazy(() =>
+  import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
+);
 
 const SectionsEditor = lazy(() =>
   import("@/web/components/sections-editor/sections-editor").then((m) => ({
@@ -98,11 +126,12 @@ const AddSectionModal = lazy(() =>
 
 const VARIANT_GREEN = "oklch(0.65 0.15 160)";
 
-type CollectionId = "pages" | "sections";
+type CollectionId = "pages" | "sections" | BlogKind;
 
 type Selection =
   | { collection: "pages"; key: string; path: string }
   | { collection: "sections"; key: string }
+  | { collection: BlogKind; key: string }
   | null;
 
 type PageDialogState = {
@@ -115,6 +144,7 @@ type PageDialogState = {
 type DeleteTarget =
   | { kind: "page"; key: string; label: string }
   | { kind: "section"; key: string; label: string }
+  | { kind: "blog"; blogKind: BlogKind; key: string; label: string }
   | null;
 
 export function ContentBrowser() {
@@ -208,6 +238,8 @@ function ContentBrowserReady({
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
+  const saveBlogBlock = useSaveBlogBlock(fetchParams);
+  const deleteBlogBlock = useDeleteBlogBlock(fetchParams);
 
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
@@ -243,8 +275,13 @@ function ContentBrowserReady({
     a.name.localeCompare(b.name),
   );
   const globalSections = extractGlobalSections(decofile, meta);
+  const allBlogEntries = scanBlogEntries(decofile);
+  const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
+  const blogEntries = isBlogKind(activeCollection)
+    ? allBlogEntries[activeCollection]
+    : [];
 
-  if (pages.length === 0 && globalSections.length === 0) {
+  if (pages.length === 0 && globalSections.length === 0 && !showBlog) {
     return (
       <EmptyMessage
         icon={AlertCircle}
@@ -257,6 +294,9 @@ function ContentBrowserReady({
   const counts: Record<CollectionId, number> = {
     pages: pages.length,
     sections: globalSections.length,
+    posts: allBlogEntries.posts.length,
+    authors: allBlogEntries.authors.length,
+    categories: allBlogEntries.categories.length,
   };
   const takenPaths = new Set(pages.map((p) => normalizePagePath(p.path)));
   const takenPageNames = new Set(pages.map((p) => p.name));
@@ -453,21 +493,55 @@ function ContentBrowserReady({
     }
   };
 
+  // ------------------ Blog CRUD ------------------
+  const handleCreateBlog = async (kind: BlogKind) => {
+    const key = generateBlogKey(decofile, kind);
+    const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
+    try {
+      await saveBlogBlock.mutateAsync({ blockKey: key, data });
+      toast.success(`Created ${BLOG_SINGULAR[kind]}`);
+      setSelection({ collection: kind, key });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create");
+    }
+  };
+
+  const handleDuplicateBlog = async (entry: BlogEntry) => {
+    const source = decofile[entry.key] as Record<string, unknown> | undefined;
+    if (!source) {
+      toast.error("Record not found.");
+      return;
+    }
+    const key = generateBlogKey(decofile, entry.kind);
+    const labelKey = entry.kind === "posts" ? "title" : "name";
+    const payload = {
+      ...structuredClone(getBlogPayload(source, entry.kind)),
+      [labelKey]: `${entry.label} (copy)`,
+    };
+    try {
+      await saveBlogBlock.mutateAsync({
+        blockKey: key,
+        data: buildBlogBlock(key, entry.kind, payload),
+      });
+      toast.success(`Duplicated "${entry.label}"`);
+      setSelection({ collection: entry.kind, key });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Duplicate failed");
+    }
+  };
+
   // ------------------ Delete ------------------
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     const { kind, key, label } = deleteTarget;
     try {
-      await deleteBlock.mutateAsync({ blockKey: key });
+      if (kind === "blog") {
+        await deleteBlogBlock.mutateAsync({ blockKey: key });
+      } else {
+        await deleteBlock.mutateAsync({ blockKey: key });
+      }
       toast.success(`Deleted "${label}"`);
-      if (kind === "page") {
-        if (selection?.collection === "pages" && selection.key === key) {
-          setSelection(null);
-        }
-      } else if (
-        selection?.collection === "sections" &&
-        selection.key === key
-      ) {
+      if (selection && selection.key === key) {
         setSelection(null);
       }
       setDeleteTarget(null);
@@ -477,11 +551,17 @@ function ContentBrowserReady({
   };
 
   // ------------------ Render ------------------
+  const isDeleting = deleteBlock.isPending || deleteBlogBlock.isPending;
+  const deleteNoun =
+    deleteTarget?.kind === "blog"
+      ? BLOG_SINGULAR[deleteTarget.blogKind]
+      : (deleteTarget?.kind ?? "item");
   return (
     <div className="flex h-full w-full">
       <CollectionsSidebar
         active={activeCollection}
         counts={counts}
+        showBlog={showBlog}
         onSelect={(id) => {
           setActiveCollection(id);
           setSelection(null);
@@ -491,6 +571,7 @@ function ContentBrowserReady({
         activeCollection={activeCollection}
         pages={pages}
         sections={globalSections}
+        blogEntries={blogEntries}
         decofile={decofile}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -500,6 +581,8 @@ function ContentBrowserReady({
         onCreate={() => {
           if (activeCollection === "pages") {
             openCreatePage();
+          } else if (isBlogKind(activeCollection)) {
+            void handleCreateBlog(activeCollection);
           } else if (!previewUrl) {
             toast.error("Start the preview dev server to add sections.");
           } else {
@@ -517,6 +600,15 @@ function ContentBrowserReady({
         onDeleteSection={(s) =>
           setDeleteTarget({ kind: "section", key: s.key, label: s.name })
         }
+        onDuplicateBlog={handleDuplicateBlog}
+        onDeleteBlog={(e) =>
+          setDeleteTarget({
+            kind: "blog",
+            blogKind: e.kind,
+            key: e.key,
+            label: e.label,
+          })
+        }
       />
       <div className="flex-1 min-w-0">
         {selection ? (
@@ -530,40 +622,62 @@ function ContentBrowserReady({
               </div>
             }
           >
-            <SectionsEditor
-              key={
-                selection.collection === "pages"
-                  ? `page:${selection.key}`
-                  : `section:${selection.key}`
-              }
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              previewReady
-              previewUrl={previewUrl ?? undefined}
-              currentPath={
-                selection.collection === "pages" ? selection.path : "/"
-              }
-              activePageBlockKey={
-                selection.collection === "pages" ? selection.key : null
-              }
-              activeGlobalBlockKey={
-                selection.collection === "sections" ? selection.key : null
-              }
-            />
+            {selection.collection === "posts" ? (
+              <PostEditor
+                key={`post:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+                decofile={decofile}
+                meta={meta}
+              />
+            ) : selection.collection === "authors" ||
+              selection.collection === "categories" ? (
+              <RecordEditor
+                key={`${selection.collection}:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                kind={selection.collection}
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+              />
+            ) : (
+              <SectionsEditor
+                key={
+                  selection.collection === "pages"
+                    ? `page:${selection.key}`
+                    : `section:${selection.key}`
+                }
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                previewReady
+                previewUrl={previewUrl ?? undefined}
+                currentPath={
+                  selection.collection === "pages" ? selection.path : "/"
+                }
+                activePageBlockKey={
+                  selection.collection === "pages" ? selection.key : null
+                }
+                activeGlobalBlockKey={
+                  selection.collection === "sections" ? selection.key : null
+                }
+              />
+            )}
           </Suspense>
         ) : (
           <EmptyMessage
-            title={
-              activeCollection === "pages"
-                ? "Select a page to edit"
-                : "Select a section to edit"
-            }
-            description={
-              activeCollection === "pages"
-                ? 'Pick a page from the list, or click "+ New" to create one.'
-                : 'Pick a section from the list, or click "+ New" to create one.'
-            }
+            title={`Select ${
+              isBlogKind(activeCollection)
+                ? `a ${BLOG_SINGULAR[activeCollection]}`
+                : activeCollection === "pages"
+                  ? "a page"
+                  : "a section"
+            } to edit`}
+            description='Pick an item from the list, or click "+" to create one.'
           />
         )}
       </div>
@@ -623,35 +737,31 @@ function ContentBrowserReady({
       <AlertDialog
         open={!!deleteTarget}
         onOpenChange={(next) => {
-          if (!next && !deleteBlock.isPending) setDeleteTarget(null);
+          if (!next && !isDeleting) setDeleteTarget(null);
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {deleteTarget?.kind === "page" ? "page" : "section"}?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Delete {deleteNoun}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget?.kind === "page"
-                ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
-                : deleteTarget?.kind === "section"
-                  ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
+              {deleteTarget?.kind === "section"
+                ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
+                : deleteTarget
+                  ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
                   : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteBlock.isPending}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
                 void confirmDelete();
               }}
-              disabled={deleteBlock.isPending}
+              disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleteBlock.isPending ? (
+              {isDeleting ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
                   Deleting…
@@ -670,10 +780,12 @@ function ContentBrowserReady({
 function CollectionsSidebar({
   active,
   counts,
+  showBlog,
   onSelect,
 }: {
   active: CollectionId;
   counts: Record<CollectionId, number>;
+  showBlog: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
   return (
@@ -698,6 +810,38 @@ function CollectionsSidebar({
           active={active === "sections"}
           onSelect={onSelect}
         />
+        {showBlog && (
+          <>
+            <div className="mt-3 flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70">
+              <BookOpen01 size={13} className="shrink-0" />
+              Blog
+            </div>
+            <CollectionRow
+              id="posts"
+              icon={File02}
+              label="Posts"
+              count={counts.posts}
+              active={active === "posts"}
+              onSelect={onSelect}
+            />
+            <CollectionRow
+              id="authors"
+              icon={Users01}
+              label="Authors"
+              count={counts.authors}
+              active={active === "authors"}
+              onSelect={onSelect}
+            />
+            <CollectionRow
+              id="categories"
+              icon={Tag01}
+              label="Categories"
+              count={counts.categories}
+              active={active === "categories"}
+              onSelect={onSelect}
+            />
+          </>
+        )}
       </nav>
     </div>
   );
@@ -747,6 +891,7 @@ function ItemList({
   activeCollection,
   pages,
   sections,
+  blogEntries,
   decofile,
   previewUrl,
   searchQuery,
@@ -761,10 +906,13 @@ function ItemList({
   onDuplicateSection,
   onRenameSection,
   onDeleteSection,
+  onDuplicateBlog,
+  onDeleteBlog,
 }: {
   activeCollection: CollectionId;
   pages: PageEntry[];
   sections: GlobalSectionEntry[];
+  blogEntries: BlogEntry[];
   decofile: Record<string, unknown>;
   previewUrl: string | null;
   searchQuery: string;
@@ -779,6 +927,8 @@ function ItemList({
   onDuplicateSection: (section: GlobalSectionEntry) => void;
   onRenameSection: (section: GlobalSectionEntry) => void;
   onDeleteSection: (section: GlobalSectionEntry) => void;
+  onDuplicateBlog: (entry: BlogEntry) => void;
+  onDeleteBlog: (entry: BlogEntry) => void;
 }) {
   const q = searchQuery.toLowerCase();
   const filteredPages = pages.filter(
@@ -794,11 +944,19 @@ function ItemList({
       s.key.toLowerCase().includes(q) ||
       s.resolveType.toLowerCase().includes(q),
   );
+  const filteredBlog = blogEntries.filter(
+    (e) =>
+      !q ||
+      e.label.toLowerCase().includes(q) ||
+      e.subtitle.toLowerCase().includes(q),
+  );
 
-  const placeholder =
-    activeCollection === "pages" ? "Search pages…" : "Search sections…";
-  const createTooltip =
-    activeCollection === "pages" ? "Create new page" : "Create new section";
+  const placeholder = `Search ${activeCollection}…`;
+  const createTooltip = isBlogKind(activeCollection)
+    ? `Create new ${BLOG_SINGULAR[activeCollection]}`
+    : activeCollection === "pages"
+      ? "Create new page"
+      : "Create new section";
   const sectionCreateBlocked = activeCollection === "sections" && !previewUrl;
   const createDisabledReason = sectionCreateBlocked
     ? "Start the preview dev server to add sections"
@@ -840,7 +998,9 @@ function ItemList({
           </TooltipContent>
         </Tooltip>
       </div>
-      <ScrollArea className="flex-1 min-h-0">
+      {/* Force Radix's inner `display:table` content wrapper back to block so
+          long titles truncate instead of widening the viewport. */}
+      <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="flex flex-col gap-1 p-1.5">
           {activeCollection === "pages" ? (
             filteredPages.length === 0 ? (
@@ -882,36 +1042,78 @@ function ItemList({
                 );
               })
             )
-          ) : filteredSections.length === 0 ? (
+          ) : activeCollection === "sections" ? (
+            filteredSections.length === 0 ? (
+              <ListEmpty
+                hasItems={sections.length > 0}
+                emptyLabel="No saved sections yet."
+                emptyHint='Click "+" to create one, or save a section from a page.'
+              />
+            ) : (
+              filteredSections.map((section) => {
+                const isActive =
+                  selection?.collection === "sections" &&
+                  selection.key === section.key;
+                const typeLabel = section.resolveType
+                  .split("/")
+                  .pop()
+                  ?.replace(/\.tsx?$/, "");
+                return (
+                  <ItemRow
+                    key={section.key}
+                    icon={Globe02}
+                    title={section.name}
+                    subtitle={typeLabel ?? section.resolveType}
+                    active={isActive}
+                    onClick={() =>
+                      onSelect({ collection: "sections", key: section.key })
+                    }
+                    menu={
+                      <ItemActions
+                        onDuplicate={() => onDuplicateSection(section)}
+                        onRename={() => onRenameSection(section)}
+                        onDelete={() => onDeleteSection(section)}
+                      />
+                    }
+                  />
+                );
+              })
+            )
+          ) : filteredBlog.length === 0 ? (
             <ListEmpty
-              hasItems={sections.length > 0}
-              emptyLabel="No saved sections yet."
-              emptyHint='Click "+" to create one, or save a section from a page.'
+              hasItems={blogEntries.length > 0}
+              emptyLabel={`No ${activeCollection} yet.`}
+              emptyHint={`Click "+" to create your first ${
+                isBlogKind(activeCollection)
+                  ? BLOG_SINGULAR[activeCollection]
+                  : "item"
+              }.`}
             />
           ) : (
-            filteredSections.map((section) => {
+            filteredBlog.map((entry) => {
               const isActive =
-                selection?.collection === "sections" &&
-                selection.key === section.key;
-              const typeLabel = section.resolveType
-                .split("/")
-                .pop()
-                ?.replace(/\.tsx?$/, "");
+                selection?.collection === entry.kind &&
+                selection.key === entry.key;
               return (
                 <ItemRow
-                  key={section.key}
-                  icon={Globe02}
-                  title={section.name}
-                  subtitle={typeLabel ?? section.resolveType}
+                  key={entry.key}
+                  icon={
+                    entry.kind === "posts"
+                      ? File02
+                      : entry.kind === "authors"
+                        ? Users01
+                        : Tag01
+                  }
+                  title={entry.label}
+                  subtitle={entry.subtitle}
                   active={isActive}
                   onClick={() =>
-                    onSelect({ collection: "sections", key: section.key })
+                    onSelect({ collection: entry.kind, key: entry.key })
                   }
                   menu={
                     <ItemActions
-                      onDuplicate={() => onDuplicateSection(section)}
-                      onRename={() => onRenameSection(section)}
-                      onDelete={() => onDeleteSection(section)}
+                      onDuplicate={() => onDuplicateBlog(entry)}
+                      onDelete={() => onDeleteBlog(entry)}
                     />
                   }
                 />
@@ -948,7 +1150,7 @@ function ItemRow({
   return (
     <div
       className={cn(
-        "group relative flex items-center rounded-md transition-colors",
+        "group relative flex min-w-0 items-center rounded-md transition-colors",
         active ? "bg-accent text-accent-foreground" : "hover:bg-muted",
       )}
     >
@@ -1012,7 +1214,7 @@ function ItemActions({
   onDelete,
 }: {
   onDuplicate: () => void;
-  onRename: () => void;
+  onRename?: () => void;
   onAddVariant?: () => void;
   onDelete: () => void;
 }) {
@@ -1029,10 +1231,12 @@ function ItemActions({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem onClick={onRename}>
-          <Edit01 size={14} />
-          Rename
-        </DropdownMenuItem>
+        {onRename && (
+          <DropdownMenuItem onClick={onRename}>
+            <Edit01 size={14} />
+            Rename
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={onDuplicate}>
           <Copy01 size={14} />
           Duplicate
