@@ -81,7 +81,7 @@ export function resolveConfig(
     // AI Gateway
     aiGatewayEnabled: toBool(envVars.DECO_AI_GATEWAY_ENABLED),
     aiGatewayUrl:
-      envVars.DECO_AI_GATEWAY_URL || "https://ai-site.decocache.com",
+      envVars.DECO_AI_GATEWAY_URL || "https://ai-site.deco.site",
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
