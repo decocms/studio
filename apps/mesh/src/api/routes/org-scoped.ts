@@ -24,6 +24,7 @@ import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
+import { createLinkIngestRoutes } from "./decopilot/link-ingest-routes";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -92,6 +93,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     }),
   ); // /api/:org/trigger-callback
   app.route("/webhooks", createAutomationWebhookRoutes()); // /api/:org/webhooks/:triggerId[/:token]
+  app.route("/", createLinkIngestRoutes({ streamBuffer: deps.streamBuffer })); // /api/:org/links/runs/:runId/stream
 
   if (deps.mountDevAssets) {
     app.route("/dev-assets", createDevAssetsRoutes({ orgFromPath: true }));

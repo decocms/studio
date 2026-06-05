@@ -169,6 +169,15 @@ export class OrgScopedThreadStorage {
   messageParts(): SqlThreadMessagePartStorage {
     return this.inner.messageParts();
   }
+
+  /**
+   * Current fence token for a run (thread id == run id today). Returns null
+   * if no fence has been minted, which means any token (including null) is
+   * accepted by `fenceMatches`.
+   */
+  getRunFence(threadId: string): Promise<string | null> {
+    return this.inner.getRunFence(threadId);
+  }
 }
 
 // ============================================================================
