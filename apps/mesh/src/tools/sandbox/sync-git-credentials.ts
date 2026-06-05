@@ -1,7 +1,10 @@
 import type { GithubRepo } from "@decocms/mesh-sdk/types";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { StudioContext } from "../../core/studio-context";
+import { ensureRepoScopedToken } from "../../oauth/github-mint";
+import { RECONNECT_ERROR } from "../../oauth/token-refresh";
 import { buildCloneInfo } from "../../shared/github-clone-info";
+import { getRepoScope } from "../../shared/github-repo-scope";
 
 export class GitPushAuthError extends Error {
   constructor(message: string) {
@@ -22,8 +25,9 @@ export function parseGithubRepoFromMetadata(
 }
 
 /**
- * Refreshes the OAuth token baked into the sandbox clone URL and patches the
+ * Refreshes the GitHub token baked into the sandbox clone URL and patches the
  * running daemon config so git push can sync `origin` before publishing.
+ * Repo-scoped child connections are re-minted on demand (no OAuth refresh path).
  */
 export async function refreshSandboxGitCredentials(
   ctx: StudioContext,
@@ -35,6 +39,24 @@ export async function refreshSandboxGitCredentials(
     throw new GitPushAuthError(
       "Push requires a connected GitHub account. Connect mcp-github for this project and restart the sandbox.",
     );
+  }
+
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) {
+    throw new GitPushAuthError(RECONNECT_ERROR);
+  }
+
+  const repoConn = await ctx.storage.connections.findById(
+    githubRepo.connectionId,
+    organizationId,
+  );
+  if (repoConn && getRepoScope(repoConn)) {
+    try {
+      await ensureRepoScopedToken(ctx, repoConn);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : RECONNECT_ERROR;
+      throw new GitPushAuthError(message);
+    }
   }
 
   const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
