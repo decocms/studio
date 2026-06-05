@@ -25,6 +25,7 @@ const STREAM_NAME = "LINK_WORK_QUEUE";
 const SUBJECT_PREFIX = "link.work";
 
 function assertSafeSubjectToken(id: string): void {
+  if (!id.length) throw new Error("Invalid NATS subject token");
   if (/[.*>\s]/.test(id)) throw new Error("Invalid NATS subject token");
 }
 
@@ -142,14 +143,26 @@ export class LinkWorkQueue {
       const isNotFound =
         err instanceof Error && err.message.includes("consumer not found");
       if (!isNotFound) throw err;
-      // Create the durable consumer
-      await this.jsm.consumers.add(STREAM_NAME, {
-        name: consumerName,
-        durable_name: consumerName,
-        filter_subject: filterSubject,
-        ack_policy: AckPolicy.Explicit,
-        deliver_policy: DeliverPolicy.New,
-      });
+      // Create the durable consumer.
+      // DeliverPolicy.All ensures work items published before the daemon's
+      // first poll are not dropped; in-flight duplicates are deduplicated by
+      // the msgID set on publish (runId).
+      try {
+        await this.jsm.consumers.add(STREAM_NAME, {
+          name: consumerName,
+          durable_name: consumerName,
+          filter_subject: filterSubject,
+          ack_policy: AckPolicy.Explicit,
+          deliver_policy: DeliverPolicy.All,
+        });
+      } catch (addErr: unknown) {
+        const alreadyExists =
+          addErr instanceof Error &&
+          (addErr.message.includes("already in use") ||
+            addErr.message.includes("already exists"));
+        if (!alreadyExists) throw addErr;
+        // A concurrent poller created it — fall through to get()
+      }
     }
 
     return this.js.consumers.get(STREAM_NAME, consumerName);

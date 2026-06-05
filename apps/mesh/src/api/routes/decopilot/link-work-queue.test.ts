@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { buildWorkSubject, workItemSchema } from "./link-work-queue";
+import {
+  buildConsumerName,
+  buildWorkSubject,
+  workItemSchema,
+} from "./link-work-queue";
 
 describe("buildWorkSubject", () => {
   it("produces a valid NATS subject token from a userSub", () => {
@@ -14,6 +18,12 @@ describe("buildWorkSubject", () => {
     expect(() => buildWorkSubject("user*bad")).toThrow(
       "Invalid NATS subject token",
     );
+  });
+});
+
+describe("buildConsumerName", () => {
+  it("produces the expected consumer name prefix", () => {
+    expect(buildConsumerName("user_abc")).toBe("link-work-user_abc");
   });
 });
 
