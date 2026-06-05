@@ -306,9 +306,20 @@ describe("selectHeaderButton", () => {
     expect(r.action).toBe("create-pr");
   });
 
-  test("unpushed commits without base divergence → Save changes", () => {
+  test("unpushed commits without base divergence and no PR → Submit for review", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ unpushed: 2, aheadOfBase: 0 }) }),
+    );
+    expect(r.label).toBe("Submit for review");
+    expect(r.action).toBe("create-pr");
+  });
+
+  test("unpushed commits with open PR → Save changes", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ unpushed: 2, aheadOfBase: 2 }),
+        pr: pr(),
+      }),
     );
     expect(r.label).toBe("Save changes");
     expect(r.action).toBe("commit-and-push");

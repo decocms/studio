@@ -32,6 +32,7 @@ import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
 import {
   type GitDiffLike,
   type GitStatusLike,
+  isGitStatusLike,
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
 import {
@@ -55,6 +56,7 @@ interface VmClaim {
   userId: string;
   projectRef: string;
   virtualMcpMetadata: Record<string, unknown> | null;
+  connectionIds: string[];
 }
 
 type VmEnv = Env & { Variables: Env["Variables"] & { vmClaim: VmClaim } };
@@ -165,6 +167,8 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     userId,
     projectRef,
     virtualMcpMetadata,
+    connectionIds:
+      virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
   });
   return next();
 });
@@ -442,13 +446,10 @@ export const createSandboxRoutes = () => {
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
 
-    const { claimName, virtualMcpId, virtualMcpMetadata } = c.get("vmClaim");
+    const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
     const ctx = c.var.meshContext;
 
     try {
-      const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
-      const connectionIds =
-        virtualMcp?.connections?.map((conn) => conn.connection_id) ?? [];
       const githubRepo = parseGithubRepoFromMetadata(
         virtualMcpMetadata,
         connectionIds,
@@ -513,7 +514,7 @@ export const createSandboxRoutes = () => {
           clientDiff.diffs !== null;
 
         const [status, diff] =
-          clientStatus && hasClientDiff
+          isGitStatusLike(clientStatus) && hasClientDiff
             ? [clientStatus, clientDiff]
             : await Promise.all([
                 fetchDaemonJson<GitStatusLike>(

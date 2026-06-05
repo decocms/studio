@@ -257,9 +257,12 @@ export function hasLocalWorkToPush(
   ) {
     return true;
   }
-  // Committed work vs base on a branch with no upstream yet. Older sandboxes
-  // report unpushed=0 until origin/<branch> exists on the remote.
-  return (status.aheadOfBase ?? 0) > 0 && status.tracking == null;
+  // Legacy sandboxes omitted unpushed until origin/<branch> existed remotely.
+  return (
+    status.unpushed === undefined &&
+    (status.aheadOfBase ?? 0) > 0 &&
+    status.tracking == null
+  );
 }
 
 /** True when there is local work to commit, unpushed commits, or working-tree diff paths. */

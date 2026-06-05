@@ -405,15 +405,16 @@ function publish(deps: GitDeps, message: string): { pushed: boolean } {
   const cloneUrl = deps.getCloneUrl?.();
   if (typeof cloneUrl === "string" && cloneUrl.length > 0) {
     syncOriginRemote(repoDir, cloneUrl);
-  } else if (
-    tryGit(repoDir, ["remote", "get-url", "origin"])?.includes("github.com") &&
-    !cloneUrlHasCredentials(
-      tryGit(repoDir, ["remote", "get-url", "origin"]) ?? "",
-    )
-  ) {
-    throw new Error(
-      "GitHub push requires an authenticated clone URL. Connect GitHub for this project and restart the sandbox.",
-    );
+  } else {
+    const originUrl = tryGit(repoDir, ["remote", "get-url", "origin"]) ?? "";
+    if (
+      originUrl.includes("github.com") &&
+      !cloneUrlHasCredentials(originUrl)
+    ) {
+      throw new Error(
+        "GitHub push requires an authenticated clone URL. Connect GitHub for this project and restart the sandbox.",
+      );
+    }
   }
 
   pushBranch(repoDir, branch);

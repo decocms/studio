@@ -167,16 +167,22 @@ function PublishDialogBody({
       setSubmitForReviewError(undefined);
       setSaveChangesError(undefined);
       try {
-        const diffOpts = openPrFromCommits
+        const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
+        const needsBaseDiff =
+          openPrFromCommits ||
+          (!commitToOpenPr && (status.aheadOfBase ?? 0) > 0);
+        const diffOpts = needsBaseDiff
           ? {
               base: baseBranch,
               ...(headSha ? { headSha } : {}),
             }
           : undefined;
-        const [status, diff] = await Promise.all([
-          fetchGitStatus(orgSlug, virtualMcpId, branch),
-          fetchGitDiff(orgSlug, virtualMcpId, branch, diffOpts),
-        ]);
+        const diff = await fetchGitDiff(
+          orgSlug,
+          virtualMcpId,
+          branch,
+          diffOpts,
+        );
         setGitStatus(status);
         setGitDiff(diff);
         setPublishTitle(`Changes from ${status.current ?? branch}`);
@@ -246,7 +252,8 @@ function PublishDialogBody({
     openPrFromCommits || (!commitToOpenPr && (gitStatus?.aheadOfBase ?? 0) > 0);
   const canSubmitForReview =
     !isLoadingGitDiff &&
-    (showSubmitForReviewButton || hasLocalUnpublished || openPrFromCommits);
+    (showSubmitForReviewButton || hasLocalUnpublished) &&
+    (diffCount > 0 || hasLocalUnpublished);
 
   const commitMessage = () =>
     [publishTitle.trim(), publishBody.trim()].filter(Boolean).join("\n\n");

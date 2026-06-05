@@ -113,7 +113,18 @@ describe("hasLocalWorkToPush", () => {
     ).toBe(true);
   });
 
-  test("true when ahead of base on a branch with no upstream", () => {
+  test("true when ahead of base on a branch with no upstream (legacy daemon)", () => {
+    expect(
+      hasLocalWorkToPush({
+        ...cleanStatus,
+        tracking: null,
+        ahead: 0,
+        aheadOfBase: 1,
+      }),
+    ).toBe(true);
+  });
+
+  test("false when daemon reports unpushed 0 with no upstream", () => {
     expect(
       hasLocalWorkToPush({
         ...cleanStatus,
@@ -122,7 +133,7 @@ describe("hasLocalWorkToPush", () => {
         unpushed: 0,
         aheadOfBase: 1,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 

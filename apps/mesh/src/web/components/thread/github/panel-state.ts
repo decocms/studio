@@ -172,7 +172,7 @@ export function selectHeaderButton(
   }
 
   if (ready.unpushed > 0) {
-    if (!pr && ready.aheadOfBase > 0) {
+    if (!pr) {
       return {
         label: "Submit for review",
         action: "create-pr",
