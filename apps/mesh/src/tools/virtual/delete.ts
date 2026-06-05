@@ -5,6 +5,8 @@
  */
 
 import { z } from "zod";
+import { getRepoScope } from "@/shared/github-repo-scope";
+import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { VirtualMCPEntitySchema } from "./schema";
@@ -53,8 +55,55 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
       throw new Error(`Virtual MCP not found: ${input.id}`);
     }
 
-    // Delete the virtual MCP (connections are deleted via CASCADE)
+    // Delete the agent first. virtualMcps.delete() removes (in its transaction)
+    // the connection_aggregations rows that reference the per-agent child
+    // connection under an ON DELETE RESTRICT FK (migration 026) — deleting the
+    // child before this would throw and make the agent undeletable. The child
+    // connection row itself is NOT removed by this (it's a separate, non-VIRTUAL
+    // connection), so its token is still readable below.
     await ctx.storage.virtualMcps.delete(input.id);
+
+    // Tear down the per-agent repo-scoped mcp-github child connection (if any).
+    // Best-effort: the agent is already deleted, so a cleanup hiccup must not
+    // fail the user's delete (worst case it orphans a child whose minted token
+    // self-expires within ~1h). Self-revoke the token first, then delete the
+    // child (its downstream_tokens + now-unreferenced aggregation rows cascade).
+    const childConnectionId = (
+      existing.metadata as { githubRepo?: { connectionId?: string } } | null
+    )?.githubRepo?.connectionId;
+    if (childConnectionId) {
+      try {
+        const child = await ctx.storage.connections.findById(
+          childConnectionId,
+          organization.id,
+        );
+        if (child && getRepoScope(child)) {
+          const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
+          const tok = await tokenStorage.get(childConnectionId);
+          if (tok?.accessToken) {
+            try {
+              await fetch("https://api.github.com/installation/token", {
+                method: "DELETE",
+                headers: {
+                  Authorization: `Bearer ${tok.accessToken}`,
+                  Accept: "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                },
+                signal: AbortSignal.timeout(5000),
+              });
+            } catch {
+              // Best-effort revoke; the token self-expires within ~1h regardless.
+            }
+          }
+          await ctx.storage.connections.delete(childConnectionId);
+        }
+      } catch (err) {
+        console.error(
+          "[VIRTUAL_MCP_DELETE] failed to tear down repo-scoped connection",
+          { childConnectionId, error: (err as Error).message },
+        );
+      }
+    }
 
     // Return virtual MCP entity directly (already in correct format)
     return {
