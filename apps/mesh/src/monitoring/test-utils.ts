@@ -56,6 +56,75 @@ export async function writeTestNDJSON(
 }
 
 /**
+ * Build a single OTLP-JSON logRecord (the shape inside
+ * resourceLogs[].scopeLogs[].logRecords[]) from a partial MonitoringRow, with
+ * `studio.monitoring.*` attributes as `{key, value:{stringValue}}` entries.
+ * Mirrors makeTestMonitoringRow defaults so OTLP and NDJSON fixtures align.
+ */
+export function makeTestOtlpLogRecord(row: Partial<MonitoringRow> = {}): {
+  timeUnixNano: string;
+  spanId: string;
+  attributes: Array<{ key: string; value: { stringValue: string } }>;
+} {
+  const A = MONITORING_LOG_ATTR;
+  const id = row.id ?? `span_${Math.random().toString(36).slice(2)}`;
+  const tsMs = Date.parse(row.timestamp ?? "2026-03-05T12:00:00.000Z");
+  const attrs: Record<string, string | null | undefined> = {
+    [A.TYPE]: row.type ?? MONITORING_LOG_TYPE_VALUE,
+    [A.ORGANIZATION_ID]: row.organization_id ?? "org_test",
+    [A.CONNECTION_ID]: row.connection_id ?? "conn_1",
+    [A.CONNECTION_TITLE]: row.connection_title ?? "Test Server",
+    [A.TOOL_NAME]: row.tool_name ?? "EXAMPLE_TOOL",
+    [A.INPUT]: row.input ?? '{"query":"hello"}',
+    [A.OUTPUT]: row.output ?? '{"tokens":100}',
+    [A.IS_ERROR]: (row.is_error ?? 0) ? "true" : "false",
+    [A.ERROR_MESSAGE]: row.error_message ?? undefined,
+    [A.DURATION_MS]: String(row.duration_ms ?? 150),
+    [A.USER_ID]: row.user_id ?? "user_1",
+    [A.REQUEST_ID]: row.request_id ?? "req_1",
+    [A.USER_AGENT]: row.user_agent ?? "cursor/1.0",
+    [A.VIRTUAL_MCP_ID]: row.virtual_mcp_id ?? undefined,
+    [A.PROPERTIES]: row.properties ?? undefined,
+  };
+  const attributes = Object.entries(attrs)
+    .filter(([, v]) => v != null)
+    .map(([key, value]) => ({ key, value: { stringValue: String(value) } }));
+  return {
+    timeUnixNano: String(BigInt(tsMs) * 1_000_000n),
+    spanId: id,
+    attributes,
+  };
+}
+
+/**
+ * Write OTLP log records to a `.json` file as a single
+ * `ExportLogsServiceRequest` (resourceLogs -> scopeLogs -> logRecords), the
+ * shape an OTel collector's awss3exporter (marshaler: otlp_json) produces.
+ */
+export async function writeTestOtlpJson(
+  dir: string,
+  records: Array<ReturnType<typeof makeTestOtlpLogRecord>>,
+): Promise<void> {
+  const request = {
+    resourceLogs: [
+      {
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: "studio" } },
+          ],
+        },
+        scopeLogs: [{ scope: {}, logRecords: records }],
+      },
+    ],
+  };
+  await writeFile(
+    join(dir, `otlp-${crypto.randomUUID()}.json`),
+    JSON.stringify(request),
+    { mode: 0o600 },
+  );
+}
+
+/**
  * Creates a minimal ReadableLogRecord-like object for testing.
  * Used by NDJSONLogExporter tests and pipeline integration tests.
  *

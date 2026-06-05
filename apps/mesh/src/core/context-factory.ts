@@ -24,8 +24,10 @@ import {
 import {
   createMonitoringEngine,
   ClickHouseClientEngine,
+  DuckDBEngine,
+  buildOtlpFlatSource,
 } from "../monitoring/query-engine";
-import type { QueryEngine } from "../monitoring/query-engine";
+import type { QueryEngine, DuckDBGcsConfig } from "../monitoring/query-engine";
 import { getLogsDir, getMetricsDir } from "../monitoring/schema";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { VirtualMcpPluginConfigsStorage } from "../storage/virtual-mcp-plugin-configs";
@@ -1041,17 +1043,32 @@ export async function createStudioContextFactory(
   // Create vault instance for credential encryption
   const vault = new CredentialVault(config.encryption.key);
 
-  // Create monitoring engines (shared across requests)
-  const clickhouseUrl = getSettings().clickhouseUrl;
+  // Create monitoring engines (shared across requests).
+  // Precedence: ClickHouse (otel_logs view) > GCS OTLP-JSON (embedded DuckDB +
+  // httpfs) > local NDJSON (embedded DuckDB). The test-stub path overrides all.
+  const settings = getSettings();
+  const clickhouseUrl = settings.clickhouseUrl;
   const isClickHouse = !!clickhouseUrl;
-  const dialect: SqlDialect = config.monitoringEngines
-    ? "duckdb"
-    : isClickHouse
-      ? "clickhouse"
-      : "duckdb";
+  const isGcsOtlp = !isClickHouse && !!settings.monitoringS3Bucket;
+  const dialect: SqlDialect = isClickHouse ? "clickhouse" : "duckdb";
+
+  const { resolve } = await import("node:path");
+  const logsBasePath = resolve(getLogsDir());
+  const metricsBasePath = resolve(getMetricsDir());
+
+  // DuckDB reads local NDJSON files; org-sharded directory layout.
+  const localLogSourceFactory = (orgId: string) =>
+    `read_ndjson('${logsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
+  const localMetricSourceFactory = (orgId: string) =>
+    `read_ndjson('${metricsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
 
   let monitoringEngine: QueryEngine;
   let metricEngine: QueryEngine;
+  let logSourceFactory: (orgId: string) => string;
+  let metricSourceFactory: (orgId: string) => string;
+  // When true, metrics are derived from flat log rows instead of histogram
+  // MetricRow files (the GCS OTLP path; see SqlMonitoringStorage).
+  let metricsFromLogs = false;
 
   if (config.monitoringEngines) {
     // Test-only path: caller supplied stubs to avoid loading
@@ -1059,9 +1076,57 @@ export async function createStudioContextFactory(
     // crash). See StudioContextConfig.monitoringEngines for the why.
     monitoringEngine = config.monitoringEngines.monitoringEngine;
     metricEngine = config.monitoringEngines.metricEngine;
+    logSourceFactory = localLogSourceFactory;
+    metricSourceFactory = localMetricSourceFactory;
   } else if (isClickHouse) {
+    // ClickHouse reads the studio_monitoring_logs VIEW (a flat projection of the
+    // OTel-native otel_logs table — provisioned manually, see
+    // monitoring/clickhouse-setup.md). Metrics are derived from those same log
+    // rows, so both factories point at the view.
     monitoringEngine = new ClickHouseClientEngine(clickhouseUrl!);
     metricEngine = new ClickHouseClientEngine(clickhouseUrl!);
+    logSourceFactory = (_orgId: string) => "studio_monitoring_logs";
+    metricSourceFactory = (_orgId: string) => "studio_monitoring_logs";
+  } else if (isGcsOtlp) {
+    // GCS OTLP-JSON path: embedded DuckDB reads OTLP-JSON log files from the
+    // bucket over the S3-compatible endpoint, flattens them to the dashboard's
+    // flat columns, and derives metrics from those log rows. The flat source is
+    // the same for logs and metrics; org scoping is the outer WHERE.
+    const accessKeyId =
+      settings.monitoringS3AccessKeyId ?? settings.s3AccessKeyId;
+    const secretAccessKey =
+      settings.monitoringS3SecretAccessKey ?? settings.s3SecretAccessKey;
+    const extensionDirectory = settings.duckdbExtensionDirectory;
+    if (!accessKeyId || !secretAccessKey || !extensionDirectory) {
+      throw new Error(
+        "MONITORING_S3_BUCKET is set but the GCS monitoring path is misconfigured: " +
+          "MONITORING_S3_ACCESS_KEY_ID/S3_ACCESS_KEY_ID, " +
+          "MONITORING_S3_SECRET_ACCESS_KEY/S3_SECRET_ACCESS_KEY, and " +
+          "DUCKDB_EXTENSION_DIRECTORY are all required.",
+      );
+    }
+    const gcs: DuckDBGcsConfig = {
+      endpoint:
+        settings.monitoringS3Endpoint ??
+        settings.s3Endpoint ??
+        "storage.googleapis.com",
+      region: settings.monitoringS3Region ?? settings.s3Region,
+      accessKeyId,
+      secretAccessKey,
+      extensionDirectory,
+    };
+    // One shared engine: same files for logs and log-derived metrics, so the
+    // httpfs + SECRET setup runs once.
+    const gcsEngine = new DuckDBEngine(gcs);
+    monitoringEngine = gcsEngine;
+    metricEngine = gcsEngine;
+    const otlpSource = buildOtlpFlatSource({
+      bucket: settings.monitoringS3Bucket!,
+      prefix: settings.monitoringS3Prefix ?? "",
+    });
+    logSourceFactory = (_orgId: string) => otlpSource;
+    metricSourceFactory = (_orgId: string) => otlpSource;
+    metricsFromLogs = true;
   } else {
     const { engine: me } = await createMonitoringEngine({
       basePath: getLogsDir(),
@@ -1071,27 +1136,9 @@ export async function createStudioContextFactory(
     });
     monitoringEngine = me;
     metricEngine = metricE;
+    logSourceFactory = localLogSourceFactory;
+    metricSourceFactory = localMetricSourceFactory;
   }
-
-  const { resolve } = await import("node:path");
-  const logsBasePath = resolve(getLogsDir());
-  const metricsBasePath = resolve(getMetricsDir());
-
-  // ClickHouse reads the studio_monitoring_logs VIEW (a flat projection of the
-  // OTel-native otel_logs table — provisioned manually, see
-  // monitoring/clickhouse-setup.md); DuckDB reads the local NDJSON files.
-  // Metrics (counts, durations, percentiles) are derived from the same
-  // monitoring log rows — each tool_call log carries duration_ms and is_error —
-  // so there is no separate metrics table to query.
-  const logSourceFactory = isClickHouse
-    ? (_orgId: string) => "studio_monitoring_logs"
-    : (orgId: string) =>
-        `read_ndjson('${logsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
-
-  const metricSourceFactory = isClickHouse
-    ? (_orgId: string) => "studio_monitoring_logs"
-    : (orgId: string) =>
-        `read_ndjson('${metricsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
 
   // Create storage adapters once (singleton pattern)
   const threadDb = new SqlThreadStorage(config.db);
@@ -1106,6 +1153,7 @@ export async function createStudioContextFactory(
       metricEngine,
       metricSourceFactory,
       dialect,
+      metricsFromLogs,
     ),
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),

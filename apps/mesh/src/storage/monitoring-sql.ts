@@ -411,6 +411,11 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     private metricEngine: QueryEngine,
     private metricSourceFactory: (organizationId: string) => string,
     private dialect: SqlDialect = "clickhouse",
+    // When true (DuckDB reading OTLP flat-log rows from GCS), metrics are
+    // derived from the log rows (count/avg/quantile over duration_ms + is_error)
+    // instead of the pre-aggregated histogram MetricRow columns the local-NDJSON
+    // path uses. Default false preserves the local histogram path.
+    private metricsFromLogs: boolean = false,
   ) {}
 
   async query(filters: {
@@ -733,6 +738,9 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     // below still reads pre-aggregated histograms from local NDJSON files.
     if (this.dialect === "clickhouse") {
       return this.queryMetricTimeseriesClickHouse(params, emptyResult);
+    }
+    if (this.metricsFromLogs) {
+      return this.queryMetricTimeseriesDuckDBLogs(params, emptyResult);
     }
 
     // ── DuckDB path (local NDJSON, pre-aggregated histograms) ──────────────
@@ -1084,6 +1092,159 @@ WHERE ${whereClause}`;
     }
   }
 
+  /**
+   * DuckDB metric timeseries derived from OTLP flat-log rows (count/avg/quantile
+   * over duration_ms + is_error). Same shape as the ClickHouse variant; DuckDB
+   * syntax (count(*) / FILTER / quantile_cont / time_bucket).
+   */
+  private async queryMetricTimeseriesDuckDBLogs(
+    params: {
+      organizationId: string;
+      interval: string;
+      startDate?: Date;
+      endDate?: Date;
+      filters?: {
+        connectionIds?: string[];
+        excludeConnectionIds?: string[];
+        toolNames?: string[];
+        status?: "success" | "error";
+      };
+    },
+    emptyResult: {
+      totalCalls: number;
+      totalErrors: number;
+      avgDurationMs: number;
+      p50DurationMs: number;
+      p95DurationMs: number;
+      connectionBreakdown: Array<{
+        connectionId: string;
+        calls: number;
+        errors: number;
+        errorRate: number;
+        avgDurationMs: number;
+      }>;
+      timeseries: Array<{
+        timestamp: string;
+        calls: number;
+        errors: number;
+        errorRate: number;
+        avg: number;
+        p50: number;
+        p95: number;
+      }>;
+    },
+  ): Promise<typeof emptyResult> {
+    const source = this.metricSourceFactory(params.organizationId);
+    const bucketExpr = intervalToSQL(params.interval, "duckdb", "timestamp");
+
+    const where: string[] = [
+      `organization_id = '${esc(params.organizationId)}'`,
+    ];
+    applyStartDateBound(where, params.startDate, "duckdb");
+    if (params.endDate) {
+      where.push(tsLte(params.endDate, "duckdb"));
+    }
+    if (params.filters?.toolNames?.length) {
+      const names = params.filters.toolNames
+        .slice(0, 100)
+        .map((n) => `'${esc(n)}'`)
+        .join(",");
+      where.push(`tool_name IN (${names})`);
+    }
+    if (params.filters?.connectionIds?.length) {
+      const ids = params.filters.connectionIds
+        .slice(0, 100)
+        .map((id) => `'${esc(id)}'`)
+        .join(",");
+      where.push(`connection_id IN (${ids})`);
+    }
+    if (params.filters?.excludeConnectionIds?.length) {
+      const ids = params.filters.excludeConnectionIds
+        .slice(0, 100)
+        .map((id) => `'${esc(id)}'`)
+        .join(",");
+      where.push(`connection_id NOT IN (${ids})`);
+    }
+    const whereClause = where.join(" AND ");
+
+    const timeseriesSql = `SELECT
+  ${bucketExpr} AS bucket,
+  count(*) AS calls,
+  count(*) FILTER (WHERE is_error = 1) AS errors,
+  avg(duration_ms) AS avg,
+  quantile_cont(duration_ms, 0.5) AS p50,
+  quantile_cont(duration_ms, 0.95) AS p95
+FROM ${source}
+WHERE ${whereClause}
+GROUP BY bucket
+ORDER BY bucket ASC`;
+
+    const breakdownSql = `SELECT
+  connection_id,
+  count(*) AS calls,
+  count(*) FILTER (WHERE is_error = 1) AS errors,
+  avg(duration_ms) AS avg
+FROM ${source}
+WHERE ${whereClause} AND connection_id != ''
+GROUP BY connection_id
+ORDER BY calls DESC
+LIMIT 1000`;
+
+    const totalsSql = `SELECT
+  count(*) AS calls,
+  count(*) FILTER (WHERE is_error = 1) AS errors,
+  avg(duration_ms) AS avg,
+  quantile_cont(duration_ms, 0.5) AS p50,
+  quantile_cont(duration_ms, 0.95) AS p95
+FROM ${source}
+WHERE ${whereClause}`;
+
+    try {
+      const [tsRows, breakdownRows, totalsRows] = await Promise.all([
+        this.metricEngine.query(timeseriesSql),
+        this.metricEngine.query(breakdownSql),
+        this.metricEngine.query(totalsSql),
+      ]);
+
+      const totals = totalsRows[0] ?? {};
+
+      return {
+        totalCalls: Number(totals.calls ?? 0),
+        totalErrors: Number(totals.errors ?? 0),
+        avgDurationMs: finiteOrZero(totals.avg),
+        p50DurationMs: finiteOrZero(totals.p50),
+        p95DurationMs: finiteOrZero(totals.p95),
+        connectionBreakdown: breakdownRows.map((row) => {
+          const calls = Number(row.calls ?? 0);
+          const errors = Number(row.errors ?? 0);
+          return {
+            connectionId: String(row.connection_id ?? ""),
+            calls,
+            errors,
+            errorRate: calls > 0 ? (errors / calls) * 100 : 0,
+            avgDurationMs: finiteOrZero(row.avg),
+          };
+        }),
+        timeseries: tsRows.map((row) => {
+          const calls = Number(row.calls ?? 0);
+          const errors = Number(row.errors ?? 0);
+          return {
+            timestamp: toISOBucket(row.bucket),
+            calls,
+            errors,
+            errorRate: calls > 0 ? errors / calls : 0,
+            avg: finiteOrZero(row.avg),
+            p50: finiteOrZero(row.p50),
+            p95: finiteOrZero(row.p95),
+          };
+        }),
+      };
+    } catch (err) {
+      console.error("queryMetricTimeseries failed:", err);
+      throw new Error("Monitoring stats unavailable", { cause: err });
+    }
+  }
+
   async queryMetricTopToolsTimeseries(params: {
     organizationId: string;
     interval: string;
@@ -1124,6 +1285,9 @@ WHERE ${whereClause}`;
     // reads pre-aggregated histograms from local NDJSON files.
     if (this.dialect === "clickhouse") {
       return this.queryMetricTopToolsTimeseriesClickHouse(params, emptyResult);
+    }
+    if (this.metricsFromLogs) {
+      return this.queryMetricTopToolsTimeseriesDuckDBLogs(params, emptyResult);
     }
 
     // ── DuckDB path (local NDJSON, pre-aggregated histograms) ──────────────
@@ -1357,6 +1521,137 @@ LIMIT ${topN}`;
   countIf(is_error = 1) AS errors,
   avg(duration_ms) AS avg,
   quantile(0.95)(duration_ms) AS p95
+FROM ${source}
+WHERE ${whereClause} AND tool_name IN (${toolNamesSql})
+GROUP BY bucket, tool_name
+ORDER BY bucket ASC, tool_name ASC`;
+
+      const rows = await this.metricEngine.query(timeseriesSql);
+
+      return {
+        topTools: topToolRows.map((row) => ({
+          toolName: String(row.tool_name ?? ""),
+          connectionId:
+            row.connection_id != null ? String(row.connection_id) : null,
+          calls: Number(row.calls ?? 0),
+        })),
+        timeseries: rows.map((row) => ({
+          timestamp: toISOBucket(row.bucket),
+          toolName: String(row.tool_name ?? ""),
+          calls: Number(row.calls ?? 0),
+          errors: Number(row.errors ?? 0),
+          avg: finiteOrZero(row.avg),
+          p95: finiteOrZero(row.p95),
+        })),
+      };
+    } catch (err) {
+      console.error("queryMetricTopToolsTimeseries failed:", err);
+      throw new Error("Monitoring stats unavailable", { cause: err });
+    }
+  }
+
+  /**
+   * DuckDB top-tools metric timeseries derived from OTLP flat-log rows. Same
+   * shape as the ClickHouse variant; DuckDB syntax (count(*) / FILTER /
+   * quantile_cont / arg_max / time_bucket).
+   */
+  private async queryMetricTopToolsTimeseriesDuckDBLogs(
+    params: {
+      organizationId: string;
+      interval: string;
+      startDate?: Date;
+      endDate?: Date;
+      topN?: number;
+      filters?: {
+        connectionIds?: string[];
+        excludeConnectionIds?: string[];
+        toolNames?: string[];
+        status?: "success" | "error";
+      };
+    },
+    emptyResult: {
+      topTools: Array<{
+        toolName: string;
+        connectionId: string | null;
+        calls: number;
+      }>;
+      timeseries: Array<{
+        timestamp: string;
+        toolName: string;
+        calls: number;
+        errors: number;
+        avg: number;
+        p95: number;
+      }>;
+    },
+  ): Promise<typeof emptyResult> {
+    const source = this.metricSourceFactory(params.organizationId);
+    const bucketExpr = intervalToSQL(params.interval, "duckdb", "timestamp");
+    const where: string[] = [
+      `organization_id = '${esc(params.organizationId)}'`,
+    ];
+    applyStartDateBound(where, params.startDate, "duckdb");
+    if (params.endDate) {
+      where.push(tsLte(params.endDate, "duckdb"));
+    }
+    if (params.filters?.toolNames?.length) {
+      const names = params.filters.toolNames
+        .slice(0, 100)
+        .map((n) => `'${esc(n)}'`)
+        .join(",");
+      where.push(`tool_name IN (${names})`);
+    }
+    if (params.filters?.connectionIds?.length) {
+      const ids = params.filters.connectionIds
+        .slice(0, 100)
+        .map((id) => `'${esc(id)}'`)
+        .join(",");
+      where.push(`connection_id IN (${ids})`);
+    }
+    if (params.filters?.excludeConnectionIds?.length) {
+      const ids = params.filters.excludeConnectionIds
+        .slice(0, 100)
+        .map((id) => `'${esc(id)}'`)
+        .join(",");
+      where.push(`connection_id NOT IN (${ids})`);
+    }
+    const whereClause = where.join(" AND ");
+    const topN = Math.min(Math.max(1, Math.floor(params.topN ?? 10)), 20);
+
+    try {
+      const topToolsSql = `SELECT
+  tool_name,
+  arg_max(connection_id, conn_calls) AS connection_id,
+  sum(conn_calls) AS calls
+FROM (
+  SELECT tool_name, connection_id, count(*) AS conn_calls
+  FROM ${source}
+  WHERE ${whereClause} AND tool_name != ''
+  GROUP BY tool_name, connection_id
+)
+GROUP BY tool_name
+ORDER BY calls DESC
+LIMIT ${topN}`;
+
+      const topToolRows = await this.metricEngine.query(topToolsSql);
+      if (topToolRows.length === 0) {
+        return emptyResult;
+      }
+
+      const topToolNames = topToolRows
+        .map((row) => String(row.tool_name ?? ""))
+        .filter(Boolean);
+      const toolNamesSql = topToolNames
+        .map((name) => `'${esc(name)}'`)
+        .join(",");
+
+      const timeseriesSql = `SELECT
+  ${bucketExpr} AS bucket,
+  tool_name,
+  count(*) AS calls,
+  count(*) FILTER (WHERE is_error = 1) AS errors,
+  avg(duration_ms) AS avg,
+  quantile_cont(duration_ms, 0.95) AS p95
 FROM ${source}
 WHERE ${whereClause} AND tool_name IN (${toolNamesSql})
 GROUP BY bucket, tool_name

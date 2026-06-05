@@ -18,23 +18,90 @@ export interface QueryEngine {
 }
 
 /**
- * DuckDB engine for local dev monitoring queries.
- * Uses embedded DuckDB to query NDJSON files from disk.
+ * Credentials + extension dir for reading object storage (GCS via its
+ * S3-compatible endpoint) through DuckDB's httpfs extension. When supplied to
+ * DuckDBEngine, the connection is primed once with `LOAD httpfs` + a `CREATE
+ * SECRET` so `read_json('s3://…')` works against the bucket.
+ */
+export interface DuckDBGcsConfig {
+  /** Host only, no scheme — e.g. "storage.googleapis.com". */
+  endpoint: string;
+  /** "auto" or a concrete region. */
+  region: string;
+  /** GCS HMAC access key. */
+  accessKeyId: string;
+  /** GCS HMAC secret. */
+  secretAccessKey: string;
+  /** Absolute path to the extension dir holding the pre-installed httpfs. */
+  extensionDirectory: string;
+}
+
+/** Escape a value for a single-quoted DuckDB SQL literal. */
+function escSqlLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+/**
+ * DuckDB engine for embedded monitoring queries.
+ * Reads NDJSON files from local disk, or — when `gcs` is supplied — OTLP-JSON
+ * files from object storage via httpfs.
  */
 export class DuckDBEngine implements QueryEngine {
   private connectionPromise: Promise<
     import("@duckdb/node-api").DuckDBConnection
   >;
 
-  constructor() {
+  constructor(gcs?: DuckDBGcsConfig) {
     this.connectionPromise = import("@duckdb/node-api").then(
       async ({ DuckDBInstance }) => {
         const { cpus } = await import("node:os");
         const threads = String(Math.max(1, cpus().length));
         const instance = await DuckDBInstance.create("", { threads });
-        return instance.connect();
+        const connection = await instance.connect();
+        if (gcs) {
+          await DuckDBEngine.setupGcs(connection, gcs);
+        }
+        return connection;
       },
     );
+  }
+
+  /**
+   * Prime a connection to read from GCS: load the pre-baked httpfs extension
+   * (no runtime download) and register an s3-type secret pointed at the GCS
+   * S3-compatible endpoint.
+   */
+  private static async setupGcs(
+    connection: import("@duckdb/node-api").DuckDBConnection,
+    gcs: DuckDBGcsConfig,
+  ): Promise<void> {
+    // httpfs is baked into the image at build time; never reach out to the
+    // DuckDB extension CDN at runtime (strict-outbound self-hosters).
+    await connection.run(
+      [
+        `SET extension_directory='${escSqlLiteral(gcs.extensionDirectory)}';`,
+        `SET autoinstall_known_extensions=false;`,
+        `SET autoload_known_extensions=false;`,
+        `LOAD httpfs;`,
+      ].join("\n"),
+    );
+
+    const secretSql = `CREATE OR REPLACE SECRET studio_gcs (
+  TYPE s3,
+  PROVIDER config,
+  KEY_ID '${escSqlLiteral(gcs.accessKeyId)}',
+  SECRET '${escSqlLiteral(gcs.secretAccessKey)}',
+  REGION '${escSqlLiteral(gcs.region)}',
+  ENDPOINT '${escSqlLiteral(gcs.endpoint)}',
+  URL_STYLE 'path',
+  USE_SSL true
+);`;
+    try {
+      await connection.run(secretSql);
+    } catch {
+      // Never surface the SECRET DDL — it carries the HMAC secret.
+      throw new Error("Failed to initialize DuckDB GCS secret");
+    }
   }
 
   async query(sql: string): Promise<Record<string, unknown>[]> {
@@ -152,4 +219,87 @@ export async function createMonitoringEngine(
   const source = `read_ndjson('${resolvedPath}/**/*.ndjson', auto_detect=true)`;
 
   return { engine: new DuckDBEngine(), source };
+}
+
+/** Attribute-key prefix on Studio's monitoring OTel log records. */
+const MONITORING_ATTR_PREFIX = "studio.monitoring.";
+
+/**
+ * Build a DuckDB subquery that flattens OTLP-JSON log files
+ * (`ExportLogsServiceRequest`: resourceLogs[] -> scopeLogs[] -> logRecords[])
+ * into the flat row shape the dashboard SQL expects. The caller scopes by org
+ * via the outer `organization_id = '...'` WHERE — OTLP files are time-sharded,
+ * not org-sharded, so the glob reads all orgs and the subquery only exposes the
+ * column.
+ *
+ * Attribute values are read via `to_json(value)` + `json_extract_string` rather
+ * than struct-field access: DuckDB infers the `value` struct shape from sampled
+ * data, so a direct `value.intValue` reference bind-errors on files that only
+ * contain `stringValue`. The JSON path returns NULL for absent fields instead.
+ */
+export function buildOtlpFlatSourceFromGlob(glob: string): string {
+  const A = MONITORING_ATTR_PREFIX;
+  const attr = (key: string) => `attrs['${A}${key}']`;
+  return `(
+  WITH _raw AS (
+    SELECT unnest(resourceLogs) AS rl
+    FROM read_json('${glob}', format='auto', union_by_name=true, maximum_object_size=33554432, ignore_errors=true)
+  ),
+  _scopes AS (SELECT unnest(rl.scopeLogs) AS sl FROM _raw),
+  _recs AS (SELECT unnest(sl.logRecords) AS lr FROM _scopes),
+  _flat AS (
+    SELECT
+      lr.spanId AS span_id,
+      lr.timeUnixNano AS ts_nano,
+      map_from_entries(
+        list_transform(lr.attributes, a -> struct_pack(
+          k := a.key,
+          v := coalesce(
+            json_extract_string(to_json(a.value), '$.stringValue'),
+            json_extract_string(to_json(a.value), '$.intValue'),
+            json_extract_string(to_json(a.value), '$.boolValue'),
+            json_extract_string(to_json(a.value), '$.doubleValue')
+          )
+        ))
+      ) AS attrs
+    FROM _recs
+  )
+  SELECT
+    span_id AS id,
+    ${attr("organization_id")} AS organization_id,
+    ${attr("connection_id")} AS connection_id,
+    ${attr("connection_title")} AS connection_title,
+    ${attr("tool_name")} AS tool_name,
+    ${attr("input")} AS input,
+    ${attr("output")} AS output,
+    CASE WHEN ${attr("is_error")} = 'true' THEN 1 ELSE 0 END AS is_error,
+    ${attr("error_message")} AS error_message,
+    TRY_CAST(${attr("duration_ms")} AS DOUBLE) AS duration_ms,
+    make_timestamp(CAST(ts_nano AS BIGINT) // 1000) AS timestamp,
+    ${attr("user_id")} AS user_id,
+    ${attr("request_id")} AS request_id,
+    ${attr("user_agent")} AS user_agent,
+    ${attr("virtual_mcp_id")} AS virtual_mcp_id,
+    ${attr("properties")} AS properties
+  FROM _flat
+  WHERE ${attr("type")} IN ('tool_call', 'llm_call')
+)`;
+}
+
+/**
+ * Build the GCS-backed OTLP flat source for a bucket/prefix. Org scoping is the
+ * caller's outer WHERE (see buildOtlpFlatSourceFromGlob).
+ */
+export function buildOtlpFlatSource(opts: {
+  bucket: string;
+  prefix: string;
+}): string {
+  if (/[';]/.test(opts.bucket) || /[';]/.test(opts.prefix)) {
+    throw new Error("Invalid monitoring GCS bucket/prefix");
+  }
+  const prefix = opts.prefix.replace(/^\/+|\/+$/g, "");
+  const glob = prefix
+    ? `s3://${opts.bucket}/${prefix}/**/*.json`
+    : `s3://${opts.bucket}/**/*.json`;
+  return buildOtlpFlatSourceFromGlob(glob);
 }

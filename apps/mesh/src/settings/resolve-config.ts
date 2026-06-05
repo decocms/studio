@@ -99,6 +99,17 @@ export function resolveConfig(
       envVars.S3_FORCE_PATH_STYLE === "true" ||
       envVars.S3_FORCE_PATH_STYLE === "1",
 
+    // Monitoring object storage (OTLP-JSON over GCS). Raw env passthrough;
+    // fallback to s3* is applied at the context-factory consumption point.
+    monitoringS3Bucket: envVars.MONITORING_S3_BUCKET,
+    monitoringS3Endpoint: envVars.MONITORING_S3_ENDPOINT,
+    monitoringS3Region: envVars.MONITORING_S3_REGION,
+    monitoringS3AccessKeyId: envVars.MONITORING_S3_ACCESS_KEY_ID,
+    monitoringS3SecretAccessKey: envVars.MONITORING_S3_SECRET_ACCESS_KEY,
+    monitoringS3Prefix: envVars.MONITORING_S3_PREFIX,
+    duckdbExtensionDirectory:
+      envVars.DUCKDB_EXTENSION_DIRECTORY || "/opt/duckdb/extensions",
+
     // Runtime flags
     isCli: true,
     noTui: flags.noTui === true,

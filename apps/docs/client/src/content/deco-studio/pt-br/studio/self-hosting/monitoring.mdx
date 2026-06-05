@@ -71,9 +71,66 @@ DATA_DIR=/mnt/monitoring
 
 Não é necessário definir `CLICKHOUSE_URL` — o DuckDB consulta os arquivos NDJSON em disco.
 
+## Opção C: Google Cloud Storage (OTLP via collector)
+
+Para deployments self-hosted no GCP que querem **sem ClickHouse e sem disco/sidecar**, o Studio pode ler seus dados de monitoramento diretamente de um bucket no GCS. O Studio já emite os dados de monitoramento como logs OTLP padrão pela rede; você os aponta para um OpenTelemetry Collector que os grava no GCS, e o engine DuckDB embutido os lê de volta pelo endpoint compatível com S3 do GCS.
+
+```
+Studio ──logs OTLP──▶ OTel Collector ──awss3exporter (otlp_json)──▶ gs://bucket/<prefix>/...
+                                                                          ▲
+                                  DuckDB embutido lê + achata na consulta
+```
+
+**1. Crie um bucket e uma chave HMAC.** No Google Cloud Storage, crie um bucket e uma [chave HMAC do Cloud Storage](https://cloud.google.com/storage/docs/authentication/hmackeys) (Configurações → Interoperabilidade). Adicione uma regra de ciclo de vida no bucket para retenção, se desejar.
+
+**2. Envie os logs de monitoramento do Studio para o seu collector.** Defina `MONITORING_OTLP_ENDPOINT` (ou habilite o collector no cluster) para que o Studio exporte os logs OTLP para ele.
+
+**3. Configure o collector para gravar OTLP-JSON no GCS.** Adicione um `awss3exporter` ao pipeline de **logs** do collector, apontado para o endpoint compatível com S3 do GCS, usando a chave HMAC como credenciais AWS:
+
+```yaml
+exporters:
+  awss3:
+    marshaler: otlp_json        # legível pelo DuckDB (NÃO use otlp_proto)
+    s3uploader:
+      region: auto
+      s3_bucket: your-bucket
+      s3_prefix: logs
+      endpoint: https://storage.googleapis.com
+      s3_force_path_style: true
+service:
+  pipelines:
+    logs:
+      exporters: [awss3]
+# Forneça a chave HMAC ao collector como credenciais AWS:
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+```
+
+**4. Aponte o leitor do Studio para o mesmo bucket:**
+
+```bash
+MONITORING_S3_BUCKET=your-bucket
+MONITORING_S3_PREFIX=logs
+MONITORING_S3_ENDPOINT=https://storage.googleapis.com
+MONITORING_S3_ACCESS_KEY_ID=<hmac-key>
+MONITORING_S3_SECRET_ACCESS_KEY=<hmac-secret>
+```
+
+Quando `MONITORING_S3_BUCKET` está definida (e `CLICKHOUSE_URL` não), o dashboard lê os arquivos OTLP-JSON do bucket. As métricas (chamadas, erros, percentis de latência) são derivadas dessas mesmas linhas de log, então não há um armazenamento de métricas separado. A extensão `httpfs` que o DuckDB precisa já vem embutida na imagem oficial, então isso funciona mesmo com políticas restritas de rede de saída.
+
+<Callout type="info">
+  A exportação OTLP limita o payload de `output` de cada chamada de ferramenta em 8&nbsp;KB (igual ao caminho do ClickHouse hospedado). Os **inputs** das ferramentas e todas as análises (contagens, taxa de erro, latência) não são afetados; apenas corpos de resposta muito grandes são cortados no inspetor de chamadas.
+</Callout>
+
 ## Variáveis de ambiente
 
 | Variável | Padrão | Descrição |
 |----------|---------|-------------|
 | `DATA_DIR` | `~/deco` | Diretório base para os arquivos NDJSON de monitoramento |
 | `CLICKHOUSE_URL` | *(não definida)* | Endpoint HTTP do ClickHouse. Quando definida, a UI de monitoramento usa ClickHouse em vez de DuckDB |
+| `MONITORING_OTLP_ENDPOINT` | *(usa `OTEL_EXPORTER_OTLP_ENDPOINT` como fallback)* | Endpoint OTLP para onde o Studio exporta os logs de monitoramento (seu collector) |
+| `MONITORING_S3_BUCKET` | *(não definida)* | Bucket no GCS com os logs OTLP-JSON. Quando definida (e `CLICKHOUSE_URL` não), o dashboard lê deste bucket via DuckDB |
+| `MONITORING_S3_PREFIX` | *(nenhum)* | Prefixo de chave dentro do bucket (igual ao `s3_prefix` do collector) |
+| `MONITORING_S3_ENDPOINT` | usa `S3_ENDPOINT` como fallback | Endpoint compatível com S3, ex. `https://storage.googleapis.com` |
+| `MONITORING_S3_REGION` | usa `S3_REGION` como fallback | Região para assinatura SigV4 (`auto` para GCS) |
+| `MONITORING_S3_ACCESS_KEY_ID` | usa `S3_ACCESS_KEY_ID` como fallback | Chave HMAC do GCS |
+| `MONITORING_S3_SECRET_ACCESS_KEY` | usa `S3_SECRET_ACCESS_KEY` como fallback | Segredo HMAC do GCS |

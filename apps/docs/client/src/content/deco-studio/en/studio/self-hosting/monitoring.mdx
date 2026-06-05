@@ -71,9 +71,66 @@ DATA_DIR=/mnt/monitoring
 
 No `CLICKHOUSE_URL` is needed — DuckDB queries the NDJSON files on disk.
 
+## Option C: Google Cloud Storage (OTLP via collector)
+
+For self-hosted deployments on GCP that want **no ClickHouse and no disk/sidecar**, Studio can read its monitoring data directly from a GCS bucket. Studio already emits monitoring data as standard OTLP logs over the network; you point those at an OpenTelemetry Collector that writes them to GCS, and the embedded DuckDB engine reads them back via GCS's S3-compatible endpoint.
+
+```
+Studio ──OTLP logs──▶ OTel Collector ──awss3exporter (otlp_json)──▶ gs://bucket/<prefix>/...
+                                                                          ▲
+                                  embedded DuckDB reads + flattens at query time
+```
+
+**1. Create a bucket and an HMAC key.** In Google Cloud Storage, create a bucket and a [Cloud Storage HMAC key](https://cloud.google.com/storage/docs/authentication/hmackeys) (Settings → Interoperability). Add a bucket lifecycle rule for retention if desired.
+
+**2. Send Studio's monitoring logs to your collector.** Set `MONITORING_OTLP_ENDPOINT` (or enable the in-cluster collector) so Studio exports OTLP logs to it.
+
+**3. Configure the collector to write OTLP-JSON to GCS.** Add an `awss3exporter` to the collector's **logs** pipeline, pointed at the GCS S3-compatible endpoint with the HMAC key as AWS credentials:
+
+```yaml
+exporters:
+  awss3:
+    marshaler: otlp_json        # DuckDB-readable (do NOT use otlp_proto)
+    s3uploader:
+      region: auto
+      s3_bucket: your-bucket
+      s3_prefix: logs
+      endpoint: https://storage.googleapis.com
+      s3_force_path_style: true
+service:
+  pipelines:
+    logs:
+      exporters: [awss3]
+# Provide the HMAC key to the collector as AWS credentials:
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+```
+
+**4. Point Studio's reader at the same bucket:**
+
+```bash
+MONITORING_S3_BUCKET=your-bucket
+MONITORING_S3_PREFIX=logs
+MONITORING_S3_ENDPOINT=https://storage.googleapis.com
+MONITORING_S3_ACCESS_KEY_ID=<hmac-key>
+MONITORING_S3_SECRET_ACCESS_KEY=<hmac-secret>
+```
+
+When `MONITORING_S3_BUCKET` is set (and `CLICKHOUSE_URL` is not), the dashboard reads OTLP-JSON log files from the bucket. Metrics (calls, errors, latency percentiles) are derived from those same log rows, so there is no separate metrics store. The `httpfs` extension DuckDB needs is baked into the official image, so this works with strict outbound network policies.
+
+<Callout type="info">
+  The OTLP export caps each tool call's `output` payload at 8&nbsp;KB (matching the hosted ClickHouse path). Tool **inputs** and all analytics (counts, error rate, latency) are unaffected; only very large response bodies are clipped in the call inspector.
+</Callout>
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATA_DIR` | `~/deco` | Base directory for monitoring NDJSON files |
 | `CLICKHOUSE_URL` | *(not set)* | ClickHouse HTTP endpoint. When set, the monitoring UI uses ClickHouse instead of DuckDB |
+| `MONITORING_OTLP_ENDPOINT` | *(falls back to `OTEL_EXPORTER_OTLP_ENDPOINT`)* | OTLP endpoint Studio exports monitoring logs to (your collector) |
+| `MONITORING_S3_BUCKET` | *(not set)* | GCS bucket holding OTLP-JSON logs. When set (and `CLICKHOUSE_URL` is not), the dashboard reads from this bucket via DuckDB |
+| `MONITORING_S3_PREFIX` | *(none)* | Key prefix within the bucket (matches the collector's `s3_prefix`) |
+| `MONITORING_S3_ENDPOINT` | falls back to `S3_ENDPOINT` | S3-compatible endpoint, e.g. `https://storage.googleapis.com` |
+| `MONITORING_S3_REGION` | falls back to `S3_REGION` | Region for SigV4 signing (`auto` for GCS) |
+| `MONITORING_S3_ACCESS_KEY_ID` | falls back to `S3_ACCESS_KEY_ID` | GCS HMAC key |
+| `MONITORING_S3_SECRET_ACCESS_KEY` | falls back to `S3_SECRET_ACCESS_KEY` | GCS HMAC secret |

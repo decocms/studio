@@ -58,6 +58,20 @@ export interface Settings {
   s3SecretAccessKey: string | undefined;
   s3ForcePathStyle: boolean;
 
+  // Monitoring object storage (OTLP-JSON over GCS S3-compatible endpoint).
+  // When monitoringS3Bucket is set and clickhouseUrl is not, the dashboard reads
+  // OTLP-JSON log files from this bucket via embedded DuckDB + httpfs. Endpoint /
+  // region / credentials fall back to the matching s3* value when unset.
+  monitoringS3Bucket: string | undefined;
+  monitoringS3Endpoint: string | undefined;
+  monitoringS3Region: string | undefined;
+  monitoringS3AccessKeyId: string | undefined;
+  monitoringS3SecretAccessKey: string | undefined;
+  monitoringS3Prefix: string | undefined;
+  // Absolute path to the DuckDB extension directory baked into the image
+  // (contains httpfs). Required for the GCS OTLP monitoring path.
+  duckdbExtensionDirectory: string | undefined;
+
   // Runtime flags (set by CLI)
   isCli: boolean;
   noTui: boolean;
