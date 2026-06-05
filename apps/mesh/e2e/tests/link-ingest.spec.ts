@@ -82,59 +82,24 @@ async function fetchParts(
  * can assert against it.
  */
 function buildSseBody(messageId: string, text: string): string {
-  const events: unknown[] = [
-    { type: "ui-message-chunk", chunk: { type: "start", messageId } },
-    {
-      type: "ui-message-chunk",
-      chunk: { type: "start-step", messageId, stepType: "initial" },
-    },
-    {
-      type: "ui-message-chunk",
-      chunk: {
-        type: "text-start",
-        messageId,
-        id: `${messageId}-text-0`,
-      },
-    },
-    {
-      type: "ui-message-chunk",
-      chunk: {
-        type: "text-delta",
-        messageId,
-        id: `${messageId}-text-0`,
-        textDelta: text,
-      },
-    },
-    {
-      type: "ui-message-chunk",
-      chunk: {
-        type: "text-end",
-        messageId,
-        id: `${messageId}-text-0`,
-      },
-    },
-    {
-      type: "ui-message-chunk",
-      chunk: {
-        type: "finish-step",
-        messageId,
-        finishReason: "stop",
-        usage: { promptTokens: 1, completionTokens: 1 },
-        isContinued: false,
-      },
-    },
-    {
-      type: "ui-message-chunk",
-      chunk: {
-        type: "finish",
-        messageId,
-        finishReason: "stop",
-        usage: { promptTokens: 1, completionTokens: 1 },
-      },
-    },
-    { type: "done" },
+  // Exactly the SDK-verified UIMessageChunk sequence the consume-part-stream
+  // unit test proved assembles into one text message (ai@6: text deltas use
+  // `delta`, text parts key on `id`). Wrapped as `ui-message-chunk` events.
+  const textId = `${messageId}-text-0`;
+  const chunks: unknown[] = [
+    { type: "start" },
+    { type: "start-step" },
+    { type: "text-start", id: textId },
+    { type: "text-delta", id: textId, delta: text },
+    { type: "text-end", id: textId },
+    { type: "finish-step" },
+    { type: "finish" },
   ];
-
+  const events: unknown[] = chunks.map((chunk) => ({
+    type: "ui-message-chunk",
+    chunk,
+  }));
+  events.push({ type: "done" });
   return events.map((ev) => `data: ${JSON.stringify(ev)}\n\n`).join("");
 }
 
