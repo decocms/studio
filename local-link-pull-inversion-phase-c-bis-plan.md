@@ -1,62 +1,65 @@
-# Local-Link Pull Inversion — Phase C-bis (Sandbox Reverse-Proxy → Pull) Design
+# Local-Link Pull Inversion — Phase C-bis (Sandbox Reverse-Proxy → Pull) — HARDENED PLAN
 
-> Produced 2026-06-06 by a grounding+design workflow (6 parallel code readers + adversarial completeness audit + synthesis). This is the design that unblocks Phase F (deleting the reverse-WS). Status: **DESIGN ONLY — pending the go/no-go decision (see §6).**
+> v2 (2026-06-06): hardened by an adversarial design review (distributed/multi-pod, reuse-vs-rewrite, streaming-correctness, goal/scope critics + resolver). **Status: APPROVED to implement — user said "continue to the end".** The v1 §5.1 "in-memory per-pod queue keyed by reqId" was a multi-pod data-loss bug and is REPLACED by the two-subject NATS correlation in §3b below.
 
-## 1. The reframing (what the workflow established)
-
-Phase F's blocker was "the reverse-WS carries a 6th traffic type with no pull home." The grounding sharpened this into two facts:
-
-1. **Desktop preview already bypasses the WS.** `DesktopSandboxProvider` has **no** `proxyPreviewRequest`. The browser hits `http://<handle>.localhost:<ingressPort>` served by the daemon's in-process `local-ingress.ts` (a full Bun.serve HTTP+WS reverse-proxy with Vite-HMR frame buffering), started *before* the cluster connection. `link-daemon/index.ts` sets the preview URL to that local-ingress URL. The only cluster coupling — telling the cluster the ingress port — is **already** rehomed to the pull path (`x-link-preview-port` presence header, `work-poller.ts:114`). **Preview needs zero C-bis work.**
-2. **Everything else funnels through one method.** vm-events SSE (`vm-events.ts`/`sandbox-events-handler.ts`), the `/_sandbox` control RPC family (`sandbox-proxy.ts:proxyDaemon` → `/config`,`/read`,`/write`,`/glob`,`/exec`,`/git/*`,`/setup`), and decopilot **vm-tools** (`built-in-tools/vm-tools/index.ts:daemonRequest`) ALL call `DesktopSandboxProvider.proxyDaemonRequest`, which calls `this.dispatch(userSub, …)` → NATS `links.dispatch.<userSub>` → ws-gateway → daemon. **Rehome that one method and all three move together.**
+## 1. The reframing (grounding workflow established)
+1. **Desktop preview already bypasses the WS.** `DesktopSandboxProvider` has no `proxyPreviewRequest`; the browser hits `http://<handle>.localhost:<ingressPort>` served by the daemon's in-process `local-ingress.ts` (Bun.serve HTTP+WS proxy w/ Vite-HMR). The only cluster coupling (the ingress port) is already on the `x-link-preview-port` presence header. **Preview = zero work.**
+2. **Everything else funnels through ONE method** — `DesktopSandboxProvider.proxyDaemonRequest` → `this.dispatch(userSub,…)`: vm-events SSE, the `/_sandbox` control RPC family, and decopilot vm-tools. Rehome that one method and all three move.
 
 ## 2. Traffic table (desktop)
-
-| WS traffic | Today (desktop) | Pull home | Effort |
+| WS traffic | Today | Pull home | Effort |
 |---|---|---|---|
-| Preview iframe HTTP/WS | browser → daemon local-ingress (never WS) | unchanged (already local) | none |
-| Preview-port signal | WS hello frame | `x-link-preview-port` presence header (done) | none |
-| Chat dispatch `/_sandbox/dispatch` | `remoteDispatch` over WS | work-poll → ingest (Phases B/D) | done |
-| Cancel | `links.cancel.<userSub>` | control-poll (Phase C) | done |
-| **vm-events SSE** | `proxyDaemonRequest` → WS | **new pull reverse-proxy channel** | medium |
-| **`/_sandbox` control RPC** | `proxyDaemonRequest` → WS | same channel | (incl.) |
-| **vm-tools** (read/write/edit/grep/bash) | `proxyDaemonRequest` → WS | same channel (it *is* `proxyDaemonRequest`) | (incl.) |
-| **ensure / delete / postConfig** | `provider.ensure()`/`/_sandbox/config` → WS | control-poll `ensure_sandbox`/`delete_sandbox` frames + postConfig over the channel; chat path leans on daemon self-ensure from the work item | medium |
-| **warm-ensure** (`resolveRemoteCliSandboxHandle`) | `ensureSandbox(…,'user-desktop')` → WS (Blocker 3, swallowed "malformed JSON") | sever — derive handle via pure `computeHandle`; daemon self-ensures from `WorkItem.sandbox` | small |
+| Preview iframe | browser→local-ingress (never WS) | unchanged | none |
+| Preview-port signal | WS hello | `x-link-preview-port` header | done |
+| Chat dispatch | `remoteDispatch`/WS | work-poll→ingest | done |
+| Cancel | `links.cancel.<userSub>` | control-poll | done |
+| vm-events SSE / `/_sandbox` control RPC / vm-tools | `proxyDaemonRequest`→WS | **new pull reverse-proxy channel (§3b)** | medium |
+| ensure/delete/postConfig | `provider.ensure()`→WS | control-poll `ensure_sandbox`/`delete_sandbox` + postConfig over the channel; chat leans on daemon self-ensure | medium |
+| warm-ensure (`resolveRemoteCliSandboxHandle`) | `ensureSandbox(…,'user-desktop')`→WS | **surgical** sever — pure `computeHandle` at the 2 dispatch sites; the preview-URL site needs an explicit ensure | small |
 
-## 3. Recommended end-state topology (split by locality, not traffic type)
+## 3. Topology
+- **Desktop preview:** browser→local-ingress direct (status quo). Do NOT re-introduce a cluster proxy. Auth unchanged (open-by-handle on both). Zero code.
+- **Cloud preview:** unchanged (browser→cluster preview-proxy→pod:9000). Never used WS.
+- **Desktop `proxyDaemonRequest` (events+control+vm-tools):** the new pull reverse-proxy channel (§3b).
 
-- **Desktop preview:** browser → local-ingress **direct** (status quo). Do NOT re-introduce a cluster proxy. Auth unchanged (preview is open-by-handle on both desktop and cloud; the cluster adds no real preview authz today). Lowest latency, full HMR, zero code.
-- **Cloud preview:** unchanged (browser → cluster `preview-proxy.ts` → pod:9000; eventually per-claim HTTPRoute). Never used the WS — orthogonal.
-- **All desktop `proxyDaemonRequest` traffic (events + control + vm-tools):** a **new pull reverse-proxy channel** — `GET /api/:org/links/proxy` (daemon long-polls one queued request frame) + `POST /api/:org/links/proxy/:reqId/stream` (daemon streams the framed reply). Reuse the **existing** daemon `control-handler.handleStream` (already proxies to `127.0.0.1:<port>/_sandbox/*`) and the **existing** `DispatchChunk`/headers frame shape so `runner.ts` streaming/abort code is untouched. Daemon stays **outbound-only** (firewall-friendly); cluster stays the auth/policy point for privileged control RPC.
-- **ensure/delete:** control-poll frames; chat hot path relies on daemon self-ensure from the work item.
+## 3b. HARDENED correlation design (replaces v1 §5.1 — the crux)
+Two core-NATS subjects derived **purely from ids** — the SAME subscription-interest routing `ws-gateway.ts:368` uses today, re-expressed behind the long-poll. No per-pod in-memory map; no LB affinity assumption.
 
-## 4. L14 verdict — is the WS deletable after C-bis?
+- **REQUEST leg (cluster→daemon):** `proxyDaemonRequest` on originating pod Y publishes the `RequestFrame` to per-user subject `links.proxy.req.<userSub>`. The daemon's `GET /api/:org/links/proxy` long-poll subscribes to it on LB-assigned pod X (mirror `link-control-routes.ts` `nc.subscribe({max:1})` + 28s window). **CORE NATS, not JetStream.** **CRITICAL:** the daemon must hold the GET open with **continuous overlap** (re-issue the next GET before the prior returns) — core NATS is no-op-if-no-subscriber, so a request published into an unsubscribed gap is silently dropped → vm-tools hang → probeHealth fails → cold-spawn thrash. Forbid the naive poll/204/re-poll loop on this leg.
+- **REPLY leg (daemon→cluster, streaming):** reply subject derived purely from reqId: `links.proxy.reply.<reqId>`. Pod Y subscribes BEFORE publishing the request (no first-frame race). The daemon streams its framed reply via `POST /api/:org/links/proxy/:reqId/stream` as a `duplex:'half'` upload (handle-local-dispatch.ts pattern). That POST lands on ANY pod Z; pod Z stream-consumes `c.req.raw.body` frame-by-frame **without buffering** (link-ingest-routes.ts createTailStream+pump; never `await c.req.text()`) and core-NATS-publishes each decoded `DispatchChunk` to `links.proxy.reply.<reqId>`. NATS routes every frame to pod Y regardless of which pod got the POST → **pod Z needs zero shared state** (subject computed from the URL param). Headers frame flushed before first body chunk (runner.ts:255 depends on it).
+- **CANCEL leg:** `links.proxy.cancel.<reqId>`. `runner.ts` `ReadableStream.cancel()` publishes it; the GET-owning pod forwards to a daemon-side **reqId→AbortController registry** (mirror `run-abort-registry`, keyed by **reqId** not runId — one run opens many reqIds: events SSE + N vm-tools). Must release `handleStream`'s reader, run `acquireDispatch`'s release (control-handler.ts:173,249 — only fires on iterator end, and `/events` never ends, so cancel is the ONLY thing freeing the daemon SSE slot / `MAX_SSE_CLIENTS=100`).
+- **FAIL-FAST:** dispatcher has no idle timeout after first frame → vanished daemon hangs pod Y forever. Backstops: (1) on proxy-POST/GET drop, owning pod publishes an error frame to outstanding `links.proxy.reply.<reqId>`; (2) on link-claim presence expiry (60s TTL), 502 all in-flight proxy awaiters for the user (cross-pod port of ws-gateway.ts:424-451).
+- **REUSE seam:** expose the new channel as a `DispatchFn`/`DispatchChunk`-shaped adapter (the interface at dispatcher.ts:42-61) so `runner.ts` `proxyDaemonRequest`/`dispatchJson`/`probeHealth` only swap the injected `dispatch` impl — streaming/abort/headers code untouched.
 
-**Yes, IF C-bis scope is exactly:** (a) rehome `proxyDaemonRequest` to the pull reverse-proxy channel; (b) move ensure/delete to control-poll frames; (c) **repoint `probeHealth`** at the new channel (else every cache probe hard-fails post-cutover → sandbox thrash); (d) **sever** `resolveRemoteCliSandboxHandle`'s WS warm-ensure (else CLI-harness config resolution breaks); (e) land the **target-gated cutover** (`isPull = resolveDispatchTarget().runsIn==='user-desktop'`, not NATS-gated — the bug that already turned CI red in `40562b383`). Omit (a)/(c)/(d) and a consumer remains (vm-tools / liveness probes / CLI config resolution respectively).
+## 4. L14 verdict
+WS deletable after C-bis IFF: rehome `proxyDaemonRequest` to the channel + ensure/delete via control-poll + repoint `probeHealth` + **surgically** sever the 2 dispatch warm-ensure sites (preview-URL site keeps an ensure) + target-gated cutover. The two-pod **ephemeral NATS reply-INBOX** is removed (spec headline satisfied); **core NATS pub/sub stays** in the reply path (`links.proxy.reply.*`).
 
-## 5. Staged plan (each stage independently CI-green, built dormant before flipping)
+## 5. Must-fix landmines (the implementation MUST address every one)
+1. SSE reply leg is DUPLEX on BOTH ends: daemon POST `duplex:'half'` streaming upload AND cluster stream-consume frame-by-frame (no `await c.req.text()`), headers flushed first — else `EventSource.onopen` hangs (`/events` never ends).
+2. **Detached per-reqId dispatch** on the daemon: dequeue → detached handler → IMMEDIATELY re-poll. Never await the (forever) SSE reply before re-polling, or one preview tab deadlocks all proxy traffic.
+3. **reqId-keyed cancel** (not runId) wired runner.ts `ReadableStream.cancel()` → `links.proxy.cancel.<reqId>` → daemon reqId→AbortController registry; verify it frees the SSE slot + runs `release()`.
+4. **probeHealth** repoint in the SAME stage as the transport swap; its 1500ms cap is now coupled to dequeue latency — keep on the zero-gap fast path with a justified cap, OR read liveness from the presence claim instead of round-tripping the daemon.
+5. **Continuous-overlap request polling** (no unsubscribed gap) — core NATS drops gap-published requests silently.
+6. **Target-gated cutover**: `isPull = resolveDispatchTarget().runsIn==='user-desktop'`, NOT `workQueue!=null` (the bug that reddened `40562b383`).
+7. **Surgical warm-ensure sever**: `resolveRemoteCliSandboxHandle` has 3 sites — dispatch-run.ts:1152 & :1693 ride work-item self-ensure (safe for pure `computeHandle`); `resolveRemoteCliSandboxUrl` (:1748/:1752) returns a preview URL OUTSIDE the work queue → pure computeHandle 502s an unspawned handle; gate that site on an explicit ensure.
+8. **Daemon-vanished fail-fast** (presence-expiry 502 fanout) — dispatcher has no idle timeout after first frame.
+9. **DispatchChunk encoding**: `handleStream` yields TextDecoder UTF-8 (control-handler.ts:215,229) but WS DispatchChunk is base64 — pin ONE for the channel (base64 for binary-safe vm-tools file reads) or scope text-only + document binary unsupported.
+10. **Multi-org**: `connectToClusterPull` is single-org (TODO) — C-bis widens the blast radius; acknowledge + schedule the per-org-loop follow-up.
 
-1. **Reverse-proxy pull channel — cluster side (dormant).** `GET /links/proxy` + `POST /links/proxy/:reqId/stream`; a `ProxyChannel` queue keyed by reqId; reuse `DispatchChunk` framing. No caller → green. Unit-test queue + framing.
-2. **Reverse-proxy pull channel — daemon side (dormant).** `runProxyPollLoop` calling the existing `controlHandler.handleStream`, streaming the reply back. Wire into `connectToClusterPull` alongside work+control loops. Green.
-3. **New `DesktopSandboxProvider` transport behind a flag.** Re-implement `proxyDaemonRequest`/`dispatchJson`/`probeHealth` onto the channel; ensure/delete via control-poll frames; keep old `dispatch()` selectable. Provider unit tests + a pull e2e driving a full `/_sandbox/events` round-trip.
-4. **Sever the warm-ensure (Blocker 3).** Pure `computeHandle`; warm-ensure best-effort/removed (daemon cold-spawns from `WorkItem.sandbox`). Green.
-5. **Target-gated cutover (Blocker 1) + pull-daemon e2e simulations (Blocker 2).** Thread-gate resolves the dispatch target; `resolve-provider.ts` routes desktop construction to the pull transport; cloud stays in-cluster. e2e specs poll `/links/work` + a fake harness posts to ingest; a new spec exercises `/links/proxy`. Green across e2e + multi-pod.
-6. **Flip daemon default to pull** (hard break: users re-run `bunx decocms@latest link`). Green.
-7. **Delete the reverse-WS** (existing Phase F task list: ws-gateway, dispatcher, dispatch-frames, cluster-connection, reconnect-backoff, buildDesktopProvider + resolve-provider call sites). Keep `payload-chunking` + `link-claim-registry`.
+## 6. Staged plan (each independently CI-green; dormant until Stage 6 flip)
+- **S0 (prereq):** move `DispatchChunk`/`DispatchFn`/`DispatchRequest`/`DispatchHeaders` types out of `dispatcher.ts` into a transport-neutral module (alongside `link-control-types.ts`); dispatcher re-exports. No behavior change. *(Makes "runner.ts untouched" true after dispatcher deletion.)*
+- **S1 (cluster, dormant):** `GET /links/proxy` (core-NATS sub `links.proxy.req.<userSub>`, 28s, abort-on-disconnect) + `POST /links/proxy/:reqId/stream` (stream-consume body frame-by-frame, republish each chunk to `links.proxy.reply.<reqId>`, no buffer/no inflight map) + `links.proxy.cancel.<reqId>` plumbing. Unit-test parse/republish + no-buffer consume.
+- **S2 (daemon, dormant):** `runProxyPollLoop` continuous-overlap; detached per-reqId handler calling `controlHandler.handleStream`, duplex POST reply; daemon reqId→AbortController registry; pin encoding. Wire into `connectToClusterPull`.
+- **S3 (provider adapter behind flag):** `DispatchFn`-shaped adapter over the channel for `proxyDaemonRequest`/`dispatchJson`; **repoint probeHealth** (+ latency handling); ensure/delete via control-poll frames; keep old `dispatch()` selectable. Provider unit tests + pull e2e `/_sandbox/events` round-trip.
+- **S4 (surgical warm-ensure sever):** the 3 sites per landmine #7.
+- **S5 (fail-fast + cancel correctness + e2e):** presence-expiry 502 fanout; POST/GET-drop error frames. e2e: tab-close-frees-slot, daemon-relink-fails-fast, concurrent events+vm-tools fanout, request-during-gap-not-lost.
+- **S6 (target-gated cutover):** `isPull = runsIn==='user-desktop'`; `resolve-provider.ts` routes desktop→pull; cloud→in-cluster. Pull-daemon e2e SIMS (poll `/links/work` + fake harness posts to ingest). Green across e2e+multi-pod.
+- **S7 (flip daemon default to pull):** hard break — users re-run `bunx decocms@latest link`.
+- **S8 (Phase F deletion):** see §7.
 
-## 6. Risks (top)
+## 7. Phase F deletion scope (under the resolved approach)
+**DELETE:** `ws-gateway.ts`(+test), `dispatcher.ts`(+test) [ephemeral reply-inbox gone], `dispatch-frames.ts`(+test) [codec; RequestFrame already rehomed, DispatchChunk types moved in S0], `cluster-connection.ts`(+test), `reconnect-backoff.ts`(+test); app.ts `registerLinksGateway`/`getDispatch`/`sharedDispatch`/`gatewayWsHandlers`; index.ts gateway branches+guard; lifecycle.ts `buildDesktopProvider` + resolve-provider.ts call sites.
+**SURVIVES:** `link-claim-registry.ts` (presence + 60s fail-fast), `payload-chunking.ts` (live edge), `control-handler.ts` (handleStream REUSED), `run-registry.ts` reaper, the NEW `links.proxy.*` subjects/routes/`runProxyPollLoop`/reqId registry.
 
-1. **SSE over a pull reply-leg never ends** — the reply POST must be a streaming upload (`duplex:'half'`, as `handle-local-dispatch.ts` already does) consumed without buffering, or `EventSource.onopen` hangs forever.
-2. **Abort/cancel per reqId** — browser tab close must free the daemon SSE slot (`MAX_SSE_CLIENTS=100`); reuse a control cancel frame keyed by reqId or leak slots on reconnect storms.
-3. **Latency** — long-poll dequeue adds latency vs WS publish; hot vm-tools (read/glob/bash) are measurably slower. Mitigate with immediate-enqueue + held-open reply-leg + short long-poll window.
-4. **`probeHealth` repoint** must be in the same stage as the transport swap, else cache probes hard-fail → cold-spawn thrash.
-5. **Target-gated cutover** is mandatory (Blocker 1 regression already observed in `40562b383`).
-6. **Multi-org pull** — the proxy loop inherits the work-poller single-org limitation; C-bis widens its blast radius (preview/events now depend on it).
-
-## 7. THE go/no-go decision (§ openDecisionsForUser)
-
-**The headline "delete the WS" is not self-justifying.** The chat hot path is ALREADY off the WS (A–E); the residual WS carries only sandbox control/events/vm-tools (lower frequency). Options:
-- **(A) Do C-bis (stages 1–7) then delete the WS.** Worth it IF the WS reconnect/token-pinning bug (the documented cause of user-desktop chat **timeouts** — see memory `project_link_ws_expected_101_handshake_reject`) is actually hurting users, OR removing the two-pod NATS middle-man is itself the goal.
-- **(C) Stop here.** Chat + cancel are pull; preview is local; leave the residual sandbox-control WS in place. Dramatically cheaper/lower-risk.
-
-**Recommendation: confirm the motivation before committing to C-bis's full cost.** The original driver was the chat-path WS fragility — which is already fixed by A–E being live. If sandbox-control over WS is tolerable, (C) is the rational stop.
+## 8. Honest justification note
+The original driver (token-pinning reconnect→chat-timeout) is **already fixed on this branch** (`cluster-connection.ts` resolves a fresh token per reconnect); pull is dormant so chat still rides WS in prod today. C-bis's true justification is **architectural** (outbound-only/firewall-friendly daemon, remove the ephemeral two-pod inbox) — the project's stated north star. A cheaper symptom-only alternative (idempotent mid-stream resume in `remoteDispatch`) fixes mid-turn-drop on BOTH transports but does NOT achieve the architecture, so it is not a substitute. Proceeding with full C-bis per user direction.
