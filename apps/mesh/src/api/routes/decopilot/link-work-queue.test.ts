@@ -114,4 +114,42 @@ describe("workItemSchema", () => {
     const parsed = workItemSchema.safeParse({ runId: "r1" });
     expect(parsed.success).toBe(false);
   });
+
+  it("accepts a work item with messagesRef (offloaded messages)", () => {
+    const item = {
+      runId: "run_05",
+      threadId: "thrd_05",
+      orgId: "org_05",
+      userId: "usr_05",
+      runFenceToken: "tok-mno",
+      harnessInput: { threadId: "thrd_05", messages: [] },
+      messagesRef: {
+        url: "https://s3.example.com/link-dispatch/abc123?X-Amz-Signature=sig",
+        bytes: 123456,
+        sha256:
+          "deadbeef01234567deadbeef01234567deadbeef01234567deadbeef01234567",
+      },
+    };
+    const parsed = workItemSchema.safeParse(item);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.messagesRef?.url).toContain("s3.example.com");
+    expect(parsed.data.messagesRef?.bytes).toBe(123456);
+    expect(parsed.data.messagesRef?.sha256).toHaveLength(64);
+  });
+
+  it("accepts a work item without messagesRef (no offload needed)", () => {
+    const item = {
+      runId: "run_06",
+      threadId: "thrd_06",
+      orgId: "org_06",
+      userId: "usr_06",
+      runFenceToken: "tok-pqr",
+      harnessInput: { threadId: "thrd_06" },
+    };
+    const parsed = workItemSchema.safeParse(item);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.messagesRef).toBeUndefined();
+  });
 });

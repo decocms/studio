@@ -336,6 +336,133 @@ describe("handleLocalDispatch", () => {
     expect(capturedHarnessId!).toBe("codex");
   });
 
+  // ── Test: messagesRef forwarded to sandbox dispatch ────────────────────
+
+  it("forwards messagesRef to the sandbox dispatch when present on the work item", async () => {
+    let capturedDispatchBody: {
+      harnessId: string;
+      input: Record<string, unknown>;
+      messagesRef?: unknown;
+    } | null = null;
+
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        capturedDispatchBody = JSON.parse(init?.body as string) as {
+          harnessId: string;
+          input: Record<string, unknown>;
+          messagesRef?: unknown;
+        };
+        return new Response(makeBodyStream(FAKE_SSE_BODY), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      if (url.includes("/links/runs/")) {
+        if (init?.body instanceof ReadableStream) {
+          const reader = init.body.getReader();
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    };
+
+    const messagesRef = {
+      url: "https://s3.example.com/link-dispatch/req-123?sig=abc",
+      bytes: 98765,
+      sha256:
+        "cafebabe01234567cafebabe01234567cafebabe01234567cafebabe01234567",
+    };
+
+    const workWithRef: WorkItem = {
+      ...validWorkItem,
+      // messages are stripped inline (offloaded)
+      harnessInput: { ...validWorkItem.harnessInput, messages: [] },
+      messagesRef,
+    };
+
+    const deps: LocalDispatchDeps = {
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      clusterBaseUrl: CLUSTER_BASE,
+      orgSlug: ORG_SLUG,
+      getClusterToken: async () => CLUSTER_TOKEN,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    };
+
+    await handleLocalDispatch(workWithRef, deps);
+
+    // The dispatch body must carry messagesRef so the sandbox daemon can
+    // re-inflate messages from object storage (same shape the WS path sends).
+    expect(capturedDispatchBody).not.toBeNull();
+    expect(capturedDispatchBody!.messagesRef).toEqual(messagesRef);
+    // messages should be the stripped [] (the real ones are at the ref)
+    expect(capturedDispatchBody!.input.messages).toEqual([]);
+  });
+
+  it("does not include messagesRef in sandbox dispatch when absent on the work item", async () => {
+    let capturedDispatchBody: {
+      harnessId: string;
+      input: Record<string, unknown>;
+      messagesRef?: unknown;
+    } | null = null;
+
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        capturedDispatchBody = JSON.parse(init?.body as string) as {
+          harnessId: string;
+          input: Record<string, unknown>;
+          messagesRef?: unknown;
+        };
+        return new Response(makeBodyStream(FAKE_SSE_BODY), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      if (url.includes("/links/runs/")) {
+        if (init?.body instanceof ReadableStream) {
+          const reader = init.body.getReader();
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    };
+
+    const deps: LocalDispatchDeps = {
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      clusterBaseUrl: CLUSTER_BASE,
+      orgSlug: ORG_SLUG,
+      getClusterToken: async () => CLUSTER_TOKEN,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    };
+
+    // validWorkItem has no messagesRef
+    await handleLocalDispatch(validWorkItem, deps);
+
+    expect(capturedDispatchBody).not.toBeNull();
+    expect(capturedDispatchBody!.messagesRef).toBeUndefined();
+  });
+
   // ── Test: abort signal is propagated ───────────────────────────────────
 
   it("propagates abort signal to the dispatch fetch", async () => {

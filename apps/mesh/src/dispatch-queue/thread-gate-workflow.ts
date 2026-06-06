@@ -31,6 +31,7 @@ import { posthog } from "@/posthog";
 import { sleep } from "@decocms/std";
 import type {
   LinkWorkQueue,
+  MessagesRef,
   WorkItem,
   WorkItemSandbox,
 } from "@/api/routes/decopilot/link-work-queue";
@@ -156,6 +157,7 @@ export interface ThreadGateRuntime {
     taskId: string;
     runFenceToken: string;
     harnessInput: WireHarnessInput;
+    messagesRef: MessagesRef | null;
     sandboxConfig: WorkItemSandbox | null;
     orgSlug: string | null;
   }>;
@@ -257,12 +259,18 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       : null;
 
   try {
-    const { taskId, runFenceToken, harnessInput, sandboxConfig, orgSlug } =
-      await rt.pullDispatchFn!(
-        { ...request, abortSignal: abortController.signal },
-        meshCtx,
-        rt.deps,
-      );
+    const {
+      taskId,
+      runFenceToken,
+      harnessInput,
+      messagesRef,
+      sandboxConfig,
+      orgSlug,
+    } = await rt.pullDispatchFn!(
+      { ...request, abortSignal: abortController.signal },
+      meshCtx,
+      rt.deps,
+    );
 
     // 2. Publish the work item idempotently (L1: keyed by runId).
     // `harnessInput` is the complete wire `HarnessStreamInput` that
@@ -276,6 +284,9 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     // `sandbox` carries the full provisioning config (handle, repo clone URL,
     // workload runtime) so the daemon can spawn the sandbox cold. `orgSlug`
     // lets the daemon construct the ingest URL without a DB lookup.
+    // `messagesRef` is present when `pullDispatch` offloaded messages to
+    // object storage because the harnessInput exceeded MAX_PUBLISH_BYTES;
+    // the daemon forwards it verbatim to /_sandbox/dispatch for re-inflation.
     const workItem: WorkItem = {
       runId: taskId,
       threadId: request.taskId ?? ctx.threadId,
@@ -285,6 +296,7 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       harnessInput: harnessInput as Record<string, unknown>,
       ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
       ...(orgSlug ? { orgSlug } : {}),
+      ...(messagesRef ? { messagesRef } : {}),
     };
     await rt.workQueue!.publish(request.userId, workItem);
 

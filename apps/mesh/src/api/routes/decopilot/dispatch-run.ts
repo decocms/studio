@@ -29,7 +29,12 @@ import type { MeshProvider } from "@/ai-providers/types";
 import { tryResolveTier, type ResolvedTier } from "@/core/resolve-tier";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
-import { offloadKey, sha256Hex } from "@/harnesses/offload-messages";
+import {
+  offloadKey,
+  sha256Hex,
+  shouldOffload,
+  type MessagesRef,
+} from "@/harnesses/offload-messages";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { buildDesktopProvider } from "@/sandbox/lifecycle";
 import {
@@ -1606,6 +1611,7 @@ export async function pullDispatch(
   taskId: string;
   runFenceToken: string;
   harnessInput: WireHarnessInput;
+  messagesRef: MessagesRef | null;
   sandboxConfig: WorkItemSandbox | null;
   orgSlug: string | null;
 }> {
@@ -1618,6 +1624,60 @@ export async function pullDispatch(
         deps,
         _rootSpan,
       );
+
+      // ── Message offload (mirrors the WS path in remoteDispatch) ─────────
+      // The work item is published to the JetStream WorkQueue as a NATS
+      // message; NATS rejects payloads exceeding MAX_PUBLISH_BYTES. The
+      // conversation `messages` array is the dominant large part — when the
+      // encoded harnessInput exceeds the budget, offload it to object storage
+      // exactly as `remoteDispatch` does, then carry the ref on the work item
+      // so the daemon can forward it to the sandbox daemon's /_sandbox/dispatch
+      // (which already re-inflates from messagesRef on the WS path).
+      let effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
+      let messagesRef: MessagesRef | null = null;
+      const encodedInput = JSON.stringify(wireHarnessInput);
+      if (shouldOffload(Buffer.byteLength(encodedInput, "utf8"))) {
+        if (ctx.objectStorage) {
+          try {
+            const reqId = crypto.randomUUID();
+            const messagesJson = JSON.stringify(wireHarnessInput.messages);
+            const bytes = new TextEncoder().encode(messagesJson);
+            const key = offloadKey(reqId);
+            await ctx.objectStorage.put(key, bytes, {
+              contentType: "application/json",
+            });
+            const url = await ctx.objectStorage.presignedGetUrl(key, 600, {
+              requireFetchable: true,
+            });
+            messagesRef = {
+              url,
+              bytes: bytes.byteLength,
+              sha256: await sha256Hex(bytes),
+            };
+            // Replace messages inline with [] — the real messages live at the ref.
+            effectiveHarnessInput = { ...wireHarnessInput, messages: [] };
+            console.log(
+              `[pullDispatch] offloaded messages to object storage key=${key} bytes=${bytes.byteLength} runId=${taskId}`,
+            );
+          } catch (err) {
+            // Offload failed — fall through with the full payload and let
+            // NATS reject it with MAX_PAYLOAD_EXCEEDED rather than silently
+            // dropping the ref. The publish will throw and the gate will
+            // surface the error.
+            console.error(
+              `[pullDispatch] message offload failed, work item may exceed NATS limit runId=${taskId}:`,
+              err instanceof Error ? err.message : String(err),
+            );
+          }
+        } else {
+          // No object storage — fall through with the full payload. Same
+          // "fail loudly at publish time" approach: better a clear NATS
+          // MAX_PAYLOAD_EXCEEDED than a silent truncation.
+          console.warn(
+            `[pullDispatch] harnessInput exceeds NATS limit but no object storage configured — work item may be rejected runId=${taskId}`,
+          );
+        }
+      }
 
       // Resolve the sandbox handle (same path as the WS dispatch branch).
       // This also provisions the sandbox on the daemon via NATS-backed ensure,
@@ -1658,7 +1718,8 @@ export async function pullDispatch(
       return {
         taskId,
         runFenceToken,
-        harnessInput: wireHarnessInput,
+        harnessInput: effectiveHarnessInput,
+        messagesRef,
         sandboxConfig,
         orgSlug,
       };

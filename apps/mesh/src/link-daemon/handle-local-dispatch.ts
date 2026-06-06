@@ -126,14 +126,23 @@ export async function handleLocalDispatch(
   const harnessId = deriveHarnessId(work, deps.harnessId);
 
   // ── Step 1: POST to the local sandbox daemon's /_sandbox/dispatch ──────
-  // Body shape mirrors remote-dispatch.ts: { harnessId, input }.
-  // `work.harnessInput` IS the HarnessStreamInputWire (the serializable
-  // subset of HarnessStreamInput, without signal/processLocal). The sandbox
-  // daemon validates it against harnessStreamInputSchema on receipt.
-  const dispatchBody = JSON.stringify({
-    harnessId,
-    input: work.harnessInput,
-  });
+  // Body shape mirrors remote-dispatch.ts: { harnessId, input } or, when the
+  // cluster offloaded messages, { harnessId, input, messagesRef }.
+  // `work.harnessInput` IS the HarnessStreamInputWire (messages:[] when
+  // offloaded). The sandbox daemon validates input against
+  // harnessStreamInputSchema and re-inflates messages from messagesRef when
+  // present — identical to the WS path (remote-dispatch.ts sends the same
+  // envelope shape to the same /_sandbox/dispatch endpoint).
+  const dispatchBody = work.messagesRef
+    ? JSON.stringify({
+        harnessId,
+        input: work.harnessInput,
+        messagesRef: work.messagesRef,
+      })
+    : JSON.stringify({
+        harnessId,
+        input: work.harnessInput,
+      });
 
   const dispatchRes = await fetcher(
     `${deps.sandboxDispatchUrl}/_sandbox/dispatch`,

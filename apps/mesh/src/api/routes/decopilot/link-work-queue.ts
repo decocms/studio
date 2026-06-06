@@ -20,6 +20,7 @@ import {
   type JetStreamManager,
 } from "nats";
 import { z } from "zod";
+import type { MessagesRef } from "@/harnesses/offload-messages";
 
 const STREAM_NAME = "LINK_WORK_QUEUE";
 const SUBJECT_PREFIX = "link.work";
@@ -117,8 +118,26 @@ export const workItemSchema = z.object({
    * access. When absent, the daemon falls back to `DECO_ORG_SLUG` env var.
    */
   orgSlug: z.string().optional(),
+  /**
+   * Object-storage ref for the offloaded `harnessInput.messages` array.
+   * Present when the encoded harnessInput exceeded the NATS `MAX_PUBLISH_BYTES`
+   * budget — `harnessInput.messages` is then `[]` inline and the real messages
+   * are at the presigned URL. The daemon forwards this ref verbatim in the
+   * `/_sandbox/dispatch` POST body; the sandbox daemon re-inflates from it
+   * (same flow as the WS path's `remoteDispatch` offload).
+   *
+   * Optional for back-compat: absent on small conversations (no offload needed).
+   */
+  messagesRef: z
+    .object({
+      url: z.string(),
+      bytes: z.number(),
+      sha256: z.string(),
+    })
+    .optional(),
 });
 export type WorkItem = z.infer<typeof workItemSchema>;
+export type { MessagesRef };
 
 const encoder = new TextEncoder();
 
