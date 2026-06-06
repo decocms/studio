@@ -13,6 +13,21 @@ import {
   type DispatchFrame,
 } from "./dispatch-frames";
 
+// Transport-neutral dispatch types live in their own module (S0) so the
+// surviving consumers and the pull reverse-proxy adapter don't depend on this
+// WS-specific file. Re-export them here so existing `./dispatcher` importers
+// keep working unchanged. `DispatchFn` is also imported locally below for the
+// `createDispatcher` return-type annotation (a bare re-export does not bring a
+// name into local scope).
+import type { DispatchFn } from "./link-dispatch-types";
+export type {
+  DispatchChunk,
+  DispatchFn,
+  DispatchHeaders,
+  DispatchOptions,
+  DispatchRequest,
+} from "./link-dispatch-types";
+
 export interface DispatcherNatsAdapter {
   publish(subject: string, data: Uint8Array, opts?: { reply?: string }): void;
   subscribe(
@@ -22,43 +37,11 @@ export interface DispatcherNatsAdapter {
   createInbox(): string;
 }
 
-export interface DispatchRequest {
-  method: string;
-  path: string;
-  headers: Record<string, string>;
-  body?: string;
-}
-
-export interface DispatchHeaders {
-  status: number;
-  headers: Record<string, string>;
-}
-
-/**
- * Yielded events. The daemon's `headers` frame surfaces as `{ headers }` (once,
- * before any body chunks); body chunks surface as `{ data }`. Consumers that
- * need the upstream status must read `chunk.headers` rather than assuming 200.
- */
-export interface DispatchChunk {
-  data?: string;
-  headers?: DispatchHeaders;
-}
-
-export interface DispatchOptions {
-  signal?: AbortSignal;
-}
-
 export interface CreateDispatcherDeps {
   nats: DispatcherNatsAdapter;
   /** First-reply timeout. Default 30_000. */
   requestTimeoutMs?: number;
 }
-
-export type DispatchFn = (
-  userSub: string,
-  req: DispatchRequest,
-  opts?: DispatchOptions,
-) => AsyncIterable<DispatchChunk>;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

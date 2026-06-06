@@ -2056,6 +2056,12 @@ export async function createApp(options: CreateAppOptions = {}) {
             getConnection: () => natsProvider!.getConnection(),
           }
         : undefined,
+    linkProxyDeps:
+      natsProvider != null
+        ? {
+            getConnection: () => natsProvider!.getConnection(),
+          }
+        : undefined,
   });
   app.route("/api/:org", orgScopedApi);
 
