@@ -192,6 +192,27 @@ export class OrgScopedThreadStorage {
   setLinkTransport(threadId: string, transport: "pull" | "ws"): Promise<void> {
     return this.inner.setLinkTransport(threadId, transport);
   }
+
+  /**
+   * Stamp `cancel_requested_at = now()` for the given thread (Phase C).
+   * Org-scoped: only updates rows matching both id AND organization_id.
+   */
+  setCancelRequested(threadId: string, organizationId: string): Promise<void> {
+    return this.inner.setCancelRequested(threadId, organizationId);
+  }
+
+  /**
+   * Read `cancel_requested_at` for a thread by id (not org-scoped, mirrors
+   * `getRunFence` which is also unscoped — callers guard via ownership check).
+   */
+  getCancelRequestedAt(threadId: string): Promise<Date | null> {
+    return this.inner.getCancelRequestedAt(threadId);
+  }
+
+  /** Clear `cancel_requested_at` (set to NULL) for a thread by id. */
+  clearCancelRequested(threadId: string): Promise<void> {
+    return this.inner.clearCancelRequested(threadId);
+  }
 }
 
 // ============================================================================
@@ -933,6 +954,46 @@ export class SqlThreadStorage implements ThreadStoragePort {
     await this.db
       .updateTable("threads")
       .set({ run_fence_token: token })
+      .where("id", "=", threadId)
+      .execute();
+  }
+
+  /**
+   * Stamp `cancel_requested_at = now()` for the given thread (Phase C).
+   * Org-scoped: only updates rows matching both id AND organization_id.
+   */
+  async setCancelRequested(
+    threadId: string,
+    organizationId: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ cancel_requested_at: sql`now()` })
+      .where("id", "=", threadId)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
+  /**
+   * Read `cancel_requested_at` for a thread by id.
+   * Not org-scoped — mirrors `getRunFence` (callers guard via ownership check).
+   */
+  async getCancelRequestedAt(threadId: string): Promise<Date | null> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select("cancel_requested_at")
+      .where("id", "=", threadId)
+      .executeTakeFirst();
+    const v = row?.cancel_requested_at;
+    if (v == null) return null;
+    return v instanceof Date ? v : new Date(v);
+  }
+
+  /** Clear `cancel_requested_at` (set to NULL) for a thread by id. */
+  async clearCancelRequested(threadId: string): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ cancel_requested_at: null })
       .where("id", "=", threadId)
       .execute();
   }

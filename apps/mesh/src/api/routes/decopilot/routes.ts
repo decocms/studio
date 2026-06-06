@@ -682,7 +682,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // ============================================================================
 
   app.post("/:org/decopilot/cancel/:threadId", async (c) => {
-    const { taskId, thread, organization } = await validateThreadOwnership(c);
+    const { ctx, taskId, thread, organization, userId } =
+      await validateThreadOwnership(c);
+
+    // Persist durable cancel flag so the ingest backstop rejects 409.
+    await ctx.storage.threads.setCancelRequested(taskId, organization.id);
 
     // Try to cancel locally first
     const cancelTransitions = await runRegistry.execute({
@@ -690,11 +694,19 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       taskId,
     });
     if (cancelTransitions.some((t) => t.event.type === "RUN_FAILED")) {
+      cancelBroadcast.publishControlFrame(userId, {
+        type: "cancel",
+        runId: taskId,
+      });
       return c.json({ cancelled: true });
     }
 
     // Not on this pod — broadcast to all pods
     cancelBroadcast.broadcast(taskId);
+    cancelBroadcast.publishControlFrame(userId, {
+      type: "cancel",
+      runId: taskId,
+    });
 
     // Ghost run: server restarted while a run was in progress. No pod has this
     // run in memory, so the broadcast will never resolve. Force-fail the thread

@@ -883,6 +883,16 @@ export interface ThreadTable {
    * ingest path. Never changes mid-run.
    */
   link_transport: ColumnType<string | null, string | null, string | null>;
+  /**
+   * Durable cancel flag (Phase C). Set by the cancel endpoint; the ingest
+   * backstop rejects with 409 when non-null, regardless of fence state.
+   * Null = no cancel requested; non-null timestamp = cancel was requested.
+   */
+  cancel_requested_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
 }
 
 export interface ThreadExpandedTool {

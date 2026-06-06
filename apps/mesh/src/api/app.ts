@@ -872,6 +872,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast = {
       start: async () => {},
       broadcast: () => {},
+      publishControlFrame: () => {},
       stop: async () => {},
     };
     // Test/no-NATS branch: an in-memory claim registry keeps the link routes
@@ -2047,6 +2048,12 @@ export async function createApp(options: CreateAppOptions = {}) {
         ? {
             linkClaimRegistry,
             workQueue: linkWorkQueue,
+          }
+        : undefined,
+    linkControlDeps:
+      natsProvider != null
+        ? {
+            getConnection: () => natsProvider!.getConnection(),
           }
         : undefined,
   });

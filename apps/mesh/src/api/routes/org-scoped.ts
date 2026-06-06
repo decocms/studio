@@ -26,8 +26,10 @@ import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createLinkIngestRoutes } from "./decopilot/link-ingest-routes";
 import { createLinkWorkRoutes } from "./decopilot/link-work-routes";
+import { createLinkControlRoutes } from "./decopilot/link-control-routes";
 import type { LinkClaimRegistry } from "@/links/link-claim-registry";
 import type { LinkWorkQueue } from "./decopilot/link-work-queue";
+import type { NatsConnection } from "nats";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -62,6 +64,13 @@ interface OrgScopedDeps {
   linkWorkDeps?: {
     linkClaimRegistry: LinkClaimRegistry;
     workQueue: LinkWorkQueue;
+  };
+  /**
+   * NATS connection getter for the pull-transport control long-poll.
+   * Optional: when absent the GET /links/control route is not mounted.
+   */
+  linkControlDeps?: {
+    getConnection: () => NatsConnection | null;
   };
   /**
    * Public events handler (defined in app.ts). Mounted at
@@ -107,6 +116,9 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createLinkIngestRoutes({ streamBuffer: deps.streamBuffer })); // /api/:org/links/runs/:runId/stream
   if (deps.linkWorkDeps) {
     app.route("/", createLinkWorkRoutes(deps.linkWorkDeps)); // /api/:org/links/work
+  }
+  if (deps.linkControlDeps) {
+    app.route("/", createLinkControlRoutes(deps.linkControlDeps)); // /api/:org/links/control
   }
 
   if (deps.mountDevAssets) {

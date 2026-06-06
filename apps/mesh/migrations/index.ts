@@ -99,6 +99,7 @@ import * as migration097droplocaldockersandboxstate from "./097-drop-local-docke
 import * as migration098threadmessageparts from "./098-thread-message-parts.ts";
 import * as migration099runfence from "./099-run-fence.ts";
 import * as migration100linktransport from "./100-link-transport.ts";
+import * as migration101cancelrequestedat from "./101-cancel-requested-at.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -220,6 +221,7 @@ const migrations: Record<string, Migration> = {
   "098-thread-message-parts": migration098threadmessageparts,
   "099-run-fence": migration099runfence,
   "100-link-transport": migration100linktransport,
+  "101-cancel-requested-at": migration101cancelrequestedat,
 };
 
 export default migrations;

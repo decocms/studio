@@ -14,6 +14,7 @@
 import { Hono } from "hono";
 import { parseDispatchSSEStream } from "@/harnesses/parse-dispatch-sse";
 import { fenceMatches } from "@/storage/run-fence";
+import { isCancelRequested } from "@/storage/cancel-flag";
 import { PartEmitter } from "./part-emitter";
 import { consumePartStream } from "./consume-part-stream";
 import type { StreamBuffer } from "./stream-buffer";
@@ -50,6 +51,13 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
       return c.json({ error: "invalid runId" }, 400);
     }
     const presented = c.req.header("x-fence-token") ?? null;
+
+    // Cancel check MUST precede the fence check — a cancelled run must be
+    // rejected even when the daemon presents a valid fence token.
+    const cancelAt = await ctx.storage.threads.getCancelRequestedAt(runId);
+    if (isCancelRequested(cancelAt)) {
+      return c.json({ error: "cancelled" }, 409);
+    }
 
     const current = await ctx.storage.threads.getRunFence(runId);
     // Inert until a fence is minted (a later phase): no fence ⇒ reject, so this
