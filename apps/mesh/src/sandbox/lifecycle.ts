@@ -180,16 +180,16 @@ async function instantiate(
 }
 
 /**
- * Pure selector for the desktop provider's dispatch transport (Phase C-bis S3).
+ * Pure selector for the desktop provider's dispatch transport (Phase C-bis S7).
  *
- * `"pull"` ⇒ the pull reverse-proxy `DispatchFn` (daemon long-polls
- * `/links/proxy`); anything else ⇒ the default WS dispatcher. Default OFF so the
- * pull path stays dormant in prod until the S6 cutover. Extracted so the flag
+ * Pull is now the DEFAULT: `"pull"` ⇒ the pull reverse-proxy `DispatchFn` (the
+ * daemon long-polls `/links/proxy`); only an explicit `LINK_PROXY_TRANSPORT=ws`
+ * opts back into the legacy WS dispatcher (deleted in S8). Extracted so the
  * gate is unit-testable without booting the app (the actual `getDispatch` /
  * `getProxyDispatch` need a live NATS connection).
  */
 export function selectDesktopTransport(env: string | undefined): "pull" | "ws" {
-  return env === "pull" ? "pull" : "ws";
+  return env === "ws" ? "ws" : "pull";
 }
 
 /**

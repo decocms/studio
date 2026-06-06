@@ -158,18 +158,18 @@ describe("subscribeLifecycle", () => {
 // ---------------------------------------------------------------------------
 
 describe("selectDesktopTransport", () => {
-  it("selects pull only for the exact 'pull' value", () => {
-    expect(selectDesktopTransport("pull")).toBe("pull");
-  });
-
-  it("defaults to ws when unset", () => {
-    expect(selectDesktopTransport(undefined)).toBe("ws");
-  });
-
-  it("defaults to ws for empty / other values (flag OFF by default)", () => {
-    expect(selectDesktopTransport("")).toBe("ws");
+  it("selects ws only for the exact 'ws' value", () => {
     expect(selectDesktopTransport("ws")).toBe("ws");
-    expect(selectDesktopTransport("PULL")).toBe("ws");
-    expect(selectDesktopTransport("true")).toBe("ws");
+  });
+
+  it("defaults to pull when unset (S7: pull is the default)", () => {
+    expect(selectDesktopTransport(undefined)).toBe("pull");
+  });
+
+  it("defaults to pull for empty / other values (pull ON by default)", () => {
+    expect(selectDesktopTransport("")).toBe("pull");
+    expect(selectDesktopTransport("pull")).toBe("pull");
+    expect(selectDesktopTransport("WS")).toBe("pull");
+    expect(selectDesktopTransport("true")).toBe("pull");
   });
 });

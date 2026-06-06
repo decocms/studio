@@ -205,11 +205,11 @@ export async function startLinkDaemon(
     return fresh.accessToken;
   };
 
-  // Phase D: LINK_TRANSPORT_MODE=pull launches the pull-transport loop instead
-  // of the default WebSocket path. Both paths share the same `controlHandler`,
-  // `provider`, and `getAccessToken` resolver. Default (unset / "ws") = WS path,
-  // byte-for-byte unchanged.
-  const linkTransportMode = process.env.LINK_TRANSPORT_MODE ?? "ws";
+  // Phase C-bis S7: pull is now the daemon default. LINK_TRANSPORT_MODE=ws can
+  // still opt back into the legacy WebSocket path (deleted in S8). Both paths
+  // share the same `controlHandler`, `provider`, and `getAccessToken` resolver.
+  // Default (unset / anything but "ws") = pull path.
+  const linkTransportMode = process.env.LINK_TRANSPORT_MODE ?? "pull";
 
   let cluster: { close(): Promise<void>; closed: Promise<void> };
 
