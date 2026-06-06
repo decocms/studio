@@ -23,6 +23,8 @@
  */
 
 import { runWorkPollLoop } from "./work-poller";
+import { runControlPollLoop } from "./control-poller";
+import * as runAbortRegistry from "./run-abort-registry";
 import { handleLocalDispatch } from "./handle-local-dispatch";
 import type { ClusterConnectionHandle } from "./cluster-connection";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
@@ -226,6 +228,12 @@ export async function connectToClusterPull(
       // authoritative when present, avoiding reliance on DECO_ORG_SLUG env.
       const effectiveOrgSlug = item.orgSlug ?? input.orgSlug;
       const releaseDispatch = input.provider.acquireDispatch(handle);
+      // Phase C: register a per-run AbortController so the control-poll loop
+      // can abort this specific dispatch when the cluster sends a cancel frame.
+      // AbortSignal.any([ac.signal, runAc.signal]) fires when EITHER the
+      // loop-wide signal (close()) OR the per-run cancel signal fires.
+      // AbortSignal.any is available in Bun 1.0+ (verified: Bun 1.3.14).
+      const runAc = runAbortRegistry.register(item.runId);
       try {
         await handleLocalDispatch(item, {
           sandboxDispatchUrl: sandboxApiUrl,
@@ -234,9 +242,10 @@ export async function connectToClusterPull(
           orgSlug: effectiveOrgSlug,
           getClusterToken: input.getAccessToken,
           fetchImpl: input.fetchImpl,
-          signal: ac.signal,
+          signal: AbortSignal.any([ac.signal, runAc.signal]),
         });
       } finally {
+        runAbortRegistry.unregister(item.runId);
         releaseDispatch();
       }
 
@@ -246,23 +255,43 @@ export async function connectToClusterPull(
     },
   });
 
-  // Resolve `closed` when the poll loop exits (either via abort or fatal error).
-  void workPollDone.then(resolveClosed, (err) => {
-    console.error(
-      "[cluster-connection-pull] work poll loop exited with error:",
-      err,
-    );
-    resolveClosed();
+  // Phase C: start the control-poll loop concurrently under the same loop-wide
+  // AbortController so it is torn down by close() together with the work loop.
+  // onCancel aborts the per-run AbortController registered in runAbortRegistry,
+  // which in turn fires AbortSignal.any([ac.signal, runAc.signal]) inside onWork.
+  const controlPollDone = runControlPollLoop({
+    baseUrl: input.clusterBaseUrl,
+    orgSlug: input.orgSlug,
+    getAccessToken: input.getAccessToken,
+    signal: ac.signal,
+    fetchImpl: input.fetchImpl,
+    pollTimeoutSecs: input.pollTimeoutSecs,
+    onCancel: (runId) => {
+      runAbortRegistry.abort(runId);
+    },
   });
 
-  // TODO(Phase C): add holdControlPollLoop() here for cancel/HITL frames.
-  // Example (Phase C stub):
-  //   const controlPollDone = holdControlPollLoop({ ... });
-  //   void controlPollDone.then(resolveClosed, resolveClosed);
+  // Resolve `closed` when BOTH loops have exited. We use a latch so that
+  // whichever loop finishes last (or first) drives the final resolution.
+  // Both loops are aborted by ac.abort() inside close(), so they will both
+  // settle promptly after close() is called.
+  let settled = 0;
+  const settleOnce = (err?: unknown) => {
+    if (err) {
+      console.error(
+        "[cluster-connection-pull] poll loop exited with error:",
+        err,
+      );
+    }
+    settled++;
+    if (settled >= 2) resolveClosed();
+  };
+  void workPollDone.then(() => settleOnce(), settleOnce);
+  void controlPollDone.then(() => settleOnce(), settleOnce);
 
   return {
     async close() {
-      console.log("[cluster-connection-pull] closing (aborting poll loop)");
+      console.log("[cluster-connection-pull] closing (aborting poll loops)");
       ac.abort();
       await closed;
     },
