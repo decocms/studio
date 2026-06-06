@@ -113,6 +113,10 @@ import {
   type DispatcherNatsAdapter,
   type DispatchFn,
 } from "../links/dispatcher";
+import {
+  createProxyDispatch,
+  type ProxyNatsAdapter,
+} from "./routes/decopilot/link-proxy-routes";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
@@ -203,6 +207,12 @@ function rejectAfter(ms: number): Promise<never> {
 // `dispatch-run.ts`) reach it via `getDispatch()`.
 let sharedDispatch: DispatchFn | null = null;
 
+// Module-level singleton for the pull reverse-proxy `DispatchFn` (Phase C-bis
+// S3). Same NATS connection as `sharedDispatch`, different transport: the daemon
+// long-polls `/links/proxy` instead of holding a WS open. `buildDesktopProvider`
+// selects this when `LINK_PROXY_TRANSPORT=pull` (default off → WS).
+let sharedProxyDispatch: DispatchFn | null = null;
+
 /**
  * Return the shared NATS-backed `DispatchFn`. Throws if `createApp` hasn't
  * been called yet (shouldn't happen in production; guard is for tests that
@@ -215,6 +225,20 @@ export function getDispatch(): DispatchFn {
     );
   }
   return sharedDispatch;
+}
+
+/**
+ * Return the shared pull reverse-proxy `DispatchFn` (Phase C-bis S3). Throws if
+ * `createApp` hasn't been called yet (the proxy transport requires a live NATS
+ * connection — it is `null` when NATS is unavailable, e.g. some test setups).
+ */
+export function getProxyDispatch(): DispatchFn {
+  if (!sharedProxyDispatch) {
+    throw new Error(
+      "getProxyDispatch() called before createApp() or without NATS — proxy dispatch unavailable",
+    );
+  }
+  return sharedProxyDispatch;
 }
 
 // Track current event bus instance for cleanup during HMR
@@ -1890,6 +1914,42 @@ export async function createApp(options: CreateAppOptions = {}) {
     },
   };
   sharedDispatch = createDispatcher({ nats: dispatcherNatsAdapter });
+
+  // Pull reverse-proxy DispatchFn (Phase C-bis S3). Wired off the SAME NATS
+  // connection as the WS dispatcher; `buildDesktopProvider` injects it instead
+  // of `sharedDispatch` when `LINK_PROXY_TRANSPORT=pull`. The adapter derives the
+  // reply subject purely from the reqId (no inbox), so it only needs publish +
+  // subscribe. `null` when NATS is unavailable — the WS dispatcher stays the
+  // default, so the proxy transport simply can't be selected without NATS.
+  if (natsProvider != null) {
+    const proxyNatsAdapter: ProxyNatsAdapter = {
+      publish(subject, data) {
+        natsProvider?.getConnection()?.publish(subject, data);
+      },
+      subscribe(subject, onMessage) {
+        const nc = natsProvider?.getConnection();
+        if (!nc) return () => {};
+        const sub = nc.subscribe(subject);
+        void (async () => {
+          for await (const m of sub) {
+            try {
+              onMessage(m.data);
+            } catch {
+              /* swallow — a bad subscriber must not kill the loop */
+            }
+          }
+        })();
+        return () => {
+          try {
+            sub.unsubscribe();
+          } catch {
+            /* */
+          }
+        };
+      },
+    };
+    sharedProxyDispatch = createProxyDispatch({ nats: proxyNatsAdapter });
+  }
 
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs).
   // Resolve the org from the URL before serving so the stable URL cannot drift

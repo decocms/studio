@@ -299,6 +299,145 @@ describe("buildReplyBody — base64 NDJSON framing (landmine #9)", () => {
     });
   });
 
+  it("routes /api/sandboxes (lifecycle) to handle(), NOT handleStream (path routing)", async () => {
+    let handleCalls = 0;
+    let streamCalls = 0;
+    const handler: ControlHandler = {
+      handle: async (req) => {
+        handleCalls++;
+        expect(req.path).toBe("/api/sandboxes");
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: '{"sandboxApiUrl":"http://127.0.0.1:9000"}',
+        };
+      },
+      handleStream: async function* () {
+        streamCalls++;
+        yield { type: "headers", status: 200, headers: {} };
+      },
+    };
+    const frame: RequestFrame = {
+      type: "request",
+      reqId: "r1",
+      method: "POST",
+      path: "/api/sandboxes",
+      headers: {},
+      body: '{"handle":"abc"}',
+    };
+    const frames = await readFrames(
+      buildReplyBody(handler, frame, new AbortController().signal),
+    );
+
+    expect(handleCalls).toBe(1);
+    expect(streamCalls).toBe(0);
+    // headers → base64 chunk → end (uniform shape, same as the streaming path).
+    expect(frames[0]).toEqual({
+      type: "headers",
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    expect(frames[1]!.type).toBe("chunk");
+    const decoded = Buffer.from(
+      (frames[1] as { data: string }).data,
+      "base64",
+    ).toString("utf8");
+    expect(JSON.parse(decoded)).toEqual({
+      sandboxApiUrl: "http://127.0.0.1:9000",
+    });
+    expect(frames[2]).toEqual({ type: "end" });
+  });
+
+  it("routes DELETE /api/sandboxes/<handle> to handle() with no body chunk (204)", async () => {
+    let handleCalls = 0;
+    const handler: ControlHandler = {
+      handle: async (req) => {
+        handleCalls++;
+        expect(req.method).toBe("DELETE");
+        expect(req.path).toBe("/api/sandboxes/h1");
+        return { status: 204 };
+      },
+      // eslint-disable-next-line require-yield -- asserts non-invocation
+      handleStream: async function* () {
+        throw new Error("handleStream must not be called for /api/sandboxes/*");
+      },
+    };
+    const frame: RequestFrame = {
+      type: "request",
+      reqId: "r1",
+      method: "DELETE",
+      path: "/api/sandboxes/h1",
+      headers: {},
+    };
+    const frames = await readFrames(
+      buildReplyBody(handler, frame, new AbortController().signal),
+    );
+    expect(handleCalls).toBe(1);
+    expect(frames).toEqual([
+      { type: "headers", status: 204, headers: {} },
+      { type: "end" },
+    ]);
+  });
+
+  it("routes /_sandbox/* to handleStream, NOT handle (path routing)", async () => {
+    let handleCalls = 0;
+    let streamCalls = 0;
+    const handler: ControlHandler = {
+      handle: async () => {
+        handleCalls++;
+        return { status: 404 };
+      },
+      handleStream: async function* (req) {
+        streamCalls++;
+        expect(req.path).toBe("/_sandbox/h1/events");
+        yield { type: "headers", status: 200, headers: {} };
+        yield { type: "raw-chunk", data: new Uint8Array([1, 2, 3]) };
+      },
+    };
+    const frames = await readFrames(
+      buildReplyBody(
+        handler,
+        reqFrame("r1", "/_sandbox/h1/events"),
+        new AbortController().signal,
+      ),
+    );
+    expect(streamCalls).toBe(1);
+    expect(handleCalls).toBe(0);
+    expect(frames[0]!.type).toBe("headers");
+    expect(frames[1]).toEqual({
+      type: "chunk",
+      data: Buffer.from([1, 2, 3]).toString("base64"),
+    });
+    expect(frames[2]).toEqual({ type: "end" });
+  });
+
+  it("surfaces a handle() throw as an error terminal (lifecycle path)", async () => {
+    const handler: ControlHandler = {
+      handle: async () => {
+        throw new Error("ensure boom");
+      },
+      handleStream: async function* () {},
+    };
+    const frames = await readFrames(
+      buildReplyBody(
+        handler,
+        {
+          type: "request",
+          reqId: "r1",
+          method: "POST",
+          path: "/api/sandboxes",
+          headers: {},
+        },
+        new AbortController().signal,
+      ),
+    );
+    expect(frames[0]).toEqual({
+      type: "error",
+      code: "handler_error",
+      message: "ensure boom",
+    });
+  });
+
   it("emits a cancelled error terminal when the signal is aborted", async () => {
     const ac = new AbortController();
     // A handler that yields headers, then blocks until aborted (models /events).

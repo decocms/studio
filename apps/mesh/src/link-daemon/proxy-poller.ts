@@ -4,9 +4,15 @@
  * The desktop daemon is outbound-only, so the cluster cannot push the sandbox
  * control/events/vm-tools traffic to it. Instead the daemon long-polls
  * `GET /api/:org/links/proxy`; the cluster publishes one `RequestFrame` per
- * call (queue-group `link-proxy`). The daemon runs the request locally via
- * `controlHandler.handleStream` and streams the framed reply back to the
- * cluster as a `duplex:"half"` upload to `POST /api/:org/links/proxy/:reqId/stream`.
+ * call (queue-group `link-proxy`). The daemon runs the request locally and
+ * streams the framed reply back to the cluster as a `duplex:"half"` upload to
+ * `POST /api/:org/links/proxy/:reqId/stream`.
+ *
+ * Path routing (S3): the proxy channel serves ALL provider ops, not just the
+ * `/_sandbox` streaming family. `buildReplyBody` dispatches `/api/sandboxes*`
+ * (ensure / delete / liveness) to the one-shot `controlHandler.handle` and
+ * `/_sandbox/*` (events SSE / control RPC / vm-tools) to `handleStream`; both
+ * emit the SAME `headers` → `chunk?` → `end` reply-frame sequence.
  *
  * Two invariants make this correct (both from the hardened plan §3b / §5):
  *
@@ -80,18 +86,65 @@ function chunkFrame(bytes: Uint8Array): ProxyReplyFrame {
 const encoder = new TextEncoder();
 
 /**
- * Build the NDJSON reply body as a streaming `ReadableStream<Uint8Array>` driven
- * by `controlHandler.handleStream`. Each StreamEvent is mapped to a reply frame
- * and flushed as ONE NDJSON line the instant it is produced (no buffering —
- * mirrors handle-local-dispatch.ts's duplex upload). The terminal `end`/`error`
- * frame is appended when the iterator finishes/throws/aborts. The `signal`
- * cancels the upstream iteration (so cancel frees the SSE slot).
+ * A `RequestFrame.path` routes to the one-shot `controlHandler.handle` (lifecycle
+ * + liveness: `POST/DELETE/GET /api/sandboxes[...]`) rather than the streaming
+ * `handleStream` (only `/_sandbox/<handle>/*`). The provider funnels ensure /
+ * delete / probeHealth through the SAME proxy channel as the streaming traffic,
+ * so the daemon must dispatch by path. NOTE: this routes ensure/delete THROUGH
+ * the proxy channel via `handle` — a deliberate simplification over the plan
+ * doc's "ensure/delete via control-poll frames" alternative (§6 S3), which would
+ * need a second framed RPC path on the control channel for no behavioural gain.
+ */
+function isLifecyclePath(path: string): boolean {
+  return path === "/api/sandboxes" || path.startsWith("/api/sandboxes/");
+}
+
+/**
+ * Map the one-shot `ControlHandlerResponse` from `controlHandler.handle` into the
+ * SAME `headers` → `chunk` → `end` reply-frame sequence the streaming path emits,
+ * so the awaiting `DispatchFn` (`dispatchJson` in runner.ts) sees a uniform shape
+ * regardless of whether the request was lifecycle or streaming. The body rides
+ * the base64 `chunk` frame (landmine #9 — uniform encoding).
+ */
+function lifecycleFrames(res: {
+  status: number;
+  headers?: Record<string, string>;
+  body?: string;
+}): ProxyReplyFrame[] {
+  const frames: ProxyReplyFrame[] = [
+    { type: "headers", status: res.status, headers: res.headers ?? {} },
+  ];
+  if (res.body !== undefined && res.body.length > 0) {
+    frames.push({
+      type: "chunk",
+      data: Buffer.from(res.body, "utf8").toString("base64"),
+    });
+  }
+  frames.push({ type: "end" });
+  return frames;
+}
+
+/**
+ * Build the NDJSON reply body as a streaming `ReadableStream<Uint8Array>`.
+ *
+ * Routes by path (landmine — the proxy channel serves ALL provider ops, not just
+ * `/_sandbox` streaming): `/api/sandboxes*` → `controlHandler.handle` (one-shot,
+ * wrapped as headers+chunk+end); `/_sandbox/*` → `controlHandler.handleStream`.
+ *
+ * Streaming path: each StreamEvent is mapped to a reply frame and flushed as ONE
+ * NDJSON line the instant it is produced (no buffering — mirrors
+ * handle-local-dispatch.ts's duplex upload). The terminal `end`/`error` frame is
+ * appended when the iterator finishes/throws/aborts. The `signal` cancels the
+ * upstream iteration (so cancel frees the SSE slot).
  */
 export function buildReplyBody(
   controlHandler: ControlHandler,
   frame: RequestFrame,
   signal: AbortSignal,
 ): ReadableStream<Uint8Array> {
+  if (isLifecyclePath(frame.path)) {
+    return buildLifecycleReplyBody(controlHandler, frame);
+  }
   // Thread `signal` into handleStream so a cancel aborts the upstream fetch +
   // read (frees the SSE slot via acquireDispatch's release — landmine #3),
   // rather than waiting for the next upstream byte that an idle `/events` SSE
@@ -158,6 +211,40 @@ export function buildReplyBody(
       } catch {
         // ignore
       }
+    },
+  });
+}
+
+/**
+ * Build the NDJSON reply body for a one-shot lifecycle/liveness request
+ * (`/api/sandboxes*`) by calling `controlHandler.handle` and emitting its single
+ * response as the uniform `headers` → `chunk?` → `end` frame sequence. A handler
+ * throw surfaces as an `error` terminal so the awaiting `DispatchFn` (ensure /
+ * delete / probeHealth in runner.ts) throws rather than hangs.
+ */
+function buildLifecycleReplyBody(
+  controlHandler: ControlHandler,
+  frame: RequestFrame,
+): ReadableStream<Uint8Array> {
+  const writeLine = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    f: ProxyReplyFrame,
+  ): void => {
+    controller.enqueue(encoder.encode(`${encodeProxyReplyFrame(f)}\n`));
+  };
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        const res = await controlHandler.handle(frame);
+        for (const f of lifecycleFrames(res)) writeLine(controller, f);
+      } catch (err) {
+        writeLine(controller, {
+          type: "error",
+          code: "handler_error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+      controller.close();
     },
   });
 }

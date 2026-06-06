@@ -120,12 +120,17 @@ export async function connectToCluster(
       // body chunks.
       if (/^\/_sandbox\/[^/]+\//.test(frame.path)) {
         try {
-          // `handleStream` now yields RAW body bytes (landmine #9 — the pull
-          // proxy channel needs them for base64). The WS `chunk.data` is the
-          // protocol's historical UTF-8 text shape, so decode here. A single
-          // streaming decoder spans the whole reply so a multi-byte char split
-          // across two raw chunks still round-trips correctly.
-          const bodyDecoder = new TextDecoder();
+          // `handleStream` yields RAW body bytes (landmine #9). `DispatchChunk.data`
+          // is now UNIFORMLY base64 across BOTH transports (WS here + the pull
+          // reverse-proxy channel), so encode each raw chunk as base64 and let
+          // `runner.ts` decode base64→bytes. base64 is byte-exact (binary vm-tools
+          // file reads survive non-UTF-8 bytes that the old TextDecoder path
+          // mangled) and has no embedded newline, so it stays line-safe on the
+          // pull channel's NDJSON wire too. Per-chunk base64 is independently
+          // decodable; the WS payload-chunking splitter (ws-gateway.ts) may still
+          // split a >768KiB base64 string at a non-4-aligned offset, so the
+          // runner concatenates+decodes with a 4-char carry buffer.
+          //
           // Pass the per-request signal so a `cancel` frame aborts the upstream
           // fetch + read (frees the SSE slot), not just the between-yields check.
           for await (const ev of input.controlHandler.handleStream(
@@ -147,17 +152,10 @@ export async function connectToCluster(
                 encodeFrame({
                   type: "chunk",
                   reqId: frame.reqId,
-                  data: bodyDecoder.decode(ev.data, { stream: true }),
+                  data: Buffer.from(ev.data).toString("base64"),
                 }),
               );
             }
-          }
-          // Flush any trailing partial multi-byte sequence the decoder holds.
-          const tail = bodyDecoder.decode();
-          if (tail.length > 0) {
-            ws.send(
-              encodeFrame({ type: "chunk", reqId: frame.reqId, data: tail }),
-            );
           }
           ws.send(encodeFrame({ type: "end", reqId: frame.reqId }));
         } catch (err) {
@@ -188,11 +186,14 @@ export async function connectToCluster(
           }),
         );
         if (res.body !== undefined && res.body.length > 0) {
+          // Uniform base64 (landmine #9): the lifecycle JSON body rides the same
+          // base64 `chunk.data` shape as the streaming path so `runner.ts`
+          // decodes one way for both. UTF-8 string → bytes → base64.
           ws.send(
             encodeFrame({
               type: "chunk",
               reqId: frame.reqId,
-              data: res.body,
+              data: Buffer.from(res.body, "utf8").toString("base64"),
             }),
           );
         }
