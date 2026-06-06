@@ -30,10 +30,12 @@
  *        `error` (`{ type:"error", code, message }`). The awaiting `DispatchFn`
  *        returns on `end` and throws on `error`.
  *
- * CANCEL leg: `links.proxy.cancel.<reqId>` — published by the cluster adapter
- * on caller abort; the daemon (S2) forwards to its reqId→AbortController
- * registry. No NDJSON body; the payload is a bare `{ type:"cancel", reqId }`
- * (CancelFrame) for symmetry, but the subject alone is sufficient to cancel.
+ * CANCEL leg: a `{ type:"cancel_req", reqId }` CONTROL frame published by the
+ * cluster adapter on caller abort to `links.control.<userSub>` — the EXISTING
+ * control channel the outbound-only daemon already long-polls (it cannot
+ * subscribe to a dedicated per-reqId cancel subject). The daemon's control-poll
+ * (S2) forwards the reqId to its reqId→AbortController registry, which aborts
+ * `handleStream` and frees the `/events` SSE slot.
  * ───────────────────────────────────────────────────────────────────────────
  */
 import { z } from "zod";

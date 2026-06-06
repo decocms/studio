@@ -50,7 +50,7 @@ const noopControlHandler: ControlHandler = {
   },
   async *handleStream(
     _req: RequestFrame,
-  ): AsyncIterable<{ type: "raw-chunk"; data: string }> {
+  ): AsyncIterable<{ type: "raw-chunk"; data: Uint8Array }> {
     // nothing to yield
   },
 };

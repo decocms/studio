@@ -9,6 +9,13 @@ describe("control-frames codec", () => {
     expect(decoded).toEqual(frame);
   });
 
+  test("round-trip cancel_req frame", () => {
+    const frame = { type: "cancel_req" as const, reqId: "req_xyz789" };
+    const encoded = encodeControlFrame(frame);
+    const decoded = decodeControlFrame(encoded);
+    expect(decoded).toEqual(frame);
+  });
+
   test("round-trip keep_alive frame", () => {
     const frame = { type: "keep_alive" as const };
     const encoded = encodeControlFrame(frame);

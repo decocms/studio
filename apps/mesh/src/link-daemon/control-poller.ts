@@ -3,7 +3,13 @@
  *
  * Continuously long-polls GET /api/:org/links/control. On a 200 response,
  * decodes the body as a ControlFrame and dispatches:
- *   - `cancel`     → calls `onCancel(frame.runId)` to abort the in-flight run.
+ *   - `cancel`     → calls `onCancel(frame.runId)` to abort the in-flight RUN
+ *                    (work-poll dispatch path → run-abort-registry).
+ *   - `cancel_req` → calls `onCancelReq(frame.reqId)` to abort the in-flight
+ *                    pull reverse-proxy REQUEST (proxy-poll path →
+ *                    proxy-abort-registry). The outbound-only daemon can't
+ *                    subscribe to `links.proxy.cancel.*`, so cancel rides this
+ *                    control channel (Phase C-bis S2 — landmine #3).
  *   - `keep_alive` → ignored (server heartbeat to keep the poll alive).
  * On 204 (timeout with no frame), re-polls immediately.
  * On errors (network / unexpected status), backs off with
@@ -43,6 +49,12 @@ export interface ControlPollerDeps {
    * testability.
    */
   onCancel: (runId: string) => void;
+  /**
+   * Called when a `cancel_req` frame is received (Phase C-bis S2). The
+   * proxy-abort-registry's `abort(reqId)` is the intended implementation;
+   * optional so the WS-only paths / older callers compile unchanged.
+   */
+  onCancelReq?: (reqId: string) => void;
 }
 
 const BASE_DELAY_MS = 1_000;
@@ -62,7 +74,8 @@ const MAX_DELAY_MS = 30_000;
 export async function runControlPollLoop(
   deps: ControlPollerDeps,
 ): Promise<void> {
-  const { baseUrl, orgSlug, getAccessToken, signal, onCancel } = deps;
+  const { baseUrl, orgSlug, getAccessToken, signal, onCancel, onCancelReq } =
+    deps;
   const fetcher = deps.fetchImpl ?? fetch;
   const pollTimeout = deps.pollTimeoutSecs ?? 29;
   const url = `${baseUrl}/api/${orgSlug}/links/control?timeout=${pollTimeout}`;
@@ -144,6 +157,12 @@ export async function runControlPollLoop(
           onCancel(frame.runId);
         } catch (err) {
           console.error("[control-poller] onCancel threw (swallowed)", err);
+        }
+      } else if (frame.type === "cancel_req") {
+        try {
+          onCancelReq?.(frame.reqId);
+        } catch (err) {
+          console.error("[control-poller] onCancelReq threw (swallowed)", err);
         }
       }
       // keep_alive: no-op — continue to re-poll.

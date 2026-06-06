@@ -8,7 +8,13 @@
  *
  *   REQUEST leg  `links.proxy.req.<userSub>`   cluster → daemon (one RequestFrame)
  *   REPLY leg    `links.proxy.reply.<reqId>`   daemon → cluster (NDJSON stream)
- *   CANCEL leg   `links.proxy.cancel.<reqId>`  cluster → daemon (abort)
+ *   CANCEL leg   `links.control.<userSub>`     cluster → daemon (cancel_req frame)
+ *
+ * The CANCEL leg rides the EXISTING control channel (a `cancel_req` control
+ * frame carrying the reqId), NOT a dedicated `links.proxy.cancel.*` subject: the
+ * outbound-only daemon cannot subscribe to a per-reqId subject, but it already
+ * holds the control long-poll open. The daemon's control-poll forwards the
+ * reqId to its proxy-abort-registry (Phase C-bis S2).
  *
  * The reqId is the SOLE correlation key — the reply subject is derived purely
  * from the URL `:reqId` param, so the POST that carries the reply can land on
@@ -27,6 +33,7 @@ import type { NatsConnection } from "nats";
 import type { Env } from "../../hono-env";
 import type { RequestFrame } from "@/links/link-control-types";
 import type { DispatchChunk, DispatchFn } from "@/links/link-dispatch-types";
+import { encodeControlFrame } from "./control-frames";
 import {
   decodeProxyReplyFrame,
   splitNdjsonLines,
@@ -57,8 +64,9 @@ export function buildReplySubject(reqId: string): string {
   return `${SUBJECT_PREFIX}.reply.${reqId}`;
 }
 
-export function buildCancelSubject(reqId: string): string {
-  return `${SUBJECT_PREFIX}.cancel.${reqId}`;
+/** Control subject the daemon's control-poll holds open (cancel rides this). */
+export function buildControlSubject(userSub: string): string {
+  return `links.control.${userSub}`;
 }
 
 /**
@@ -252,7 +260,9 @@ export interface CreateProxyDispatchDeps {
  *      `links.proxy.req.<userSub>`.
  *   4. Yield decoded `DispatchChunk`s from the reply subscription until a
  *      terminal `end` (return) or `error` (throw) frame.
- *   5. On `opts.signal` abort, publish to `links.proxy.cancel.<reqId>` and stop.
+ *   5. On `opts.signal` abort, publish a `cancel_req` control frame (carrying
+ *      the reqId) to `links.control.<userSub>` and stop. The daemon's
+ *      control-poll forwards it to its proxy-abort-registry (S2).
  *
  * DORMANT (S1): exported for S3 to wire; no production caller yet.
  */
@@ -308,9 +318,14 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
         };
 
         const onAbort = (): void => {
+          // Publish a `cancel_req` control frame to the per-user control subject
+          // (the channel the outbound-only daemon's control-poll holds open),
+          // NOT a dedicated `links.proxy.cancel.*` subject the daemon can't
+          // subscribe to. The daemon forwards the reqId to its
+          // proxy-abort-registry, freeing the SSE slot (landmine #3).
           deps.nats.publish(
-            buildCancelSubject(reqId),
-            encoder.encode(JSON.stringify({ type: "cancel", reqId })),
+            buildControlSubject(userSub),
+            encoder.encode(encodeControlFrame({ type: "cancel_req", reqId })),
           );
           error = new Error("dispatch aborted");
           cleanup();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  buildCancelSubject,
+  buildControlSubject,
   buildReplySubject,
   buildRequestSubject,
   createProxyDispatch,
@@ -10,6 +10,7 @@ import {
   encodeProxyReplyFrame,
   type ProxyReplyFrame,
 } from "./link-proxy-frames";
+import { decodeControlFrame } from "./control-frames";
 
 interface Op {
   kind: "subscribe" | "publish";
@@ -122,7 +123,7 @@ describe("createProxyDispatch", () => {
     await expect(run).rejects.toThrow(/upstream: boom/);
   });
 
-  test("publishes a cancel frame on abort and stops", async () => {
+  test("publishes a cancel_req control frame on abort and stops", async () => {
     const f = makeFakeNats();
     const dispatch = createProxyDispatch({ nats: f.nats });
     const ac = new AbortController();
@@ -141,10 +142,15 @@ describe("createProxyDispatch", () => {
     ac.abort();
     await expect(run).rejects.toThrow(/aborted/);
 
+    // Cancel rides the control channel (links.control.<userSub>), not a
+    // dedicated proxy.cancel subject (landmine #3 — the daemon is outbound-only
+    // and only the control-poll is inbound).
     const cancel = f.published.find(
-      (p) => p.subject === buildCancelSubject(reqId),
+      (p) => p.subject === buildControlSubject("user-1"),
     );
     expect(cancel).toBeDefined();
+    const frame = decodeControlFrame(new TextDecoder().decode(cancel!.data));
+    expect(frame).toEqual({ type: "cancel_req", reqId });
   });
 
   test("throws immediately if the signal is already aborted", async () => {
@@ -181,6 +187,6 @@ describe("subject builders", () => {
   test("derive subjects purely from ids", () => {
     expect(buildRequestSubject("u1")).toBe("links.proxy.req.u1");
     expect(buildReplySubject("r1")).toBe("links.proxy.reply.r1");
-    expect(buildCancelSubject("r1")).toBe("links.proxy.cancel.r1");
+    expect(buildControlSubject("u1")).toBe("links.control.u1");
   });
 });

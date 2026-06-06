@@ -120,7 +120,18 @@ export async function connectToCluster(
       // body chunks.
       if (/^\/_sandbox\/[^/]+\//.test(frame.path)) {
         try {
-          for await (const ev of input.controlHandler.handleStream(frame)) {
+          // `handleStream` now yields RAW body bytes (landmine #9 — the pull
+          // proxy channel needs them for base64). The WS `chunk.data` is the
+          // protocol's historical UTF-8 text shape, so decode here. A single
+          // streaming decoder spans the whole reply so a multi-byte char split
+          // across two raw chunks still round-trips correctly.
+          const bodyDecoder = new TextDecoder();
+          // Pass the per-request signal so a `cancel` frame aborts the upstream
+          // fetch + read (frees the SSE slot), not just the between-yields check.
+          for await (const ev of input.controlHandler.handleStream(
+            frame,
+            ac.signal,
+          )) {
             if (ac.signal.aborted) break;
             if (ev.type === "headers") {
               ws.send(
@@ -136,10 +147,17 @@ export async function connectToCluster(
                 encodeFrame({
                   type: "chunk",
                   reqId: frame.reqId,
-                  data: ev.data,
+                  data: bodyDecoder.decode(ev.data, { stream: true }),
                 }),
               );
             }
+          }
+          // Flush any trailing partial multi-byte sequence the decoder holds.
+          const tail = bodyDecoder.decode();
+          if (tail.length > 0) {
+            ws.send(
+              encodeFrame({ type: "chunk", reqId: frame.reqId, data: tail }),
+            );
           }
           ws.send(encodeFrame({ type: "end", reqId: frame.reqId }));
         } catch (err) {

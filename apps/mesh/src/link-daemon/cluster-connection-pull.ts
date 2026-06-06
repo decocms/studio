@@ -24,9 +24,12 @@
 
 import { runWorkPollLoop } from "./work-poller";
 import { runControlPollLoop } from "./control-poller";
+import { runProxyPollLoop } from "./proxy-poller";
 import * as runAbortRegistry from "./run-abort-registry";
+import * as proxyAbortRegistry from "./proxy-abort-registry";
 import { handleLocalDispatch } from "./handle-local-dispatch";
 import type { ClusterConnectionHandle } from "./cluster-connection";
+import type { ControlHandler } from "./control-handler";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
 
@@ -86,6 +89,17 @@ export interface ClusterConnectionPullInput {
    * but cannot spawn one cold.
    */
   provider: DesktopSandboxProvider;
+  /**
+   * In-process control handler — reverse-proxies `/_sandbox/<handle>/*` to each
+   * spawned sandbox's local port. Required for the pull reverse-proxy channel
+   * (Phase C-bis S2): `runProxyPollLoop` calls `controlHandler.handleStream`
+   * for every cluster→daemon proxy request (vm-events SSE, control RPC,
+   * vm-tools). Built once in index.ts and shared with the WS path. Optional so
+   * pre-C-bis callers / tests that don't exercise the proxy loop compile; when
+   * omitted the proxy loop is not started (DORMANT — the WS path still carries
+   * this traffic until the S6 cutover).
+   */
+  controlHandler?: ControlHandler;
   /**
    * Injected fetch implementation. Defaults to global `fetch`.
    * Tests inject a stub here.
@@ -269,12 +283,36 @@ export async function connectToClusterPull(
     onCancel: (runId) => {
       runAbortRegistry.abort(runId);
     },
+    // Phase C-bis S2: a `cancel_req` control frame aborts an in-flight pull
+    // reverse-proxy REQUEST (vm-events SSE / vm-tool) by reqId. Aborting frees
+    // the daemon SSE slot via handleStream's release (landmine #3). The daemon
+    // is outbound-only, so this control channel is the only inbound cancel path.
+    onCancelReq: (reqId) => {
+      proxyAbortRegistry.abort(reqId);
+    },
   });
 
-  // Resolve `closed` when BOTH loops have exited. We use a latch so that
-  // whichever loop finishes last (or first) drives the final resolution.
-  // Both loops are aborted by ac.abort() inside close(), so they will both
-  // settle promptly after close() is called.
+  // Phase C-bis S2: the pull reverse-proxy loop (continuous-overlap GETs +
+  // detached per-reqId duplex replies). Only started when a controlHandler is
+  // supplied (index.ts builds it; pre-C-bis callers / pure tests may omit it,
+  // leaving the proxy traffic on the WS path until the S6 cutover).
+  const proxyPollDone = input.controlHandler
+    ? runProxyPollLoop({
+        baseUrl: input.clusterBaseUrl,
+        orgSlug: input.orgSlug,
+        getAccessToken: input.getAccessToken,
+        controlHandler: input.controlHandler,
+        signal: ac.signal,
+        fetchImpl: input.fetchImpl,
+      })
+    : Promise.resolve();
+
+  // Resolve `closed` when ALL active loops have exited. We use a latch so that
+  // whichever loop finishes last (or first) drives the final resolution. All
+  // loops are aborted by ac.abort() inside close(), so they settle promptly.
+  // (proxyPollDone is an already-resolved Promise when no controlHandler was
+  // supplied, so the count still works.)
+  const loopCount = 3;
   let settled = 0;
   const settleOnce = (err?: unknown) => {
     if (err) {
@@ -284,10 +322,11 @@ export async function connectToClusterPull(
       );
     }
     settled++;
-    if (settled >= 2) resolveClosed();
+    if (settled >= loopCount) resolveClosed();
   };
   void workPollDone.then(() => settleOnce(), settleOnce);
   void controlPollDone.then(() => settleOnce(), settleOnce);
+  void proxyPollDone.then(() => settleOnce(), settleOnce);
 
   return {
     async close() {

@@ -231,6 +231,10 @@ export async function startLinkDaemon(
       orgSlug,
       getAccessToken,
       provider,
+      // Phase C-bis S2: the same in-process control handler the WS path uses,
+      // so the pull reverse-proxy loop can serve `/_sandbox/*` (vm-events SSE,
+      // control RPC, vm-tools) locally and stream the reply back.
+      controlHandler,
       onConnected: () => {
         opts.monitor?.onCluster?.("linked");
         console.log(`Linked to ${opts.clusterBaseUrl} (pull transport)`);
