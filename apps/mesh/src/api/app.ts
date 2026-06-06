@@ -1382,10 +1382,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
     deps: { runRegistry, cancelBroadcast, streamBuffer, sseHub },
-    // Phase F: pull is the default when NATS is available. `linkWorkQueue` is
-    // null when NATS is not configured (test / no-NATS branch); the gate's
-    // `rt.pullDispatchFn != null && rt.workQueue != null` guard keeps the
-    // in-cluster dispatchRunFn path active in that case.
+    // Phase B: wire pull-transport dependencies. `linkWorkQueue` is null when
+    // NATS is not configured (test / no-NATS branch); the gate's
+    // `rt.pullDispatchFn != null && rt.workQueue != null` guard keeps the ws
+    // path active in that case, so no behavior changes for existing runs.
+    // The pull branch stays dormant until Phase D sets link_transport='pull'.
     pullDispatchFn: pullDispatch,
     workQueue: linkWorkQueue ?? undefined,
   });

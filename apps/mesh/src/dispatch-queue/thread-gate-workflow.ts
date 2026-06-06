@@ -145,9 +145,9 @@ export interface ThreadGateRuntime {
    */
   runTimeoutMs?: number;
   /**
-   * Pull-transport dependencies (Phase F). When present (NATS is available),
-   * the gate always takes the pull path. Falls back to dispatchRunFn when
-   * absent (no-NATS / test environments).
+   * Pull-transport dependencies (Phase B). When present and a thread's
+   * link_transport === 'pull' AND message_storage_version === 2, the gate
+   * uses these instead of dispatchRunFn.
    */
   pullDispatchFn?: (
     input: DispatchRunInput,
@@ -204,12 +204,20 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     throw new Error("user membership lost mid-dispatch");
   }
 
-  // Phase F: pull is the default when NATS is available (workQueue + pullDispatchFn
-  // both wired). The old per-thread link_transport='pull' gate is gone — all
-  // user-desktop dispatches take the pull path on NATS-capable deployments.
-  // Falls back to dispatchRunFn (in-cluster WS path) when NATS is absent —
-  // CI/test environments without NATS still dispatch correctly.
-  const isPull = rt.pullDispatchFn != null && rt.workQueue != null;
+  // Resolve whether this thread should use the pull transport.
+  // Guards: runtime must be pull-capable AND thread must be pull-configured.
+  // Skip the DB fetch entirely when pull isn't wired (no-NATS/test branch) —
+  // the ws path is unchanged and we avoid a redundant read on every dispatch.
+  const isPullCapable = rt.pullDispatchFn != null && rt.workQueue != null;
+  let isPull = false;
+  if (isPullCapable) {
+    const thread = await meshCtx.storage.threads.get(
+      request.taskId ?? ctx.threadId,
+    );
+    isPull =
+      thread?.link_transport === "pull" &&
+      thread?.message_storage_version === 2;
+  }
 
   if (!isPull) {
     // ── Original ws path — unchanged ────────────────────────────────────
