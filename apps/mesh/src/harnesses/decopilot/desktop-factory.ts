@@ -14,6 +14,16 @@
  * ⚠️ SECURITY NOTE: mcp.modelSecret carries the org's chat-completion API key
  * to the desktop. Scoped to the single main chat-completion key only.
  * Hardening: cluster model-proxy (spec §3.9) — deferred.
+ *
+ * ⚠️ DAEMON REGISTRATION DEFERRED — registering `decopilotHarnessFactory` in
+ * `packages/sandbox/daemon/entry.ts` pulls the cluster import-tree into the
+ * daemon bundle (TS stack overflow + bundle break). Completing desktop decopilot
+ * requires IMPORT-ISOLATING the portable harness path (a lean factory that
+ * imports only portable code: provider-from-modelSecret, toolsFromMCP, the
+ * agent loop) so the daemon never imports `ctx.storage`/`db`/cluster built-ins.
+ * The cluster-side groundwork here (isDesktopHarnessContext, decopilotDesktopHarnessFactory,
+ * isDesktopContext tool-gating) is dormant and safe — no daemon route reaches it.
+ * Substantial follow-up required before enabling.
  */
 
 import type {

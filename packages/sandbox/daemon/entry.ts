@@ -31,15 +31,14 @@ import {
   makeConfigUpdateHandler,
 } from "./routes/config";
 import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
-// CLI factories for daemon dispatch. decopilot is now included — it has been
-// ported to use only wire-serializable HarnessStreamInput (no StudioContext).
-// See apps/mesh/src/harnesses/decopilot/desktop-factory.ts.
+// Import CLI factories from their subpaths (rather than the barrel
+// `apps/mesh/src/harnesses/index.ts`) to avoid pulling in the cluster-only
+// `decopilotHarnessFactory` and its dependency tree (which references
+// cluster modules that cause a TS stack overflow in the daemon bundle).
+// See apps/mesh/src/harnesses/decopilot/desktop-factory.ts for the
+// deferred daemon registration plan.
 import { claudeCodeHarnessFactory } from "../../../apps/mesh/src/harnesses/claude-code";
 import { codexHarnessFactory } from "../../../apps/mesh/src/harnesses/codex";
-// decopilot is now daemon-portable: it activates its provider from mcp.modelSecret
-// and calls cluster-coupled built-ins via the injected mcp.url token.
-import { decopilotHarnessFactory } from "../../../apps/mesh/src/harnesses/decopilot";
-import { createDaemonAiProviders } from "./provider-adapter";
 import type {
   HarnessContext,
   HarnessFactory,
@@ -397,28 +396,25 @@ const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 // cluster's `remoteDispatch` posts a HarnessStreamInput here, proxied over
 // loopback by the link daemon's control handler; the daemon spawns the
 // named factory's CLI in-process and streams `UIMessageChunk` back as SSE.
+//
+// Only the CLI factories live in the daemon — decopilot pulls in
+// cluster-only modules (RunRegistry, run-stream internals) and is never
+// invoked over the wire.
 const dispatchHarnessRegistry: Map<string, HarnessFactory> = new Map([
   ["claude-code", claudeCodeHarnessFactory],
   ["codex", codexHarnessFactory],
-  // decopilot: now daemon-portable (spec §3.8). Only activated when
-  // resolveDispatchTarget routes target.runsIn === "user-desktop" for this harness.
-  ["decopilot", decopilotHarnessFactory],
 ]);
 const dispatchTracer = trace.getTracer("link-daemon");
 const dispatchMeter = metrics.getMeter("link-daemon");
 const lookupDispatchHarness = (id: string, input: unknown) => {
   const factory = dispatchHarnessRegistry.get(id);
   if (!factory) throw new Error(`unknown harness: ${id}`);
+  // Build a minimal HarnessContext. CLI harnesses don't read storage,
+  // db, vault, or aiProviders — they only need tracer/meter for OTel
+  // and metadata for span attributes. The cluster's richer StudioContext
+  // is structurally compatible with this shape (see
+  // `apps/mesh/src/core/harness-context.ts`).
   const harnessInput = input as HarnessStreamInput;
-
-  // For decopilot on desktop, attach an aiProviders shim that activates
-  // the provider from mcp.modelSecret (no vault access on daemon).
-  const modelSecret = harnessInput.mcp?.modelSecret;
-  const aiProviders =
-    id === "decopilot" && modelSecret
-      ? createDaemonAiProviders(modelSecret.providerId)
-      : undefined;
-
   const ctx: HarnessContext = {
     tracer: dispatchTracer,
     meter: dispatchMeter,
@@ -427,7 +423,6 @@ const lookupDispatchHarness = (id: string, input: unknown) => {
       orgId: harnessInput.organizationId,
       userId: harnessInput.user?.id,
     },
-    ...(aiProviders ? { aiProviders } : {}),
   };
   const harness = factory.create(ctx);
   return { stream: () => harness.stream(harnessInput) };
