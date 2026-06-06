@@ -3,8 +3,10 @@
  *
  * Validates the cluster-side PULL cycle introduced in Phase B:
  *
- *   1. A thread pinned link_transport='pull' + message_storage_version=2 is
- *      created and wired to a real agent (virtual MCP).
+ *   1. A thread pinned to a user-desktop runtime (harness_id='claude-code',
+ *      sandbox_provider_kind='user-desktop') + message_storage_version=2 is
+ *      created and wired to a real agent (virtual MCP). The S6 gate routes it
+ *      to pull because the resolved dispatch target is `runsIn:'user-desktop'`.
  *   2. The "desktop daemon" establishes link presence by calling
  *      GET /api/:org/links/work — the route synthetically mints a claim in
  *      the NATS KV bucket so resolveDispatchTarget sees the link as online.
@@ -51,6 +53,7 @@
 import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { claimPullPresence } from "../fixtures/links-presence";
 
 // ---------------------------------------------------------------------------
 // Helpers (scoped to this file; mirrors the patterns in link-ingest.spec.ts)
@@ -120,9 +123,8 @@ function buildSseBody(messageId: string, text: string): string {
 }
 
 /**
- * Create a real agent (virtual MCP) and a thread row with the pull-transport
+ * Create a real agent (virtual MCP) and a thread row with the user-desktop
  * pins already set. The thread is seeded with:
- *   - link_transport = 'pull'
  *   - message_storage_version = 2
  *   - harness_id = 'claude-code'
  *   - sandbox_provider_kind = 'user-desktop'
@@ -172,10 +174,16 @@ async function createPullThread(
   //    The MCP create tool doesn't expose these; they are normally written
   //    by the daemon/pull-phase handshake. We pre-seed them here so the
   //    thread gate's isPull check fires for the very first POST /messages.
+  //
+  //    Phase C-bis S6: the gate keys on the resolved dispatch target
+  //    (`target.runsIn === 'user-desktop'`), NOT on `link_transport`. The
+  //    target is produced by the presence claim (claude-code) + the pinned
+  //    sandbox_provider_kind='user-desktop'/harness_id='claude-code' below, so
+  //    `link_transport` is no longer seeded. `message_storage_version = 2`
+  //    stays — the gate's v2 conjunct still requires it.
   await db.query(
     `UPDATE threads
-     SET link_transport          = 'pull',
-         message_storage_version = 2,
+     SET message_storage_version = 2,
          harness_id              = 'claude-code',
          sandbox_provider_kind   = 'user-desktop'
      WHERE id = $1
@@ -222,33 +230,11 @@ test.describe("pull-transport round-trip", () => {
       // capability when harnessId='claude-code'; without it the route returns
       // 409 user_desktop_link_capability_missing.
       //
-      // We fire it with a short client timeout so the claim lands BEFORE
-      // POST /messages runs. The claim refresh is synchronous at the start
-      // of the handler; the long-poll itself may 204 on timeout which is fine.
-      const presencePromise = api
-        .get(`/api/${orgSlug}/links/work`, {
-          timeout: 1_500, // short: just long enough for the claim to land
-          headers: {
-            "x-link-capabilities": "claude-code",
-            "x-link-machine-id": "e2e-test-machine",
-            "x-link-cli-version": "test",
-          },
-        })
-        .catch(() => null); // 204/timeout is fine — we only need the claim
-
-      // Poll until the claim appears in /api/links/me (same pattern as
-      // decopilot-messages.spec.ts:connectLink).
-      await expect
-        .poll(
-          async () => {
-            const res = await api.get("/api/links/me");
-            if (res.status() !== 200) return null;
-            const body = (await res.json()) as unknown;
-            return body;
-          },
-          { timeout: 10_000, intervals: [200, 500, 1_000] },
-        )
-        .not.toBeNull();
+      // The helper fires the long-poll with a short client timeout (the claim
+      // refresh is synchronous at the start of the handler; a 204/timeout on
+      // the poll itself is fine) and resolves once the claim is visible in
+      // /api/links/me — so presence is established BEFORE POST /messages runs.
+      await claimPullPresence(api, orgSlug, ["claude-code"]);
 
       // ── Step 3: trigger the dispatch (POST /messages) ─────────────────────
       //
@@ -406,8 +392,6 @@ test.describe("pull-transport round-trip", () => {
 
       // 6b. Thread status must be terminal ('completed').
       expect(await fetchThreadStatus(db, threadId)).toBe("completed");
-
-      await presencePromise;
     } finally {
       await db.end();
     }

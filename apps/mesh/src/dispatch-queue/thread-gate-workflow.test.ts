@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  decidePullDispatch,
   pollUntilTerminal,
   setThreadGateRuntime,
   TERMINAL_STATUSES,
@@ -27,6 +28,79 @@ describe("threadGateWorkflow plumbing", () => {
       },
     };
     expect(() => setThreadGateRuntime(rt)).not.toThrow();
+  });
+});
+
+describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
+  it("routes a user-desktop target on a v2 thread to pull", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        targetRunsIn: "user-desktop",
+        messageStorageVersion: 2,
+      }),
+    ).toBe(true);
+  });
+
+  it("routes a cluster target to the in-cluster ws path (NOT pull)", () => {
+    // The reverted cutover (40562b383) wrongly sent these to pull. Cloud /
+    // cluster threads have no desktop daemon to drain the work queue.
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        targetRunsIn: "cluster",
+        messageStorageVersion: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it("routes an undefined target (legacy path) to the in-cluster ws path", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        targetRunsIn: undefined,
+        messageStorageVersion: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it("routes a user-desktop target on a v1 thread to the ws path (v2 conjunct)", () => {
+    // Belt-and-suspenders: a v1 user-desktop thread has no v2 ingest path, so
+    // pull would silently corrupt. The version conjunct forces ws fallback.
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        targetRunsIn: "user-desktop",
+        messageStorageVersion: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("never pulls when the runtime is not pull-capable (no NATS work queue)", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: false,
+        targetRunsIn: "user-desktop",
+        messageStorageVersion: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it("treats a null/undefined message_storage_version as non-v2 (ws path)", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        targetRunsIn: "user-desktop",
+        messageStorageVersion: null,
+      }),
+    ).toBe(false);
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        targetRunsIn: "user-desktop",
+        messageStorageVersion: undefined,
+      }),
+    ).toBe(false);
   });
 });
 

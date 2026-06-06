@@ -13,94 +13,18 @@
  * real all the way to `resolveDispatchTarget` — the link-gating logic under
  * test — and the pin persistence is asserted against the real thread row.
  *
- * Link state is real: a daemon is brought online via `connectToCluster` (the
- * same path link-dispatch-happy.spec.ts uses), advertising the capabilities
- * each case needs.
+ * Link presence is real: the user is made a live `user-desktop` link via
+ * `claimPullPresence` (a `GET /links/work` long-poll that synthetically mints
+ * the presence claim, the same path a pull daemon takes). These tests never
+ * await a dispatch — they only need the link to be *present* in the claim
+ * registry so `resolveDispatchTarget` routes correctly (Phase C-bis S6).
  */
 
 import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
-import { connectToCluster } from "../../src/link-daemon/cluster-connection";
-import type {
-  ControlHandler,
-  ControlHandlerResponse,
-} from "../../src/link-daemon/control-handler";
-import type { Capability } from "../../src/links/protocol";
-import type { RequestFrame } from "../../src/links/dispatch-frames";
+import { claimPullPresence } from "../fixtures/links-presence";
 import type { APIRequestContext } from "@playwright/test";
-
-// The gating tests never receive a dispatch — the link only needs to be
-// *present* in the claim registry. A no-op control handler satisfies the
-// connectToCluster contract.
-const noopControlHandler: ControlHandler = {
-  async handle(_req: RequestFrame): Promise<ControlHandlerResponse> {
-    return { status: 404, body: "not implemented in e2e gating test" };
-  },
-  async *handleStream(
-    _req: RequestFrame,
-  ): AsyncIterable<{ type: "raw-chunk"; data: Uint8Array }> {
-    // nothing to yield
-  },
-};
-
-type Cluster = Awaited<ReturnType<typeof connectToCluster>>;
-
-const FAKE_PREVIEW_PORT = 19998;
-
-async function mintApiKey(
-  api: APIRequestContext,
-  orgSlug: string,
-): Promise<string> {
-  const result = await callSelfMcpTool<{ key?: string }>(
-    api,
-    orgSlug,
-    "API_KEY_CREATE",
-    { name: `decopilot-e2e-${Date.now()}`, permissions: { "*": ["*"] } },
-  );
-  if (!result.key) {
-    throw new Error(
-      `API_KEY_CREATE returned no key: ${JSON.stringify(result)}`,
-    );
-  }
-  return result.key;
-}
-
-/** Bring a link daemon online for the authed user with the given capabilities. */
-async function connectLink(
-  api: APIRequestContext,
-  apiKey: string,
-  capabilities: Capability[],
-): Promise<Cluster> {
-  const base = `http://localhost:${process.env.PORT ?? "3000"}`;
-  const wsUrl = `${base.replace(/^http/, "ws")}/api/links/connect`;
-  const cluster = await connectToCluster({
-    url: wsUrl,
-    accessToken: apiKey,
-    hello: {
-      previewPort: FAKE_PREVIEW_PORT,
-      machineId: "decopilot-e2e-machine",
-      hostname: "decopilot-e2e-host",
-      cliVersion: "0.0.0-e2e",
-      capabilities,
-    },
-    controlHandler: noopControlHandler,
-    maxAttempts: 1,
-  });
-  // The claim is written to the NATS KV bucket during hello handling — wait
-  // until it's visible so POST /messages sees an online link.
-  await expect
-    .poll(
-      async () => {
-        const res = await api.get("/api/links/me");
-        if (res.status() !== 200) return null;
-        return (await res.json()) as unknown;
-      },
-      { timeout: 10_000, intervals: [200, 500, 1000] },
-    )
-    .toMatchObject({ previewPort: FAKE_PREVIEW_PORT });
-  return cluster;
-}
 
 interface MessageBodyOverrides {
   agentId?: string;
@@ -189,10 +113,9 @@ test.describe("POST /messages — dispatch target gating", () => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
-    const apiKey = await mintApiKey(api, orgSlug);
     // Link advertises only decopilot-sandbox; a claude-code harness needs the
     // "claude-code" capability.
-    const cluster = await connectLink(api, apiKey, ["decopilot-sandbox"]);
+    const presence = claimPullPresence(api, orgSlug, ["decopilot-sandbox"]);
     try {
       const res = await postMessage(
         api,
@@ -212,7 +135,7 @@ test.describe("POST /messages — dispatch target gating", () => {
       expect(body.code).toBe("user_desktop_link_capability_missing");
       expect(body.activeCapabilities).toEqual(["decopilot-sandbox"]);
     } finally {
-      await cluster.close();
+      await presence;
     }
   });
 
@@ -245,9 +168,8 @@ test.describe("POST /messages — first-message pinning", () => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
-    const apiKey = await mintApiKey(api, orgSlug);
     // user-desktop + claude-code resolves OK only when the link advertises it.
-    const cluster = await connectLink(api, apiKey, ["claude-code"]);
+    const presence = claimPullPresence(api, orgSlug, ["claude-code"]);
     const db = await connectDevDb();
     try {
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
@@ -272,7 +194,7 @@ test.describe("POST /messages — first-message pinning", () => {
       expect(rows[0]?.harness_id).toBe("claude-code");
     } finally {
       await db.end();
-      await cluster.close();
+      await presence;
     }
   });
 
@@ -282,8 +204,7 @@ test.describe("POST /messages — first-message pinning", () => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
-    const apiKey = await mintApiKey(api, orgSlug);
-    const cluster = await connectLink(api, apiKey, ["claude-code"]);
+    const presence = claimPullPresence(api, orgSlug, ["claude-code"]);
     const db = await connectDevDb();
     try {
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
@@ -331,7 +252,7 @@ test.describe("POST /messages — first-message pinning", () => {
       expect(rows[0]?.harness_id).toBe("claude-code");
     } finally {
       await db.end();
-      await cluster.close();
+      await presence;
     }
   });
 });

@@ -25,93 +25,17 @@
  * the composer's keystroke flow.
  *
  * harnessId = "claude-code" + sandboxProviderKind = "user-desktop" exercises
- * the dispatch path that requires an online link (the same one
- * decopilot-messages.spec.ts brings up via connectToCluster).
+ * the dispatch path that requires an online link. Presence is established via
+ * `claimPullPresence` (a `GET /links/work` long-poll that synthetically mints
+ * the presence claim — the same path a pull daemon takes); the lock-state
+ * assertions never await a dispatch, they only need the link to be *present*.
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import { connectToCluster } from "../../src/link-daemon/cluster-connection";
-import type {
-  ControlHandler,
-  ControlHandlerResponse,
-} from "../../src/link-daemon/control-handler";
-import type { RequestFrame } from "../../src/links/dispatch-frames";
-import type { Capability } from "../../src/links/protocol";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { claimPullPresence } from "../fixtures/links-presence";
 import { expect, test } from "../fixtures/test";
-
-// Lock-state assertions never receive a dispatch — the link only needs to be
-// present in the claim registry. A no-op control handler satisfies the
-// connectToCluster contract.
-const noopControlHandler: ControlHandler = {
-  async handle(_req: RequestFrame): Promise<ControlHandlerResponse> {
-    return { status: 404, body: "not implemented in lock e2e test" };
-  },
-  async *handleStream(
-    _req: RequestFrame,
-  ): AsyncIterable<{ type: "raw-chunk"; data: Uint8Array }> {
-    // nothing to yield
-  },
-};
-
-type Cluster = Awaited<ReturnType<typeof connectToCluster>>;
-
-const FAKE_PREVIEW_PORT = 19997;
-
-async function mintApiKey(
-  api: APIRequestContext,
-  orgSlug: string,
-): Promise<string> {
-  const result = await callSelfMcpTool<{ key?: string }>(
-    api,
-    orgSlug,
-    "API_KEY_CREATE",
-    {
-      name: `chat-locked-thread-e2e-${Date.now()}`,
-      permissions: { "*": ["*"] },
-    },
-  );
-  if (!result.key) {
-    throw new Error(
-      `API_KEY_CREATE returned no key: ${JSON.stringify(result)}`,
-    );
-  }
-  return result.key;
-}
-
-async function connectLink(
-  api: APIRequestContext,
-  apiKey: string,
-  capabilities: Capability[],
-): Promise<Cluster> {
-  const base = `http://localhost:${process.env.PORT ?? "3000"}`;
-  const wsUrl = `${base.replace(/^http/, "ws")}/api/links/connect`;
-  const cluster = await connectToCluster({
-    url: wsUrl,
-    accessToken: apiKey,
-    hello: {
-      previewPort: FAKE_PREVIEW_PORT,
-      machineId: "chat-locked-thread-e2e-machine",
-      hostname: "chat-locked-thread-e2e-host",
-      cliVersion: "0.0.0-e2e",
-      capabilities,
-    },
-    controlHandler: noopControlHandler,
-    maxAttempts: 1,
-  });
-  await expect
-    .poll(
-      async () => {
-        const res = await api.get("/api/links/me");
-        if (res.status() !== 200) return null;
-        return (await res.json()) as unknown;
-      },
-      { timeout: 10_000, intervals: [200, 500, 1000] },
-    )
-    .toMatchObject({ previewPort: FAKE_PREVIEW_PORT });
-  return cluster;
-}
 
 interface MessageBodyOverrides {
   agentId: string;
@@ -236,8 +160,7 @@ test.describe("Thread runtime is locked after first message", () => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
-    const apiKey = await mintApiKey(api, orgSlug);
-    const cluster = await connectLink(api, apiKey, ["claude-code"]);
+    const presence = claimPullPresence(api, orgSlug, ["claude-code"]);
     const db = await connectDevDb();
     try {
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
@@ -314,7 +237,7 @@ test.describe("Thread runtime is locked after first message", () => {
       expect(afterConflicting.rows[0]?.branch).toBe("main");
     } finally {
       await db.end();
-      await cluster.close();
+      await presence;
     }
   });
 
@@ -324,8 +247,7 @@ test.describe("Thread runtime is locked after first message", () => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
-    const apiKey = await mintApiKey(api, orgSlug);
-    const cluster = await connectLink(api, apiKey, ["claude-code"]);
+    const presence = claimPullPresence(api, orgSlug, ["claude-code"]);
     try {
       // Seed an AI provider key so the thread route renders the
       // composer instead of `NoAiProviderEmptyState`. Without this,
@@ -385,7 +307,7 @@ test.describe("Thread runtime is locked after first message", () => {
         timeout: 60_000,
       });
     } finally {
-      await cluster.close();
+      await presence;
     }
   });
 });
