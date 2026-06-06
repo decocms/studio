@@ -2,11 +2,10 @@
  * Shared link control-plane request shape.
  *
  * `RequestFrame` is the cluster → daemon request envelope used by the daemon's
- * in-process control handler (`link-daemon/control-handler.ts`). It mirrors the
- * `request` variant of the WS dispatch-frame protocol (`dispatch-frames.ts`),
- * but lives here so the surviving control handler does not depend on the
- * to-be-deleted WS frame codec. Keep the field set in sync with the `request`
- * frame in `dispatch-frames.ts` until the WS path is removed.
+ * in-process control handler (`link-daemon/control-handler.ts`) and the pull
+ * reverse-proxy channel (`link-proxy-routes.ts` / `link-proxy-frames.ts`). The
+ * WS dispatch-frame codec it once mirrored was deleted in Phase C-bis S8; this
+ * is now the standalone request envelope.
  */
 export interface RequestFrame {
   type: "request";

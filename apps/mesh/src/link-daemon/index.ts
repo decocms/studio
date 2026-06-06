@@ -3,8 +3,9 @@
  *
  * - Receives an authenticated session from its caller (the CLI's `link`
  *   command obtains one via `ensureSession`).
- * - Opens a WebSocket to `<MESH_CLUSTER_URL>/api/links/connect` with the
- *   session bearer; sends the `hello` frame.
+ * - Runs the pull transport (`connectToClusterPull`): long-polls
+ *   `<MESH_CLUSTER_URL>/api/:org/links/work` for chat work and `/links/proxy`
+ *   for sandbox control/events/vm-tools, re-resolving the bearer per poll.
  * - Spawns the local ingress on `--port` so browsers can reach
  *   `<handle>.localhost:<port>` for sandbox previews.
  * - Dispatches incoming control-plane requests (sandbox lifecycle + the
@@ -17,12 +18,9 @@ import {
   waitForDaemonReady,
 } from "@decocms/sandbox/daemon-client";
 import { createDefaultDaemonSpawn } from "@decocms/sandbox/daemon-spawn";
-import { detectCapabilities } from "./capabilities";
 import { createControlHandler } from "./control-handler";
-import { connectToCluster } from "./cluster-connection";
 import { connectToClusterPull } from "./cluster-connection-pull";
 import { startLocalIngress } from "./local-ingress";
-import { loadOrCreateMachineId } from "./machine-id";
 import { getValidSession } from "../cli/lib/get-valid-session";
 import type { Session } from "../cli/lib/session";
 import {
@@ -81,10 +79,6 @@ export interface LinkDaemonHandle {
 export async function startLinkDaemon(
   opts: StartLinkDaemonOptions,
 ): Promise<LinkDaemonHandle> {
-  const session = opts.session;
-
-  const machineId = await loadOrCreateMachineId(opts.dataDir);
-  const cliVersion = process.env.npm_package_version ?? "0.0.0";
   const hostname = osHostname() || undefined;
   opts.monitor?.onMachine?.(hostname ?? "this machine");
 
@@ -205,73 +199,37 @@ export async function startLinkDaemon(
     return fresh.accessToken;
   };
 
-  // Phase C-bis S7: pull is now the daemon default. LINK_TRANSPORT_MODE=ws can
-  // still opt back into the legacy WebSocket path (deleted in S8). Both paths
-  // share the same `controlHandler`, `provider`, and `getAccessToken` resolver.
-  // Default (unset / anything but "ws") = pull path.
-  const linkTransportMode = process.env.LINK_TRANSPORT_MODE ?? "pull";
-
-  let cluster: { close(): Promise<void>; closed: Promise<void> };
-
-  if (linkTransportMode === "pull") {
-    // Resolve org slug: caller-supplied > env var > fatal.
-    const orgSlug = opts.orgSlug ?? process.env.DECO_ORG_SLUG;
-    if (!orgSlug) {
-      console.error(
-        "[link-daemon] LINK_TRANSPORT_MODE=pull requires an org slug. " +
-          "Pass `orgSlug` to startLinkDaemon or set DECO_ORG_SLUG.",
-      );
-      process.exit(1);
-    }
-    console.log(
-      `[link-daemon] transport=pull org=${orgSlug} cluster=${opts.clusterBaseUrl}`,
+  // Phase C-bis S8: the reverse-WS transport was deleted; the pull transport is
+  // the only path. The daemon long-polls `/api/:org/links/work` (chat) and
+  // `/links/proxy` (sandbox control/events/vm-tools), sharing the same
+  // `controlHandler`, `provider`, and `getAccessToken` resolver.
+  //
+  // Resolve org slug: caller-supplied > env var > fatal.
+  const orgSlug = opts.orgSlug ?? process.env.DECO_ORG_SLUG;
+  if (!orgSlug) {
+    console.error(
+      "[link-daemon] pull transport requires an org slug. " +
+        "Pass `orgSlug` to startLinkDaemon or set DECO_ORG_SLUG.",
     );
-    cluster = await connectToClusterPull({
-      clusterBaseUrl: opts.clusterBaseUrl,
-      orgSlug,
-      getAccessToken,
-      provider,
-      // Phase C-bis S2: the same in-process control handler the WS path uses,
-      // so the pull reverse-proxy loop can serve `/_sandbox/*` (vm-events SSE,
-      // control RPC, vm-tools) locally and stream the reply back.
-      controlHandler,
-      onConnected: () => {
-        opts.monitor?.onCluster?.("linked");
-        console.log(`Linked to ${opts.clusterBaseUrl} (pull transport)`);
-      },
-    });
-  } else {
-    // Default: WS transport (unchanged).
-    const wsUrl = (() => {
-      const u = new URL("/api/links/connect", opts.clusterBaseUrl);
-      u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
-      return u.toString();
-    })();
-    cluster = await connectToCluster({
-      url: wsUrl,
-      accessToken: session.accessToken,
-      // Re-resolve (and refresh) the bearer before each (re)connect so a
-      // reconnect after the startup token expired presents a fresh token rather
-      // than the dead one — the cause of the WS "Expected 101 status code" loop.
-      // getValidSession refreshes via the refresh token and rewrites disk; a
-      // transient failure propagates (cluster-connection retries with backoff),
-      // and a null result (no session / refresh token rejected) is fatal so the
-      // daemon stops and asks the user to re-auth instead of spinning forever.
-      getAccessToken,
-      hello: {
-        previewPort: ingress.port,
-        machineId,
-        hostname,
-        cliVersion,
-        capabilities: await detectCapabilities(),
-      },
-      controlHandler,
-      onConnected: () => {
-        opts.monitor?.onCluster?.("linked");
-        console.log(`Linked to ${opts.clusterBaseUrl}`);
-      },
-    });
+    process.exit(1);
   }
+  console.log(
+    `[link-daemon] transport=pull org=${orgSlug} cluster=${opts.clusterBaseUrl}`,
+  );
+  const cluster = await connectToClusterPull({
+    clusterBaseUrl: opts.clusterBaseUrl,
+    orgSlug,
+    getAccessToken,
+    provider,
+    // The in-process control handler also serves the pull reverse-proxy loop's
+    // `/_sandbox/*` (vm-events SSE, control RPC, vm-tools) locally and streams
+    // the reply back.
+    controlHandler,
+    onConnected: () => {
+      opts.monitor?.onCluster?.("linked");
+      console.log(`Linked to ${opts.clusterBaseUrl} (pull transport)`);
+    },
+  });
 
   let resolveStopped!: (code: number) => void;
   const stopped = new Promise<number>((r) => {

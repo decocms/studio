@@ -3,11 +3,11 @@
  *
  * Instead of a persistent WebSocket, runs a long-poll work loop that pulls
  * work items from `GET /api/:org/links/work` and dispatches each item to the
- * local sandbox via `handleLocalDispatch`.
+ * local sandbox via `handleLocalDispatch`, plus the proxy poll loop
+ * (`runProxyPollLoop`) for sandbox control/events/vm-tools.
  *
- * The WS `connectToCluster` in `cluster-connection.ts` is untouched — it
- * remains active for WS threads. This function is the parallel entry point
- * gated on `LINK_TRANSPORT_MODE=pull` in `index.ts`.
+ * This is the ONLY daemon transport — the reverse-WS (`connectToCluster`) was
+ * deleted in Phase C-bis S8. `index.ts` calls this unconditionally.
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  *
@@ -28,7 +28,7 @@ import { runProxyPollLoop } from "./proxy-poller";
 import * as runAbortRegistry from "./run-abort-registry";
 import * as proxyAbortRegistry from "./proxy-abort-registry";
 import { handleLocalDispatch } from "./handle-local-dispatch";
-import type { ClusterConnectionHandle } from "./cluster-connection";
+import type { ClusterConnectionHandle } from "./types";
 import type { ControlHandler } from "./control-handler";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import type { ClaimPhase, SandboxProvider } from "@decocms/sandbox/provider";
 import {
   __resetSharedLifecyclesForTesting,
-  selectDesktopTransport,
   subscribeLifecycle,
 } from "./lifecycle";
 
@@ -150,26 +149,5 @@ describe("subscribeLifecycle", () => {
 
     a.unsubscribe();
     b.unsubscribe();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// selectDesktopTransport — Phase C-bis S3 provider transport flag
-// ---------------------------------------------------------------------------
-
-describe("selectDesktopTransport", () => {
-  it("selects ws only for the exact 'ws' value", () => {
-    expect(selectDesktopTransport("ws")).toBe("ws");
-  });
-
-  it("defaults to pull when unset (S7: pull is the default)", () => {
-    expect(selectDesktopTransport(undefined)).toBe("pull");
-  });
-
-  it("defaults to pull for empty / other values (pull ON by default)", () => {
-    expect(selectDesktopTransport("")).toBe("pull");
-    expect(selectDesktopTransport("pull")).toBe("pull");
-    expect(selectDesktopTransport("WS")).toBe("pull");
-    expect(selectDesktopTransport("true")).toBe("pull");
   });
 });

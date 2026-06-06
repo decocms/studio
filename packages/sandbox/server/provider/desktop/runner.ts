@@ -26,7 +26,7 @@ import type {
   SandboxId,
   SandboxProvider,
 } from "../types";
-import type { DispatchFn } from "../../../../../apps/mesh/src/links/dispatcher";
+import type { DispatchFn } from "../../../../../apps/mesh/src/links/link-dispatch-types";
 
 const RUNNER_KIND = "user-desktop" as const;
 

@@ -8,7 +8,6 @@
 
 import { getSettings } from "./settings";
 import { initObservability } from "./observability";
-import type { WsAttachData } from "./api/app";
 
 const settings = getSettings();
 
@@ -54,7 +53,7 @@ DBOS.setConfig({
   runAdminServer: false,
 });
 
-const { createApp, gatewayWsHandlers } = await import("./api/app");
+const { createApp } = await import("./api/app");
 const { isServerPath } = await import("./api/utils/paths");
 const { createAssetHandler, resolveClientDir } = await import(
   "@decocms/runtime/asset-server"
@@ -143,14 +142,6 @@ if (!settings.isCli) {
   }
 }
 
-function isGatewayWsData(data: unknown): data is WsAttachData {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    (data as { kind?: unknown }).kind === "gateway"
-  );
-}
-
 const server = Bun.serve({
   // This was necessary because MCP has SSE endpoints (like notification) that disconnects after 10 seconds (default bun idle timeout)
   idleTimeout: 0,
@@ -183,38 +174,23 @@ const server = Bun.serve({
     if (assetRes) return withSecurityHeaders(assetRes);
     return app.fetch(request, { server });
   },
-  // Multiplexed WebSocket handler. `ws.data.kind` discriminates preview
-  // connections; `ws.data.userSub` discriminates gateway link connections.
-  // New upgraders should add a tagged field and a branch here.
+  // WebSocket handler — only sandbox preview connections remain (the link
+  // daemon reverse-WS gateway was deleted in Phase C-bis S8; daemons now use
+  // the pull transport). `ws.data.kind` discriminates preview connections.
   websocket: {
     open(ws) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.open(ws);
-      } else if (isGatewayWsData(ws.data)) {
-        gatewayWsHandlers.open(
-          ws as unknown as Parameters<typeof gatewayWsHandlers.open>[0],
-        );
       }
     },
     message(ws, message) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.message(ws, message);
-      } else if (isGatewayWsData(ws.data)) {
-        void gatewayWsHandlers.message(
-          ws as unknown as Parameters<typeof gatewayWsHandlers.message>[0],
-          message,
-        );
       }
     },
-    close(ws, code, reason) {
+    close(ws) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.close(ws);
-      } else if (isGatewayWsData(ws.data)) {
-        gatewayWsHandlers.close(
-          ws as unknown as Parameters<typeof gatewayWsHandlers.close>[0],
-          code,
-          reason,
-        );
       }
     },
   },

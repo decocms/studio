@@ -180,19 +180,6 @@ async function instantiate(
 }
 
 /**
- * Pure selector for the desktop provider's dispatch transport (Phase C-bis S7).
- *
- * Pull is now the DEFAULT: `"pull"` ⇒ the pull reverse-proxy `DispatchFn` (the
- * daemon long-polls `/links/proxy`); only an explicit `LINK_PROXY_TRANSPORT=ws`
- * opts back into the legacy WS dispatcher (deleted in S8). Extracted so the
- * gate is unit-testable without booting the app (the actual `getDispatch` /
- * `getProxyDispatch` need a live NATS connection).
- */
-export function selectDesktopTransport(env: string | undefined): "pull" | "ws" {
-  return env === "ws" ? "ws" : "pull";
-}
-
-/**
  * Construct a `DesktopSandboxProvider` bound to a specific user's link.
  * The caller (`resolve-provider.ts`) passes the target sandbox owner's
  * userSub — that's the user whose daemon should execute the dispatch,
@@ -207,21 +194,16 @@ export async function buildDesktopProvider(
   const { DesktopSandboxProvider } = await import(
     "@decocms/sandbox/provider/desktop"
   );
-  const { getDispatch, getProxyDispatch } = await import("../api/app");
+  const { getProxyDispatch } = await import("../api/app");
   const stateStore = new KyselySandboxProviderStateStore(_ctx.db);
   if (!userSub) {
     throw new Error("buildDesktopProvider: userSub must be a non-empty string");
   }
-  // Phase C-bis S3: LINK_PROXY_TRANSPORT=pull injects the pull reverse-proxy
-  // `DispatchFn` (the daemon long-polls `/links/proxy`) instead of the WS
-  // dispatcher. Default (unset / anything else) = WS, byte-for-byte unchanged
-  // (the pull path stays dormant in prod). The provider (runner.ts) is
-  // transport-agnostic — only the injected `dispatch` differs. Both yield
-  // base64 `DispatchChunk.data`, so runner decodes one way for either.
-  const dispatch =
-    selectDesktopTransport(process.env.LINK_PROXY_TRANSPORT) === "pull"
-      ? getProxyDispatch()
-      : getDispatch();
+  // Phase C-bis S8: the pull reverse-proxy `DispatchFn` (the daemon long-polls
+  // `/links/proxy`) is the only desktop transport — the reverse-WS dispatcher
+  // was deleted. The provider (runner.ts) is transport-agnostic; it decodes the
+  // base64 `DispatchChunk.data` the proxy dispatch yields.
+  const dispatch = getProxyDispatch();
   return new DesktopSandboxProvider({
     userSub,
     dispatch,

@@ -103,20 +103,10 @@ import {
   type LinkClaimRegistry,
 } from "../links/link-claim-registry";
 import {
-  gatewayWsHandlers,
-  registerLinksGateway,
-  type GatewayNatsAdapter,
-  type WsAttachData,
-} from "../links/ws-gateway";
-import {
-  createDispatcher,
-  type DispatcherNatsAdapter,
-  type DispatchFn,
-} from "../links/dispatcher";
-import {
   createProxyDispatch,
   type ProxyNatsAdapter,
 } from "./routes/decopilot/link-proxy-routes";
+import type { DispatchFn } from "../links/link-dispatch-types";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
@@ -202,33 +192,14 @@ function rejectAfter(ms: number): Promise<never> {
   );
 }
 
-// Module-level singleton for the NATS-backed dispatcher. Populated inside
-// `createApp` once `natsProvider` is wired; callers outside `createApp` (e.g.
-// `dispatch-run.ts`) reach it via `getDispatch()`.
-let sharedDispatch: DispatchFn | null = null;
-
-// Module-level singleton for the pull reverse-proxy `DispatchFn` (Phase C-bis
-// S3). Same NATS connection as `sharedDispatch`, different transport: the daemon
+// Module-level singleton for the pull reverse-proxy `DispatchFn` (Phase C-bis).
+// Populated inside `createApp` once `natsProvider` is wired; the daemon
 // long-polls `/links/proxy` instead of holding a WS open. `buildDesktopProvider`
-// selects this when `LINK_PROXY_TRANSPORT=pull` (default off → WS).
+// injects this as the only desktop transport (the reverse-WS was deleted in S8).
 let sharedProxyDispatch: DispatchFn | null = null;
 
 /**
- * Return the shared NATS-backed `DispatchFn`. Throws if `createApp` hasn't
- * been called yet (shouldn't happen in production; guard is for tests that
- * bypass `createApp`).
- */
-export function getDispatch(): DispatchFn {
-  if (!sharedDispatch) {
-    throw new Error(
-      "getDispatch() called before createApp() — dispatcher not yet initialized",
-    );
-  }
-  return sharedDispatch;
-}
-
-/**
- * Return the shared pull reverse-proxy `DispatchFn` (Phase C-bis S3). Throws if
+ * Return the shared pull reverse-proxy `DispatchFn` (Phase C-bis). Throws if
  * `createApp` hasn't been called yet (the proxy transport requires a live NATS
  * connection — it is `null` when NATS is unavailable, e.g. some test setups).
  */
@@ -1797,133 +1768,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   app.route("/api", decopilotRoutes);
 
-  // `/api/links/connect` — WS gateway for link daemons.
-  // Validates bearer token via Better Auth, upgrades to WebSocket, and
-  // claims the user in the NATS JS KV bucket. Replaces registerLinksRoutes.
-  // `linkClaimRegistry` was constructed above in the NATS/test branch.
-
-  const gatewayNatsAdapter: GatewayNatsAdapter = {
-    subscribe(subject, onMessage) {
-      const nc = natsProvider?.getConnection();
-      if (!nc) return () => {};
-      const sub = nc.subscribe(subject);
-      void (async () => {
-        for await (const m of sub) {
-          try {
-            onMessage(m.data, m.reply);
-          } catch {
-            // swallow
-          }
-        }
-      })();
-      return () => {
-        try {
-          sub.unsubscribe();
-        } catch {
-          /* */
-        }
-      };
-    },
-    publish(subject, data) {
-      natsProvider?.getConnection()?.publish(subject, data);
-    },
-    async request(subject, data, timeoutMs) {
-      const nc = natsProvider?.getConnection();
-      if (!nc) return null;
-      try {
-        const reply = await nc.request(subject, data, { timeout: timeoutMs });
-        return reply.data;
-      } catch {
-        return null;
-      }
-    },
-  };
-
-  registerLinksGateway(app, {
-    registry: linkClaimRegistry,
-    nats: gatewayNatsAdapter,
-    podId: POD_ID,
-    validateBearer: async (token) => {
-      // Production tokens are OAuth access tokens minted by the MCP OIDC
-      // provider (`decocms auth login`). `X-MCP-Session-Auth: true` tells the
-      // apiKey plugin to skip — otherwise its `customAPIKeyGetter` grabs the
-      // Bearer header and throws `INVALID_API_KEY` on non-key tokens. Build a
-      // fresh Headers so the marker is server-set, never client-trusted.
-      const headers = new Headers({
-        authorization: `Bearer ${token}`,
-        "X-MCP-Session-Auth": "true",
-      });
-      const mcp = (await auth.api
-        .getMcpSession({ headers })
-        .catch(() => null)) as { userId?: string } | null;
-      if (mcp?.userId) return mcp.userId;
-      // Dev fallback: `bootstrapDevLinkSession` stores a Better Auth API key
-      // as the bearer, since the local cluster has no OIDC flow.
-      const verified = (await auth.api
-        .verifyApiKey({ body: { key: token } })
-        .catch(() => null)) as {
-        valid?: boolean;
-        key?: { userId?: string };
-      } | null;
-      if (verified?.valid && verified.key?.userId) return verified.key.userId;
-      return null;
-    },
-  });
-
-  // Build the NATS-backed dispatcher and expose it as a module-level singleton
-  // so `dispatch-run.ts` (and other call sites) can reach it via `getDispatch()`
-  // without needing it threaded through every function signature.
-  const dispatcherNatsAdapter: DispatcherNatsAdapter = {
-    publish(subject, data, opts) {
-      const nc = natsProvider?.getConnection();
-      if (!nc) return;
-      if (opts?.reply) {
-        nc.publish(subject, data, { reply: opts.reply });
-      } else {
-        nc.publish(subject, data);
-      }
-    },
-    subscribe(subject, cb) {
-      const nc = natsProvider?.getConnection();
-      if (!nc) return () => {};
-      const sub = nc.subscribe(subject);
-      void (async () => {
-        for await (const m of sub) {
-          try {
-            cb(m.data, m.reply);
-          } catch {
-            /* swallow — bad subscriber must not kill the loop */
-          }
-        }
-      })();
-      return () => {
-        try {
-          sub.unsubscribe();
-        } catch {
-          /* */
-        }
-      };
-    },
-    createInbox() {
-      const nc = natsProvider?.getConnection();
-      // `NatsConnection` from nats.ws / nats.deno exposes `createInbox()` at
-      // runtime even though the TypeScript types don't always declare it.
-      // Cast through `unknown` to suppress the conversion error.
-      const ncAny = nc as unknown as { createInbox?: () => string } | undefined;
-      if (ncAny && typeof ncAny.createInbox === "function") {
-        return ncAny.createInbox();
-      }
-      return `_INBOX.${crypto.randomUUID().replace(/-/g, "")}`;
-    },
-  };
-  sharedDispatch = createDispatcher({ nats: dispatcherNatsAdapter });
-
-  // Pull reverse-proxy DispatchFn (Phase C-bis S3). Wired off the SAME NATS
-  // connection as the WS dispatcher; `buildDesktopProvider` injects it instead
-  // of `sharedDispatch` when `LINK_PROXY_TRANSPORT=pull`. The adapter derives the
-  // reply subject purely from the reqId (no inbox), so it only needs publish +
-  // subscribe. `null` when NATS is unavailable — the WS dispatcher stays the
-  // default, so the proxy transport simply can't be selected without NATS.
+  // Pull reverse-proxy DispatchFn (Phase C-bis). `buildDesktopProvider` injects
+  // it as the only desktop transport (the reverse-WS gateway was deleted in S8).
+  // The adapter derives the reply subject purely from the reqId (no inbox), so
+  // it only needs publish + subscribe. `null` when NATS is unavailable — the
+  // desktop provider then has no transport, which is the expected no-NATS state.
   if (natsProvider != null) {
     const proxyNatsAdapter: ProxyNatsAdapter = {
       publish(subject, data) {
@@ -2270,6 +2119,3 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   return Object.assign(app, { markShuttingDown, shutdown, initDbos });
 }
-
-export { gatewayWsHandlers };
-export type { WsAttachData };
