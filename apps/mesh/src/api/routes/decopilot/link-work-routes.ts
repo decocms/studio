@@ -98,19 +98,42 @@ export function createLinkWorkRoutes(deps: LinkWorkDeps) {
       expires: POLL_TIMEOUT_MS,
     });
 
-    for await (const msg of messages) {
-      // ACK-ON-DELIVERY: the daemon is responsible for completing the run.
-      // If the daemon crashes, the item is NOT redelivered in Phase B —
-      // the progress-staleness sweeper handles recovery in a later phase.
-      msg.ack();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(new TextDecoder().decode(msg.data));
-      } catch {
-        console.warn("[LinkWork] failed to parse work item, discarding");
-        return c.body(null, 204);
+    // Stop the JetStream iterator when the HTTP client disconnects.
+    // Without this, an aborted client (e.g. a presence-only call with a short
+    // timeout) leaves a live server-side NATS fetch for up to POLL_TIMEOUT_MS.
+    // If the gate publishes a work item during that window the orphaned handler
+    // would ack+consume it, causing the daemon's next real poll to see nothing.
+    const abortListener = () => {
+      messages.stop();
+    };
+    const reqSignal = c.req.raw.signal;
+    if (reqSignal) {
+      if (reqSignal.aborted) {
+        messages.stop();
+      } else {
+        reqSignal.addEventListener("abort", abortListener, { once: true });
       }
-      return c.json(parsed);
+    }
+
+    try {
+      for await (const msg of messages) {
+        // ACK-ON-DELIVERY: the daemon is responsible for completing the run.
+        // If the daemon crashes, the item is NOT redelivered in Phase B —
+        // the progress-staleness sweeper handles recovery in a later phase.
+        msg.ack();
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(new TextDecoder().decode(msg.data));
+        } catch {
+          console.warn("[LinkWork] failed to parse work item, discarding");
+          return c.body(null, 204);
+        }
+        return c.json(parsed);
+      }
+    } finally {
+      if (reqSignal && !reqSignal.aborted) {
+        reqSignal.removeEventListener("abort", abortListener);
+      }
     }
 
     // Poll window expired — no work available
