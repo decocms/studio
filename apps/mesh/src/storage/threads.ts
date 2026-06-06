@@ -188,11 +188,6 @@ export class OrgScopedThreadStorage {
     return this.inner.setRunFence(threadId, token);
   }
 
-  /** Pin the transport for a thread. Only set at thread-creation time. */
-  setLinkTransport(threadId: string, transport: "pull" | "ws"): Promise<void> {
-    return this.inner.setLinkTransport(threadId, transport);
-  }
-
   /**
    * Stamp `cancel_requested_at = now()` for the given thread (Phase C).
    * Org-scoped: only updates rows matching both id AND organization_id.
@@ -994,18 +989,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     await this.db
       .updateTable("threads")
       .set({ cancel_requested_at: null })
-      .where("id", "=", threadId)
-      .execute();
-  }
-
-  /** Pin the transport for a thread. Only set at thread-creation time. */
-  async setLinkTransport(
-    threadId: string,
-    transport: "pull" | "ws",
-  ): Promise<void> {
-    await this.db
-      .updateTable("threads")
-      .set({ link_transport: transport })
       .where("id", "=", threadId)
       .execute();
   }

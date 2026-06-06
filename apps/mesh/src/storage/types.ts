@@ -877,10 +877,12 @@ export interface ThreadTable {
   /** Single-writer fence for the active run; null when none minted (Phase A). */
   run_fence_token: ColumnType<string | null, string | null, string | null>;
   /**
-   * Transport selector for this thread's active run. null / 'ws' = legacy push
-   * path (default); 'pull' = Phase-B pull inversion (gated by this column AND
-   * message_storage_version === 2). Only 'pull' threads use the WorkQueue +
-   * ingest path. Never changes mid-run.
+   * @deprecated Per-thread transport selector. No longer read for routing —
+   * the thread gate takes the pull path whenever NATS (workQueue +
+   * pullDispatchFn) is available (see thread-gate-workflow.ts). The writer
+   * (`setLinkTransport`) was removed with the cluster reverse-WS cleanup
+   * (Phase F). Column retained (nullable) for backward compatibility; no drop
+   * migration. New code MUST NOT read or write it.
    */
   link_transport: ColumnType<string | null, string | null, string | null>;
   /**
@@ -940,9 +942,9 @@ export interface Thread {
    */
   message_storage_version: number;
   /**
-   * Transport selector for this thread's active run. null / 'ws' = legacy
-   * push path (default); 'pull' = Phase-B pull inversion (gated by this
-   * column AND message_storage_version === 2). Never changes mid-run.
+   * @deprecated No longer used for routing (see the `threads` table column
+   * doc). Surfaced on the read path for backward compatibility only; nothing
+   * writes it. New code MUST NOT depend on it.
    */
   link_transport: string | null;
 }

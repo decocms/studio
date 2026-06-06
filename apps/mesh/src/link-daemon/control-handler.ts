@@ -12,7 +12,7 @@
  *   *      /_sandbox/<handle>/<rest>      → reverse-proxy to the spawned
  *                                            sandbox daemon's local port
  */
-import type { RequestFrame } from "../links/dispatch-frames";
+import type { RequestFrame } from "../links/link-control-types";
 import type {
   DesktopSandboxProvider,
   RepoRef,
