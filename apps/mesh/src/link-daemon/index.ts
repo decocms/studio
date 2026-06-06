@@ -20,6 +20,7 @@ import { createDefaultDaemonSpawn } from "@decocms/sandbox/daemon-spawn";
 import { detectCapabilities } from "./capabilities";
 import { createControlHandler } from "./control-handler";
 import { connectToCluster } from "./cluster-connection";
+import { connectToClusterPull } from "./cluster-connection-pull";
 import { startLocalIngress } from "./local-ingress";
 import { loadOrCreateMachineId } from "./machine-id";
 import { getValidSession } from "../cli/lib/get-valid-session";
@@ -51,6 +52,16 @@ export interface StartLinkDaemonOptions {
    * `ensureSession()` before invoking the daemon.
    */
   session: Session;
+  /**
+   * Org slug for the pull-transport work-poll loop (`/api/:org/links/work`).
+   * Required when `LINK_TRANSPORT_MODE=pull`; ignored for the default WS path.
+   *
+   * If not supplied here, the daemon will fall back to `process.env.DECO_ORG_SLUG`.
+   *
+   * NOTE: the daemon currently supports a single primary org for the pull loop.
+   * Multi-org polling is a Phase D follow-up.
+   */
+  orgSlug?: string;
   /** Optional TUI hooks. Omitted in --no-tui mode. */
   monitor?: LinkDaemonMonitor;
   /**
@@ -174,50 +185,89 @@ export async function startLinkDaemon(
   // and `acquireDispatch` to map handle → port and track in-flight calls.
   const controlHandler = createControlHandler({ provider });
 
-  const wsUrl = (() => {
-    const u = new URL("/api/links/connect", opts.clusterBaseUrl);
-    u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
-    return u.toString();
-  })();
+  // Shared token resolver used by both the WS and pull paths.
+  // Re-resolves (and refreshes) the bearer before each (re)connect / poll so
+  // a stale startup token doesn't spin forever on a 401. Mirrors the existing
+  // WS `getAccessToken` pattern.
+  const getAccessToken = async (): Promise<string> => {
+    const fresh = await getValidSession({
+      dataDir: opts.dataDir,
+      target: opts.clusterBaseUrl,
+    });
+    if (!fresh) {
+      throw Object.assign(
+        new Error(
+          `Session for ${opts.clusterBaseUrl} is no longer valid — run \`deco auth login --target ${opts.clusterBaseUrl}\` and restart \`deco link\`.`,
+        ),
+        { fatal: true },
+      );
+    }
+    return fresh.accessToken;
+  };
 
-  const cluster = await connectToCluster({
-    url: wsUrl,
-    accessToken: session.accessToken,
-    // Re-resolve (and refresh) the bearer before each (re)connect so a
-    // reconnect after the startup token expired presents a fresh token rather
-    // than the dead one — the cause of the WS "Expected 101 status code" loop.
-    // getValidSession refreshes via the refresh token and rewrites disk; a
-    // transient failure propagates (cluster-connection retries with backoff),
-    // and a null result (no session / refresh token rejected) is fatal so the
-    // daemon stops and asks the user to re-auth instead of spinning forever.
-    getAccessToken: async () => {
-      const fresh = await getValidSession({
-        dataDir: opts.dataDir,
-        target: opts.clusterBaseUrl,
-      });
-      if (!fresh) {
-        throw Object.assign(
-          new Error(
-            `Session for ${opts.clusterBaseUrl} is no longer valid — run \`deco auth login --target ${opts.clusterBaseUrl}\` and restart \`deco link\`.`,
-          ),
-          { fatal: true },
-        );
-      }
-      return fresh.accessToken;
-    },
-    hello: {
-      previewPort: ingress.port,
-      machineId,
-      hostname,
-      cliVersion,
-      capabilities: await detectCapabilities(),
-    },
-    controlHandler,
-    onConnected: () => {
-      opts.monitor?.onCluster?.("linked");
-      console.log(`Linked to ${opts.clusterBaseUrl}`);
-    },
-  });
+  // Phase D: LINK_TRANSPORT_MODE=pull launches the pull-transport loop instead
+  // of the default WebSocket path. Both paths share the same `controlHandler`,
+  // `provider`, and `getAccessToken` resolver. Default (unset / "ws") = WS path,
+  // byte-for-byte unchanged.
+  const linkTransportMode = process.env.LINK_TRANSPORT_MODE ?? "ws";
+
+  let cluster: { close(): Promise<void>; closed: Promise<void> };
+
+  if (linkTransportMode === "pull") {
+    // Resolve org slug: caller-supplied > env var > fatal.
+    const orgSlug = opts.orgSlug ?? process.env.DECO_ORG_SLUG;
+    if (!orgSlug) {
+      console.error(
+        "[link-daemon] LINK_TRANSPORT_MODE=pull requires an org slug. " +
+          "Pass `orgSlug` to startLinkDaemon or set DECO_ORG_SLUG.",
+      );
+      process.exit(1);
+    }
+    console.log(
+      `[link-daemon] transport=pull org=${orgSlug} cluster=${opts.clusterBaseUrl}`,
+    );
+    cluster = await connectToClusterPull({
+      clusterBaseUrl: opts.clusterBaseUrl,
+      orgSlug,
+      getAccessToken,
+      provider,
+      onConnected: () => {
+        opts.monitor?.onCluster?.("linked");
+        console.log(`Linked to ${opts.clusterBaseUrl} (pull transport)`);
+      },
+    });
+  } else {
+    // Default: WS transport (unchanged).
+    const wsUrl = (() => {
+      const u = new URL("/api/links/connect", opts.clusterBaseUrl);
+      u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+      return u.toString();
+    })();
+    cluster = await connectToCluster({
+      url: wsUrl,
+      accessToken: session.accessToken,
+      // Re-resolve (and refresh) the bearer before each (re)connect so a
+      // reconnect after the startup token expired presents a fresh token rather
+      // than the dead one — the cause of the WS "Expected 101 status code" loop.
+      // getValidSession refreshes via the refresh token and rewrites disk; a
+      // transient failure propagates (cluster-connection retries with backoff),
+      // and a null result (no session / refresh token rejected) is fatal so the
+      // daemon stops and asks the user to re-auth instead of spinning forever.
+      getAccessToken,
+      hello: {
+        previewPort: ingress.port,
+        machineId,
+        hostname,
+        cliVersion,
+        capabilities: await detectCapabilities(),
+      },
+      controlHandler,
+      onConnected: () => {
+        opts.monitor?.onCluster?.("linked");
+        console.log(`Linked to ${opts.clusterBaseUrl}`);
+      },
+    });
+  }
 
   let resolveStopped!: (code: number) => void;
   const stopped = new Promise<number>((r) => {
