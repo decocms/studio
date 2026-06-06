@@ -2,6 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## ✅ Landing status (2026-06-06) — CANCEL SUBSET DONE, CI-green (pull dormant)
+
+**Shipped (commits `2e771a7f3` cluster + `933542a81` daemon, both CI-green at the time):**
+- `threads.cancel_requested_at` durable column (migration `101-cancel-requested-at.ts`, manifest-registered) + `isCancelRequested` predicate + `set/get/clearCancelRequested` storage accessors.
+- Minimal `ControlFrame` Zod schema (`cancel` + `keep_alive` only) — `apps/mesh/src/api/routes/decopilot/control-frames.ts`.
+- `POST /cancel` augmented: also sets the durable flag **and** publishes `{type:"cancel",runId}` to `links.control.<userSub>` (the WS `broadcast`/`links.cancel.*` path is untouched — coexists).
+- Ingest **409-on-cancel backstop** in `link-ingest-routes.ts` (cancel checked **before** fence — a cancelled run cannot keep appending).
+- `GET /api/:org/links/control` long-poll route (`link-control-routes.ts`, mounted in `org-scoped.ts`).
+- Daemon `control-poller.ts` (`runControlPollLoop`) + module-scoped `run-abort-registry.ts`, wired into `cluster-connection-pull.ts` (the `holdControlPollLoop` TODO) — on a cancel frame it `AbortSignal.any`-aborts the matching in-flight `handleLocalDispatch` (exact pull-leg reproduction of the WS `cancellers.get(reqId)→ac.abort()`). ⚠️ ships in the `deco link` `cli.js` bundle.
+- e2e `link-control.spec.ts` (passed in CI: migration applied + cancel→409 + control frame served).
+
+**Deferred from this minimal cut (NOT done):** `ensure_sandbox`/`delete_sandbox` lifecycle frames (judged: daemon self-provisions via the Phase-D work-item sandbox config + LRU — see the BLOCKER caveat in the Phase F doc, where the sandbox **reverse-proxy** — preview/events — turned out to still need the WS), and the HITL `approval` pause/resume surface (net-new product). Neither is a chat traffic type.
+
+> **All of the above is gated/dormant** — `link_transport` is never written, so the control-poll only activates once a thread routes to pull. Activating it is the Phase F cutover (see that doc's BLOCKED status).
+
 **Goal:** Add the **control long-poll** leg (`GET /api/:org/links/control`) plus its two durable backstops — a `cancel_requested_at` column that makes ingest `409` even if the control frame is missed, and pull-triggered sandbox lifecycle so the daemon can bring up and tear down sandboxes without a reverse-WebSocket push. The optional final task block adds the HITL pause/resume surface (labelled clearly; may ship as its own phase).
 
 **Architecture:** Phase A landed the ingest endpoint (`POST /links/runs/:runId/stream`). Phase B will land the work long-poll (`GET /links/work`) and the DBOS gate change. This phase lands the **third outbound connection the daemon holds**: the control long-poll. The long-poll serves frames from a per-user NATS subject (`links.control.<userSub>`) for immediacy, but every durable-correctness invariant (cancel, fence) lives in Postgres only — a daemon that misses a control frame is still backstopped by the ingest `409`. The existing `POST /cancel` route is augmented (not replaced): it now also sets `threads.cancel_requested_at`; the ingest checks it on every append. Nothing in the ws/v1 path changes — the new column is ignored by existing code paths, and `link_transport = 'pull'` gating ensures that only pull-transport, v2-thread runs ever use the control long-poll.
