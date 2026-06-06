@@ -8,6 +8,8 @@
  *   - The `LINK_TRANSPORT_MODE` gate decision in index.ts is tested structurally
  *     by verifying the pull path is never invoked when the env var is absent/ws,
  *     and always invoked when set to "pull" (typecheck validates the branch).
+ *   - `close()` / abort: closing the handle before any work is dispatched aborts
+ *     the poll loop cleanly and `handle.closed` resolves.
  *
  * Note: full round-trip integration (connectToClusterPull → runWorkPollLoop →
  * handleLocalDispatch → cluster ingest) requires real HTTP / a running sandbox and
@@ -17,6 +19,8 @@
  * ⚠️ SHIPPED DAEMON — see cluster-connection-pull.ts for review notes.
  */
 import { describe, expect, it } from "bun:test";
+import { connectToClusterPull } from "./cluster-connection-pull";
+import type { DesktopSandboxProvider } from "./user-desktop-provider";
 
 // Re-export and test the handle derivation logic by importing the module itself.
 // Since `deriveHandle` is module-private, we test the observable contract via
@@ -133,5 +137,91 @@ describe("org slug resolution logic", () => {
         process.env.DECO_ORG_SLUG = originalEnv;
       }
     }
+  });
+});
+
+describe("connectToClusterPull close()/abort", () => {
+  it("close() aborts the poll loop and closed resolves", async () => {
+    // Stub provider — no-op for all methods; acquireDispatch returns a no-op
+    // release so the acquireDispatch/finally wrap compiles and runs cleanly.
+    const provider: DesktopSandboxProvider = {
+      ensureSandbox: async () => ({
+        sandboxApiUrl: "http://127.0.0.1:9999",
+        previewUrl: "http://127.0.0.1:9999",
+        port: 9999,
+      }),
+      proxyPort: () => null,
+      getDaemonToken: () => null,
+      hasHandle: () => false,
+      recordHit: () => {},
+      acquireDispatch: () => () => {},
+      listSandboxes: () => [],
+      deleteSandbox: async () => {},
+      shutdown: async () => {},
+    };
+
+    // Stub fetch: returns 204 (no work) so the loop idles without calling onWork.
+    // On abort the signal check in runWorkPollLoop causes a clean exit.
+    // Cast via `unknown` to avoid matching the full `typeof fetch` overload set.
+    const fetchImpl = ((_url: unknown, opts?: { signal?: AbortSignal }) => {
+      return new Promise<Response>((resolve, reject) => {
+        // If already aborted, short-circuit immediately.
+        const signal = opts?.signal;
+        if (signal?.aborted) {
+          reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+          return;
+        }
+        // Otherwise resolve with 204 after a tick (simulates server holding).
+        const timer = setTimeout(
+          () => resolve(new Response(null, { status: 204 })),
+          0,
+        );
+        signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+        });
+      });
+    }) as unknown as typeof fetch;
+
+    const handle = await connectToClusterPull({
+      clusterBaseUrl: "https://example.com",
+      orgSlug: "test-org",
+      getAccessToken: async () => "test-token",
+      provider,
+      fetchImpl,
+    });
+
+    // Closing should abort the loop and resolve `closed`.
+    await handle.close();
+    // If we reach here the loop exited cleanly. Verify the closed promise
+    // is already resolved (should settle within close()).
+    await expect(handle.closed).resolves.toBeUndefined();
+  });
+
+  it("throws when orgSlug is missing", async () => {
+    const provider: DesktopSandboxProvider = {
+      ensureSandbox: async () => ({
+        sandboxApiUrl: "http://127.0.0.1:9999",
+        previewUrl: "http://127.0.0.1:9999",
+        port: 9999,
+      }),
+      proxyPort: () => null,
+      getDaemonToken: () => null,
+      hasHandle: () => false,
+      recordHit: () => {},
+      acquireDispatch: () => () => {},
+      listSandboxes: () => [],
+      deleteSandbox: async () => {},
+      shutdown: async () => {},
+    };
+
+    await expect(
+      connectToClusterPull({
+        clusterBaseUrl: "https://example.com",
+        orgSlug: "",
+        getAccessToken: async () => "test-token",
+        provider,
+      }),
+    ).rejects.toThrow("connectToClusterPull: orgSlug is required");
   });
 });

@@ -115,6 +115,9 @@ function deriveHandle(item: WorkItem): string {
 export async function connectToClusterPull(
   input: ClusterConnectionPullInput,
 ): Promise<ClusterConnectionHandle> {
+  if (!input.orgSlug)
+    throw new Error("connectToClusterPull: orgSlug is required");
+
   const ac = new AbortController();
   let resolveClosed!: () => void;
   const closed = new Promise<void>((r) => {
@@ -171,15 +174,23 @@ export async function connectToClusterPull(
       }
 
       // (b) + (c) Relay via handleLocalDispatch.
-      await handleLocalDispatch(item, {
-        sandboxDispatchUrl: sandboxApiUrl,
-        sandboxDaemonToken,
-        clusterBaseUrl: input.clusterBaseUrl,
-        orgSlug: input.orgSlug,
-        getClusterToken: input.getAccessToken,
-        fetchImpl: input.fetchImpl,
-        signal: ac.signal,
-      });
+      // acquireDispatch pins the sandbox for the full duration of the relay so
+      // the LRU eviction logic skips it (activeDispatchCount > 0). Released in
+      // `finally` to guarantee the counter is always decremented.
+      const releaseDispatch = input.provider.acquireDispatch(handle);
+      try {
+        await handleLocalDispatch(item, {
+          sandboxDispatchUrl: sandboxApiUrl,
+          sandboxDaemonToken,
+          clusterBaseUrl: input.clusterBaseUrl,
+          orgSlug: input.orgSlug,
+          getClusterToken: input.getAccessToken,
+          fetchImpl: input.fetchImpl,
+          signal: ac.signal,
+        });
+      } finally {
+        releaseDispatch();
+      }
 
       console.log(
         `[cluster-connection-pull] dispatch complete runId=${item.runId}`,
