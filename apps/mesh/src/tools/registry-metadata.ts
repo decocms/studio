@@ -210,6 +210,10 @@ const ALL_TOOL_NAMES = [
 
   // Search tools
   "GLOBAL_SEARCH",
+
+  // Decopilot cluster MCP tools — exposed on the management MCP server so the
+  // desktop daemon can call them via the injected mcp.url token.
+  "UPDATE_INTERESTS_MCP",
 ] as const;
 
 /**
@@ -972,6 +976,14 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description:
       "Search across organization resources (currently threads). Returns a typed union of matches.",
     category: "Search",
+  },
+
+  // Decopilot cluster MCP tools
+  {
+    name: "UPDATE_INTERESTS_MCP",
+    description:
+      "Record what the user is durably working toward (goals/interests) — desktop decopilot cluster relay",
+    category: "Virtual MCPs",
   },
 ];
 
