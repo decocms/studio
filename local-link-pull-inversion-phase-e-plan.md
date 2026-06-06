@@ -22,6 +22,18 @@
 
 ---
 
+## ✅ Landing status (branch `tlgimenes/chat-message-dataflow`, PR #3698)
+
+**Cluster-side portability groundwork LANDED + dormant; daemon registration DEFERRED (a real blocker found).**
+
+- **5 cluster MCP tools** (`update_interests`, `subtask`, `take_screenshot`, `generate_image`, `web_search`) exposed via the standard `CORE_TOOLS` registry (NOT a `registerDecopilotMcpTools` helper — the plan was wrong) → reachable by desktop decopilot through the already-minted `mcp.url`. The in-cluster built-ins stay unchanged.
+- **`mcp.modelSecret`** wire field + the **dormant** injection in `dispatch-run` (main chat key only, resolved via `ctx.storage.aiProviderKeys.resolve` → vault decrypt; heavily security-commented; the injection condition `user-desktop && decopilot` is never true until daemon registration lands).
+- **Cluster-side desktop factory**: `isDesktopHarnessContext` + `desktop-factory.ts` (activate `MeshProvider` from `modelSecret`, tools via `mcp.url`, the 5 cluster built-ins gated off, studio-pack skipped) + `buildAllTools` `isDesktopContext` gating. The cluster decopilot path is byte-for-byte unchanged.
+
+**⚠️ BLOCKER — daemon registration deferred (the core remaining Phase E work).** Registering `decopilotHarnessFactory` in `packages/sandbox/daemon/entry.ts` (commit `bd54ddc30`) pulled decopilot's **cluster import-tree into the daemon bundle → a TS stack overflow** + broke CI `build`/`typecheck`/`daemon-e2e`. It was **reverted** (`8732242b6`); the daemon builds again. This is exactly why decopilot was originally excluded from the daemon. Completing desktop decopilot requires **import-isolating the portable path**: a lean factory that imports ONLY portable code (provider-from-`modelSecret`, `toolsFromMCP`, the agent loop) and never transitively imports `ctx.storage`/`db`/the cluster built-ins or studio-pack. That is a substantial module-restructuring follow-up — the real hard part of decopilot portability. Until then, cloud/in-cluster decopilot is unchanged and desktop decopilot is not yet routable (dormant).
+
+---
+
 ## Open design decisions (resolve before coding)
 
 These were the riskiest unknowns in the grounding. All are resolved here — do not re-open them.
