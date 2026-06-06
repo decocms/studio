@@ -21,6 +21,24 @@
 
 ---
 
+## ✅ Landing status (branch `tlgimenes/chat-message-dataflow`, PR #3698)
+
+**The daemon pull loop is LANDED + reviewed — additive, gated off by default (`LINK_TRANSPORT_MODE=pull`), CI-green** (`build` + `daemon-e2e` confirm the WS path + daemon build are intact). Combined with Phases A+B (the cluster side), the **entire end-to-end pull path now exists in code.**
+
+- **Canary** (`pull-transport-canary.ts`): `shouldUsePullTransport` (pull ⊆ v2 + 'pull'/'ws'/FNV-1a bucket) + `parsePullPercent`; `setLinkTransport` storage method. *(Column/migration/wire-schema already in Phase B.)*
+- **Daemon `work-poller.ts`**: long-polls `GET /api/:org/links/work`, validates the `WorkItem`, `@decocms/std` backoff, per-poll token refresh.
+- **Daemon `handle-local-dispatch.ts`**: POSTs `harnessInput` to the local `/_sandbox/dispatch` and **streams** the SSE body (no buffering, `duplex:"half"`) into the cluster ingest with `x-fence-token`. Review-verified: body shape matches `remote-dispatch.ts`, non-ok throws, abort propagated.
+- **Daemon `cluster-connection-pull.ts` + `index.ts` gate**: `connectToClusterPull` runs the poll loop → `ensureSandbox` → (acquireDispatch-pinned) relay; `index.ts` branches on `LINK_TRANSPORT_MODE=pull`, WS default byte-for-byte unchanged. Review caught + fixed a real bug: the relay now **`acquireDispatch`-pins the sandbox** so it can't be LRU-evicted (SIGTERM'd) mid-stream.
+
+**⚠️ Production-readiness gaps to close BEFORE activating pull (flagged in-code, dormant for now):**
+1. **Work item lacks sandbox `repo`/`workload` config.** `ensureSandbox({ handle })` can reuse a running sandbox but can't spawn one cold. The work-item schema (Phase B `link-work-queue.ts` / the `pullDispatch` builder) must carry the sandbox config the WS path resolves via `resolveRemoteCliSandboxHandle`.
+2. **Org discovery.** The daemon session has no `orgSlug`; the pull loop needs `DECO_ORG_SLUG`/`opts.orgSlug` (single-org). Multi-org polling is a follow-up.
+3. **`messagesRef`/offload not applied on the pull leg** — large conversations send `messages` in-band to `/_sandbox/dispatch` (the WS path offloads). Plumb offload into the pull relay before large-context rollout.
+4. **Cluster-side activation** (Tasks 2/3): pin `link_transport='pull'` at thread creation via the canary (default 0% → dormant) + `resolveDispatchTarget` awareness. Do NOT raise the canary above 0% until gaps 1–2 are closed and the new daemon ships (ws is hard-broken — users re-run `bunx decocms@latest link`).
+5. **Pull-cycle e2e** (Task 9): write cluster-side by *simulating* the daemon (HTTP poll + post to ingest) — testable without the real binary; the real daemon pull mode needs a `daemon-e2e` pull variant.
+
+---
+
 ## Open design decisions (resolve before coding)
 
 ### Risk 1 — Fence token flow to the daemon  RESOLVED
