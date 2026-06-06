@@ -120,13 +120,6 @@ export interface BuiltinToolParams {
   /** Current agent (virtual MCP) id — scopes the per-agent interests memory
    *  written by `update_interests`. */
   agentId: string;
-  /**
-   * When true the harness is running on the user-desktop daemon. Cluster-coupled
-   * built-ins (update_interests, subtask, generate_image, web_search, take_screenshot)
-   * are omitted — the desktop calls them via the injected mcp.url token instead.
-   * Defaults to false (in-cluster; all built-ins assembled as today).
-   */
-  isDesktopContext?: boolean;
 }
 
 export type { PendingImage };
@@ -158,7 +151,6 @@ async function buildAllTools(
     htmlPageBuffer,
     taskId,
     agentId,
-    isDesktopContext = false,
   } = params;
   const approvalOpts = { isPlanMode };
   const userId = ctx.auth?.user?.id;
@@ -166,8 +158,7 @@ async function buildAllTools(
     user_ask: userAskTool,
     todo_write: todoWriteTool,
     propose_plan: proposePlanTool,
-    // update_interests — cluster-only (storage.interests); desktop calls via MCP.
-    ...(!isDesktopContext && userId
+    ...(userId
       ? {
           update_interests: createUpdateInterestsTool({
             ctx,
@@ -290,9 +281,7 @@ async function buildAllTools(
     );
   }
   // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
-  // Also skipped on the desktop: recursive runAgentLoop dispatch (daemon-to-daemon)
-  // is unproven; desktop calls the cluster-side SUBTASK_MCP tool via mcp.url instead.
-  if (!isDesktopContext && provider) {
+  if (provider) {
     tools.subtask = createSubtaskTool(
       writer,
       {
@@ -309,9 +298,7 @@ async function buildAllTools(
   // The provider is picked from `imageProvider` so the org can pair the
   // image tier with a different credential than the chat tier (caller
   // aliases it to `provider` when they share a credential).
-  // Skipped on the desktop: objectStorage stays cluster-side; desktop calls
-  // the GENERATE_IMAGE_MCP tool via mcp.url instead.
-  if (!isDesktopContext && imageProvider && models.image) {
+  if (imageProvider && models.image) {
     tools.generate_image = createGenerateImageTool(writer, {
       provider: imageProvider,
       imageModelInfo: models.image,
@@ -322,9 +309,7 @@ async function buildAllTools(
   // The provider is picked from `deepResearchProvider` so the deep
   // research tier can use Gemini's async research API even when the
   // chat model is served by another provider (e.g. LiteLLM).
-  // Skipped on the desktop: asyncResearchJobs + objectStorage stay cluster-side;
-  // desktop calls WEB_SEARCH_MCP via mcp.url instead.
-  if (!isDesktopContext && deepResearchProvider && models.deepResearch) {
+  if (deepResearchProvider && models.deepResearch) {
     tools.web_search = createWebSearchTool(writer, {
       provider: deepResearchProvider,
       deepResearchModelInfo: models.deepResearch,
@@ -334,18 +319,12 @@ async function buildAllTools(
     });
   }
   // take_screenshot, scrape_url, inspect_page require Browserless API token.
-  // take_screenshot is cluster-only (uploads to objectStorage); desktop calls
-  // TAKE_SCREENSHOT_MCP via mcp.url instead.
-  // scrape_url and inspect_page only call the external Browserless API
-  // (no objectStorage upload) — kept on the desktop.
   if (process.env.BROWSERLESS_TOKEN) {
-    if (!isDesktopContext) {
-      tools.take_screenshot = createTakeScreenshotTool(writer, {
-        ctx,
-        toolOutputMap,
-        pendingImages,
-      });
-    }
+    tools.take_screenshot = createTakeScreenshotTool(writer, {
+      ctx,
+      toolOutputMap,
+      pendingImages,
+    });
     tools.scrape_url = createScrapeUrlTool(writer, {
       ctx,
       toolOutputMap,

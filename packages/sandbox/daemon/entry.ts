@@ -31,14 +31,19 @@ import {
   makeConfigUpdateHandler,
 } from "./routes/config";
 import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
-// Import CLI factories from their subpaths (rather than the barrel
+// Import harness factories from their subpaths (rather than the barrel
 // `apps/mesh/src/harnesses/index.ts`) to avoid pulling in the cluster-only
 // `decopilotHarnessFactory` and its dependency tree (which references
 // cluster modules that cause a TS stack overflow in the daemon bundle).
-// See apps/mesh/src/harnesses/decopilot/desktop-factory.ts for the
-// deferred daemon registration plan.
+//
+// `decopilotDesktopHarnessFactory` is the IMPORT-ISOLATED decopilot runtime
+// (`harnesses/decopilot-desktop/`): it activates its provider from the injected
+// `mcp.modelSecret`, reaches cluster-coupled tools via `mcp.url`, and imports
+// only portable leaves — so it bundles here without dragging in StudioContext /
+// storage / vault. See that subtree's `index.ts` for the isolation contract.
 import { claudeCodeHarnessFactory } from "../../../apps/mesh/src/harnesses/claude-code";
 import { codexHarnessFactory } from "../../../apps/mesh/src/harnesses/codex";
+import { decopilotDesktopHarnessFactory } from "../../../apps/mesh/src/harnesses/decopilot-desktop";
 import type {
   HarnessContext,
   HarnessFactory,
@@ -397,12 +402,15 @@ const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 // loopback by the link daemon's control handler; the daemon spawns the
 // named factory's CLI in-process and streams `UIMessageChunk` back as SSE.
 //
-// Only the CLI factories live in the daemon — decopilot pulls in
-// cluster-only modules (RunRegistry, run-stream internals) and is never
-// invoked over the wire.
+// The CLI factories plus the import-isolated desktop decopilot factory live in
+// the daemon. The cluster `decopilotHarnessFactory` (RunRegistry, run-stream
+// internals, StudioContext) is NOT here — desktop decopilot runs via
+// `decopilotDesktopHarnessFactory`, which activates from `mcp.modelSecret` and
+// reaches cluster-coupled tools through `mcp.url`.
 const dispatchHarnessRegistry: Map<string, HarnessFactory> = new Map([
   ["claude-code", claudeCodeHarnessFactory],
   ["codex", codexHarnessFactory],
+  ["decopilot", decopilotDesktopHarnessFactory],
 ]);
 const dispatchTracer = trace.getTracer("link-daemon");
 const dispatchMeter = metrics.getMeter("link-daemon");
