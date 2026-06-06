@@ -55,6 +55,25 @@ import { expect, test } from "../fixtures/test";
 
 const BASE_URL = `http://localhost:${process.env.PORT ?? "3000"}`;
 
+// Hard per-fetch ceilings so NO native fetch can outlive a bound even if a test
+// times out before `finally`/`dispose()` runs (the original CI hang: dangling
+// fetches + long-poll loops kept the Playwright worker alive to the 6 h ceiling).
+// Long-poll GETs (request/control legs) hold ~28 s server-side, so give them a
+// little headroom; the duplex reply POST and the `_test/dispatch` driver are
+// bounded well under each test's 60 s setTimeout.
+const LONGPOLL_FETCH_MS = 35_000;
+const REPLY_POST_FETCH_MS = 40_000;
+const DISPATCH_FETCH_MS = 30_000;
+
+/**
+ * Combine a per-fetch hard timeout with an optional stop signal so a fetch is
+ * aborted by WHICHEVER fires first. Guarantees no fetch outlives `bound` ms.
+ */
+function boundedSignal(bound: number, stop?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(bound);
+  return stop ? AbortSignal.any([stop, timeout]) : timeout;
+}
+
 /** Build a Cookie header from the page's context cookies for native fetch. */
 async function cookieHeader(
   page: import("@playwright/test").Page,
@@ -127,6 +146,12 @@ class ProxyDaemonSimulator {
     await Promise.allSettled(this.loops);
   }
 
+  /** Clear observed reqIds (called after warmup so assertions see only the
+   *  requests the test itself issued). */
+  resetSeen(): void {
+    this.seenReqIds.length = 0;
+  }
+
   // Continuous-overlap request poll: as soon as a GET returns, re-issue.
   private async pollLoop(): Promise<void> {
     while (!this.stop.signal.aborted) {
@@ -134,7 +159,7 @@ class ProxyDaemonSimulator {
       try {
         res = await fetch(`${BASE_URL}/api/${this.orgSlug}/links/proxy`, {
           headers: this.headers,
-          signal: this.stop.signal,
+          signal: boundedSignal(LONGPOLL_FETCH_MS, this.stop.signal),
         });
       } catch {
         if (this.stop.signal.aborted) return;
@@ -169,7 +194,7 @@ class ProxyDaemonSimulator {
       try {
         res = await fetch(`${BASE_URL}/api/${this.orgSlug}/links/control`, {
           headers: this.headers,
-          signal: this.stop.signal,
+          signal: boundedSignal(LONGPOLL_FETCH_MS, this.stop.signal),
         });
       } catch {
         if (this.stop.signal.aborted) return;
@@ -218,16 +243,28 @@ class ProxyDaemonSimulator {
       },
     };
 
-    // Run the test-supplied handler in the background; it writes frames.
-    // A handler THROW models the daemon vanishing mid-stream: abort the reply
-    // POST (drop the upload) instead of closing cleanly, so the cluster's
-    // POST-drop catch publishes a `reply_stream_dropped` error frame and the
-    // awaiting caller fails fast (vs. a clean close = a truncated stream the
-    // cluster can't distinguish from a normal end). A normal return closes the
-    // controller cleanly.
+    // Built-in WARMUP handler: a readiness probe (see `warmup()`) issues a
+    // dispatch on `/_sandbox/warmup`. Reply with a trivial headers+end so the
+    // round-trip completes regardless of the test-specific handler — and DON'T
+    // invoke the test handler (which may hold the reply open / throw to simulate
+    // a vanish). The reqId is excluded from `seenReqIds` so assertions only see
+    // requests the test itself issued.
+    const isWarmup = frame.path === "/_sandbox/warmup";
+
+    // Run the handler in the background; it writes frames. A handler THROW
+    // models the daemon vanishing mid-stream: abort the reply POST (drop the
+    // upload) instead of closing cleanly, so the cluster's POST-drop catch
+    // publishes a `reply_stream_dropped` error frame and the awaiting caller
+    // fails fast (vs. a clean close = a truncated stream the cluster can't
+    // distinguish from a normal end). A normal return closes the controller.
     const handlerDone = (async () => {
       try {
-        await this.handler(frame, writer, combined);
+        if (isWarmup) {
+          await writer.write({ type: "headers", status: 200, headers: {} });
+          await writer.write({ type: "end" });
+        } else {
+          await this.handler(frame, writer, combined);
+        }
         try {
           controller.close();
         } catch {
@@ -248,7 +285,12 @@ class ProxyDaemonSimulator {
           // @ts-expect-error duplex is required for a streaming request body
           // (undici/Node), not yet in all TS DOM typings.
           duplex: "half",
-          signal: combined,
+          // Hard ceiling on top of stop + per-request abort: even a stuck reply
+          // upload can't outlive REPLY_POST_FETCH_MS.
+          signal: AbortSignal.any([
+            combined,
+            AbortSignal.timeout(REPLY_POST_FETCH_MS),
+          ]),
         },
       );
     } catch {
@@ -318,6 +360,72 @@ async function establishPresence(
 }
 
 // ---------------------------------------------------------------------------
+// Readiness warmup
+// ---------------------------------------------------------------------------
+
+type WarmupOutcome = "ready" | "no-nats" | "not-ready";
+
+/**
+ * Absorb the startup race: after `sim.start()` the simulator subscribes to the
+ * request queue-group asynchronously, so a `_test/dispatch` issued the instant
+ * `start()` returns can be PUBLISHED before any daemon GET is listening — core
+ * NATS drops it and the request would never get a reply. Pre Part-1 this hung;
+ * now it fails fast (proxy_no_first_frame) within the first-frame timeout, so we
+ * can simply RETRY a lightweight dispatch a bounded number of times until one
+ * round-trips. Each attempt is bounded (the dispatch fetch has a hard timeout
+ * AND the server-side first-frame timeout), so warmup itself can never hang.
+ *
+ * Returns:
+ *   "ready"     — a dispatch round-tripped; the channel is live.
+ *   "no-nats"   — the route returned 503 (NATS unavailable in this env).
+ *   "not-ready" — never succeeded within the budget (caller should test.skip).
+ */
+async function warmup(
+  orgSlug: string,
+  cookie: string,
+  sim: ProxyDaemonSimulator,
+): Promise<WarmupOutcome> {
+  const attempts = 8;
+  for (let i = 0; i < attempts; i++) {
+    let res: Response;
+    try {
+      res = await fetch(
+        `${BASE_URL}/api/${orgSlug}/links/proxy/_test/dispatch`,
+        {
+          method: "POST",
+          headers: { cookie, "content-type": "application/json" },
+          body: JSON.stringify({ method: "GET", path: "/_sandbox/warmup" }),
+          signal: boundedSignal(DISPATCH_FETCH_MS),
+        },
+      );
+    } catch {
+      // Hard-timeout abort or transport error — count as a failed attempt.
+      await new Promise((r) => setTimeout(r, 250));
+      continue;
+    }
+    if (res.status === 503) {
+      await res.body?.cancel().catch(() => {});
+      return "no-nats";
+    }
+    if (res.status === 200) {
+      // Drain the body so we don't leave a dangling stream; a clean read means
+      // the warmup handler replied end-to-end.
+      try {
+        await res.arrayBuffer();
+        sim.resetSeen();
+        return "ready";
+      } catch {
+        /* fall through to retry */
+      }
+    } else {
+      await res.body?.cancel().catch(() => {});
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return "not-ready";
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -350,12 +458,26 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
     sim.start();
 
     try {
+      const ready = await warmup(orgSlug, cookie, sim);
+      if (ready === "no-nats") {
+        test.skip(true, "NATS unavailable — proxy channel returned 503");
+        return;
+      }
+      if (ready === "not-ready") {
+        test.skip(
+          true,
+          "proxy channel never became ready within warmup budget",
+        );
+        return;
+      }
+
       const res = await fetch(
         `${BASE_URL}/api/${orgSlug}/links/proxy/_test/dispatch`,
         {
           method: "POST",
           headers: { cookie, "content-type": "application/json" },
           body: JSON.stringify({ method: "GET", path: "/_sandbox/events" }),
+          signal: boundedSignal(DISPATCH_FETCH_MS),
         },
       );
       // 503 ⇒ NATS unavailable in this environment — tolerate (round-trip can't
@@ -429,6 +551,7 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
         method: "POST",
         headers: { cookie, "content-type": "application/json" },
         body: JSON.stringify({ method: "GET", path }),
+        signal: boundedSignal(DISPATCH_FETCH_MS),
       }).then(async (r) => {
         if (r.status === 503) return "__503__";
         expect(r.status).toBe(200);
@@ -436,6 +559,19 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
       });
 
     try {
+      const ready = await warmup(orgSlug, cookie, sim);
+      if (ready === "no-nats") {
+        test.skip(true, "NATS unavailable — proxy channel returned 503");
+        return;
+      }
+      if (ready === "not-ready") {
+        test.skip(
+          true,
+          "proxy channel never became ready within warmup budget",
+        );
+        return;
+      }
+
       const first = dispatch("/_sandbox/first/events");
       // Give the simulator a moment to dequeue the first and start handling it.
       await new Promise((r) => setTimeout(r, 500));
@@ -509,13 +645,30 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
 
     const ac = new AbortController();
     try {
+      const ready = await warmup(orgSlug, cookie, sim);
+      if (ready === "no-nats") {
+        test.skip(true, "NATS unavailable — proxy channel returned 503");
+        return;
+      }
+      if (ready === "not-ready") {
+        test.skip(
+          true,
+          "proxy channel never became ready within warmup budget",
+        );
+        return;
+      }
+
       const res = await fetch(
         `${BASE_URL}/api/${orgSlug}/links/proxy/_test/dispatch`,
         {
           method: "POST",
           headers: { cookie, "content-type": "application/json" },
           body: JSON.stringify({ method: "GET", path: "/_sandbox/events" }),
-          signal: ac.signal,
+          // Caller cancel (ac) OR a hard ceiling — whichever first.
+          signal: AbortSignal.any([
+            ac.signal,
+            AbortSignal.timeout(DISPATCH_FETCH_MS),
+          ]),
         },
       );
       if (res.status === 503) {
@@ -591,12 +744,26 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
     sim.start();
 
     try {
+      const ready = await warmup(orgSlug, cookie, sim);
+      if (ready === "no-nats") {
+        test.skip(true, "NATS unavailable — proxy channel returned 503");
+        return;
+      }
+      if (ready === "not-ready") {
+        test.skip(
+          true,
+          "proxy channel never became ready within warmup budget",
+        );
+        return;
+      }
+
       const res = await fetch(
         `${BASE_URL}/api/${orgSlug}/links/proxy/_test/dispatch`,
         {
           method: "POST",
           headers: { cookie, "content-type": "application/json" },
           body: JSON.stringify({ method: "GET", path: "/_sandbox/events" }),
+          signal: boundedSignal(DISPATCH_FETCH_MS),
         },
       );
       if (res.status === 503) {

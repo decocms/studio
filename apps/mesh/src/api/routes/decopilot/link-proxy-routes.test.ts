@@ -325,6 +325,121 @@ describe("createProxyDispatch — daemon-vanished fail-fast (S5, landmine #8)", 
   });
 });
 
+describe("createProxyDispatch — first-frame timeout (no-subscriber fail-fast)", () => {
+  test("rejects with proxy_no_first_frame when NO reply frame ever arrives", async () => {
+    const f = makeFakeNats();
+    // Tiny injected timeout so the test is fast — never sleep the real 15 s.
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      firstFrameTimeoutMs: 30,
+    });
+
+    const started = Date.now();
+    const run = (async () => {
+      for await (const _ev of dispatch("user-1", baseReq)) {
+        /* drain — no frame is ever delivered, so this never iterates */
+      }
+    })();
+
+    await expect(run).rejects.toThrow(/proxy_no_first_frame/);
+    // Fired roughly at the bound, not instantly and not after the real 15 s.
+    const elapsed = Date.now() - started;
+    expect(elapsed).toBeLessThan(2_000);
+
+    // The request WAS published (it's the dropped-publish case the bound covers)
+    // and the reply subscription was torn down (no leak).
+    expect(
+      f.published.find((p) => p.subject === buildRequestSubject("user-1")),
+    ).toBeDefined();
+    const replySubject = f.ops.find((o) => o.kind === "subscribe")!.subject;
+    expect(f.subs.has(replySubject)).toBe(false);
+  });
+
+  test("does NOT fire after the first frame, even across a long inter-frame gap", async () => {
+    const f = makeFakeNats();
+    // Short bound: if it were (wrongly) re-armed per frame, the post-first-frame
+    // gap below (well over the bound) would trip it. It must NOT.
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      firstFrameTimeoutMs: 40,
+    });
+
+    const out: { data?: string; status?: number }[] = [];
+    const run = (async () => {
+      for await (const ev of dispatch("user-1", baseReq)) {
+        out.push({ data: ev.data, status: ev.headers?.status });
+      }
+    })();
+
+    await Promise.resolve();
+    const replySubject = f.ops.find((o) => o.kind === "subscribe")!.subject;
+
+    // First frame arrives well within the bound — disables it.
+    f.deliver(replySubject, { type: "headers", status: 200, headers: {} });
+    await Promise.resolve();
+
+    // Now wait LONGER than the bound before the next frame: a re-armed/per-frame
+    // timeout would have fired here. The iterator must keep yielding.
+    await new Promise((r) => setTimeout(r, 120));
+    f.deliver(replySubject, { type: "chunk", data: "QQ==" });
+    f.deliver(replySubject, { type: "end" });
+
+    await run; // resolves cleanly — NO premature timeout.
+    expect(out).toEqual([
+      { data: undefined, status: 200 },
+      { data: "QQ==", status: undefined },
+    ]);
+  });
+
+  test("abort wins over the first-frame timeout (signal still works)", async () => {
+    const f = makeFakeNats();
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      firstFrameTimeoutMs: 1_000, // long enough that abort must win
+    });
+    const ac = new AbortController();
+
+    const run = (async () => {
+      for await (const _ev of dispatch("user-1", baseReq, {
+        signal: ac.signal,
+      })) {
+        /* drain */
+      }
+    })();
+    await Promise.resolve();
+
+    ac.abort();
+    // The abort error (not proxy_no_first_frame) is what surfaces.
+    await expect(run).rejects.toThrow(/aborted/);
+
+    // And the no-first-frame timer was cancelled — the reply sub is gone.
+    const replySubject = f.ops.find((o) => o.kind === "subscribe")!.subject;
+    expect(f.subs.has(replySubject)).toBe(false);
+  });
+
+  test("presence-loss wins over the first-frame timeout", async () => {
+    const f = makeFakeNats();
+    const presence = makeFakePresence();
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      presence: presence.watcher,
+      firstFrameTimeoutMs: 1_000,
+    });
+
+    const run = (async () => {
+      for await (const _ev of dispatch("user-1", baseReq)) {
+        /* drain */
+      }
+    })();
+    await Promise.resolve();
+
+    presence.set(null); // daemon vanishes before any frame
+    // The presence error surfaces, not proxy_no_first_frame.
+    await expect(run).rejects.toThrow(/link_unavailable/);
+    expect(presence.listenerCount()).toBe(0);
+  });
+});
+
 describe("subject builders", () => {
   test("derive subjects purely from ids", () => {
     expect(buildRequestSubject("u1")).toBe("links.proxy.req.u1");

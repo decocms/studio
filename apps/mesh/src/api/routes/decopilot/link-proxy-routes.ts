@@ -44,6 +44,19 @@ import {
 // Just under a typical 30 s HTTP gateway timeout (mirrors link-control-routes).
 const POLL_TIMEOUT_MS = 28_000;
 
+// First-frame timeout for the cluster-side dispatch (Phase C-bis fail-fast).
+// Core NATS DROPS a publish when no subscriber is currently listening, so a
+// RequestFrame published into `links.proxy.req.<userSub>` before any daemon GET
+// is subscribed (the daemon between polls, not yet polling, or a startup race)
+// is silently lost and the reply NEVER comes. After S8 this channel is the ONLY
+// sandbox-control path, so a dropped request MUST fail fast — not hang forever.
+// The S5 presence-watch does NOT cover this case: the claim is fresh (the daemon
+// is "present", just not subscribed at the publish instant). This bound is
+// ADDITIVE to presence + caller-abort and applies ONLY until the FIRST reply
+// frame arrives; once the stream is flowing it is disabled (an `/events` SSE
+// reply legitimately has long inter-frame gaps — no per-frame idle timeout).
+const FIRST_FRAME_TIMEOUT_MS = 15_000;
+
 // Shared queue group for the request leg. The daemon holds MULTIPLE overlapping
 // GETs open (continuous-overlap, S2) to avoid an unsubscribed gap; a plain
 // core-NATS subscription would fan each request out to ALL of them
@@ -412,6 +425,16 @@ export interface CreateProxyDispatchDeps {
    * (S1) and caller-abort apply.
    */
   presence?: ProxyPresenceWatcher;
+  /**
+   * First-frame timeout in ms (default {@link FIRST_FRAME_TIMEOUT_MS}). If NO
+   * reply frame arrives within this window after the RequestFrame is published,
+   * the dispatch fails fast with `proxy_no_first_frame` instead of hanging
+   * forever — covers the no-subscriber-but-claim-fresh drop (core NATS discards
+   * a publish with no live subscriber). DISABLED the instant the first frame
+   * arrives; never re-armed (legitimate SSE inter-frame gaps must not trip it).
+   * Injectable so unit tests can use a tiny value instead of sleeping 15 s.
+   */
+  firstFrameTimeoutMs?: number;
 }
 
 /**
@@ -425,9 +448,14 @@ export interface CreateProxyDispatchDeps {
  *      (no first-frame race).
  *   3. PUBLISH the RequestFrame (carrying that reqId) to
  *      `links.proxy.req.<userSub>`.
- *   4. Yield decoded `DispatchChunk`s from the reply subscription until a
+ *   4. Arm a FIRST-FRAME timeout (default 15 s, injectable). If no reply frame
+ *      arrives before it fires, fail fast with `proxy_no_first_frame` (covers a
+ *      publish dropped because no daemon GET was subscribed — claim still
+ *      fresh). The timeout is DISABLED the instant the first frame arrives and
+ *      is never re-armed (SSE inter-frame gaps must not trip it).
+ *   5. Yield decoded `DispatchChunk`s from the reply subscription until a
  *      terminal `end` (return) or `error` (throw) frame.
- *   5. On `opts.signal` abort, publish a `cancel_req` control frame (carrying
+ *   6. On `opts.signal` abort, publish a `cancel_req` control frame (carrying
  *      the reqId) to `links.control.<userSub>` and stop. The daemon's
  *      control-poll forwards it to its proxy-abort-registry (S2).
  *
@@ -460,9 +488,33 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
           r?.();
         };
 
+        // First-frame timeout (fail-fast for a dropped publish — no subscriber).
+        // Armed after publish; DISABLED on the first frame; never re-armed.
+        const firstFrameTimeoutMs =
+          deps.firstFrameTimeoutMs ?? FIRST_FRAME_TIMEOUT_MS;
+        let firstFrameSeen = false;
+        let firstFrameTimer: ReturnType<typeof setTimeout> | null = null;
+        const clearFirstFrameTimer = (): void => {
+          if (firstFrameTimer !== null) {
+            clearTimeout(firstFrameTimer);
+            firstFrameTimer = null;
+          }
+        };
+        // Any reply frame (or a presence-loss / abort fire) counts as "the
+        // channel responded" — disable the no-first-frame bound exactly once.
+        const markFirstFrame = (): void => {
+          if (firstFrameSeen) return;
+          firstFrameSeen = true;
+          clearFirstFrameTimer();
+        };
+
         // SUBSCRIBE BEFORE PUBLISH — guarantees we don't miss the first frame.
         const unsubscribe = deps.nats.subscribe(replySubject, (data) => {
           if (done) return;
+          // A real frame landed: disable the first-frame bound. SSE replies
+          // legitimately have long gaps between subsequent frames, so we do NOT
+          // re-arm or add a per-frame idle timeout.
+          markFirstFrame();
           try {
             queue.push(decodeProxyReplyFrame(decoder.decode(data)));
           } catch (err) {
@@ -489,6 +541,9 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
           unwatchPresence = deps.presence.watch(userSub, (claim) => {
             if (done) return;
             if (claim == null) {
+              // Presence loss is a fail-fast in its own right; cancel the
+              // no-first-frame bound so it can't also fire (this error wins).
+              markFirstFrame();
               error = new Error(
                 "link_unavailable: daemon presence lost (claim expired or disappeared)",
               );
@@ -503,6 +558,7 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
           if (cleanedUp) return;
           cleanedUp = true;
           done = true;
+          clearFirstFrameTimer();
           try {
             unsubscribe();
           } catch {
@@ -516,6 +572,9 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
         };
 
         const onAbort = (): void => {
+          // Abort is a terminal fail-fast; cancel the no-first-frame bound so it
+          // can't also fire (the abort error wins).
+          markFirstFrame();
           // Publish a `cancel_req` control frame to the per-user control subject
           // (the channel the outbound-only daemon's control-poll holds open),
           // NOT a dedicated `links.proxy.cancel.*` subject the daemon can't
@@ -554,6 +613,27 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
             opts?.signal?.removeEventListener("abort", onAbort);
             cleanup();
             throw err instanceof Error ? err : new Error(String(err));
+          }
+
+          // ARM the first-frame timeout AFTER the publish. Core NATS drops a
+          // publish into a subject with no live subscriber (daemon between polls
+          // / startup race / not yet polling), so the reply would never come and
+          // this generator would await forever. If no frame lands within the
+          // bound, fail fast with a 502-equivalent. Disabled the instant the
+          // first frame (or presence-loss / abort) fires — never re-armed.
+          firstFrameTimer = setTimeout(() => {
+            if (done || firstFrameSeen) return;
+            markFirstFrame();
+            error = new Error(
+              "proxy_no_first_frame: no reply frame within first-frame timeout (request likely dropped — no daemon subscribed)",
+            );
+            done = true;
+            wake();
+          }, firstFrameTimeoutMs);
+          // If a frame raced in before we armed (synchronous fake-NATS delivery
+          // in tests, or an already-present queue), disable it immediately.
+          if (firstFrameSeen || queue.length > 0 || done) {
+            clearFirstFrameTimer();
           }
         }
 
