@@ -27,7 +27,10 @@ import { createSandboxRoutes } from "./sandbox-proxy";
 import { createLinkIngestRoutes } from "./decopilot/link-ingest-routes";
 import { createLinkWorkRoutes } from "./decopilot/link-work-routes";
 import { createLinkControlRoutes } from "./decopilot/link-control-routes";
-import { createLinkProxyRoutes } from "./decopilot/link-proxy-routes";
+import {
+  createLinkProxyRoutes,
+  type LinkProxyDeps,
+} from "./decopilot/link-proxy-routes";
 import type { LinkClaimRegistry } from "@/links/link-claim-registry";
 import type { LinkWorkQueue } from "./decopilot/link-work-queue";
 import type { NatsConnection } from "nats";
@@ -78,9 +81,7 @@ interface OrgScopedDeps {
    * Optional: when absent the /links/proxy routes are not mounted. DORMANT —
    * no production caller holds the GET open yet (S3 wires the provider).
    */
-  linkProxyDeps?: {
-    getConnection: () => NatsConnection | null;
-  };
+  linkProxyDeps?: LinkProxyDeps;
   /**
    * Public events handler (defined in app.ts). Mounted at
    * `POST /api/:org/events/:type`.

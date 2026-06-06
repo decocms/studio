@@ -5,6 +5,7 @@ import {
   buildRequestSubject,
   createProxyDispatch,
   type ProxyNatsAdapter,
+  type ProxyPresenceWatcher,
 } from "./link-proxy-routes";
 import {
   encodeProxyReplyFrame,
@@ -42,6 +43,30 @@ function makeFakeNats() {
     cb?.(enc.encode(encodeProxyReplyFrame(frame)));
   };
   return { nats, ops, subs, published, deliver };
+}
+
+/**
+ * Fake presence watcher mirroring `LinkClaimRegistry.watch`: fires immediately
+ * with the current claim, then on every `set(...)`. `set(null)` simulates the
+ * claim expiring (60 s TTL not re-armed) or being explicitly deleted — the
+ * daemon-vanished signal the S5 fail-fast keys off (landmine #8).
+ */
+function makeFakePresence(initial: unknown = { podId: "pod-x" }) {
+  let current: unknown = initial;
+  const listeners = new Set<(claim: unknown) => void>();
+  const watcher: ProxyPresenceWatcher = {
+    watch(_userSub, listener) {
+      listeners.add(listener);
+      // Immediate fire with the current value (LinkClaimRegistry contract).
+      listener(current);
+      return () => listeners.delete(listener);
+    },
+  };
+  const set = (claim: unknown): void => {
+    current = claim;
+    for (const l of [...listeners]) l(claim);
+  };
+  return { watcher, set, listenerCount: () => listeners.size };
 }
 
 const baseReq = {
@@ -180,6 +205,123 @@ describe("createProxyDispatch", () => {
     })();
     await expect(run).rejects.toThrow(/invalid userSub/);
     expect(f.ops).toEqual([]);
+  });
+});
+
+describe("createProxyDispatch — daemon-vanished fail-fast (S5, landmine #8)", () => {
+  test("rejects when the presence claim disappears mid-await (no idle timeout needed)", async () => {
+    const f = makeFakeNats();
+    const presence = makeFakePresence();
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      presence: presence.watcher,
+    });
+
+    const out: { data?: string; status?: number }[] = [];
+    const run = (async () => {
+      for await (const ev of dispatch("user-1", baseReq)) {
+        out.push({ data: ev.data, status: ev.headers?.status });
+      }
+    })();
+
+    // Let the generator subscribe + publish + start awaiting.
+    await Promise.resolve();
+    const replySubject = f.ops.find((o) => o.kind === "subscribe")!.subject;
+
+    // First frame arrives normally — confirms we are NOT failing on inter-frame
+    // gaps, only on presence loss (the request body legitimately has long gaps).
+    f.deliver(replySubject, { type: "headers", status: 200, headers: {} });
+    await Promise.resolve();
+
+    // The daemon vanishes: its polls stop re-arming the claim → it expires.
+    presence.set(null);
+
+    await expect(run).rejects.toThrow(/link_unavailable/);
+    // The one delivered headers frame surfaced before the fail-fast.
+    expect(out).toEqual([{ data: undefined, status: 200 }]);
+    // The reply subscription + presence watcher were torn down (no leak).
+    expect(f.subs.has(replySubject)).toBe(false);
+    expect(presence.listenerCount()).toBe(0);
+  });
+
+  test("rejects immediately + skips publish when presence is already absent", async () => {
+    const f = makeFakeNats();
+    const presence = makeFakePresence(null); // daemon not present
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      presence: presence.watcher,
+    });
+
+    const run = (async () => {
+      for await (const _ev of dispatch("user-1", baseReq)) {
+        /* drain */
+      }
+    })();
+
+    await expect(run).rejects.toThrow(/link_unavailable/);
+    // Core NATS drops a publish into an unsubscribed subject, so the adapter
+    // must NOT publish the RequestFrame when the daemon is already gone.
+    expect(
+      f.published.find((p) => p.subject === buildRequestSubject("user-1")),
+    ).toBeUndefined();
+    // Watcher cleaned up.
+    expect(presence.listenerCount()).toBe(0);
+  });
+
+  test("completes normally while presence stays present (no false positive)", async () => {
+    const f = makeFakeNats();
+    const presence = makeFakePresence();
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      presence: presence.watcher,
+    });
+
+    const out: { data?: string; status?: number }[] = [];
+    const run = (async () => {
+      for await (const ev of dispatch("user-1", baseReq)) {
+        out.push({ data: ev.data, status: ev.headers?.status });
+      }
+    })();
+    await Promise.resolve();
+    const replySubject = f.ops.find((o) => o.kind === "subscribe")!.subject;
+    f.deliver(replySubject, { type: "headers", status: 200, headers: {} });
+    f.deliver(replySubject, { type: "chunk", data: "QQ==" });
+    f.deliver(replySubject, { type: "end" });
+    await run;
+
+    expect(out).toEqual([
+      { data: undefined, status: 200 },
+      { data: "QQ==", status: undefined },
+    ]);
+    // Watcher torn down on clean completion too.
+    expect(presence.listenerCount()).toBe(0);
+  });
+
+  test("a benign claim refresh (non-null) does NOT abort the request", async () => {
+    const f = makeFakeNats();
+    const presence = makeFakePresence({ podId: "pod-x" });
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      presence: presence.watcher,
+    });
+
+    const out: string[] = [];
+    const run = (async () => {
+      for await (const ev of dispatch("user-1", baseReq)) {
+        if (ev.data) out.push(ev.data);
+      }
+    })();
+    await Promise.resolve();
+    const replySubject = f.ops.find((o) => o.kind === "subscribe")!.subject;
+
+    // A presence put with a fresh-but-present claim (TTL re-armed by the work
+    // poll) must be ignored — only `null` is the vanish signal.
+    presence.set({ podId: "pod-x", connectedAt: Date.now() });
+    f.deliver(replySubject, { type: "chunk", data: "QQ==" });
+    f.deliver(replySubject, { type: "end" });
+    await run;
+
+    expect(out).toEqual(["QQ=="]);
   });
 });
 

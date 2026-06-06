@@ -31,6 +31,7 @@
 import { Hono } from "hono";
 import type { NatsConnection } from "nats";
 import type { Env } from "../../hono-env";
+import type { LinkClaimRegistry } from "@/links/link-claim-registry";
 import type { RequestFrame } from "@/links/link-control-types";
 import type { DispatchChunk, DispatchFn } from "@/links/link-dispatch-types";
 import { encodeControlFrame } from "./control-frames";
@@ -84,6 +85,14 @@ export interface ProxyNatsAdapter {
 export interface LinkProxyDeps {
   /** Native NATS connection getter (queue-group subscriptions need it). */
   getConnection: () => NatsConnection | null;
+  /**
+   * Link-claim presence registry. Only used by the NON-PRODUCTION test-trigger
+   * route (`POST /links/proxy/_test/dispatch`) to wire the S5 fail-fast watcher
+   * into its `createProxyDispatch` instance. Production `createProxyDispatch`
+   * wiring lives in `app.ts`; this is optional so non-NATS test setups still
+   * compile.
+   */
+  claimRegistry?: LinkClaimRegistry;
 }
 
 const encoder = new TextEncoder();
@@ -227,7 +236,135 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
     }
   });
 
+  // ── TEST-ONLY trigger: drive a real createProxyDispatch round-trip ────────
+  //
+  // The production caller of `createProxyDispatch` is `DesktopSandboxProvider`
+  // (wired in S3, dormant behind `LINK_PROXY_TRANSPORT=pull`). To validate the
+  // channel END-TO-END before the S6 cutover — cluster `createProxyDispatch`
+  // → `links.proxy.req` → the GET above → a daemon simulator → the POST above
+  // → `links.proxy.reply` → back to the awaiting caller — the e2e
+  // (`link-proxy.spec.ts`) needs a server-side caller it can hit over HTTP.
+  //
+  // This route is that caller. It builds a fresh `createProxyDispatch` over the
+  // SAME live NATS connection (identical wire behaviour to the shared instance)
+  // and streams the decoded (base64→bytes) reply back to the HTTP client, so
+  // the test can assert byte-exactness, incremental SSE streaming, and cancel.
+  // It is NEVER mounted in production (`NODE_ENV==="production"` → 404) and is
+  // scoped to the authenticated user's OWN proxy channel (no cross-user reach).
+  if (process.env.NODE_ENV !== "production") {
+    app.post("/links/proxy/_test/dispatch", async (c) => {
+      const ctx = c.get("meshContext");
+      const userId = ctx.auth?.user?.id;
+      if (!userId) return c.json({ error: "unauthorized" }, 401);
+
+      const nc = deps.getConnection();
+      if (!nc) return c.json({ error: "proxy channel unavailable" }, 503);
+
+      let payload: { method?: string; path?: string; body?: string };
+      try {
+        payload = (await c.req.json()) as typeof payload;
+      } catch {
+        return c.json({ error: "bad json" }, 400);
+      }
+      const method = payload.method ?? "GET";
+      const path = payload.path ?? "/_sandbox/events";
+
+      const dispatch = createProxyDispatch({
+        nats: makeNatsAdapter(nc),
+        ...(deps.claimRegistry
+          ? {
+              presence: {
+                watch: (sub, listener) =>
+                  deps.claimRegistry!.watch(sub, (claim) => listener(claim)),
+              },
+            }
+          : {}),
+      });
+
+      const iter = dispatch(
+        userId,
+        {
+          method,
+          path,
+          headers: {},
+          ...(payload.body !== undefined ? { body: payload.body } : {}),
+        },
+        { signal: c.req.raw.signal },
+      );
+      const iterator = iter[Symbol.asyncIterator]();
+
+      // Stream the decoded bytes back to the HTTP caller incrementally (no
+      // buffering) so the test can observe per-chunk SSE relay. `data` is base64
+      // on the channel (landmine #9); decode each chunk to raw bytes.
+      let canceled = false;
+      const stream = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            while (true) {
+              const next = await iterator.next();
+              if (canceled) return;
+              if (next.done) {
+                controller.close();
+                return;
+              }
+              const chunk = next.value;
+              if (chunk.data != null) {
+                controller.enqueue(Buffer.from(chunk.data, "base64"));
+                return;
+              }
+              // headers frame: ignore for the test body (status is asserted via
+              // a header below would need pre-read; the test asserts on bytes).
+            }
+          } catch (err) {
+            if (!canceled) controller.error(err);
+          }
+        },
+        cancel() {
+          canceled = true;
+          void iterator.return?.();
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: { "content-type": "application/octet-stream" },
+      });
+    });
+  }
+
   return app;
+}
+
+/**
+ * Build a `ProxyNatsAdapter` over a live NATS connection. Mirrors the adapter
+ * `app.ts` wires for the shared `createProxyDispatch` — extracted so the
+ * test-trigger route can build an identical one.
+ */
+function makeNatsAdapter(nc: NatsConnection): ProxyNatsAdapter {
+  return {
+    publish(subject, data) {
+      nc.publish(subject, data);
+    },
+    subscribe(subject, onMessage) {
+      const sub = nc.subscribe(subject);
+      void (async () => {
+        for await (const m of sub) {
+          try {
+            onMessage(m.data);
+          } catch {
+            /* swallow — a bad subscriber must not kill the loop */
+          }
+        }
+      })();
+      return () => {
+        try {
+          sub.unsubscribe();
+        } catch {
+          /* */
+        }
+      };
+    },
+  };
 }
 
 function publishReplyFrame(
@@ -243,8 +380,38 @@ function publishReplyFrame(
   }
 }
 
+/**
+ * Minimal presence surface the `DispatchFn` adapter needs for the
+ * daemon-vanished fail-fast (Phase C-bis S5, landmine #8). A structural subset
+ * of `LinkClaimRegistry` — `watch(userSub, listener)` fires immediately with the
+ * current claim (or `null`), then on every put/delete, and returns an
+ * unsubscribe. The adapter only cares whether the claim is present, so the claim
+ * payload is opaque (`unknown`).
+ *
+ * The presence claim (`studio_links` KV, 60 s TTL) is re-armed by the daemon's
+ * work/control/proxy long-polls. If the daemon vanishes (stops polling) the
+ * claim expires and the watcher fires `null`; the adapter aborts the in-flight
+ * await and throws a 502-equivalent, mirroring `ws-gateway.ts`'s on-close error
+ * fanout (ws-gateway.ts:424-451) — which used the WS close event as its liveness
+ * signal where the pull channel has no socket, so the claim IS the liveness
+ * signal. We deliberately reuse the registry's existing TTL/watch rather than
+ * inventing a new idle timeout (the request body — e.g. `/events` SSE — has
+ * legitimate long gaps, so a naive per-frame timeout would be wrong).
+ */
+export interface ProxyPresenceWatcher {
+  watch(userSub: string, listener: (claim: unknown) => void): () => void;
+}
+
 export interface CreateProxyDispatchDeps {
   nats: ProxyNatsAdapter;
+  /**
+   * Optional presence watcher for the daemon-vanished fail-fast (S5). When
+   * provided, the adapter aborts an in-flight request the moment the user's
+   * link-claim presence disappears (expiry or explicit delete). When omitted
+   * (e.g. NATS-less test setups), only the POST/GET-drop error-frame backstop
+   * (S1) and caller-abort apply.
+   */
+  presence?: ProxyPresenceWatcher;
 }
 
 /**
@@ -305,6 +472,32 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
           wake();
         });
 
+        // Daemon-vanished fail-fast (landmine #8): watch the user's link-claim
+        // presence. The claim's 60 s TTL is re-armed by the daemon's
+        // work/control/proxy long-polls; if the daemon stops polling the claim
+        // expires and the watcher fires `null`. We treat ANY `null` fire as the
+        // daemon being gone (mirrors ws-gateway.ts's WS-close fanout: no socket
+        // ⇒ dead) and abort the in-flight await with a 502-equivalent so
+        // `runner.ts` rejects promptly instead of hanging on a reply that will
+        // never arrive. The watcher fires immediately with the current value, so
+        // a request to an already-absent daemon also fails fast (no waiting for
+        // the POST/GET-drop backstop). We do NOT add an idle timeout — the
+        // request body (`/events` SSE) has legitimate long gaps; presence is the
+        // liveness signal, not inter-frame latency.
+        let unwatchPresence: (() => void) | null = null;
+        if (deps.presence) {
+          unwatchPresence = deps.presence.watch(userSub, (claim) => {
+            if (done) return;
+            if (claim == null) {
+              error = new Error(
+                "link_unavailable: daemon presence lost (claim expired or disappeared)",
+              );
+              done = true;
+              wake();
+            }
+          });
+        }
+
         let cleanedUp = false;
         const cleanup = (): void => {
           if (cleanedUp) return;
@@ -312,6 +505,11 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
           done = true;
           try {
             unsubscribe();
+          } catch {
+            // ignore
+          }
+          try {
+            unwatchPresence?.();
           } catch {
             // ignore
           }
@@ -343,15 +541,20 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
           ...(req.body !== undefined ? { body: req.body } : {}),
         };
 
-        try {
-          deps.nats.publish(
-            buildRequestSubject(userSub),
-            encoder.encode(JSON.stringify(requestFrame)),
-          );
-        } catch (err) {
-          opts?.signal?.removeEventListener("abort", onAbort);
-          cleanup();
-          throw err instanceof Error ? err : new Error(String(err));
+        // If the presence watcher's initial fire already reported the daemon
+        // absent, skip the publish (the subject has no subscriber — core NATS
+        // would drop it) and let the loop below throw the fail-fast error.
+        if (!done) {
+          try {
+            deps.nats.publish(
+              buildRequestSubject(userSub),
+              encoder.encode(JSON.stringify(requestFrame)),
+            );
+          } catch (err) {
+            opts?.signal?.removeEventListener("abort", onAbort);
+            cleanup();
+            throw err instanceof Error ? err : new Error(String(err));
+          }
         }
 
         try {
