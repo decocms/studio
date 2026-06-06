@@ -86,7 +86,7 @@ export async function resolveDispatchTarget(
   //   decopilot-desktop harness (registered in the daemon), HarnessContext only,
   //   mcp.modelSecret injected, cluster-coupled built-ins via mcp.url.
   // Both produce identical thread_message_parts rows via the SoR PartEmitter.
-  // Phase D flips the cutover: per-user link_transport flag + pull ⊆ v2 gate.
+  // Phase F: dispatch routing cutover — pull is default when NATS is available.
   if (input.harnessId === "decopilot") {
     return {
       ok: true,
