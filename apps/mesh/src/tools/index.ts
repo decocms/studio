@@ -193,6 +193,10 @@ const CORE_TOOLS = [
   // desktop daemon can call them via the injected mcp.url token. In-cluster
   // decopilot runs continue to use the built-in versions (no MCP round-trip).
   DecopilotMcpTools.UPDATE_INTERESTS_MCP,
+  DecopilotMcpTools.SUBTASK_MCP,
+  DecopilotMcpTools.TAKE_SCREENSHOT_MCP,
+  DecopilotMcpTools.GENERATE_IMAGE_MCP,
+  DecopilotMcpTools.WEB_SEARCH_MCP,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

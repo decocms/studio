@@ -214,6 +214,10 @@ const ALL_TOOL_NAMES = [
   // Decopilot cluster MCP tools — exposed on the management MCP server so the
   // desktop daemon can call them via the injected mcp.url token.
   "UPDATE_INTERESTS_MCP",
+  "SUBTASK_MCP",
+  "TAKE_SCREENSHOT_MCP",
+  "GENERATE_IMAGE_MCP",
+  "WEB_SEARCH_MCP",
 ] as const;
 
 /**
@@ -983,6 +987,30 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "UPDATE_INTERESTS_MCP",
     description:
       "Record what the user is durably working toward (goals/interests) — desktop decopilot cluster relay",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "SUBTASK_MCP",
+    description:
+      "Delegate a focused sub-task to a specialized agent — desktop decopilot cluster relay (cluster-side recursive dispatch)",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "TAKE_SCREENSHOT_MCP",
+    description:
+      "Capture a screenshot of a web page via Browserless — desktop decopilot cluster relay (object storage stays cluster-side)",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "GENERATE_IMAGE_MCP",
+    description:
+      "Generate an image using the configured image model — desktop decopilot cluster relay (image-provider key stays cluster-side)",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "WEB_SEARCH_MCP",
+    description:
+      "Search the web and synthesize a report via streaming research model — desktop decopilot cluster relay (streaming path only)",
     category: "Virtual MCPs",
   },
 ];
