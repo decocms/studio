@@ -48,6 +48,10 @@ import {
   findStudioPackAgentByMcpId,
   resolveStudioPackRuntime,
 } from "../../tools/virtual/studio-pack";
+import {
+  decopilotDesktopHarnessFactory,
+  isDesktopHarnessContext,
+} from "./desktop-factory";
 
 /** Narrowed view of `HarnessStreamInput.processLocal` for the cluster
  *  decopilot harness. The package types those structurally-deep fields
@@ -109,11 +113,11 @@ export const decopilotHarnessFactory: HarnessFactory = {
     // `storage` and `db` are required fields on StudioContext but absent
     // from HarnessContext, so their presence reliably distinguishes the
     // two at runtime.
-    if (!("storage" in harnessCtx) || !("db" in harnessCtx)) {
-      throw new Error(
-        "decopilot harness requires StudioContext (cluster-side only); " +
-          "got narrow HarnessContext",
-      );
+    // Desktop daemon: delegate to the portable desktop factory.
+    // The desktop factory activates the provider from mcp.modelSecret and
+    // omits cluster-coupled built-ins (spec §3.8, invariant L9).
+    if (isDesktopHarnessContext(harnessCtx)) {
+      return decopilotDesktopHarnessFactory.create(harnessCtx);
     }
     const ctx = harnessCtx as StudioContext;
     return {
