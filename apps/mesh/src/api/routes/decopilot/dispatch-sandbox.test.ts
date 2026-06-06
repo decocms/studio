@@ -1,8 +1,10 @@
 /**
- * Unit test for the helper that the remote-cli dispatch branch uses to
- * resolve which sandbox URL to talk to. The helper unifies with
- * `ensureSandbox` so claude-code/codex runs share the SANDBOX_START sandbox
- * instead of provisioning a per-run empty workdir.
+ * Unit tests for:
+ *   - `resolveRemoteCliSandboxUrl` — the ensure-backed preview-URL helper.
+ *   - `computeDesktopSandboxHandle` — the pure, I/O-free handle derivation
+ *     introduced in C-bis S4 to replace the warm-ensure round-trip at the
+ *     two dispatch sites (prepareRun + pullDispatch). The preview-URL site
+ *     (`resolveRemoteCliSandboxUrl`) keeps the full ensure path.
  */
 import { describe, expect, it, mock } from "bun:test";
 
@@ -45,7 +47,8 @@ const nextEnsureSandboxReturn: { previewUrl: string | null } = {
   previewUrl: "http://sleek-flint-0000000000000000.localhost:5174",
 };
 
-const { resolveRemoteCliSandboxUrl } = await import("./dispatch-run");
+const { resolveRemoteCliSandboxUrl, computeDesktopSandboxHandle } =
+  await import("./dispatch-run");
 
 describe("resolveRemoteCliSandboxUrl", () => {
   it("calls ensureSandbox with the agent id, branch, and user-desktop kind", async () => {
@@ -96,5 +99,58 @@ describe("resolveRemoteCliSandboxUrl", () => {
     } finally {
       nextEnsureSandboxReturn.previewUrl = originalPreviewUrl;
     }
+  });
+});
+
+describe("computeDesktopSandboxHandle", () => {
+  const BASE = {
+    agentId: "vmcp_abc",
+    userId: "user_xyz",
+    organizationId: "org_def",
+    branch: "deco/sleek-flint",
+  };
+
+  it("returns a non-empty string", () => {
+    const handle = computeDesktopSandboxHandle(BASE);
+    expect(typeof handle).toBe("string");
+    expect(handle.length).toBeGreaterThan(0);
+  });
+
+  it("is deterministic — same inputs produce the same handle", () => {
+    expect(computeDesktopSandboxHandle(BASE)).toBe(
+      computeDesktopSandboxHandle({ ...BASE }),
+    );
+  });
+
+  it("produces a <slug>-<16-char hash> shape (matches computeClaimHandle contract)", () => {
+    const handle = computeDesktopSandboxHandle(BASE);
+    // computeHandle: slugifyBranch(branch) + "-" + hashSandboxId(id, 16)
+    const hash = handle.split("-").pop()!;
+    expect(hash.length).toBe(16);
+  });
+
+  it("differs when agentId changes", () => {
+    expect(
+      computeDesktopSandboxHandle({ ...BASE, agentId: "vmcp_other" }),
+    ).not.toBe(computeDesktopSandboxHandle(BASE));
+  });
+
+  it("differs when userId changes", () => {
+    expect(
+      computeDesktopSandboxHandle({ ...BASE, userId: "user_other" }),
+    ).not.toBe(computeDesktopSandboxHandle(BASE));
+  });
+
+  it("differs when branch changes", () => {
+    expect(
+      computeDesktopSandboxHandle({ ...BASE, branch: "deco/other-branch" }),
+    ).not.toBe(computeDesktopSandboxHandle(BASE));
+  });
+
+  it("produces a handle with the branch slug as a prefix for named branches", () => {
+    // The branch slug is the last path segment after slugification.
+    // "deco/sleek-flint" → last segment "sleek-flint" → slug prefix in handle.
+    const handle = computeDesktopSandboxHandle(BASE);
+    expect(handle).toMatch(/sleek-flint/);
   });
 });

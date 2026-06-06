@@ -37,6 +37,8 @@ import {
 } from "@/harnesses/offload-messages";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { buildDesktopProvider } from "@/sandbox/lifecycle";
+import { computeClaimHandle } from "@/sandbox/claim-handle";
+import { composeSandboxRef } from "@decocms/sandbox/provider";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
@@ -1143,16 +1145,21 @@ async function prepareRun(
         //     to the user's link daemon; the harness still runs here.
         let rawHarnessChunks;
         if (target.runsIn === "user-desktop") {
-          // Unify with SANDBOX_START: resolve the sandbox via `ensureSandbox` so
-          // claude-code/codex runs share the workdir SANDBOX_START already
-          // provisioned (cloned repo + env + lockfile probe). Falls
-          // through to a blank sandbox for ephemeral threads. See
-          // `resolveRemoteCliSandboxUrl` below for why the helper
-          // exists.
-          const { sandboxHandle } = await resolveRemoteCliSandboxHandle(
-            { agent: input.agent, branch: mem.thread.branch ?? input.branch },
-            ctx,
-          );
+          // Pure handle derivation — no ensure round-trip. The daemon self-ensures
+          // the sandbox from `WorkItem.sandbox` when it dequeues the item
+          // (cluster-connection-pull.ts:214: `input.provider.ensureSandbox(ensureInput)`),
+          // so the warm-ensure that `resolveRemoteCliSandboxHandle` performed here
+          // is redundant on the pull path (C-bis S4). The handle formula is
+          // identical to what `ensureSandbox`/`provisionSandbox` would compute:
+          // composeSandboxRef → computeClaimHandle. See `computeDesktopSandboxHandle`.
+          const effectiveBranch =
+            mem.thread.branch ?? input.branch ?? "ephemeral";
+          const sandboxHandle = computeDesktopSandboxHandle({
+            agentId: input.agent.id,
+            userId: input.userId,
+            organizationId: input.organizationId,
+            branch: effectiveBranch,
+          });
           // Route through the unified `proxyDaemonRequest` seam: the desktop
           // provider tunnels `/dispatch` over the same WS+NATS link transport
           // the old raw `dispatch` dep used, but now consumes the returned
@@ -1679,9 +1686,13 @@ export async function pullDispatch(
         }
       }
 
-      // Resolve the sandbox handle (same path as the WS dispatch branch).
-      // This also provisions the sandbox on the daemon via NATS-backed ensure,
-      // so the daemon's cache is warm by the time it dequeues the work item.
+      // Resolve the sandbox handle for the pull work item.
+      // Pure derivation — no ensure round-trip. The daemon self-ensures
+      // the sandbox from `WorkItem.sandbox` when it dequeues the item
+      // (cluster-connection-pull.ts:214: `input.provider.ensureSandbox(ensureInput)`),
+      // so the warm-ensure that `resolveRemoteCliSandboxHandle` performed here
+      // is redundant (C-bis S4). The handle formula is identical to what
+      // `ensureSandbox`/`provisionSandbox` would compute. See `computeDesktopSandboxHandle`.
       let sandboxConfig: WorkItemSandbox | null = null;
       const harnessId: HarnessId =
         input.harnessId ?? resolveHarnessId(undefined);
@@ -1690,13 +1701,12 @@ export async function pullDispatch(
         input.target?.runsIn === "user-desktop"
       ) {
         try {
-          const { sandboxHandle } = await resolveRemoteCliSandboxHandle(
-            {
-              agent: input.agent,
-              branch: input.branch,
-            },
-            ctx,
-          );
+          const sandboxHandle = computeDesktopSandboxHandle({
+            agentId: input.agent.id,
+            userId: input.userId,
+            organizationId: input.organizationId,
+            branch: input.branch ?? "ephemeral",
+          });
           sandboxConfig = await resolvePullSandboxConfig(
             input,
             ctx,
@@ -1751,6 +1761,44 @@ export async function resolveRemoteCliSandboxUrl(
 ): Promise<string> {
   const { previewUrl } = await resolveRemoteCliSandboxHandle(input, ctx);
   return previewUrl;
+}
+
+/**
+ * Pure, synchronous handle derivation — no I/O, no ensure round-trip.
+ *
+ * Mirrors the formula used by `ensureSandbox` / `provisionSandbox`:
+ *   projectRef = composeSandboxRef({ orgId, virtualMcpId: agentId, branch })
+ *   handle     = computeClaimHandle({ userId, projectRef }, branch)
+ *
+ * This is the SAME handle the daemon receives in `WorkItem.sandbox.handle`
+ * (set by `resolvePullSandboxConfig`) and that the daemon derives via
+ * `deriveHandle(item)`. Both sides agree by construction.
+ *
+ * Safe to call at dispatch-run sites where the daemon will self-ensure the
+ * sandbox from the work item (cluster-connection-pull.ts:214 —
+ * `input.provider.ensureSandbox(ensureInput)`). The warm-ensure
+ * round-trip at those sites is therefore redundant and is replaced by this
+ * pure call (C-bis S4 landmine #7).
+ *
+ * NOT a substitute at sites that return a preview URL outside the work-queue
+ * path — `resolveRemoteCliSandboxUrl` must keep calling
+ * `resolveRemoteCliSandboxHandle` (which runs the full ensure) because there
+ * is no daemon self-ensure backstop for the preview-URL path.
+ *
+ * Exported for unit tests.
+ */
+export function computeDesktopSandboxHandle(input: {
+  agentId: string;
+  userId: string;
+  organizationId: string;
+  branch: string;
+}): string {
+  const projectRef = composeSandboxRef({
+    orgId: input.organizationId,
+    virtualMcpId: input.agentId,
+    branch: input.branch,
+  });
+  return computeClaimHandle({ userId: input.userId, projectRef }, input.branch);
 }
 
 /**
