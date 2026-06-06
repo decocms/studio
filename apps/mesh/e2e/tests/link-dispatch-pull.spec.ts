@@ -194,9 +194,10 @@ test.describe("pull-transport round-trip", () => {
   test("work item is served by GET /links/work and ingest commits parts + releases gate", async ({
     authedPage,
   }) => {
-    // The test includes a 30 s poll for the work item (JetStream propagation)
-    // plus the presence poll, so give it a generous timeout.
-    test.setTimeout(90_000);
+    // Budget: up to 3 × 35 s long-poll retries (~105 s) + setup/ingest/assertions.
+    // Playwright's per-request default is 30 s, so we override below; the test
+    // overall needs at least 120 s.
+    test.setTimeout(120_000);
 
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
@@ -286,39 +287,70 @@ test.describe("pull-transport round-trip", () => {
 
       // ── Step 4: daemon polls GET /links/work → receives work item ──────────
       //
-      // The gate published the work item immediately after pullDispatch
-      // returned. We poll with a short client timeout and retry until we
-      // get the item keyed to our runId or the assertion timeout expires.
-      let workItem: {
+      // GET /links/work is a server-side long-poll that holds the connection
+      // open for ~30 s waiting for a JetStream work item.  The DBOS gate
+      // publishes the item *asynchronously* after the 202 response, so the
+      // work item may not yet exist when the first poll starts.
+      //
+      // Strategy: use a client timeout of 35 s (> the server hold) so we
+      // always outlast one server cycle.  A 204 means the server gave up
+      // (nothing yet) — re-poll.  Retry up to 3 times (~105 s budget total).
+      // A real "gate didn't publish" bug surfaces as "no work item after 3
+      // retries" (the assertion below), distinct from a client timeout error.
+      type WorkItem = {
         runId: string;
         threadId: string;
         orgId: string;
         userId: string;
         runFenceToken: string;
         harnessInput: Record<string, unknown>;
-      } | null = null;
+      };
 
-      await expect
-        .poll(
-          async () => {
-            const res = await api.get(`/api/${orgSlug}/links/work`, {
-              timeout: 5_000,
-              headers: {
-                "x-link-capabilities": "claude-code",
-                "x-link-machine-id": "e2e-test-machine",
-                "x-link-cli-version": "test",
-              },
-            });
-            if (res.status() === 204) return null; // no item yet
-            if (res.status() !== 200) return null;
-            const body = (await res.json()) as typeof workItem;
-            if (!body || body.runId !== runId) return null;
-            workItem = body;
-            return body;
+      let workItem: WorkItem | null = null;
+
+      const MAX_WORK_POLL_RETRIES = 3;
+      for (let attempt = 1; attempt <= MAX_WORK_POLL_RETRIES; attempt++) {
+        const res = await api.get(`/api/${orgSlug}/links/work`, {
+          // Must exceed the server long-poll hold (~30 s) so we don't time out
+          // before the server either delivers a work item or returns 204.
+          timeout: 35_000,
+          headers: {
+            "x-link-capabilities": "claude-code",
+            "x-link-machine-id": "e2e-test-machine",
+            "x-link-cli-version": "test",
           },
-          { timeout: 30_000, intervals: [500, 1_000, 2_000] },
-        )
-        .not.toBeNull();
+        });
+
+        if (res.status() === 204) {
+          // Server held for ~30 s but found nothing yet — the gate may still
+          // be publishing.  Re-poll unless this was the last attempt.
+          continue;
+        }
+
+        if (res.status() === 200) {
+          const body = (await res.json()) as WorkItem | null;
+          if (body && body.runId === runId) {
+            workItem = body;
+            break;
+          }
+          // Got a 200 but for a different runId (shouldn't happen in CI, but
+          // be safe and re-poll to drain and retry).
+          continue;
+        }
+
+        // Any other status is unexpected — fail fast with a clear message.
+        throw new Error(
+          `GET /links/work returned unexpected status ${res.status()} on attempt ${attempt}`,
+        );
+      }
+
+      // If workItem is still null after all retries the gate never published —
+      // this is a real gate-publish bug, clearly distinguishable from a
+      // timeout (which would have thrown above rather than exhausting retries).
+      expect(
+        workItem,
+        `Gate did not publish a work item for runId=${runId} after ${MAX_WORK_POLL_RETRIES} long-poll retries (~${MAX_WORK_POLL_RETRIES * 35}s). This indicates pullDispatch failed to enqueue the work item.`,
+      ).not.toBeNull();
 
       // Assert work item shape (spec §3.2).
       expect(workItem).not.toBeNull();
