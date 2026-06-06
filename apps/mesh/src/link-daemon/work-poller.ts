@@ -22,6 +22,7 @@ import {
   workItemSchema,
   type WorkItem,
 } from "../api/routes/decopilot/link-work-queue";
+import type { Capability } from "../links/protocol";
 
 export interface WorkPollerDeps {
   /** Fully-qualified base URL, e.g. "https://studio.deco.cx". */
@@ -54,6 +55,28 @@ export interface WorkPollerDeps {
   fetchImpl?: typeof fetch;
   /** Long-poll timeout in seconds sent as ?timeout= query param (default 29). */
   pollTimeoutSecs?: number;
+  /**
+   * Daemon capabilities to advertise on every poll via x-link-capabilities
+   * header. The server mints the presence claim with these so
+   * resolveDispatchTarget can route pull-transport threads correctly.
+   * Mirrors the `capabilities` field in the WS hello frame.
+   */
+  capabilities?: Capability[];
+  /**
+   * Stable machine identifier, forwarded as x-link-machine-id.
+   * Mirrors the `machineId` field in the WS hello frame.
+   */
+  machineId?: string;
+  /**
+   * Daemon CLI version string, forwarded as x-link-cli-version.
+   * Mirrors the `cliVersion` field in the WS hello frame.
+   */
+  cliVersion?: string;
+  /**
+   * Local preview server port, forwarded as x-link-preview-port.
+   * Mirrors the `previewPort` field in the WS hello frame.
+   */
+  previewPort?: number;
 }
 
 const BASE_DELAY_MS = 1_000;
@@ -76,6 +99,21 @@ export async function runWorkPollLoop(deps: WorkPollerDeps): Promise<void> {
   const pollTimeout = deps.pollTimeoutSecs ?? 29;
   const url = `${baseUrl}/api/${orgSlug}/links/work?timeout=${pollTimeout}`;
   let errorStreak = 0;
+
+  // Build the static presence headers once — these don't change between polls.
+  const presenceHeaders: Record<string, string> = {};
+  if (deps.capabilities && deps.capabilities.length > 0) {
+    presenceHeaders["x-link-capabilities"] = deps.capabilities.join(",");
+  }
+  if (deps.machineId) {
+    presenceHeaders["x-link-machine-id"] = deps.machineId;
+  }
+  if (deps.cliVersion) {
+    presenceHeaders["x-link-cli-version"] = deps.cliVersion;
+  }
+  if (deps.previewPort !== undefined) {
+    presenceHeaders["x-link-preview-port"] = String(deps.previewPort);
+  }
 
   while (!signal.aborted) {
     // Step 1: resolve a fresh token before each poll (mirrors the WS
@@ -102,7 +140,7 @@ export async function runWorkPollLoop(deps: WorkPollerDeps): Promise<void> {
     let res: Response;
     try {
       res = await fetcher(url, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, ...presenceHeaders },
         signal,
       });
     } catch (err) {

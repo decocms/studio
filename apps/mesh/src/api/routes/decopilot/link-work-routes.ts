@@ -15,10 +15,17 @@
  *
  * Redelivery-on-desktop-death is out of scope for Phase B; it is handled
  * by the progress-staleness sweeper in a later phase.
+ *
+ * Claim headers (sent by the daemon on every poll, mirrors the hello frame):
+ *   x-link-capabilities  — comma-separated capability strings (e.g. "claude-code")
+ *   x-link-machine-id    — stable machine identifier
+ *   x-link-cli-version   — daemon CLI version string
+ *   x-link-preview-port  — local preview server port (numeric string)
  */
 import { Hono } from "hono";
 import type { Env } from "../../hono-env";
 import type { LinkClaimRegistry, LinkClaim } from "@/links/link-claim-registry";
+import { capabilitiesArraySchema } from "@/links/protocol/schemas";
 import type { LinkWorkQueue } from "./link-work-queue";
 
 export interface LinkWorkDeps {
@@ -38,22 +45,39 @@ export function createLinkWorkRoutes(deps: LinkWorkDeps) {
     const userId = ctx.auth?.user?.id;
     if (!userId) return c.json({ error: "unauthorized" }, 401);
 
+    // Read daemon-advertised fields from request headers (mirrors the hello frame
+    // on the WS path). These are sent by the daemon on every poll so the claim
+    // always reflects the daemon's current state.
+    const rawCapabilities = c.req.header("x-link-capabilities") ?? "";
+    const capabilities = capabilitiesArraySchema.parse(
+      rawCapabilities.length > 0 ? rawCapabilities.split(",") : [],
+    );
+    const machineId = c.req.header("x-link-machine-id") ?? `pull-${userId}`;
+    const cliVersion = c.req.header("x-link-cli-version") ?? "pull";
+    const previewPortRaw = c.req.header("x-link-preview-port");
+    const previewPort =
+      previewPortRaw !== undefined ? parseInt(previewPortRaw, 10) || 0 : 0;
+
     // Refresh presence claim — TTL re-arms on every put (spec §3.2).
+    // Always merge the daemon-advertised capabilities so resolveDispatchTarget
+    // can check them (empty capabilities caused the 409 for claude-code threads).
     const existing = await deps.linkClaimRegistry.get(userId);
     const refreshed: LinkClaim = existing
-      ? { ...existing, connectedAt: Date.now() }
-      : {
-          // First poll for this user in this session: synthesize a sentinel
-          // claim. The daemon will overwrite this with its real capabilities
-          // once Phase C lands the hello-on-poll handshake. For Phase B the
-          // key property is that the claim is non-null so resolveDispatchTarget
-          // considers the link online.
-          podId: `pull-${userId}`,
-          machineId: userId,
-          cliVersion: "pull-phase-b",
-          previewPort: 0,
+      ? {
+          ...existing,
+          capabilities,
+          machineId,
+          cliVersion,
+          previewPort,
           connectedAt: Date.now(),
-          capabilities: [],
+        }
+      : {
+          podId: `pull-${userId}`,
+          machineId,
+          cliVersion,
+          previewPort,
+          connectedAt: Date.now(),
+          capabilities,
         };
     await deps.linkClaimRegistry.put(userId, refreshed);
 

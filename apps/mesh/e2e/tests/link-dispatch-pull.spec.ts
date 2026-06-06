@@ -38,10 +38,9 @@
  *     - Body-offload and multi-chunk SSE streams (covered by link-ingest.spec.ts).
  *
  * Presence strategy: the spec uses GET /api/:org/links/work to establish the
- * claim (same as a real pull daemon holding the long-poll). This avoids the
- * need for a real WS daemon binary or connectToCluster — the route synthesizes
- * a claim with `capabilities: []` (Phase B sentinel). resolveDispatchTarget
- * requires only that the claim be non-null for "user-desktop" kind.
+ * claim (same as a real pull daemon holding the long-poll). The request carries
+ * x-link-capabilities: claude-code so the minted claim advertises the required
+ * capability and resolveDispatchTarget routes the thread correctly.
  *
  * harness_id='claude-code' + sandboxProviderKind='user-desktop' are seeded
  * directly on the thread row so POST /messages hits applyThreadLock (the row
@@ -216,9 +215,11 @@ test.describe("pull-transport round-trip", () => {
 
       // ── Step 2: establish link presence ───────────────────────────────────
       //
-      // GET /api/:org/links/work hits the linkClaimRegistry and synthesizes
-      // a sentinel claim (Phase B) keyed by the authenticated user id so
-      // resolveDispatchTarget returns { ok: true } for user-desktop threads.
+      // GET /api/:org/links/work hits the linkClaimRegistry and mints a
+      // presence claim for this user.  We send x-link-capabilities so the
+      // claim advertises "claude-code" — resolveDispatchTarget requires this
+      // capability when harnessId='claude-code'; without it the route returns
+      // 409 user_desktop_link_capability_missing.
       //
       // We fire it with a short client timeout so the claim lands BEFORE
       // POST /messages runs. The claim refresh is synchronous at the start
@@ -226,6 +227,11 @@ test.describe("pull-transport round-trip", () => {
       const presencePromise = api
         .get(`/api/${orgSlug}/links/work`, {
           timeout: 1_500, // short: just long enough for the claim to land
+          headers: {
+            "x-link-capabilities": "claude-code",
+            "x-link-machine-id": "e2e-test-machine",
+            "x-link-cli-version": "test",
+          },
         })
         .catch(() => null); // 204/timeout is fine — we only need the claim
 
@@ -237,7 +243,6 @@ test.describe("pull-transport round-trip", () => {
             const res = await api.get("/api/links/me");
             if (res.status() !== 200) return null;
             const body = (await res.json()) as unknown;
-            // The sentinel claim has podId starting with "pull-" (Phase B).
             return body;
           },
           { timeout: 10_000, intervals: [200, 500, 1_000] },
@@ -298,6 +303,11 @@ test.describe("pull-transport round-trip", () => {
           async () => {
             const res = await api.get(`/api/${orgSlug}/links/work`, {
               timeout: 5_000,
+              headers: {
+                "x-link-capabilities": "claude-code",
+                "x-link-machine-id": "e2e-test-machine",
+                "x-link-cli-version": "test",
+              },
             });
             if (res.status() === 204) return null; // no item yet
             if (res.status() !== 200) return null;

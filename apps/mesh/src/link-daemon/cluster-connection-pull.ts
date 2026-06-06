@@ -51,6 +51,28 @@ export interface ClusterConnectionPullInput {
    */
   getAccessToken: () => Promise<string>;
   /**
+   * Daemon capabilities to advertise on every work-poll request
+   * (x-link-capabilities header). The server mints the presence claim with
+   * these so resolveDispatchTarget can route pull-transport threads correctly.
+   * Mirrors the `capabilities` field in the WS hello frame.
+   */
+  capabilities?: import("../links/protocol").Capability[];
+  /**
+   * Stable machine identifier forwarded as x-link-machine-id.
+   * Mirrors the `machineId` field in the WS hello frame.
+   */
+  machineId?: string;
+  /**
+   * Daemon CLI version string forwarded as x-link-cli-version.
+   * Mirrors the `cliVersion` field in the WS hello frame.
+   */
+  cliVersion?: string;
+  /**
+   * Local preview server port forwarded as x-link-preview-port.
+   * Mirrors the `previewPort` field in the WS hello frame.
+   */
+  previewPort?: number;
+  /**
    * Desktop sandbox provider — used to ensure the sandbox is running before
    * dispatching a work item.
    *
@@ -136,6 +158,10 @@ export async function connectToClusterPull(
     signal: ac.signal,
     fetchImpl: input.fetchImpl,
     pollTimeoutSecs: input.pollTimeoutSecs,
+    capabilities: input.capabilities,
+    machineId: input.machineId,
+    cliVersion: input.cliVersion,
+    previewPort: input.previewPort,
     onWork: async (item: WorkItem) => {
       const handle = deriveHandle(item);
       console.log(
