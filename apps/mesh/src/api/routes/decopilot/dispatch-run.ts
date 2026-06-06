@@ -32,6 +32,14 @@ import { remoteDispatch } from "@/harnesses/remote-dispatch";
 import { offloadKey, sha256Hex } from "@/harnesses/offload-messages";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { buildDesktopProvider } from "@/sandbox/lifecycle";
+import {
+  buildAnonymousCloneInfo,
+  buildCloneInfo,
+} from "@/shared/github-clone-info";
+import { resolveRuntimeConfig } from "@/tools/sandbox/helpers";
+import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
+import { getSettings } from "@/settings";
+import type { WorkItemSandbox } from "./link-work-queue";
 import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
@@ -1449,6 +1457,121 @@ async function prepareRun(
 }
 
 /**
+ * Resolve the sandbox provisioning config for a pull-transport work item.
+ *
+ * Mirrors the logic in `provisionSandbox` but returns the resolved config
+ * instead of calling `runner.ensure`. Called from `pullDispatch` for CLI
+ * harnesses (claude-code, codex) targeting user-desktop so the daemon can
+ * spawn the sandbox cold without a prior WS-path ensure call.
+ *
+ * Returns `null` when no sandbox config can be derived (e.g. decopilot
+ * harness, non-user-desktop target, or unresolvable metadata).
+ */
+async function resolvePullSandboxConfig(
+  input: DispatchRunInput,
+  ctx: StudioContext,
+  sandboxHandle: string,
+): Promise<WorkItemSandbox | null> {
+  const harnessId: HarnessId = input.harnessId ?? resolveHarnessId(undefined); // default fallback
+  if (harnessId === "decopilot") return null;
+  if (!input.target || input.target.runsIn !== "user-desktop") return null;
+
+  const virtualMcp = await ctx.storage.virtualMcps
+    .findById(input.agent.id, input.organizationId)
+    .catch(() => null);
+  if (!virtualMcp) return null;
+
+  const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
+  const githubRepo =
+    (
+      metadata as {
+        githubRepo?: {
+          owner: string;
+          name: string;
+          connectionId?: string;
+        } | null;
+      }
+    ).githubRepo ?? null;
+
+  // Resolve the clone URL cluster-side so the daemon has it without vault access.
+  let repo: WorkItemSandbox["repo"];
+  if (githubRepo) {
+    try {
+      const { cloneUrl, gitUserName, gitUserEmail } = githubRepo.connectionId
+        ? await buildCloneInfo(
+            githubRepo.connectionId,
+            githubRepo.owner,
+            githubRepo.name,
+            ctx.db,
+            ctx.vault,
+          )
+        : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
+      repo = {
+        cloneUrl,
+        branch: input.branch ?? undefined,
+        userName: gitUserName,
+        userEmail: gitUserEmail,
+      };
+    } catch (err) {
+      // Log but don't fail the dispatch — the daemon may have a running sandbox.
+      console.warn(
+        `[pullDispatch] failed to resolve clone info for agent=${input.agent.id}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // Resolve workload from metadata.runtime (same logic as provisionSandbox).
+  const { runtime, packageManager, packageManagerPath } =
+    resolveRuntimeConfig(metadata);
+  let workload: WorkItemSandbox["workload"];
+  if (
+    runtime &&
+    packageManager &&
+    (runtime === "node" || runtime === "bun" || runtime === "deno") &&
+    (packageManager === "npm" ||
+      packageManager === "pnpm" ||
+      packageManager === "yarn" ||
+      packageManager === "bun" ||
+      packageManager === "deno")
+  ) {
+    workload = {
+      runtime,
+      packageManager,
+      ...(packageManagerPath ? { packageManagerPath } : {}),
+    };
+  }
+
+  // Derive the message-offload SSRF allowlist from the cluster's own S3 config.
+  let offloadAllowedHosts: string[] | undefined;
+  let offloadAllowSameHostDev: boolean | undefined;
+  try {
+    if (ctx.objectStorage) {
+      const offload = await deriveOffloadAllowlist(ctx.objectStorage, {
+        isProduction: getSettings().nodeEnv === "production",
+      });
+      offloadAllowedHosts = offload.hosts;
+      offloadAllowSameHostDev = offload.allowSameHostDev;
+    }
+  } catch (err) {
+    console.warn(
+      `[pullDispatch] failed to derive offload allowlist for agent=${input.agent.id}:`,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  return {
+    handle: sandboxHandle,
+    ...(repo ? { repo } : {}),
+    ...(workload ? { workload } : {}),
+    ...(offloadAllowedHosts !== undefined ? { offloadAllowedHosts } : {}),
+    ...(offloadAllowSameHostDev !== undefined
+      ? { offloadAllowSameHostDev }
+      : {}),
+  };
+}
+
+/**
  * Pull-transport variant of `dispatchRunAndWait` (Phase B, spec §3.4).
  *
  * Claims the run and mints the fence (via prepareRun), then returns the
@@ -1468,6 +1591,12 @@ async function prepareRun(
  * `signal`/`processLocal` members are intentionally absent (they only exist
  * for the in-cluster dispatch path). This closes the prior work-item gap;
  * the item is consumed by the Phase D daemon pull loop.
+ *
+ * Also resolves the sandbox provisioning config (handle, repo clone URL,
+ * workload runtime) for CLI harnesses targeting user-desktop, so the daemon
+ * can spawn the sandbox cold without a prior WS-path ensure. Carries
+ * `orgSlug` so the daemon ingest path can construct the URL without a DB
+ * lookup.
  */
 export async function pullDispatch(
   input: DispatchRunInput,
@@ -1477,6 +1606,8 @@ export async function pullDispatch(
   taskId: string;
   runFenceToken: string;
   harnessInput: WireHarnessInput;
+  sandboxConfig: WorkItemSandbox | null;
+  orgSlug: string | null;
 }> {
   return traced(
     "decopilot.pullDispatch",
@@ -1487,7 +1618,50 @@ export async function pullDispatch(
         deps,
         _rootSpan,
       );
-      return { taskId, runFenceToken, harnessInput: wireHarnessInput };
+
+      // Resolve the sandbox handle (same path as the WS dispatch branch).
+      // This also provisions the sandbox on the daemon via NATS-backed ensure,
+      // so the daemon's cache is warm by the time it dequeues the work item.
+      let sandboxConfig: WorkItemSandbox | null = null;
+      const harnessId: HarnessId =
+        input.harnessId ?? resolveHarnessId(undefined);
+      if (
+        harnessId !== "decopilot" &&
+        input.target?.runsIn === "user-desktop"
+      ) {
+        try {
+          const { sandboxHandle } = await resolveRemoteCliSandboxHandle(
+            {
+              agent: input.agent,
+              branch: input.branch,
+            },
+            ctx,
+          );
+          sandboxConfig = await resolvePullSandboxConfig(
+            input,
+            ctx,
+            sandboxHandle,
+          );
+        } catch (err) {
+          // Log but don't fail pullDispatch — the daemon falls back to
+          // ensureSandbox({ handle }) for a running sandbox, and cold spawn
+          // will fail loudly on the daemon side if the config is missing.
+          console.warn(
+            `[pullDispatch] failed to resolve sandbox config agent=${input.agent.id}:`,
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      }
+
+      const orgSlug = ctx.organization?.slug ?? null;
+
+      return {
+        taskId,
+        runFenceToken,
+        harnessInput: wireHarnessInput,
+        sandboxConfig,
+        orgSlug,
+      };
     },
     dispatchRunSpanAttrs(input),
   );

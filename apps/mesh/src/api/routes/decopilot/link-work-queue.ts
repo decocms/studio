@@ -40,6 +40,56 @@ export function buildConsumerName(userSub: string): string {
   return `link-work-${userSub.replace(/\./g, "-")}`;
 }
 
+/**
+ * Repo reference for spawning a sandbox cold. Mirrors `RepoRef` from
+ * `user-desktop-provider.ts` (the daemon's `EnsureSandboxInput.repo`).
+ * The `cloneUrl` is resolved cluster-side (baking in the OAuth token) so
+ * the daemon can clone without vault access.
+ */
+const workItemRepoSchema = z.object({
+  cloneUrl: z.string(),
+  branch: z.string().optional(),
+  userName: z.string().optional(),
+  userEmail: z.string().optional(),
+});
+
+/**
+ * Workload config forwarded to the daemon's `EnsureSandboxInput.workload`.
+ * Mirrors `Workload` from `user-desktop-provider.ts`.
+ */
+const workItemWorkloadSchema = z.object({
+  runtime: z.enum(["node", "bun", "deno"]),
+  packageManager: z.enum(["npm", "pnpm", "yarn", "bun", "deno"]),
+  devPort: z.number().optional(),
+  packageManagerPath: z.string().optional(),
+});
+
+/**
+ * Sandbox provisioning config carried on the work item so the pull-transport
+ * daemon can spawn a sandbox cold without a prior WS-path ensure. Mirrors
+ * `EnsureSandboxInput` from `user-desktop-provider.ts`, minus `handle` which
+ * is derived by the daemon via `deriveHandle(item)`.
+ *
+ * Optional — absent for non-CLI harnesses or when the sandbox config could
+ * not be resolved at dispatch time (back-compat: daemons that already have
+ * a running sandbox for the handle still succeed via the cache-hit path).
+ */
+const workItemSandboxSchema = z.object({
+  /** The stable sandbox handle — `computeHandle(sandboxId, branch)`. */
+  handle: z.string(),
+  repo: workItemRepoSchema.optional(),
+  workload: workItemWorkloadSchema.optional(),
+  /**
+   * Message-offload SSRF allowlist. Derived cluster-side from the object-
+   * storage config (never a request frame). Empty = daemon fails closed.
+   */
+  offloadAllowedHosts: z.array(z.string()).optional(),
+  /** Allow http:// loopback offload refs (dev MinIO). */
+  offloadAllowSameHostDev: z.boolean().optional(),
+});
+
+export type WorkItemSandbox = z.infer<typeof workItemSandboxSchema>;
+
 export const workItemSchema = z.object({
   runId: z.string(),
   threadId: z.string(),
@@ -51,6 +101,22 @@ export const workItemSchema = z.object({
    * daemon against harnessStreamInputSchema on receipt.
    */
   harnessInput: z.record(z.string(), z.unknown()),
+  /**
+   * Sandbox provisioning config. Present for CLI harnesses (claude-code,
+   * codex) dispatched to a user-desktop target so the daemon can spawn the
+   * sandbox cold without a prior WS-path ensure.
+   *
+   * Optional for back-compat: absent on non-CLI harnesses or if resolution
+   * failed. Daemons MUST fall back to `ensureSandbox({ handle })` when this
+   * field is absent (existing cache-hit path).
+   */
+  sandbox: workItemSandboxSchema.optional(),
+  /**
+   * Organization slug for the ingest URL path segment. Carried here so
+   * the daemon doesn't need to resolve it from `orgId` (UUID) without DB
+   * access. When absent, the daemon falls back to `DECO_ORG_SLUG` env var.
+   */
+  orgSlug: z.string().optional(),
 });
 export type WorkItem = z.infer<typeof workItemSchema>;
 

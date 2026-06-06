@@ -76,18 +76,12 @@ export interface ClusterConnectionPullInput {
    * Desktop sandbox provider — used to ensure the sandbox is running before
    * dispatching a work item.
    *
-   * ⚠️ SANDBOX CONFIG NOTE: `WorkItem.harnessInput` carries `agent.id` and
-   * `branch` but NOT the full sandbox config (repo clone URL, workload runtime,
-   * etc.). The WS path resolves this cluster-side via
-   * `resolveRemoteCliSandboxHandle`; the pull path currently calls
-   * `ensureSandbox` with only `handle` (derived from agent/branch) and no
-   * `repo`/`workload`. This means `ensureSandbox` will reuse an existing
-   * sandbox if one is already running, but cannot spawn a fresh sandbox from
-   * scratch without the repo config.
-   *
-   * TODO(Phase D / Phase B follow-up): include repo + workload in the work
-   * item payload so the pull path can spawn sandboxes end-to-end without a
-   * prior WS-path ensure. Track in the Phase B work-item schema extension.
+   * When `WorkItem.sandbox` is present (Phase D fix), `ensureSandbox` is
+   * called with the full provisioning config (handle, repo clone URL, workload
+   * runtime, offload allowlist) so the daemon can spawn cold. When absent
+   * (back-compat: work items from before the Phase D fix, or non-CLI harnesses),
+   * falls back to `ensureSandbox({ handle })` which reuses a running sandbox
+   * but cannot spawn one cold.
    */
   provider: DesktopSandboxProvider;
   /**
@@ -103,10 +97,18 @@ export interface ClusterConnectionPullInput {
 
 /**
  * Derive the sandbox handle from the work item.
+ *
+ * Priority:
+ *   1. `item.sandbox.handle` — the authoritative handle resolved cluster-side
+ *      by `resolveRemoteCliSandboxHandle` (Phase D fix). Always prefer this.
+ *   2. Fallback derivation from `harnessInput.agent.id` + `harnessInput.branch`
+ *      (legacy behavior for work items published before the `sandbox` field
+ *      was added, or when sandbox config resolution failed).
+ *
  * Mirrors the cluster's `computeHandle` pattern: `agent-<agentId>[-<branch>]`.
- * Falls back gracefully when agent/branch fields are absent.
  */
 function deriveHandle(item: WorkItem): string {
+  if (item.sandbox?.handle) return item.sandbox.handle;
   const input = item.harnessInput as Record<string, unknown>;
   const agent = input.agent as Record<string, unknown> | undefined;
   const agentId =
@@ -169,16 +171,31 @@ export async function connectToClusterPull(
       );
 
       // (a) Ensure the sandbox is running.
-      // ⚠️ SANDBOX CONFIG NOTE: we can only pass `handle` here — repo/workload
-      // are not in the work item yet (see module header TODO). If a sandbox is
-      // already running for this handle, ensureSandbox returns immediately.
-      // If no sandbox exists, ensureSandbox will attempt to spawn without repo
-      // config, which may fail for fresh sandboxes. This is a known limitation
-      // flagged as a Phase B/D follow-up.
+      // Use the full sandbox config from the work item when available so the
+      // daemon can spawn cold (repo clone + workload runtime configured).
+      // Falls back to `{ handle }` only for back-compat with work items
+      // published before the `sandbox` field was added.
+      const ensureInput = item.sandbox
+        ? {
+            handle,
+            ...(item.sandbox.repo ? { repo: item.sandbox.repo } : {}),
+            ...(item.sandbox.workload
+              ? { workload: item.sandbox.workload }
+              : {}),
+            ...(item.sandbox.offloadAllowedHosts !== undefined
+              ? { offloadAllowedHosts: item.sandbox.offloadAllowedHosts }
+              : {}),
+            ...(item.sandbox.offloadAllowSameHostDev !== undefined
+              ? {
+                  offloadAllowSameHostDev: item.sandbox.offloadAllowSameHostDev,
+                }
+              : {}),
+          }
+        : { handle };
       let sandboxApiUrl: string;
       let sandboxDaemonToken: string;
       try {
-        const sandbox = await input.provider.ensureSandbox({ handle });
+        const sandbox = await input.provider.ensureSandbox(ensureInput);
         sandboxApiUrl = sandbox.sandboxApiUrl;
         // Get the daemon token from the provider (ensureSandbox return type
         // does not include daemonToken — we retrieve it separately).
@@ -203,13 +220,18 @@ export async function connectToClusterPull(
       // acquireDispatch pins the sandbox for the full duration of the relay so
       // the LRU eviction logic skips it (activeDispatchCount > 0). Released in
       // `finally` to guarantee the counter is always decremented.
+      //
+      // Prefer `item.orgSlug` (resolved cluster-side at pullDispatch time) over
+      // the daemon's configured `input.orgSlug` — the work item's slug is
+      // authoritative when present, avoiding reliance on DECO_ORG_SLUG env.
+      const effectiveOrgSlug = item.orgSlug ?? input.orgSlug;
       const releaseDispatch = input.provider.acquireDispatch(handle);
       try {
         await handleLocalDispatch(item, {
           sandboxDispatchUrl: sandboxApiUrl,
           sandboxDaemonToken,
           clusterBaseUrl: input.clusterBaseUrl,
-          orgSlug: input.orgSlug,
+          orgSlug: effectiveOrgSlug,
           getClusterToken: input.getAccessToken,
           fetchImpl: input.fetchImpl,
           signal: ac.signal,
