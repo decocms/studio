@@ -57,6 +57,22 @@ export const harnessStreamInputSchema = z
       url: z.string().url(),
       headers: z.record(z.string(), z.string()),
       expiresAt: z.number().int().positive(),
+      /**
+       * Injected main chat-model secret for desktop decopilot activation.
+       * Only present when target.runsIn === "user-desktop" AND harnessId === "decopilot".
+       *
+       * ⚠️ SECURITY: carries an org provider API key in plaintext over HTTPS.
+       * Scoped to the single main chat-completion key only. Never log this field.
+       * Hardening follow-up: cluster model-proxy (spec §3.9).
+       */
+      modelSecret: z
+        .object({
+          providerId: z.string(),
+          apiKey: z.string(),
+          baseUrl: z.string().optional(),
+          extraHeaders: z.record(z.string(), z.string()).optional(),
+        })
+        .optional(),
     }),
     mode: z.string(),
     temperature: z.number(),

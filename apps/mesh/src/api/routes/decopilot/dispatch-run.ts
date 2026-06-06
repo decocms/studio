@@ -938,11 +938,12 @@ async function prepareRun(
 
     ensureModelCompatibility(input.models, materializedMessages);
 
-    // Build the MCP endpoint for CLI harnesses. Decopilot doesn't open an
-    // HTTP MCP connection (its passthrough client works in-process), so we
-    // skip the API-key mint for that path.
-    const mcp =
-      harnessId === "decopilot"
+    // Build the MCP endpoint for CLI harnesses. In-cluster decopilot uses an
+    // in-process passthrough client (no HTTP MCP connection needed), so we
+    // use a sentinel for that path. Desktop decopilot requires a real endpoint
+    // so the daemon can reach cluster-side MCP tools.
+    const mcpBase =
+      harnessId === "decopilot" && target.runsIn !== "user-desktop"
         ? {
             url: "",
             headers: {} as Record<string, string>,
@@ -957,9 +958,57 @@ async function prepareRun(
             organization,
             harnessId === "claude-code"
               ? "claude-code-session"
-              : "codex-session",
+              : harnessId === "decopilot"
+                ? "decopilot-session"
+                : "codex-session",
             target.runsIn,
           );
+
+    // ⚠️ SECURITY: Inject the main chat-model API key into the wire input for
+    // user-desktop decopilot. The key transits to the desktop daemon over HTTPS
+    // so it can activate the MeshProvider locally without vault access.
+    // Scoped to the single main chat-completion credential only — sub-provider
+    // keys (image, deep-research) are never included; those built-ins stay
+    // cluster-side. Hardening follow-up: cluster model-proxy (spec §3.9).
+    //
+    // DORMANT: decopilot is not yet routed to user-desktop (it is absent from
+    // the daemon registry and resolveDispatchTarget never produces
+    // runsIn === "user-desktop" for decopilot). This condition is never true
+    // today — it is wired now so the wire contract exists before the daemon
+    // factory is registered in a later task.
+    let modelSecret: HarnessStreamInput["mcp"]["modelSecret"];
+    if (target.runsIn === "user-desktop" && harnessId === "decopilot") {
+      // Read the raw credential from storage (vault-backed) — the same path
+      // AIProviderFactory.activate() uses internally. Never log this variable.
+      const resolved = await ctx.storage.aiProviderKeys
+        .resolve(chatCredId, input.organizationId)
+        .catch(() => null);
+      if (resolved) {
+        const { keyInfo, apiKey } = resolved;
+        // openai-compatible stores a JSON blob { baseUrl, apiKey }; unpack it.
+        if (keyInfo.providerId === "openai-compatible") {
+          try {
+            const parsed = JSON.parse(apiKey) as {
+              baseUrl?: string;
+              apiKey?: string;
+            };
+            modelSecret = {
+              providerId: keyInfo.providerId,
+              apiKey: parsed.apiKey ?? "",
+              ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}),
+            };
+          } catch {
+            modelSecret = { providerId: keyInfo.providerId, apiKey };
+          }
+        } else {
+          modelSecret = { providerId: keyInfo.providerId, apiKey };
+        }
+      }
+    }
+
+    const mcp: HarnessStreamInput["mcp"] = modelSecret
+      ? { ...mcpBase, modelSecret }
+      : mcpBase;
 
     const wireHarnessInput: WireHarnessInput = {
       threadId: mem.thread.id,
