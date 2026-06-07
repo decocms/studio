@@ -1,7 +1,7 @@
 /**
  * Control-poll loop for the pull-transport control channel (Phase C).
  *
- * Continuously long-polls GET /api/:org/links/control. On a 200 response,
+ * Continuously long-polls GET /api/links/control. On a 200 response,
  * decodes the body as a ControlFrame and dispatches:
  *   - `cancel`     → calls `onCancel(frame.runId)` to abort the in-flight RUN
  *                    (work-poll dispatch path → run-abort-registry).
@@ -26,8 +26,6 @@ import { decodeControlFrame } from "../api/routes/decopilot/control-frames";
 export interface ControlPollerDeps {
   /** Fully-qualified base URL, e.g. "https://studio.deco.cx". */
   baseUrl: string;
-  /** Org slug for the org-scoped route /api/:org/links/control. */
-  orgSlug: string;
   /**
    * Bearer token resolver. Called before each request so a refreshed token
    * reaches every poll without pinning a stale credential (mirrors
@@ -65,7 +63,7 @@ const MAX_DELAY_MS = 30_000;
  *
  * Structural twin of `runWorkPollLoop` (work-poller.ts):
  *   1. Resolves a fresh bearer token.
- *   2. GETs /api/:org/links/control?timeout=<N>.
+ *   2. GETs /api/links/control?timeout=<N>.
  *   3. On 200: decodes ControlFrame; dispatches cancel/keep_alive.
  *      On 204: server held the long-poll window; re-polls immediately.
  *      On error / bad-status: backs off with exponential-backoff-with-jitter.
@@ -74,11 +72,10 @@ const MAX_DELAY_MS = 30_000;
 export async function runControlPollLoop(
   deps: ControlPollerDeps,
 ): Promise<void> {
-  const { baseUrl, orgSlug, getAccessToken, signal, onCancel, onCancelReq } =
-    deps;
+  const { baseUrl, getAccessToken, signal, onCancel, onCancelReq } = deps;
   const fetcher = deps.fetchImpl ?? fetch;
   const pollTimeout = deps.pollTimeoutSecs ?? 29;
-  const url = `${baseUrl}/api/${orgSlug}/links/control?timeout=${pollTimeout}`;
+  const url = `${baseUrl}/api/links/control?timeout=${pollTimeout}`;
   let errorStreak = 0;
 
   while (!signal.aborted) {
