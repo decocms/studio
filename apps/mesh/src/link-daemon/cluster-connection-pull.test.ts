@@ -238,6 +238,7 @@ describe("sandbox config propagation", () => {
       orgId: "org-1",
       userId: "usr-1",
       runFenceToken: "tok-1",
+      orgSlug: "test-org",
       harnessInput: { agent: { id: "vm-abc" }, branch: "deco/my-branch" },
       sandbox: {
         handle: "agent-vm-abc-deco/my-branch",
@@ -277,6 +278,7 @@ describe("sandbox config propagation", () => {
       orgId: "org-2",
       userId: "usr-2",
       runFenceToken: "tok-2",
+      orgSlug: "test-org",
       harnessInput: { agent: { id: "vm-def" }, branch: "deco/other" },
     };
 

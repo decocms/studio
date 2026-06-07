@@ -1620,7 +1620,7 @@ export async function pullDispatch(
   harnessInput: WireHarnessInput;
   messagesRef: MessagesRef | null;
   sandboxConfig: WorkItemSandbox | null;
-  orgSlug: string | null;
+  orgSlug: string;
 }> {
   return traced(
     "decopilot.pullDispatch",
@@ -1723,7 +1723,27 @@ export async function pullDispatch(
         }
       }
 
-      const orgSlug = ctx.organization?.slug ?? null;
+      // The pull daemon is user-scoped and no longer carries a startup org, so
+      // the work item MUST carry the org slug for the ingest URL. Prefer the
+      // request-resolved org; fall back to a slug lookup by org id so it can
+      // never be missing (the daemon has no DB access to resolve it).
+      // ctx.organization is normally populated by the org-scoped route middleware
+      // (/api/:org/...); the DB lookup is only a safety net for internal callers
+      // that bypass that middleware (e.g. background automation).
+      let orgSlug = ctx.organization?.slug ?? null;
+      if (!orgSlug) {
+        const orgRow = await ctx.db
+          .selectFrom("organization")
+          .select("slug")
+          .where("id", "=", input.organizationId)
+          .executeTakeFirst();
+        orgSlug = orgRow?.slug ?? null;
+      }
+      if (!orgSlug) {
+        throw new Error(
+          `pullDispatch: could not resolve org slug for organization ${input.organizationId}`,
+        );
+      }
 
       return {
         taskId,

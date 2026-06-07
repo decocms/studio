@@ -28,7 +28,7 @@ describe("buildConsumerName", () => {
 });
 
 describe("workItemSchema", () => {
-  it("accepts a valid work item (no sandbox / orgSlug)", () => {
+  it("accepts a valid work item (no sandbox)", () => {
     const item = {
       runId: "run_01",
       threadId: "thrd_01",
@@ -36,6 +36,7 @@ describe("workItemSchema", () => {
       userId: "usr_01",
       runFenceToken: "tok-abc",
       harnessInput: { threadId: "thrd_01" },
+      orgSlug: "test-org",
     };
     const parsed = workItemSchema.safeParse(item);
     expect(parsed.success).toBe(true);
@@ -84,6 +85,7 @@ describe("workItemSchema", () => {
       runFenceToken: "tok-ghi",
       harnessInput: { threadId: "thrd_03" },
       sandbox: { handle: "agent-vm-xyz" },
+      orgSlug: "test-org",
     };
     const parsed = workItemSchema.safeParse(item);
     expect(parsed.success).toBe(true);
@@ -123,6 +125,7 @@ describe("workItemSchema", () => {
       userId: "usr_05",
       runFenceToken: "tok-mno",
       harnessInput: { threadId: "thrd_05", messages: [] },
+      orgSlug: "test-org",
       messagesRef: {
         url: "https://s3.example.com/link-dispatch/abc123?X-Amz-Signature=sig",
         bytes: 123456,
@@ -146,10 +149,23 @@ describe("workItemSchema", () => {
       userId: "usr_06",
       runFenceToken: "tok-pqr",
       harnessInput: { threadId: "thrd_06" },
+      orgSlug: "test-org",
     };
     const parsed = workItemSchema.safeParse(item);
     expect(parsed.success).toBe(true);
     if (!parsed.success) return;
     expect(parsed.data.messagesRef).toBeUndefined();
+  });
+
+  it("rejects a work item missing orgSlug", () => {
+    const item = {
+      runId: "run_07",
+      threadId: "thrd_07",
+      orgId: "org_07",
+      userId: "usr_07",
+      runFenceToken: "tok-stu",
+      harnessInput: { threadId: "thrd_07" },
+    };
+    expect(workItemSchema.safeParse(item).success).toBe(false);
   });
 });

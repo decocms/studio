@@ -191,7 +191,7 @@ export interface ThreadGateRuntime {
     harnessInput: WireHarnessInput;
     messagesRef: MessagesRef | null;
     sandboxConfig: WorkItemSandbox | null;
-    orgSlug: string | null;
+    orgSlug: string;
   }>;
   workQueue?: LinkWorkQueue;
   /**
@@ -353,7 +353,7 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       runFenceToken,
       harnessInput: harnessInput as Record<string, unknown>,
       ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
-      ...(orgSlug ? { orgSlug } : {}),
+      orgSlug,
       ...(messagesRef ? { messagesRef } : {}),
     };
     await rt.workQueue!.publish(request.userId, workItem);
