@@ -34,6 +34,8 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     run_config: null,
     run_started_at: null,
     metadata: {},
+    message_storage_version: 1,
+    link_transport: null,
     ...overrides,
   };
 }

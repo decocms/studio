@@ -91,6 +91,34 @@ export const COLLECTION_THREAD_MESSAGES_LIST = defineTool({
     // when no orderBy is supplied.
     const sort: "asc" | "desc" = input.orderBy?.[0]?.direction ?? "asc";
 
+    // `get` is org-scoped — it authorizes the thread for the bound org AND
+    // tells us the storage version (R23: no access widening). v2 threads fold
+    // their append-only `thread_message_parts`; v1 threads read the frozen
+    // `thread_messages` table, unchanged.
+    const thread = await ctx.storage.threads.get(taskId);
+    if (!thread) {
+      return { items: [], totalCount: 0, hasMore: false };
+    }
+
+    if (thread.message_storage_version === 2) {
+      const { messages, total } = await ctx.storage.threads
+        .messageParts()
+        .loadWindow(taskId, { limit, offset });
+      return {
+        items: messages.map((m) => ({
+          id: m.id,
+          thread_id: taskId,
+          role: m.role,
+          parts: m.parts as Record<string, unknown>[],
+          metadata: null,
+          created_at: m.created_at,
+          updated_at: m.created_at,
+        })),
+        totalCount: total,
+        hasMore: offset + limit < total,
+      };
+    }
+
     const { messages, total } = await ctx.storage.threads.listMessages(taskId, {
       limit,
       offset,

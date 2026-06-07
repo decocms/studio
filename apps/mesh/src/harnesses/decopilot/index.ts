@@ -107,14 +107,10 @@ export const decopilotHarnessFactory: HarnessFactory = {
     // caller mistakenly invoking this factory on the desktop).
     //
     // `storage` and `db` are required fields on StudioContext but absent
-    // from HarnessContext, so their presence reliably distinguishes the
-    // two at runtime.
-    if (!("storage" in harnessCtx) || !("db" in harnessCtx)) {
-      throw new Error(
-        "decopilot harness requires StudioContext (cluster-side only); " +
-          "got narrow HarnessContext",
-      );
-    }
+    // from HarnessContext. The desktop daemon runs decopilot via the
+    // import-isolated `decopilotDesktopHarnessFactory`
+    // (`harnesses/decopilot-desktop/`), registered directly in the daemon —
+    // it never calls THIS cluster factory, so there's no desktop branch here.
     const ctx = harnessCtx as StudioContext;
     return {
       id: "decopilot",

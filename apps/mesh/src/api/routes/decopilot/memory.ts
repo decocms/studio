@@ -54,15 +54,19 @@ export class Memory {
 
   async loadHistory(windowSize?: number): Promise<ThreadMessage[]> {
     const limit = windowSize ?? this.defaultWindowSize;
-    const { messages, total } = await this.storage.listMessages(
-      this.thread.id,
-      {
-        limit,
-        sort: "desc",
-      },
-    );
-    // Reverse so chronological (oldest first)
-    const chronological = [...messages].reverse();
+
+    // Read-path fork: v2 threads fold the stream-of-record `thread_message_parts`
+    // (one place, one branch); v1 threads keep reading whole-message rows from
+    // `thread_messages`. Both produce a chronological `ThreadMessage[]` plus an
+    // `isWindowed` flag, then share the identical windowing/synthetic-prefix
+    // formatting below. The org predicate (R23) is preserved either way: the
+    // thread was already fetched org-scoped in `createMemory`, so `this.thread`
+    // — and the id we pass to the part storage — belongs to the bound org.
+    const { chronological, isWindowed } =
+      this.thread.message_storage_version === 2
+        ? await this.loadWindowedFromParts(limit)
+        : await this.loadWindowedFromMessages(limit);
+
     // Stored system messages (welcome / tool injections) sit at the head of
     // some threads. Anthropic's requirement is that the first *non-system*
     // message is a user message — so the guard must look past leading
@@ -78,7 +82,6 @@ export class Memory {
     // older user turns fell outside the window — prepend a synthetic user
     // note so the API accepts the conversation and the model has context for
     // why the assistant spoke first.
-    const isWindowed = total > messages.length;
     const text = isWindowed
       ? "[Context: earlier turns in this conversation were truncated. The messages below continue the thread — pick up from there.]"
       : "[Context: this thread opens with your message — you spoke first to greet the user, and the user has not spoken before it. Their reply follows.]";
@@ -92,6 +95,56 @@ export class Memory {
       updated_at: first.updated_at,
     };
     return [synthetic, ...chronological];
+  }
+
+  /**
+   * v1 read path — newest `limit` whole-message rows from `thread_messages`,
+   * reversed to chronological order. `isWindowed` is true when the thread has
+   * more messages than the window returned (older turns were truncated).
+   */
+  private async loadWindowedFromMessages(
+    limit: number,
+  ): Promise<{ chronological: ThreadMessage[]; isWindowed: boolean }> {
+    const { messages, total } = await this.storage.listMessages(
+      this.thread.id,
+      {
+        limit,
+        sort: "desc",
+      },
+    );
+    return {
+      chronological: [...messages].reverse(),
+      isWindowed: total > messages.length,
+    };
+  }
+
+  /**
+   * v2 read path — fold the newest `limit` completed messages out of the
+   * stream-of-record `thread_message_parts`. `loadWindow` already pages over
+   * the per-message `finish` anchors (newest first) and folds chronologically,
+   * so we adapt each `FoldedMessage` to the `ThreadMessage` shape the rest of
+   * the pipeline expects. `isWindowed` mirrors the v1 semantics: more completed
+   * messages exist than the window returned.
+   */
+  private async loadWindowedFromParts(
+    limit: number,
+  ): Promise<{ chronological: ThreadMessage[]; isWindowed: boolean }> {
+    const { messages, total } = await this.storage
+      .messageParts()
+      .loadWindow(this.thread.id, { limit });
+    const chronological: ThreadMessage[] = messages.map((m) => ({
+      id: m.id,
+      thread_id: this.thread.id,
+      role: m.role,
+      parts: m.parts as ThreadMessage["parts"],
+      metadata: undefined,
+      created_at: m.created_at,
+      updated_at: m.created_at,
+    }));
+    return {
+      chronological,
+      isWindowed: total > messages.length,
+    };
   }
 
   async save(messages: ThreadMessage[]): Promise<void> {

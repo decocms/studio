@@ -39,6 +39,7 @@ import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
 import * as LinkTools from "./links";
 import * as SearchTools from "./search";
+import * as DecopilotMcpTools from "./decopilot-mcp";
 import { ToolName } from "./registry-metadata";
 // Core tools - always available
 const CORE_TOOLS = [
@@ -187,6 +188,15 @@ const CORE_TOOLS = [
 
   // Search tools
   SearchTools.GLOBAL_SEARCH,
+
+  // Decopilot cluster MCP tools — exposed on the management MCP server so the
+  // desktop daemon can call them via the injected mcp.url token. In-cluster
+  // decopilot runs continue to use the built-in versions (no MCP round-trip).
+  DecopilotMcpTools.UPDATE_INTERESTS_MCP,
+  DecopilotMcpTools.SUBTASK_MCP,
+  DecopilotMcpTools.TAKE_SCREENSHOT_MCP,
+  DecopilotMcpTools.GENERATE_IMAGE_MCP,
+  DecopilotMcpTools.WEB_SEARCH_MCP,
 ] as const satisfies { name: ToolName }[];
 
 // Plugin tools - collected at startup, gated by org settings at runtime

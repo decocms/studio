@@ -94,6 +94,28 @@ export interface ThreadStoragePort {
   orphanRunsByPod(podId: string): Promise<string[]>;
 
   /**
+   * Stamp `last_progress_at = now()` on a thread. Cheap single-column UPDATE
+   * used by the progress-liveness heartbeat (throttled by the caller). No-op
+   * if the row doesn't exist.
+   */
+  bumpProgress(taskId: string, organizationId: string): Promise<void>;
+
+  /**
+   * Read the progress-liveness columns for a thread. `lastProgressAt` is the
+   * epoch-ms of the most recent progress signal (null when the run just
+   * started and hasn't emitted a chunk yet); `runStartedAt` is the epoch-ms
+   * the current run claimed the thread (null when not running). The reaper
+   * uses these to decide whether a run is stuck (`isRunStuck`).
+   */
+  getProgress(
+    taskId: string,
+    organizationId: string,
+  ): Promise<{
+    lastProgressAt: number | null;
+    runStartedAt: number | null;
+  } | null>;
+
+  /**
    * For each given virtual MCP id, return the timestamp and creator of the most recent thread.
    * Used by the dedicated last-used endpoint; not on the agent fetch hot path.
    */

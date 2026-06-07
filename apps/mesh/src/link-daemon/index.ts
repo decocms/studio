@@ -3,8 +3,9 @@
  *
  * - Receives an authenticated session from its caller (the CLI's `link`
  *   command obtains one via `ensureSession`).
- * - Opens a WebSocket to `<MESH_CLUSTER_URL>/api/links/connect` with the
- *   session bearer; sends the `hello` frame.
+ * - Runs the pull transport (`connectToClusterPull`): long-polls
+ *   `<MESH_CLUSTER_URL>/api/:org/links/work` for chat work and `/links/proxy`
+ *   for sandbox control/events/vm-tools, re-resolving the bearer per poll.
  * - Spawns the local ingress on `--port` so browsers can reach
  *   `<handle>.localhost:<port>` for sandbox previews.
  * - Dispatches incoming control-plane requests (sandbox lifecycle + the
@@ -17,10 +18,10 @@ import {
   waitForDaemonReady,
 } from "@decocms/sandbox/daemon-client";
 import { createDefaultDaemonSpawn } from "@decocms/sandbox/daemon-spawn";
-import { detectCapabilities } from "./capabilities";
 import { createControlHandler } from "./control-handler";
-import { connectToCluster } from "./cluster-connection";
+import { connectToClusterPull } from "./cluster-connection-pull";
 import { startLocalIngress } from "./local-ingress";
+import { detectCapabilities } from "./capabilities";
 import { loadOrCreateMachineId } from "./machine-id";
 import { getValidSession } from "../cli/lib/get-valid-session";
 import type { Session } from "../cli/lib/session";
@@ -51,6 +52,15 @@ export interface StartLinkDaemonOptions {
    * `ensureSession()` before invoking the daemon.
    */
   session: Session;
+  /**
+   * Org slug for the pull work-poll loop (`/api/:org/links/work`).
+   * Required for the pull transport (the only transport); falls back to
+   * `process.env.DECO_ORG_SLUG` if not supplied here.
+   *
+   * NOTE: the daemon currently supports a single primary org for the pull loop.
+   * Multi-org polling is a Phase D follow-up.
+   */
+  orgSlug?: string;
   /** Optional TUI hooks. Omitted in --no-tui mode. */
   monitor?: LinkDaemonMonitor;
   /**
@@ -70,10 +80,6 @@ export interface LinkDaemonHandle {
 export async function startLinkDaemon(
   opts: StartLinkDaemonOptions,
 ): Promise<LinkDaemonHandle> {
-  const session = opts.session;
-
-  const machineId = await loadOrCreateMachineId(opts.dataDir);
-  const cliVersion = process.env.npm_package_version ?? "0.0.0";
   const hostname = osHostname() || undefined;
   opts.monitor?.onMachine?.(hostname ?? "this machine");
 
@@ -174,48 +180,68 @@ export async function startLinkDaemon(
   // and `acquireDispatch` to map handle → port and track in-flight calls.
   const controlHandler = createControlHandler({ provider });
 
-  const wsUrl = (() => {
-    const u = new URL("/api/links/connect", opts.clusterBaseUrl);
-    u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
-    return u.toString();
-  })();
+  // Shared token resolver used by both the WS and pull paths.
+  // Re-resolves (and refreshes) the bearer before each (re)connect / poll so
+  // a stale startup token doesn't spin forever on a 401. Mirrors the existing
+  // WS `getAccessToken` pattern.
+  const getAccessToken = async (): Promise<string> => {
+    const fresh = await getValidSession({
+      dataDir: opts.dataDir,
+      target: opts.clusterBaseUrl,
+    });
+    if (!fresh) {
+      throw Object.assign(
+        new Error(
+          `Session for ${opts.clusterBaseUrl} is no longer valid — run \`deco auth login --target ${opts.clusterBaseUrl}\` and restart \`deco link\`.`,
+        ),
+        { fatal: true },
+      );
+    }
+    return fresh.accessToken;
+  };
 
-  const cluster = await connectToCluster({
-    url: wsUrl,
-    accessToken: session.accessToken,
-    // Re-resolve (and refresh) the bearer before each (re)connect so a
-    // reconnect after the startup token expired presents a fresh token rather
-    // than the dead one — the cause of the WS "Expected 101 status code" loop.
-    // getValidSession refreshes via the refresh token and rewrites disk; a
-    // transient failure propagates (cluster-connection retries with backoff),
-    // and a null result (no session / refresh token rejected) is fatal so the
-    // daemon stops and asks the user to re-auth instead of spinning forever.
-    getAccessToken: async () => {
-      const fresh = await getValidSession({
-        dataDir: opts.dataDir,
-        target: opts.clusterBaseUrl,
-      });
-      if (!fresh) {
-        throw Object.assign(
-          new Error(
-            `Session for ${opts.clusterBaseUrl} is no longer valid — run \`deco auth login --target ${opts.clusterBaseUrl}\` and restart \`deco link\`.`,
-          ),
-          { fatal: true },
-        );
-      }
-      return fresh.accessToken;
-    },
-    hello: {
-      previewPort: ingress.port,
-      machineId,
-      hostname,
-      cliVersion,
-      capabilities: await detectCapabilities(),
-    },
+  // Phase C-bis S8: the reverse-WS transport was deleted; the pull transport is
+  // the only path. The daemon long-polls `/api/:org/links/work` (chat) and
+  // `/links/proxy` (sandbox control/events/vm-tools), sharing the same
+  // `controlHandler`, `provider`, and `getAccessToken` resolver.
+  //
+  // Resolve org slug: caller-supplied > env var > fatal.
+  const orgSlug = opts.orgSlug ?? process.env.DECO_ORG_SLUG;
+  if (!orgSlug) {
+    console.error(
+      "[link-daemon] pull transport requires an org slug. " +
+        "Pass `orgSlug` to startLinkDaemon or set DECO_ORG_SLUG.",
+    );
+    process.exit(1);
+  }
+  console.log(
+    `[link-daemon] transport=pull org=${orgSlug} cluster=${opts.clusterBaseUrl}`,
+  );
+  // Advertise the daemon's identity + capabilities on every poll (the
+  // x-link-* headers). The cluster mints the presence claim from these, and
+  // `resolveDispatchTarget` checks the capabilities — without them the claim is
+  // empty and dispatch fails with `user_desktop_link_capability_missing` even
+  // though presence shows "linked". (The WS `hello` frame carried these before
+  // it was deleted in S8; the pull path must supply them too.)
+  const machineId = await loadOrCreateMachineId(opts.dataDir);
+  const cliVersion = process.env.npm_package_version ?? "0.0.0";
+  const capabilities = await detectCapabilities();
+  const cluster = await connectToClusterPull({
+    clusterBaseUrl: opts.clusterBaseUrl,
+    orgSlug,
+    getAccessToken,
+    provider,
+    // The in-process control handler also serves the pull reverse-proxy loop's
+    // `/_sandbox/*` (vm-events SSE, control RPC, vm-tools) locally and streams
+    // the reply back.
     controlHandler,
+    capabilities,
+    machineId,
+    cliVersion,
+    previewPort: ingress.port,
     onConnected: () => {
       opts.monitor?.onCluster?.("linked");
-      console.log(`Linked to ${opts.clusterBaseUrl}`);
+      console.log(`Linked to ${opts.clusterBaseUrl} (pull transport)`);
     },
   });
 

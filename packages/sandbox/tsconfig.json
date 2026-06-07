@@ -3,7 +3,18 @@
   "compilerOptions": {
     "outDir": "./dist",
     "declaration": true,
-    "declarationMap": true
+    "declarationMap": true,
+    // The daemon imports a few harness leaves from apps/mesh by relative path.
+    // Those leaves are `@/`-free by design, but a transitively-reached
+    // type-only `@/...` specifier (e.g. shared SDK types) would otherwise fail
+    // `tsc` resolution here. Map `@/*` → apps/mesh/src/* so any such reference
+    // resolves. NOTE: this is a tsc-only safety net — the BUNDLE
+    // (`bun build daemon/entry.ts`) deliberately needs no alias because the
+    // decopilot-desktop tree imports every portable leaf by relative path.
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../apps/mesh/src/*"]
+    }
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]

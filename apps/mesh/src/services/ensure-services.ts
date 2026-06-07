@@ -1231,12 +1231,13 @@ export interface SuperviseLinkInputs extends EnsureLinkInputs {
  * Keep the link daemon alive for the lifetime of a dev session.
  *
  * `ensureLink` spawns the daemon once and returns; nothing notices if it later
- * dies. The daemon's *WebSocket* self-heals (cluster-connection.ts reconnects
- * forever), so the one unrecoverable failure is the process itself exiting —
- * after which its NATS link claim expires (60s TTL) and every user-desktop
- * dispatch returns `user_desktop_link_offline` while the dev UI still shows the
- * sandbox as ready. This loop closes that gap: respawn on unexpected exit with
- * capped exponential backoff, and surface real liveness via the callbacks.
+ * dies. The daemon's pull transport self-heals (cluster-connection-pull.ts
+ * long-polls with backoff), so the one unrecoverable failure is the process
+ * itself exiting — after which its NATS link claim expires via the 60 s TTL
+ * and every user-desktop dispatch returns `user_desktop_link_offline` while
+ * the dev UI still shows the sandbox as ready. This loop closes that gap:
+ * respawn on unexpected exit with capped exponential backoff, and surface real
+ * liveness via the callbacks.
  *
  * Resolves when `signal` aborts (orderly shutdown). The caller is responsible
  * for stopping the still-running daemon afterward (e.g. via `stopLink`).
@@ -1434,8 +1435,10 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
 }
 
 export async function stopServices(home: string): Promise<void> {
-  // Stop the link first — it talks to the cluster (DELETE /api/links/me) on
-  // shutdown, so give it a window before pg/nats go away.
+  // Stop the link first — signal the daemon process via stopLink so it exits
+  // cleanly; the 60 s NATS-KV claim TTL then expires naturally. There is no
+  // HTTP DELETE endpoint; teardown is purely process-signal + TTL expiry.
+  // Give it a window before pg/nats go away.
   await stopLink(home);
   await stopPostgres(home);
   await stopNats(home);

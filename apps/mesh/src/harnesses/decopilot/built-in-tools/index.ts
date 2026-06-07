@@ -280,7 +280,7 @@ async function buildAllTools(
       }),
     );
   }
-  // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code)
+  // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
   if (provider) {
     tools.subtask = createSubtaskTool(
       writer,
@@ -318,7 +318,7 @@ async function buildAllTools(
       taskId,
     });
   }
-  // take_screenshot and scrape_url require Browserless API token
+  // take_screenshot, scrape_url, inspect_page require Browserless API token.
   if (process.env.BROWSERLESS_TOKEN) {
     tools.take_screenshot = createTakeScreenshotTool(writer, {
       ctx,

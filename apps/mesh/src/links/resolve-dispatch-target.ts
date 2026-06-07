@@ -79,6 +79,14 @@ export async function resolveDispatchTarget(
     };
   }
 
+  // DUAL-HOMED INVARIANT (spec §3.8, L9):
+  // Cloud-sandbox decopilot → in-cluster ("cluster" runsIn): uses processLocal path,
+  //   full StudioContext, all built-ins assembled in-process.
+  // User-desktop decopilot → "user-desktop" runsIn: uses the import-isolated
+  //   decopilot-desktop harness (registered in the daemon), HarnessContext only,
+  //   mcp.modelSecret injected, cluster-coupled built-ins via mcp.url.
+  // Both produce identical thread_message_parts rows via the SoR PartEmitter.
+  // Phase D flips the cutover: per-user link_transport flag + pull ⊆ v2 gate.
   if (input.harnessId === "decopilot") {
     return {
       ok: true,

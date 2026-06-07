@@ -24,11 +24,62 @@ import { DBOS } from "@dbos-inc/dbos-sdk";
 import type {
   DispatchRunDeps,
   DispatchRunInput,
+  WireHarnessInput,
 } from "@/api/routes/decopilot/dispatch-run";
 import type { StudioContext } from "@/core/studio-context";
+import type { DispatchTarget } from "@/links/resolve-dispatch-target";
 import { posthog } from "@/posthog";
+import { sleep } from "@decocms/std";
+import type {
+  LinkWorkQueue,
+  MessagesRef,
+  WorkItem,
+  WorkItemSandbox,
+} from "@/api/routes/decopilot/link-work-queue";
 
 export const THREAD_GATE_QUEUE = "thread-gate";
+
+/** Thread statuses that indicate a run has reached a terminal state. */
+export const TERMINAL_STATUSES = new Set([
+  "completed",
+  "failed",
+  "requires_action",
+] as const);
+
+export interface PollUntilTerminalOptions {
+  intervalMs: number;
+  maxAttempts: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * Poll `fetchStatus` until it returns a terminal status or `maxAttempts`
+ * is exhausted. Uses `sleep` from `@decocms/std` — never hand-rolled.
+ */
+export async function pollUntilTerminal(
+  fetchStatus: () => Promise<string>,
+  opts: PollUntilTerminalOptions,
+): Promise<string> {
+  for (let attempt = 0; attempt < opts.maxAttempts; attempt++) {
+    if (opts.signal?.aborted) {
+      throw opts.signal.reason ?? new Error("gate aborted");
+    }
+    const status = await fetchStatus();
+    if (
+      TERMINAL_STATUSES.has(
+        status as "completed" | "failed" | "requires_action",
+      )
+    ) {
+      return status;
+    }
+    if (attempt < opts.maxAttempts - 1) {
+      await sleep(opts.intervalMs, { signal: opts.signal }).catch(() => {});
+    }
+  }
+  throw new Error(
+    `[threadGate] gate timed out polling for terminal status (${opts.maxAttempts} attempts)`,
+  );
+}
 
 /**
  * Per-thread concurrent run cap (partition cap on the gate queue).
@@ -36,6 +87,36 @@ export const THREAD_GATE_QUEUE = "thread-gate";
  * on the same thread.
  */
 export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
+
+/**
+ * Pure decision for the thread-gate's pull-vs-ws routing (Phase C-bis S6).
+ *
+ * Pull fires only when ALL of:
+ *   1. the runtime is pull-capable (NATS work queue + pullDispatchFn wired);
+ *   2. the dispatch target's `runsIn === 'user-desktop'` — i.e. POST-time
+ *      `resolveDispatchTarget` found a LIVE desktop link (the gate trusts the
+ *      pre-resolved target and never re-probes `linkClaimRegistry`, which would
+ *      drift on replay if the link went offline);
+ *   3. the thread is message_storage_version 2 — the only ingest path that can
+ *      consume a pull round-trip. A v1 user-desktop thread routed to pull would
+ *      have no v2 ingest → silent corruption; the conjunct prevents that.
+ *
+ * Cloud/cluster threads (`runsIn === 'cluster'`) and undefined targets (legacy
+ * paths) all yield `false` → in-cluster ws fallback. This is the fix for the
+ * reverted NATS-gated cutover (40562b383), which keyed only on pull-capability
+ * and routed EVERY chat to a pull work-queue nobody drains.
+ */
+export function decidePullDispatch(args: {
+  isPullCapable: boolean;
+  targetRunsIn: DispatchTarget["runsIn"] | undefined;
+  messageStorageVersion: number | null | undefined;
+}): boolean {
+  return (
+    args.isPullCapable &&
+    args.targetRunsIn === "user-desktop" &&
+    args.messageStorageVersion === 2
+  );
+}
 
 /**
  * Serializable subset of `DispatchRunInput`. The abort signal is the only
@@ -94,6 +175,35 @@ export interface ThreadGateRuntime {
    * installed.
    */
   runTimeoutMs?: number;
+  /**
+   * Pull-transport dependencies (Phase B). When present and the dispatch
+   * target's `runsIn === 'user-desktop'` AND the thread's
+   * message_storage_version === 2 (Phase C-bis S6 target-gate), the gate uses
+   * these instead of dispatchRunFn.
+   */
+  pullDispatchFn?: (
+    input: DispatchRunInput,
+    ctx: StudioContext,
+    deps: DispatchRunDeps,
+  ) => Promise<{
+    taskId: string;
+    runFenceToken: string;
+    harnessInput: WireHarnessInput;
+    messagesRef: MessagesRef | null;
+    sandboxConfig: WorkItemSandbox | null;
+    orgSlug: string | null;
+  }>;
+  workQueue?: LinkWorkQueue;
+  /**
+   * Poll interval for the gate's status-polling loop (ms). Defaults to
+   * 3 000 ms in production; tests pass 0.
+   */
+  gatePollIntervalMs?: number;
+  /**
+   * Maximum poll attempts before the gate fails the run.
+   * Defaults to 1 200 (= 1 h at 3 s intervals).
+   */
+  gatePollMaxAttempts?: number;
 }
 
 let runtime: ThreadGateRuntime | null = null;
@@ -126,11 +236,79 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     throw new Error("user membership lost mid-dispatch");
   }
 
-  // Abort timer is opt-in. Automations supply a 5-min cap so a runaway
-  // cron can't pin a thread slot forever; user messages leave it unset
-  // because tool-using agent loops (Claude Code, deep research,
-  // multi-step assistants) routinely outlast any fixed cap, and were not
-  // bounded by the legacy fire-and-forget HTTP path.
+  // Resolve whether this thread should use the pull transport.
+  //
+  // TARGET-GATED (Phase C-bis S6): pull fires only when the dispatch is bound
+  // for a LIVE user-desktop link. The target was resolved once at POST time
+  // (routes.ts `resolveDispatchTarget`) and forwarded on `request.target`; we
+  // key off it here instead of re-probing `linkClaimRegistry` — re-resolving at
+  // replay time would drift if the link went offline between enqueue and
+  // dispatch. Cloud/cluster threads (no desktop daemon) yield
+  // `runsIn === "cluster"` → in-cluster fallback; an undefined target (legacy
+  // paths) also falls back. This is the fix for the reverted NATS-gated cutover
+  // (40562b383), which routed EVERY chat to a pull work-queue nobody drains.
+  //
+  // The v2 conjunct stays as belt-and-suspenders: a v1 user-desktop thread
+  // routed to pull would have no v2 ingest path → silent corruption. We only
+  // need the DB fetch to read `message_storage_version`, so skip it entirely
+  // when pull isn't wired (no-NATS/test branch).
+  const isPullCapable = rt.pullDispatchFn != null && rt.workQueue != null;
+  const isUserDesktopTarget = request.target?.runsIn === "user-desktop";
+  const thread =
+    isPullCapable && isUserDesktopTarget
+      ? await meshCtx.storage.threads.get(request.taskId ?? ctx.threadId)
+      : null;
+  const isPull = decidePullDispatch({
+    isPullCapable,
+    targetRunsIn: request.target?.runsIn,
+    messageStorageVersion: thread?.message_storage_version,
+  });
+
+  // Observability: a user-desktop target on a non-v2 thread is a config gap —
+  // it would silently fall back to the in-cluster path (correct, but masks the
+  // v1 thread that should have been migrated). Log it so the mismatch surfaces.
+  if (isPullCapable && isUserDesktopTarget && !isPull) {
+    console.warn(
+      "[threadGate] user-desktop target on non-v2 thread — falling back to in-cluster dispatch",
+      {
+        threadId: request.taskId ?? ctx.threadId,
+        messageStorageVersion: thread?.message_storage_version ?? null,
+      },
+    );
+  }
+
+  if (!isPull) {
+    // ── Original ws path — unchanged ────────────────────────────────────
+    // Abort timer is opt-in. Automations supply a 5-min cap so a runaway
+    // cron can't pin a thread slot forever; user messages leave it unset
+    // because tool-using agent loops (Claude Code, deep research,
+    // multi-step assistants) routinely outlast any fixed cap, and were not
+    // bounded by the legacy fire-and-forget HTTP path.
+    const timeoutMs = ctx.timeoutMs ?? rt.runTimeoutMs;
+    const abortController = new AbortController();
+    const timeoutHandle =
+      timeoutMs != null
+        ? setTimeout(() => abortController.abort(), timeoutMs)
+        : null;
+
+    try {
+      // Dispatch errors propagate. `dispatchRunAndWait` guarantees the run
+      // is already force-finished to "failed" in the registry before
+      // throwing (see `prepareRun`), so application state stays consistent
+      // — DBOS just gets to see the failure too.
+      await rt.dispatchRunFn(
+        { ...request, abortSignal: abortController.signal },
+        meshCtx,
+        rt.deps,
+      );
+    } finally {
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+    }
+    return;
+  }
+
+  // ── Pull path (Phase B) ──────────────────────────────────────────────
+  // 1. Claim the run and mint the fence token.
   const timeoutMs = ctx.timeoutMs ?? rt.runTimeoutMs;
   const abortController = new AbortController();
   const timeoutHandle =
@@ -139,14 +317,66 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       : null;
 
   try {
-    // Dispatch errors propagate. `dispatchRunAndWait` guarantees the run
-    // is already force-finished to "failed" in the registry before
-    // throwing (see `prepareRun`), so application state stays consistent
-    // — DBOS just gets to see the failure too.
-    await rt.dispatchRunFn(
+    const {
+      taskId,
+      runFenceToken,
+      harnessInput,
+      messagesRef,
+      sandboxConfig,
+      orgSlug,
+    } = await rt.pullDispatchFn!(
       { ...request, abortSignal: abortController.signal },
       meshCtx,
       rt.deps,
+    );
+
+    // 2. Publish the work item idempotently (L1: keyed by runId).
+    // `harnessInput` is the complete wire `HarnessStreamInput` that
+    // `pullDispatch` built eagerly (mcp endpoint minted, messages
+    // materialized, virtualMcp + fence token already on it) — exactly the
+    // shape the daemon validates against `harnessStreamInputSchema`. The
+    // prior gap (publishing the raw DispatchRunInput) is now closed.
+    // This work item is consumed by the Phase D daemon pull loop, which
+    // drains the per-user WorkQueue subject and runs the harness remotely.
+    //
+    // `sandbox` carries the full provisioning config (handle, repo clone URL,
+    // workload runtime) so the daemon can spawn the sandbox cold. `orgSlug`
+    // lets the daemon construct the ingest URL without a DB lookup.
+    // `messagesRef` is present when `pullDispatch` offloaded messages to
+    // object storage because the harnessInput exceeded MAX_PUBLISH_BYTES;
+    // the daemon forwards it verbatim to /_sandbox/dispatch for re-inflation.
+    const workItem: WorkItem = {
+      runId: taskId,
+      threadId: request.taskId ?? ctx.threadId,
+      orgId: request.organizationId,
+      userId: request.userId,
+      runFenceToken,
+      harnessInput: harnessInput as Record<string, unknown>,
+      ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
+      ...(orgSlug ? { orgSlug } : {}),
+      ...(messagesRef ? { messagesRef } : {}),
+    };
+    await rt.workQueue!.publish(request.userId, workItem);
+
+    // 3. Poll threads.status until terminal (L6, L7).
+    // The ingest finish handler transitions the run to a terminal status,
+    // which releases this polling loop. DBOS.setEvent/getEvent is
+    // documented as a future optimization; this polling approach is
+    // simpler, dissolves the workflowID-threading problem, and requires
+    // no new SDK patterns.
+    const pollIntervalMs = rt.gatePollIntervalMs ?? 3_000;
+    const pollMaxAttempts = rt.gatePollMaxAttempts ?? 1_200; // ~1 h
+
+    await pollUntilTerminal(
+      async () => {
+        const t = await meshCtx.storage.threads.get(taskId);
+        return t?.status ?? "unknown";
+      },
+      {
+        intervalMs: pollIntervalMs,
+        maxAttempts: pollMaxAttempts,
+        signal: abortController.signal,
+      },
     );
   } finally {
     if (timeoutHandle !== null) clearTimeout(timeoutHandle);

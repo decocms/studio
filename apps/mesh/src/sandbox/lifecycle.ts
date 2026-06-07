@@ -194,14 +194,19 @@ export async function buildDesktopProvider(
   const { DesktopSandboxProvider } = await import(
     "@decocms/sandbox/provider/desktop"
   );
-  const { getDispatch } = await import("../api/app");
+  const { getProxyDispatch } = await import("../api/app");
   const stateStore = new KyselySandboxProviderStateStore(_ctx.db);
   if (!userSub) {
     throw new Error("buildDesktopProvider: userSub must be a non-empty string");
   }
+  // Phase C-bis S8: the pull reverse-proxy `DispatchFn` (the daemon long-polls
+  // `/links/proxy`) is the only desktop transport — the reverse-WS dispatcher
+  // was deleted. The provider (runner.ts) is transport-agnostic; it decodes the
+  // base64 `DispatchChunk.data` the proxy dispatch yields.
+  const dispatch = getProxyDispatch();
   return new DesktopSandboxProvider({
     userSub,
-    dispatch: getDispatch(),
+    dispatch,
     stateStore,
   });
 }

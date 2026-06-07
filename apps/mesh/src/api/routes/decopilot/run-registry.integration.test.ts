@@ -44,7 +44,8 @@ import type { StreamBuffer } from "./stream-buffer";
 const ORG = "org_1";
 const USER = "user_1";
 const POD = "test-pod";
-const MAX_RUN_AGE_MS = 30 * 60 * 1000;
+// Progress-based reaper idle timeout (run-registry.ts RUN_IDLE_TIMEOUT_MS).
+const RUN_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
 let database: StudioDatabase;
 let storage: SqlThreadStorage;
@@ -300,18 +301,25 @@ describe("RunRegistry storage orchestration (real Postgres)", () => {
   });
 
   describe("reapStaleRuns (terminal side effects)", () => {
-    it("reaps a stale run: real terminal DB write (failed, run_* cleared) + purge", async () => {
+    it("reaps a stuck run: real terminal DB write (failed, run_* cleared) + purge", async () => {
       let now = new Date("2024-01-01T00:00:00Z");
       const { registry, purged } = makeRegistry({ clock: () => now });
       const thread = await seedRunningThread(POD);
       startThread(registry, thread.id); // in-memory running, startedAt = now
 
       const signal = registry.getAbortSignal(thread.id)!;
-      now = new Date(now.getTime() + MAX_RUN_AGE_MS + 1);
+      // No last_progress_at on the row → reaper baselines off the in-memory
+      // startedAt (= the test clock's original `now`). Advance past the idle
+      // timeout so the run reads as stuck.
+      now = new Date(now.getTime() + RUN_IDLE_TIMEOUT_MS + 1);
 
-      (registry as unknown as { reapStaleRuns(): void }).reapStaleRuns();
+      // The reaper is async (reads getProgress per run) — await it so the
+      // in-memory eviction + the fire-and-forget terminal write are dispatched.
+      await (
+        registry as unknown as { reapStaleRuns(): Promise<void> }
+      ).reapStaleRuns();
 
-      // In-memory eviction is synchronous.
+      // In-memory eviction happens inside the awaited sweep.
       expect(signal.aborted).toBe(true);
       expect(registry.isRunning(thread.id)).toBe(false);
 

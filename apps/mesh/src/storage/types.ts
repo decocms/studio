@@ -868,6 +868,33 @@ export interface ThreadTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
   created_by: string; // User ID;
   updated_by: string | null;
+  message_storage_version: ColumnType<number, number | undefined, number>;
+  last_progress_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  /** Single-writer fence for the active run; null when none minted (Phase A). */
+  run_fence_token: ColumnType<string | null, string | null, string | null>;
+  /**
+   * @deprecated Per-thread transport selector. No longer read for routing —
+   * the thread gate takes the pull path whenever NATS (workQueue +
+   * pullDispatchFn) is available (see thread-gate-workflow.ts). The writer
+   * (`setLinkTransport`) was removed with the cluster reverse-WS cleanup
+   * (Phase F). Column retained (nullable) for backward compatibility; no drop
+   * migration. New code MUST NOT read or write it.
+   */
+  link_transport: ColumnType<string | null, string | null, string | null>;
+  /**
+   * Durable cancel flag (Phase C). Set by the cancel endpoint; the ingest
+   * backstop rejects with 409 when non-null, regardless of fence state.
+   * Null = no cancel requested; non-null timestamp = cancel was requested.
+   */
+  cancel_requested_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
 }
 
 export interface ThreadExpandedTool {
@@ -907,6 +934,19 @@ export interface Thread {
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
   metadata: ThreadMetadata;
+  /**
+   * Message storage format for this thread's history.
+   * 1 = legacy `thread_messages` rows (folded server-side as whole messages).
+   * 2 = `thread_message_parts` stream-of-record (folded via `foldParts`).
+   * Pinned on the thread row; read path forks on this value.
+   */
+  message_storage_version: number;
+  /**
+   * @deprecated No longer used for routing (see the `threads` table column
+   * doc). Surfaced on the read path for backward compatibility only; nothing
+   * writes it. New code MUST NOT depend on it.
+   */
+  link_transport: string | null;
 }
 
 /**
@@ -1027,6 +1067,30 @@ export interface ThreadMessage extends ChatMessage {
   thread_id: string;
   created_at: string;
   updated_at: string;
+}
+
+export type PartKind =
+  | "text"
+  | "reasoning"
+  | "tool_call"
+  | "tool_result"
+  | "file"
+  | "error"
+  | "finish";
+
+export interface ThreadMessagePartTable {
+  id: string; // "<run_id>:<seq>"
+  seq: number; // integer, monotonic per run
+  org_id: string;
+  thread_id: string;
+  run_id: string;
+  message_id: string;
+  role: "user" | "assistant" | "system";
+  kind: PartKind;
+  payload: unknown; // jsonb
+  payload_ref: string | null;
+  metadata: unknown | null; // jsonb
+  created_at: string; // ISO; derived from durable seq order, NOT now+i
 }
 
 // ============================================================================
@@ -1316,6 +1380,7 @@ export interface Database {
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
+  thread_message_parts: ThreadMessagePartTable;
   async_research_jobs: AsyncResearchJobTable;
 
   // Member tags tables
