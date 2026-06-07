@@ -2,7 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-## ⛔ Landing status (2026-06-06) — BLOCKED. The cutover was attempted, reverted to keep CI green. Reverse-WS NOT deleted.
+## ✅ Landing status — DONE (via Phase C-bis). The reverse-WS IS deleted; pure-pull is the only transport; CI-green.
+
+The original blockers below were resolved by **Phase C-bis** (`local-link-pull-inversion-phase-c-bis-plan.md`): the sandbox reverse-proxy was rehomed to a pull channel, the cutover was made target-gated (`runsIn==='user-desktop'`), and the e2e specs became pull-daemon simulations. Then S7 flipped the daemon + provider defaults to pull and S8 deleted `ws-gateway.ts`/`dispatcher.ts`/`dispatch-frames.ts`/`cluster-connection.ts`/`reconnect-backoff.ts` (+ gutted app.ts/index.ts/lifecycle.ts). A follow-up re-homed `GET /api/links/me` (a deletion casualty). All CI-green. The historical BLOCKED analysis is retained below for context.
+
+---
+
+### (historical) ⛔ BLOCKED — superseded by C-bis above
 
 This phase's premise — *"pure deletion of code already dead after A–E"* — is **false in the current tree**. Two attempts surfaced three real blockers. What landed: only the genuinely-dead **dead-code cleanup** (`pull-transport-canary.ts` + `setLinkTransport` deleted, `RequestFrame` rehomed to `link-control-types.ts`) in commit `00a5569ec`. The **routing cutover** (`40562b383`) turned e2e + multi-pod RED and was **reverted** (`85125fa00`). Pull remains dormant; the WS path is intact and default.
 

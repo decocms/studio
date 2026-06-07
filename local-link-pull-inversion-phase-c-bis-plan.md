@@ -1,6 +1,6 @@
 # Local-Link Pull Inversion — Phase C-bis (Sandbox Reverse-Proxy → Pull) — HARDENED PLAN
 
-> v2 (2026-06-06): hardened by an adversarial design review (distributed/multi-pod, reuse-vs-rewrite, streaming-correctness, goal/scope critics + resolver). **Status: APPROVED to implement — user said "continue to the end".** The v1 §5.1 "in-memory per-pod queue keyed by reqId" was a multi-pod data-loss bug and is REPLACED by the two-subject NATS correlation in §3b below.
+> v2 (2026-06-06): hardened by an adversarial design review (distributed/multi-pod, reuse-vs-rewrite, streaming-correctness, goal/scope critics + resolver). **Status: ✅ COMPLETE — S0–S8 landed, reverse-WS deleted, pure-pull is the only transport, CI-green (incl. the `/api/links/me` re-home that followed the S8 deletion).** The v1 §5.1 "in-memory per-pod queue keyed by reqId" was a multi-pod data-loss bug and is REPLACED by the two-subject NATS correlation in §3b below.
 
 ## 1. The reframing (grounding workflow established)
 1. **Desktop preview already bypasses the WS.** `DesktopSandboxProvider` has no `proxyPreviewRequest`; the browser hits `http://<handle>.localhost:<ingressPort>` served by the daemon's in-process `local-ingress.ts` (Bun.serve HTTP+WS proxy w/ Vite-HMR). The only cluster coupling (the ingress port) is already on the `x-link-preview-port` presence header. **Preview = zero work.**
