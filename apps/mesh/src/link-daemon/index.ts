@@ -21,6 +21,8 @@ import { createDefaultDaemonSpawn } from "@decocms/sandbox/daemon-spawn";
 import { createControlHandler } from "./control-handler";
 import { connectToClusterPull } from "./cluster-connection-pull";
 import { startLocalIngress } from "./local-ingress";
+import { detectCapabilities } from "./capabilities";
+import { loadOrCreateMachineId } from "./machine-id";
 import { getValidSession } from "../cli/lib/get-valid-session";
 import type { Session } from "../cli/lib/session";
 import {
@@ -215,6 +217,15 @@ export async function startLinkDaemon(
   console.log(
     `[link-daemon] transport=pull org=${orgSlug} cluster=${opts.clusterBaseUrl}`,
   );
+  // Advertise the daemon's identity + capabilities on every poll (the
+  // x-link-* headers). The cluster mints the presence claim from these, and
+  // `resolveDispatchTarget` checks the capabilities — without them the claim is
+  // empty and dispatch fails with `user_desktop_link_capability_missing` even
+  // though presence shows "linked". (The WS `hello` frame carried these before
+  // it was deleted in S8; the pull path must supply them too.)
+  const machineId = await loadOrCreateMachineId(opts.dataDir);
+  const cliVersion = process.env.npm_package_version ?? "0.0.0";
+  const capabilities = await detectCapabilities();
   const cluster = await connectToClusterPull({
     clusterBaseUrl: opts.clusterBaseUrl,
     orgSlug,
@@ -224,6 +235,10 @@ export async function startLinkDaemon(
     // `/_sandbox/*` (vm-events SSE, control RPC, vm-tools) locally and streams
     // the reply back.
     controlHandler,
+    capabilities,
+    machineId,
+    cliVersion,
+    previewPort: ingress.port,
     onConnected: () => {
       opts.monitor?.onCluster?.("linked");
       console.log(`Linked to ${opts.clusterBaseUrl} (pull transport)`);
