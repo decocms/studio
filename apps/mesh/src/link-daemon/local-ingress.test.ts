@@ -304,6 +304,47 @@ describe("local-ingress WS proxying", () => {
   });
 });
 
+describe("local-ingress idle timeout (slow, local-only)", () => {
+  // A request the ingress proxies can legitimately stay open far longer than
+  // Bun.serve's DEFAULT 10s idleTimeout: SSE/streaming chat previews and
+  // cold-starting dev servers routinely produce no I/O for >10s. With the
+  // default timeout, Bun aborts the inbound (browser→ingress) connection at
+  // 10s and logs:
+  //   "[Bun.serve]: request timed out after 10 seconds. Pass `idleTimeout` to configure."
+  // dropping the user's preview mid-stream. The ingress therefore disables the
+  // idle timeout (idleTimeout: 0), matching apps/mesh/src/index.ts:147 and the
+  // sandbox daemon's Bun.serve (packages/sandbox/daemon/entry.ts:651). This
+  // reproduction waits >10s, so it's skipped in CI (same rationale as the Vite
+  // integration test below) and runs locally as the regression guard.
+  const SKIP_IN_CI = !!process.env.CI;
+  const itOrSkip = SKIP_IN_CI ? test.skip : test;
+
+  itOrSkip(
+    "keeps a slow (>10s) proxied response alive instead of timing out at 10s",
+    async () => {
+      upstream = Bun.serve({
+        port: 0,
+        idleTimeout: 0, // isolate the assertion to the ingress, not the upstream
+        async fetch() {
+          // Stay silent past the default 10s idle window before replying.
+          await new Promise((r) => setTimeout(r, 12_000));
+          return new Response("slow ok", { status: 200 });
+        },
+      });
+      ingress = await startLocalIngress({
+        port: 0,
+        lookupSandboxPort: () => upstream!.port ?? null,
+      });
+      const res = await fetch(`http://127.0.0.1:${ingress.port}/slow`, {
+        headers: { host: `abc.localhost:${ingress.port}` },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("slow ok");
+    },
+    20_000,
+  );
+});
+
 describe("local-ingress + real Vite HMR (integration)", () => {
   const VITE_BOOT_TIMEOUT_MS = 30_000;
   const HMR_HELLO_TIMEOUT_MS = 10_000;
