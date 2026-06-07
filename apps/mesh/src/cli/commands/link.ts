@@ -33,6 +33,13 @@ export interface LinkCommandOptions {
    * `dev`/`serve` TUI.
    */
   banner?: boolean;
+  /**
+   * Organization slug the daemon links against. The pull transport is
+   * org-scoped (`/api/:org/links/*`), so the daemon needs to know which org.
+   * Resolution order: this option → `DECO_ORG_SLUG` env → auto-resolve from
+   * the cluster (the user's single org; ambiguous if they belong to several).
+   */
+  orgSlug?: string;
 }
 
 /**
@@ -100,6 +107,63 @@ async function assertStudioAcceptsToken(
   }
 }
 
+/**
+ * Resolve the organization slug the daemon links against. The pull transport
+ * routes are org-scoped (`/api/:org/links/*`), so a slug is required (the old
+ * WS endpoint `/api/links/connect` was unscoped, so this used to be implicit).
+ * Resolution: explicit `--org` → `DECO_ORG_SLUG` → the user's single org
+ * (listed from the cluster with the session token). Throws a clear, actionable
+ * error if it can't be determined.
+ */
+async function resolveOrgSlug(
+  clusterBaseUrl: string,
+  token: string,
+  explicit: string | undefined,
+): Promise<string> {
+  const fromOpt = explicit?.trim();
+  if (fromOpt) return fromOpt;
+  const fromEnv = process.env.DECO_ORG_SLUG?.trim();
+  if (fromEnv) return fromEnv;
+  let res: Response;
+  try {
+    res = await fetch(`${clusterBaseUrl}/api/auth/organization/list`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    throw new Error(
+      `Could not resolve your organization from ${clusterBaseUrl} ` +
+        `(${err instanceof Error ? err.message : String(err)}). ` +
+        `Pass --org <slug> or set DECO_ORG_SLUG.`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(
+      `Could not list organizations on ${clusterBaseUrl} (HTTP ${res.status}). ` +
+        `Pass --org <slug> or set DECO_ORG_SLUG.`,
+    );
+  }
+  const orgs = (await res.json().catch(() => null)) as Array<{
+    slug?: string;
+  }> | null;
+  const slugs = Array.isArray(orgs)
+    ? orgs.map((o) => o?.slug).filter((s): s is string => Boolean(s))
+    : [];
+  if (slugs.length === 0) {
+    throw new Error(
+      `No organization found for your account on ${clusterBaseUrl}. ` +
+        `Create one first, then re-run, or pass --org <slug>.`,
+    );
+  }
+  if (slugs.length > 1) {
+    throw new Error(
+      `You belong to multiple organizations (${slugs.join(", ")}). ` +
+        `Pass --org <slug> or set DECO_ORG_SLUG to choose which to link.`,
+    );
+  }
+  return slugs[0]!;
+}
+
 export async function runLinkCommand(
   opts: LinkCommandOptions = {},
 ): Promise<number> {
@@ -132,6 +196,15 @@ export async function runLinkCommand(
     if (process.env.DECOCMS_LINK_MANAGED !== "1") {
       await assertStudioAcceptsToken(clusterBaseUrl, session.accessToken);
     }
+
+    // The pull transport is org-scoped (`/api/:org/links/*`) — resolve the org
+    // slug before starting the daemon (else it exits with "requires an org
+    // slug"). Surfaces a clear error here, before any TUI render.
+    const orgSlug = await resolveOrgSlug(
+      clusterBaseUrl,
+      session.accessToken,
+      opts.orgSlug,
+    );
 
     let monitor: LinkDaemonMonitor | undefined;
 
@@ -179,6 +252,7 @@ export async function runLinkCommand(
       session,
       monitor,
       logFd,
+      orgSlug,
     });
     return await handle.stopped;
   } catch (err) {

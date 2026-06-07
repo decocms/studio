@@ -309,6 +309,9 @@ if (command === "link") {
     // Managed daemons (dev / npx --local-sandbox-provider) suppress the
     // banner — the parent dev/serve process already renders one.
     banner: process.env.DECOCMS_LINK_MANAGED !== "1",
+    // Org slug for the org-scoped pull transport. Optional: falls back to
+    // DECO_ORG_SLUG, then auto-resolves the user's single org from the cluster.
+    orgSlug: values.org as string | undefined,
   });
   process.exit(code);
 }
