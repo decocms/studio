@@ -1813,6 +1813,60 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   }
 
+  // GET /api/links/me — presence-read for the current user's link claim.
+  // Re-homed here after the reverse-WS gateway (which previously hosted this
+  // route) was deleted in C-bis S8. Still used by the `deco link` CLI preflight
+  // and by presence checks; the claim itself is minted by `GET /links/work`.
+  // Dual-auth: Bearer token (CLI — OAuth MCP session or a Better Auth API key)
+  // or the session cookie (browser/e2e via meshContext).
+  app.get("/api/links/me", async (c) => {
+    const authHeader = c.req.header("authorization") ?? "";
+    const match = /^Bearer\s+(.+)$/i.exec(authHeader);
+    let userSub: string | null = null;
+    if (match) {
+      const token = (match[1] ?? "").trim();
+      // `X-MCP-Session-Auth: true` tells the apiKey plugin to skip so its
+      // customAPIKeyGetter doesn't throw INVALID_API_KEY on a non-key bearer.
+      // Server-set on a fresh Headers so the marker is never client-trusted.
+      const headers = new Headers({
+        authorization: `Bearer ${token}`,
+        "X-MCP-Session-Auth": "true",
+      });
+      const mcp = (await auth.api
+        .getMcpSession({ headers })
+        .catch(() => null)) as { userId?: string } | null;
+      if (mcp?.userId) {
+        userSub = mcp.userId;
+      } else {
+        // Dev fallback: a Better Auth API key as the bearer (no local OIDC).
+        const verified = (await auth.api
+          .verifyApiKey({ body: { key: token } })
+          .catch(() => null)) as {
+          valid?: boolean;
+          key?: { userId?: string };
+        } | null;
+        if (verified?.valid && verified.key?.userId) {
+          userSub = verified.key.userId;
+        }
+      }
+    } else {
+      const ctx = (c.get as (key: string) => unknown)("meshContext") as
+        | { auth?: { user?: { id?: string } } }
+        | undefined;
+      userSub = ctx?.auth?.user?.id ?? null;
+    }
+    if (!userSub) return c.json({ error: "unauthorized" }, 401);
+    const claim = await linkClaimRegistry.get(userSub);
+    if (!claim) return c.json(null);
+    return c.json({
+      machineId: claim.machineId,
+      hostname: claim.hostname,
+      cliVersion: claim.cliVersion,
+      previewPort: claim.previewPort,
+      connectedAt: claim.connectedAt,
+    });
+  });
+
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs).
   // Resolve the org from the URL before serving so the stable URL cannot drift
   // to the session-active org when the path targets a different org.
