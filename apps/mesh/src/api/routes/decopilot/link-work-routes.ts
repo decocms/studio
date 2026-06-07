@@ -1,7 +1,7 @@
 /**
  * Work long-poll endpoint for pull-transport daemons (spec §3.2).
  *
- * GET /api/:org/links/work
+ * GET /api/links/work
  *
  * The daemon holds this connection continuously (even idle). Each poll cycle:
  *   1. Refreshes the studio_links presence claim (TTL re-arms on put).

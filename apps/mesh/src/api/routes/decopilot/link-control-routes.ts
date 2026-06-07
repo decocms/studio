@@ -1,7 +1,7 @@
 /**
  * Control long-poll endpoint for pull-transport daemons (Phase C).
  *
- * GET /api/:org/links/control
+ * GET /api/links/control
  *
  * The daemon holds this connection continuously waiting for cluster-side
  * control frames (e.g. cancel). Each poll cycle:
