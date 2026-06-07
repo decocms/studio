@@ -41,9 +41,8 @@
 import { z } from "zod";
 
 /**
- * Reply-leg frame union. Mirrors the reply variants of the WS dispatch-frame
- * protocol (`dispatch-frames.ts`) minus the per-frame `reqId` (the reqId is
- * carried in the URL/subject, not repeated in every line).
+ * Reply-leg frame union for the pull reverse-proxy channel. The per-frame
+ * `reqId` is carried in the NATS subject / URL, not repeated in every line.
  */
 const headersReplyFrame = z.object({
   type: z.literal("headers"),

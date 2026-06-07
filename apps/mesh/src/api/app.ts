@@ -1805,7 +1805,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       // Daemon-vanished fail-fast (Phase C-bis S5, landmine #8): the adapter
       // watches the user's link-claim presence and aborts an in-flight request
       // the moment the claim expires (the daemon's polls stopped re-arming the
-      // 60 s TTL) — the cross-pod port of ws-gateway.ts's WS-close fanout.
+      // 60 s TTL) — the pull-transport equivalent of a socket-close liveness signal.
       presence: {
         watch: (userSub, listener) =>
           linkClaimRegistry.watch(userSub, (claim) => listener(claim)),

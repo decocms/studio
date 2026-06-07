@@ -1,8 +1,11 @@
 /**
  * `deco link` — start the desktop-side link daemon.
  *
- * Opens a WebSocket to `<MESH_CLUSTER_URL>/api/links/connect` and runs a
- * local ingress on `--port` for `<handle>.localhost` sandbox previews.
+ * Uses a pure-pull transport: long-polls `/api/:org/links/work` for
+ * dispatched sandbox requests, `/links/control` for cluster control frames,
+ * and `/links/proxy` for reverse-proxy traffic. Presence is maintained via a
+ * 60 s NATS-KV TTL re-armed on every poll. Also runs a local ingress on
+ * `--port` for `<handle>.localhost` sandbox previews.
  *
  * Auth: calls `ensureSession` first (with normal console output so the OAuth
  * login flow is visible). With a TTY (and no `--no-tui`), renders the Ink

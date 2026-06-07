@@ -1,10 +1,9 @@
 /**
  * Pull reverse-proxy channel for desktop link daemons (Phase C-bis §3b).
  *
- * Replaces the WS reverse-proxy (`dispatcher.ts` + `ws-gateway.ts`) for the
- * sandbox control/events/vm-tools traffic that funnels through
+ * Handles sandbox control/events/vm-tools traffic that funnels through
  * `DesktopSandboxProvider.proxyDaemonRequest`. Two id-derived core-NATS
- * subjects re-express the WS subscription-interest routing behind a long-poll:
+ * subjects carry the request/reply over long-polls:
  *
  *   REQUEST leg  `links.proxy.req.<userSub>`   cluster → daemon (one RequestFrame)
  *   REPLY leg    `links.proxy.reply.<reqId>`   daemon → cluster (NDJSON stream)
@@ -252,8 +251,8 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
   // ── TEST-ONLY trigger: drive a real createProxyDispatch round-trip ────────
   //
   // The production caller of `createProxyDispatch` is `DesktopSandboxProvider`
-  // (wired in S3, dormant behind `LINK_PROXY_TRANSPORT=pull`). To validate the
-  // channel END-TO-END before the S6 cutover — cluster `createProxyDispatch`
+  // (the only active transport since S8). To validate the channel END-TO-END —
+  // cluster `createProxyDispatch`
   // → `links.proxy.req` → the GET above → a daemon simulator → the POST above
   // → `links.proxy.reply` → back to the awaiting caller — the e2e
   // (`link-proxy.spec.ts`) needs a server-side caller it can hit over HTTP.
@@ -404,12 +403,11 @@ function publishReplyFrame(
  * The presence claim (`studio_links` KV, 60 s TTL) is re-armed by the daemon's
  * work/control/proxy long-polls. If the daemon vanishes (stops polling) the
  * claim expires and the watcher fires `null`; the adapter aborts the in-flight
- * await and throws a 502-equivalent, mirroring `ws-gateway.ts`'s on-close error
- * fanout (ws-gateway.ts:424-451) — which used the WS close event as its liveness
- * signal where the pull channel has no socket, so the claim IS the liveness
- * signal. We deliberately reuse the registry's existing TTL/watch rather than
- * inventing a new idle timeout (the request body — e.g. `/events` SSE — has
- * legitimate long gaps, so a naive per-frame timeout would be wrong).
+ * await and throws a 502-equivalent. The pull channel has no persistent socket,
+ * so the claim IS the liveness signal (analogous to a socket-close event on the
+ * old WS transport). We deliberately reuse the registry's existing TTL/watch
+ * rather than inventing a new idle timeout (the request body — e.g. `/events`
+ * SSE — has legitimate long gaps, so a naive per-frame timeout would be wrong).
  */
 export interface ProxyPresenceWatcher {
   watch(userSub: string, listener: (claim: unknown) => void): () => void;
@@ -528,10 +526,10 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
         // presence. The claim's 60 s TTL is re-armed by the daemon's
         // work/control/proxy long-polls; if the daemon stops polling the claim
         // expires and the watcher fires `null`. We treat ANY `null` fire as the
-        // daemon being gone (mirrors ws-gateway.ts's WS-close fanout: no socket
-        // ⇒ dead) and abort the in-flight await with a 502-equivalent so
-        // `runner.ts` rejects promptly instead of hanging on a reply that will
-        // never arrive. The watcher fires immediately with the current value, so
+        // daemon being gone (no socket on the pull channel, so claim expiry IS
+        // the liveness signal) and abort the in-flight await with a
+        // 502-equivalent so `runner.ts` rejects promptly instead of hanging on
+        // a reply that will never arrive. The watcher fires immediately with the current value, so
         // a request to an already-absent daemon also fails fast (no waiting for
         // the POST/GET-drop backstop). We do NOT add an idle timeout — the
         // request body (`/events` SSE) has legitimate long gaps; presence is the

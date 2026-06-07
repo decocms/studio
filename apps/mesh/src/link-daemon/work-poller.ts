@@ -42,8 +42,7 @@ export interface WorkPollerDeps {
   onWork: (item: WorkItem) => Promise<void>;
   /**
    * Bearer token resolver. Called before each request so a refreshed token
-   * reaches every poll without pinning a stale credential (per spec §3.2,
-   * mirrors the WS path's getAccessToken in cluster-connection.ts).
+   * reaches every poll without pinning a stale credential (per spec §3.2).
    */
   getAccessToken: () => Promise<string>;
   /** Abort signal. The loop exits cleanly when aborted. */
@@ -86,7 +85,7 @@ const MAX_DELAY_MS = 30_000;
  * Runs the work-poll loop. Resolves when the signal is aborted.
  *
  * The loop:
- *   1. Resolves a fresh bearer token (mirrors cluster-connection.ts's per-(re)connect pattern).
+ *   1. Resolves a fresh bearer token via `getAccessToken` before each poll (per-poll resolver avoids pinning a stale credential).
  *   2. GETs /api/:org/links/work?timeout=<N>.
  *   3. On 200: parses + validates the WorkItem via workItemSchema; calls onWork.
  *      On 204: no work available (server held the long-poll window); re-polls immediately.
@@ -116,8 +115,8 @@ export async function runWorkPollLoop(deps: WorkPollerDeps): Promise<void> {
   }
 
   while (!signal.aborted) {
-    // Step 1: resolve a fresh token before each poll (mirrors the WS
-    // cluster-connection.ts getAccessToken pattern to avoid stale credentials).
+    // Step 1: resolve a fresh token before each poll so a rotated credential
+    // is used on every request without pinning a stale one.
     let token: string;
     try {
       token = await getAccessToken();

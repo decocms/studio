@@ -264,7 +264,7 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
             // Connect succeeded but the upstream body stream broke mid-flight
             // (e.g. the spawned daemon crashed its SSE writer). Distinct from
             // the connect-failure log above; this re-throw surfaces as a
-            // `handler_error` frame (see cluster-connection.ts sendErrorFrame).
+            // `handler_error` frame sent back via the pull reply channel.
             console.error(
               `[control] proxy ${req.method} ${rest} handle=${handle} port=${port} body stream error: ${
                 err instanceof Error ? err.message : String(err)

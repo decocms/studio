@@ -2,14 +2,10 @@
  * Transport-neutral dispatch types for the cluster ↔ daemon control channel.
  *
  * These describe the request/response contract a `DispatchFn` exposes,
- * independent of HOW it is carried (the WS req/reply inbox in `dispatcher.ts`,
- * or the pull reverse-proxy channel in `link-proxy-routes.ts`). They live here
- * — a sibling of `link-control-types.ts` — so the surviving consumers
- * (`runner.ts` `proxyDaemonRequest`/`dispatchJson`/`probeHealth`) and the new
- * pull adapter do not depend on the to-be-deleted WS frame codec.
- *
- * `dispatcher.ts` re-exports every symbol below, so existing importers that
- * still pull these from `./dispatcher` keep working unchanged (Phase C-bis S0).
+ * carried by the pull reverse-proxy channel in `link-proxy-routes.ts`.
+ * They live here — a sibling of `link-control-types.ts` — so the consumers
+ * (`runner.ts` `proxyDaemonRequest`/`dispatchJson`/`probeHealth`) and the
+ * pull adapter share a single source of truth.
  */
 
 export interface DispatchRequest {

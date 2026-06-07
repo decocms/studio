@@ -51,10 +51,9 @@ export interface StartLinkDaemonOptions {
    */
   session: Session;
   /**
-   * Org slug for the pull-transport work-poll loop (`/api/:org/links/work`).
-   * Required when `LINK_TRANSPORT_MODE=pull`; ignored for the default WS path.
-   *
-   * If not supplied here, the daemon will fall back to `process.env.DECO_ORG_SLUG`.
+   * Org slug for the pull work-poll loop (`/api/:org/links/work`).
+   * Required for the pull transport (the only transport); falls back to
+   * `process.env.DECO_ORG_SLUG` if not supplied here.
    *
    * NOTE: the daemon currently supports a single primary org for the pull loop.
    * Multi-org polling is a Phase D follow-up.

@@ -1,18 +1,19 @@
 /**
- * Claim registry for active daemon WebSockets.
+ * Claim registry for active daemon pull-transport presence.
  *
  * Keyed by `userSub`. Stores which mesh pod is currently holding the daemon's
- * WS, plus the daemon's reported preview port so the cluster can build
- * `<handle>.localhost:<previewPort>` URLs. Replaces the older `LinkRegistry`
- * (which stored a `linkSecret` + `tunnelUrl`).
+ * pull connection, plus the daemon's reported preview port so the cluster can
+ * build `<handle>.localhost:<previewPort>` URLs. Replaces the older
+ * `LinkRegistry` (which stored a `linkSecret` + `tunnelUrl`).
  *
  * Two backends:
  *   - NATS JetStream KV bucket `studio_links` (production). Bucket-level
- *     `maxAge: 60s`. The owning pod refreshes its entry every ~20s.
+ *     `maxAge: 60s`. The claim is re-armed on every work/control/proxy poll.
  *   - In-memory (tests). Same surface, no NATS.
  *
  * The watcher is the eviction mechanism: when a pod sees the entry's `podId`
- * change to something else, it knows it lost ownership and tears down its WS.
+ * change to something else, it knows it lost ownership and tears down its
+ * pull-loop state.
  */
 
 import { JSONCodec, StorageType, type JetStreamClient, type KV } from "nats";
