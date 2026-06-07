@@ -1,7 +1,7 @@
 /**
  * Work-poll loop for the pull transport (Phase D, spec §3.2).
  *
- * Continuously long-polls GET /api/:org/links/work. On a 200 response, parses
+ * Continuously long-polls GET /api/links/work. On a 200 response, parses
  * and validates the JSON body as a WorkItem (envelope carrying harnessInput +
  * runFenceToken) and invokes `onWork`. On 204 (no work), immediately re-polls.
  * On errors, backs off using exponentialBackoffWithJitter from @decocms/std.
@@ -10,10 +10,9 @@
  * claim by piggy-backing on the request (the server updates `studio_links`
  * TTL on every work-poll hit, per spec §3.2).
  *
- * NOTE — org multiplicity: this module takes a single `orgSlug` parameter.
- * The daemon connects one pull loop per org. How the daemon discovers its
- * org(s) (e.g. from the session claim or a startup argument) is the concern
- * of the pull-loop-entry task (Task 8 / index.ts), not this module.
+ * NOTE — the route is user-scoped (no org segment). The org is carried inside
+ * the WorkItem payload (orgSlug field) so the daemon can route work to the
+ * correct org without needing to know it upfront.
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
@@ -27,14 +26,6 @@ import type { Capability } from "../links/protocol";
 export interface WorkPollerDeps {
   /** Fully-qualified base URL, e.g. "https://studio.deco.cx". */
   baseUrl: string;
-  /**
-   * Org slug for the org-scoped route /api/:org/links/work.
-   *
-   * NOTE: the daemon links a user who may span multiple orgs. For this module,
-   * `orgSlug` is taken as a parameter; how the daemon discovers its org(s) is
-   * the pull-loop-entry task's concern (see Task 8).
-   */
-  orgSlug: string;
   /**
    * Called with each validated work item. Must not throw — errors are swallowed
    * by the loop; the item is not retried (best-effort, ACK-on-delivery per spec).
@@ -86,17 +77,17 @@ const MAX_DELAY_MS = 30_000;
  *
  * The loop:
  *   1. Resolves a fresh bearer token via `getAccessToken` before each poll (per-poll resolver avoids pinning a stale credential).
- *   2. GETs /api/:org/links/work?timeout=<N>.
+ *   2. GETs /api/links/work?timeout=<N>.
  *   3. On 200: parses + validates the WorkItem via workItemSchema; calls onWork.
  *      On 204: no work available (server held the long-poll window); re-polls immediately.
  *      On error / bad-status: backs off with exponential-backoff-with-jitter.
  *   4. Stops immediately when signal is aborted.
  */
 export async function runWorkPollLoop(deps: WorkPollerDeps): Promise<void> {
-  const { baseUrl, orgSlug, onWork, getAccessToken, signal } = deps;
+  const { baseUrl, onWork, getAccessToken, signal } = deps;
   const fetcher = deps.fetchImpl ?? fetch;
   const pollTimeout = deps.pollTimeoutSecs ?? 29;
-  const url = `${baseUrl}/api/${orgSlug}/links/work?timeout=${pollTimeout}`;
+  const url = `${baseUrl}/api/links/work?timeout=${pollTimeout}`;
   let errorStreak = 0;
 
   // Build the static presence headers once — these don't change between polls.

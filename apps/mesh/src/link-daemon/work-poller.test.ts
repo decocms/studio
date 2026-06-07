@@ -71,7 +71,6 @@ describe("runWorkPollLoop", () => {
 
     await runWorkPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       onWork: async (item) => {
         received.push(item);
       },
@@ -100,7 +99,6 @@ describe("runWorkPollLoop", () => {
 
     await runWorkPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       onWork: async (item) => {
         received.push(item);
       },
@@ -131,7 +129,6 @@ describe("runWorkPollLoop", () => {
 
     await runWorkPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       onWork: async (item) => {
         received.push(item);
       },
@@ -152,7 +149,6 @@ describe("runWorkPollLoop", () => {
 
     await runWorkPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       onWork: async () => {},
       getAccessToken: async () => "tok",
       signal: ac.signal,
@@ -163,7 +159,7 @@ describe("runWorkPollLoop", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("uses the correct URL including orgSlug and timeout param", async () => {
+  it("uses the correct user-scoped URL with the timeout param", async () => {
     const urls: string[] = [];
     const ac = new AbortController();
 
@@ -175,7 +171,6 @@ describe("runWorkPollLoop", () => {
 
     await runWorkPollLoop({
       baseUrl: "https://cluster.example.com",
-      orgSlug: "my-org",
       onWork: async () => {},
       getAccessToken: async () => "tok",
       signal: ac.signal,
@@ -184,7 +179,7 @@ describe("runWorkPollLoop", () => {
     });
 
     expect(urls[0]).toBe(
-      "https://cluster.example.com/api/my-org/links/work?timeout=15",
+      "https://cluster.example.com/api/links/work?timeout=15",
     );
   });
 
@@ -200,7 +195,6 @@ describe("runWorkPollLoop", () => {
 
     await runWorkPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       onWork: async () => {},
       getAccessToken: async () => "my-fresh-token",
       signal: ac.signal,
@@ -223,7 +217,6 @@ describe("runWorkPollLoop", () => {
 
     await runWorkPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       onWork: async () => {},
       getAccessToken: async () => {
         tokenCallCount++;
@@ -258,7 +251,6 @@ describe("runWorkPollLoop", () => {
 
     await runWorkPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       onWork: async (item) => {
         received.push(item.runId);
       },
