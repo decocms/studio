@@ -2,8 +2,8 @@
  * E2E: the pull reverse-proxy channel, end-to-end (Phase C-bis S5).
  *
  * Validates the channel built dormant in S0-S4 — cluster `createProxyDispatch`
- * → `links.proxy.req.<userSub>` → `GET /api/:org/links/proxy` (the daemon's
- * long-poll) → a PROXY-DAEMON SIMULATOR → `POST /api/:org/links/proxy/:reqId/
+ * → `links.proxy.req.<userSub>` → `GET /api/links/proxy` (the daemon's
+ * long-poll) → a PROXY-DAEMON SIMULATOR → `POST /api/links/proxy/:reqId/
  * stream` (duplex NDJSON reply) → `links.proxy.reply.<reqId>` → back to the
  * awaiting caller — over REAL NATS + the REAL routes, BEFORE the S6 cutover.
  *
@@ -13,7 +13,7 @@
  * server does NOT set). Wiring full provider resolution (virtualMcp seed,
  * sandbox handle, presence) just to reach `proxyDaemonRequest` is disproporti-
  * onate, so this spec uses the sanctioned fallback: a non-production test-trigger
- * route (`POST /api/:org/links/proxy/_test/dispatch`, mounted only when
+ * route (`POST /api/links/proxy/_test/dispatch`, mounted only when
  * NODE_ENV!=="production") that drives a REAL `createProxyDispatch` over the SAME
  * live NATS connection and streams the decoded reply back. This is a true
  * cross-leg round-trip — only the caller is synthetic; both legs, both subjects,
@@ -125,7 +125,6 @@ class ProxyDaemonSimulator {
   readonly seenReqIds: string[] = [];
 
   constructor(
-    private readonly orgSlug: string,
     cookie: string,
     private readonly handler: RequestHandler,
     private readonly concurrency = 2,
@@ -157,7 +156,7 @@ class ProxyDaemonSimulator {
     while (!this.stop.signal.aborted) {
       let res: Response;
       try {
-        res = await fetch(`${BASE_URL}/api/${this.orgSlug}/links/proxy`, {
+        res = await fetch(`${BASE_URL}/api/links/proxy`, {
           headers: this.headers,
           signal: boundedSignal(LONGPOLL_FETCH_MS, this.stop.signal),
         });
@@ -192,7 +191,7 @@ class ProxyDaemonSimulator {
     while (!this.stop.signal.aborted) {
       let res: Response;
       try {
-        res = await fetch(`${BASE_URL}/api/${this.orgSlug}/links/control`, {
+        res = await fetch(`${BASE_URL}/api/links/control`, {
           headers: this.headers,
           signal: boundedSignal(LONGPOLL_FETCH_MS, this.stop.signal),
         });
@@ -276,23 +275,20 @@ class ProxyDaemonSimulator {
     })();
 
     try {
-      await fetch(
-        `${BASE_URL}/api/${this.orgSlug}/links/proxy/${frame.reqId}/stream`,
-        {
-          method: "POST",
-          headers: { ...this.headers, "content-type": "application/x-ndjson" },
-          body: stream,
-          // @ts-expect-error duplex is required for a streaming request body
-          // (undici/Node), not yet in all TS DOM typings.
-          duplex: "half",
-          // Hard ceiling on top of stop + per-request abort: even a stuck reply
-          // upload can't outlive REPLY_POST_FETCH_MS.
-          signal: AbortSignal.any([
-            combined,
-            AbortSignal.timeout(REPLY_POST_FETCH_MS),
-          ]),
-        },
-      );
+      await fetch(`${BASE_URL}/api/links/proxy/${frame.reqId}/stream`, {
+        method: "POST",
+        headers: { ...this.headers, "content-type": "application/x-ndjson" },
+        body: stream,
+        // @ts-expect-error duplex is required for a streaming request body
+        // (undici/Node), not yet in all TS DOM typings.
+        duplex: "half",
+        // Hard ceiling on top of stop + per-request abort: even a stuck reply
+        // upload can't outlive REPLY_POST_FETCH_MS.
+        signal: AbortSignal.any([
+          combined,
+          AbortSignal.timeout(REPLY_POST_FETCH_MS),
+        ]),
+      });
     } catch {
       /* reply POST aborted on cancel/close — expected */
     } finally {
@@ -314,7 +310,6 @@ class ProxyDaemonSimulator {
  */
 async function establishPresence(
   api: import("@playwright/test").APIRequestContext,
-  orgSlug: string,
 ): Promise<{ refresh: () => void; dispose: () => Promise<void> }> {
   const headers = {
     "x-link-capabilities": "claude-code",
@@ -323,7 +318,7 @@ async function establishPresence(
   };
   // First call mints the claim (claim refresh is synchronous at handler start).
   await api
-    .get(`/api/${orgSlug}/links/work`, { timeout: 1_500, headers })
+    .get(`/api/links/work`, { timeout: 1_500, headers })
     .catch(() => null);
 
   await expect
@@ -343,7 +338,7 @@ async function establishPresence(
   const loop = (): void => {
     if (!alive) return;
     current = api
-      .get(`/api/${orgSlug}/links/work`, { timeout: 35_000, headers })
+      .get(`/api/links/work`, { timeout: 35_000, headers })
       .catch(() => null)
       .then((r) => {
         if (alive) loop();
@@ -381,7 +376,6 @@ type WarmupOutcome = "ready" | "no-nats" | "not-ready";
  *   "not-ready" — never succeeded within the budget (caller should test.skip).
  */
 async function warmup(
-  orgSlug: string,
   cookie: string,
   sim: ProxyDaemonSimulator,
 ): Promise<WarmupOutcome> {
@@ -389,15 +383,12 @@ async function warmup(
   for (let i = 0; i < attempts; i++) {
     let res: Response;
     try {
-      res = await fetch(
-        `${BASE_URL}/api/${orgSlug}/links/proxy/_test/dispatch`,
-        {
-          method: "POST",
-          headers: { cookie, "content-type": "application/json" },
-          body: JSON.stringify({ method: "GET", path: "/_sandbox/warmup" }),
-          signal: boundedSignal(DISPATCH_FETCH_MS),
-        },
-      );
+      res = await fetch(`${BASE_URL}/api/links/proxy/_test/dispatch`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ method: "GET", path: "/_sandbox/warmup" }),
+        signal: boundedSignal(DISPATCH_FETCH_MS),
+      });
     } catch {
       // Hard-timeout abort or transport error — count as a failed attempt.
       await new Promise((r) => setTimeout(r, 250));
@@ -435,11 +426,11 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
     authedPage,
   }) => {
     test.setTimeout(60_000);
-    const { page, orgSlug } = authedPage;
+    const { page } = authedPage;
     const api = page.context().request;
     const cookie = await cookieHeader(page);
 
-    const presence = await establishPresence(api, orgSlug);
+    const presence = await establishPresence(api);
     presence.refresh();
 
     // Reply payload includes a non-UTF-8 byte (0xFF) to prove base64 fidelity.
@@ -447,7 +438,7 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
     const part2 = new Uint8Array([0x00, 0x41, 0x42]); // NUL + "AB"
     const chunkArrival: number[] = [];
 
-    const sim = new ProxyDaemonSimulator(orgSlug, cookie, async (_frame, w) => {
+    const sim = new ProxyDaemonSimulator(cookie, async (_frame, w) => {
       await w.write({ type: "headers", status: 200, headers: {} });
       await w.write({ type: "chunk", data: b64(part1) });
       // gap, then a second chunk — proves the cluster relays incrementally.
@@ -458,7 +449,7 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
     sim.start();
 
     try {
-      const ready = await warmup(orgSlug, cookie, sim);
+      const ready = await warmup(cookie, sim);
       if (ready === "no-nats") {
         test.skip(true, "NATS unavailable — proxy channel returned 503");
         return;
@@ -471,15 +462,12 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
         return;
       }
 
-      const res = await fetch(
-        `${BASE_URL}/api/${orgSlug}/links/proxy/_test/dispatch`,
-        {
-          method: "POST",
-          headers: { cookie, "content-type": "application/json" },
-          body: JSON.stringify({ method: "GET", path: "/_sandbox/events" }),
-          signal: boundedSignal(DISPATCH_FETCH_MS),
-        },
-      );
+      const res = await fetch(`${BASE_URL}/api/links/proxy/_test/dispatch`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ method: "GET", path: "/_sandbox/events" }),
+        signal: boundedSignal(DISPATCH_FETCH_MS),
+      });
       // 503 ⇒ NATS unavailable in this environment — tolerate (round-trip can't
       // be exercised without NATS; the unit tests cover the adapter logic).
       if (res.status === 503) {
@@ -521,11 +509,11 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
     authedPage,
   }) => {
     test.setTimeout(60_000);
-    const { page, orgSlug } = authedPage;
+    const { page } = authedPage;
     const api = page.context().request;
     const cookie = await cookieHeader(page);
 
-    const presence = await establishPresence(api, orgSlug);
+    const presence = await establishPresence(api);
     presence.refresh();
 
     // First request handler holds the reply open for a beat; second replies fast.
@@ -534,7 +522,7 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
       firstReleased = r;
     });
 
-    const sim = new ProxyDaemonSimulator(orgSlug, cookie, async (frame, w) => {
+    const sim = new ProxyDaemonSimulator(cookie, async (frame, w) => {
       const marker = frame.path.includes("first") ? "FIRST" : "SECOND";
       await w.write({ type: "headers", status: 200, headers: {} });
       if (marker === "FIRST") await firstHold; // stay mid-handling
@@ -547,7 +535,7 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
     sim.start();
 
     const dispatch = (path: string): Promise<string> =>
-      fetch(`${BASE_URL}/api/${orgSlug}/links/proxy/_test/dispatch`, {
+      fetch(`${BASE_URL}/api/links/proxy/_test/dispatch`, {
         method: "POST",
         headers: { cookie, "content-type": "application/json" },
         body: JSON.stringify({ method: "GET", path }),
@@ -559,7 +547,7 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
       });
 
     try {
-      const ready = await warmup(orgSlug, cookie, sim);
+      const ready = await warmup(cookie, sim);
       if (ready === "no-nats") {
         test.skip(true, "NATS unavailable — proxy channel returned 503");
         return;
@@ -605,47 +593,43 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
     authedPage,
   }) => {
     test.setTimeout(60_000);
-    const { page, orgSlug } = authedPage;
+    const { page } = authedPage;
     const api = page.context().request;
     const cookie = await cookieHeader(page);
 
-    const presence = await establishPresence(api, orgSlug);
+    const presence = await establishPresence(api);
     presence.refresh();
 
     // A long-lived /events-style reply: headers, one chunk, then it stalls
     // until the abort signal fires (mirrors an SSE that never ends on its own).
     let observedAbort = false;
-    const sim = new ProxyDaemonSimulator(
-      orgSlug,
-      cookie,
-      async (_frame, w, signal) => {
-        await w.write({ type: "headers", status: 200, headers: {} });
-        await w.write({
-          type: "chunk",
-          data: b64(new TextEncoder().encode("open")),
-        });
-        // Wait for cancel — the SSE has no natural end.
-        await new Promise<void>((resolve) => {
-          if (signal.aborted) {
+    const sim = new ProxyDaemonSimulator(cookie, async (_frame, w, signal) => {
+      await w.write({ type: "headers", status: 200, headers: {} });
+      await w.write({
+        type: "chunk",
+        data: b64(new TextEncoder().encode("open")),
+      });
+      // Wait for cancel — the SSE has no natural end.
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          observedAbort = true;
+          return resolve();
+        }
+        signal.addEventListener(
+          "abort",
+          () => {
             observedAbort = true;
-            return resolve();
-          }
-          signal.addEventListener(
-            "abort",
-            () => {
-              observedAbort = true;
-              resolve();
-            },
-            { once: true },
-          );
-        });
-      },
-    );
+            resolve();
+          },
+          { once: true },
+        );
+      });
+    });
     sim.start();
 
     const ac = new AbortController();
     try {
-      const ready = await warmup(orgSlug, cookie, sim);
+      const ready = await warmup(cookie, sim);
       if (ready === "no-nats") {
         test.skip(true, "NATS unavailable — proxy channel returned 503");
         return;
@@ -658,19 +642,16 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
         return;
       }
 
-      const res = await fetch(
-        `${BASE_URL}/api/${orgSlug}/links/proxy/_test/dispatch`,
-        {
-          method: "POST",
-          headers: { cookie, "content-type": "application/json" },
-          body: JSON.stringify({ method: "GET", path: "/_sandbox/events" }),
-          // Caller cancel (ac) OR a hard ceiling — whichever first.
-          signal: AbortSignal.any([
-            ac.signal,
-            AbortSignal.timeout(DISPATCH_FETCH_MS),
-          ]),
-        },
-      );
+      const res = await fetch(`${BASE_URL}/api/links/proxy/_test/dispatch`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ method: "GET", path: "/_sandbox/events" }),
+        // Caller cancel (ac) OR a hard ceiling — whichever first.
+        signal: AbortSignal.any([
+          ac.signal,
+          AbortSignal.timeout(DISPATCH_FETCH_MS),
+        ]),
+      });
       if (res.status === 503) {
         test.skip(true, "NATS unavailable — proxy channel returned 503");
         return;
@@ -714,37 +695,33 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
     authedPage,
   }) => {
     test.setTimeout(60_000);
-    const { page, orgSlug } = authedPage;
+    const { page } = authedPage;
     const api = page.context().request;
     const cookie = await cookieHeader(page);
 
-    const presence = await establishPresence(api, orgSlug);
+    const presence = await establishPresence(api);
     presence.refresh();
 
     // Simulator emits headers + a chunk, then ABRUPTLY drops the reply POST
     // (returns without an end/error frame). The route's catch publishes an
     // error frame to links.proxy.reply.<reqId>, so the caller rejects.
-    const sim = new ProxyDaemonSimulator(
-      orgSlug,
-      cookie,
-      async (_frame, w, signal) => {
-        await w.write({ type: "headers", status: 200, headers: {} });
-        await w.write({
-          type: "chunk",
-          data: b64(new TextEncoder().encode("partial")),
-        });
-        // Abort the reply POST locally (daemon vanished) — no terminal frame.
-        // We throw so the simulator's handler wrapper closes the controller; the
-        // cluster sees the body end without a terminal → no synthesized end, and
-        // the presence/POST-drop backstops are what end the caller.
-        void signal;
-        throw new Error("simulated daemon vanish");
-      },
-    );
+    const sim = new ProxyDaemonSimulator(cookie, async (_frame, w, signal) => {
+      await w.write({ type: "headers", status: 200, headers: {} });
+      await w.write({
+        type: "chunk",
+        data: b64(new TextEncoder().encode("partial")),
+      });
+      // Abort the reply POST locally (daemon vanished) — no terminal frame.
+      // We throw so the simulator's handler wrapper closes the controller; the
+      // cluster sees the body end without a terminal → no synthesized end, and
+      // the presence/POST-drop backstops are what end the caller.
+      void signal;
+      throw new Error("simulated daemon vanish");
+    });
     sim.start();
 
     try {
-      const ready = await warmup(orgSlug, cookie, sim);
+      const ready = await warmup(cookie, sim);
       if (ready === "no-nats") {
         test.skip(true, "NATS unavailable — proxy channel returned 503");
         return;
@@ -757,15 +734,12 @@ test.describe("pull reverse-proxy channel (Phase C-bis S5)", () => {
         return;
       }
 
-      const res = await fetch(
-        `${BASE_URL}/api/${orgSlug}/links/proxy/_test/dispatch`,
-        {
-          method: "POST",
-          headers: { cookie, "content-type": "application/json" },
-          body: JSON.stringify({ method: "GET", path: "/_sandbox/events" }),
-          signal: boundedSignal(DISPATCH_FETCH_MS),
-        },
-      );
+      const res = await fetch(`${BASE_URL}/api/links/proxy/_test/dispatch`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ method: "GET", path: "/_sandbox/events" }),
+        signal: boundedSignal(DISPATCH_FETCH_MS),
+      });
       if (res.status === 503) {
         test.skip(true, "NATS unavailable — proxy channel returned 503");
         return;

@@ -8,12 +8,12 @@
  *      created and wired to a real agent (virtual MCP). The S6 gate routes it
  *      to pull because the resolved dispatch target is `runsIn:'user-desktop'`.
  *   2. The "desktop daemon" establishes link presence by calling
- *      GET /api/:org/links/work — the route synthetically mints a claim in
+ *      GET /api/links/work — the route synthetically mints a claim in
  *      the NATS KV bucket so resolveDispatchTarget sees the link as online.
  *   3. POST /messages on the pull thread → 202 { taskId }. The thread-gate
  *      workflow fires pullDispatch (prepareRun → fence mint → work-item
  *      publish) and then polls threads.status until terminal.
- *   4. The "daemon" calls GET /api/:org/links/work and receives the work
+ *   4. The "daemon" calls GET /api/links/work and receives the work
  *      item; the test asserts its shape (runId, runFenceToken, harnessInput).
  *   5. The "daemon" POSTs a minimal dispatch SSE body to
  *      POST /api/:org/links/runs/:runId/stream with x-fence-token header.
@@ -39,7 +39,7 @@
  *       the real DB; the assertion sees the post-ingest row directly.
  *     - Body-offload and multi-chunk SSE streams (covered by link-ingest.spec.ts).
  *
- * Presence strategy: the spec uses GET /api/:org/links/work to establish the
+ * Presence strategy: the spec uses GET /api/links/work to establish the
  * claim (same as a real pull daemon holding the long-poll). The request carries
  * x-link-capabilities: claude-code so the minted claim advertises the required
  * capability and resolveDispatchTarget routes the thread correctly.
@@ -224,7 +224,7 @@ test.describe("pull-transport round-trip", () => {
 
       // ── Step 2: establish link presence ───────────────────────────────────
       //
-      // GET /api/:org/links/work hits the linkClaimRegistry and mints a
+      // GET /api/links/work hits the linkClaimRegistry and mints a
       // presence claim for this user.  We send x-link-capabilities so the
       // claim advertises "claude-code" — resolveDispatchTarget requires this
       // capability when harnessId='claude-code'; without it the route returns
@@ -234,7 +234,7 @@ test.describe("pull-transport round-trip", () => {
       // refresh is synchronous at the start of the handler; a 204/timeout on
       // the poll itself is fine) and resolves once the claim is visible in
       // /api/links/me — so presence is established BEFORE POST /messages runs.
-      await claimPullPresence(api, orgSlug, ["claude-code"]);
+      await claimPullPresence(api, ["claude-code"]);
 
       // ── Step 3: trigger the dispatch (POST /messages) ─────────────────────
       //
@@ -296,7 +296,7 @@ test.describe("pull-transport round-trip", () => {
 
       const MAX_WORK_POLL_RETRIES = 3;
       for (let attempt = 1; attempt <= MAX_WORK_POLL_RETRIES; attempt++) {
-        const res = await api.get(`/api/${orgSlug}/links/work`, {
+        const res = await api.get(`/api/links/work`, {
           // Must exceed the server long-poll hold (~30 s) so we don't time out
           // before the server either delivers a work item or returns 204.
           timeout: 35_000,
