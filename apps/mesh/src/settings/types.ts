@@ -76,6 +76,7 @@ export interface Settings {
   isCli: boolean;
   noTui: boolean;
   podName: string;
+  sandboxProviderKind: "cluster" | "user-desktop";
 
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;

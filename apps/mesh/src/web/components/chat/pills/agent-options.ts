@@ -1,7 +1,11 @@
 import type { HarnessId } from "@/harnesses";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
-export type AgentOption = "decopilot" | "claude-code-desktop" | "codex-desktop";
+export type AgentOption =
+  | "decopilot"
+  | "decopilot-desktop"
+  | "claude-code-desktop"
+  | "codex-desktop";
 
 export interface AgentPins {
   harness: HarnessId;
@@ -15,7 +19,8 @@ export interface AgentPins {
  * not drift.
  */
 export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
-  decopilot: { harness: "decopilot", sandbox: null },
+  decopilot: { harness: "decopilot", sandbox: "cluster" },
+  "decopilot-desktop": { harness: "decopilot", sandbox: "user-desktop" },
   "claude-code-desktop": { harness: "claude-code", sandbox: "user-desktop" },
   "codex-desktop": { harness: "codex", sandbox: "user-desktop" },
 };
@@ -34,6 +39,7 @@ export function agentOptionFor(
   sandbox: SandboxProviderKind | null,
 ): AgentOption | null {
   if (!harness) return null;
+  if (harness === "decopilot" && sandbox === null) return "decopilot";
   for (const [option, pins] of Object.entries(AGENT_OPTION_PINS) as [
     AgentOption,
     AgentPins,

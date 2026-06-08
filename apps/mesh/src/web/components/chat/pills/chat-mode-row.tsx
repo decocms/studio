@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
-import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { ModePicker } from "./mode-picker";
 import { BranchPill } from "./branch-pill";
@@ -44,8 +43,8 @@ interface SmartProps {
  *     repo, not a public-template clone). Start Website agents
  *     populate `metadata.githubRepo.url` for the template but leave
  *     `connectionId` unset; branches aren't meaningful there.
- *   - ModePicker:  agent is clonable
- *     (agentHasClonableSource(virtualMcp?.metadata)).
+ *   - ModePicker:  runtime availability is decided inside the picker from
+ *     server runtime config plus the user's linked desktop capabilities.
  *
  * Locked flag is derived once here from
  * `useOptionalChatStream().messages.length > 0` and passed to both.
@@ -57,7 +56,6 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
 
-  const clonable = agentHasClonableSource(virtualMcp?.metadata);
   const githubRepo = getActiveGithubRepo(virtualMcp);
   const connectionId = githubRepo?.connectionId;
 
@@ -85,13 +83,13 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
       />
     ) : null;
 
-  const modePicker = clonable ? (
+  const modePicker = (
     <ModePicker
       locked={locked}
       currentBranch={currentBranch}
       virtualMcpId={virtualMcp?.id ?? ""}
     />
-  ) : null;
+  );
 
   return <ChatModeRowPure branchPill={branchPill} modePicker={modePicker} />;
 }

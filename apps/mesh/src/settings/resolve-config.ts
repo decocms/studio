@@ -7,6 +7,8 @@
 import { homedir } from "os";
 import type { CliFlags, Settings } from "./types";
 
+type SandboxProviderKind = Settings["sandboxProviderKind"];
+
 function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
@@ -27,6 +29,25 @@ function externalUrlOrNull(url: string | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+const SANDBOX_PROVIDER_KINDS = new Set<SandboxProviderKind>([
+  "cluster",
+  "user-desktop",
+]);
+
+function resolveSandboxProviderKind(
+  raw: string | undefined,
+): SandboxProviderKind {
+  const kind = (raw && raw.length > 0 ? raw : "user-desktop") as
+    | SandboxProviderKind
+    | string;
+  if (!SANDBOX_PROVIDER_KINDS.has(kind as SandboxProviderKind)) {
+    throw new Error(
+      `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "cluster" or "user-desktop".`,
+    );
+  }
+  return kind as SandboxProviderKind;
 }
 
 export interface ResolvedConfig {
@@ -113,6 +134,9 @@ export function resolveConfig(
     isCli: true,
     noTui: flags.noTui === true,
     podName: envVars.POD_NAME ?? crypto.randomUUID(),
+    sandboxProviderKind: resolveSandboxProviderKind(
+      envVars.STUDIO_SANDBOX_PROVIDER,
+    ),
 
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,

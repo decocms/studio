@@ -5,22 +5,28 @@ import type { AgentOption } from "./pills/agent-options";
 
 /**
  * The (location, harness) mode the chat input is bound to. Mutually
- * exclusive — one of these three values is always the answer.
+ * exclusive — one of these values is always the answer.
  *
  * Named `AgentMode` (not `ChatMode`) to avoid colliding with
  * `ChatPrefsContextValue.chatMode`, which is a different concept
  * (interaction mode: "default" | ...).
  */
-export type AgentMode = "cloud-decopilot" | "local-claude-code" | "local-codex";
+export type AgentMode =
+  | "cloud-decopilot"
+  | "local-decopilot"
+  | "local-claude-code"
+  | "local-codex";
 
 const MODE_TO_OPTION: Record<AgentMode, AgentOption> = {
   "cloud-decopilot": "decopilot",
+  "local-decopilot": "decopilot-desktop",
   "local-claude-code": "claude-code-desktop",
   "local-codex": "codex-desktop",
 };
 
 const OPTION_TO_MODE: Record<AgentOption, AgentMode> = {
   decopilot: "cloud-decopilot",
+  "decopilot-desktop": "local-decopilot",
   "claude-code-desktop": "local-claude-code",
   "codex-desktop": "local-codex",
 };
@@ -76,8 +82,8 @@ const DECOPILOT_TIER_DESCRIPTIONS: Record<ChatTier, string> = {
  *   with version (e.g. "Sonnet 4.6", "GPT-5.5") from
  *   `ai-providers/agent-tiers.ts`. Desktop-CLI users are technical and
  *   want to know which model is about to run.
- * - Cloud (Decopilot): returns a non-technical intent description from
- *   `DECOPILOT_TIER_DESCRIPTIONS`. The server picks the actual model
+ * - Decopilot (cloud or local): returns a non-technical intent description
+ *   from `DECOPILOT_TIER_DESCRIPTIONS`. The server picks the actual model
  *   via `resolveTier` at send time based on org admin config.
  */
 export function resolveTierSubtitle(

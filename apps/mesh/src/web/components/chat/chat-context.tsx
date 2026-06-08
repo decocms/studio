@@ -100,7 +100,6 @@ import type { Task } from "./task/types";
 import type { SendMessageParams, SetAppContextParams } from "./store/types";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { chatModeForTransportRef } from "../../lib/chat-mode-sync";
-import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
@@ -519,17 +518,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     }
   };
 
-  // Effective option: the user's pick filtered through what the current
-  // agent can actually run. Desktop-CLI options (Claude Code / Codex /
-  // Decopilot desktop) need a git branch to check out on the user's
-  // desktop; if the user picked a desktop variant but the current agent
-  // has no clonable source (Decopilot-only / ephemeral), this falls back
-  // to plain Decopilot. The persisted pick is unchanged and returns when
-  // navigating back to an agent with a checkout.
-  const hasClonableSource = agentHasClonableSource(
-    selectedVirtualMcpData?.metadata,
-  );
-
   // Provider-tree wiring: `ChatPrefsProvider` is mounted INSIDE
   // `ChatTaskCtx.Provider` (see `ChatContextProvider` below), so the optional
   // task hook resolves the active-thread lock state in the full chat mount.
@@ -549,7 +537,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
 
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's
-  // global picker, modulo the existing clonable-source fallback.
+  // global picker.
   //
   // When the thread is locked but the (harness, sandbox) tuple doesn't map
   // to a known AgentOption (legacy/trigger-created rows), we intentionally
@@ -558,14 +546,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // should consult isThreadLocked for the "locked" affordance and avoid
   // showing the global selection on a locked thread.
   const effectiveAgentOption: AgentOption | null =
-    taskCtxForLock?.isThreadLocked
-      ? lockedAgentOption
-      : pendingAgentOption === null
-        ? null
-        : !hasClonableSource &&
-            AGENT_OPTION_PINS[pendingAgentOption].sandbox === "user-desktop"
-          ? "decopilot"
-          : pendingAgentOption;
+    taskCtxForLock?.isThreadLocked ? lockedAgentOption : pendingAgentOption;
 
   const effectivePins = effectiveAgentOption
     ? AGENT_OPTION_PINS[effectiveAgentOption]
