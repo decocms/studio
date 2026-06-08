@@ -65,6 +65,7 @@ import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dial
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/web/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
+import { shouldRenderInlineModeRow } from "./input-mode-row";
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -397,6 +398,10 @@ export function ChatInput({
     !isStreaming && !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
 
   const showStopOrCancel = isStreaming || isRunInProgress;
+  const showInlineModeRow = shouldRenderInlineModeRow({
+    messageCount: messages.length,
+    showConnectionsBanner,
+  });
 
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
@@ -618,7 +623,7 @@ export function ChatInput({
 
                     {/* Right Actions (branch/mode, model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      {messages.length > 0 && (
+                      {showInlineModeRow && (
                         <ChatModeRow
                           virtualMcp={fullVm}
                           currentBranch={taskCtx?.currentBranch ?? null}

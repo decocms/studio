@@ -8,7 +8,17 @@ import {
 } from "./agent-options";
 
 describe("agentOptionFor", () => {
-  test("maps decopilot harness with null sandbox to decopilot option", () => {
+  test("maps decopilot harness with cluster sandbox to decopilot option", () => {
+    expect(agentOptionFor("decopilot", "cluster")).toBe("decopilot");
+  });
+
+  test("maps decopilot harness with user-desktop sandbox to decopilot-desktop option", () => {
+    expect(agentOptionFor("decopilot", "user-desktop")).toBe(
+      "decopilot-desktop",
+    );
+  });
+
+  test("maps legacy decopilot harness with null sandbox to decopilot option", () => {
     expect(agentOptionFor("decopilot", null)).toBe("decopilot");
   });
 

@@ -54,6 +54,12 @@ export type PublicConfig = {
    * client can disable analytics cleanly without checking for `undefined`.
    */
   posthog: { key: string; host: string } | null;
+  /**
+   * Server runtime capabilities that affect client-side affordances.
+   */
+  runtime: {
+    agentSandbox: boolean;
+  };
 };
 
 const POSTHOG_DEFAULT_HOST = "https://us.i.posthog.com";
@@ -85,6 +91,9 @@ app.get("/", (c) => {
     brandExtractEnabled: !!getSettings().firecrawlApiKey,
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),
+    runtime: {
+      agentSandbox: getSettings().sandboxProviderKind === "cluster",
+    },
   };
 
   return c.json({ success: true, config });
