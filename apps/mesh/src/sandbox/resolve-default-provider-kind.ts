@@ -4,7 +4,8 @@
  *
  * Policy:
  *   - link online for this user → "user-desktop"
- *   - otherwise → whatever the env's cluster provider is (cluster)
+ *   - otherwise → whatever provider kind the env/default policy selects
+ *     (for hosted execution, "agent-sandbox")
  *
  * The link probe is the same one `resolveDispatchTarget` uses, so manual sandbox
  * start (from the branch picker) and auto-start (from VmEventsBridge) agree.

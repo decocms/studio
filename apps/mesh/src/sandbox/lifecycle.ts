@@ -139,10 +139,10 @@ async function instantiate(
   const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   switch (kind) {
-    case "cluster": {
+    case "agent-sandbox": {
       // Dynamic import — @kubernetes/client-node is heavy and only needed
-      // when STUDIO_SANDBOX_PROVIDER=cluster. Deploys that never select the
-      // cluster provider don't load it.
+      // when STUDIO_SANDBOX_PROVIDER=agent-sandbox. Deploys that never select
+      // the hosted provider don't load it.
       const { AgentSandboxProvider } = await import(
         "@decocms/sandbox/provider/agent-sandbox"
       );
@@ -226,7 +226,7 @@ export function getSandboxProviderByKind(
  * StudioContext (the state store only needs a Kysely instance). Returns null
  * when no provider kind is configured.
  *
- * `instantiate()` only ever yields the cluster `AgentSandboxProvider` (the
+ * `instantiate()` only ever yields the hosted `AgentSandboxProvider` (the
  * sole env-instantiable provider — `user-desktop` is built per-run and
  * throws here), so the resolved provider is always an `AgentSandboxProvider`.
  * Typing it as such lets the preview proxy skip a redundant kind check + cast.

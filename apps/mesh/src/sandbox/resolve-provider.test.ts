@@ -4,6 +4,7 @@ import type {
   Sandbox,
   SandboxId,
   SandboxProvider,
+  SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 
 import type { StudioContext } from "../core/studio-context";
@@ -13,14 +14,14 @@ import type {
 } from "../links/link-claim-registry";
 
 // Pin env kind so resolver fallback is deterministic.
-process.env.STUDIO_SANDBOX_PROVIDER = "cluster";
+process.env.STUDIO_SANDBOX_PROVIDER = "agent-sandbox";
 
 async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-const stubCluster: SandboxProvider = {
-  kind: "cluster",
+const stubAgentSandbox: SandboxProvider = {
+  kind: "agent-sandbox",
   ensure: async (_id: SandboxId, _opts?: EnsureOptions): Promise<Sandbox> => ({
     handle: "h",
     workdir: "/",
@@ -33,21 +34,28 @@ const stubCluster: SandboxProvider = {
   watchClaimLifecycle: () => readyOnly(),
 };
 
-const stubDesktop: SandboxProvider = { ...stubCluster, kind: "user-desktop" };
+const stubDesktop: SandboxProvider = {
+  ...stubAgentSandbox,
+  kind: "user-desktop",
+};
+
+const realLifecycle = await import("./lifecycle");
 
 // Mock lifecycle: dispatch on requested kind so we can assert which one was
 // picked.
-const byKindSpy = mock(
-  async (_ctx: unknown, kind: "cluster" | "user-desktop") => {
-    if (kind === "cluster") return stubCluster;
-    throw new Error("unreachable — resolver builds user-desktop directly");
-  },
-);
+const byKindSpy = mock(async (_ctx: unknown, kind: SandboxProviderKind) => {
+  if (kind === "agent-sandbox") return stubAgentSandbox;
+  throw new Error("unreachable — resolver builds user-desktop directly");
+});
 const buildDesktopSpy = mock(async (_ctx: unknown) => stubDesktop);
 
 mock.module("./lifecycle", () => ({
   getSandboxProviderByKind: byKindSpy,
   buildDesktopProvider: buildDesktopSpy,
+  getOrInitSharedRunner: realLifecycle.getOrInitSharedRunner,
+  subscribeLifecycle: realLifecycle.subscribeLifecycle,
+  __resetSharedLifecyclesForTesting:
+    realLifecycle.__resetSharedLifecyclesForTesting,
 }));
 
 // Now import the resolver — its lifecycle import has been mocked.
@@ -85,8 +93,9 @@ function stubCtx(
 describe("resolveSandboxProvider", () => {
   test("recorded sandboxMap kind wins over the link-or-env default", async () => {
     // User has a link online, so the default policy would pick `user-desktop`.
-    // But sandboxMap records `cluster` for (user, branch) — we must honor
-    // that recorded kind so the SSE/proxy paths reach the right provider.
+    // But sandboxMap records legacy `cluster` for (user, branch) — we must
+    // normalize and honor that recorded hosted kind so the SSE/proxy paths
+    // reach the right provider.
     const metadata = {
       sandboxMap: {
         "u-1": {
@@ -111,8 +120,8 @@ describe("resolveSandboxProvider", () => {
         virtualMcpMetadata: metadata,
       },
     );
-    expect(kind).toBe("cluster");
-    expect(provider).toBe(stubCluster);
+    expect(kind).toBe("agent-sandbox");
+    expect(provider).toBe(stubAgentSandbox);
     expect(buildDesktopSpy).not.toHaveBeenCalled();
   });
 
@@ -149,18 +158,18 @@ describe("resolveSandboxProvider", () => {
       userId: "u-1",
       branch: "deco/foo",
       virtualMcpMetadata: metadata,
-      explicitKind: "cluster",
+      explicitKind: "agent-sandbox",
     });
-    expect(kind).toBe("cluster");
+    expect(kind).toBe("agent-sandbox");
   });
 
-  test("no link + no sandboxMap entry → env kind (cluster here)", async () => {
+  test("no link + no sandboxMap entry → env kind (agent-sandbox here)", async () => {
     const { kind } = await resolveSandboxProvider(stubCtx(null), {
       userId: "u-1",
       branch: "deco/fresh",
       virtualMcpMetadata: null,
     });
-    expect(kind).toBe("cluster");
+    expect(kind).toBe("agent-sandbox");
   });
 
   test("ctx hint (sandboxPreference=user-desktop + link) short-circuits without sandboxMap read", async () => {
@@ -206,8 +215,8 @@ describe("resolveSandboxProvider", () => {
       branch: "deco/foo",
       virtualMcpMetadata: null,
     });
-    // STUDIO_SANDBOX_PROVIDER=cluster pinned at top of file.
-    expect(kind).toBe("cluster");
+    // STUDIO_SANDBOX_PROVIDER=agent-sandbox pinned at top of file.
+    expect(kind).toBe("agent-sandbox");
   });
 
   test("sandboxPreference=cluster-default + env=user-desktop + link online → binds user-desktop with link", async () => {
