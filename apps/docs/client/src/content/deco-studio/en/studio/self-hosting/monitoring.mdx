@@ -125,7 +125,9 @@ processors:
   batch:
     # One object is written per flush. Keep batches bounded so each file stays
     # well under the reader's 32 MiB per-file limit, and to limit how many
-    # objects each dashboard query scans.
+    # objects each dashboard query scans. (send_batch_max_size must be >=
+    # send_batch_size.)
+    send_batch_size: 2048
     send_batch_max_size: 2048
     timeout: 60s
 exporters:

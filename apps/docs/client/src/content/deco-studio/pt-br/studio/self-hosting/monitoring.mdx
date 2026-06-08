@@ -125,7 +125,9 @@ processors:
   batch:
     # Um objeto é gravado por flush. Mantenha os batches limitados para cada
     # arquivo ficar bem abaixo do limite de 32 MiB por arquivo do leitor, e para
-    # limitar quantos objetos cada query do dashboard varre.
+    # limitar quantos objetos cada query do dashboard varre. (send_batch_max_size
+    # precisa ser >= send_batch_size.)
+    send_batch_size: 2048
     send_batch_max_size: 2048
     timeout: 60s
 exporters:
