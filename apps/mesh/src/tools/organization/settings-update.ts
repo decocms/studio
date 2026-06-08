@@ -58,9 +58,16 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       },
     );
 
-    // Convert dates to ISO strings for JSON Schema compatibility
+    // Observation config is managed separately (OBSERVATION_CONFIG_UPDATE) and
+    // intentionally not returned here.
     return {
-      ...settings,
+      organizationId: settings.organizationId,
+      sidebar_items: settings.sidebar_items,
+      enabled_plugins: settings.enabled_plugins,
+      registry_config: settings.registry_config,
+      simple_mode: settings.simple_mode,
+      default_home_agents: settings.default_home_agents,
+      // Convert dates to ISO strings for JSON Schema compatibility
       createdAt:
         settings.createdAt instanceof Date
           ? settings.createdAt.toISOString()

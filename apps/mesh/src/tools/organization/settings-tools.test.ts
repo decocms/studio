@@ -34,6 +34,7 @@ const buildStoredSettings = (
   registry_config: null,
   simple_mode: null,
   default_home_agents: null,
+  observational_config: null,
   createdAt: "2024-01-01T00:00:00.000Z",
   updatedAt: "2024-01-01T00:00:00.000Z",
   ...overrides,

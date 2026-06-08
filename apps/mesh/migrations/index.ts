@@ -100,6 +100,7 @@ import * as migration098threadmessageparts from "./098-thread-message-parts.ts";
 import * as migration099runfence from "./099-run-fence.ts";
 import * as migration100linktransport from "./100-link-transport.ts";
 import * as migration101cancelrequestedat from "./101-cancel-requested-at.ts";
+import * as migration102observationalagent from "./102-observational-agent.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -222,6 +223,7 @@ const migrations: Record<string, Migration> = {
   "099-run-fence": migration099runfence,
   "100-link-transport": migration100linktransport,
   "101-cancel-requested-at": migration101cancelrequestedat,
+  "102-observational-agent": migration102observationalagent,
 };
 
 export default migrations;

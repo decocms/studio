@@ -16,6 +16,7 @@ import { KEYS } from "@/web/lib/query-keys";
 
 export type CapabilityId =
   | "org:manage"
+  | "observation:manage"
   | "members:manage"
   | "connections:manage"
   | "agents:manage"
