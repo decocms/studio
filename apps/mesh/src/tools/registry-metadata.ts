@@ -32,6 +32,7 @@ export type ToolCategory =
   | "Secrets"
   | "File Configs"
   | "Automations"
+  | "Observation"
   | "Object Storage"
   | "Registry"
   | "GitHub"
@@ -125,6 +126,8 @@ const ALL_TOOL_NAMES = [
   "AUTOMATION_TRIGGER_ROTATE_TOKEN",
   "AUTOMATION_RUN",
   "OBSERVATION_SWEEP_RUN",
+  "OBSERVATION_CONFIG_GET",
+  "OBSERVATION_CONFIG_UPDATE",
   // Virtual MCP plugin config and pinned views tools
   "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
   "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
@@ -632,7 +635,17 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "OBSERVATION_SWEEP_RUN",
     description: "Run the observational-agent sweep for this organization now",
-    category: "Organizations",
+    category: "Observation",
+  },
+  {
+    name: "OBSERVATION_CONFIG_GET",
+    description: "View the observational-agent configuration",
+    category: "Observation",
+  },
+  {
+    name: "OBSERVATION_CONFIG_UPDATE",
+    description: "Update the observational-agent configuration",
+    category: "Observation",
   },
   // Virtual MCP plugin config and pinned views tools
   {
@@ -1121,7 +1134,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_UPDATE",
       "ORGANIZATION_SETTINGS_GET",
       "ORGANIZATION_SETTINGS_UPDATE",
-      "OBSERVATION_SWEEP_RUN",
       "BRAND_CONTEXT_LIST",
       "BRAND_CONTEXT_GET",
       "BRAND_CONTEXT_CREATE",
@@ -1134,6 +1146,17 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_DOMAIN_SET",
       "ORGANIZATION_DOMAIN_UPDATE",
       "ORGANIZATION_DOMAIN_CLEAR",
+    ],
+  },
+  {
+    id: "observation:manage",
+    label: "Manage observation",
+    description: "Configure observational agents and run sweeps",
+    section: "Organization",
+    tools: [
+      "OBSERVATION_CONFIG_GET",
+      "OBSERVATION_CONFIG_UPDATE",
+      "OBSERVATION_SWEEP_RUN",
     ],
   },
   {

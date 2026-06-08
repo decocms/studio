@@ -106,7 +106,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "Observation",
           icon: <Eye size={14} />,
           to: "/$org/settings/observation",
-          requires: "org:manage",
+          requires: "observation:manage",
         },
         {
           key: "brand-context",

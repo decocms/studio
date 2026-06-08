@@ -135,6 +135,8 @@ const CORE_TOOLS = [
   AutomationTools.AUTOMATION_TRIGGER_ROTATE_TOKEN,
   AutomationTools.AUTOMATION_RUN,
   ObservationTools.OBSERVATION_SWEEP_RUN,
+  ObservationTools.OBSERVATION_CONFIG_GET,
+  ObservationTools.OBSERVATION_CONFIG_UPDATE,
 
   // Virtual MCP plugin config tools
   VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_GET,

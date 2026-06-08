@@ -118,7 +118,7 @@ describe("observational agents (e2e through the real cluster)", () => {
     // forward-only, so enabling never backfills pre-existing threads. The
     // settings upsert merges, so wireMockProvider's tier config survives.
     const model = { keyId: mock.keyId, modelId: mock.modelId };
-    await mcpCall(PODS.MESH_1, session, "ORGANIZATION_SETTINGS_UPDATE", {
+    await mcpCall(PODS.MESH_1, session, "OBSERVATION_CONFIG_UPDATE", {
       organizationId: session.orgId,
       observational_config: {
         observers: [

@@ -60,7 +60,6 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
-  observational_config: ObservationalConfig | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -72,7 +71,6 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   registry_config: null,
   simple_mode: null,
   default_home_agents: null,
-  observational_config: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -167,7 +165,6 @@ type OrgSettingsUpdateInput = Partial<
     | "registry_config"
     | "simple_mode"
     | "default_home_agents"
-    | "observational_config"
   >
 >;
 
@@ -376,22 +373,71 @@ export function useHomeAgentsWriter(): HomeAgentsWriter {
   return { currentIds, apply };
 }
 
+// Observation config lives behind its own observation:manage-gated tools, not
+// the shared org-settings row — so it has its own query key + read/write hooks.
+interface ObservationConfigEnvelope {
+  observational_config: ObservationalConfig | null;
+}
+
 export function useObservationalConfig(): ObservationalConfig | null {
-  const { data } = useOrganizationSettings((s) => s.observational_config);
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  const { data } = useQuery({
+    queryKey: KEYS.observationalConfig(org.id),
+    queryFn: async (): Promise<ObservationalConfig | null> => {
+      const result = (await client.callTool({
+        name: "OBSERVATION_CONFIG_GET",
+        arguments: {},
+      })) as {
+        structuredContent?: ObservationConfigEnvelope;
+        isError?: boolean;
+      };
+      if (result?.isError) return null;
+      return result.structuredContent?.observational_config ?? null;
+    },
+    staleTime: 60_000,
+  });
+
   return data ?? null;
 }
 
-export function useUpdateObservationalConfig() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (config: ObservationalConfig, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ observational_config: config }, options),
-    mutateAsync: (
-      config: ObservationalConfig,
-      options?: OrgSettingsMutateOptions,
-    ) => mutation.mutateAsync({ observational_config: config }, options),
-  };
+export function useUpdateObservationalConfig(): UseMutationResult<
+  ObservationalConfig | null,
+  Error,
+  ObservationalConfig
+> {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (config: ObservationalConfig) => {
+      const result = (await client.callTool({
+        name: "OBSERVATION_CONFIG_UPDATE",
+        arguments: { organizationId: org.id, observational_config: config },
+      })) as {
+        structuredContent?: ObservationConfigEnvelope;
+      } & ToolErrorEnvelope;
+      if (result?.isError) {
+        throw new Error(
+          result.content?.[0]?.text ?? "Failed to update observation config",
+        );
+      }
+      return result.structuredContent?.observational_config ?? null;
+    },
+    onSuccess: (config) => {
+      queryClient.setQueryData(KEYS.observationalConfig(org.id), config);
+    },
+  });
 }
 
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {
