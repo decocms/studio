@@ -158,9 +158,11 @@ describe("sandbox log/event SSE replay", () => {
     const baselineConnectedAt = baseline?.connectedAt ?? 0;
 
     await disableProxy(PROXY_NAMES.STUDIO_WS);
+    // Pull transport: the presence claim lingers until its 60s KV TTL lapses
+    // once the daemon can no longer re-arm it — wait the full TTL plus margin.
     await pollUntil(
       async () => (await getLinkClaim(testState.cookie)) === null,
-      { timeoutMs: 30_000, intervalMs: 1_000, label: "link-offline" },
+      { timeoutMs: 80_000, intervalMs: 1_000, label: "link-offline" },
     );
     await enableProxy(PROXY_NAMES.STUDIO_WS);
     await pollUntil(

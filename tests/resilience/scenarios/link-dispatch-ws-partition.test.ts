@@ -1,12 +1,16 @@
 /**
- * Resilience scenario: sandbox↔studio WS partition.
+ * Resilience scenario: sandbox↔studio transport partition.
  *
  * Drives a REAL link daemon + REAL spawned sandbox. Severs the daemon↔studio
- * WebSocket with Toxiproxy (clean TCP close) and asserts:
+ * link with Toxiproxy (clean TCP close on the `studio_ws` proxy — which now
+ * carries the pull-transport HTTP long-polls: control/work/proxy, NOT a
+ * WebSocket) and asserts:
  *   1. The sandbox responds to a write/read round-trip while connected.
- *   2. While the WS is severed, the link goes offline (/api/links/me → null)
- *      and a tunneled read fails FAST (no hang, no queue/replay).
- *   3. After the WS is restored, the daemon reconnects (connectedAt advances)
+ *   2. Once the link is severed the daemon can no longer re-arm its presence
+ *      claim, so the claim expires from the `studio_links` KV after its 60s TTL
+ *      and the link goes offline (/api/links/me → null); a tunneled read fails
+ *      FAST (no hang, no queue/replay).
+ *   3. After the link is restored, the daemon reconnects (connectedAt advances)
  *      and the same read returns the same content (state preserved).
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -112,10 +116,15 @@ describe("sandbox↔studio WS partition", () => {
 
     await disableProxy(PROXY_NAMES.STUDIO_WS);
 
-    // The link claim is released once the gateway observes the WS close.
+    // Under the pull transport the claim is presence-based: the daemon re-arms it
+    // on every work/control/proxy poll, and it lingers in the `studio_links` KV
+    // until its 60s TTL lapses once those polls can no longer reach the cluster.
+    // There is NO synchronous socket-close signal like the old reverse-WS
+    // transport had, so wait for the full TTL (plus margin) before asserting
+    // offline.
     await pollUntil(
       async () => (await getLinkClaim(testState.cookie)) === null,
-      { timeoutMs: 30_000, intervalMs: 1_000, label: "link-offline" },
+      { timeoutMs: 80_000, intervalMs: 1_000, label: "link-offline" },
     );
 
     // A tunneled read must fail FAST (not hang). Offline → 404; in-flight
@@ -132,7 +141,7 @@ describe("sandbox↔studio WS partition", () => {
     const durationMs = performance.now() - start;
     expect(read.status).toBeGreaterThanOrEqual(400);
     expect(durationMs).toBeLessThan(15_000);
-  }, 90_000);
+  }, 150_000);
 
   test("WS restored → daemon reconnects and the sandbox responds again", async () => {
     // Self-contained: start from a connected state (afterEach from the prior
@@ -143,10 +152,12 @@ describe("sandbox↔studio WS partition", () => {
     const connectedAt0 = before.connectedAt;
 
     await disableProxy(PROXY_NAMES.STUDIO_WS);
+    // 60s presence TTL + margin (see the "WS severed" test above for why the
+    // pull transport has no synchronous offline signal).
     await pollUntil(
       async () => (await getLinkClaim(testState.cookie)) === null,
       {
-        timeoutMs: 30_000,
+        timeoutMs: 80_000,
         intervalMs: 1_000,
         label: "link-offline-before-reconnect",
       },
@@ -181,5 +192,5 @@ describe("sandbox↔studio WS partition", () => {
       },
       { timeoutMs: 60_000, intervalMs: 2_000, label: "read-after-reconnect" },
     );
-  }, 240_000);
+  }, 300_000);
 });
