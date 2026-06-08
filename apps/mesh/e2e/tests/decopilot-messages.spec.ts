@@ -115,7 +115,7 @@ test.describe("POST /messages — dispatch target gating", () => {
 
     // Link advertises only decopilot-sandbox; a claude-code harness needs the
     // "claude-code" capability.
-    const presence = claimPullPresence(api, orgSlug, ["decopilot-sandbox"]);
+    const presence = claimPullPresence(api, ["decopilot-sandbox"]);
     try {
       const res = await postMessage(
         api,
@@ -169,7 +169,7 @@ test.describe("POST /messages — first-message pinning", () => {
     const api = page.context().request;
 
     // user-desktop + claude-code resolves OK only when the link advertises it.
-    const presence = claimPullPresence(api, orgSlug, ["claude-code"]);
+    const presence = claimPullPresence(api, ["claude-code"]);
     const db = await connectDevDb();
     try {
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
@@ -204,7 +204,7 @@ test.describe("POST /messages — first-message pinning", () => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
-    const presence = claimPullPresence(api, orgSlug, ["claude-code"]);
+    const presence = claimPullPresence(api, ["claude-code"]);
     const db = await connectDevDb();
     try {
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);

@@ -25,15 +25,6 @@ import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createLinkIngestRoutes } from "./decopilot/link-ingest-routes";
-import { createLinkWorkRoutes } from "./decopilot/link-work-routes";
-import { createLinkControlRoutes } from "./decopilot/link-control-routes";
-import {
-  createLinkProxyRoutes,
-  type LinkProxyDeps,
-} from "./decopilot/link-proxy-routes";
-import type { LinkClaimRegistry } from "@/links/link-claim-registry";
-import type { LinkWorkQueue } from "./decopilot/link-work-queue";
-import type { NatsConnection } from "nats";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -61,27 +52,6 @@ interface OrgScopedDeps {
    * connection's `organization_id` matches the resolved org).
    */
   oauthProxyHandler: MiddlewareHandler<Env>;
-  /**
-   * Link work-queue and claim registry for pull-transport work polling.
-   * Optional: when absent the GET /links/work route is not mounted.
-   */
-  linkWorkDeps?: {
-    linkClaimRegistry: LinkClaimRegistry;
-    workQueue: LinkWorkQueue;
-  };
-  /**
-   * NATS connection getter for the pull-transport control long-poll.
-   * Optional: when absent the GET /links/control route is not mounted.
-   */
-  linkControlDeps?: {
-    getConnection: () => NatsConnection | null;
-  };
-  /**
-   * NATS connection getter for the pull reverse-proxy channel (Phase C-bis).
-   * Optional: when absent the /links/proxy routes are not mounted. DORMANT —
-   * no production caller holds the GET open yet (S3 wires the provider).
-   */
-  linkProxyDeps?: LinkProxyDeps;
   /**
    * Public events handler (defined in app.ts). Mounted at
    * `POST /api/:org/events/:type`.
@@ -124,16 +94,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   ); // /api/:org/trigger-callback
   app.route("/webhooks", createAutomationWebhookRoutes()); // /api/:org/webhooks/:triggerId[/:token]
   app.route("/", createLinkIngestRoutes({ streamBuffer: deps.streamBuffer })); // /api/:org/links/runs/:runId/stream
-  if (deps.linkWorkDeps) {
-    app.route("/", createLinkWorkRoutes(deps.linkWorkDeps)); // /api/:org/links/work
-  }
-  if (deps.linkControlDeps) {
-    app.route("/", createLinkControlRoutes(deps.linkControlDeps)); // /api/:org/links/control
-  }
-  if (deps.linkProxyDeps) {
-    // /api/:org/links/proxy + /api/:org/links/proxy/:reqId/stream (dormant)
-    app.route("/", createLinkProxyRoutes(deps.linkProxyDeps));
-  }
 
   if (deps.mountDevAssets) {
     app.route("/dev-assets", createDevAssetsRoutes({ orgFromPath: true }));

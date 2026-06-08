@@ -28,6 +28,7 @@ const validWorkItem: WorkItem = {
   orgId: "org_01",
   userId: "usr_01",
   runFenceToken: FENCE_TOKEN,
+  orgSlug: ORG_SLUG,
   harnessInput: {
     threadId: "thrd_01",
     runId: RUN_ID,

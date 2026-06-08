@@ -48,6 +48,9 @@ import {
 } from "./middleware/log-deprecated-route";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import { createLinkWorkRoutes } from "./routes/decopilot/link-work-routes";
+import { createLinkControlRoutes } from "./routes/decopilot/link-control-routes";
+import { createLinkProxyRoutes } from "./routes/decopilot/link-proxy-routes";
 import { createVmEventsRoutes } from "./routes/vm-events";
 import {
   createDecoSitesOrgRoutes,
@@ -1867,6 +1870,35 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   });
 
+  // User-scoped link daemon long-poll routes. The link is the USER, not an org:
+  // each handler reads ctx.auth.user.id (populated by the global
+  // ContextFactory.create middleware, which resolves the MCP OAuth bearer via
+  // getMcpSession) and ignores org entirely. Mounted at /api/links/* next to
+  // /api/links/me; the org for each run travels on the work item (orgSlug).
+  if (linkWorkQueue != null) {
+    app.route(
+      "/api",
+      createLinkWorkRoutes({ linkClaimRegistry, workQueue: linkWorkQueue }),
+    );
+  }
+  if (natsProvider != null) {
+    app.route(
+      "/api",
+      createLinkControlRoutes({
+        getConnection: () => natsProvider!.getConnection(),
+      }),
+    );
+    app.route(
+      "/api",
+      createLinkProxyRoutes({
+        getConnection: () => natsProvider!.getConnection(),
+        // Only consumed by the non-production test-trigger route to wire the S5
+        // fail-fast watcher; production createProxyDispatch is wired separately.
+        claimRegistry: linkClaimRegistry,
+      }),
+    );
+  }
+
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs).
   // Resolve the org from the URL before serving so the stable URL cannot drift
   // to the session-active org when the path targets a different org.
@@ -2019,28 +2051,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     eventsHandler,
     watchHandler,
     betterAuthProtectedResourceHandler,
-    linkWorkDeps:
-      linkWorkQueue != null
-        ? {
-            linkClaimRegistry,
-            workQueue: linkWorkQueue,
-          }
-        : undefined,
-    linkControlDeps:
-      natsProvider != null
-        ? {
-            getConnection: () => natsProvider!.getConnection(),
-          }
-        : undefined,
-    linkProxyDeps:
-      natsProvider != null
-        ? {
-            getConnection: () => natsProvider!.getConnection(),
-            // Only consumed by the non-production test-trigger route to wire the
-            // S5 fail-fast watcher; production createProxyDispatch is wired above.
-            claimRegistry: linkClaimRegistry,
-          }
-        : undefined,
   });
   app.route("/api/:org", orgScopedApi);
 

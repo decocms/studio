@@ -113,11 +113,12 @@ export const workItemSchema = z.object({
    */
   sandbox: workItemSandboxSchema.optional(),
   /**
-   * Organization slug for the ingest URL path segment. Carried here so
-   * the daemon doesn't need to resolve it from `orgId` (UUID) without DB
-   * access. When absent, the daemon falls back to `DECO_ORG_SLUG` env var.
+   * Organization slug for the ingest URL path segment. Always present — the
+   * dispatcher resolves it (from the request org or a DB lookup by org id) so
+   * the user-scoped daemon can build the org-scoped ingest URL without a DB
+   * lookup of its own.
    */
-  orgSlug: z.string().optional(),
+  orgSlug: z.string(),
   /**
    * Object-storage ref for the offloaded `harnessInput.messages` array.
    * Present when the encoded harnessInput exceeded the NATS `MAX_PUBLISH_BYTES`

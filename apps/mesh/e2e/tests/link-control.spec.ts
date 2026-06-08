@@ -3,7 +3,7 @@
  *
  * Three assertions (Phase C correctness invariants):
  *
- *   (1) GET /api/:org/links/control with no auth → 401.
+ *   (1) GET /api/links/control with no auth → 401.
  *
  *   (2) Cancel → durable flag → ingest 409 (hard invariant):
  *       - Seed a pull thread with a fence token.
@@ -130,7 +130,7 @@ test.describe("link-control Phase C", () => {
   test("GET /links/control without auth returns 401", async ({
     authedPage,
   }) => {
-    const { page, orgSlug } = authedPage;
+    const { page } = authedPage;
     // Use a fresh context with no cookies to simulate an unauthenticated caller.
     const unauthCtx = await page
       .context()
@@ -141,7 +141,7 @@ test.describe("link-control Phase C", () => {
     const unauthApi = unauthCtx.request;
 
     try {
-      const res = await unauthApi.get(`/api/${orgSlug}/links/control`, {
+      const res = await unauthApi.get(`/api/links/control`, {
         timeout: 5_000,
       });
       expect(res.status()).toBe(401);
@@ -231,7 +231,7 @@ test.describe("link-control Phase C", () => {
       // Open the control poll FIRST with a short window; fire cancel concurrently.
       // The poll needs to beat the cancel frame by subscribing before it arrives.
       const pollPromise = api
-        .get(`/api/${orgSlug}/links/control`, {
+        .get(`/api/links/control`, {
           // Long enough to outlast the server's POLL_TIMEOUT_MS (28 s) if needed,
           // but we fire cancel almost immediately so it should resolve much sooner.
           timeout: 35_000,

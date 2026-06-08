@@ -2,7 +2,7 @@
  * Pull-transport cluster connection entry point (Phase D, spec §3.1).
  *
  * Instead of a persistent WebSocket, runs a long-poll work loop that pulls
- * work items from `GET /api/:org/links/work` and dispatches each item to the
+ * work items from `GET /api/links/work` and dispatches each item to the
  * local sandbox via `handleLocalDispatch`, plus the proxy poll loop
  * (`runProxyPollLoop`) for sandbox control/events/vm-tools.
  *
@@ -11,15 +11,8 @@
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  *
- * ORG DISCOVERY NOTE:
- * The daemon links a user who may span multiple orgs. The pull loop requires
- * a single org slug for the `/api/:org/links/work` endpoint. Currently `orgSlug`
- * must be supplied by the caller (sourced from `DECO_ORG_SLUG` env var or from
- * `StartLinkDaemonOptions.orgSlug`). Multi-org polling is a follow-up — for now
- * a single primary org is used.
- *
- * TODO(Phase D follow-up): multi-org polling — run one `runWorkPollLoop` per org
- * if the daemon is linked against multiple orgs.
+ * The daemon is user-scoped; there is no startup org. The org slug travels per
+ * work item (`item.orgSlug`) and is used only at ingest time.
  */
 
 import { runWorkPollLoop } from "./work-poller";
@@ -39,14 +32,6 @@ export interface ClusterConnectionPullInput {
    * Used as both the work-poll base URL and the ingest POST base URL.
    */
   clusterBaseUrl: string;
-  /**
-   * Org SLUG for the org-scoped `/api/:org/links/work` endpoint and the
-   * ingest POST path. MUST be the slug, not the UUID orgId.
-   *
-   * NOTE: the daemon currently supports a single primary org for the pull
-   * loop. Multi-org polling is a follow-up (see module header).
-   */
-  orgSlug: string;
   /**
    * Bearer token resolver. Called before each poll and before each ingest
    * POST so a refreshed token reaches every request (mirrors the WS path's
@@ -155,9 +140,6 @@ function deriveHandle(item: WorkItem): string {
 export async function connectToClusterPull(
   input: ClusterConnectionPullInput,
 ): Promise<ClusterConnectionHandle> {
-  if (!input.orgSlug)
-    throw new Error("connectToClusterPull: orgSlug is required");
-
   const ac = new AbortController();
   let resolveClosed!: () => void;
   const closed = new Promise<void>((r) => {
@@ -166,12 +148,11 @@ export async function connectToClusterPull(
 
   input.onConnected?.();
   console.log(
-    `[cluster-connection-pull] starting pull-transport loop org=${input.orgSlug} cluster=${input.clusterBaseUrl}`,
+    `[cluster-connection-pull] starting pull-transport loop cluster=${input.clusterBaseUrl}`,
   );
 
   const workPollDone = runWorkPollLoop({
     baseUrl: input.clusterBaseUrl,
-    orgSlug: input.orgSlug,
     getAccessToken: input.getAccessToken,
     signal: ac.signal,
     fetchImpl: input.fetchImpl,
@@ -237,10 +218,9 @@ export async function connectToClusterPull(
       // the LRU eviction logic skips it (activeDispatchCount > 0). Released in
       // `finally` to guarantee the counter is always decremented.
       //
-      // Prefer `item.orgSlug` (resolved cluster-side at pullDispatch time) over
-      // the daemon's configured `input.orgSlug` — the work item's slug is
-      // authoritative when present, avoiding reliance on DECO_ORG_SLUG env.
-      const effectiveOrgSlug = item.orgSlug ?? input.orgSlug;
+      // The work item's orgSlug is authoritative — it is resolved cluster-side
+      // at pullDispatch time and is always present (required field on WorkItem).
+      const effectiveOrgSlug = item.orgSlug;
       const releaseDispatch = input.provider.acquireDispatch(handle);
       // Phase C: register a per-run AbortController so the control-poll loop
       // can abort this specific dispatch when the cluster sends a cancel frame.
@@ -275,7 +255,6 @@ export async function connectToClusterPull(
   // which in turn fires AbortSignal.any([ac.signal, runAc.signal]) inside onWork.
   const controlPollDone = runControlPollLoop({
     baseUrl: input.clusterBaseUrl,
-    orgSlug: input.orgSlug,
     getAccessToken: input.getAccessToken,
     signal: ac.signal,
     fetchImpl: input.fetchImpl,
@@ -299,7 +278,6 @@ export async function connectToClusterPull(
   const proxyPollDone = input.controlHandler
     ? runProxyPollLoop({
         baseUrl: input.clusterBaseUrl,
-        orgSlug: input.orgSlug,
         getAccessToken: input.getAccessToken,
         controlHandler: input.controlHandler,
         signal: ac.signal,

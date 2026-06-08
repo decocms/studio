@@ -1,7 +1,7 @@
 /**
  * Establish pull-transport link presence for the authed user from a spec.
  *
- * A real desktop daemon holds an open long-poll on `GET /api/:org/links/work`;
+ * A real desktop daemon holds an open long-poll on `GET /api/links/work`;
  * the route synthetically mints a presence claim in the NATS KV bucket at the
  * start of the handler so `resolveDispatchTarget` sees the link as online (and
  * advertising the requested capabilities). Specs that previously brought a
@@ -11,7 +11,7 @@
  * `user-desktop` target, which this claim produces).
  *
  * Usage:
- *   const presence = claimPullPresence(api, orgSlug, ["claude-code"]);
+ *   const presence = claimPullPresence(api, ["claude-code"]);
  *   try { ...assertions... } finally { await presence; }
  *
  * The returned promise resolves when the long-poll request settles (a 204 on
@@ -23,13 +23,12 @@ import { expect, type APIRequestContext } from "@playwright/test";
 
 export function claimPullPresence(
   api: APIRequestContext,
-  orgSlug: string,
   capabilities: string[],
 ): Promise<unknown> {
   // Fire the long-poll with a short client timeout: just long enough for the
   // handler's synchronous claim refresh to land. 204/timeout is fine.
   const presencePromise = api
-    .get(`/api/${orgSlug}/links/work`, {
+    .get(`/api/links/work`, {
       timeout: 1_500,
       headers: {
         "x-link-capabilities": capabilities.join(","),

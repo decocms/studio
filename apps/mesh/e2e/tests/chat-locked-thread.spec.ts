@@ -160,7 +160,7 @@ test.describe("Thread runtime is locked after first message", () => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
-    const presence = claimPullPresence(api, orgSlug, ["claude-code"]);
+    const presence = claimPullPresence(api, ["claude-code"]);
     const db = await connectDevDb();
     try {
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
@@ -247,7 +247,7 @@ test.describe("Thread runtime is locked after first message", () => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
-    const presence = claimPullPresence(api, orgSlug, ["claude-code"]);
+    const presence = claimPullPresence(api, ["claude-code"]);
     try {
       // Seed an AI provider key so the thread route renders the
       // composer instead of `NoAiProviderEmptyState`. Without this,

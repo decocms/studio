@@ -93,57 +93,6 @@ describe("LINK_TRANSPORT_MODE gate (env var logic)", () => {
   });
 });
 
-describe("org slug resolution logic", () => {
-  it("prefers caller-supplied orgSlug over DECO_ORG_SLUG env", () => {
-    const originalEnv = process.env.DECO_ORG_SLUG;
-    try {
-      process.env.DECO_ORG_SLUG = "from-env";
-      const callerSupplied = "from-caller";
-      // Mirrors the resolution in index.ts: opts.orgSlug ?? process.env.DECO_ORG_SLUG
-      const resolved = callerSupplied ?? process.env.DECO_ORG_SLUG;
-      expect(resolved).toBe("from-caller");
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.DECO_ORG_SLUG;
-      } else {
-        process.env.DECO_ORG_SLUG = originalEnv;
-      }
-    }
-  });
-
-  it("falls back to DECO_ORG_SLUG when caller did not supply orgSlug", () => {
-    const originalEnv = process.env.DECO_ORG_SLUG;
-    try {
-      process.env.DECO_ORG_SLUG = "from-env";
-      const callerSupplied = undefined;
-      const resolved = callerSupplied ?? process.env.DECO_ORG_SLUG;
-      expect(resolved).toBe("from-env");
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.DECO_ORG_SLUG;
-      } else {
-        process.env.DECO_ORG_SLUG = originalEnv;
-      }
-    }
-  });
-
-  it("is undefined when neither caller nor env provides the slug", () => {
-    const originalEnv = process.env.DECO_ORG_SLUG;
-    try {
-      delete process.env.DECO_ORG_SLUG;
-      const callerSupplied = undefined;
-      const resolved = callerSupplied ?? process.env.DECO_ORG_SLUG;
-      expect(resolved).toBeUndefined();
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.DECO_ORG_SLUG;
-      } else {
-        process.env.DECO_ORG_SLUG = originalEnv;
-      }
-    }
-  });
-});
-
 describe("sandbox config propagation", () => {
   /**
    * Creates a stub provider that records ensureSandbox calls.
@@ -218,7 +167,6 @@ describe("sandbox config propagation", () => {
 
     const handle = await connectToClusterPull({
       clusterBaseUrl: "https://example.com",
-      orgSlug: "test-org",
       getAccessToken: async () => "access-tok",
       provider,
       fetchImpl,
@@ -238,6 +186,7 @@ describe("sandbox config propagation", () => {
       orgId: "org-1",
       userId: "usr-1",
       runFenceToken: "tok-1",
+      orgSlug: "test-org",
       harnessInput: { agent: { id: "vm-abc" }, branch: "deco/my-branch" },
       sandbox: {
         handle: "agent-vm-abc-deco/my-branch",
@@ -277,6 +226,7 @@ describe("sandbox config propagation", () => {
       orgId: "org-2",
       userId: "usr-2",
       runFenceToken: "tok-2",
+      orgSlug: "test-org",
       harnessInput: { agent: { id: "vm-def" }, branch: "deco/other" },
     };
 
@@ -289,7 +239,7 @@ describe("sandbox config propagation", () => {
     expect(call?.workload).toBeUndefined();
   });
 
-  it("prefers item.orgSlug over connection-level orgSlug for ingest", async () => {
+  it("uses item.orgSlug for the ingest URL", async () => {
     // We verify this indirectly: the dispatch will fail (sandbox token is
     // stub, ingest URL would 404) but the ensureSandbox call already ran.
     // The real check is that orgSlug on the item is accepted by the schema
@@ -362,7 +312,6 @@ describe("connectToClusterPull close()/abort", () => {
 
     const handle = await connectToClusterPull({
       clusterBaseUrl: "https://example.com",
-      orgSlug: "test-org",
       getAccessToken: async () => "test-token",
       provider,
       fetchImpl,
@@ -373,32 +322,5 @@ describe("connectToClusterPull close()/abort", () => {
     // If we reach here the loop exited cleanly. Verify the closed promise
     // is already resolved (should settle within close()).
     await expect(handle.closed).resolves.toBeUndefined();
-  });
-
-  it("throws when orgSlug is missing", async () => {
-    const provider: DesktopSandboxProvider = {
-      ensureSandbox: async () => ({
-        sandboxApiUrl: "http://127.0.0.1:9999",
-        previewUrl: "http://127.0.0.1:9999",
-        port: 9999,
-      }),
-      proxyPort: () => null,
-      getDaemonToken: () => null,
-      hasHandle: () => false,
-      recordHit: () => {},
-      acquireDispatch: () => () => {},
-      listSandboxes: () => [],
-      deleteSandbox: async () => {},
-      shutdown: async () => {},
-    };
-
-    await expect(
-      connectToClusterPull({
-        clusterBaseUrl: "https://example.com",
-        orgSlug: "",
-        getAccessToken: async () => "test-token",
-        provider,
-      }),
-    ).rejects.toThrow("connectToClusterPull: orgSlug is required");
   });
 });

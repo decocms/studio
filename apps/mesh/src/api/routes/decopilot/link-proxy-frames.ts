@@ -15,7 +15,7 @@
  *   path, headers, body? }`. The `reqId` correlates the reply leg.
  *
  * REPLY leg (daemon → cluster), POST body of
- *   `POST /api/:org/links/proxy/:reqId/stream` as a `duplex:"half"` upload:
+ *   `POST /api/links/proxy/:reqId/stream` as a `duplex:"half"` upload:
  *   A STREAM of NDJSON `ProxyReplyFrame` lines, consumed frame-by-frame WITHOUT
  *   buffering and each republished to `links.proxy.reply.<reqId>`. Ordering:
  *     1. AT MOST ONE `headers` frame, FIRST (before any `chunk`). The awaiting

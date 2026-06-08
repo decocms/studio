@@ -5,12 +5,11 @@
  * work-poller.test.ts). Focus: `cancel` routes to onCancel(runId) and
  * `cancel_req` routes to onCancelReq(reqId).
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import { runControlPollLoop } from "./control-poller";
 import { encodeControlFrame } from "../api/routes/decopilot/control-frames";
 
 const BASE_URL = "https://studio.example.com";
-const ORG_SLUG = "acme";
 
 function jsonResponse(status: number, text: string): Response {
   return {
@@ -38,7 +37,6 @@ describe("runControlPollLoop frame routing", () => {
 
     await runControlPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       getAccessToken: () => "tok",
       signal: ac.signal,
       fetchImpl,
@@ -67,7 +65,6 @@ describe("runControlPollLoop frame routing", () => {
 
     await runControlPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       getAccessToken: () => "tok",
       signal: ac.signal,
       fetchImpl,
@@ -97,7 +94,6 @@ describe("runControlPollLoop frame routing", () => {
     // No onCancelReq — must not throw / must keep looping until abort.
     await runControlPollLoop({
       baseUrl: BASE_URL,
-      orgSlug: ORG_SLUG,
       getAccessToken: () => "tok",
       signal: ac.signal,
       fetchImpl,
@@ -105,5 +101,29 @@ describe("runControlPollLoop frame routing", () => {
     });
 
     expect(call).toBeGreaterThanOrEqual(2);
+  });
+
+  it("uses the correct user-scoped URL with the timeout param", async () => {
+    const urls: string[] = [];
+    const ac = new AbortController();
+
+    const fetchImpl = mock(async (url: string) => {
+      urls.push(url);
+      ac.abort();
+      return new Response(null, { status: 204 });
+    });
+
+    await runControlPollLoop({
+      baseUrl: "https://cluster.example.com",
+      getAccessToken: async () => "tok",
+      signal: ac.signal,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      pollTimeoutSecs: 15,
+      onCancel: () => {},
+    });
+
+    expect(urls[0]).toBe(
+      "https://cluster.example.com/api/links/control?timeout=15",
+    );
   });
 });

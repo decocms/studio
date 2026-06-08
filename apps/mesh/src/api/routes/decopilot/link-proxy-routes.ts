@@ -26,6 +26,10 @@
  *
  * Wire framing: NDJSON — see `link-proxy-frames.ts` for the authoritative spec
  * that the daemon side (S2) must match.
+ *
+ * Routes:
+ *   GET /api/links/proxy            — Request leg long-poll
+ *   POST /api/links/proxy/:reqId/stream — Reply leg upload
  */
 import { Hono } from "hono";
 import type { NatsConnection } from "nats";
