@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Loading01 } from "@untitledui/icons";
+import { AlertTriangle, Loading01, Plus, Trash01 } from "@untitledui/icons";
 import {
   isDecopilot,
   useProjectContext,
@@ -27,14 +27,17 @@ import {
   SettingsSection,
 } from "@/web/components/settings/settings-section";
 import {
-  type ObservationalConfig,
+  type ObserverConfig,
   useObservationalConfig,
   useUpdateObservationalConfig,
 } from "@/web/hooks/use-organization-settings";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { SimpleModeModelRow } from "@/web/views/settings/ai-providers/simple-mode-section";
 
-const DEFAULT_CONFIG: ObservationalConfig = {
+// A freshly-added observer. The server assigns its `id` + `configuredAt` on save;
+// with an empty agentId the sweep skips it until an agent is picked.
+const BLANK_OBSERVER: ObserverConfig = {
+  id: "",
   agentId: "",
   scopeMode: "all",
   scopeAgentIds: [],
@@ -141,34 +144,31 @@ function ObserverToolsAdvisory({ agentId }: { agentId: string }) {
   );
 }
 
-function ObservationalControls() {
-  const agents = useVirtualMCPs();
-  const allKeys = useAiProviderKeys();
-  const saved = useObservationalConfig();
-  const { mutate } = useUpdateObservationalConfig();
-  const current = saved ?? DEFAULT_CONFIG;
-  const defaultKeyId = allKeys[0]?.id ?? null;
-
-  const selectableAgents = agents.filter((a) => a.id && !isDecopilot(a.id));
-
-  const persist = (patch: Partial<ObservationalConfig>) => {
-    mutate(
-      { ...current, ...patch },
-      { onError: (err) => toast.error(`Failed to save: ${err.message}`) },
-    );
-  };
+/** One observer's settings: agent, model, scope, plus remove. */
+function ObserverCard({
+  observer,
+  selectableAgents,
+  defaultKeyId,
+  onChange,
+  onRemove,
+}: {
+  observer: ObserverConfig;
+  selectableAgents: VirtualMCPEntity[];
+  defaultKeyId: string | null;
+  onChange: (patch: Partial<ObserverConfig>) => void;
+  onRemove: () => void;
+}) {
+  const hasObserver = observer.agentId !== "";
+  const onlyMode = observer.scopeMode === "only";
 
   // The observer can never observe itself, so don't offer it in the scope list.
   const scopeOptions = selectableAgents
-    .filter((a) => a.id !== current.agentId)
+    .filter((a) => a.id !== observer.agentId)
     .map((a) => ({
       label: a.title,
       value: a.id,
       icon: makeAgentIcon(a.icon, a.title),
     }));
-
-  const hasObserver = current.agentId !== "";
-  const onlyMode = current.scopeMode === "only";
 
   return (
     <SettingsCard>
@@ -176,32 +176,43 @@ function ObservationalControls() {
         title="Observer agent"
         description="Runs on idle threads (per the scope below) with the conversation as context. Give this agent the Studio connection so it can read threads and agents (COLLECTION_THREAD_MESSAGES_LIST, COLLECTION_VIRTUAL_MCP_GET)."
         action={
-          <Select
-            value={hasObserver ? current.agentId : NONE_VALUE}
-            onValueChange={(v) =>
-              persist({ agentId: v === NONE_VALUE ? "" : v })
-            }
-          >
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder="Select an agent" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE_VALUE}>None (disabled)</SelectItem>
-              {selectableAgents.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  <span className="flex items-center gap-2">
-                    <AgentAvatar icon={a.icon} name={a.title} size="xs" />
-                    <span className="truncate">{a.title}</span>
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select
+              value={hasObserver ? observer.agentId : NONE_VALUE}
+              onValueChange={(v) =>
+                onChange({ agentId: v === NONE_VALUE ? "" : v })
+              }
+            >
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Select an agent" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_VALUE}>None (disabled)</SelectItem>
+                {selectableAgents.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    <span className="flex items-center gap-2">
+                      <AgentAvatar icon={a.icon} name={a.title} size="xs" />
+                      <span className="truncate">{a.title}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onRemove}
+              aria-label="Remove observer"
+              className="shrink-0 text-muted-foreground"
+            >
+              <Trash01 size={16} />
+            </Button>
+          </div>
         }
       >
         {hasObserver && (
           <Suspense fallback={null}>
-            <ObserverToolsAdvisory agentId={current.agentId} />
+            <ObserverToolsAdvisory agentId={observer.agentId} />
           </Suspense>
         )}
       </SettingsCardItem>
@@ -211,9 +222,9 @@ function ObservationalControls() {
         action={
           hasObserver ? (
             <SimpleModeModelRow
-              slot={current.model}
+              slot={observer.model}
               defaultKeyId={defaultKeyId}
-              onSlotChange={(slot) => persist({ model: slot })}
+              onSlotChange={(slot) => onChange({ model: slot })}
             />
           ) : (
             <span className="text-sm text-muted-foreground">
@@ -227,8 +238,8 @@ function ObservationalControls() {
         description="Which agents' threads to observe."
         action={
           <Select
-            value={current.scopeMode}
-            onValueChange={(v) => persist({ scopeMode: v as "all" | "only" })}
+            value={observer.scopeMode}
+            onValueChange={(v) => onChange({ scopeMode: v as "all" | "only" })}
             disabled={!hasObserver}
           >
             <SelectTrigger className="w-56">
@@ -250,9 +261,12 @@ function ObservationalControls() {
         }
         action={
           <MultiSelect
+            // Remount when this observer changes so the uncontrolled default
+            // tracks the right row.
+            key={observer.id}
             options={scopeOptions}
-            defaultValue={current.scopeAgentIds}
-            onValueChange={(ids) => persist({ scopeAgentIds: ids })}
+            defaultValue={observer.scopeAgentIds}
+            onValueChange={(ids) => onChange({ scopeAgentIds: ids })}
             placeholder={onlyMode ? "Select agents" : "None"}
             maxCount={3}
             className="w-56"
@@ -264,11 +278,64 @@ function ObservationalControls() {
   );
 }
 
+function ObservationalControls() {
+  const agents = useVirtualMCPs();
+  const allKeys = useAiProviderKeys();
+  const saved = useObservationalConfig();
+  const { mutate } = useUpdateObservationalConfig();
+  const observers = saved?.observers ?? [];
+  const defaultKeyId = allKeys[0]?.id ?? null;
+
+  const selectableAgents = agents.filter((a) => a.id && !isDecopilot(a.id));
+
+  const persist = (next: ObserverConfig[]) => {
+    mutate(
+      { observers: next },
+      { onError: (err) => toast.error(`Failed to save: ${err.message}`) },
+    );
+  };
+
+  const updateObserver = (index: number, patch: Partial<ObserverConfig>) =>
+    persist(observers.map((o, i) => (i === index ? { ...o, ...patch } : o)));
+
+  const addObserver = () => persist([...observers, { ...BLANK_OBSERVER }]);
+
+  const removeObserver = (index: number) =>
+    persist(observers.filter((_, i) => i !== index));
+
+  return (
+    <div className="flex flex-col gap-4">
+      {observers.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No observers yet. Add one to start observing idle conversations.
+        </p>
+      ) : (
+        observers.map((observer, i) => (
+          <ObserverCard
+            key={observer.id || `new-${i}`}
+            observer={observer}
+            selectableAgents={selectableAgents}
+            defaultKeyId={defaultKeyId}
+            onChange={(patch) => updateObserver(i, patch)}
+            onRemove={() => removeObserver(i)}
+          />
+        ))
+      )}
+      <div>
+        <Button variant="outline" size="sm" onClick={addObserver}>
+          <Plus size={16} />
+          Add observer
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function ObservationalAgentSection() {
   return (
     <SettingsSection
-      title="Observational agent"
-      description="Run a chosen agent over idle conversations so it can review what's happening and act on it (record memory, flag content, summarize — whatever the agent is set up to do)."
+      title="Observational agents"
+      description="Run chosen agents over idle conversations so they can review what's happening and act on it (record memory, flag content, summarize — whatever each agent is set up to do)."
     >
       <Suspense
         fallback={

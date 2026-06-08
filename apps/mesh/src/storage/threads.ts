@@ -167,6 +167,8 @@ export interface ObservableThread {
 
 export interface ListObservableThreadsParams {
   organizationId: string;
+  /** Stable observer config id — the per-thread watermark key in thread_observations. */
+  observerId: string;
   /** The observer agent itself — never observe its own threads. */
   observerAgentId: string;
   /** "all" observes every agent except scopeAgentIds; "only" observes just them. */
@@ -859,15 +861,18 @@ export class SqlThreadStorage implements ThreadStoragePort {
   /**
    * Lists idle, observable threads for one org, oldest-idle first. Excludes the
    * observer's own threads (loop prevention), skip-listed agents, hidden
-   * threads, automation/trigger threads, and threads already observed at their
-   * current activity watermark (last_observed_at >= updated_at). Bounded by
-   * `limit`. Backed by idx_threads_org_updated.
+   * threads, automation/trigger threads, and threads this observer already
+   * observed at their current activity watermark. Each observer tracks its own
+   * progress via thread_observations (keyed by observerId), so N observers sweep
+   * the same thread independently. Bounded by `limit`; backed by
+   * idx_threads_org_updated.
    */
   async listObservableThreads(
     params: ListObservableThreadsParams,
   ): Promise<ObservableThread[]> {
     const {
       organizationId,
+      observerId,
       observerAgentId,
       scopeMode,
       scopeAgentIds,
@@ -890,12 +895,17 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("updated_at", ">=", observeFromIso as unknown as Date)
       // idle: no activity since the cutoff (updated_at is ISO text — lexical compare)
       .where("updated_at", "<=", inactiveBeforeIso as unknown as Date)
-      // not yet observed at the current activity watermark
-      .where((eb) =>
-        eb.or([
-          eb("last_observed_at", "is", null),
-          eb("last_observed_at", "<", eb.ref("updated_at")),
-        ]),
+      // not yet observed by THIS observer at the thread's current watermark
+      .where(({ not, exists, selectFrom }) =>
+        not(
+          exists(
+            selectFrom("thread_observations as obs")
+              .select("obs.thread_id")
+              .whereRef("obs.thread_id", "=", "threads.id")
+              .where("obs.observer_id", "=", observerId)
+              .whereRef("obs.last_observed_at", ">=", "threads.updated_at"),
+          ),
+        ),
       )
       .orderBy("updated_at", "asc")
       .limit(params.limit);
@@ -919,21 +929,30 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   /**
-   * Records the observational watermark. `observedAtIso` MUST be the thread's
-   * `updated_at` captured at selection time (NOT now()), so any activity
-   * arriving mid-sweep re-qualifies the thread on the next pass. Deliberately
-   * does NOT touch `updated_at` — bumping it would make idle threads look active.
+   * Records THIS observer's watermark for a thread, upserting into
+   * thread_observations keyed by (thread_id, observer_id) so each observer's
+   * progress is independent. `observedAtIso` MUST be the thread's `updated_at`
+   * captured at selection time (NOT now()), so activity arriving mid-sweep
+   * re-qualifies the thread on the next pass. Never touches threads.updated_at —
+   * bumping it would make idle threads look active.
    */
   async markObserved(
     threadId: string,
-    organizationId: string,
+    observerId: string,
     observedAtIso: string,
   ): Promise<void> {
     await this.db
-      .updateTable("threads")
-      .set({ last_observed_at: observedAtIso })
-      .where("id", "=", threadId)
-      .where("organization_id", "=", organizationId)
+      .insertInto("thread_observations")
+      .values({
+        thread_id: threadId,
+        observer_id: observerId,
+        last_observed_at: observedAtIso,
+      })
+      .onConflict((oc) =>
+        oc
+          .columns(["thread_id", "observer_id"])
+          .doUpdateSet({ last_observed_at: observedAtIso }),
+      )
       .execute();
   }
 
@@ -1000,7 +1019,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     branch?: string | null;
     sandbox_provider_kind?: string | null;
     harness_id?: string | null;
-    last_observed_at?: string | Date | null;
     metadata?: ThreadMetadata | string | null;
     created_at: Date | string;
     updated_at: Date | string;
@@ -1042,9 +1060,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       branch: row.branch ?? null,
       sandbox_provider_kind: row.sandbox_provider_kind ?? null,
       harness_id: row.harness_id ?? null,
-      last_observed_at: row.last_observed_at
-        ? toIsoString(row.last_observed_at)
-        : null,
       metadata,
       created_at: toIsoString(row.created_at),
       updated_at: toIsoString(row.updated_at),

@@ -95,13 +95,21 @@ export type DefaultHomeAgentsConfig = z.infer<
 >;
 
 /**
- * Observational agent config - per-org agent that observes idle threads.
+ * A single observer — an agent that observes idle threads, with its own scope,
+ * model, and watermark. `id` is stable (the thread_observations key) and is
+ * assigned server-side when an observer is first saved.
  */
-export const ObservationalConfigSchema = z.object({
+const ObserverConfigSchema = z.object({
+  id: z
+    .string()
+    .default("")
+    .describe(
+      "Stable observer id (the per-thread watermark key). Assigned server-side; clients may leave empty when adding a new observer.",
+    ),
   agentId: z
     .string()
     .describe(
-      "Virtual MCP (agent) id that observes idle threads. Empty string disables observation.",
+      "Virtual MCP (agent) id that observes idle threads. Empty string = unconfigured (skipped).",
     ),
   scopeMode: z
     .enum(["all", "only"])
@@ -123,8 +131,19 @@ export const ObservationalConfigSchema = z.object({
     .nullable()
     .default(null)
     .describe(
-      "ISO timestamp the observer was (re)enabled; the sweep only observes threads active at/after it. Set automatically server-side — observation is forward-only, never a history backfill.",
+      "ISO timestamp this observer was (re)enabled; the sweep only observes threads active at/after it. Set automatically server-side — observation is forward-only, never a history backfill.",
     ),
+});
+
+/**
+ * Observational agents config — a per-org list of observers (N supported). An
+ * empty list disables observation.
+ */
+export const ObservationalConfigSchema = z.object({
+  observers: z
+    .array(ObserverConfigSchema)
+    .default([])
+    .describe("The org's observers. Empty list disables observation."),
 });
 
 export type ObservationalConfig = z.infer<typeof ObservationalConfigSchema>;

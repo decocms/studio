@@ -49,8 +49,8 @@ import {
 const OBSERVATION_SWEEP_CRONTAB = "*/15 * * * *";
 /** Cap a single observer run so a runaway can't pin a thread-gate slot. */
 const OBSERVATION_RUN_TIMEOUT_MS = 5 * 60 * 1000;
-/** Max idle threads observed per org per tick (extra ones wait for next tick). */
-const MAX_THREADS_PER_ORG = 50;
+/** Max idle threads observed per observer per tick (extra ones wait for next tick). */
+const MAX_THREADS_PER_OBSERVER = 50;
 /** Per-tick ceiling on observer fires queued cluster-wide. */
 const MAX_THREADS_PER_TICK = 200;
 
@@ -94,8 +94,14 @@ function requireRuntime(): ObservationalRuntime {
   return runtime;
 }
 
-interface ObservedOrg {
+/**
+ * One observer ready to sweep — the org's config flattened so N observers per
+ * org each become an independent unit of work (own watermark, own scope, own
+ * model). `observerId` is the stable config id and the thread_observations key.
+ */
+interface ObservedObserver {
   organizationId: string;
+  observerId: string;
   agentId: string;
   scopeMode: "all" | "only";
   scopeAgentIds: string[];
@@ -117,13 +123,14 @@ interface BuiltObserverRun {
 // ---------------------------------------------------------------------------
 
 /**
- * Lists orgs with an active observational agent (optionally a single org). A
- * cross-org read with no per-org ctx, so it queries tables directly. Skips orgs
- * whose observer agent is missing or inactive to avoid futile per-thread fan-out.
+ * Lists every configured observer (optionally for a single org), flattening each
+ * org's observers[] into independent units of work. A cross-org read with no
+ * per-org ctx, so it queries tables directly. Skips observers whose agent is
+ * missing or inactive to avoid futile per-thread fan-out.
  */
-async function listObservedOrgs(
+async function listObservedObservers(
   organizationId?: string,
-): Promise<ObservedOrg[]> {
+): Promise<ObservedObserver[]> {
   const rt = requireRuntime();
   let query = rt.db
     .selectFrom("organization_settings")
@@ -134,7 +141,7 @@ async function listObservedOrgs(
   }
   const rows = await query.execute();
 
-  const result: ObservedOrg[] = [];
+  const result: ObservedObserver[] = [];
   for (const row of rows) {
     const raw = row.observational_config;
     if (!raw) continue;
@@ -149,70 +156,89 @@ async function listObservedOrgs(
       );
       continue;
     }
-    const agentId = config?.agentId ?? "";
-    if (!agentId) continue; // empty agentId = feature disabled
+    const observers = config?.observers ?? [];
 
-    const agent = await rt.db
-      .selectFrom("connections")
-      .select(["created_by", "status"])
-      .where("id", "=", agentId)
-      .where("organization_id", "=", row.organizationId)
-      .where("connection_type", "=", "VIRTUAL")
-      .executeTakeFirst();
-    if (!agent || agent.status !== "active") {
-      console.warn(
-        `[observation] org ${row.organizationId}: observer agent ${agentId} missing/inactive — skipping`,
-      );
-      continue;
+    // Two observers may target the same agent — cache the lookup per org.
+    const agentCache = new Map<
+      string,
+      { created_by: string; status: string } | null
+    >();
+    for (const observer of observers) {
+      const agentId = observer?.agentId ?? "";
+      if (!agentId || !observer?.id) continue; // unconfigured row
+
+      let agent = agentCache.get(agentId);
+      if (agent === undefined) {
+        agent =
+          (await rt.db
+            .selectFrom("connections")
+            .select(["created_by", "status"])
+            .where("id", "=", agentId)
+            .where("organization_id", "=", row.organizationId)
+            .where("connection_type", "=", "VIRTUAL")
+            .executeTakeFirst()) ?? null;
+        agentCache.set(agentId, agent);
+      }
+      if (!agent || agent.status !== "active") {
+        console.warn(
+          `[observation] org ${row.organizationId}: observer ${observer.id} agent ${agentId} missing/inactive — skipping`,
+        );
+        continue;
+      }
+
+      result.push({
+        organizationId: row.organizationId,
+        observerId: observer.id,
+        agentId,
+        scopeMode: observer.scopeMode ?? "all",
+        scopeAgentIds: observer.scopeAgentIds ?? [],
+        model: observer.model ?? null,
+        // Defensive: a saved observer always has configuredAt (stamped on save).
+        // If somehow missing, default to "now" so we never backfill history.
+        configuredAt: observer.configuredAt ?? new Date().toISOString(),
+        observerCreatedBy: agent.created_by,
+      });
     }
-
-    result.push({
-      organizationId: row.organizationId,
-      agentId,
-      scopeMode: config.scopeMode ?? "all",
-      scopeAgentIds: config.scopeAgentIds ?? [],
-      model: config.model ?? null,
-      // Defensive: an enabled config always has configuredAt (stamped on enable).
-      // If somehow missing, default to "now" so we never backfill history.
-      configuredAt: config.configuredAt ?? new Date().toISOString(),
-      observerCreatedBy: agent.created_by,
-    });
   }
   return result;
 }
 
 async function listObservableThreadsFor(
-  org: ObservedOrg,
+  observer: ObservedObserver,
 ): Promise<ObservableThread[]> {
   const rt = requireRuntime();
   const inactiveBeforeIso = new Date(
     Date.now() - rt.inactiveMinutes * 60_000,
   ).toISOString();
   return rt.threadStorage.listObservableThreads({
-    organizationId: org.organizationId,
-    observerAgentId: org.agentId,
-    scopeMode: org.scopeMode,
-    scopeAgentIds: org.scopeAgentIds,
+    organizationId: observer.organizationId,
+    observerId: observer.observerId,
+    observerAgentId: observer.agentId,
+    scopeMode: observer.scopeMode,
+    scopeAgentIds: observer.scopeAgentIds,
     inactiveBeforeIso,
-    observeFromIso: org.configuredAt,
-    limit: MAX_THREADS_PER_ORG,
+    observeFromIso: observer.configuredAt,
+    limit: MAX_THREADS_PER_OBSERVER,
   });
 }
 
 /**
- * Deterministic per (source thread, activity watermark). Combined with the
- * idempotent insert in createObservationRunThread, a DBOS step retry/replay
+ * Deterministic per (observer, source thread, activity watermark). Combined with
+ * the idempotent insert in createObservationRunThread, a DBOS step retry/replay
  * re-derives the same id and re-inserts as a no-op instead of orphaning a
- * duplicate observer thread.
+ * duplicate observer thread. The observerId keeps two observers that hit the
+ * same source thread+watermark from colliding on one id.
  */
 function observationThreadId(
+  observerId: string,
   sourceThreadId: string,
   watermarkIso: string,
 ): string {
   const ms = Date.parse(watermarkIso);
   const stamp = Number.isFinite(ms) ? ms : 0;
   const base = sourceThreadId.replace(/^thrd_/, "");
-  return `thrd_obs_${base}_${stamp}`;
+  const obs = observerId.replace(/^obs_/, "");
+  return `thrd_obs_${obs}_${base}_${stamp}`;
 }
 
 function extractOpeningText(message: ThreadMessage | undefined): string | null {
@@ -236,7 +262,7 @@ function extractOpeningText(message: ThreadMessage | undefined): string | null {
  * membership, or no model yet) so the thread is retried on a later tick.
  */
 async function buildObserverRun(
-  org: ObservedOrg,
+  observer: ObservedObserver,
   thread: ObservableThread,
 ): Promise<BuiltObserverRun | null> {
   const rt = requireRuntime();
@@ -246,37 +272,37 @@ async function buildObserverRun(
   // picked up on the next tick.
   if (
     !isObservable(thread, {
-      observerAgentId: org.agentId,
-      scopeMode: org.scopeMode,
-      scopeAgentIds: org.scopeAgentIds,
+      observerAgentId: observer.agentId,
+      scopeMode: observer.scopeMode,
+      scopeAgentIds: observer.scopeAgentIds,
     })
   ) {
     return null;
   }
 
   const meshCtx = await rt.meshContextFactory(
-    org.organizationId,
-    org.observerCreatedBy,
+    observer.organizationId,
+    observer.observerCreatedBy,
   );
   if (!meshCtx) {
     console.warn(
-      `[observation] org ${org.organizationId}: observer owner ${org.observerCreatedBy} lost membership — skipping`,
+      `[observation] org ${observer.organizationId}: observer owner ${observer.observerCreatedBy} lost membership — skipping`,
     );
     return null;
   }
 
   // Re-fetch the observer agent at fire time (it may have been deleted or
-  // deactivated since listObservedOrgs ran this tick). Bail WITHOUT watermarking
-  // so the thread is retried next tick — mirrors automations' prepareFireStep,
-  // and avoids creating an observer thread whose deferred dispatch would throw
-  // "Agent not found" after the source was already watermarked.
+  // deactivated since listObservedObservers ran this tick). Bail WITHOUT
+  // watermarking so the thread is retried next tick — mirrors automations'
+  // prepareFireStep, and avoids creating an observer thread whose deferred
+  // dispatch would throw "Agent not found" after the source was watermarked.
   const observerAgent = await meshCtx.storage.virtualMcps.findById(
-    org.agentId,
-    org.organizationId,
+    observer.agentId,
+    observer.organizationId,
   );
   if (!observerAgent || observerAgent.status !== "active") {
     console.warn(
-      `[observation] org ${org.organizationId}: observer agent ${org.agentId} missing/inactive at fire time — skipping`,
+      `[observation] org ${observer.organizationId}: observer agent ${observer.agentId} missing/inactive at fire time — skipping`,
     );
     return null;
   }
@@ -285,12 +311,12 @@ async function buildObserverRun(
   // its credential still exists), else the org's fast tier. No model at all →
   // skip WITHOUT watermarking so it self-heals once a provider is connected.
   let resolved: ResolvedTier | null = null;
-  if (org.model) {
+  if (observer.model) {
     resolved = await resolveExplicitModel(
       meshCtx,
-      org.model.keyId,
-      org.model.modelId,
-      org.model.title,
+      observer.model.keyId,
+      observer.model.modelId,
+      observer.model.title,
     );
   }
   if (!resolved) {
@@ -299,7 +325,7 @@ async function buildObserverRun(
     } catch (err) {
       if (err instanceof TierUnavailableError) {
         console.warn(
-          `[observation] org ${org.organizationId}: no model available for observer — skipping (will retry)`,
+          `[observation] org ${observer.organizationId}: no model available for observer — skipping (will retry)`,
         );
         return null;
       }
@@ -314,11 +340,11 @@ async function buildObserverRun(
   // Searchable-context overview: observed agent summary + opening snippet.
   const observedAgent = await meshCtx.storage.virtualMcps.findById(
     thread.virtual_mcp_id,
-    org.organizationId,
+    observer.organizationId,
   );
   const { messages, total } = await rt.threadStorage.listMessages(
     thread.id,
-    org.organizationId,
+    observer.organizationId,
     { limit: 1, sort: "asc" },
   );
 
@@ -334,21 +360,25 @@ async function buildObserverRun(
     messageCount: total,
   });
 
-  const observerThreadId = observationThreadId(thread.id, thread.updated_at);
+  const observerThreadId = observationThreadId(
+    observer.observerId,
+    thread.id,
+    thread.updated_at,
+  );
   await rt.threadStorage.createObservationRunThread({
     taskId: observerThreadId,
-    organizationId: org.organizationId,
-    observerAgentId: org.agentId,
-    observerCreatedBy: org.observerCreatedBy,
+    organizationId: observer.organizationId,
+    observerAgentId: observer.agentId,
+    observerCreatedBy: observer.observerCreatedBy,
     sourceThreadId: thread.id,
     sourceTitle: thread.title,
   });
 
   const request = buildObserverDispatchRequest({
     observerThreadId,
-    observerAgentId: org.agentId,
-    observerCreatedBy: org.observerCreatedBy,
-    organizationId: org.organizationId,
+    observerAgentId: observer.agentId,
+    observerCreatedBy: observer.observerCreatedBy,
+    organizationId: observer.organizationId,
     models,
     seedText,
   });
@@ -396,14 +426,14 @@ async function fireObserver(built: BuiltObserverRun): Promise<void> {
 
 async function markObserved(
   threadId: string,
-  organizationId: string,
+  observerId: string,
   observedAtIso: string,
 ): Promise<void> {
   // Watermark with the activity timestamp captured at SELECT time (not now())
   // so activity arriving mid-sweep re-qualifies the thread on the next tick.
   await requireRuntime().threadStorage.markObserved(
     threadId,
-    organizationId,
+    observerId,
     observedAtIso,
   );
 }
@@ -421,55 +451,56 @@ async function observationSweepWorkflowFn(
   _scheduledTime: Date,
   _currentTime: Date,
 ): Promise<void> {
-  const orgs = await DBOS.runStep(() => listObservedOrgs(), {
-    name: "listObservedOrgs",
+  const observers = await DBOS.runStep(() => listObservedObservers(), {
+    name: "listObservedObservers",
   });
 
   let observedThisTick = 0;
-  for (const org of orgs) {
+  for (const observer of observers) {
     if (observedThisTick >= MAX_THREADS_PER_TICK) {
       console.warn(
-        `[observation] per-tick cap ${MAX_THREADS_PER_TICK} reached — remaining orgs deferred to next tick`,
+        `[observation] per-tick cap ${MAX_THREADS_PER_TICK} reached — remaining observers deferred to next tick`,
       );
       break;
     }
 
     let threads: ObservableThread[];
     try {
-      threads = await DBOS.runStep(() => listObservableThreadsFor(org), {
+      threads = await DBOS.runStep(() => listObservableThreadsFor(observer), {
         name: "listObservableThreads",
       });
     } catch (err) {
       console.error(
-        `[observation] org ${org.organizationId}: listing idle threads failed:`,
+        `[observation] org ${observer.organizationId} observer ${observer.observerId}: listing idle threads failed:`,
         err instanceof Error ? err.message : err,
       );
       continue;
     }
-    if (threads.length === MAX_THREADS_PER_ORG) {
+    if (threads.length === MAX_THREADS_PER_OBSERVER) {
       console.warn(
-        `[observation] org ${org.organizationId}: hit per-org cap ${MAX_THREADS_PER_ORG}; extra idle threads deferred to next tick`,
+        `[observation] org ${observer.organizationId} observer ${observer.observerId}: hit per-observer cap ${MAX_THREADS_PER_OBSERVER}; extra idle threads deferred to next tick`,
       );
     }
 
     for (const thread of threads) {
       if (observedThisTick >= MAX_THREADS_PER_TICK) break;
       try {
-        const built = await DBOS.runStep(() => buildObserverRun(org, thread), {
-          name: "buildObserverRun",
-        });
+        const built = await DBOS.runStep(
+          () => buildObserverRun(observer, thread),
+          { name: "buildObserverRun" },
+        );
         if (!built) continue;
         // Enqueue from the workflow body — DBOS forbids DBOS.startWorkflow
         // from inside a step.
         await fireObserver(built);
         await DBOS.runStep(
-          () => markObserved(thread.id, org.organizationId, thread.updated_at),
+          () => markObserved(thread.id, observer.observerId, thread.updated_at),
           { name: "markObserved" },
         );
         observedThisTick++;
       } catch (err) {
         console.error(
-          `[observation] org ${org.organizationId} thread ${thread.id}: observe failed:`,
+          `[observation] org ${observer.organizationId} thread ${thread.id}: observe failed:`,
           err instanceof Error ? err.message : err,
         );
       }
@@ -486,29 +517,28 @@ async function observationSweepWorkflowFn(
 export async function runObservationSweepForOrg(
   organizationId: string,
 ): Promise<{ observed: number; skipped: number }> {
-  const orgs = await listObservedOrgs(organizationId);
-  const org = orgs[0];
-  if (!org) return { observed: 0, skipped: 0 };
-
-  const threads = await listObservableThreadsFor(org);
+  const observers = await listObservedObservers(organizationId);
   let observed = 0;
   let skipped = 0;
-  for (const thread of threads) {
-    try {
-      const built = await buildObserverRun(org, thread);
-      if (!built) {
+  for (const observer of observers) {
+    const threads = await listObservableThreadsFor(observer);
+    for (const thread of threads) {
+      try {
+        const built = await buildObserverRun(observer, thread);
+        if (!built) {
+          skipped++;
+          continue;
+        }
+        await fireObserver(built);
+        await markObserved(thread.id, observer.observerId, thread.updated_at);
+        observed++;
+      } catch (err) {
+        console.error(
+          `[observation] org ${observer.organizationId} thread ${thread.id}: manual observe failed:`,
+          err instanceof Error ? err.message : err,
+        );
         skipped++;
-        continue;
       }
-      await fireObserver(built);
-      await markObserved(thread.id, org.organizationId, thread.updated_at);
-      observed++;
-    } catch (err) {
-      console.error(
-        `[observation] org ${org.organizationId} thread ${thread.id}: manual observe failed:`,
-        err instanceof Error ? err.message : err,
-      );
-      skipped++;
     }
   }
   return { observed, skipped };

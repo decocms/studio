@@ -1,7 +1,8 @@
 /**
  * Integration tests for the observational-sweep thread storage methods.
  * Real Postgres (see test-db-pg.ts) — validates the watermark SQL, which is the
- * riskiest part of the feature.
+ * riskiest part of the feature. Watermarks live in the normalized
+ * thread_observations table, keyed per (thread, observer).
  */
 
 import {
@@ -24,7 +25,8 @@ import type { ThreadMessage } from "./types";
 
 const ORG = "org_1";
 const USER = "user_1";
-const OBSERVER = "vir_observer";
+const OBSERVER = "vir_observer"; // observer agent id (loop-prevention exclusion)
+const OBSERVER_ID = "obs_1"; // observer config id (watermark key)
 const FAR_FUTURE = "2999-01-01T00:00:00.000Z";
 
 describe("SqlThreadStorage — observational sweep", () => {
@@ -51,7 +53,6 @@ describe("SqlThreadStorage — observational sweep", () => {
     updatedAt: string;
     hidden?: boolean;
     triggerId?: string | null;
-    lastObservedAt?: string | null;
   }): Promise<string> {
     const t = await storage.create({
       organization_id: ORG,
@@ -63,7 +64,6 @@ describe("SqlThreadStorage — observational sweep", () => {
       .updateTable("threads")
       .set({
         updated_at: opts.updatedAt,
-        last_observed_at: opts.lastObservedAt ?? null,
         hidden: opts.hidden ?? false,
         trigger_id: opts.triggerId ?? null,
       })
@@ -77,9 +77,11 @@ describe("SqlThreadStorage — observational sweep", () => {
     scopeAgentIds: string[] = [],
     observeFromIso = "2000-01-01T00:00:00.000Z",
     scopeMode: "all" | "only" = "all",
+    observerId = OBSERVER_ID,
   ) {
     return storage.listObservableThreads({
       organizationId: ORG,
+      observerId,
       observerAgentId: OBSERVER,
       scopeMode,
       scopeAgentIds,
@@ -109,17 +111,25 @@ describe("SqlThreadStorage — observational sweep", () => {
     });
     await makeThread({ agentId: "", updatedAt: "2025-01-01T00:00:00.000Z" });
     // Already observed at its current watermark → excluded.
-    await makeThread({
+    const observed = await makeThread({
       agentId: "vir_a",
       updatedAt: "2025-01-01T00:00:00.000Z",
-      lastObservedAt: "2025-01-01T00:00:00.000Z",
     });
+    await storage.markObserved(
+      observed,
+      OBSERVER_ID,
+      "2025-01-01T00:00:00.000Z",
+    );
     // Observed, then new activity (watermark < updated_at) → included.
     const reactivated = await makeThread({
       agentId: "vir_a",
       updatedAt: "2025-02-01T00:00:00.000Z",
-      lastObservedAt: "2025-01-15T00:00:00.000Z",
     });
+    await storage.markObserved(
+      reactivated,
+      OBSERVER_ID,
+      "2025-01-15T00:00:00.000Z",
+    );
 
     const got = await list(FAR_FUTURE, ["vir_skip"]);
     expect(got.map((t) => t.id).sort()).toEqual([normal, reactivated].sort());
@@ -177,17 +187,26 @@ describe("SqlThreadStorage — observational sweep", () => {
     expect(before.map((t) => t.id)).toContain(id);
     const watermark = before.find((t) => t.id === id)!.updated_at;
 
-    await storage.markObserved(id, ORG, watermark);
+    await storage.markObserved(id, OBSERVER_ID, watermark);
     const after = await list();
     expect(after.map((t) => t.id)).not.toContain(id);
+
+    // The watermark is recorded in thread_observations, not on the thread.
+    const obs = await database.db
+      .selectFrom("thread_observations")
+      .select("last_observed_at")
+      .where("thread_id", "=", id)
+      .where("observer_id", "=", OBSERVER_ID)
+      .executeTakeFirstOrThrow();
+    expect(obs.last_observed_at).toBe(watermark);
 
     // markObserved must NOT bump updated_at (else idle threads look active).
     const row = await database.db
       .selectFrom("threads")
-      .select(["updated_at", "last_observed_at"])
+      .select("updated_at")
       .where("id", "=", id)
       .executeTakeFirstOrThrow();
-    expect(row.last_observed_at as unknown as string).toBe(watermark);
+    expect(row.updated_at as unknown as string).toBe(watermark);
 
     // New activity bumps updated_at past the watermark → re-qualifies.
     const msg: ThreadMessage = {
@@ -202,6 +221,50 @@ describe("SqlThreadStorage — observational sweep", () => {
 
     const relisted = await list();
     expect(relisted.map((t) => t.id)).toContain(id);
+  });
+
+  it("tracks each observer's watermark independently", async () => {
+    const id = await makeThread({
+      agentId: "vir_a",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    });
+    const OBSERVER_B = "obs_2";
+
+    // Observer A observes it; observer B has not.
+    await storage.markObserved(id, OBSERVER_ID, "2025-01-01T00:00:00.000Z");
+
+    expect((await list()).map((t) => t.id)).not.toContain(id); // A: done
+    expect(
+      (await list(FAR_FUTURE, [], undefined, "all", OBSERVER_B)).map(
+        (t) => t.id,
+      ),
+    ).toContain(id); // B: still pending
+
+    // B observes it too → now excluded for both observers.
+    await storage.markObserved(id, OBSERVER_B, "2025-01-01T00:00:00.000Z");
+    expect(
+      (await list(FAR_FUTURE, [], undefined, "all", OBSERVER_B)).map(
+        (t) => t.id,
+      ),
+    ).not.toContain(id);
+  });
+
+  it("markObserved is an upsert — re-observing a thread updates its watermark", async () => {
+    const id = await makeThread({
+      agentId: "vir_a",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    });
+    await storage.markObserved(id, OBSERVER_ID, "2025-01-01T00:00:00.000Z");
+    await storage.markObserved(id, OBSERVER_ID, "2025-02-01T00:00:00.000Z");
+
+    const rows = await database.db
+      .selectFrom("thread_observations")
+      .select("last_observed_at")
+      .where("thread_id", "=", id)
+      .where("observer_id", "=", OBSERVER_ID)
+      .execute();
+    expect(rows).toHaveLength(1); // upsert, not a second row
+    expect(rows[0]?.last_observed_at).toBe("2025-02-01T00:00:00.000Z");
   });
 
   it("createObservationRunThread creates a visible thread owned by the observer", async () => {
@@ -244,8 +307,8 @@ describe("SqlThreadStorage — observational sweep", () => {
 
   it("excludes observation-output threads even when their agent differs from the current observer", async () => {
     // Simulate a PRIOR observer's output thread (different agent id) — e.g.
-    // after the admin changed observational_config.agentId. is_observation=true
-    // must keep it out regardless of the current observer id.
+    // after the admin changed the observer agent. is_observation=true must keep
+    // it out regardless of the current observer id.
     const oldObserverThreadId = await storage.createObservationRunThread({
       taskId: "thrd_obs_old",
       organizationId: ORG,

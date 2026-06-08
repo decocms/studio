@@ -38,13 +38,19 @@ export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
 
-export interface ObservationalConfig {
+export interface ObserverConfig {
+  /** Stable id (watermark key). Server-assigned; "" when the client adds a new observer. */
+  id: string;
   agentId: string;
   scopeMode: "all" | "only";
   scopeAgentIds: string[];
   model: ModelSlot | null;
   /** Set server-side on (re)enable; observation is forward-only from this instant. */
   configuredAt: string | null;
+}
+
+export interface ObservationalConfig {
+  observers: ObserverConfig[];
 }
 
 export interface OrganizationSettings {

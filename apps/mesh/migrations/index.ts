@@ -97,6 +97,7 @@ import * as migration095removeautomationtoolcallkind from "./095-remove-automati
 import * as migration096orgfileconfigspublicurlbase from "./096-org-file-configs-public-url-base.ts";
 import * as migration097droplocaldockersandboxstate from "./097-drop-local-docker-sandbox-state.ts";
 import * as migration098observationalagent from "./098-observational-agent.ts";
+import * as migration099observationalmulti from "./099-observational-multi.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -216,6 +217,7 @@ const migrations: Record<string, Migration> = {
   "097-drop-local-docker-sandbox-state":
     migration097droplocaldockersandboxstate,
   "098-observational-agent": migration098observationalagent,
+  "099-observational-multi": migration099observationalmulti,
 };
 
 export default migrations;

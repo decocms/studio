@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/mesh-context";
+import { generatePrefixedId } from "@/shared/utils/generate-id";
 import {
   SidebarItemSchema,
   RegistryConfigSchema,
@@ -50,25 +51,31 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       throw new Error("Cannot update settings for a different organization");
     }
 
-    // Forward-only: stamp `configuredAt` when the observer is (re)enabled so the
-    // sweep only considers threads active at/after that instant — never the
-    // org's entire pre-existing history. Server-authoritative (ignores any
-    // client-sent value); preserved across edits while it stays enabled.
+    // Observational config is a list of observers. For each: mint a stable id if
+    // missing, and stamp `configuredAt` server-side so observation is
+    // forward-only — the sweep only considers threads active at/after it, never
+    // the org's pre-existing history. An existing observer (matched by id) keeps
+    // its original configuredAt across edits; a newly-added one is stamped now.
+    // The id and configuredAt are server-authoritative (client values ignored).
     let observationalConfig = input.observational_config;
     if (observationalConfig !== undefined) {
-      if (observationalConfig.agentId) {
-        const prev = await ctx.storage.organizationSettings.get(
-          input.organizationId,
-        );
-        const prevConfig = prev?.observational_config;
-        const configuredAt =
-          prevConfig?.agentId && prevConfig.configuredAt
-            ? prevConfig.configuredAt
-            : new Date().toISOString();
-        observationalConfig = { ...observationalConfig, configuredAt };
-      } else {
-        observationalConfig = { ...observationalConfig, configuredAt: null };
-      }
+      const prev = await ctx.storage.organizationSettings.get(
+        input.organizationId,
+      );
+      const prevById = new Map(
+        (prev?.observational_config?.observers ?? []).map((o) => [o.id, o]),
+      );
+      const now = new Date().toISOString();
+      const seen = new Set<string>();
+      const observers = observationalConfig.observers.map((o) => {
+        const prevObs = o.id ? prevById.get(o.id) : undefined;
+        // Keep a valid existing id; mint a new one if empty or colliding.
+        let id = o.id;
+        if (!id || seen.has(id)) id = generatePrefixedId("obs");
+        seen.add(id);
+        return { ...o, id, configuredAt: prevObs?.configuredAt ?? now };
+      });
+      observationalConfig = { observers };
     }
 
     const settings = await ctx.storage.organizationSettings.upsert(

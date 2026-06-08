@@ -26,7 +26,6 @@ const BASE_THREAD: Thread = {
   branch: null,
   sandbox_provider_kind: null,
   harness_id: null,
-  last_observed_at: null,
   metadata: {},
 };
 

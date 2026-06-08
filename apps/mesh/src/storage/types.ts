@@ -152,8 +152,10 @@ export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
 
-export interface ObservationalConfig {
-  /** Virtual MCP (agent) id that observes idle threads. Empty string disables the feature. */
+export interface ObserverConfig {
+  /** Stable id for this observer — the watermark key in thread_observations. */
+  id: string;
+  /** Virtual MCP (agent) id that observes idle threads. Empty = skipped. */
   agentId: string;
   /** "all" observes every agent except scopeAgentIds; "only" observes just them. */
   scopeMode: "all" | "only";
@@ -162,11 +164,16 @@ export interface ObservationalConfig {
   /** Specific model the observer runs with. null → fall back to the fast tier. */
   model: SimpleModeModelSlot | null;
   /**
-   * ISO timestamp the observer was (re)enabled. The sweep only considers threads
+   * ISO timestamp this observer was (re)enabled. The sweep only considers threads
    * with activity at/after this — observation is forward-only, never a history
-   * backfill. null when disabled. Set server-side by ORGANIZATION_SETTINGS_UPDATE.
+   * backfill. Set server-side by ORGANIZATION_SETTINGS_UPDATE.
    */
   configuredAt: string | null;
+}
+
+export interface ObservationalConfig {
+  /** The org's observers. Empty array = feature disabled. */
+  observers: ObserverConfig[];
 }
 
 export interface OrganizationSettingsTable {
@@ -882,16 +889,6 @@ export interface ThreadTable {
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
   /**
-   * High-water mark (ISO text) of the last observational-sweep pass over this
-   * thread. NULL until first observed. Compared lexically against updated_at;
-   * typed like updated_at so column-to-column comparisons line up.
-   */
-  last_observed_at: ColumnType<
-    Date | null,
-    Date | string | null,
-    Date | string | null
-  >;
-  /**
    * True for observer-run output threads. Lets the observational sweep exclude
    * them structurally (independent of the current observer agent id), the way
    * automation threads are excluded via trigger_id.
@@ -941,9 +938,20 @@ export interface Thread {
   sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
-  /** High-water mark (ISO text) of the last observational-sweep pass; NULL until observed. */
-  last_observed_at: string | null;
   metadata: ThreadMetadata;
+}
+
+/**
+ * Per-(thread, observer) observational watermark. Normalized out of the old
+ * threads.last_observed_at column so N observers each track their own progress
+ * on the same thread.
+ */
+export interface ThreadObservationTable {
+  thread_id: string;
+  /** Observer config id (observational_config.observers[].id). */
+  observer_id: string;
+  /** ISO text high-water mark; compared lexically against threads.updated_at. */
+  last_observed_at: string;
 }
 
 /**
@@ -1353,6 +1361,7 @@ export interface Database {
 
   threads: ThreadTable;
   thread_messages: ThreadMessageTable;
+  thread_observations: ThreadObservationTable;
   async_research_jobs: AsyncResearchJobTable;
 
   // Member tags tables

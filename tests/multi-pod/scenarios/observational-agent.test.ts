@@ -1,14 +1,16 @@
 /**
- * Observational agent — full e2e through the real cluster against mock-ai.
+ * Observational agents — full e2e through the real cluster against mock-ai.
  *
- * Validates the observer dispatch path end-to-end:
+ * Validates the observer dispatch path end-to-end, with TWO observers on one org
+ * (each tracks its own watermark, so a single source thread is observed once per
+ * observer):
  *
  *   OBSERVATION_SWEEP_RUN (MCP tool)
- *     → runObservationSweepForOrg → listObservableThreads (real PG)
- *     → buildObserverRun → resolveTier("smart") → mock-ai /v1/models
+ *     → runObservationSweepForOrg → listObservableThreads (real PG, per observer)
+ *     → buildObserverRun → resolveExplicitModel → mock-ai /v1/models
  *     → OBSERVATION_GLOBAL_QUEUE wrapper → awaitThreadRun
  *     → dispatchRunAndWait → mock-ai streaming completion
- *     → observer thread row persisted with status=completed
+ *     → one observer thread per observer, persisted with status=completed
  *
  * The bug this guards against (an observer run rejected before the model is
  * ever called — e.g. an all-system seed → "No user message found") surfaces as
@@ -100,64 +102,72 @@ interface ListedThreads {
   items?: ThreadItem[];
 }
 
-describe("observational agent (e2e through the real cluster)", () => {
-  test("sweep fires an observer run that completes via mock-ai", async () => {
+describe("observational agents (e2e through the real cluster)", () => {
+  test("sweep fires a run per observer; each completes via mock-ai", async () => {
     const session = await bootstrapSession(PODS.MESH_1);
     // Register mock-ai as a provider (also pins the smart/fast tiers); we pin
-    // the observer to its specific model below to exercise resolveExplicitModel.
+    // each observer to its specific model below to exercise resolveExplicitModel.
     const mock = await wireMockProvider(PODS.MESH_1, session);
 
-    const observer = await createTestAgent(PODS.MESH_1, session);
+    const observerA = await createTestAgent(PODS.MESH_1, session);
+    const observerB = await createTestAgent(PODS.MESH_1, session);
     const source = await createTestAgent(PODS.MESH_1, session);
 
-    // Enable observation FIRST (no settle delay) so the source thread below is
-    // created AFTER enablement — observation is forward-only, so enabling
-    // backfills the watermark on anything that already exists. The settings
-    // upsert merges, so wireMockProvider's tier config survives.
+    // Enable observation FIRST (no settle delay) with TWO observers, so the
+    // source thread below is created AFTER enablement — observation is
+    // forward-only, so enabling never backfills pre-existing threads. The
+    // settings upsert merges, so wireMockProvider's tier config survives.
+    const model = { keyId: mock.keyId, modelId: mock.modelId };
     await mcpCall(PODS.MESH_1, session, "ORGANIZATION_SETTINGS_UPDATE", {
       organizationId: session.orgId,
       observational_config: {
-        agentId: observer.virtualMcpId,
-        model: { keyId: mock.keyId, modelId: mock.modelId },
+        observers: [
+          { agentId: observerA.virtualMcpId, model },
+          { agentId: observerB.virtualMcpId, model },
+        ],
       },
     });
 
     // A normal (non-observer) thread, created after enablement → observable.
     await createTestThread(PODS.MESH_1, session, source.virtualMcpId);
 
-    // Trigger the sweep now instead of waiting for the 15-minute cron.
+    // Trigger the sweep now instead of waiting for the 15-minute cron. One
+    // source thread × two observers → at least two observer runs.
     const sweep = await mcpCall<SweepResult>(
       PODS.MESH_1,
       session,
       "OBSERVATION_SWEEP_RUN",
       {},
     );
-    expect(sweep.observed).toBeGreaterThanOrEqual(1);
+    expect(sweep.observed).toBeGreaterThanOrEqual(2);
 
-    // The observer run must reach status=completed. With the dispatch-contract
-    // bug it would be rejected before the model is called and never complete.
-    let observerThread: ThreadItem | undefined;
-    await pollUntil(
-      async () => {
-        const res = await mcpCall<ListedThreads>(
-          PODS.MESH_1,
-          session,
-          "COLLECTION_THREADS_LIST",
-          { where: { virtual_mcp_id: observer.virtualMcpId }, limit: 10 },
-        );
-        observerThread = (res.items ?? []).find(
-          (t) => t.status === "completed",
-        );
-        return Boolean(observerThread);
-      },
-      {
-        timeoutMs: 30_000,
-        intervalMs: 500,
-        label: "observer-run-completes",
-      },
-    );
+    // Each observer must produce its own run that reaches status=completed. With
+    // the dispatch-contract bug a run is rejected before the model is called and
+    // never completes.
+    for (const observer of [observerA, observerB]) {
+      let observerThread: ThreadItem | undefined;
+      await pollUntil(
+        async () => {
+          const res = await mcpCall<ListedThreads>(
+            PODS.MESH_1,
+            session,
+            "COLLECTION_THREADS_LIST",
+            { where: { virtual_mcp_id: observer.virtualMcpId }, limit: 10 },
+          );
+          observerThread = (res.items ?? []).find(
+            (t) => t.status === "completed",
+          );
+          return Boolean(observerThread);
+        },
+        {
+          timeoutMs: 30_000,
+          intervalMs: 500,
+          label: `observer-${observer.virtualMcpId}-completes`,
+        },
+      );
 
-    expect(observerThread?.status).toBe("completed");
-    expect(observerThread?.virtual_mcp_id).toBe(observer.virtualMcpId);
-  }, 60_000);
+      expect(observerThread?.status).toBe("completed");
+      expect(observerThread?.virtual_mcp_id).toBe(observer.virtualMcpId);
+    }
+  }, 90_000);
 });
