@@ -121,6 +121,13 @@ gcloud storage hmac keys create "${SA}" --project="${PROJECT_ID}"
 **5. Configure o collector para gravar OTLP-JSON no GCS.** Adicione o exporter `google_cloud_storage` ao pipeline de **logs** do collector. Ele serializa em OTLP JSON por padrão — exatamente o que o dashboard lê.
 
 ```yaml
+processors:
+  batch:
+    # Um objeto é gravado por flush. Mantenha os batches limitados para cada
+    # arquivo ficar bem abaixo do limite de 32 MiB por arquivo do leitor, e para
+    # limitar quantos objetos cada query do dashboard varre.
+    send_batch_max_size: 2048
+    timeout: 60s
 exporters:
   google_cloud_storage:
     bucket:
@@ -135,11 +142,16 @@ exporters:
 service:
   pipelines:
     logs:
+      processors: [batch]
       exporters: [google_cloud_storage]
 ```
 
 <Callout type="warning">
   `reuse_if_exists: true` é obrigatório. Com o default (`false`) o exporter tenta **criar** o bucket a cada startup e falha com `409 Conflict` quando ele já existe — então o collector não reinicia.
+</Callout>
+
+<Callout type="info">
+  O leitor limita um arquivo a 32 MiB; arquivos maiores são ignorados. Os ajustes de `batch` acima mantêm cada objeto bem abaixo disso — limite o `send_batch_max_size` se os inputs das suas ferramentas forem grandes. (Arquivos menores e em menor quantidade também deixam cada query do dashboard mais barata.)
 </Callout>
 
 **6. Aponte o leitor do Studio para o mesmo bucket:**

@@ -121,6 +121,13 @@ gcloud storage hmac keys create "${SA}" --project="${PROJECT_ID}"
 **5. Configure the collector to write OTLP-JSON to GCS.** Add the `google_cloud_storage` exporter to the collector's **logs** pipeline. It marshals to OTLP JSON by default — exactly what the dashboard reads.
 
 ```yaml
+processors:
+  batch:
+    # One object is written per flush. Keep batches bounded so each file stays
+    # well under the reader's 32 MiB per-file limit, and to limit how many
+    # objects each dashboard query scans.
+    send_batch_max_size: 2048
+    timeout: 60s
 exporters:
   google_cloud_storage:
     bucket:
@@ -135,11 +142,16 @@ exporters:
 service:
   pipelines:
     logs:
+      processors: [batch]
       exporters: [google_cloud_storage]
 ```
 
 <Callout type="warning">
   `reuse_if_exists: true` is required. With the default (`false`) the exporter tries to **create** the bucket on every startup and fails with a `409 Conflict` once it exists — so the collector won't restart.
+</Callout>
+
+<Callout type="info">
+  The reader caps a single file at 32 MiB; larger files are skipped. The `batch` settings above keep each flushed object well under that — bound `send_batch_max_size` if your tool inputs are large. (Smaller, fewer files also make each dashboard query cheaper.)
 </Callout>
 
 **6. Point Studio's reader at the same bucket:**
