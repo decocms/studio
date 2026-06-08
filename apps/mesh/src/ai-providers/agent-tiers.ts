@@ -25,7 +25,7 @@ const CLAUDE_CODE_TIERS: AgentTierMap = {
 
 const CODEX_TIERS: AgentTierMap = {
   fast: { modelId: "codex:gpt-5.4-mini", label: "GPT-5.4 Mini" },
-  smart: { modelId: "codex:gpt-5.3-codex", label: "GPT-5.3 Codex" },
+  smart: { modelId: "codex:gpt-5.4", label: "GPT-5.4" },
   thinking: { modelId: "codex:gpt-5.5", label: "GPT-5.5" },
 };
 

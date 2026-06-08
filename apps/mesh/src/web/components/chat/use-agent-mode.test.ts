@@ -59,8 +59,8 @@ describe("resolveTierSubtitle", () => {
     it("fast → GPT-5.4 Mini", () => {
       expect(resolveTierSubtitle("local-codex", "fast")).toBe("GPT-5.4 Mini");
     });
-    it("smart → GPT-5.3 Codex", () => {
-      expect(resolveTierSubtitle("local-codex", "smart")).toBe("GPT-5.3 Codex");
+    it("smart → GPT-5.4", () => {
+      expect(resolveTierSubtitle("local-codex", "smart")).toBe("GPT-5.4");
     });
     it("thinking → GPT-5.5", () => {
       expect(resolveTierSubtitle("local-codex", "thinking")).toBe("GPT-5.5");

@@ -56,8 +56,8 @@ const CODEX_TIERS: AgentTierMap = {
     iconNode: <CodexIcon size={16} />,
   },
   smart: {
-    modelId: "codex:gpt-5.3-codex",
-    label: "GPT-5.3 Codex",
+    modelId: "codex:gpt-5.4",
+    label: "GPT-5.4",
     description: "Balanced quality",
     iconNode: <CodexIcon size={16} />,
   },

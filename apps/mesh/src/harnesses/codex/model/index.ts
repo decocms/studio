@@ -75,8 +75,7 @@ const CODEX_SDK_MODELS: Record<string, string> = {
   "codex:gpt-5.5": "gpt-5.5",
   "codex:gpt-5.4": "gpt-5.4",
   "codex:gpt-5.4-mini": "gpt-5.4-mini",
-  "codex:gpt-5.3-codex": "gpt-5.3-codex",
-  "codex:gpt-5.2": "gpt-5.2",
+  "codex:gpt-5.3-codex-spark": "gpt-5.3-codex-spark",
 };
 
 /** Resolve a composite codex model ID to the SDK model name. */
