@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createControlHandler } from "./control-handler";
+import { createControlHandler, type StreamEvent } from "./control-handler";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
 
 function fakeProvider(
@@ -106,7 +106,7 @@ describe("control-handler", () => {
       fetchImpl: throwingFetch,
     });
 
-    const frames: Array<{ type: string; status?: number }> = [];
+    const frames: StreamEvent[] = [];
     let bodyText = "";
     for await (const ev of handler.handleStream({
       type: "request",
@@ -115,7 +115,7 @@ describe("control-handler", () => {
       path: "/_sandbox/test-handle/dispatch",
       headers: {},
     })) {
-      frames.push(ev as { type: string; status?: number });
+      frames.push(ev);
       if (ev.type === "raw-chunk") {
         bodyText += new TextDecoder().decode(ev.data);
       }
@@ -126,6 +126,8 @@ describe("control-handler", () => {
       status: 503,
       headers: { "content-type": "text/plain" },
     });
+    expect(frames).toHaveLength(2);
+    expect(frames[1]?.type).toBe("raw-chunk");
     expect(bodyText).toContain("sandbox not reachable");
   });
 

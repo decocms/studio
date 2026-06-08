@@ -230,10 +230,12 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
             // path above — so the cluster's first-frame timer disarms and the
             // user sees a fast, honest "restarting" error instead of a 15s
             // `proxy_no_first_frame (no daemon subscribed)` stall.
-            console.error(
-              `[control] proxy ${req.method} ${rest} handle=${handle} port=${port} fetch failed (yielding 503):`,
-              err,
-            );
+            if (verbose) {
+              console.error(
+                `[control] proxy ${req.method} ${rest} handle=${handle} port=${port} fetch failed (yielding 503):`,
+                err,
+              );
+            }
             yield {
               type: "headers" as const,
               status: 503,
@@ -241,7 +243,7 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
             };
             yield {
               type: "raw-chunk" as const,
-              data: textBytes("sandbox not reachable (restarting)"),
+              data: textBytes("sandbox not reachable"),
             };
             return;
           }
