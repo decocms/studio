@@ -60,6 +60,16 @@ const POLL_TIMEOUT_MS = 28_000;
 // reply legitimately has long inter-frame gaps — no per-frame idle timeout).
 const FIRST_FRAME_TIMEOUT_MS = 15_000;
 
+// Cadence for re-publishing the RequestFrame on the request leg (request-leg
+// tolerance). A single core-NATS publish is DROPPED if it lands in a daemon
+// poll/backoff gap (no live subscriber — see FIRST_FRAME_TIMEOUT_MS). Rather
+// than wait out the full first-frame window, re-publish the SAME reqId on this
+// cadence so the daemon's NEXT poll picks it up; the daemon dedupes by reqId
+// (proxy-abort-registry) so a copy that races a live handler is a no-op.
+// Re-publishing stops at the first reply frame (or presence-loss / abort /
+// first-frame timeout) and is bounded by FIRST_FRAME_TIMEOUT_MS.
+const REPUBLISH_INTERVAL_MS = 1_000;
+
 // Shared queue group for the request leg. The daemon holds MULTIPLE overlapping
 // GETs open (continuous-overlap, S2) to avoid an unsubscribed gap; a plain
 // core-NATS subscription would fan each request out to ALL of them
@@ -437,6 +447,15 @@ export interface CreateProxyDispatchDeps {
    * Injectable so unit tests can use a tiny value instead of sleeping 15 s.
    */
   firstFrameTimeoutMs?: number;
+  /**
+   * Interval in ms for re-publishing the RequestFrame until the first reply
+   * frame arrives (default {@link REPUBLISH_INTERVAL_MS}; set `0` to disable).
+   * Bridges a dropped publish — core NATS discards a publish with no live
+   * subscriber — without waiting the full first-frame timeout: the daemon's
+   * next poll picks up a republished copy and dedupes by reqId. Injectable so
+   * unit tests can use a tiny value.
+   */
+  republishIntervalMs?: number;
 }
 
 /**
@@ -502,12 +521,23 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
             firstFrameTimer = null;
           }
         };
+        // Request-leg republish timer (bridges a dropped publish). Stopped the
+        // instant the channel responds — see markFirstFrame / cleanup.
+        let republishTimer: ReturnType<typeof setInterval> | null = null;
+        const clearRepublishTimer = (): void => {
+          if (republishTimer !== null) {
+            clearInterval(republishTimer);
+            republishTimer = null;
+          }
+        };
         // Any reply frame (or a presence-loss / abort fire) counts as "the
-        // channel responded" — disable the no-first-frame bound exactly once.
+        // channel responded" — disable the no-first-frame bound and stop
+        // re-publishing exactly once.
         const markFirstFrame = (): void => {
           if (firstFrameSeen) return;
           firstFrameSeen = true;
           clearFirstFrameTimer();
+          clearRepublishTimer();
         };
 
         // SUBSCRIBE BEFORE PUBLISH — guarantees we don't miss the first frame.
@@ -561,6 +591,7 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
           cleanedUp = true;
           done = true;
           clearFirstFrameTimer();
+          clearRepublishTimer();
           try {
             unsubscribe();
           } catch {
@@ -636,6 +667,32 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
           // in tests, or an already-present queue), disable it immediately.
           if (firstFrameSeen || queue.length > 0 || done) {
             clearFirstFrameTimer();
+          }
+
+          // Re-publish the RequestFrame on a bounded cadence until the first
+          // reply frame arrives (request-leg tolerance). A single core-NATS
+          // publish is lost if it lands in a daemon poll/backoff gap; the daemon
+          // dedupes by reqId so a copy that races a live handler is a no-op.
+          // markFirstFrame / cleanup / the first-frame timeout all stop it, so
+          // it never outlives the dispatch.
+          const republishIntervalMs =
+            deps.republishIntervalMs ?? REPUBLISH_INTERVAL_MS;
+          if (republishIntervalMs > 0 && !firstFrameSeen && !done) {
+            republishTimer = setInterval(() => {
+              if (done || firstFrameSeen) {
+                clearRepublishTimer();
+                return;
+              }
+              try {
+                deps.nats.publish(
+                  buildRequestSubject(userSub),
+                  encoder.encode(JSON.stringify(requestFrame)),
+                );
+              } catch {
+                // Best-effort — presence-loss and the first-frame timeout cover
+                // a genuinely dead channel.
+              }
+            }, republishIntervalMs);
           }
         }
 

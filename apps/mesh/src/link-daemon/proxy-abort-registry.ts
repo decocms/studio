@@ -27,11 +27,15 @@
 const registry = new Map<string, AbortController>();
 
 /**
- * Create a fresh AbortController for `reqId`, store it, and return it.
- * Overwrites any prior controller for the same reqId (a duplicate delivery of
- * the same reqId — should not happen with UUID reqIds, but kept idempotent).
+ * Create a fresh AbortController for `reqId`, store it, and return it — UNLESS
+ * `reqId` is already in-flight, in which case return `null` WITHOUT touching the
+ * existing entry (idempotent-delivery dedup). The cluster re-publishes the same
+ * RequestFrame to bridge a dropped publish (request-leg tolerance); a duplicate
+ * copy that races the live handler must be dropped, not processed twice. The
+ * caller skips the request when this returns `null`.
  */
-export function register(reqId: string): AbortController {
+export function register(reqId: string): AbortController | null {
+  if (registry.has(reqId)) return null;
   const ac = new AbortController();
   registry.set(reqId, ac);
   return ac;

@@ -269,6 +269,13 @@ async function handleProxyRequest(
   // (not the loop-wide signal). Combine with the loop signal so close() also
   // tears the request down.
   const reqAc = proxyAbortRegistry.register(reqId);
+  if (!reqAc) {
+    // Duplicate delivery: the cluster re-published this reqId (request-leg
+    // tolerance) and a copy raced a handler that's already running. Skip —
+    // re-processing would double-execute the request (e.g. a second agent run).
+    // Do NOT unregister here: the entry belongs to the in-flight handler.
+    return;
+  }
   const combined = AbortSignal.any([deps.signal, reqAc.signal]);
 
   try {
@@ -361,12 +368,18 @@ export async function runOverlapScheduler(
   const wait =
     deps.wait ?? ((ms, s) => sleep(ms, { signal: s }).catch(() => {}));
 
-  let errorStreak = 0;
-
   // One slot = one perpetually-recurring poll. Each slot re-arms itself the
   // instant its poll settles, so the count of outstanding polls never drops
   // below `concurrency` while the loop is alive (the no-gap guarantee).
   const slot = async (): Promise<void> => {
+    // PER-SLOT backoff streak. A single systemic poll error (e.g. a Cloudflare
+    // 520 storm on the long-held GET /api/links/proxy) must not push every slot
+    // into an ever-deepening shared backoff at once — that would black out ALL
+    // proxy subscribers and drop dispatch publishes (proxy_no_first_frame).
+    // Each slot tracks only its OWN consecutive failures, so a slot that just
+    // succeeded re-polls immediately while another retries, keeping ≥1
+    // subscriber live through transient/intermittent errors.
+    let errorStreak = 0;
     while (!signal.aborted) {
       let frame: RequestFrame | null;
       try {
