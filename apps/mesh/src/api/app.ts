@@ -46,6 +46,7 @@ import {
   createLogDeprecatedRoute,
   logDeprecatedRoute,
 } from "./middleware/log-deprecated-route";
+import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
 import { createLinkWorkRoutes } from "./routes/decopilot/link-work-routes";
@@ -2094,20 +2095,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Error Handler
   // ============================================================================
 
-  app.onError((err, c) => {
-    console.error("Server error :", err);
-
-    // If error is Error, provide message
-    const message = err instanceof Error ? err.message : "Unknown error";
-
-    return c.json(
-      {
-        error: "Internal Server Error",
-        message,
-      },
-      500,
-    );
-  });
+  app.onError(handleApiError);
 
   const markShuttingDown = () => {
     isShuttingDown = true;
