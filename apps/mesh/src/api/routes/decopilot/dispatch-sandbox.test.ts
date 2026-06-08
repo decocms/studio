@@ -2,9 +2,13 @@
  * Unit tests for:
  *   - `resolveRemoteCliSandboxUrl` — the ensure-backed preview-URL helper.
  *   - `computeDesktopSandboxHandle` — the pure, I/O-free handle derivation
- *     introduced in C-bis S4 to replace the warm-ensure round-trip at the
- *     two dispatch sites (prepareRun + pullDispatch). The preview-URL site
- *     (`resolveRemoteCliSandboxUrl`) keeps the full ensure path.
+ *     introduced in C-bis S4. It is still used at the pull/work-queue dispatch
+ *     site (`pullDispatch`), where the daemon self-ensures the sandbox from the
+ *     work item.
+ *   - `ensurePushDispatchSandboxHandle` — the push (`remoteDispatch`) dispatch
+ *     site's ensure-backed handle resolver. The push path has no daemon
+ *     self-ensure backstop, so it runs the full ensure (like the preview-URL
+ *     site) and dispatches the provisioned handle.
  */
 import { describe, expect, it, mock } from "bun:test";
 
