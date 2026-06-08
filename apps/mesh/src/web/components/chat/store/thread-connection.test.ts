@@ -904,6 +904,45 @@ describe("boot buffering", () => {
     expect(conn.status.get().kind).toBe("error");
   });
 
+  // G3 regression test: live SSE chunks that arrive while loadInitialPage is
+  // in-flight must NOT get stuck in the buffer when loadInitialPage fails.
+  // Previously the catch branch called failTo() without draining chunkBuffer,
+  // so handleChunk kept buffering indefinitely and the chunks were never folded.
+  test("G3: initial-page error drains chunk buffer so live chunks are rendered", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const ctrl = makeControllableClient();
+    const conn = getOrOpenStream("acme", "thread-g3-drain", {
+      client: ctrl.client as never,
+    });
+
+    // Wait for loadInitialPage to reach the MCP callTool (and for SSE to open).
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Live chunks arrive while the initial page is still pending.
+    stream.enqueue({ type: "start", messageId: "m-live-g3" });
+    stream.enqueue({ type: "text-start", id: "p-g3" });
+    stream.enqueue({ type: "text-delta", id: "p-g3", delta: "live content" });
+    stream.enqueue({ type: "text-end", id: "p-g3" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Status is still loading — the page hasn't resolved yet, chunks are buffered.
+    expect(conn.status.get().kind).toBe("loading");
+
+    // Initial page FAILS.
+    ctrl.reject(new Error("MCP load failed"));
+    await new Promise((r) => setTimeout(r, 30));
+
+    // The buffer must have been drained: the live chunks folded into messages
+    // and the assistant message is visible despite the initial-page failure.
+    const ids = conn.messages.get().map((m) => m.id);
+    expect(ids).toContain("m-live-g3");
+  });
+
   test("a stray non-chunk SSE event is silently ignored", async () => {
     const stream = controllableStream();
     globalThis.fetch = makeFetchMock({

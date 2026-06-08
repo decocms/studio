@@ -84,9 +84,18 @@ import type { CancelBroadcast } from "./cancel-broadcast";
 import type { ThreadMessage } from "@/storage/types";
 import type { PendingImage } from "@/harnesses/decopilot/built-in-tools";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
-import { traced } from "@/observability";
+import { meter, traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
+
+// B5/I1: counter for message-save failures — tagged by org.id (low cardinality).
+// Incremented at every save .catch site inside dispatch-run.ts so the frequency
+// of DB write failures is visible in OTEL without log scraping.
+const saveErrorsCounter = meter.createCounter("decopilot.save.errors", {
+  description:
+    "Number of message-save failures during decopilot run dispatch (v1 and v2 paths)",
+  unit: "{errors}",
+});
 
 /**
  * Process-wide progress-bump throttle (Task 9, A1/A2). One instance shared by
@@ -486,7 +495,7 @@ export async function dispatchRunAndWait(
         : null;
 
       if (buffer && tail) {
-        buffer.pump(uiStream, taskId, registrySignal);
+        buffer.pump(uiStream, taskId, registrySignal, input.organizationId);
         const reader = tail.getReader();
         try {
           while (true) {
@@ -763,6 +772,9 @@ async function prepareRun(
         }));
       if (messagesToSave.length === 0) return;
       await mem.save(messagesToSave as ThreadMessage[]).catch((error) => {
+        // B5/I1: count DB save failures so the metric fires even when logs
+        // aren't being watched. Tagged by org.id (low cardinality).
+        saveErrorsCounter.add(1, { "org.id": input.organizationId });
         console.error("[decopilot:stream] Error saving messages", error);
       });
     };
@@ -1350,6 +1362,7 @@ async function prepareRun(
           if (shouldSave) {
             pendingOps.push(
               saveMessagesToThread(responseMessage).catch((e) => {
+                saveErrorsCounter.add(1, { "org.id": input.organizationId });
                 console.error("[decopilot:stream] onStepFinish save failed", e);
               }),
             );
@@ -1416,6 +1429,7 @@ async function prepareRun(
             parts: [{ type: "text", text: `Error: ${sanitized}` }],
             metadata: { errorCategory: classifyStreamError(error) },
           } as ChatMessage).catch((e) => {
+            saveErrorsCounter.add(1, { "org.id": input.organizationId });
             console.error("[decopilot:stream] error-message save failed", e);
           });
         }

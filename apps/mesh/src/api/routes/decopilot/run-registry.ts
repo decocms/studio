@@ -50,6 +50,14 @@ const inflightRuns = meter.createUpDownCounter("decopilot.stream.inflight", {
   unit: "{requests}",
 });
 
+// I1: counter for reaper-forced run terminations — tagged by org.id and reason.
+// Incremented in reapStaleRuns whenever a stuck run is force-failed.
+const reapedRunsCounter = meter.createCounter("decopilot.run.reaped", {
+  description:
+    "Number of decopilot runs force-failed by the progress-based reaper",
+  unit: "{runs}",
+});
+
 export class RunRegistry {
   private readonly states = new Map<string, RunState>();
   private reaperTimer: ReturnType<typeof setInterval> | null = null;
@@ -318,6 +326,11 @@ export class RunRegistry {
           RUN_IDLE_TIMEOUT_MS / 60_000
         }m) ...`,
       );
+      // I1: emit metric before force-fail so it's visible even if execute() throws.
+      reapedRunsCounter.add(1, {
+        "org.id": state.orgId,
+        reason: "idle_timeout",
+      });
       await this.execute({
         type: "FORCE_FAIL",
         taskId,

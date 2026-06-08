@@ -27,11 +27,15 @@ export interface StreamBuffer {
    * The pump is the sole consumer of `stream`; do not also `pipeThrough` or
    * `tee` it for the HTTP response. Tail consumers read from JetStream via
    * `createTailStream`.
+   *
+   * `orgId` is optional but recommended — it tags the `decopilot.stream.publish_errors`
+   * OTEL counter so per-org alerting is possible.
    */
   pump(
     stream: ReadableStream,
     taskId: string,
     registrySignal: AbortSignal,
+    orgId?: string,
   ): void;
 
   /**

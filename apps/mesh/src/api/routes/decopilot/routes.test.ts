@@ -96,6 +96,43 @@ describe("computeIdempotencyKey", () => {
     const key = computeIdempotencyKey(msg);
     expect(key).toMatch(/^[0-9a-f]{40}$/);
   });
+
+  test("key-order-canonical: same message with different key insertion order produces the SAME hash", () => {
+    // Simulate two Objects built with different key-insertion order but
+    // semantically identical content — as can happen between a fresh
+    // round-trip serialization and the original runtime value.
+    const msgA = {
+      id: "msg_abc",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-bash",
+          state: "approval-responded",
+          approval: { id: "ap_1", approved: true },
+        },
+      ],
+    } as unknown as ChatMessage;
+
+    // msgB has the same data but keys inserted in reverse order inside `approval`.
+    const msgB = {
+      id: "msg_abc",
+      role: "assistant",
+      parts: [
+        {
+          // biome-ignore lint/suspicious/noExplicitAny: intentional key-order test
+          ...(Object.fromEntries(
+            Object.entries({
+              state: "approval-responded",
+              type: "tool-bash",
+              approval: { approved: true, id: "ap_1" },
+            }).reverse(),
+          ) as any),
+        },
+      ],
+    } as unknown as ChatMessage;
+
+    expect(computeIdempotencyKey(msgA)).toBe(computeIdempotencyKey(msgB));
+  });
 });
 
 // ============================================================================
