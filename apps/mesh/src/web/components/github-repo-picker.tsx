@@ -38,7 +38,8 @@ import {
   STOREFRONT_GITHUB_AUTOMATIONS,
   setupStorefrontGithubAutomations,
 } from "@/tools/virtual/storefront-github-automations";
-import { GITHUB_SCOPED_PERMISSIONS } from "@/shared/github-repo-scope";
+import { fetchGithubInstallations } from "@/web/lib/github-installations";
+import { provisionRepoScopedGithubConnection } from "@/web/lib/provision-repo-scoped-github-connection";
 
 export interface GitHubInstallation {
   installationId: number;
@@ -288,94 +289,22 @@ function PickerContent({
         throw new Error("No GitHub connection or installation");
       }
 
-      const sourceConnectionId = effectiveConnection.id;
       const installationId = selectedInstallation.installationId;
 
-      // 1. Mint a token scoped to ONLY this repo, via the org mcp-github connection.
-      const mintRes = (await githubClient.callTool({
-        name: "MINT_REPO_TOKEN",
-        arguments: {
-          installationId,
-          owner: repo.owner,
-          repo: repo.name,
-          permissions: GITHUB_SCOPED_PERMISSIONS,
-        },
-      })) as {
-        isError?: boolean;
-        structuredContent?: { token?: string; expiresAt?: string };
-        content?: Array<{ type?: string; text?: string }>;
-      };
-      const minted = mintRes.structuredContent;
-      if (mintRes.isError || !minted?.token) {
-        const detail = mintRes.content?.find((c) => c.type === "text")?.text;
-        throw new Error(
-          detail
-            ? `Failed to mint a repo-scoped GitHub token: ${detail}`
-            : "Failed to mint a repo-scoped GitHub token",
-        );
-      }
-      const parsedExpiry = minted.expiresAt
-        ? Date.parse(minted.expiresAt)
-        : NaN;
-      const expiresIn = Number.isFinite(parsedExpiry)
-        ? Math.max(0, Math.floor((parsedExpiry - Date.now()) / 1000))
-        : null;
-
-      // 2. Create a dedicated per-agent mcp-github child connection that carries
-      //    the mint recipe. Derive the new id from the create result (handles
-      //    both `{ item: { id } }` and `{ id }` response shapes). No
-      //    connection_token — the minted token is stored in downstream_tokens
-      //    (step 3); a connection_token would defeat the repo scoping.
-      const createRes = (await selfClient.callTool({
-        name: "COLLECTION_CONNECTIONS_CREATE",
-        arguments: {
-          data: {
-            title: `GitHub: ${repo.owner}/${repo.name}`,
-            description: `Repo-scoped GitHub access for ${repo.owner}/${repo.name}`,
-            icon: effectiveConnection.icon,
-            app_name: effectiveConnection.app_name,
-            app_id: effectiveConnection.app_id,
-            connection_type: effectiveConnection.connection_type,
-            connection_url: effectiveConnection.connection_url,
-            metadata: {
-              repoScope: {
-                sourceConnectionId,
-                installationId,
-                owner: repo.owner,
-                repo: repo.name,
-                permissions: GITHUB_SCOPED_PERMISSIONS,
-              },
-            },
-          },
-        },
-      })) as { structuredContent?: unknown };
-      const createdConn = (createRes.structuredContent ?? createRes) as {
-        item?: { id?: string };
-        id?: string;
-      };
-      const childConnectionId = createdConn.item?.id ?? createdConn.id;
-      if (!childConnectionId) {
-        throw new Error("Failed to create the repo-scoped GitHub connection");
-      }
+      const { childConnectionId } = await provisionRepoScopedGithubConnection({
+        orgSlug: org.slug,
+        sourceConnection: effectiveConnection,
+        installationId,
+        owner: repo.owner,
+        repo: repo.name,
+        githubCallTool: (req) => githubClient.callTool(req),
+        selfCallTool: (req) => selfClient.callTool(req),
+      });
 
       let createdAgentId: string | null = null;
 
       try {
-        // 3. Persist the minted token on the child connection.
-        const tokenRes = await fetch(
-          `/api/${org.slug}/connections/${childConnectionId}/oauth-token`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ accessToken: minted.token, expiresIn }),
-          },
-        );
-        if (!tokenRes.ok) {
-          throw new Error("Failed to persist the repo-scoped token");
-        }
-
-        // 4. Create the agent wired to the CHILD connection (not the org one).
+        // Create the agent wired to the CHILD connection (not the org one).
         const result = (await selfClient.callTool({
           name: "COLLECTION_VIRTUAL_MCP_CREATE",
           arguments: {
@@ -615,19 +544,8 @@ function InstallationPicker({
 
   const installationsQuery = useQuery({
     queryKey: KEYS.githubUserOrgs(orgId, connectionId),
-    queryFn: async () => {
-      const result = await selfClient.callTool({
-        name: "GITHUB_LIST_USER_ORGS",
-        arguments: { connectionId },
-      });
-      const content = (result as { content?: Array<{ text?: string }> })
-        .content?.[0]?.text;
-      if (!content) throw new Error("No response from GITHUB_LIST_USER_ORGS");
-      return JSON.parse(content) as {
-        installations: GitHubInstallation[];
-        appSlug?: string;
-      };
-    },
+    queryFn: () =>
+      fetchGithubInstallations((req) => selfClient.callTool(req), connectionId),
   });
 
   if (installationsQuery.isLoading) {

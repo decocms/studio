@@ -23,6 +23,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
+import { normalizeThreadForResponse } from "./helpers";
 import { ThreadCreateDataSchema, ThreadEntitySchema } from "./schema";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { generateBranchName } from "@/shared/branch-name";
@@ -151,10 +152,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     });
 
     return {
-      item: {
-        ...result,
-        hidden: result.hidden ?? false,
-      },
+      item: normalizeThreadForResponse(result),
     };
   },
 });
