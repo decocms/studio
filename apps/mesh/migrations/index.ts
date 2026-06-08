@@ -102,6 +102,7 @@ import * as migration100linktransport from "./100-link-transport.ts";
 import * as migration101cancelrequestedat from "./101-cancel-requested-at.ts";
 import * as migration102observationalagent from "./102-observational-agent.ts";
 import * as migration103revertobservationalagent from "./103-revert-observational-agent.ts";
+import * as migration104agentsandboxproviderkind from "./104-agent-sandbox-provider-kind.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -226,6 +227,7 @@ const migrations: Record<string, Migration> = {
   "101-cancel-requested-at": migration101cancelrequestedat,
   "102-observational-agent": migration102observationalagent,
   "103-revert-observational-agent": migration103revertobservationalagent,
+  "104-agent-sandbox-provider-kind": migration104agentsandboxproviderkind,
 };
 
 export default migrations;
