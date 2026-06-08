@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "@untitledui/icons";
 import {
   Select,
   SelectContent,
@@ -7,6 +8,7 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import { cn } from "@deco/ui/lib/utils.js";
 import {
   embeddedUnionBlockId,
   isEmbeddedUnionResolveType,
@@ -83,6 +85,56 @@ function detectCurrentType(
   return best;
 }
 
+function CollapsibleLoaderConfig({
+  path,
+  open,
+  onOpenChange,
+  title,
+  nested,
+  nestedBlockRef,
+}: {
+  path: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  nested: ReactNode;
+  nestedBlockRef?: boolean;
+}) {
+  const contentId = `${path}-loader-config`;
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-border/80 bg-muted/30",
+        nestedBlockRef && "ml-1",
+      )}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => onOpenChange(!open)}
+        className="group flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-accent/50"
+      >
+        <span className="flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors group-hover:text-foreground">
+          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </span>
+        <span className="min-w-0 truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          {title}
+        </span>
+      </button>
+      {open && (
+        <div
+          id={contentId}
+          className="border-t border-border/60 px-4 pb-4 pt-3"
+        >
+          <div className="border-l border-border/80 pl-4">{nested}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AnyOfField({
   schema,
   value,
@@ -98,6 +150,7 @@ export function AnyOfField({
       ? detectCurrentType(value, refs)
       : (refs[0]?.resolveType ?? "");
   const [selectedRt, setSelectedRt] = useState(inferredRt);
+  const [loaderConfigOpen, setLoaderConfigOpen] = useState(false);
 
   // ── block-ref mode (anyOfRefs from schema resolution) ─────────────
   if (refs.length > 0) {
@@ -143,8 +196,24 @@ export function AnyOfField({
       onChange(rest);
     };
 
+    const nestedProps = selectedRef?.schema?.properties ? (
+      <SchemaForm
+        schema={selectedRef.schema}
+        value={value}
+        onChange={persistUnionValue}
+        basePath={path}
+        breadcrumbPath={breadcrumbPath}
+        onBreadcrumbChange={onBreadcrumbChange}
+      />
+    ) : null;
+
+    // Block-ref loaders (jsonLD, slug, …): nest props in a card so they read
+    // as configuration for the selected block, not siblings of parent fields.
+    const isBlockRef = schema.type === "block-ref";
+    const isNestedBlockRef = path.includes(".");
+
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="space-y-1.5">
           <Label htmlFor={path}>{label}</Label>
           <Select value={activeRt} onValueChange={handleRefChange}>
@@ -167,16 +236,21 @@ export function AnyOfField({
             </p>
           )}
         </div>
-        {selectedRef?.schema?.properties && (
-          <SchemaForm
-            schema={selectedRef.schema}
-            value={value}
-            onChange={persistUnionValue}
-            basePath={path}
-            breadcrumbPath={breadcrumbPath}
-            onBreadcrumbChange={onBreadcrumbChange}
-          />
-        )}
+        {nestedProps &&
+          (isBlockRef ? (
+            <CollapsibleLoaderConfig
+              path={path}
+              open={loaderConfigOpen}
+              onOpenChange={setLoaderConfigOpen}
+              title={
+                isNestedBlockRef ? "Configuration" : "Loader configuration"
+              }
+              nested={nestedProps}
+              nestedBlockRef={isNestedBlockRef}
+            />
+          ) : (
+            nestedProps
+          ))}
       </div>
     );
   }

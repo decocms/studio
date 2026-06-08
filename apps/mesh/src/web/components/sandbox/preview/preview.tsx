@@ -6,6 +6,7 @@ import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-life
 
 import {
   ChevronDown,
+  Code01,
   Code02,
   CursorClick01,
   DotsHorizontal,
@@ -14,6 +15,7 @@ import {
   LinkExternal01,
   Plus,
   SearchLg,
+  CreditCardSearch,
   TextInput,
   Loading01,
   Monitor04,
@@ -34,6 +36,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
@@ -48,6 +51,7 @@ import {
   normalizePagePath,
   validatePagePath,
 } from "@/web/components/sections-editor/page-path-utils";
+import { decoBlockFileViewPath } from "@/web/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/web/components/sections-editor/section-catalog";
 import { buildGlobalSectionPreviewUrl } from "@/web/components/sections-editor/section-preview-url";
 import { useCreatePage } from "@/web/components/sections-editor/use-create-page";
@@ -71,6 +75,12 @@ import { track } from "@/web/lib/posthog-client";
 const SectionsEditor = lazy(() =>
   import("@/web/components/sections-editor/sections-editor").then((m) => ({
     default: m.SectionsEditor,
+  })),
+);
+
+const SeoSheet = lazy(() =>
+  import("@/web/components/sections-editor/page-seo-sheet").then((m) => ({
+    default: m.SeoSheet,
   })),
 );
 
@@ -122,6 +132,12 @@ export function PreviewContent() {
   // Current iframe path (for sections editor)
   const [currentPath, setCurrentPath] = useState("/");
 
+  // SEO panel state
+  const [cmsInitialEditSeo, setCmsInitialEditSeo] = useState(false);
+  const [siteSeoOpen, setSiteSeoOpen] = useState(false);
+  // File deep-link for "View JSON" — opens the page's block file in code mode.
+  const [codeFilePath, setCodeFilePath] = useState<string | null>(null);
+
   const virtualMcpId = inset?.entity?.id ?? null;
   const { org } = useProjectContext();
 
@@ -168,9 +184,13 @@ export function PreviewContent() {
       section.resolveType.toLowerCase().includes(q)
     );
   });
+  const currentPage = activeGlobalSection
+    ? null
+    : (pages.find((p) => normPath(p.path) === normPath(currentPath)) ?? null);
   const currentPageName = activeGlobalSection
     ? activeGlobalSection.name
-    : pages.find((p) => normPath(p.path) === normPath(currentPath))?.name;
+    : currentPage?.name;
+  const currentPageKey = currentPage?.key ?? null;
 
   const iframeSrcRef = useRef<string | null>(null);
   /** Path we navigated to programmatically; ignore stale iframe onLoad events. */
@@ -357,6 +377,9 @@ export function PreviewContent() {
     const prev = viewMode;
     setViewMode(mode);
     setVisualElement(null);
+    // Leaving code mode clears the "View JSON" deep-link so re-entering code
+    // mode later opens the file tree, not the previously-viewed page JSON.
+    if (mode !== "code") setCodeFilePath(null);
     if (mode !== "cms") setCmsSelectedSectionIndex(null);
     if (prev === "visual") deactivateVisualEditor();
     if (prev === "cms") deactivateCmsEditor();
@@ -404,6 +427,7 @@ export function PreviewContent() {
     setDirectPreviewUrl(null);
     setCurrentPath(path);
     setCmsSelectedSectionIndex(null);
+    setCmsInitialEditSeo(false);
   };
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
@@ -705,13 +729,50 @@ export function PreviewContent() {
                       <DotsHorizontal size={14} />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="w-44">
                     <DropdownMenuItem onClick={handleHardReload}>
                       Hard Reload
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleCopyUrl}>
                       Copy Current URL
                     </DropdownMenuItem>
+                    {decofile && meta && (
+                      <>
+                        <DropdownMenuSeparator />
+                        {currentPageKey && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setCmsInitialEditSeo(true);
+                              handleViewModeChange("cms");
+                            }}
+                          >
+                            <CreditCardSearch size={14} />
+                            Edit SEO
+                          </DropdownMenuItem>
+                        )}
+                        {currentPageKey && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              try {
+                                setCodeFilePath(
+                                  decoBlockFileViewPath(currentPageKey),
+                                );
+                                handleViewModeChange("code");
+                              } catch {
+                                toast.error("Invalid page block key");
+                              }
+                            }}
+                          >
+                            <Code01 size={14} />
+                            View JSON
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => setSiteSeoOpen(true)}>
+                          <CreditCardSearch size={14} />
+                          Site SEO
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -775,6 +836,16 @@ export function PreviewContent() {
                       iframe.addEventListener("load", restore);
                       setTimeout(restore, 3000);
                     }, DEV_SERVER_SETTLE_MS);
+                  }}
+                  initialEditSeo={cmsInitialEditSeo}
+                  onExitSeo={() => setCmsInitialEditSeo(false)}
+                  onViewJsonFile={(pageKey) => {
+                    try {
+                      setCodeFilePath(decoBlockFileViewPath(pageKey));
+                      handleViewModeChange("code");
+                    } catch {
+                      toast.error("Invalid page block key");
+                    }
                   }}
                 />
               </Suspense>
@@ -853,6 +924,7 @@ export function PreviewContent() {
                   orgSlug={org.slug}
                   virtualMcpId={virtualMcpId}
                   branch={branch}
+                  openPath={codeFilePath}
                 />
               </Suspense>
             </div>
@@ -916,6 +988,33 @@ export function PreviewContent() {
         error={createPageError}
         onSubmit={handleCreatePage}
       />
+
+      {siteSeoOpen && decofile && meta && (
+        <Suspense fallback={null}>
+          <SeoSheet
+            open={siteSeoOpen}
+            onOpenChange={setSiteSeoOpen}
+            orgSlug={org.slug}
+            virtualMcpId={virtualMcpId ?? ""}
+            branch={branch ?? ""}
+            decofile={decofile}
+            meta={meta}
+            onSaved={() => {
+              setTimeout(() => {
+                const iframe = previewIframeRef.current;
+                if (!iframe) return;
+                try {
+                  iframe.contentWindow?.location.reload();
+                } catch {
+                  const src = iframeSrcRef.current;
+                  if (src) iframe.src = src;
+                }
+              }, DEV_SERVER_SETTLE_MS);
+            }}
+            target={{ kind: "site" }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -1,11 +1,15 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/web/lib/query-keys";
 import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Code01,
   Flag01,
   Globe01,
   Loading01,
+  CreditCardSearch,
 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
@@ -20,7 +24,11 @@ import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
-import { useSaveBlock } from "./use-save-block";
+import {
+  AUTOSAVE_DELAY,
+  useDebouncedSaveBlock,
+  useSaveBlock,
+} from "./use-save-block";
 import { extractPages, globalSectionLabel } from "./page-list";
 import { normalizePagePath } from "./page-path-utils";
 import { SectionList, parseSections } from "./section-list";
@@ -29,6 +37,12 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema, type SchemaProperty } from "./resolve-schema";
+import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
+import { defaultPageSeoResolveType } from "./seo-schema";
+import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
+import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
+import { PageSeoForm } from "./page-seo-form";
+import { SeoFormFields } from "./seo-form-fields";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
@@ -78,8 +92,7 @@ import {
   updateMultivariateSectionVariantRule,
   updateMultivariateSectionVariantValue,
 } from "./section-variants";
-
-const AUTOSAVE_DELAY = 700;
+import { PageJsonDialog } from "./page-json-dialog";
 
 function SchemaFormPanel({
   activeSchema,
@@ -88,6 +101,9 @@ function SchemaFormPanel({
   onFormChange,
   onBreadcrumbChange,
   emptyMessage,
+  beforeForm,
+  seoResolveType,
+  siteDefaultSeo,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -95,21 +111,40 @@ function SchemaFormPanel({
   onFormChange: (v: unknown) => void;
   onBreadcrumbChange: (path: string[]) => void;
   emptyMessage: string;
+  beforeForm?: ReactNode;
+  seoResolveType?: string;
+  siteDefaultSeo?: Record<string, unknown>;
 }) {
+  const formBody =
+    activeSchema && formValue ? (
+      seoResolveType ? (
+        <SeoFormFields
+          schema={activeSchema}
+          resolveType={seoResolveType}
+          value={formValue as Record<string, unknown>}
+          formResetKey={formResetKey}
+          onChange={onFormChange}
+          onBreadcrumbChange={onBreadcrumbChange}
+          siteDefaultSeo={siteDefaultSeo}
+        />
+      ) : (
+        <SchemaForm
+          key={formResetKey}
+          schema={activeSchema}
+          value={formValue}
+          onChange={onFormChange}
+          basePath=""
+          breadcrumbPath={[]}
+          onBreadcrumbChange={onBreadcrumbChange}
+        />
+      )
+    ) : null;
+
   return (
     <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
       <div className="mx-auto max-w-2xl">
-        {activeSchema && formValue ? (
-          <SchemaForm
-            key={formResetKey}
-            schema={activeSchema}
-            value={formValue}
-            onChange={onFormChange}
-            basePath=""
-            breadcrumbPath={[]}
-            onBreadcrumbChange={onBreadcrumbChange}
-          />
-        ) : (
+        {beforeForm}
+        {formBody ?? (
           <div className="px-3 py-6 text-center text-xs text-muted-foreground">
             {emptyMessage}
           </div>
@@ -419,6 +454,9 @@ export function SectionsEditor({
   activeGlobalBlockKey = null,
   externalSelectedIndex,
   onSaved,
+  initialEditSeo = false,
+  onExitSeo,
+  onViewJsonFile,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -438,6 +476,16 @@ export function SectionsEditor({
   externalSelectedIndex?: number | null;
   /** Called after a successful auto-save so the parent can reload the preview. */
   onSaved?: () => void;
+  /** Open the inline page SEO form on mount (e.g. after "Edit SEO" from a host menu). */
+  initialEditSeo?: boolean;
+  /** Called when the user leaves inline SEO via the breadcrumb bar. */
+  onExitSeo?: () => void;
+  /**
+   * When provided, "View JSON" opens the page's block file in the host's file
+   * view (passing the decofile block key) instead of the built-in JSON modal.
+   * Hosts without a file surface (Content tab) omit this and get the modal.
+   */
+  onViewJsonFile?: (pageKey: string) => void;
 }) {
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch }
@@ -475,6 +523,31 @@ export function SectionsEditor({
   );
   const [isVariantRuleOpen, setIsVariantRuleOpen] = useState(true);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
+
+  // Inline SEO editing mode — same breadcrumb UX as editing a section
+  const [editingSeo, setEditingSeo] = useState(initialEditSeo);
+  const [prevInitialEditSeo, setPrevInitialEditSeo] = useState(initialEditSeo);
+  if (initialEditSeo && !prevInitialEditSeo) {
+    setPrevInitialEditSeo(true);
+    setEditingSeo(true);
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+    setFieldBreadcrumbs([]);
+  }
+  if (!initialEditSeo && prevInitialEditSeo) {
+    setPrevInitialEditSeo(false);
+  }
+  const [seoFormValue, setSeoFormValue] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [seoRawOverride, setSeoRawOverride] = useState<
+    Record<string, unknown> | null | undefined
+  >(undefined);
+  const [seoFieldBreadcrumbs, setSeoFieldBreadcrumbs] = useState<string[]>([]);
+  const [seoFormResetKey, setSeoFormResetKey] = useState(0);
   const [activeSectionVariantIndex, setActiveSectionVariantIndex] = useState(0);
   const [sectionRuleFormValue, setSectionRuleFormValue] = useState<Record<
     string,
@@ -487,6 +560,14 @@ export function SectionsEditor({
     null,
   );
 
+  const queryClient = useQueryClient();
+  const decofileCacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
+  const pageBlockSave = useDebouncedSaveBlock({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
+
   // Reset form state when the active page or global block changes
   const [prevPath, setPrevPath] = useState(currentPath);
   const [prevPageBlockKey, setPrevPageBlockKey] = useState(activePageBlockKey);
@@ -497,6 +578,7 @@ export function SectionsEditor({
     prevPageBlockKey !== activePageBlockKey ||
     prevGlobalBlockKey !== activeGlobalBlockKey
   ) {
+    queueMicrotask(() => pageBlockSave.flush());
     setPrevPath(currentPath);
     setPrevPageBlockKey(activePageBlockKey);
     setPrevGlobalBlockKey(activeGlobalBlockKey);
@@ -511,13 +593,17 @@ export function SectionsEditor({
     setSectionRuleResolveType(null);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
+    setEditingSeo(false);
+    setSeoFormValue(null);
+    setSeoRawOverride(undefined);
+    setSeoFieldBreadcrumbs([]);
+    setSeoFormResetKey((key) => key + 1);
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -589,6 +675,46 @@ export function SectionsEditor({
     !isGlobalBlockMode && activePageKey && decofile[activePageKey]
       ? (decofile[activePageKey] as Record<string, unknown>)
       : null;
+
+  // SEO computed values — only while inline SEO is open
+  const inlineSeoResolved =
+    editingSeo && decofile && meta && activePageKey && activePage
+      ? resolveSeoTarget(
+          decofile,
+          {
+            kind: "page",
+            pageKey: activePageKey,
+            pageName: String(activePage.name ?? ""),
+            path: String(activePage.path ?? ""),
+          },
+          meta,
+        )
+      : null;
+  const savedRawSeo = editingSeo ? pageData?.seo : undefined;
+  const displayRawSeo =
+    seoRawOverride !== undefined ? seoRawOverride : savedRawSeo;
+  const innerFromSaved = editingSeo
+    ? unwrapSeoConfig(displayRawSeo)
+    : undefined;
+  const seoTypeOptions = inlineSeoResolved?.seoTypeOptions ?? [];
+  const defaultResolveType =
+    editingSeo && meta ? defaultPageSeoResolveType(meta) : "";
+  const effectiveInner = (seoFormValue ?? innerFromSaved ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const activeSeoType =
+    editingSeo && inlineSeoResolved
+      ? activeSeoResolveType(effectiveInner, inlineSeoResolved)
+      : null;
+  const seoSchema =
+    editingSeo && activeSeoType && isSeoEnabled(displayRawSeo)
+      ? resolveSchema(activeSeoType, meta)
+      : null;
+  const siteDefaultSeo = editingSeo
+    ? findSiteSeoEntry(decofile, meta)?.seoData
+    : undefined;
+
   const pageVariants = isGlobalBlockMode
     ? [
         {
@@ -906,27 +1032,52 @@ export function SectionsEditor({
     }
   };
 
+  const schedulePageBlockWrite = (seoPatch?: {
+    inner?: Record<string, unknown>;
+    raw?: Record<string, unknown> | null;
+  }) => {
+    if (!activePageKey || !decofile || !meta || !activePage) return;
+    const target = {
+      kind: "page" as const,
+      pageKey: activePageKey,
+      pageName: String(activePage.name ?? ""),
+      path: String(activePage.path ?? ""),
+    };
+    const resolved = resolveSeoTarget(decofile, target, meta);
+    if (!resolved) return;
+
+    pageBlockSave.save(activePageKey, () => {
+      const latest = queryClient.getQueryData<Record<string, unknown>>(
+        KEYS.decofile(decofileCacheKey),
+      )?.[activePageKey];
+      if (
+        !latest ||
+        typeof latest !== "object" ||
+        latest === null ||
+        Array.isArray(latest)
+      ) {
+        return null;
+      }
+      const block = {
+        ...(latest as Record<string, unknown>),
+        ...pendingPageFieldsRef.current,
+      };
+      pendingPageFieldsRef.current = {};
+
+      if (seoPatch?.raw !== undefined) {
+        return { ...block, seo: seoPatch.raw };
+      }
+      if (seoPatch?.inner !== undefined) {
+        return buildSeoSavePayload(target, resolved, block, seoPatch.inner);
+      }
+      return block;
+    });
+  };
+
   const savePageField = (field: "name" | "path", value: string) => {
     if (!activePageKey) return;
-    // Accumulate all pending field changes so rapid edits to name+path
-    // are merged into a single save instead of overwriting each other.
     pendingPageFieldsRef.current[field] = value;
-    if (pageDebounceRef.current) clearTimeout(pageDebounceRef.current);
-    pageDebounceRef.current = setTimeout(() => {
-      const pending = pendingPageFieldsRef.current;
-      pendingPageFieldsRef.current = {};
-      const fullPageData = {
-        ...(decofile[activePageKey] as Record<string, unknown>),
-        ...pending,
-      };
-      // No onSaved/iframe reload — name/path don't affect the visual preview
-      saveBlock.mutate(
-        { blockKey: activePageKey, data: fullPageData },
-        {
-          onError: (err) => toast.error(`Save failed: ${err.message}`),
-        },
-      );
-    }, AUTOSAVE_DELAY);
+    schedulePageBlockWrite();
   };
 
   const handleReorder = (fromIndex: number, toIndex: number) => {
@@ -1507,11 +1658,17 @@ export function SectionsEditor({
       : [];
   // The global header still needs a crumb at the top level of a directly-opened
   // global block, where editingBreadcrumbs is empty — fall back to its name.
-  const headerCrumbs = showGlobalBanner
-    ? editingBreadcrumbs.length > 0
-      ? editingBreadcrumbs
-      : [globalBannerName]
-    : editingBreadcrumbs;
+  const seoBreadcrumbs =
+    editingSeo && activePage
+      ? [activePage.name, "SEO", ...seoFieldBreadcrumbs]
+      : [];
+  const headerCrumbs = editingSeo
+    ? seoBreadcrumbs
+    : showGlobalBanner
+      ? editingBreadcrumbs.length > 0
+        ? editingBreadcrumbs
+        : [globalBannerName]
+      : editingBreadcrumbs;
   const handleAddPageVariant = () => {
     if (!activePageKey) return;
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
@@ -1784,7 +1941,45 @@ export function SectionsEditor({
   const exitSectionEditing = () => {
     clearSectionEditing();
   };
+
+  const handleSeoInnerChange = (nextRecord: Record<string, unknown>) => {
+    setSeoFormValue(nextRecord);
+    schedulePageBlockWrite({ inner: nextRecord });
+  };
+
+  const handlePersistRawSeo = (raw: Record<string, unknown> | null) => {
+    setSeoRawOverride(raw);
+    schedulePageBlockWrite({ raw });
+  };
+
+  const clearSeoForm = () => {
+    setSeoFormValue(null);
+    setSeoFieldBreadcrumbs([]);
+  };
+  const bumpSeoFormKey = () => setSeoFormResetKey((key) => key + 1);
+
   const handleBreadcrumbClick = (index: number) => {
+    if (editingSeo) {
+      if (index === 0) {
+        pageBlockSave.flush();
+        setEditingSeo(false);
+        setSeoFormValue(null);
+        setSeoRawOverride(undefined);
+        setSeoFieldBreadcrumbs([]);
+        setSeoFormResetKey((key) => key + 1);
+        onExitSeo?.();
+        return;
+      }
+      if (index === 1) {
+        setSeoFieldBreadcrumbs([]);
+        setSeoFormResetKey((key) => key + 1);
+        return;
+      }
+      setSeoFieldBreadcrumbs(seoFieldBreadcrumbs.slice(0, index - 1));
+      setSeoFormResetKey((key) => key + 1);
+      return;
+    }
+
     if (isGlobalBlockMode) {
       setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index));
       setFormResetKey((key) => key + 1);
@@ -1819,7 +2014,7 @@ export function SectionsEditor({
         {/* When editing a reusable/global block (opened directly or from inside
             a page), the breadcrumb bar goes purple with a globe and a note that
             changes apply everywhere — so it never reads as a local edit. */}
-        {showGlobalBanner || isEditing ? (
+        {showGlobalBanner || isEditing || editingSeo ? (
           <div
             className={cn(
               "border-b px-3 py-2.5",
@@ -1927,6 +2122,40 @@ export function SectionsEditor({
                   type="button"
                   variant="ghost"
                   size="icon"
+                  aria-label="Edit SEO"
+                  className="size-7 shrink-0"
+                  onClick={() => setEditingSeo(true)}
+                >
+                  <CreditCardSearch size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Edit SEO</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="View JSON"
+                  className="size-7 shrink-0"
+                  onClick={() =>
+                    onViewJsonFile && activePageKey
+                      ? onViewJsonFile(activePageKey)
+                      : setJsonOpen(true)
+                  }
+                >
+                  <Code01 size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">View JSON</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
                   aria-label="Add variant"
                   className="size-7 shrink-0"
                   style={{ color: "oklch(0.65 0.15 160)" }}
@@ -1942,7 +2171,7 @@ export function SectionsEditor({
       </div>
 
       {/* Variant selector (when page sections are multivariate) */}
-      {hasMultipleVariants && !isEditing && activePageKey && (
+      {hasMultipleVariants && !isEditing && !editingSeo && activePageKey && (
         <PageVariantTabs
           listKey={activePageKey}
           variants={pageVariants}
@@ -1958,8 +2187,36 @@ export function SectionsEditor({
         />
       )}
 
-      {/* Drill-down: section list OR section form */}
-      {isEditing ? (
+      {/* Drill-down: SEO form, section form, or section list */}
+      {editingSeo ? (
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+          <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
+            <div className="mx-auto max-w-2xl">
+              {pageData && activePageKey ? (
+                <PageSeoForm
+                  rawSeo={displayRawSeo}
+                  innerSeo={effectiveInner}
+                  defaultResolveType={defaultResolveType}
+                  seoSchema={seoSchema}
+                  activeResolveType={activeSeoType}
+                  seoTypeOptions={seoTypeOptions}
+                  formResetKey={seoFormResetKey}
+                  siteDefaultSeo={siteDefaultSeo}
+                  onBreadcrumbChange={setSeoFieldBreadcrumbs}
+                  onPersistRaw={handlePersistRawSeo}
+                  onInnerChange={handleSeoInnerChange}
+                  onClearForm={clearSeoForm}
+                  onBumpFormKey={bumpSeoFormKey}
+                />
+              ) : (
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  SEO schema not found for this site.
+                </div>
+              )}
+            </div>
+          </div>
+        </ScrollArea>
+      ) : isEditing ? (
         <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
           {isEditingMultivariateSection && sectionFlagVariants.length > 0 && (
             <>
@@ -2116,6 +2373,15 @@ export function SectionsEditor({
           decofile={decofile}
           previewBaseUrl={previewUrl}
           onSelect={handleAddSection}
+        />
+      )}
+
+      {jsonOpen && activePageKey && decofile && (
+        <PageJsonDialog
+          open={jsonOpen}
+          onOpenChange={setJsonOpen}
+          pageKey={activePageKey}
+          decofile={decofile}
         />
       )}
 
