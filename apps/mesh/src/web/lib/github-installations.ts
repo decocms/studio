@@ -23,10 +23,14 @@ export async function fetchGithubInstallations(
   if (!content) {
     throw new Error("No response from GITHUB_LIST_USER_ORGS");
   }
-  return JSON.parse(content) as {
-    installations: GithubInstallation[];
-    appSlug?: string;
-  };
+  try {
+    return JSON.parse(content) as {
+      installations: GithubInstallation[];
+      appSlug?: string;
+    };
+  } catch {
+    throw new Error("Invalid response from GITHUB_LIST_USER_ORGS");
+  }
 }
 
 export function findGithubInstallation(

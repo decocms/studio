@@ -8,6 +8,7 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
+import { useCanPinAgentsForOrg } from "@/web/hooks/use-can-pin-agents-for-org";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import {
   DECO_SITES_GITHUB_OWNER,
@@ -79,6 +80,7 @@ export function ImportFromDecoDialog({
   const navigateToAgent = useNavigateToAgent();
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
+  const canPinForOrg = useCanPinAgentsForOrg();
 
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -132,7 +134,8 @@ export function ImportFromDecoDialog({
   const filteredSites = sites.filter(
     (s) =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.domains?.[0]?.domain.toLowerCase().includes(search.toLowerCase()),
+      (s.domains?.[0]?.domain?.toLowerCase().includes(search.toLowerCase()) ??
+        false),
   );
 
   const isSelectedVisible =
@@ -203,7 +206,7 @@ export function ImportFromDecoDialog({
         const connRes = await fetch(`/api/${org.slug}/deco-sites/connection`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ siteName, orgId: org.id }),
+          body: JSON.stringify({ siteName }),
         });
         const connBody = (await connRes.json().catch(() => ({}))) as {
           connId?: string;
@@ -245,7 +248,7 @@ export function ImportFromDecoDialog({
             data: {
               title: siteName,
               description: "Imported from deco.cx",
-              pinned: true,
+              pinned: canPinForOrg,
               icon: projectIcon ?? null,
               subtype: "project",
               metadata: {

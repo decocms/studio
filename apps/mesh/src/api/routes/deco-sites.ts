@@ -12,7 +12,7 @@
 
 import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
-import { getUserId } from "../../core/studio-context";
+import { getUserId, requireOrganization } from "../../core/studio-context";
 import { generatePrefixedId } from "../../shared/utils/generate-id";
 import { fetchToolsFromMCP } from "../../tools/connection/fetch-tools";
 
@@ -142,6 +142,27 @@ async function resolveTeamIdForSite(
   return sites[0]?.team ?? null;
 }
 
+async function resolveSupabaseAuthUserIdByEmail(
+  supabaseUrl: string,
+  serviceKey: string,
+  email: string,
+): Promise<string | null> {
+  const res = await fetch(
+    `${supabaseUrl}/auth/v1/admin/users?filter=${encodeURIComponent(`email.eq.${email}`)}`,
+    {
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+      },
+    },
+  );
+  if (!res.ok) {
+    return null;
+  }
+  const data = (await res.json()) as { users?: Array<{ id: string }> };
+  return data.users?.[0]?.id ?? null;
+}
+
 /**
  * Creates a Supabase Auth user via the Admin API.
  * Returns the new user's `id` (UUID).
@@ -164,15 +185,29 @@ async function createSupabaseAuthUser(
       app_metadata: { mesh_service_account: true },
     }),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    console.error(
-      `[deco-sites] Auth admin create user error (${res.status}): ${text}`,
-    );
-    throw new Error(`Failed to create auth user (${res.status})`);
+  if (res.ok) {
+    const user = (await res.json()) as { id: string };
+    return user.id;
   }
-  const user = (await res.json()) as { id: string };
-  return user.id;
+
+  // Idempotent retry: a prior run may have created the auth user but failed
+  // before the profile/member rows were written.
+  if (res.status === 422 || res.status === 409) {
+    const existing = await resolveSupabaseAuthUserIdByEmail(
+      supabaseUrl,
+      serviceKey,
+      email,
+    );
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const text = await res.text().catch(() => res.statusText);
+  console.error(
+    `[deco-sites] Auth admin create user error (${res.status}): ${text}`,
+  );
+  throw new Error(`Failed to create auth user (${res.status})`);
 }
 
 /**
@@ -203,7 +238,7 @@ async function getOrCreateTeamServiceAccount(
     const existingMember = await supabaseGet<{ id: number }>(
       supabaseUrl,
       serviceKey,
-      `members?user_id=eq.${encodeURIComponent(authUserId)}&team_id=eq.${teamId}&select=id&limit=1`,
+      `members?user_id=eq.${encodeURIComponent(authUserId)}&team_id=eq.${teamId}&deleted_at=is.null&select=id&limit=1`,
     );
 
     if (!existingMember[0]?.id) {
@@ -529,6 +564,7 @@ export const createDecoSitesOrgRoutes = () => {
    */
   app.post("/connection", async (c) => {
     const ctx = c.get("meshContext");
+    const organization = requireOrganization(ctx);
 
     const email = ctx.auth.user?.email;
     const userId = getUserId(ctx);
@@ -536,34 +572,28 @@ export const createDecoSitesOrgRoutes = () => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    let body: { siteName: string; orgId: string };
+    let body: { siteName: string; orgId?: string };
     try {
       body = await c.req.json();
     } catch {
       return c.json({ error: "Invalid request body" }, 400);
     }
 
-    const { siteName, orgId } = body;
-    if (!siteName || !orgId) {
-      return c.json({ error: "siteName and orgId are required" }, 400);
+    const { siteName } = body;
+    if (!siteName) {
+      return c.json({ error: "siteName is required" }, 400);
     }
 
+    if (body.orgId && body.orgId !== organization.id) {
+      return c.json({ error: "orgId does not match organization in URL" }, 400);
+    }
+
+    const orgId = organization.id;
     const connId = generatePrefixedId("conn");
 
     // Validate siteName is a safe DNS subdomain label to prevent SSRF.
     if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(siteName)) {
       return c.json({ error: "Invalid siteName" }, 400);
-    }
-
-    const membership = await ctx.db
-      .selectFrom("member")
-      .select("member.id")
-      .where("member.userId", "=", userId)
-      .where("member.organizationId", "=", orgId)
-      .executeTakeFirst();
-
-    if (!membership) {
-      return c.json({ error: "Forbidden" }, 403);
     }
 
     const config = getSupabaseConfig();
@@ -589,15 +619,27 @@ export const createDecoSitesOrgRoutes = () => {
         return c.json({ error: "Site not found or has no team" }, 404);
       }
 
-      // Verify the user is a member of the site's team.
-      const decoMembership = await supabaseGet<{ id: number }>(
+      // Verify the user is an admin of the site's deco.cx team. Service account
+      // provisioning grants owner-level credentials — limit to team admins.
+      const decoMembership = await supabaseGet<{
+        id: number;
+        admin: boolean | null;
+      }>(
         supabaseUrl,
         serviceKey,
-        `members?user_id=eq.${encodeURIComponent(profileId)}&team_id=eq.${teamId}&deleted_at=is.null&select=id&limit=1`,
+        `members?user_id=eq.${encodeURIComponent(profileId)}&team_id=eq.${teamId}&deleted_at=is.null&select=id,admin&limit=1`,
       );
       if (!decoMembership[0]) {
         return c.json(
           { error: "You are not a member of this site's team" },
+          403,
+        );
+      }
+      if (!decoMembership[0].admin) {
+        return c.json(
+          {
+            error: "Only deco.cx team admins can import sites into Studio",
+          },
           403,
         );
       }
