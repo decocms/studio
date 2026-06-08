@@ -42,6 +42,7 @@ import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
 import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
 import { PageSeoForm } from "./page-seo-form";
+import { SeoFormFields } from "./seo-form-fields";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
@@ -558,7 +559,14 @@ export function SectionsEditor({
   const [prevAutoGlobalKey, setPrevAutoGlobalKey] = useState<string | null>(
     null,
   );
-  const seoFlushRef = useRef<() => void>(() => {});
+
+  const queryClient = useQueryClient();
+  const decofileCacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
+  const pageBlockSave = useDebouncedSaveBlock({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
 
   // Reset form state when the active page or global block changes
   const [prevPath, setPrevPath] = useState(currentPath);
@@ -570,7 +578,7 @@ export function SectionsEditor({
     prevPageBlockKey !== activePageBlockKey ||
     prevGlobalBlockKey !== activeGlobalBlockKey
   ) {
-    seoFlushRef.current();
+    queueMicrotask(() => pageBlockSave.flush());
     setPrevPath(currentPath);
     setPrevPageBlockKey(activePageBlockKey);
     setPrevGlobalBlockKey(activeGlobalBlockKey);
@@ -592,18 +600,8 @@ export function SectionsEditor({
     setSeoFormResetKey((key) => key + 1);
   }
 
-  const queryClient = useQueryClient();
-  const decofileCacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
-  // Page block writes (name/path + SEO) share one debouncer so concurrent edits
-  // merge at fire time. No onSaved — SEO autosave must not reload the preview.
-  const pageBlockSave = useDebouncedSaveBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-  });
-  seoFlushRef.current = pageBlockSave.flush;
   const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -146,6 +146,7 @@ describe("buildSeoSavePayload", () => {
   test("page: seo null payload disables seo", () => {
     const resolved: ResolvedSeo = {
       blockKey: "home",
+      seoData: undefined,
       seoResolveType: "website/sections/Seo/SeoV2.tsx",
       build: () => ({}),
     };
@@ -166,6 +167,7 @@ describe("buildSeoSavePayload", () => {
 describe("activeSeoResolveType", () => {
   const resolved: ResolvedSeo = {
     blockKey: "home",
+    seoData: undefined,
     seoResolveType: "website/sections/Seo/SeoV2.tsx",
     build: () => ({}),
   };

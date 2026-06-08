@@ -67,8 +67,7 @@ export function toggleSeoAsyncRender(
     };
   }
   if (isSeoLazyRender(rawSeo)) {
-    const inner = unwrapSeoConfig(rawSeo);
-    return inner;
+    return unwrapSeoConfig(rawSeo) ?? null;
   }
   return isPlainObject(rawSeo) ? rawSeo : null;
 }

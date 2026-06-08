@@ -11,7 +11,7 @@ import {
 import { DEFAULT_SEO_RESOLVE_TYPE } from "./seo-block";
 
 /** Admin's `SEO_OPTION` label for `website/sections/Seo/SeoV2.tsx`. */
-export const DEFAULT_SEO_TYPE_LABEL = "General";
+const DEFAULT_SEO_TYPE_LABEL = "General";
 
 export interface SeoTypeOption {
   resolveType: string;

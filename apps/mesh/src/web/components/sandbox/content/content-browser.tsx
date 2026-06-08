@@ -303,7 +303,10 @@ function ContentBrowserReady({
     );
   }
 
-  const counts: Record<"pages" | "sections", number> = {
+  const counts: Record<
+    "pages" | "sections" | "posts" | "authors" | "categories",
+    number
+  > = {
     pages: pages.length,
     sections: globalSections.length,
     posts: allBlogEntries.posts.length,
