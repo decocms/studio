@@ -83,7 +83,7 @@ import {
 import { watchClaimLifecycle } from "./lifecycle-watcher";
 import type { ClaimPhase } from "../lifecycle-types";
 
-const RUNNER_KIND = "cluster" as const;
+const RUNNER_KIND = "agent-sandbox" as const;
 const LOG_LABEL = "AgentSandboxProvider";
 
 /**

@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resolveSandboxProviderKindFromEnv } from "./index";
+import {
+  normalizeSandboxProviderKind,
+  sandboxProviderKindSchema,
+} from "./types";
 
 describe("resolveSandboxProviderKindFromEnv", () => {
   const ORIG = { ...process.env };
@@ -14,9 +18,14 @@ describe("resolveSandboxProviderKindFromEnv", () => {
     expect(resolveSandboxProviderKindFromEnv()).toBe("user-desktop");
   });
 
-  it("honors explicit STUDIO_SANDBOX_PROVIDER=cluster", () => {
+  it("honors explicit STUDIO_SANDBOX_PROVIDER=agent-sandbox", () => {
+    process.env.STUDIO_SANDBOX_PROVIDER = "agent-sandbox";
+    expect(resolveSandboxProviderKindFromEnv()).toBe("agent-sandbox");
+  });
+
+  it("normalizes legacy STUDIO_SANDBOX_PROVIDER=cluster", () => {
     process.env.STUDIO_SANDBOX_PROVIDER = "cluster";
-    expect(resolveSandboxProviderKindFromEnv()).toBe("cluster");
+    expect(resolveSandboxProviderKindFromEnv()).toBe("agent-sandbox");
   });
 
   it("throws on unknown STUDIO_SANDBOX_PROVIDER value", () => {
@@ -37,6 +46,18 @@ describe("resolveSandboxProviderKindFromEnv", () => {
     process.env.STUDIO_SANDBOX_PROVIDER = "local-docker";
     expect(() => resolveSandboxProviderKindFromEnv()).toThrow(
       /Unknown STUDIO_SANDBOX_PROVIDER/,
+    );
+  });
+
+  it("normalizes legacy cluster sandbox provider kind to agent-sandbox", () => {
+    expect(normalizeSandboxProviderKind("cluster")).toBe("agent-sandbox");
+    expect(normalizeSandboxProviderKind("agent-sandbox")).toBe("agent-sandbox");
+    expect(normalizeSandboxProviderKind("user-desktop")).toBe("user-desktop");
+  });
+
+  it("accepts agent-sandbox as the hosted sandbox provider kind", () => {
+    expect(sandboxProviderKindSchema.parse("agent-sandbox")).toBe(
+      "agent-sandbox",
     );
   });
 });

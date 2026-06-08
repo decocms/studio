@@ -3,6 +3,7 @@
  * features (e.g. local-ingress ports) live on concrete classes.
  */
 
+import { z } from "zod";
 import type { ClaimPhase } from "./lifecycle-types";
 
 export interface SandboxId {
@@ -115,7 +116,20 @@ export interface ProxyRequestInit {
  * Persisted on `sandboxMap` and `sandbox_runner_state.sandbox_provider_kind`.
  * When widening, keep `SandboxRecord.sandboxProviderKind` in sync.
  */
-export type SandboxProviderKind = "cluster" | "user-desktop";
+export const sandboxProviderKindSchema = z.enum([
+  "agent-sandbox",
+  "user-desktop",
+]);
+
+export type SandboxProviderKind = z.infer<typeof sandboxProviderKindSchema>;
+
+export type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
+
+export function normalizeSandboxProviderKind(
+  kind: LegacySandboxProviderKind,
+): SandboxProviderKind {
+  return kind === "cluster" ? "agent-sandbox" : kind;
+}
 
 export interface SandboxProvider {
   readonly kind: SandboxProviderKind;

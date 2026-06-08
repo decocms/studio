@@ -43,10 +43,9 @@ const baseStreamRequestSchema = z.object({
    */
   branch: z.string().nullish(),
   toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
-  // Canonical-only. Migrations 092/097 swept persisted legacy values;
-  // clients ship canonical strings after the SDK narrowed its union.
   sandboxProviderKind: z
-    .enum(["cluster", "user-desktop"])
+    .enum(["agent-sandbox", "user-desktop", "cluster"])
+    .transform((kind) => (kind === "cluster" ? "agent-sandbox" : kind))
     .nullish()
     .describe(
       "Pinned on first message. Subsequent messages ignore this field (the thread row carries the pinned value).",
