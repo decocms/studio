@@ -97,7 +97,10 @@ export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
  *      POST-time `resolveDispatchTarget` found a LIVE desktop link (the gate
  *      trusts the pre-resolved target and never re-probes `linkClaimRegistry`,
  *      which would drift on replay if the link went offline);
- *   3. the thread is message_storage_version 2 — the only ingest path that can
+ *   3. the harness has pull work-item sandbox config support (`claude-code`
+ *      or `codex`). Decopilot desktop stays on the push/remote-dispatch path
+ *      until pull work items can carry its sandbox config;
+ *   4. the thread is message_storage_version 2 — the only ingest path that can
  *      consume a pull round-trip. A v1 user-desktop thread routed to pull would
  *      have no v2 ingest → silent corruption; the conjunct prevents that.
  *
@@ -109,13 +112,21 @@ export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
 export function decidePullDispatch(input: {
   isPullCapable: boolean;
   sandboxProviderKind?: DispatchTarget["sandboxProviderKind"];
+  harnessId?: DispatchRunInput["harnessId"];
   messageStorageVersion: number | null | undefined;
 }): boolean {
   return (
     input.isPullCapable &&
     input.sandboxProviderKind === "user-desktop" &&
+    isPullSupportedHarness(input.harnessId) &&
     input.messageStorageVersion === 2
   );
+}
+
+function isPullSupportedHarness(
+  harnessId: DispatchRunInput["harnessId"],
+): boolean {
+  return harnessId === "claude-code" || harnessId === "codex";
 }
 
 /**
@@ -256,13 +267,16 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
   const isPullCapable = rt.pullDispatchFn != null && rt.workQueue != null;
   const isUserDesktopTarget =
     request.target?.sandboxProviderKind === "user-desktop";
+  const isPullSupported =
+    isUserDesktopTarget && isPullSupportedHarness(request.harnessId);
   const thread =
-    isPullCapable && isUserDesktopTarget
+    isPullCapable && isPullSupported
       ? await meshCtx.storage.threads.get(request.taskId ?? ctx.threadId)
       : null;
   const isPull = decidePullDispatch({
     isPullCapable,
     sandboxProviderKind: request.target?.sandboxProviderKind,
+    harnessId: request.harnessId,
     messageStorageVersion: thread?.message_storage_version,
   });
 
@@ -270,7 +284,7 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
   // It falls back from pull to the push dispatch path, still using the
   // user-desktop target, but masks the v1 thread that should have been
   // migrated. Log it so the mismatch surfaces.
-  if (isPullCapable && isUserDesktopTarget && !isPull) {
+  if (isPullCapable && isPullSupported && !isPull) {
     console.warn(
       "[threadGate] user-desktop target on non-v2 thread — falling back to push dispatch",
       {

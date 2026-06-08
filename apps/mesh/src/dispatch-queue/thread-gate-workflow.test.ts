@@ -32,14 +32,48 @@ describe("threadGateWorkflow plumbing", () => {
 });
 
 describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
-  it("routes a user-desktop target on a v2 thread to pull", () => {
+  it("routes a user-desktop CLI target on a v2 thread to pull", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: 2,
       }),
     ).toBe(true);
+  });
+
+  it("routes a user-desktop codex target on a v2 thread to pull", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        sandboxProviderKind: "user-desktop",
+        harnessId: "codex",
+        messageStorageVersion: 2,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps decopilot user-desktop v2 runs on the push path until pull sandbox config exists", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        sandboxProviderKind: "user-desktop",
+        harnessId: "decopilot",
+        messageStorageVersion: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps an unspecified harness on the push path", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        sandboxProviderKind: "user-desktop",
+        harnessId: undefined,
+        messageStorageVersion: 2,
+      }),
+    ).toBe(false);
   });
 
   it("routes an agent-sandbox target to the hosted ws path (NOT pull)", () => {
@@ -47,6 +81,7 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: "agent-sandbox",
+        harnessId: "claude-code",
         messageStorageVersion: 2,
       }),
     ).toBe(false);
@@ -57,6 +92,7 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: undefined,
+        harnessId: "claude-code",
         messageStorageVersion: 2,
       }),
     ).toBe(false);
@@ -69,6 +105,7 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: 1,
       }),
     ).toBe(false);
@@ -79,6 +116,7 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
       decidePullDispatch({
         isPullCapable: false,
         sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: 2,
       }),
     ).toBe(false);
@@ -89,6 +127,7 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: null,
       }),
     ).toBe(false);
@@ -96,6 +135,7 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: undefined,
       }),
     ).toBe(false);
