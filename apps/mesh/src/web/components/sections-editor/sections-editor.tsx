@@ -1,4 +1,6 @@
 import { useState, useRef, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/web/lib/query-keys";
 import {
   ChevronDown,
   ChevronRight,
@@ -35,18 +37,10 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema, type SchemaProperty } from "./resolve-schema";
-import { findSiteSeoEntry } from "./seo-block";
-import {
-  defaultPageSeoResolveType,
-  listPageSeoTypeOptions,
-  resolvePageSeoResolveType,
-} from "./seo-schema";
-import { activeSeoResolveType } from "./seo-save";
-import {
-  isSeoEnabled,
-  unwrapSeoConfig,
-  wrapSeoPersistValue,
-} from "./seo-lazy-render";
+import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
+import { defaultPageSeoResolveType } from "./seo-schema";
+import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
+import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
 import { PageSeoForm } from "./page-seo-form";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
@@ -564,6 +558,7 @@ export function SectionsEditor({
   const [prevAutoGlobalKey, setPrevAutoGlobalKey] = useState<string | null>(
     null,
   );
+  const seoFlushRef = useRef<() => void>(() => {});
 
   // Reset form state when the active page or global block changes
   const [prevPath, setPrevPath] = useState(currentPath);
@@ -575,6 +570,7 @@ export function SectionsEditor({
     prevPageBlockKey !== activePageBlockKey ||
     prevGlobalBlockKey !== activeGlobalBlockKey
   ) {
+    seoFlushRef.current();
     setPrevPath(currentPath);
     setPrevPageBlockKey(activePageBlockKey);
     setPrevGlobalBlockKey(activeGlobalBlockKey);
@@ -596,15 +592,20 @@ export function SectionsEditor({
     setSeoFormResetKey((key) => key + 1);
   }
 
+  const queryClient = useQueryClient();
+  const decofileCacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
-  const seoSave = useDebouncedSaveBlock(
-    { orgSlug, virtualMcpId, branch },
-    { onSaved },
-  );
+  // Page block writes (name/path + SEO) share one debouncer so concurrent edits
+  // merge at fire time. No onSaved — SEO autosave must not reload the preview.
+  const pageBlockSave = useDebouncedSaveBlock({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
+  seoFlushRef.current = pageBlockSave.flush;
   const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -677,34 +678,44 @@ export function SectionsEditor({
       ? (decofile[activePageKey] as Record<string, unknown>)
       : null;
 
-  // SEO computed values
-  const savedRawSeo = pageData?.seo;
+  // SEO computed values — only while inline SEO is open
+  const inlineSeoResolved =
+    editingSeo && decofile && meta && activePageKey && activePage
+      ? resolveSeoTarget(
+          decofile,
+          {
+            kind: "page",
+            pageKey: activePageKey,
+            pageName: String(activePage.name ?? ""),
+            path: String(activePage.path ?? ""),
+          },
+          meta,
+        )
+      : null;
+  const savedRawSeo = editingSeo ? pageData?.seo : undefined;
   const displayRawSeo =
     seoRawOverride !== undefined ? seoRawOverride : savedRawSeo;
-  const innerFromSaved = unwrapSeoConfig(displayRawSeo);
-  const seoTypeOptions = pageData ? listPageSeoTypeOptions(meta) : [];
-  const defaultSeoResolveType = pageData
-    ? resolvePageSeoResolveType(meta, innerFromSaved ?? undefined)
-    : null;
-  const defaultResolveType = pageData ? defaultPageSeoResolveType(meta) : "";
+  const innerFromSaved = editingSeo
+    ? unwrapSeoConfig(displayRawSeo)
+    : undefined;
+  const seoTypeOptions = inlineSeoResolved?.seoTypeOptions ?? [];
+  const defaultResolveType =
+    editingSeo && meta ? defaultPageSeoResolveType(meta) : "";
   const effectiveInner = (seoFormValue ?? innerFromSaved ?? {}) as Record<
     string,
     unknown
   >;
   const activeSeoType =
-    pageData && activePageKey && defaultSeoResolveType
-      ? activeSeoResolveType(effectiveInner, {
-          blockKey: activePageKey,
-          seoData: innerFromSaved ?? undefined,
-          seoResolveType: defaultSeoResolveType,
-          build: (value) => ({ ...pageData!, seo: value }),
-        })
+    editingSeo && inlineSeoResolved
+      ? activeSeoResolveType(effectiveInner, inlineSeoResolved)
       : null;
   const seoSchema =
-    pageData && activeSeoType && isSeoEnabled(displayRawSeo)
+    editingSeo && activeSeoType && isSeoEnabled(displayRawSeo)
       ? resolveSchema(activeSeoType, meta)
       : null;
-  const siteDefaultSeo = findSiteSeoEntry(decofile, meta)?.seoData;
+  const siteDefaultSeo = editingSeo
+    ? findSiteSeoEntry(decofile, meta)?.seoData
+    : undefined;
 
   const pageVariants = isGlobalBlockMode
     ? [
@@ -1023,33 +1034,52 @@ export function SectionsEditor({
     }
   };
 
+  const schedulePageBlockWrite = (seoPatch?: {
+    inner?: Record<string, unknown>;
+    raw?: Record<string, unknown> | null;
+  }) => {
+    if (!activePageKey || !decofile || !meta || !activePage) return;
+    const target = {
+      kind: "page" as const,
+      pageKey: activePageKey,
+      pageName: String(activePage.name ?? ""),
+      path: String(activePage.path ?? ""),
+    };
+    const resolved = resolveSeoTarget(decofile, target, meta);
+    if (!resolved) return;
+
+    pageBlockSave.save(activePageKey, () => {
+      const latest = queryClient.getQueryData<Record<string, unknown>>(
+        KEYS.decofile(decofileCacheKey),
+      )?.[activePageKey];
+      if (
+        !latest ||
+        typeof latest !== "object" ||
+        latest === null ||
+        Array.isArray(latest)
+      ) {
+        return null;
+      }
+      const block = {
+        ...(latest as Record<string, unknown>),
+        ...pendingPageFieldsRef.current,
+      };
+      pendingPageFieldsRef.current = {};
+
+      if (seoPatch?.raw !== undefined) {
+        return { ...block, seo: seoPatch.raw };
+      }
+      if (seoPatch?.inner !== undefined) {
+        return buildSeoSavePayload(target, resolved, block, seoPatch.inner);
+      }
+      return block;
+    });
+  };
+
   const savePageField = (field: "name" | "path", value: string) => {
     if (!activePageKey) return;
-    // Accumulate all pending field changes so rapid edits to name+path
-    // are merged into a single save instead of overwriting each other.
     pendingPageFieldsRef.current[field] = value;
-    if (pageDebounceRef.current) clearTimeout(pageDebounceRef.current);
-    pageDebounceRef.current = setTimeout(() => {
-      const pending = pendingPageFieldsRef.current;
-      pendingPageFieldsRef.current = {};
-      // Read-modify-write against the freshest block (see handleSeoFormChange):
-      // SEO edits write the same block from a separate debounce, so a stale
-      // render-closure snapshot here would drop a concurrent SEO change.
-      const fullPageData = {
-        ...(latestRef.current.decofile[activePageKey] as Record<
-          string,
-          unknown
-        >),
-        ...pending,
-      };
-      // No onSaved/iframe reload — name/path don't affect the visual preview
-      saveBlock.mutate(
-        { blockKey: activePageKey, data: fullPageData },
-        {
-          onError: (err) => toast.error(`Save failed: ${err.message}`),
-        },
-      );
-    }, AUTOSAVE_DELAY);
+    schedulePageBlockWrite();
   };
 
   const handleReorder = (fromIndex: number, toIndex: number) => {
@@ -1916,29 +1946,12 @@ export function SectionsEditor({
 
   const handleSeoInnerChange = (nextRecord: Record<string, unknown>) => {
     setSeoFormValue(nextRecord);
-    if (!activePageKey) return;
-    seoSave.save(activePageKey, () => {
-      const latestPage = latestRef.current.decofile[activePageKey] as
-        | Record<string, unknown>
-        | undefined;
-      if (!latestPage) return null;
-      return {
-        ...latestPage,
-        seo: wrapSeoPersistValue(nextRecord, latestPage.seo),
-      };
-    });
+    schedulePageBlockWrite({ inner: nextRecord });
   };
 
   const handlePersistRawSeo = (raw: Record<string, unknown> | null) => {
     setSeoRawOverride(raw);
-    if (!activePageKey) return;
-    seoSave.save(activePageKey, () => {
-      const latestPage = latestRef.current.decofile[activePageKey] as
-        | Record<string, unknown>
-        | undefined;
-      if (!latestPage) return null;
-      return { ...latestPage, seo: raw };
-    });
+    schedulePageBlockWrite({ raw });
   };
 
   const clearSeoForm = () => {
@@ -1950,6 +1963,7 @@ export function SectionsEditor({
   const handleBreadcrumbClick = (index: number) => {
     if (editingSeo) {
       if (index === 0) {
+        pageBlockSave.flush();
         setEditingSeo(false);
         setSeoFormValue(null);
         setSeoRawOverride(undefined);

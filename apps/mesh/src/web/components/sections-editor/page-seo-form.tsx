@@ -65,7 +65,8 @@ export function PageSeoForm({
   };
 
   const handleTypeChange = (nextType: string) => {
-    onInnerChange({ ...innerSeo, __resolveType: nextType });
+    // Drop fields from the previous type so PDP/PLP keys do not leak across.
+    onInnerChange({ __resolveType: nextType });
     onBumpFormKey();
   };
 

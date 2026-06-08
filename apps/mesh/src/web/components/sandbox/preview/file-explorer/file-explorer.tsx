@@ -65,6 +65,18 @@ function toDaemonPath(treePath: string) {
   return treePath.startsWith("/") ? treePath.slice(1) : treePath;
 }
 
+/** Reject path traversal and absolute paths outside the workspace root. */
+function isSafeExplorerOpenPath(path: string): boolean {
+  const normalized = toDaemonPath(path);
+  if (!normalized || normalized.includes("..") || normalized.includes("\\")) {
+    return false;
+  }
+  return (
+    normalized.startsWith(".deco/blocks/") ||
+    (!normalized.startsWith("/") && !normalized.includes("://"))
+  );
+}
+
 type FileIcon = React.ComponentType<{
   size?: number;
   className?: string;
@@ -145,12 +157,15 @@ export function FileExplorer({
   }
 
   // Deep-link: open the requested file when `openPath` is set or changes.
-  // The file opens via its path directly (read endpoint), so it works even
-  // when the tree hides the folder (e.g. dot-directories like `.deco`).
   const [prevOpenPath, setPrevOpenPath] = useState<string | null>(null);
   if (openPath && openPath !== prevOpenPath) {
     setPrevOpenPath(openPath);
-    handleFileClick(openPath);
+    const pathToOpen = openPath;
+    queueMicrotask(() => {
+      if (isSafeExplorerOpenPath(pathToOpen)) {
+        handleFileClick(pathToOpen);
+      }
+    });
   }
 
   async function fetchFileTree() {

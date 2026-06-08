@@ -20,13 +20,11 @@ export function buildSeoSavePayload(
 ): Record<string, unknown> | null {
   if (target.kind === "page") {
     if (!isPlainObject(latestBlock)) return null;
-    const latestRawSeo = latestBlock.seo;
+    const rawForWrap =
+      latestBlock.seo !== undefined ? latestBlock.seo : resolved.rawSeoData;
     return {
       ...latestBlock,
-      seo:
-        seoValue === null
-          ? null
-          : wrapSeoPersistValue(seoValue, latestRawSeo ?? resolved.rawSeoData),
+      seo: seoValue === null ? null : wrapSeoPersistValue(seoValue, rawForWrap),
     };
   }
   if (!isPlainObject(latestBlock)) return null;

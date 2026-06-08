@@ -757,7 +757,7 @@ export function PreviewContent() {
                                 setCodeFilePath(
                                   decoBlockFileViewPath(currentPageKey),
                                 );
-                                setViewMode("code");
+                                handleViewModeChange("code");
                               } catch {
                                 toast.error("Invalid page block key");
                               }
@@ -842,7 +842,7 @@ export function PreviewContent() {
                   onViewJsonFile={(pageKey) => {
                     try {
                       setCodeFilePath(decoBlockFileViewPath(pageKey));
-                      setViewMode("code");
+                      handleViewModeChange("code");
                     } catch {
                       toast.error("Invalid page block key");
                     }
