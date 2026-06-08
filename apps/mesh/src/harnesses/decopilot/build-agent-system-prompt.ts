@@ -23,7 +23,6 @@ import {
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { buildSystemMessages, type SystemMessage } from "./system-prompt";
-import { DEBUG_USAGE_ENABLED, logUsageLine } from "./debug-usage-log";
 import {
   listPromptsBlock,
   listAgentsBlock,
@@ -267,16 +266,6 @@ export async function buildAgentSystemPrompt(
   add("agentInstructions", opts.agentInstructions);
 
   add("userContext", await buildUserContextBlock(opts));
-
-  if (DEBUG_USAGE_ENABLED) {
-    const sizes = labels
-      .map((label, i) => `${label}=~${Math.ceil(prompts[i]!.length / 4)}t`)
-      .join(" ");
-    const total = Math.ceil(prompts.reduce((n, s) => n + s.length, 0) / 4);
-    logUsageLine(
-      `[prompt] ${opts.kind}=${opts.virtualMcp.id} system blocks (~${total}t total): ${sizes}`,
-    );
-  }
 
   return buildSystemMessages(prompts, opts.date ?? new Date());
 }
