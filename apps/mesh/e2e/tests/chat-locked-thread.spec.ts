@@ -39,7 +39,7 @@ import { expect, test } from "../fixtures/test";
 
 interface MessageBodyOverrides {
   agentId: string;
-  sandboxProviderKind?: "cluster" | "user-desktop";
+  sandboxProviderKind?: "agent-sandbox" | "user-desktop";
   harnessId?: "claude-code" | "codex" | "decopilot";
   branch?: string;
   /** When true, omit the three lock-managed fields entirely (simulates the
@@ -219,7 +219,7 @@ test.describe("Thread runtime is locked after first message", () => {
         threadId,
         messageBody({
           agentId,
-          sandboxProviderKind: "cluster",
+          sandboxProviderKind: "agent-sandbox",
           harnessId: "codex",
           branch: "feature/other",
         }),

@@ -139,10 +139,10 @@ async function instantiate(
   const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   switch (kind) {
-    case "cluster": {
+    case "agent-sandbox": {
       // Dynamic import — @kubernetes/client-node is heavy and only needed
-      // when STUDIO_SANDBOX_PROVIDER=cluster. Deploys that never select the
-      // cluster provider don't load it.
+      // when STUDIO_SANDBOX_PROVIDER=agent-sandbox. Deploys that never select
+      // the hosted provider don't load it.
       const { AgentSandboxProvider } = await import(
         "@decocms/sandbox/provider/agent-sandbox"
       );
@@ -160,7 +160,7 @@ async function instantiate(
       });
     }
     case "user-desktop": {
-      // user-desktop is never the cluster-wide default — there is no
+      // user-desktop is never the ambient hosted default — there is no
       // ambient link claim to bind to here. It is constructed per-run by
       // `resolveSandboxProvider` (sandbox/resolve-provider.ts) from
       // either the per-run ctx hint or the recorded sandboxMap kind, both of
@@ -169,12 +169,12 @@ async function instantiate(
       // which today should not happen (the user-desktop provider doesn't
       // write to `sandbox_runner_state`).
       throw new Error(
-        "user-desktop runner cannot be instantiated without a per-run link claim — call resolveSandboxProvider, which binds the link before constructing the provider.",
+        "user-desktop provider cannot be instantiated without a per-run link claim — call resolveSandboxProvider, which binds the link before constructing the provider.",
       );
     }
     default: {
       const exhaustive: never = kind;
-      throw new Error(`Unknown runner kind: ${String(exhaustive)}`);
+      throw new Error(`Unknown sandbox provider kind: ${String(exhaustive)}`);
     }
   }
 }
@@ -226,7 +226,7 @@ export function getSandboxProviderByKind(
  * StudioContext (the state store only needs a Kysely instance). Returns null
  * when no provider kind is configured.
  *
- * `instantiate()` only ever yields the cluster `AgentSandboxProvider` (the
+ * `instantiate()` only ever yields the hosted `AgentSandboxProvider` (the
  * sole env-instantiable provider — `user-desktop` is built per-run and
  * throws here), so the resolved provider is always an `AgentSandboxProvider`.
  * Typing it as such lets the preview proxy skip a redundant kind check + cast.

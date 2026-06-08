@@ -92,7 +92,7 @@ app.get("/", (c) => {
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),
     runtime: {
-      agentSandbox: getSettings().sandboxProviderKind === "cluster",
+      agentSandbox: getSettings().sandboxProviderKind === "agent-sandbox",
     },
   };
 

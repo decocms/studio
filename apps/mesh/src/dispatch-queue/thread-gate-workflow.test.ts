@@ -32,45 +32,80 @@ describe("threadGateWorkflow plumbing", () => {
 });
 
 describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
-  it("routes a user-desktop target on a v2 thread to pull", () => {
+  it("routes a user-desktop CLI target on a v2 thread to pull", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: 2,
       }),
     ).toBe(true);
   });
 
-  it("routes a cluster target to the in-cluster ws path (NOT pull)", () => {
-    // The reverted cutover (40562b383) wrongly sent these to pull. Cloud /
-    // cluster threads have no desktop daemon to drain the work queue.
+  it("routes a user-desktop codex target on a v2 thread to pull", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "cluster",
+        sandboxProviderKind: "user-desktop",
+        harnessId: "codex",
+        messageStorageVersion: 2,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps decopilot user-desktop v2 runs on the push path until pull sandbox config exists", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        sandboxProviderKind: "user-desktop",
+        harnessId: "decopilot",
         messageStorageVersion: 2,
       }),
     ).toBe(false);
   });
 
-  it("routes an undefined target (legacy path) to the in-cluster ws path", () => {
+  it("keeps an unspecified harness on the push path", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: undefined,
+        sandboxProviderKind: "user-desktop",
+        harnessId: undefined,
         messageStorageVersion: 2,
       }),
     ).toBe(false);
   });
 
-  it("routes a user-desktop target on a v1 thread to the ws path (v2 conjunct)", () => {
+  it("routes an agent-sandbox target to the hosted ws path (NOT pull)", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        sandboxProviderKind: "agent-sandbox",
+        harnessId: "claude-code",
+        messageStorageVersion: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it("routes an undefined target (legacy path) to the hosted ws path", () => {
+    expect(
+      decidePullDispatch({
+        isPullCapable: true,
+        sandboxProviderKind: undefined,
+        harnessId: "claude-code",
+        messageStorageVersion: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it("routes a user-desktop target on a v1 thread to the push path (v2 conjunct)", () => {
     // Belt-and-suspenders: a v1 user-desktop thread has no v2 ingest path, so
     // pull would silently corrupt. The version conjunct forces ws fallback.
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: 1,
       }),
     ).toBe(false);
@@ -80,7 +115,8 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
     expect(
       decidePullDispatch({
         isPullCapable: false,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: 2,
       }),
     ).toBe(false);
@@ -90,14 +126,16 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: null,
       }),
     ).toBe(false);
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
         messageStorageVersion: undefined,
       }),
     ).toBe(false);

@@ -1385,9 +1385,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     // `rt.pullDispatchFn != null && rt.workQueue != null` guard keeps the ws
     // path active in that case, so no behavior changes for existing runs.
     // Phase C-bis S6: the pull branch is now ACTIVE — the gate routes a run to
-    // pull when its resolved dispatch target has `runsIn === 'user-desktop'`
-    // (a live desktop link) AND the thread is message_storage_version 2.
-    // Cloud/cluster threads always take the in-cluster ws path.
+    // pull when its resolved dispatch target has
+    // `sandboxProviderKind === "user-desktop"` (a live desktop link) AND the
+    // thread is message_storage_version 2. Hosted agent-sandbox threads always
+    // take the hosted ws path.
     pullDispatchFn: pullDispatch,
     workQueue: linkWorkQueue ?? undefined,
   });

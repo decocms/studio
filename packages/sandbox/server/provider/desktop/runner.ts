@@ -1,5 +1,5 @@
 /**
- * desktop sandbox provider — cluster-side stub that forwards every
+ * desktop sandbox provider — Studio-side stub that forwards every
  * `SandboxProvider` call to a per-user link daemon running on the developer's
  * desktop over the NATS-backed dispatch channel.
  *
@@ -13,7 +13,7 @@
  * `ensure` resolves the link has already brought the daemon up.
  *
  * `localWorkdir` returns null — the workdir lives on the desktop and is never
- * referenced by cluster code.
+ * referenced by Studio-hosted code.
  */
 
 import { computeHandle } from "../shared";
@@ -38,9 +38,9 @@ export interface DesktopProviderOptions {
   /**
    * Persistent handle → state store. Optional for compatibility with
    * in-process tests that don't need cross-instance hydration; the
-   * cluster MUST pass one (KyselySandboxProviderStateStore) so a
+   * Studio MUST pass one (KyselySandboxProviderStateStore) so a
    * fresh provider per request can still find a previously-ensured
-   * sandbox. Same dependency the cluster provider takes.
+   * sandbox. Same dependency the agent-sandbox provider takes.
    */
   stateStore?: RunnerStateStoreOps;
 }
@@ -83,7 +83,7 @@ export class DesktopSandboxProvider implements SandboxProvider {
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
     // computeHandle produces a 16-hex-char hash — the handle is used as a
     // public subdomain prefix (e.g. `<handle>.localhost:<port>`), and the
-    // cluster's `computeClaimHandle` derives the same handle so its
+    // Studio's `computeClaimHandle` derives the same handle so its
     // state-store lookup matches. Prefer the top-level `opts.branch` (which
     // the sandbox-proxy also uses) over `opts.repo?.branch` so that a
     // repo-less SANDBOX_START (no GitHub connection) still produces a handle

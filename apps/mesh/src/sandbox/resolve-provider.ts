@@ -15,9 +15,9 @@
  *
  *   3. **Recorded sandboxMap kind.** The post-provision source of truth: a
  *      sandbox provisioned via `user-desktop` stays addressable through
- *      `user-desktop` even on a cluster whose env kind is `cluster`. This
- *      is what the events/proxy route uses — no ctx hint, just the recorded
- *      entry.
+ *      `user-desktop` even when env/default policy points at hosted
+ *      `agent-sandbox`. This is what the events/proxy route uses — no ctx
+ *      hint, just the recorded entry.
  *
  *   4. **Default policy** (`resolveDefaultSandboxProviderKind`). Pre-
  *      provision fall-through: live link → `user-desktop`, else env kind.
@@ -73,8 +73,14 @@ export async function resolveSandboxProvider(
   }
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
-  //    without touching sandboxMap. `user-desktop` carries its link inline;
-  //    `cluster-default` means "use the cluster runner the env points to".
+  //    without touching sandboxMap. `agent-sandbox` is explicit hosted
+  //    execution; `user-desktop` carries its link inline; `cluster-default`
+  //    means "use the provider the env/default policy points to" (legacy
+  //    automation/default behavior).
+  if (ctx.sandboxPreference === "agent-sandbox") {
+    const provider = await bindProviderForKind(ctx, userId, "agent-sandbox");
+    return { provider, kind: "agent-sandbox" };
+  }
   if (ctx.sandboxPreference === "user-desktop" && ctx.linkForCurrentRun) {
     const provider = await buildDesktopProvider(ctx, userId);
     return { provider, kind: "user-desktop" };

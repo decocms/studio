@@ -131,7 +131,9 @@ export {
   parseSandboxRecord,
   parseBranchMap,
   normalizeSandboxMap,
+  normalizeSandboxProviderKind,
   type SandboxProviderKind,
+  type LegacySandboxProviderKind,
   type GithubRepo,
   // Decopilot event types
   THREAD_STATUSES,

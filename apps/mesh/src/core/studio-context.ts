@@ -408,22 +408,20 @@ export interface StudioContext extends HarnessContext {
   /**
    * Sandbox dispatch preference for the in-flight run, populated by
    * `prepareRun` from the resolved `DispatchTarget`:
-   *   - `"cluster-default"` — use whichever sandbox kind `STUDIO_SANDBOX_PROVIDER`
-   *     resolves to on this cluster (`cluster` or `user-desktop` depending on
-   *     the env).
-   *   - `"user-desktop"` — decopilot still runs in the cluster, but its
-   *     Code Sandbox tool calls are forwarded to the user's link daemon.
-   * Unset for non-decopilot harnesses (`remote-cli` runs never enter the
-   * sandbox tool path on the cluster side).
+   *   - `"agent-sandbox"` — force hosted sandbox provider behavior for this run.
+   *   - `"cluster-default"` — legacy/env-default hint: use whichever sandbox
+   *     kind `STUDIO_SANDBOX_PROVIDER` resolves to.
+   *   - `"user-desktop"` — use the user's link daemon for sandbox provider
+   *     behavior.
    */
-  sandboxPreference?: "cluster-default" | "user-desktop";
+  sandboxPreference?: "agent-sandbox" | "cluster-default" | "user-desktop";
 
   /**
    * Link claim for the user this run is dispatched on behalf of, if any.
    * Set by `prepareRun` when the resolved `DispatchTarget` references a
    * link (either `local/desktop` or `remote-cli`). The desktop sandbox
    * provider reads this to know which daemon is connected without re-querying
-   * the registry. Unset for `local/default` runs.
+   * the registry. Unset for hosted/default runs.
    */
   linkForCurrentRun?: LinkClaim;
 

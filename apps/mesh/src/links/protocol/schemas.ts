@@ -59,7 +59,7 @@ export const harnessStreamInputSchema = z
       expiresAt: z.number().int().positive(),
       /**
        * Injected main chat-model secret for desktop decopilot activation.
-       * Only present when target.runsIn === "user-desktop" AND harnessId === "decopilot".
+       * Only present when sandboxProviderKind === "user-desktop" AND harnessId === "decopilot".
        *
        * ⚠️ SECURITY: carries an org provider API key in plaintext over HTTPS.
        * Scoped to the single main chat-completion key only. Never log this field.

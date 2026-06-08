@@ -24,7 +24,8 @@
     "@decocms/std": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",
     "@opentelemetry/api": "^1.9.0",
-    "node-pty": "^1.0.0"
+    "node-pty": "^1.0.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

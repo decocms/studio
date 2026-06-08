@@ -28,7 +28,7 @@ import type { APIRequestContext } from "@playwright/test";
 
 interface MessageBodyOverrides {
   agentId?: string;
-  sandboxProviderKind?: "cluster" | "user-desktop";
+  sandboxProviderKind?: "agent-sandbox" | "user-desktop";
   harnessId?: "claude-code" | "codex" | "decopilot";
 }
 
@@ -139,7 +139,7 @@ test.describe("POST /messages — dispatch target gating", () => {
     }
   });
 
-  test("cloud kind (cluster) → 202 (no link required)", async ({
+  test("hosted kind (agent-sandbox) → 202 (no link required)", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -152,7 +152,7 @@ test.describe("POST /messages — dispatch target gating", () => {
       threadId,
       messageBody({
         agentId,
-        sandboxProviderKind: "cluster",
+        sandboxProviderKind: "agent-sandbox",
         harnessId: "claude-code",
       }),
     );
@@ -222,7 +222,7 @@ test.describe("POST /messages — first-message pinning", () => {
       );
       expect(first.status()).toBe(202);
 
-      // Second message sends a conflicting sandbox kind (cluster). The
+      // Second message sends a conflicting sandbox kind (agent-sandbox). The
       // thread row already pins user-desktop, which is the single source of
       // truth — the body's kind must be ignored. We keep harnessId
       // "claude-code" here on purpose: a non-CLI harness in the body (e.g.
@@ -236,14 +236,14 @@ test.describe("POST /messages — first-message pinning", () => {
         threadId,
         messageBody({
           agentId,
-          sandboxProviderKind: "cluster",
+          sandboxProviderKind: "agent-sandbox",
           harnessId: "claude-code",
         }),
       );
       expect(second.status()).toBe(202);
 
       // The conflicting body did not overwrite the pinned values: the row is
-      // still user-desktop, not cluster.
+      // still user-desktop, not agent-sandbox.
       const { rows } = await db.query(
         "SELECT sandbox_provider_kind, harness_id FROM threads WHERE id = $1",
         [threadId],

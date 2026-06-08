@@ -1,5 +1,9 @@
 import type { HarnessId } from "@/harnesses";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import {
+  normalizeSandboxProviderKind,
+  type LegacySandboxProviderKind,
+  type SandboxProviderKind,
+} from "@decocms/mesh-sdk";
 
 export type AgentOption =
   | "decopilot"
@@ -19,7 +23,7 @@ export interface AgentPins {
  * not drift.
  */
 export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
-  decopilot: { harness: "decopilot", sandbox: "cluster" },
+  decopilot: { harness: "decopilot", sandbox: "agent-sandbox" },
   "decopilot-desktop": { harness: "decopilot", sandbox: "user-desktop" },
   "claude-code-desktop": { harness: "claude-code", sandbox: "user-desktop" },
   "codex-desktop": { harness: "codex", sandbox: "user-desktop" },
@@ -36,15 +40,20 @@ export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
  */
 export function agentOptionFor(
   harness: HarnessId | null,
-  sandbox: SandboxProviderKind | null,
+  sandbox: LegacySandboxProviderKind | null,
 ): AgentOption | null {
   if (!harness) return null;
-  if (harness === "decopilot" && sandbox === null) return "decopilot";
+  const normalizedSandbox = sandbox
+    ? normalizeSandboxProviderKind(sandbox)
+    : null;
+  if (harness === "decopilot" && normalizedSandbox === null) {
+    return "decopilot";
+  }
   for (const [option, pins] of Object.entries(AGENT_OPTION_PINS) as [
     AgentOption,
     AgentPins,
   ][]) {
-    if (pins.harness === harness && pins.sandbox === sandbox) {
+    if (pins.harness === harness && pins.sandbox === normalizedSandbox) {
       return option;
     }
   }

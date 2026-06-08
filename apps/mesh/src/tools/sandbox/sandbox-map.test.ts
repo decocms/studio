@@ -31,7 +31,7 @@ describe("readSandboxMap", () => {
 
   test("returns the sandboxMap when present", () => {
     // 3-level: userId → branch → kind → entry
-    const sandboxMap = { "user-1": { main: { cluster: ENTRY_A } } };
+    const sandboxMap = { "user-1": { main: { "agent-sandbox": ENTRY_A } } };
     expect(readSandboxMap({ sandboxMap })).toEqual(sandboxMap);
   });
 
@@ -46,9 +46,11 @@ describe("readSandboxMap canonical reads", () => {
       sandboxHandle: "h1",
       previewUrl: null,
       createdAt: 1,
-      sandboxProviderKind: "cluster",
+      sandboxProviderKind: "agent-sandbox",
     };
-    const meta = { sandboxMap: { user1: { main: { cluster: inner } } } };
+    const meta = {
+      sandboxMap: { user1: { main: { "agent-sandbox": inner } } },
+    };
     expect(readSandboxMap(meta)).toEqual(meta.sandboxMap);
   });
 
@@ -57,60 +59,68 @@ describe("readSandboxMap canonical reads", () => {
       sandboxHandle: "h1",
       previewUrl: null,
       createdAt: 1,
-      sandboxProviderKind: "cluster",
+      sandboxProviderKind: "agent-sandbox",
     };
-    const meta = { vmMap: { user1: { main: { cluster: inner } } } };
+    const meta = { vmMap: { user1: { main: { "agent-sandbox": inner } } } };
     expect(readSandboxMap(meta)).toEqual({});
   });
 });
 
 describe("resolveVm", () => {
   test("returns null when user is absent", () => {
-    expect(resolveVm({}, "user-1", "main", "cluster")).toBeNull();
+    expect(resolveVm({}, "user-1", "main", "agent-sandbox")).toBeNull();
   });
 
   test("returns null when branch is absent for that user", () => {
-    const sandboxMap = { "user-1": { main: { cluster: ENTRY_A } } };
-    expect(resolveVm(sandboxMap, "user-1", "feat/x", "cluster")).toBeNull();
+    const sandboxMap = { "user-1": { main: { "agent-sandbox": ENTRY_A } } };
+    expect(
+      resolveVm(sandboxMap, "user-1", "feat/x", "agent-sandbox"),
+    ).toBeNull();
   });
 
   test("returns the entry when userId, branch, and kind are all present", () => {
     const sandboxMap = {
       "user-1": {
-        main: { cluster: ENTRY_A },
-        "feat/x": { cluster: ENTRY_B },
+        main: { "agent-sandbox": ENTRY_A },
+        "feat/x": { "agent-sandbox": ENTRY_B },
       },
     };
-    expect(resolveVm(sandboxMap, "user-1", "feat/x", "cluster")).toEqual(
+    expect(resolveVm(sandboxMap, "user-1", "feat/x", "agent-sandbox")).toEqual(
       ENTRY_B,
     );
   });
 
   test("isolates users from each other", () => {
     const sandboxMap = {
-      "user-1": { main: { cluster: ENTRY_A } },
-      "user-2": { main: { cluster: ENTRY_B } },
+      "user-1": { main: { "agent-sandbox": ENTRY_A } },
+      "user-2": { main: { "agent-sandbox": ENTRY_B } },
     };
-    expect(resolveVm(sandboxMap, "user-1", "main", "cluster")).toEqual(ENTRY_A);
-    expect(resolveVm(sandboxMap, "user-2", "main", "cluster")).toEqual(ENTRY_B);
+    expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toEqual(
+      ENTRY_A,
+    );
+    expect(resolveVm(sandboxMap, "user-2", "main", "agent-sandbox")).toEqual(
+      ENTRY_B,
+    );
   });
 
   test("returns null when the kind is absent but another kind exists", () => {
     const sandboxMap = {
       "user-1": { main: { "user-desktop": ENTRY_A } },
     };
-    // looking up "cluster" when only "user-desktop" exists → null
-    expect(resolveVm(sandboxMap, "user-1", "main", "cluster")).toBeNull();
+    // looking up "agent-sandbox" when only "user-desktop" exists → null
+    expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toBeNull();
   });
 
   test("returns the entry for the requested kind when multiple kinds coexist", () => {
     const sandboxMap = {
-      "user-1": { main: { "user-desktop": ENTRY_A, cluster: ENTRY_B } },
+      "user-1": { main: { "user-desktop": ENTRY_A, "agent-sandbox": ENTRY_B } },
     };
     expect(resolveVm(sandboxMap, "user-1", "main", "user-desktop")).toEqual(
       ENTRY_A,
     );
-    expect(resolveVm(sandboxMap, "user-1", "main", "cluster")).toEqual(ENTRY_B);
+    expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toEqual(
+      ENTRY_B,
+    );
   });
 });
 
@@ -140,7 +150,7 @@ describe("setSandboxMapEntry", () => {
       sandboxHandle: "new",
       previewUrl: null,
       createdAt: 2,
-      sandboxProviderKind: "cluster",
+      sandboxProviderKind: "agent-sandbox",
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -150,7 +160,7 @@ describe("setSandboxMapEntry", () => {
       "u",
       "u",
       "b",
-      "cluster",
+      "agent-sandbox",
       newEntry,
     );
 
@@ -162,6 +172,6 @@ describe("setSandboxMapEntry", () => {
       string,
       Record<string, Record<string, SandboxRecord>>
     >;
-    expect(sm.u?.b?.cluster).toEqual(newEntry);
+    expect(sm.u?.b?.["agent-sandbox"]).toEqual(newEntry);
   });
 });

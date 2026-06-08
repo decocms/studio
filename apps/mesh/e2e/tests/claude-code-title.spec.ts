@@ -2,13 +2,13 @@
  * E2E: chat title generation for the Claude Code harness.
  *
  * Posts a single user message to a new thread routed through the
- * claude-code harness via cluster dispatch, then polls the threads
+ * claude-code harness via hosted dispatch, then polls the threads
  * table until the title changes from the default "New chat". The exact
  * title text is non-deterministic (LLM output), so we assert only that
  * it stopped being the default.
  *
  * Skipped automatically when E2E_ANTHROPIC_KEY is not set — the
- * cluster needs a real Anthropic credential to spawn the claude CLI.
+ * hosted dispatch needs a real Anthropic credential to spawn the claude CLI.
  */
 import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
@@ -50,7 +50,7 @@ test.describe("claude-code title generation", () => {
       });
       expect(thread.item.title).toBe("New chat");
 
-      // 2. POST one message pinned to the claude-code harness on cluster.
+      // 2. POST one message pinned to the claude-code harness on agent-sandbox.
       const runResp = await api.post(
         `/api/${orgSlug}/decopilot/threads/${thread.item.id}/messages`,
         {
@@ -64,7 +64,7 @@ test.describe("claude-code title generation", () => {
             agent: { id: agent.item.id },
             branch: "ephemeral",
             temperature: 0.5,
-            sandboxProviderKind: "cluster",
+            sandboxProviderKind: "agent-sandbox",
             harnessId: "claude-code",
           },
           headers: { "content-type": "application/json" },

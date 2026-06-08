@@ -11,6 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { applyThreadLock, computeIdempotencyKey } from "./routes";
+import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage } from "./types";
 import type { Thread } from "@/storage/types";
 
@@ -135,6 +136,25 @@ describe("computeIdempotencyKey", () => {
   });
 });
 
+describe("StreamRequestSchema", () => {
+  test("normalizes legacy cluster sandboxProviderKind to agent-sandbox", () => {
+    const result = StreamRequestSchema.parse({
+      messages: [
+        {
+          id: "user-123",
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+        },
+      ],
+      agent: { id: "agent-123" },
+      memory: { thread_id: "thread-123" },
+      sandboxProviderKind: "cluster",
+    });
+
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
+  });
+});
+
 // ============================================================================
 // applyThreadLock — the server-side enforcement point for the lock spec
 // (docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md).
@@ -174,7 +194,7 @@ describe("applyThreadLock", () => {
       taskIdInput: "thread-abc",
       thread: makeLockedThread(),
       requestedHarnessId: "claude-code",
-      requestedSandboxProviderKind: "cluster",
+      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
@@ -189,7 +209,7 @@ describe("applyThreadLock", () => {
       taskIdInput: "thread-abc",
       thread: makeLockedThread(),
       requestedHarnessId: "claude-code",
-      requestedSandboxProviderKind: "cluster",
+      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
@@ -224,7 +244,7 @@ describe("applyThreadLock", () => {
         branch: null,
       }),
       requestedHarnessId: "claude-code",
-      requestedSandboxProviderKind: "cluster",
+      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
@@ -239,13 +259,13 @@ describe("applyThreadLock", () => {
       taskIdInput: "thread-abc",
       thread: { harness_id: null, sandbox_provider_kind: null, branch: null },
       requestedHarnessId: "claude-code",
-      requestedSandboxProviderKind: "cluster",
+      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
     expect(result.locked).toBe(false);
     expect(result.harnessId).toBe("claude-code");
-    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
     expect(result.branch).toBe("feature-x");
     expect(warnSpy).not.toHaveBeenCalled();
   });
@@ -255,13 +275,13 @@ describe("applyThreadLock", () => {
       taskIdInput: "thread-new",
       thread: null,
       requestedHarnessId: "claude-code",
-      requestedSandboxProviderKind: "cluster",
+      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
     expect(result.locked).toBe(false);
     expect(result.harnessId).toBe("claude-code");
-    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
     expect(result.branch).toBe("feature-x");
   });
 
@@ -270,13 +290,13 @@ describe("applyThreadLock", () => {
       taskIdInput: undefined,
       thread: makeLockedThread(),
       requestedHarnessId: "claude-code",
-      requestedSandboxProviderKind: "cluster",
+      requestedSandboxProviderKind: "agent-sandbox",
       requestedBranch: "feature-x",
     });
 
     expect(result.locked).toBe(false);
     expect(result.harnessId).toBe("claude-code");
-    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
     expect(result.branch).toBe("feature-x");
   });
 });

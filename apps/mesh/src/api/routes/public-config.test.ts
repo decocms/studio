@@ -6,6 +6,8 @@ process.env.ENCRYPTION_KEY ??= Buffer.from("0".repeat(32)).toString("base64");
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { getSettings, setGlobalSettings } from "@/settings";
+import { resolveConfig } from "@/settings/resolve-config";
+import type { CliFlags } from "@/settings/types";
 import publicConfigRoutes from "./public-config";
 
 describe("GET /api/config", () => {
@@ -63,10 +65,10 @@ describe("GET /api/config", () => {
     });
   });
 
-  it("reports agent-sandbox runtime availability when cluster provider is configured", async () => {
+  it("reports agent-sandbox runtime availability when agent-sandbox provider is configured", async () => {
     setGlobalSettings({
       ...originalSettings,
-      sandboxProviderKind: "cluster",
+      sandboxProviderKind: "agent-sandbox",
     });
 
     const res = await publicConfigRoutes.request("/");
@@ -85,5 +87,30 @@ describe("GET /api/config", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.config.runtime).toEqual({ agentSandbox: false });
+  });
+});
+
+describe("resolveConfig sandbox provider kind", () => {
+  const flags: CliFlags = {
+    port: "",
+    home: "",
+    localMode: false,
+    skipMigrations: false,
+  };
+
+  it("accepts canonical agent-sandbox", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_SANDBOX_PROVIDER: "agent-sandbox",
+    });
+
+    expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
+  });
+
+  it("normalizes legacy cluster to agent-sandbox", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_SANDBOX_PROVIDER: "cluster",
+    });
+
+    expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
   });
 });

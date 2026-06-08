@@ -281,12 +281,29 @@ const GithubRepoSchema = z.object({
 
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
+/** The active sandbox provider kinds. */
+export type SandboxProviderKind = "agent-sandbox" | "user-desktop";
+export type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
+
+const sandboxProviderKindSchema = z.enum(["agent-sandbox", "user-desktop"]);
+const legacySandboxProviderKindSchema = z.enum([
+  "agent-sandbox",
+  "user-desktop",
+  "cluster",
+]);
+
+export function normalizeSandboxProviderKind(
+  kind: LegacySandboxProviderKind,
+): SandboxProviderKind {
+  return kind === "cluster" ? "agent-sandbox" : kind;
+}
+
 /**
  * A single sandbox record in the per-(user, branch, kind) sandbox map — the
  * provider-issued handle plus the preview URL the UI renders.
  *
  * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
- *  - cluster: daemon is reached via the mesh proxy; preview URL is the
+ *  - agent-sandbox: daemon is reached via the mesh proxy; preview URL is the
  *    per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
  *  - user-desktop: daemon is reached directly via the user's link binary.
  *
@@ -294,7 +311,7 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
  * server) have nothing to render. UI code MUST check before constructing
  * an iframe URL.
  */
-export const SandboxRecordSchema = z.object({
+const SandboxRecordShape = {
   sandboxHandle: z.string().describe("Provider-specific handle"),
   previewUrl: z
     .string()
@@ -307,16 +324,9 @@ export const SandboxRecordSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for the cluster provider (routes through cluster ingress).",
+      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for the agent-sandbox provider (routes through hosted ingress).",
     ),
-  sandboxProviderKind: z
-    // Canonical set. Migration 092 rewrote every persisted legacy value
-    // ("docker", "agent-sandbox", "desktop", "remote-user", "host",
-    // "freestyle") to a canonical kind, and migration 097 dropped the
-    // retired "local-docker" kind; readers no longer accept those strings —
-    // Zod will reject them at parse time.
-    .enum(["cluster", "user-desktop"])
-    .optional(),
+  sandboxProviderKind: sandboxProviderKindSchema.optional(),
   createdAt: z
     .number()
     .optional()
@@ -345,30 +355,39 @@ export const SandboxRecordSchema = z.object({
     .describe(
       "Snapshot of metadata.runtime fields (selected/port/path) used at SANDBOX_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
     ),
+} satisfies z.ZodRawShape;
+
+export const SandboxRecordSchema = z.object(SandboxRecordShape);
+
+const LegacySandboxRecordSchema = z.object({
+  ...SandboxRecordShape,
+  sandboxProviderKind: legacySandboxProviderKindSchema.optional(),
 });
 
 export type SandboxRecord = z.infer<typeof SandboxRecordSchema>;
 
 /**
- * Strict parser for a single sandbox record. Migration 091 rewrote every
- * persisted legacy value (`runnerKind`, `vmId`, legacy kind names), so
- * readers no longer accept those shapes — Zod throws on any leftover.
+ * Parser for a single sandbox record. The public schema stays JSON-schema-safe
+ * for MCP tools/list, so legacy provider values are normalized here instead of
+ * with Zod transforms.
  */
 export function parseSandboxRecord(raw: unknown): SandboxRecord {
-  return SandboxRecordSchema.parse(raw);
+  const parsed = LegacySandboxRecordSchema.parse(raw);
+  return SandboxRecordSchema.parse({
+    ...parsed,
+    sandboxProviderKind: parsed.sandboxProviderKind
+      ? normalizeSandboxProviderKind(parsed.sandboxProviderKind)
+      : undefined,
+  });
 }
-
-/** The active sandbox provider kinds. */
-export type SandboxProviderKind = "cluster" | "user-desktop";
 
 /**
  * Parse a `sandboxMap[user][branch]` cell into the kind-keyed v2 shape.
  *
  * Migration 087 rewrote every cell to the 3-level layout
  * (`sandboxProviderKind → SandboxRecord`) and migration 091 rewrote every
- * legacy kind value; this reader is now strict — entries that fail to parse
- * (e.g. a stray cell missing required fields) are skipped, but no legacy
- * key/value normalization happens.
+ * legacy kind value; this reader remains strict about retired values, while
+ * still normalizing the legacy "cluster" key/value to "agent-sandbox".
  */
 export function parseBranchMap(
   raw: unknown,
@@ -379,11 +398,15 @@ export function parseBranchMap(
   const out: Partial<Record<SandboxProviderKind, SandboxRecord>> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (!v || typeof v !== "object") continue;
-    if (k !== "cluster" && k !== "user-desktop") {
+    if (k !== "cluster" && k !== "agent-sandbox" && k !== "user-desktop") {
       continue;
     }
+    const kind = normalizeSandboxProviderKind(k);
     try {
-      out[k] = SandboxRecordSchema.parse(v);
+      if (k === "cluster" && out[kind]) {
+        continue;
+      }
+      out[kind] = parseSandboxRecord(v);
     } catch {
       // Skip malformed entries rather than throw — readers stay forgiving
       // about unexpected shapes within a known-key cell.
@@ -397,12 +420,11 @@ export function parseBranchMap(
  * Lookup: sandboxMap[userId][branch][sandboxProviderKind] -> SandboxRecord
  *
  * Multiple threads on the same (userId, branch, kind) share one sandbox.
- * Cloud and local sandboxes can coexist on the same branch as siblings.
+ * Hosted and desktop sandboxes can coexist on the same branch as siblings.
  *
- * The schema is strict v2. Strict input/output types here are load-bearing
- * for `useForm<…>(zodResolver(…))` callers, whose generic depends on
- * `z.input` being identical to `z.output`. A `z.preprocess` here widens
- * `z.input` to `unknown` and breaks the form.
+ * This exported schema intentionally has no transforms so it can be represented
+ * in JSON Schema for MCP tools/list. Use `normalizeSandboxMap` when reading
+ * persisted or legacy-shaped sandbox maps.
  */
 export const SandboxMapSchema = z.record(
   z.string().describe("userId"),
