@@ -4,7 +4,7 @@
  * - Receives an authenticated session from its caller (the CLI's `link`
  *   command obtains one via `ensureSession`).
  * - Runs the pull transport (`connectToClusterPull`): long-polls
- *   `<MESH_CLUSTER_URL>/api/:org/links/work` for chat work and `/links/proxy`
+ *   `<MESH_CLUSTER_URL>/api/links/work` for chat work and `/links/proxy`
  *   for sandbox control/events/vm-tools, re-resolving the bearer per poll.
  * - Spawns the local ingress on `--port` so browsers can reach
  *   `<handle>.localhost:<port>` for sandbox previews.

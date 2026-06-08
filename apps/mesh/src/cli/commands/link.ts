@@ -1,7 +1,7 @@
 /**
  * `deco link` — start the desktop-side link daemon.
  *
- * Uses a pure-pull transport: long-polls `/api/:org/links/work` for
+ * Uses a pure-pull transport: long-polls `/api/links/work` for
  * dispatched sandbox requests, `/links/control` for cluster control frames,
  * and `/links/proxy` for reverse-proxy traffic. Presence is maintained via a
  * 60 s NATS-KV TTL re-armed on every poll. Also runs a local ingress on
@@ -33,13 +33,6 @@ export interface LinkCommandOptions {
    * `dev`/`serve` TUI.
    */
   banner?: boolean;
-  /**
-   * Organization slug the daemon links against. The pull transport is
-   * org-scoped (`/api/:org/links/*`), so the daemon needs to know which org.
-   * Resolution order: this option → `DECO_ORG_SLUG` env → auto-resolve from
-   * the cluster (the user's single org; ambiguous if they belong to several).
-   */
-  orgSlug?: string;
 }
 
 /**

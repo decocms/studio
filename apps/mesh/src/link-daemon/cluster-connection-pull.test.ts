@@ -239,7 +239,7 @@ describe("sandbox config propagation", () => {
     expect(call?.workload).toBeUndefined();
   });
 
-  it("prefers item.orgSlug over connection-level orgSlug for ingest", async () => {
+  it("uses item.orgSlug for the ingest URL", async () => {
     // We verify this indirectly: the dispatch will fail (sandbox token is
     // stub, ingest URL would 404) but the ensureSandbox call already ran.
     // The real check is that orgSlug on the item is accepted by the schema
