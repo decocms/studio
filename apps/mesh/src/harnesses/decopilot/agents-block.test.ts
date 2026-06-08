@@ -9,10 +9,17 @@ const entry = (
 ): AgentsBlockEntry => ({ id, name, description, status });
 
 describe("buildAgentsBlock", () => {
-  test("returns null when there are no other active agents", () => {
-    expect(
-      buildAgentsBlock([entry("vmcp_self", "Self", "Self")], "vmcp_self"),
-    ).toBeNull();
+  test("emits self-delegation usage (no agents table) when no other active agents", () => {
+    const result = buildAgentsBlock(
+      [entry("vmcp_self", "Self", "Self")],
+      "vmcp_self",
+    );
+    // Self-subtask is always available, so usage guidance is always present...
+    expect(result).toContain("<agents-usage>");
+    expect(result).toContain("subtask({ prompt })");
+    // ...but with no other agents to delegate to, the catalog table is omitted.
+    expect(result).not.toContain("id,name,description");
+    expect(result).not.toContain("vmcp_self");
   });
 
   test("emits CSV catalog with id,name,description header", () => {

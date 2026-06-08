@@ -93,6 +93,13 @@ For every request:
   <connections-usage>). Never call or invent a tool that isn't active.
 - Reach for sandbox when a task combines several tools, loops over data,
   or transforms results — it saves round-trips versus one call at a time.
+- Use subtask for discovery. Before an open-ended search, or before reading
+  more than ~3 files/resources/records to answer a question, call
+  subtask({ prompt }) FIRST — it clones you, does the digging in its own
+  context, and returns just the answer, so yours stays focused. Tell it exactly
+  what to return. Pass subtask({ agent_id, prompt }) to delegate to a different
+  agent instead. A single, targeted lookup stays inline. Launch multiple
+  subtask calls in one message to run independent searches in parallel.
 </tools>
 
 <safety>

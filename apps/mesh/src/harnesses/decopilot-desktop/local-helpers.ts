@@ -133,8 +133,17 @@ function buildShortNameMap(
   return map;
 }
 
+/** Cluster relay tools the desktop re-exposes through a LOCAL built-in wrapper
+ *  (e.g. `subtask` wraps `SUBTASK_MCP` to inject credential/model ids). The raw
+ *  relay tool is hidden from the model so it only sees the clean wrapper. */
+const LOCALLY_WRAPPED_RELAY_TOOLS = new Set<string>(["SUBTASK_MCP"]);
+
 /** MCP Apps visibility check — default (no visibility) = visible to model. */
-function isToolVisibleToModel(t: { _meta?: Record<string, unknown> }): boolean {
+function isToolVisibleToModel(t: {
+  name: string;
+  _meta?: Record<string, unknown>;
+}): boolean {
+  if (LOCALLY_WRAPPED_RELAY_TOOLS.has(t.name)) return false;
   const ui = t._meta?.ui as { visibility?: string | string[] } | undefined;
   const visibility = ui?.visibility;
   if (visibility == null) return true;

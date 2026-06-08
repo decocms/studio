@@ -140,6 +140,12 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
             toolApprovalLevel: input.toolApprovalLevel,
             isPlanMode: input.mode === "plan",
             ctx,
+            // subtask runs cluster-side via the SUBTASK_MCP relay. The wrapper
+            // injects these so the model never supplies credential/model ids,
+            // and defaults the target to this agent (omit agent_id → clone self).
+            mcpClient,
+            models: input.models,
+            selfAgentId: input.agent.id,
           });
 
           // 6. Process the conversation with the REAL tool set so prior-turn

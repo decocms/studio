@@ -288,6 +288,9 @@ async function buildAllTools(
         provider,
         organization,
         models,
+        // Pass the caller's own agent id so the model can clone itself by
+        // omitting agent_id (heavy discovery → fresh, isolated context).
+        self: { id: agentId },
         needsApproval:
           toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
       },
