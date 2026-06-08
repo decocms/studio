@@ -18,13 +18,11 @@
  *      (link-ingest-routes.ts) which commits parts to durable storage.
  *
  * ⚠️ ORG SLUG vs ID NOTE:
- *   WorkItem carries `orgId` (the DB UUID), but the ingest route uses
- *   `resolveOrgFromPath` which looks up the org by its URL-safe SLUG (the
- *   `:org` path segment in `/api/:org/links/runs/...`). The caller (Task 8
- *   / index.ts pull-loop-entry) MUST supply `orgSlug` in LocalDispatchDeps
- *   — it is NOT derivable from orgId here without a DB lookup. The
- *   `runWorkPollLoop` already receives `orgSlug`; the onWork handler should
- *   thread it through to `handleLocalDispatch`.
+ *   WorkItem carries `orgId` (the DB UUID) and `orgSlug` (the URL-safe slug).
+ *   The ingest route uses `resolveOrgFromPath` which looks up the org by slug
+ *   (the `:org` path segment in `/api/:org/links/runs/...`). The `orgSlug`
+ *   field on the work item is required and must be passed to
+ *   `LocalDispatchDeps.orgSlug` so it is available for the ingest URL.
  *
  * ⚠️ HARNESS ID NOTE:
  *   `WorkItem.harnessInput` is a `HarnessStreamInputWire` — a plain JSON
@@ -60,9 +58,8 @@ export interface LocalDispatchDeps {
   clusterBaseUrl: string;
   /**
    * Org SLUG for the ingest URL path segment. MUST be the slug, not the
-   * UUID orgId — resolveOrgFromPath looks up by slug. The caller (Task 8 /
-   * pull-loop-entry) sources this from the same `orgSlug` it passes to
-   * `runWorkPollLoop`.
+   * UUID orgId — resolveOrgFromPath looks up by slug. Sourced from the work
+   * item's required `orgSlug` field.
    */
   orgSlug: string;
   /**

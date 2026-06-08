@@ -2,7 +2,7 @@
  * Control-frame codec for the pull-transport control channel (Phase C).
  *
  * Control frames are published cluster-side to `links.control.<userSub>` (core
- * NATS) and consumed by the daemon via the long-poll GET /api/:org/links/control
+ * NATS) and consumed by the daemon via the long-poll GET /api/links/control
  * endpoint.
  *
  * Frame types:
