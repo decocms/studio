@@ -52,15 +52,6 @@ export interface StartLinkDaemonOptions {
    * `ensureSession()` before invoking the daemon.
    */
   session: Session;
-  /**
-   * Org slug for the pull work-poll loop (`/api/:org/links/work`).
-   * Required for the pull transport (the only transport); falls back to
-   * `process.env.DECO_ORG_SLUG` if not supplied here.
-   *
-   * NOTE: the daemon currently supports a single primary org for the pull loop.
-   * Multi-org polling is a Phase D follow-up.
-   */
-  orgSlug?: string;
   /** Optional TUI hooks. Omitted in --no-tui mode. */
   monitor?: LinkDaemonMonitor;
   /**
@@ -201,22 +192,10 @@ export async function startLinkDaemon(
   };
 
   // Phase C-bis S8: the reverse-WS transport was deleted; the pull transport is
-  // the only path. The daemon long-polls `/api/:org/links/work` (chat) and
+  // the only path. The daemon long-polls `/api/links/work` (chat) and
   // `/links/proxy` (sandbox control/events/vm-tools), sharing the same
   // `controlHandler`, `provider`, and `getAccessToken` resolver.
-  //
-  // Resolve org slug: caller-supplied > env var > fatal.
-  const orgSlug = opts.orgSlug ?? process.env.DECO_ORG_SLUG;
-  if (!orgSlug) {
-    console.error(
-      "[link-daemon] pull transport requires an org slug. " +
-        "Pass `orgSlug` to startLinkDaemon or set DECO_ORG_SLUG.",
-    );
-    process.exit(1);
-  }
-  console.log(
-    `[link-daemon] transport=pull org=${orgSlug} cluster=${opts.clusterBaseUrl}`,
-  );
+  console.log(`[link-daemon] transport=pull cluster=${opts.clusterBaseUrl}`);
   // Advertise the daemon's identity + capabilities on every poll (the
   // x-link-* headers). The cluster mints the presence claim from these, and
   // `resolveDispatchTarget` checks the capabilities — without them the claim is
@@ -228,7 +207,6 @@ export async function startLinkDaemon(
   const capabilities = await detectCapabilities();
   const cluster = await connectToClusterPull({
     clusterBaseUrl: opts.clusterBaseUrl,
-    orgSlug,
     getAccessToken,
     provider,
     // The in-process control handler also serves the pull reverse-proxy loop's
