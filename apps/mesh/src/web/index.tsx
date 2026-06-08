@@ -344,6 +344,14 @@ const settingsBrandContextRoute = createRoute({
   ),
 });
 
+const settingsObservationRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/observation",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/observation.tsx"),
+  ),
+});
+
 const settingsAiProvidersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/ai-providers",
@@ -549,6 +557,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsGeneralRoute,
   settingsFeaturesRoute,
   settingsBrandContextRoute,
+  settingsObservationRoute,
   settingsAiProvidersRoute,
   settingsSecretsRoute,
   settingsFilesRoute,

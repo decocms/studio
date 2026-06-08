@@ -18,13 +18,11 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
-import { Alert, AlertDescription } from "@deco/ui/components/alert.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import {
   SettingsCard,
   SettingsCardItem,
-  SettingsSection,
 } from "@/web/components/settings/settings-section";
 import {
   type ObserverConfig,
@@ -123,24 +121,24 @@ function ObserverToolsAdvisory({ agentId }: { agentId: string }) {
   };
 
   return (
-    <Alert variant="warning" className="mt-3">
-      <AlertTriangle />
-      <AlertDescription className="flex items-center justify-between gap-3">
-        <span>
-          This agent can't read conversations yet — it's missing the Studio
-          reading tools.
+    <div className="mt-3 flex items-center justify-between gap-4 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <AlertTriangle size={16} className="shrink-0 text-warning" />
+        <span className="text-sm text-foreground">
+          This agent can't read conversations yet. Add the Studio reading tools
+          so it can open threads and agents.
         </span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={addReadingTools}
-          disabled={update.isPending}
-          className="shrink-0"
-        >
-          {update.isPending ? "Adding…" : "Add reading tools"}
-        </Button>
-      </AlertDescription>
-    </Alert>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={addReadingTools}
+        disabled={update.isPending}
+        className="shrink-0"
+      >
+        {update.isPending ? "Adding…" : "Add reading tools"}
+      </Button>
+    </div>
   );
 }
 
@@ -174,7 +172,7 @@ function ObserverCard({
     <SettingsCard>
       <SettingsCardItem
         title="Observer agent"
-        description="Runs on idle threads (per the scope below) with the conversation as context. Give this agent the Studio connection so it can read threads and agents (COLLECTION_THREAD_MESSAGES_LIST, COLLECTION_VIRTUAL_MCP_GET)."
+        description="Runs on idle threads (per the scope below) with the conversation as context."
         action={
           <div className="flex items-center gap-2">
             <Select
@@ -333,22 +331,14 @@ function ObservationalControls() {
 
 export function ObservationalAgentSection() {
   return (
-    <SettingsSection
-      title="Observational agents"
-      description="Run chosen agents over idle conversations so they can review what's happening and act on it (record memory, flag content, summarize — whatever each agent is set up to do)."
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-8">
+          <Loading01 size={18} className="animate-spin text-muted-foreground" />
+        </div>
+      }
     >
-      <Suspense
-        fallback={
-          <div className="flex items-center justify-center py-8">
-            <Loading01
-              size={18}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
-        }
-      >
-        <ObservationalControls />
-      </Suspense>
-    </SettingsSection>
+      <ObservationalControls />
+    </Suspense>
   );
 }

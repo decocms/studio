@@ -37,6 +37,7 @@ import {
   Building02,
   ZapSquare,
   CpuChip01,
+  Eye,
   Loading01,
   Lock01,
   LogOut01,
@@ -98,6 +99,13 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: "General",
           icon: <Building02 size={14} />,
           to: "/$org/settings/general",
+          requires: "org:manage",
+        },
+        {
+          key: "observation",
+          label: "Observation",
+          icon: <Eye size={14} />,
+          to: "/$org/settings/observation",
           requires: "org:manage",
         },
         {
