@@ -57,6 +57,30 @@ import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 
 // ============================================================================
+// Canonical serialization helper
+// ============================================================================
+
+/**
+ * Deterministic JSON serialization with sorted object keys. Arrays keep
+ * their original order; primitives are passed through as-is.
+ *
+ * Used by computeIdempotencyKey so that a re-serialized assistant
+ * continuation message (approval / tool-output round) always hashes to the
+ * same value regardless of the order in which JS inserted object keys at
+ * runtime.
+ */
+function canonicalStringify(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(canonicalStringify).join(",")}]`;
+  const keys = Object.keys(v as object).sort();
+  const pairs = keys.map(
+    (k) =>
+      `${JSON.stringify(k)}:${canonicalStringify((v as Record<string, unknown>)[k])}`,
+  );
+  return `{${pairs.join(",")}}`;
+}
+
+// ============================================================================
 // Idempotency
 // ============================================================================
 
@@ -75,7 +99,7 @@ export function computeIdempotencyKey(
 ): string | undefined {
   if (!lastMsg) return undefined;
   if (lastMsg.role === "user" && lastMsg.id) return lastMsg.id;
-  return createHash("sha1").update(JSON.stringify(lastMsg)).digest("hex");
+  return createHash("sha1").update(canonicalStringify(lastMsg)).digest("hex");
 }
 
 // ============================================================================
