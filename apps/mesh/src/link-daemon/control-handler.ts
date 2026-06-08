@@ -238,6 +238,16 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
               `[control] proxy ${req.method} ${rest} → ${res.status} handle=${handle}`,
             );
           }
+          if (verbose) {
+            console.log("[control] proxy_result", {
+              method: req.method,
+              rest,
+              handle,
+              port,
+              status: res.status,
+              contentType: res.headers.get("content-type"),
+            });
+          }
           yield {
             type: "headers" as const,
             status: res.status,

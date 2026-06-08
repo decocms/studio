@@ -83,6 +83,25 @@ function chunkFrame(bytes: Uint8Array): ProxyReplyFrame {
 
 const encoder = new TextEncoder();
 
+function logProxyPoller(
+  event: string,
+  fields: Record<string, unknown> = {},
+): void {
+  console.log(`[proxy-poller] ${event}`, {
+    event,
+    ...fields,
+  });
+}
+
+interface ReplyBodyDiagnosticEvent {
+  event: string;
+  frame: RequestFrame;
+  frameType?: ProxyReplyFrame["type"];
+  status?: number;
+  elapsedMs?: number;
+  error?: string;
+}
+
 /**
  * A `RequestFrame.path` routes to the one-shot `controlHandler.handle` (lifecycle
  * + liveness: `POST/DELETE/GET /api/sandboxes[...]`) rather than the streaming
@@ -139,9 +158,34 @@ export function buildReplyBody(
   controlHandler: ControlHandler,
   frame: RequestFrame,
   signal: AbortSignal,
+  diagnosticLog?: (event: ReplyBodyDiagnosticEvent) => void,
 ): ReadableStream<Uint8Array> {
+  const startedAt = Date.now();
+  let firstFrameSeen = false;
+  const logFrame = (f: ProxyReplyFrame): void => {
+    if (!firstFrameSeen) {
+      firstFrameSeen = true;
+      diagnosticLog?.({
+        event: "reply_body_first_frame",
+        frame,
+        frameType: f.type,
+        ...(f.type === "headers" ? { status: f.status } : {}),
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
+    if (f.type === "end" || f.type === "error") {
+      diagnosticLog?.({
+        event: "reply_body_terminal_frame",
+        frame,
+        frameType: f.type,
+        ...(f.type === "error" ? { error: `${f.code}: ${f.message}` } : {}),
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
+  };
+
   if (isLifecyclePath(frame.path)) {
-    return buildLifecycleReplyBody(controlHandler, frame);
+    return buildLifecycleReplyBody(controlHandler, frame, logFrame);
   }
   // Thread `signal` into handleStream so a cancel aborts the upstream fetch +
   // read (frees the SSE slot via acquireDispatch's release — landmine #3),
@@ -154,6 +198,7 @@ export function buildReplyBody(
     controller: ReadableStreamDefaultController<Uint8Array>,
     f: ProxyReplyFrame,
   ): void => {
+    logFrame(f);
     controller.enqueue(encoder.encode(`${encodeProxyReplyFrame(f)}\n`));
   };
 
@@ -223,11 +268,13 @@ export function buildReplyBody(
 function buildLifecycleReplyBody(
   controlHandler: ControlHandler,
   frame: RequestFrame,
+  onFrame?: (frame: ProxyReplyFrame) => void,
 ): ReadableStream<Uint8Array> {
   const writeLine = (
     controller: ReadableStreamDefaultController<Uint8Array>,
     f: ProxyReplyFrame,
   ): void => {
+    onFrame?.(f);
     controller.enqueue(encoder.encode(`${encodeProxyReplyFrame(f)}\n`));
   };
   return new ReadableStream<Uint8Array>({
@@ -274,9 +321,20 @@ async function handleProxyRequest(
     // tolerance) and a copy raced a handler that's already running. Skip —
     // re-processing would double-execute the request (e.g. a second agent run).
     // Do NOT unregister here: the entry belongs to the in-flight handler.
+    logProxyPoller("duplicate_request_skipped", {
+      reqId,
+      method: frame.method,
+      path: frame.path,
+    });
     return;
   }
   const combined = AbortSignal.any([deps.signal, reqAc.signal]);
+  const startedAt = Date.now();
+  logProxyPoller("request_handling_start", {
+    reqId,
+    method: frame.method,
+    path: frame.path,
+  });
 
   try {
     let token: string;
@@ -287,13 +345,37 @@ async function handleProxyRequest(
         `[proxy-poller] getAccessToken failed for reqId=${reqId}`,
         err,
       );
+      logProxyPoller("reply_post_token_failed", {
+        reqId,
+        method: frame.method,
+        path: frame.path,
+        elapsedMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return;
     }
 
-    const body = buildReplyBody(deps.controlHandler, frame, combined);
+    const body = buildReplyBody(deps.controlHandler, frame, combined, (ev) => {
+      logProxyPoller(ev.event, {
+        reqId: ev.frame.reqId,
+        method: ev.frame.method,
+        path: ev.frame.path,
+        frameType: ev.frameType,
+        status: ev.status,
+        elapsedMs: ev.elapsedMs,
+        error: ev.error,
+      });
+    });
     const url = `${deps.baseUrl}/api/links/proxy/${reqId}/stream`;
 
     try {
+      logProxyPoller("reply_post_start", {
+        reqId,
+        method: frame.method,
+        path: frame.path,
+        url,
+        elapsedMs: Date.now() - startedAt,
+      });
       const res = await fetcher(url, {
         method: "POST",
         headers: {
@@ -312,11 +394,40 @@ async function handleProxyRequest(
           `[proxy-poller] reply POST reqId=${reqId} → ${res.status}`,
         );
       }
+      logProxyPoller("reply_post_complete", {
+        reqId,
+        method: frame.method,
+        path: frame.path,
+        status: res.status,
+        ok: res.ok,
+        elapsedMs: Date.now() - startedAt,
+      });
     } catch (err) {
-      if (combined.aborted) return; // expected on cancel/close
+      if (combined.aborted) {
+        logProxyPoller("reply_post_aborted", {
+          reqId,
+          method: frame.method,
+          path: frame.path,
+          elapsedMs: Date.now() - startedAt,
+        });
+        return; // expected on cancel/close
+      }
       console.error(`[proxy-poller] reply POST failed reqId=${reqId}`, err);
+      logProxyPoller("reply_post_failed", {
+        reqId,
+        method: frame.method,
+        path: frame.path,
+        elapsedMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   } finally {
+    logProxyPoller("request_handling_done", {
+      reqId,
+      method: frame.method,
+      path: frame.path,
+      elapsedMs: Date.now() - startedAt,
+    });
     proxyAbortRegistry.unregister(reqId);
   }
 }
@@ -450,6 +561,11 @@ export async function runProxyPollLoop(deps: ProxyPollerDeps): Promise<void> {
     ) {
       throw new Error("proxy poll: malformed RequestFrame");
     }
+    logProxyPoller("poll_received_request", {
+      reqId: raw.reqId,
+      method: raw.method,
+      path: raw.path,
+    });
     return raw;
   };
 
