@@ -857,7 +857,10 @@ function CollectionsSidebar({
   onSelect,
 }: {
   active: CollectionId;
-  counts: Record<"pages" | "sections" | "posts" | "authors" | "categories", number>;
+  counts: Record<
+    "pages" | "sections" | "posts" | "authors" | "categories",
+    number
+  >;
   showBlog: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
