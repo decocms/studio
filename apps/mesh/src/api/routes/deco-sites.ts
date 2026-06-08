@@ -620,27 +620,15 @@ export const createDecoSitesOrgRoutes = () => {
         return c.json({ error: "Site not found or has no team" }, 404);
       }
 
-      // Verify the user is an admin of the site's deco.cx team. Service account
-      // provisioning grants owner-level credentials — limit to team admins.
-      const decoMembership = await supabaseGet<{
-        id: number;
-        admin: boolean | null;
-      }>(
+      // Verify the user is a member of the site's deco.cx team.
+      const decoMembership = await supabaseGet<{ id: number }>(
         supabaseUrl,
         serviceKey,
-        `members?user_id=eq.${encodeURIComponent(profileId)}&team_id=eq.${teamId}&deleted_at=is.null&select=id,admin&limit=1`,
+        `members?user_id=eq.${encodeURIComponent(profileId)}&team_id=eq.${teamId}&deleted_at=is.null&select=id&limit=1`,
       );
       if (!decoMembership[0]) {
         return c.json(
           { error: "You are not a member of this site's team" },
-          403,
-        );
-      }
-      if (!decoMembership[0].admin) {
-        return c.json(
-          {
-            error: "Only deco.cx team admins can import sites into Studio",
-          },
           403,
         );
       }
