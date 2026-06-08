@@ -43,6 +43,27 @@ function stripBindingMetadata(
 }
 
 /**
+ * Avatar URLs ride inside the per-user mesh JWT, which is sent as the
+ * `x-mesh-token` request header. A base64 `data:` avatar (or any oversized
+ * value) blows the request header size limit and the downstream POST fails with
+ * an opaque transport error. Only forward a plain, bounded http(s) URL — real
+ * avatar URLs top out around 100 chars; the cap is generous slack above that.
+ */
+export const MAX_TOKEN_IMAGE_LENGTH = 2048;
+export function imageForToken(
+  image: string | null | undefined,
+): string | undefined {
+  if (
+    !image ||
+    image.startsWith("data:") ||
+    image.length > MAX_TOKEN_IMAGE_LENGTH
+  ) {
+    return undefined;
+  }
+  return image;
+}
+
+/**
  * Build request headers for HTTP-based connections
  * Handles configuration token issuance and OAuth token refresh
  *
@@ -115,7 +136,7 @@ async function _buildRequestHeaders(
           id: userId,
           email: ctxUser?.email,
           name: ctxUser?.name,
-          image: ctxUser?.image,
+          image: imageForToken(ctxUser?.image),
           role: ctxUser?.role,
         },
         metadata: {
