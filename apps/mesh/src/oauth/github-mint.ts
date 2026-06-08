@@ -16,18 +16,7 @@ import {
   PROACTIVE_REFRESH_BUFFER_MS,
   RECONNECT_ERROR,
 } from "@/oauth/token-refresh";
-import {
-  mintFromOctokitToken,
-  mintRepoTokenFromDecoGithubApp,
-} from "@/shared/deco-github-app-token";
-import {
-  getRepoScope,
-  isDecoGithubAppRepoScope,
-  type DecoGithubAppRepoScopeRecipe,
-  type McpGithubRepoScopeRecipe,
-  type RepoScopeRecipe,
-} from "@/shared/github-repo-scope";
-import { getSettings } from "@/settings";
+import { getRepoScope, type RepoScopeRecipe } from "@/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 
@@ -46,45 +35,9 @@ interface MintedToken {
  *
  * Module-internal: the only public entry point is ensureRepoScopedToken.
  */
-async function mintDecoGithubAppToken(
-  recipe: DecoGithubAppRepoScopeRecipe,
-): Promise<MintedToken> {
-  const settings = getSettings();
-  const credentials =
-    settings.githubAppId && settings.githubAppPrivateKey
-      ? {
-          appId: settings.githubAppId,
-          privateKeyPem: settings.githubAppPrivateKey,
-        }
-      : null;
-
-  if (credentials) {
-    const minted = await mintRepoTokenFromDecoGithubApp({
-      credentials,
-      owner: recipe.owner,
-      repo: recipe.repo,
-      permissions: recipe.permissions,
-    });
-    return {
-      accessToken: minted.accessToken,
-      expiresAt: minted.expiresAt,
-    };
-  }
-
-  if (settings.octokitToken) {
-    const minted = mintFromOctokitToken(settings.octokitToken);
-    return {
-      accessToken: minted.accessToken,
-      expiresAt: minted.expiresAt,
-    };
-  }
-
-  throw new Error(RECONNECT_ERROR);
-}
-
 async function mintRepoToken(
   ctx: StudioContext,
-  recipe: McpGithubRepoScopeRecipe,
+  recipe: RepoScopeRecipe,
 ): Promise<MintedToken> {
   const organizationId = ctx.organization?.id;
   if (!organizationId) {
@@ -144,9 +97,7 @@ async function mintAndStore(
   recipe: RepoScopeRecipe,
   tokenStorage: DownstreamTokenStorage,
 ): Promise<string> {
-  const minted = isDecoGithubAppRepoScope(recipe)
-    ? await mintDecoGithubAppToken(recipe)
-    : await mintRepoToken(ctx, recipe);
+  const minted = await mintRepoToken(ctx, recipe);
   await tokenStorage.upsert({
     connectionId,
     accessToken: minted.accessToken,

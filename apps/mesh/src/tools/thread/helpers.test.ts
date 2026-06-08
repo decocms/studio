@@ -100,4 +100,11 @@ describe("normalizeThreadForResponse", () => {
     );
     expect(result.hidden).toBe(true);
   });
+
+  test("strips internal runtime fields from API responses", () => {
+    const result = normalizeThreadForResponse(BASE_THREAD, NOW);
+    expect(result).not.toHaveProperty("context_start_message_id");
+    expect(result).not.toHaveProperty("run_owner_pod");
+    expect(result).not.toHaveProperty("run_started_at");
+  });
 });
