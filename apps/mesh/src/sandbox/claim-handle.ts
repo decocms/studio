@@ -1,8 +1,8 @@
 import { computeHandle, type SandboxId } from "@decocms/sandbox/provider";
 
 /**
- * Compute the claim handle for a sandbox. Both live runner kinds (cluster's
- * agent-sandbox and desktop) expose preview URLs as public hostnames
+ * Compute the claim handle for a sandbox. Both live provider kinds
+ * (agent-sandbox and user-desktop) expose preview URLs as public hostnames
  * (`<handle>.cluster.host` and `<handle>.localhost` respectively), so both
  * use hashLen=16 — shorter hashes are brute-forceable at an unrate-limited
  * gateway.

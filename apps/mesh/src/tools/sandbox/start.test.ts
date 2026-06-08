@@ -13,7 +13,7 @@ import type {
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 
-// Pin runner kind — the dev env flips STUDIO_SANDBOX_PROVIDER and SANDBOX_START
+// Pin provider kind — the dev env flips STUDIO_SANDBOX_PROVIDER and SANDBOX_START
 // reads it at handler time.
 process.env.STUDIO_SANDBOX_PROVIDER = "agent-sandbox";
 

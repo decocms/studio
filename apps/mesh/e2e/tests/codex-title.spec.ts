@@ -54,7 +54,7 @@ test.describe("codex title generation", () => {
             agent: { id: agent.item.id },
             branch: "ephemeral",
             temperature: 0.5,
-            sandboxProviderKind: "cluster",
+            sandboxProviderKind: "agent-sandbox",
             harnessId: "codex",
           },
           headers: { "content-type": "application/json" },

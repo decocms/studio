@@ -6,7 +6,8 @@
  *   1. A thread pinned to a user-desktop runtime (harness_id='claude-code',
  *      sandbox_provider_kind='user-desktop') + message_storage_version=2 is
  *      created and wired to a real agent (virtual MCP). The S6 gate routes it
- *      to pull because the resolved dispatch target is `runsIn:'user-desktop'`.
+ *      to pull because the resolved dispatch target is
+ *      `sandboxProviderKind:'user-desktop'`.
  *   2. The "desktop daemon" establishes link presence by calling
  *      GET /api/links/work — the route synthetically mints a claim in
  *      the NATS KV bucket so resolveDispatchTarget sees the link as online.
@@ -176,7 +177,7 @@ async function createPullThread(
   //    thread gate's isPull check fires for the very first POST /messages.
   //
   //    Phase C-bis S6: the gate keys on the resolved dispatch target
-  //    (`target.runsIn === 'user-desktop'`), NOT on `link_transport`. The
+  //    (`target.sandboxProviderKind === 'user-desktop'`), NOT on `link_transport`. The
   //    target is produced by the presence claim (claude-code) + the pinned
   //    sandbox_provider_kind='user-desktop'/harness_id='claude-code' below, so
   //    `link_transport` is no longer seeded. `message_storage_version = 2`

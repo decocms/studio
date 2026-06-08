@@ -4,7 +4,7 @@
  *
  * `SandboxProvider.proxyDaemonRequest(handle, "/dispatch", init)` reaches the
  * spawned sandbox daemon (the desktop provider tunnels it over the WS+NATS
- * link path; the cluster provider over HTTP) and returns a streaming
+ * link path; the agent-sandbox provider uses HTTP) and returns a streaming
  * `Response`. The daemon reverse-proxies the sandbox's SSE response, so the
  * Response body is a stream of SSE event blocks; we reassemble them and decode
  * each event's JSON via `dispatchSSEEventSchema`.

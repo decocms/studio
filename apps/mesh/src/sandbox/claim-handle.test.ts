@@ -3,7 +3,7 @@ import { computeClaimHandle } from "./claim-handle";
 
 describe("computeClaimHandle", () => {
   it("uses hashLen=16 regardless of the configured runner", () => {
-    // Both live runner kinds (cluster, user-desktop) expose preview URLs as
+    // Both live provider kinds (agent-sandbox, user-desktop) expose preview URLs as
     // public hostnames, so the handle hash must be long enough to resist
     // guessing at an unrate-limited gateway. The hashLen no longer varies by
     // kind, so the handle is env-agnostic.

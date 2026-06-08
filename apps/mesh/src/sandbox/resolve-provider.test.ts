@@ -224,7 +224,7 @@ describe("resolveSandboxProvider", () => {
     // `sandboxPreference: "cluster-default"` from dispatch-run, but in local
     // dev env defaults to `user-desktop`. Before the fix this hit
     // `instantiate("user-desktop")` directly and threw the confusing
-    // "user-desktop runner cannot be instantiated without a per-run link claim".
+    // "user-desktop provider cannot be instantiated without a per-run link claim".
     const prev = process.env.STUDIO_SANDBOX_PROVIDER;
     process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
     try {

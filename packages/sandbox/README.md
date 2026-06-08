@@ -16,8 +16,8 @@ Two provider backends live behind the common `SandboxProvider` interface
   against the [kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)
   operator. Studio talks to pods via apiserver port-forward in dev; in prod,
   `previewUrlPattern` switches the preview URL to real ingress and skips the
-  dev forward. Selected with `STUDIO_SANDBOX_PROVIDER=cluster`.
-- **desktop** (`./provider/desktop`) — forwards every `SandboxProvider` call to
+  dev forward. Selected with `STUDIO_SANDBOX_PROVIDER=agent-sandbox`.
+- **user-desktop** (`./provider/desktop`) — forwards every `SandboxProvider` call to
   the acting user's local `deco link` daemon over NATS. Constructed per-run from
   the user's link entry. Selected with `STUDIO_SANDBOX_PROVIDER=user-desktop`
   (the default).
@@ -26,7 +26,7 @@ Two provider backends live behind the common `SandboxProvider` interface
 
 The host app calls `resolveSandboxProviderKindFromEnv()` to pick the provider. Single rule:
 
-1. `STUDIO_SANDBOX_PROVIDER` is honored if set (one of `cluster`,
+1. `STUDIO_SANDBOX_PROVIDER` is honored if set (one of `agent-sandbox`,
    `user-desktop`).
 2. Otherwise the provider defaults to `user-desktop` (the desktop-side
    `deco link` daemon — auto-spawned by `bun run dev --local-sandbox-provider`
@@ -35,14 +35,14 @@ The host app calls `resolveSandboxProviderKindFromEnv()` to pick the provider. S
 
 Preconditions:
 
-- `cluster` is opt-in only — never auto-selected.
+- `agent-sandbox` is opt-in only — never auto-selected.
 - The retired `host` and `local-docker` provider kinds are rejected. Local dev
   now exercises `user-desktop` against the auto-spawned link binary, matching
   the production code path.
 
 ## URL shape
 
-- **Prod (cluster)**: `https://<handle>.<root>/*` → pod dev server on `:3000`
+- **Prod (agent-sandbox)**: `https://<handle>.<root>/*` → pod dev server on `:3000`
   and `/_daemon/*` → pod daemon on `:9000` (server-to-server bearer auth).
 - **user-desktop**: previews are served by the user's link daemon at its own
   reachable URL.
@@ -55,7 +55,7 @@ require a bearer token.
 
 ## Environment
 
-- `STUDIO_SANDBOX_PROVIDER` — pin the provider: `cluster` or `user-desktop`.
+- `STUDIO_SANDBOX_PROVIDER` — pin the provider: `agent-sandbox` or `user-desktop`.
   Defaults to `user-desktop`. Setting it explicitly is required for production
   deploys.
 - `SANDBOX_ROOT_URL` — production template for the pod URL. Either a bare

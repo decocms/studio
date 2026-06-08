@@ -307,7 +307,7 @@ export const SandboxRecordSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for the cluster provider (routes through cluster ingress).",
+      "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for the agent-sandbox provider (routes through hosted ingress).",
     ),
   sandboxProviderKind: z
     // Accept the canonical set plus legacy "cluster"; other retired strings

@@ -35,7 +35,7 @@ describe("resolveSandboxProviderKindFromEnv", () => {
     );
   });
 
-  it("rejects the retired 'host' runner kind", () => {
+  it("rejects the retired 'host' provider kind", () => {
     process.env.STUDIO_SANDBOX_PROVIDER = "host";
     expect(() => resolveSandboxProviderKindFromEnv()).toThrow(
       /Unknown STUDIO_SANDBOX_PROVIDER/,
