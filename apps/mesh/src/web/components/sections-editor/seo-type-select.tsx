@@ -29,11 +29,13 @@ export function SeoTypeSelect({
           <SelectValue placeholder="Select SEO type" />
         </SelectTrigger>
         <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.resolveType} value={option.resolveType}>
-              {option.title}
-            </SelectItem>
-          ))}
+          {options
+            .filter((option) => option.resolveType.length > 0)
+            .map((option) => (
+              <SelectItem key={option.resolveType} value={option.resolveType}>
+                {option.title}
+              </SelectItem>
+            ))}
         </SelectContent>
       </Select>
     </div>

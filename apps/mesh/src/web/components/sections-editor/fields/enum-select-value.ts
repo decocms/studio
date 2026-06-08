@@ -1,0 +1,32 @@
+/** Radix Select reserves `""` for clearing; map real empty-string enums to this. */
+export const ENUM_EMPTY_SELECT_VALUE = "__enum_empty__";
+
+export function enumOptionToSelectValue(opt: unknown): string {
+  if (opt === "") return ENUM_EMPTY_SELECT_VALUE;
+  return String(opt);
+}
+
+export function selectValueToEnumOption(
+  value: string,
+  options: unknown[],
+): unknown {
+  if (value === ENUM_EMPTY_SELECT_VALUE) return "";
+  const match = options.find((opt) => enumOptionToSelectValue(opt) === value);
+  return match !== undefined ? match : value;
+}
+
+export function formValueToSelectValue(
+  value: unknown,
+  options: unknown[],
+): string | undefined {
+  if (value === undefined || value === null) {
+    return options.some((opt) => opt === "")
+      ? ENUM_EMPTY_SELECT_VALUE
+      : undefined;
+  }
+  return enumOptionToSelectValue(value);
+}
+
+export function enumOptionLabel(opt: unknown): string {
+  return opt === "" ? "" : String(opt);
+}

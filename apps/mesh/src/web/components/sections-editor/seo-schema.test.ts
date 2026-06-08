@@ -77,6 +77,9 @@ describe("listPageSeoTypeOptions", () => {
       "website/sections/Seo/SeoV2.tsx",
       "website/sections/Seo/SeoPDPV2.tsx",
     ]);
+    expect(
+      options.find((o) => o.resolveType === DEFAULT_SEO_RESOLVE_TYPE)?.title,
+    ).toBe("General");
     expect(options[1]?.title).toBe("Product page");
   });
 });

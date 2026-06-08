@@ -253,8 +253,8 @@ function ContentBrowserReady({
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
   const [selection, setSelection] = useState<Selection>(null);
-  // Page whose SEO is being edited in the two-pane SEO editor (null = none).
-  const [seoPageKey, setSeoPageKey] = useState<string | null>(null);
+  // Page that should open with the inline SEO form in SectionsEditor.
+  const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   // Reset search when switching collections (derived-state sync pattern)
   const [prevCollection, setPrevCollection] = useState(activeCollection);
@@ -577,7 +577,7 @@ function ContentBrowserReady({
         onSelect={(id) => {
           setActiveCollection(id);
           setSelection(null);
-          setSeoPageKey(null);
+          setOpenPageSeoKey(null);
         }}
       />
       {activeCollection !== "seo" && (
@@ -592,7 +592,7 @@ function ContentBrowserReady({
           selection={selection}
           onSelect={(next) => {
             setSelection(next);
-            setSeoPageKey(null);
+            setOpenPageSeoKey(null);
           }}
           previewUrl={previewUrl}
           onCreate={() => {
@@ -618,7 +618,7 @@ function ContentBrowserReady({
               key: page.key,
               path: page.path,
             });
-            setSeoPageKey(page.key);
+            setOpenPageSeoKey(page.key);
           }}
           onViewPageJson={(page) => setJsonPageKey(page.key)}
           onDuplicateSection={handleDuplicateSection}
@@ -657,29 +657,6 @@ function ContentBrowserReady({
               meta={meta}
               target={{ kind: "site" }}
               previewBaseUrl={previewUrl}
-            />
-          ) : seoPageKey ? (
-            <SeoEditor
-              key={`seo:${seoPageKey}`}
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              decofile={decofile}
-              meta={meta}
-              target={{
-                kind: "page",
-                pageKey: seoPageKey,
-                pageName:
-                  pages.find((p) => p.key === seoPageKey)?.name ?? "Page",
-                path: pages.find((p) => p.key === seoPageKey)?.path ?? "/",
-              }}
-              previewBaseUrl={previewUrl}
-              onBack={() => setSeoPageKey(null)}
-              onEditDefaultSeo={() => {
-                setSeoPageKey(null);
-                setSelection(null);
-                setActiveCollection("seo");
-              }}
             />
           ) : selection ? (
             selection.collection === "posts" ? (
@@ -725,7 +702,11 @@ function ContentBrowserReady({
                 activeGlobalBlockKey={
                   selection.collection === "sections" ? selection.key : null
                 }
-                onEditPageSeo={(pageKey) => setSeoPageKey(pageKey)}
+                initialEditSeo={
+                  selection.collection === "pages" &&
+                  openPageSeoKey === selection.key
+                }
+                onExitSeo={() => setOpenPageSeoKey(null)}
               />
             )
           ) : (

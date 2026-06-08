@@ -7,13 +7,18 @@ import {
   SheetTitle,
 } from "@deco/ui/components/sheet.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
-import { SchemaForm } from "./schema-form";
+import {
+  findSiteSeoEntry,
+  resolveSeoTarget,
+  type SeoTarget,
+} from "./seo-block";
+import { SeoFormFields } from "./seo-form-fields";
 import { resolveSchema } from "./resolve-schema";
 import type { LiveMeta } from "./resolve-schema";
-import { resolveSeoTarget } from "./seo-block";
-import type { SeoTarget } from "./seo-block";
+import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
+import { PageSeoForm } from "./page-seo-form";
+import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, useSeoFormSave } from "./seo-save";
-import { SeoTypeSelect } from "./seo-type-select";
 
 interface SeoSheetProps {
   open: boolean;
@@ -51,14 +56,18 @@ export function SeoSheet({
   const [formValue, setFormValue] = useState<Record<string, unknown> | null>(
     null,
   );
+  const [rawSeoOverride, setRawSeoOverride] = useState<
+    Record<string, unknown> | null | undefined
+  >(undefined);
   const [formResetKey, setFormResetKey] = useState(0);
   if (prevTargetId !== targetId) {
     setPrevTargetId(targetId);
     setFormValue(null);
+    setRawSeoOverride(undefined);
     setFormResetKey((k) => k + 1);
   }
 
-  const { persistSeo, flush, isPending } = useSeoFormSave({
+  const { persistSeo, persistRawSeo, flush, isPending } = useSeoFormSave({
     orgSlug,
     virtualMcpId,
     branch,
@@ -67,13 +76,29 @@ export function SeoSheet({
     onSaved,
   });
 
-  const effectiveSeo = formValue ?? resolved?.seoData ?? {};
+  const isPageTarget = target.kind === "page";
+  const savedRawSeo = isPageTarget ? resolved?.rawSeoData : undefined;
+  const displayRawSeo =
+    rawSeoOverride !== undefined ? rawSeoOverride : savedRawSeo;
+  const innerFromSaved = isPageTarget
+    ? (unwrapSeoConfig(displayRawSeo) ?? undefined)
+    : undefined;
+  const effectiveSeo = (formValue ??
+    innerFromSaved ??
+    resolved?.seoData ??
+    {}) as Record<string, unknown>;
   const activeResolveType = resolved
     ? activeSeoResolveType(effectiveSeo, resolved)
     : null;
-  const seoSchema = activeResolveType
-    ? resolveSchema(activeResolveType, meta)
-    : null;
+  const seoSchema =
+    activeResolveType && (isPageTarget ? isSeoEnabled(displayRawSeo) : true)
+      ? resolveSchema(activeResolveType, meta)
+      : null;
+  const siteDefaultSeo =
+    target.kind === "page"
+      ? (findSiteSeoEntry(decofile, meta)?.seoData ?? undefined)
+      : undefined;
+  const defaultResolveType = defaultPageSeoResolveType(meta);
 
   const handleChange = (next: unknown) => {
     if (!resolved) return;
@@ -88,12 +113,17 @@ export function SeoSheet({
   };
 
   const title = target.kind === "site" ? "Site SEO" : "Page SEO";
+  const showPageSeoChrome = isPageTarget && resolved;
+  const showSiteForm = target.kind === "site" && resolved && seoSchema;
   const emptyMessage =
     target.kind === "site"
       ? "No site-level SEO block found."
-      : seoSchema
-        ? "No editable SEO fields found."
-        : "SEO schema not found for this page.";
+      : resolved
+        ? "SEO schema not found for this page."
+        : "Could not load page SEO.";
+
+  const clearSeoForm = () => setFormValue(null);
+  const bumpSeoFormKey = () => setFormResetKey((k) => k + 1);
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -111,7 +141,7 @@ export function SeoSheet({
           )}
         </SheetHeader>
 
-        {!resolved || !seoSchema ? (
+        {!resolved || (!showPageSeoChrome && !showSiteForm) ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             {emptyMessage}
           </div>
@@ -119,30 +149,39 @@ export function SeoSheet({
           <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
             <div className="px-6 py-4">
               <div className="mx-auto max-w-sm">
-                {resolved.seoTypeOptions && activeResolveType && (
-                  <SeoTypeSelect
-                    options={resolved.seoTypeOptions}
-                    value={activeResolveType}
-                    onChange={(nextType) => {
-                      const nextRecord = {
-                        ...effectiveSeo,
-                        __resolveType: nextType,
-                      };
-                      setFormValue(nextRecord);
-                      setFormResetKey((k) => k + 1);
-                      persistSeo(nextRecord);
+                {showPageSeoChrome ? (
+                  <PageSeoForm
+                    rawSeo={displayRawSeo}
+                    innerSeo={effectiveSeo}
+                    defaultResolveType={defaultResolveType}
+                    seoSchema={seoSchema}
+                    activeResolveType={activeResolveType}
+                    seoTypeOptions={resolved.seoTypeOptions}
+                    formResetKey={formResetKey}
+                    siteDefaultSeo={siteDefaultSeo}
+                    onPersistRaw={(raw) => {
+                      setRawSeoOverride(raw);
+                      persistRawSeo(raw);
                     }}
+                    onInnerChange={(inner) => {
+                      setFormValue(inner);
+                      persistSeo(inner);
+                    }}
+                    onClearForm={clearSeoForm}
+                    onBumpFormKey={bumpSeoFormKey}
                   />
+                ) : (
+                  seoSchema &&
+                  activeResolveType && (
+                    <SeoFormFields
+                      schema={seoSchema}
+                      resolveType={activeResolveType}
+                      value={effectiveSeo}
+                      formResetKey={formResetKey}
+                      onChange={handleChange}
+                    />
+                  )
                 )}
-                <SchemaForm
-                  key={formResetKey}
-                  schema={seoSchema}
-                  value={effectiveSeo}
-                  onChange={handleChange}
-                  basePath=""
-                  breadcrumbPath={[]}
-                  onBreadcrumbChange={() => {}}
-                />
               </div>
             </div>
           </ScrollArea>

@@ -133,7 +133,7 @@ export function PreviewContent() {
   const [currentPath, setCurrentPath] = useState("/");
 
   // SEO panel state
-  const [seoPageKey, setSeoPageKey] = useState<string | null>(null);
+  const [cmsInitialEditSeo, setCmsInitialEditSeo] = useState(false);
   const [siteSeoOpen, setSiteSeoOpen] = useState(false);
   // File deep-link for "View JSON" — opens the page's block file in code mode.
   const [codeFilePath, setCodeFilePath] = useState<string | null>(null);
@@ -427,6 +427,7 @@ export function PreviewContent() {
     setDirectPreviewUrl(null);
     setCurrentPath(path);
     setCmsSelectedSectionIndex(null);
+    setCmsInitialEditSeo(false);
   };
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
@@ -740,7 +741,10 @@ export function PreviewContent() {
                         <DropdownMenuSeparator />
                         {currentPageKey && (
                           <DropdownMenuItem
-                            onClick={() => setSeoPageKey(currentPageKey)}
+                            onClick={() => {
+                              setCmsInitialEditSeo(true);
+                              handleViewModeChange("cms");
+                            }}
                           >
                             <CreditCardSearch size={14} />
                             Edit SEO
@@ -833,7 +837,8 @@ export function PreviewContent() {
                       setTimeout(restore, 3000);
                     }, DEV_SERVER_SETTLE_MS);
                   }}
-                  onEditPageSeo={(pageKey) => setSeoPageKey(pageKey)}
+                  initialEditSeo={cmsInitialEditSeo}
+                  onExitSeo={() => setCmsInitialEditSeo(false)}
                   onViewJsonFile={(pageKey) => {
                     try {
                       setCodeFilePath(decoBlockFileViewPath(pageKey));
@@ -983,40 +988,6 @@ export function PreviewContent() {
         error={createPageError}
         onSubmit={handleCreatePage}
       />
-
-      {seoPageKey && decofile && meta && (
-        <Suspense fallback={null}>
-          <SeoSheet
-            open={!!seoPageKey}
-            onOpenChange={(open) => {
-              if (!open) setSeoPageKey(null);
-            }}
-            orgSlug={org.slug}
-            virtualMcpId={virtualMcpId ?? ""}
-            branch={branch ?? ""}
-            decofile={decofile}
-            meta={meta}
-            onSaved={() => {
-              setTimeout(() => {
-                const iframe = previewIframeRef.current;
-                if (!iframe) return;
-                try {
-                  iframe.contentWindow?.location.reload();
-                } catch {
-                  const src = iframeSrcRef.current;
-                  if (src) iframe.src = src;
-                }
-              }, DEV_SERVER_SETTLE_MS);
-            }}
-            target={{
-              kind: "page",
-              pageKey: seoPageKey,
-              pageName: pages.find((p) => p.key === seoPageKey)?.name ?? "Page",
-              path: pages.find((p) => p.key === seoPageKey)?.path ?? "/",
-            }}
-          />
-        </Suspense>
-      )}
 
       {siteSeoOpen && decofile && meta && (
         <Suspense fallback={null}>

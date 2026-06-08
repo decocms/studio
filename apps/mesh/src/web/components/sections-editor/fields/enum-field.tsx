@@ -7,6 +7,12 @@ import {
 } from "@deco/ui/components/select.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import type { FieldProps } from "./field-props";
+import {
+  enumOptionLabel,
+  enumOptionToSelectValue,
+  formValueToSelectValue,
+  selectValueToEnumOption,
+} from "./enum-select-value";
 
 export function EnumField({
   schema,
@@ -16,7 +22,7 @@ export function EnumField({
   label,
 }: FieldProps) {
   const options = schema.enum ?? [];
-  const strValue = value != null ? String(value) : "";
+  const selectValue = formValueToSelectValue(value, options);
 
   return (
     <div className="space-y-2">
@@ -29,21 +35,21 @@ export function EnumField({
         )}
       </div>
       <Select
-        value={strValue}
-        onValueChange={(v) => {
-          const original = options.find((opt) => String(opt) === v);
-          onChange(original !== undefined ? original : v);
-        }}
+        value={selectValue}
+        onValueChange={(v) => onChange(selectValueToEnumOption(v, options))}
       >
         <SelectTrigger className="h-10">
           <SelectValue placeholder="Select..." />
         </SelectTrigger>
         <SelectContent>
-          {options.map((opt) => (
-            <SelectItem key={String(opt)} value={String(opt)}>
-              {String(opt)}
-            </SelectItem>
-          ))}
+          {options.map((opt) => {
+            const itemValue = enumOptionToSelectValue(opt);
+            return (
+              <SelectItem key={itemValue} value={itemValue}>
+                {enumOptionLabel(opt)}
+              </SelectItem>
+            );
+          })}
         </SelectContent>
       </Select>
     </div>

@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 import type { ResolvedSeo, SeoTarget } from "./seo-block";
+import { wrapSeoPersistValue } from "./seo-lazy-render";
 import { useDebouncedSaveBlock } from "./use-save-block";
 
 function isPlainObject(val: unknown): val is Record<string, unknown> {
@@ -15,11 +16,18 @@ export function buildSeoSavePayload(
   target: SeoTarget,
   resolved: ResolvedSeo,
   latestBlock: unknown,
-  seoValue: Record<string, unknown>,
+  seoValue: Record<string, unknown> | null,
 ): Record<string, unknown> | null {
   if (target.kind === "page") {
     if (!isPlainObject(latestBlock)) return null;
-    return { ...latestBlock, seo: seoValue };
+    const latestRawSeo = latestBlock.seo;
+    return {
+      ...latestBlock,
+      seo:
+        seoValue === null
+          ? null
+          : wrapSeoPersistValue(seoValue, latestRawSeo ?? resolved.rawSeoData),
+    };
   }
   if (!isPlainObject(latestBlock)) return null;
   if (resolved.siteKind === "block") return seoValue;
@@ -59,7 +67,7 @@ export function useSeoFormSave({
     { onSaved },
   );
 
-  const persistSeo = (seoValue: Record<string, unknown>) => {
+  const persistSeo = (seoValue: Record<string, unknown> | null) => {
     if (!resolved) return;
     save(resolved.blockKey, () => {
       const decofile = queryClient.getQueryData<Record<string, unknown>>(
@@ -70,5 +78,18 @@ export function useSeoFormSave({
     });
   };
 
-  return { persistSeo, flush, isPending };
+  /** Persists the full `page.seo` value (enable/disable, async render toggles). */
+  const persistRawSeo = (rawSeo: Record<string, unknown> | null) => {
+    if (!resolved || target.kind !== "page") return;
+    save(resolved.blockKey, () => {
+      const decofile = queryClient.getQueryData<Record<string, unknown>>(
+        KEYS.decofile(cacheKey),
+      );
+      const latest = decofile?.[resolved.blockKey];
+      if (!isPlainObject(latest)) return null;
+      return { ...latest, seo: rawSeo };
+    });
+  };
+
+  return { persistSeo, persistRawSeo, flush, isPending };
 }

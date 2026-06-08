@@ -10,6 +10,9 @@ import {
 } from "./resolve-schema";
 import { DEFAULT_SEO_RESOLVE_TYPE } from "./seo-block";
 
+/** Admin's `SEO_OPTION` label for `website/sections/Seo/SeoV2.tsx`. */
+export const DEFAULT_SEO_TYPE_LABEL = "General";
+
 export interface SeoTypeOption {
   resolveType: string;
   title: string;
@@ -22,6 +25,11 @@ export function isSeoSectionResolveType(resolveType: string): boolean {
     /\/Seo(V\d+)?\.tsx$/i.test(resolveType) ||
     resolveType.includes("/sections/Seo")
   );
+}
+
+function seoTypeLabel(resolveType: string, title: string): string {
+  if (resolveType === DEFAULT_SEO_RESOLVE_TYPE) return DEFAULT_SEO_TYPE_LABEL;
+  return title;
 }
 
 function seoOptionsFromPropertySchema(
@@ -37,7 +45,7 @@ function seoOptionsFromPropertySchema(
     seen.add(ref.resolveType);
     options.push({
       resolveType: ref.resolveType,
-      title: ref.title,
+      title: seoTypeLabel(ref.resolveType, ref.title),
       description: ref.description,
     });
   }
@@ -65,13 +73,14 @@ function listManifestSeoSectionOptions(meta: LiveMeta): SeoTypeOption[] {
     if (!blockType.includes("sections")) continue;
     for (const resolveType of Object.keys(blockMap)) {
       if (!isSeoSectionResolveType(resolveType)) continue;
+      const shortTitle =
+        resolveType
+          .split("/")
+          .pop()
+          ?.replace(/\.tsx?$/, "") ?? resolveType;
       options.push({
         resolveType,
-        title:
-          resolveType
-            .split("/")
-            .pop()
-            ?.replace(/\.tsx?$/, "") ?? resolveType,
+        title: seoTypeLabel(resolveType, shortTitle),
       });
     }
   }

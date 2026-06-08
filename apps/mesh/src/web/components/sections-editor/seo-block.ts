@@ -1,4 +1,5 @@
 import type { LiveMeta } from "./resolve-schema";
+import { unwrapSeoConfig, wrapSeoPersistValue } from "./seo-lazy-render";
 import {
   isSeoSectionResolveType,
   listPageSeoTypeOptions,
@@ -133,7 +134,10 @@ export type SeoTarget =
 
 export interface ResolvedSeo {
   blockKey: string;
+  /** Inner SEO config (lazy wrapper stripped). Undefined when SEO is disabled. */
   seoData: Record<string, unknown> | undefined;
+  /** Full `page.seo` as stored — may be lazy-wrapped. */
+  rawSeoData?: unknown;
   /** resolveType to resolve the form schema with. */
   seoResolveType: string;
   /** Site target only: how SEO is stored on the owning block. */
@@ -173,16 +177,23 @@ export function resolveSeoTarget(
   const rawBlock = decofile[target.pageKey];
   if (!isPlainObject(rawBlock)) return null;
   const blockData = rawBlock;
-  const seo = isPlainObject(blockData.seo) ? blockData.seo : undefined;
+  const rawSeo = blockData.seo;
+  const innerSeo = unwrapSeoConfig(rawSeo);
+  const innerRecord =
+    innerSeo && isPlainObject(innerSeo) ? innerSeo : undefined;
   return {
     blockKey: target.pageKey,
-    seoData: seo,
+    seoData: innerRecord,
+    rawSeoData: rawSeo,
     seoResolveType: meta
-      ? resolvePageSeoResolveType(meta, seo)
-      : typeof seo?.__resolveType === "string"
-        ? seo.__resolveType
+      ? resolvePageSeoResolveType(meta, innerRecord)
+      : typeof innerRecord?.__resolveType === "string"
+        ? innerRecord.__resolveType
         : DEFAULT_SEO_RESOLVE_TYPE,
     seoTypeOptions: meta ? listPageSeoTypeOptions(meta) : undefined,
-    build: (value) => ({ ...blockData, seo: value }),
+    build: (value) => ({
+      ...blockData,
+      seo: value === null ? null : wrapSeoPersistValue(value, rawSeo),
+    }),
   };
 }

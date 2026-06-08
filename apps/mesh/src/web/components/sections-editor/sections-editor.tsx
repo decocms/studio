@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -35,7 +35,19 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
 import { resolveSchema, type SchemaProperty } from "./resolve-schema";
-import { resolvePageSeoResolveType } from "./seo-schema";
+import { findSiteSeoEntry } from "./seo-block";
+import {
+  defaultPageSeoResolveType,
+  listPageSeoTypeOptions,
+  resolvePageSeoResolveType,
+} from "./seo-schema";
+import { activeSeoResolveType } from "./seo-save";
+import {
+  isSeoEnabled,
+  unwrapSeoConfig,
+  wrapSeoPersistValue,
+} from "./seo-lazy-render";
+import { PageSeoForm } from "./page-seo-form";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
@@ -94,6 +106,9 @@ function SchemaFormPanel({
   onFormChange,
   onBreadcrumbChange,
   emptyMessage,
+  beforeForm,
+  seoResolveType,
+  siteDefaultSeo,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -101,21 +116,40 @@ function SchemaFormPanel({
   onFormChange: (v: unknown) => void;
   onBreadcrumbChange: (path: string[]) => void;
   emptyMessage: string;
+  beforeForm?: ReactNode;
+  seoResolveType?: string;
+  siteDefaultSeo?: Record<string, unknown>;
 }) {
+  const formBody =
+    activeSchema && formValue ? (
+      seoResolveType ? (
+        <SeoFormFields
+          schema={activeSchema}
+          resolveType={seoResolveType}
+          value={formValue as Record<string, unknown>}
+          formResetKey={formResetKey}
+          onChange={onFormChange}
+          onBreadcrumbChange={onBreadcrumbChange}
+          siteDefaultSeo={siteDefaultSeo}
+        />
+      ) : (
+        <SchemaForm
+          key={formResetKey}
+          schema={activeSchema}
+          value={formValue}
+          onChange={onFormChange}
+          basePath=""
+          breadcrumbPath={[]}
+          onBreadcrumbChange={onBreadcrumbChange}
+        />
+      )
+    ) : null;
+
   return (
     <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
       <div className="mx-auto max-w-2xl">
-        {activeSchema && formValue ? (
-          <SchemaForm
-            key={formResetKey}
-            schema={activeSchema}
-            value={formValue}
-            onChange={onFormChange}
-            basePath=""
-            breadcrumbPath={[]}
-            onBreadcrumbChange={onBreadcrumbChange}
-          />
-        ) : (
+        {beforeForm}
+        {formBody ?? (
           <div className="px-3 py-6 text-center text-xs text-muted-foreground">
             {emptyMessage}
           </div>
@@ -425,7 +459,8 @@ export function SectionsEditor({
   activeGlobalBlockKey = null,
   externalSelectedIndex,
   onSaved,
-  onEditPageSeo,
+  initialEditSeo = false,
+  onExitSeo,
   onViewJsonFile,
 }: {
   orgSlug: string;
@@ -446,12 +481,10 @@ export function SectionsEditor({
   externalSelectedIndex?: number | null;
   /** Called after a successful auto-save so the parent can reload the preview. */
   onSaved?: () => void;
-  /**
-   * When provided, the page-header "Edit SEO" button delegates to the host
-   * (passing the page block key) — e.g. the Content tab opens its two-pane SEO
-   * editor with live previews. Hosts that omit it get the inline SEO mode.
-   */
-  onEditPageSeo?: (pageKey: string) => void;
+  /** Open the inline page SEO form on mount (e.g. after "Edit SEO" from a host menu). */
+  initialEditSeo?: boolean;
+  /** Called when the user leaves inline SEO via the breadcrumb bar. */
+  onExitSeo?: () => void;
   /**
    * When provided, "View JSON" opens the page's block file in the host's file
    * view (passing the decofile block key) instead of the built-in JSON modal.
@@ -498,11 +531,26 @@ export function SectionsEditor({
   const [jsonOpen, setJsonOpen] = useState(false);
 
   // Inline SEO editing mode — same breadcrumb UX as editing a section
-  const [editingSeo, setEditingSeo] = useState(false);
+  const [editingSeo, setEditingSeo] = useState(initialEditSeo);
+  const [prevInitialEditSeo, setPrevInitialEditSeo] = useState(initialEditSeo);
+  if (initialEditSeo && !prevInitialEditSeo) {
+    setPrevInitialEditSeo(true);
+    setEditingSeo(true);
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+    setFieldBreadcrumbs([]);
+  }
+  if (!initialEditSeo && prevInitialEditSeo) {
+    setPrevInitialEditSeo(false);
+  }
   const [seoFormValue, setSeoFormValue] = useState<Record<
     string,
     unknown
   > | null>(null);
+  const [seoRawOverride, setSeoRawOverride] = useState<
+    Record<string, unknown> | null | undefined
+  >(undefined);
   const [seoFieldBreadcrumbs, setSeoFieldBreadcrumbs] = useState<string[]>([]);
   const [seoFormResetKey, setSeoFormResetKey] = useState(0);
   const [activeSectionVariantIndex, setActiveSectionVariantIndex] = useState(0);
@@ -543,6 +591,7 @@ export function SectionsEditor({
     setFormResetKey((key) => key + 1);
     setEditingSeo(false);
     setSeoFormValue(null);
+    setSeoRawOverride(undefined);
     setSeoFieldBreadcrumbs([]);
     setSeoFormResetKey((key) => key + 1);
   }
@@ -629,17 +678,33 @@ export function SectionsEditor({
       : null;
 
   // SEO computed values
-  const seoData = pageData
-    ? (pageData.seo as Record<string, unknown> | undefined)
-    : undefined;
-  const seoResolveType = pageData
-    ? resolvePageSeoResolveType(
-        meta,
-        seoData as Record<string, unknown> | undefined,
-      )
+  const savedRawSeo = pageData?.seo;
+  const displayRawSeo =
+    seoRawOverride !== undefined ? seoRawOverride : savedRawSeo;
+  const innerFromSaved = unwrapSeoConfig(displayRawSeo);
+  const seoTypeOptions = pageData ? listPageSeoTypeOptions(meta) : [];
+  const defaultSeoResolveType = pageData
+    ? resolvePageSeoResolveType(meta, innerFromSaved ?? undefined)
     : null;
+  const defaultResolveType = pageData ? defaultPageSeoResolveType(meta) : "";
+  const effectiveInner = (seoFormValue ?? innerFromSaved ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const activeSeoType =
+    pageData && activePageKey && defaultSeoResolveType
+      ? activeSeoResolveType(effectiveInner, {
+          blockKey: activePageKey,
+          seoData: innerFromSaved ?? undefined,
+          seoResolveType: defaultSeoResolveType,
+          build: (value) => ({ ...pageData!, seo: value }),
+        })
+      : null;
   const seoSchema =
-    pageData && seoResolveType ? resolveSchema(seoResolveType, meta) : null;
+    pageData && activeSeoType && isSeoEnabled(displayRawSeo)
+      ? resolveSchema(activeSeoType, meta)
+      : null;
+  const siteDefaultSeo = findSiteSeoEntry(decofile, meta)?.seoData;
 
   const pageVariants = isGlobalBlockMode
     ? [
@@ -1849,31 +1914,48 @@ export function SectionsEditor({
     clearSectionEditing();
   };
 
-  const handleSeoFormChange = (next: unknown) => {
-    const nextRecord = next as Record<string, unknown>;
+  const handleSeoInnerChange = (nextRecord: Record<string, unknown>) => {
     setSeoFormValue(nextRecord);
     if (!activePageKey) return;
-    // Resolve the merge at fire time against the freshest page block, not a
-    // keystroke-time snapshot: page name/path edits write the same block from a
-    // separate debounce, so spreading a stale `pageData` here would clobber
-    // them. `latestRef.current.decofile` tracks the live (optimistically
-    // updated) decofile.
     seoSave.save(activePageKey, () => {
       const latestPage = latestRef.current.decofile[activePageKey] as
         | Record<string, unknown>
         | undefined;
       if (!latestPage) return null;
-      return { ...latestPage, seo: nextRecord };
+      return {
+        ...latestPage,
+        seo: wrapSeoPersistValue(nextRecord, latestPage.seo),
+      };
     });
   };
+
+  const handlePersistRawSeo = (raw: Record<string, unknown> | null) => {
+    setSeoRawOverride(raw);
+    if (!activePageKey) return;
+    seoSave.save(activePageKey, () => {
+      const latestPage = latestRef.current.decofile[activePageKey] as
+        | Record<string, unknown>
+        | undefined;
+      if (!latestPage) return null;
+      return { ...latestPage, seo: raw };
+    });
+  };
+
+  const clearSeoForm = () => {
+    setSeoFormValue(null);
+    setSeoFieldBreadcrumbs([]);
+  };
+  const bumpSeoFormKey = () => setSeoFormResetKey((key) => key + 1);
 
   const handleBreadcrumbClick = (index: number) => {
     if (editingSeo) {
       if (index === 0) {
         setEditingSeo(false);
         setSeoFormValue(null);
+        setSeoRawOverride(undefined);
         setSeoFieldBreadcrumbs([]);
         setSeoFormResetKey((key) => key + 1);
+        onExitSeo?.();
         return;
       }
       if (index === 1) {
@@ -2030,11 +2112,7 @@ export function SectionsEditor({
                   size="icon"
                   aria-label="Edit SEO"
                   className="size-7 shrink-0"
-                  onClick={() =>
-                    onEditPageSeo && activePageKey
-                      ? onEditPageSeo(activePageKey)
-                      : setEditingSeo(true)
-                  }
+                  onClick={() => setEditingSeo(true)}
                 >
                   <CreditCardSearch size={14} />
                 </Button>
@@ -2100,18 +2178,31 @@ export function SectionsEditor({
       {/* Drill-down: SEO form, section form, or section list */}
       {editingSeo ? (
         <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
-          <SchemaFormPanel
-            activeSchema={seoSchema}
-            formValue={seoFormValue ?? seoData ?? {}}
-            formResetKey={seoFormResetKey}
-            onFormChange={handleSeoFormChange}
-            onBreadcrumbChange={setSeoFieldBreadcrumbs}
-            emptyMessage={
-              !seoSchema
-                ? "SEO schema not found for this site."
-                : "No editable SEO fields found."
-            }
-          />
+          <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
+            <div className="mx-auto max-w-2xl">
+              {pageData && activePageKey ? (
+                <PageSeoForm
+                  rawSeo={displayRawSeo}
+                  innerSeo={effectiveInner}
+                  defaultResolveType={defaultResolveType}
+                  seoSchema={seoSchema}
+                  activeResolveType={activeSeoType}
+                  seoTypeOptions={seoTypeOptions}
+                  formResetKey={seoFormResetKey}
+                  siteDefaultSeo={siteDefaultSeo}
+                  onBreadcrumbChange={setSeoFieldBreadcrumbs}
+                  onPersistRaw={handlePersistRawSeo}
+                  onInnerChange={handleSeoInnerChange}
+                  onClearForm={clearSeoForm}
+                  onBumpFormKey={bumpSeoFormKey}
+                />
+              ) : (
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  SEO schema not found for this site.
+                </div>
+              )}
+            </div>
+          </div>
         </ScrollArea>
       ) : isEditing ? (
         <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
