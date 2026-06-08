@@ -11,6 +11,7 @@
 
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
+import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
 import type { UIMessageStreamWriter } from "ai";
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
@@ -32,22 +33,28 @@ export const SubtaskInputSchema = z.object({
     .string()
     .min(1)
     .max(128)
+    .optional()
     .describe(
-      "The ID of the agent (Virtual MCP) to delegate to. " +
-        "This agent must exist and be active in the current organization.",
+      "The ID of the agent (Virtual MCP) to delegate to. Must exist and be " +
+        "active in the current organization. OMIT to clone yourself — a fresh " +
+        "subagent with your exact tools and instructions but an empty context.",
     ),
 });
 
 export type SubtaskInput = z.infer<typeof SubtaskInputSchema>;
 
 const SUBTASK_DESCRIPTION =
-  "Delegate a self-contained task to another agent. The subagent runs independently with its own tools " +
-  "and returns results when complete. Use this when a task is better handled by a specialized agent, " +
-  "or to parallelize work across agents.\n\n" +
+  "Run a focused task in a fresh subagent that works independently and returns only its conclusion.\n\n" +
+  "USE THIS FOR DISCOVERY. Before an open-ended search, or before reading more than ~3 files / resources / " +
+  "records to answer a question, call subtask FIRST instead of doing it inline — the subagent spends ITS " +
+  "context on the digging and hands back just the answer, keeping yours focused and cheap. A single, " +
+  "targeted lookup you already know the shape of stays inline.\n\n" +
+  "OMIT agent_id to clone yourself (a fresh subagent with your exact tools and instructions, empty context). " +
+  "Pass agent_id to delegate to a different, specialized agent instead.\n\n" +
   "Usage notes:\n" +
-  "- Every subtask call starts FRESH — no conversation history, no prior runs. Always include full context in the prompt; never use continuation phrases like 'continue' or 'as before'.\n" +
+  "- Every subtask call starts FRESH — no conversation history, no prior runs. Always include full context in the prompt and state exactly what to return (the specific answer/list/paths you need, not a raw dump); never use continuation phrases like 'continue' or 'as before'.\n" +
   "- Clearly tell the subagent whether you expect it to take action or just research.\n" +
-  "- To parallelize work, launch multiple subtask calls in the same message.\n" +
+  "- To parallelize independent searches, launch multiple subtask calls in the same message.\n" +
   "- The subagent's output should generally be trusted.";
 
 export interface SubtaskParams {
@@ -55,6 +62,18 @@ export interface SubtaskParams {
   organization: OrganizationScope;
   models: ModelsConfig;
   needsApproval?: boolean;
+  /**
+   * The calling agent's own Virtual MCP id. When present, omitting `agent_id`
+   * (or passing this id) clones the calling agent: a fresh subagent over the
+   * SAME Virtual MCP — identical tools + instructions, empty context. The clone
+   * opens its own superUser passthrough client (mirroring the parent's tool
+   * scope), so it is fully isolated from the parent loop.
+   * Absent on paths with no self context (e.g. subagents, which can't subtask
+   * at all): omitting `agent_id` there is an error.
+   */
+  self?: {
+    id: string;
+  };
 }
 
 const SUBTASK_ANNOTATIONS = {
@@ -69,7 +88,7 @@ export function createSubtaskTool(
   params: SubtaskParams,
   ctx: StudioContext,
 ) {
-  const { provider, organization, models, needsApproval } = params;
+  const { provider, organization, models, needsApproval, self } = params;
 
   return tool({
     description: SUBTASK_DESCRIPTION,
@@ -81,9 +100,20 @@ export function createSubtaskTool(
     ) {
       const startTime = performance.now();
 
+      // Self-subtask: omit agent_id (or pass the caller's own id) to clone the
+      // current agent — a fresh subagent over the SAME Virtual MCP, with
+      // identical tools + instructions but an empty context.
+      const isSelf = !!self && (!agent_id || agent_id === self.id);
+      const targetId = isSelf ? self!.id : agent_id;
+      if (!targetId) {
+        throw new Error(
+          "agent_id is required: this agent cannot delegate to itself here.",
+        );
+      }
+
       // 1. Validate the target agent.
       const virtualMcp = await ctx.storage.virtualMcps.findById(
-        agent_id,
+        targetId,
         organization.id,
       );
       if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
@@ -93,24 +123,28 @@ export function createSubtaskTool(
         throw new Error("Agent is not active");
       }
 
-      // 2. Create MCP client for the target.
-      const mcpClient = await createVirtualClientFrom(
+      // 2. Open an MCP client for the target. A self-clone uses superUser so
+      //    its tool scope mirrors the parent loop's passthrough client.
+      const mcpClient = (await createVirtualClientFrom(
         virtualMcp,
         ctx,
         "passthrough",
-      );
+        isSelf,
+      )) as PassthroughClient;
+      const targetLabel = virtualMcp.id;
 
       try {
+        const targetRef = {
+          id: virtualMcp.id,
+          instructions: mcpClient.getInstructions(),
+          repo: virtualMcp.metadata?.githubRepo ?? undefined,
+        };
         // 3. Call runAgentLoop with subagent kind.
         const handle = await runAgentLoop({
           kind: "subagent",
           ctx,
           organization,
-          virtualMcp: {
-            id: virtualMcp.id,
-            instructions: mcpClient.getInstructions(),
-            repo: virtualMcp.metadata?.githubRepo ?? undefined,
-          },
+          virtualMcp: targetRef,
           mcpClient,
           provider,
           models,
@@ -162,7 +196,7 @@ export function createSubtaskTool(
         const usage = await handle.result.usage;
 
         console.log(
-          `[subtask:${agent_id}] completed: finishReason=${finishReason}, steps=${steps.length}, textLength=${aggregatedText.length}, error=${error ? "yes" : "no"}, usage=${JSON.stringify({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens })}`,
+          `[subtask:${targetLabel}${isSelf ? ":self" : ""}] completed: finishReason=${finishReason}, steps=${steps.length}, textLength=${aggregatedText.length}, error=${error ? "yes" : "no"}, usage=${JSON.stringify({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens })}`,
         );
 
         // 6. Emit metadata chunks to the parent's writer.
@@ -175,7 +209,7 @@ export function createSubtaskTool(
         writer.write({
           type: "data-tool-subtask-metadata",
           id: toolCallId,
-          data: { usage, agent: agent_id, models },
+          data: { usage, agent: targetLabel, models },
         });
 
         // 7. Yield the structured result as the ONLY (and therefore

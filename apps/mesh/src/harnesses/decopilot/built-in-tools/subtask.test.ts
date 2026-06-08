@@ -113,13 +113,13 @@ describe("SubtaskInputSchema", () => {
       expect(result.success).toBe(false);
     });
 
-    test("rejects missing agent_id", () => {
+    test("accepts missing agent_id (clone-self: omit agent_id)", () => {
       const input = {
         prompt: "Do something",
       };
 
       const result = SubtaskInputSchema.safeParse(input);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
   });
 });
@@ -145,7 +145,7 @@ describe("createSubtaskTool", () => {
     const tool = createSubtaskTool(mockWriter, mockParams, mockCtx);
 
     expect(tool.description).toBeDefined();
-    expect(tool.description).toContain("Delegate");
+    expect(tool.description).toContain("subagent");
     expect(tool.inputSchema).toBeDefined();
   });
 });

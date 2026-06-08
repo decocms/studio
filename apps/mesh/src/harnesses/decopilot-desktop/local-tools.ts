@@ -25,6 +25,11 @@
 
 import { tool, zodSchema, type ToolSet, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import {
+  CallToolResultSchema,
+  type CallToolResult,
+} from "@modelcontextprotocol/sdk/types.js";
 import { userAskTool } from "../decopilot/built-in-tools/user-ask";
 import { todoWriteTool } from "../decopilot/built-in-tools/todo-write";
 import {
@@ -322,6 +327,133 @@ function createDesktopInspectPageTool(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// subtask (desktop wrapper) — recursive harness dispatch is unproven on the
+// daemon, so the subagent loop runs CLUSTER-side via the `SUBTASK_MCP` relay.
+// This wrapper is what the model sees: a clean `subtask({ prompt, agent_id? })`.
+// It injects the run's credential + model ids (which the model must never type)
+// and defaults `agent_id` to the caller's own agent so omitting it clones self.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Tool name of the cluster relay on the management MCP server. */
+const SUBTASK_MCP_TOOL_NAME = "SUBTASK_MCP";
+/** A subtask blocks until the cluster-side subagent loop completes, which can
+ *  far exceed the per-tool default. Give it a generous ceiling. */
+const SUBTASK_TIMEOUT_MS = 600_000;
+
+/** Structural subset of ModelsConfig — avoids importing the cluster `@/` types
+ *  into the desktop graph. */
+export interface DesktopSubtaskModels {
+  credentialId: string;
+  thinking: { id: string };
+  coding?: { id: string };
+  fast?: { id: string };
+}
+
+const DESKTOP_SUBTASK_DESCRIPTION =
+  "Run a focused task in a fresh subagent that works independently and returns " +
+  "only its conclusion.\n\n" +
+  "USE THIS FOR DISCOVERY. Before an open-ended search, or before reading more " +
+  "than ~3 files / resources / records to answer a question, call subtask FIRST " +
+  "instead of doing it inline — the subagent spends ITS context on the digging " +
+  "and hands back just the answer, keeping yours focused. A single, targeted " +
+  "lookup you already know the shape of stays inline.\n\n" +
+  "OMIT agent_id to clone yourself (a fresh subagent with your exact tools and " +
+  "instructions, empty context). Pass agent_id to delegate to a different, " +
+  "specialized agent instead.\n\n" +
+  "Every subtask starts FRESH — no conversation history. Include full context in " +
+  "the prompt and state exactly what to return (the specific answer/list/paths " +
+  "you need, not a raw dump); never use 'continue'/'as before'. Launch multiple " +
+  "subtask calls in one message to run independent searches in parallel.";
+
+function extractSubtaskText(res: CallToolResult): string | undefined {
+  const structured = (
+    res as { structuredContent?: { result?: string; finishReason?: string } }
+  ).structuredContent;
+  if (typeof structured?.result === "string" && structured.result.length > 0) {
+    return structured.result;
+  }
+  const content = res.content ?? [];
+  const text = content
+    .filter((c): c is { type: "text"; text: string } => c.type === "text")
+    .map((c) => c.text)
+    .join("\n\n")
+    .trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function createDesktopSubtaskTool(params: {
+  writer: UIMessageStreamWriter;
+  mcpClient: Client;
+  models: DesktopSubtaskModels;
+  selfAgentId: string;
+  needsApproval: boolean;
+}) {
+  const { writer, mcpClient, models, selfAgentId, needsApproval } = params;
+  return tool({
+    description: DESKTOP_SUBTASK_DESCRIPTION,
+    needsApproval,
+    inputSchema: zodSchema(
+      z.object({
+        prompt: z
+          .string()
+          .min(1)
+          .max(50_000)
+          .describe(
+            "The task to delegate. Be specific and self-contained — the " +
+              "subagent has no access to this conversation's history.",
+          ),
+        agent_id: z
+          .string()
+          .min(1)
+          .max(128)
+          .optional()
+          .describe(
+            "Agent (Virtual MCP) to delegate to. OMIT to clone yourself — a " +
+              "fresh subagent with your exact tools and instructions.",
+          ),
+      }),
+    ),
+    execute: async ({ prompt, agent_id }, options) => {
+      const startTime = performance.now();
+      try {
+        const res = (await mcpClient.callTool(
+          {
+            name: SUBTASK_MCP_TOOL_NAME,
+            arguments: {
+              prompt,
+              // Default to self so omitting agent_id clones the calling agent.
+              agent_id: agent_id ?? selfAgentId,
+              credentialId: models.credentialId,
+              thinkingModelId: models.thinking.id,
+              ...(models.coding ? { codingModelId: models.coding.id } : {}),
+              ...(models.fast ? { fastModelId: models.fast.id } : {}),
+            },
+          },
+          CallToolResultSchema,
+          { signal: options.abortSignal, timeout: SUBTASK_TIMEOUT_MS },
+        )) as CallToolResult;
+        return {
+          result: extractSubtaskText(res) ?? "Subtask completed (no output).",
+        };
+      } finally {
+        writer.write({
+          type: "data-tool-metadata",
+          id: options.toolCallId,
+          data: { latencyMs: performance.now() - startTime },
+        });
+      }
+    },
+    toModelOutput: ({ output }) => {
+      const o = output as { result?: string } | undefined;
+      return {
+        type: "text" as const,
+        value: o?.result?.trim() || "Subtask completed (no output).",
+      };
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Assembler
 // ─────────────────────────────────────────────────────────────────────
 
@@ -334,6 +466,15 @@ export interface BuildLocalToolsParams {
   /** Narrow ctx — present for parity, but the LOCAL-OK tools only read fields
    *  that degrade safely when absent. `objectStorage` is always null. */
   ctx: DesktopToolCtx;
+  /** Raw MCP client to the cluster endpoint — used by the `subtask` wrapper to
+   *  call the `SUBTASK_MCP` relay. When absent, `subtask` is not registered. */
+  mcpClient?: Client;
+  /** The run's model selection — injected into the `subtask` relay call so the
+   *  model never has to supply credential/model ids. */
+  models?: DesktopSubtaskModels;
+  /** The calling agent's own Virtual MCP id — the default `subtask` target so
+   *  omitting `agent_id` clones self. */
+  selfAgentId?: string;
 }
 
 /**
@@ -351,6 +492,9 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
     passthroughClient,
     toolApprovalLevel,
     isPlanMode,
+    mcpClient,
+    models,
+    selfAgentId,
   } = params;
 
   const sandboxNeedsApproval = isPlanMode || toolApprovalLevel !== "auto";
@@ -370,6 +514,18 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
       needsApproval: sandboxNeedsApproval,
     }),
   };
+
+  // subtask — registered only when the relay wiring is present (mcpClient +
+  // models + the caller's own agent id). Runs cluster-side via SUBTASK_MCP.
+  if (mcpClient && models && selfAgentId) {
+    tools.subtask = createDesktopSubtaskTool({
+      writer,
+      mcpClient,
+      models,
+      selfAgentId,
+      needsApproval: sandboxNeedsApproval,
+    });
+  }
 
   // scrape_url / inspect_page require Browserless — only register when the
   // token is present. Both call the external Browserless API only (no object

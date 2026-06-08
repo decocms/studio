@@ -47,8 +47,9 @@ const SubtaskMcpInputSchema = z.object({
     .min(1)
     .max(128)
     .describe(
-      "The ID of the agent (Virtual MCP) to delegate to. " +
-        "This agent must exist and be active in the current organization.",
+      "The ID of the agent (Virtual MCP) to run. To clone the calling agent " +
+        "(a fresh subagent with the same tools + instructions, empty context), " +
+        "pass the caller's own agent id. Must be active in the current organization.",
     ),
   credentialId: z
     .string()

@@ -207,8 +207,14 @@ export async function buildAgentSystemPrompt(
   opts: BuildAgentSystemPromptOptions,
 ): Promise<SystemMessage[]> {
   const prompts: string[] = [];
+  const labels: string[] = [];
+  const add = (label: string, text: string | null | undefined) => {
+    if (!text?.trim()) return;
+    prompts.push(text);
+    labels.push(label);
+  };
 
-  prompts.push(buildBasePlatformPrompt());
+  add("base", buildBasePlatformPrompt());
 
   if (opts.kind === "agent" && opts.planMode) {
     // Re-use the plan-mode prompt from mode-config (non-CLI variant).
@@ -216,57 +222,50 @@ export async function buildAgentSystemPrompt(
       "../../api/routes/decopilot/mode-config"
     );
     const modeConfig = resolveModeConfig("plan", { isCliAgent: false });
-    if (modeConfig.planPrompt) {
-      prompts.push(modeConfig.planPrompt);
-    }
+    add("planMode", modeConfig.planPrompt);
   }
 
   if (opts.virtualMcp.repo) {
-    prompts.push(buildRepoEnvironmentPrompt(opts.virtualMcp.repo));
+    add("repoEnv", buildRepoEnvironmentPrompt(opts.virtualMcp.repo));
   }
 
   if (opts.kind === "agent") {
     if (opts.isDecopilot) {
-      prompts.push(buildDecopilotAgentPrompt());
+      add("identity", buildDecopilotAgentPrompt());
     }
     // For custom agents (kind: "agent" && !isDecopilot), no identity
     // prompt — the agent's own instructions (via agentInstructions
     // param) serve as identity.
   } else {
-    prompts.push(SUBAGENT_IDENTITY_PROMPT);
+    add("identity", SUBAGENT_IDENTITY_PROMPT);
   }
 
-  const promptsBlock = await listPromptsBlock(
-    opts.ctx,
-    opts.organization,
-    opts.passthroughClient,
+  add(
+    "prompts",
+    await listPromptsBlock(opts.ctx, opts.organization, opts.passthroughClient),
   );
-  if (promptsBlock) prompts.push(promptsBlock);
 
   if (opts.kind === "agent") {
-    const agentsBlock = await listAgentsBlock(
+    add(
+      "agents",
+      await listAgentsBlock(opts.ctx, opts.organization, opts.virtualMcp.id),
+    );
+  }
+
+  add(
+    "connections",
+    await listConnectionsBlock(
       opts.ctx,
       opts.organization,
-      opts.virtualMcp.id,
-    );
-    if (agentsBlock) prompts.push(agentsBlock);
-  }
-
-  const connectionsBlock = await listConnectionsBlock(
-    opts.ctx,
-    opts.organization,
-    opts.connectionsData,
+      opts.connectionsData,
+    ),
   );
-  if (connectionsBlock) prompts.push(connectionsBlock);
 
-  prompts.push(buildTodoWritePrompt());
+  add("todoWrite", buildTodoWritePrompt());
 
-  if (opts.agentInstructions?.trim()) {
-    prompts.push(opts.agentInstructions);
-  }
+  add("agentInstructions", opts.agentInstructions);
 
-  const userContextBlock = await buildUserContextBlock(opts);
-  if (userContextBlock) prompts.push(userContextBlock);
+  add("userContext", await buildUserContextBlock(opts));
 
   return buildSystemMessages(prompts, opts.date ?? new Date());
 }
