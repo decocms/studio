@@ -440,6 +440,55 @@ describe("createProxyDispatch — first-frame timeout (no-subscriber fail-fast)"
   });
 });
 
+describe("createProxyDispatch — request-leg republish (dropped-publish tolerance)", () => {
+  test("re-publishes the request frame until the first reply frame, then stops", async () => {
+    const f = makeFakeNats();
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      republishIntervalMs: 10,
+      firstFrameTimeoutMs: 10_000, // large — must NOT fire during this test
+    });
+    const reqSubject = buildRequestSubject("user-1");
+
+    const out: string[] = [];
+    const run = (async () => {
+      for await (const ev of dispatch("user-1", baseReq)) {
+        if (ev.data) out.push(ev.data);
+      }
+    })();
+
+    await Promise.resolve(); // initial subscribe + publish
+
+    // No reply frame yet — models a publish dropped into a poll/backoff gap.
+    // Core NATS discards a publish with no live subscriber, so the frame MUST be
+    // re-published on the interval so the daemon's next poll can pick it up.
+    await new Promise((r) => setTimeout(r, 55));
+    const beforeFrame = f.published.filter(
+      (p) => p.subject === reqSubject,
+    ).length;
+    expect(beforeFrame).toBeGreaterThan(1); // initial publish + ≥1 republish
+
+    // A reply frame finally arrives (a republish reached a live subscriber).
+    const replySubject = f.ops.find((o) => o.kind === "subscribe")!.subject;
+    f.deliver(replySubject, { type: "headers", status: 200, headers: {} });
+    await Promise.resolve();
+    const atFrame = f.published.filter((p) => p.subject === reqSubject).length;
+
+    // Republishing STOPS once the channel responds (no point, and the daemon is
+    // now processing — further copies would only add dedup load).
+    await new Promise((r) => setTimeout(r, 40));
+    const afterFrame = f.published.filter(
+      (p) => p.subject === reqSubject,
+    ).length;
+    expect(afterFrame).toBe(atFrame);
+
+    f.deliver(replySubject, { type: "chunk", data: "QQ==" });
+    f.deliver(replySubject, { type: "end" });
+    await run;
+    expect(out).toEqual(["QQ=="]);
+  });
+});
+
 describe("subject builders", () => {
   test("derive subjects purely from ids", () => {
     expect(buildRequestSubject("u1")).toBe("links.proxy.req.u1");

@@ -205,6 +205,43 @@ describe("runOverlapScheduler — continuous overlap (landmine #5)", () => {
     expect(seenStreaks).toEqual([0, 1]); // streak increments across rejections
   });
 
+  it("backs off per-slot — one slot's errors do not inflate another slot's streak (no shared-streak blackout)", async () => {
+    // Regression: a single systemic poll error (e.g. a Cloudflare 520 storm on
+    // the long-held GET /api/links/proxy) must NOT push every slot into an
+    // ever-deepening backoff at once. With a shared errorStreak, slot B's FIRST
+    // failure already reads slot A's increment (streak 1), so one error blacks
+    // out BOTH proxy subscribers for longer and longer — opening the
+    // zero-subscriber gap that drops dispatch publishes (proxy_no_first_frame).
+    // Each slot must track its OWN consecutive-failure streak.
+    const ac = new AbortController();
+    const concurrency = 2;
+    const seenStreaks: number[] = [];
+
+    // Every poll fails — models the 520 storm hitting both slots.
+    const pollOnce = (): Promise<RequestFrame | null> =>
+      Promise.reject(new Error("proxy poll unexpected status 520"));
+
+    const deps: OverlapSchedulerDeps = {
+      pollOnce,
+      handle: () => {},
+      concurrency,
+      signal: ac.signal,
+      backoff: (streak) => {
+        seenStreaks.push(streak);
+        // Stop once both slots have recorded their first backoff.
+        if (seenStreaks.length >= concurrency) ac.abort();
+        return 1;
+      },
+      wait: async () => {},
+    };
+
+    await runOverlapScheduler(deps);
+
+    // Each slot's FIRST failure backs off with streak 0. A shared counter would
+    // make this [0, 1].
+    expect(seenStreaks.slice(0, concurrency)).toEqual([0, 0]);
+  });
+
   it("exits when the signal is already aborted (no polls)", async () => {
     const ac = new AbortController();
     ac.abort();
