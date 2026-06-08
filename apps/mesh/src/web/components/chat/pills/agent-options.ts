@@ -3,7 +3,7 @@ import {
   normalizeSandboxProviderKind,
   type LegacySandboxProviderKind,
   type SandboxProviderKind,
-} from "@decocms/sandbox/provider";
+} from "@decocms/mesh-sdk";
 
 export type AgentOption =
   | "decopilot"
