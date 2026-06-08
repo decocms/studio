@@ -124,7 +124,7 @@ async function getOrCreateDecoApiKey(
 }
 
 const SERVICE_ACCOUNT_EMAIL_PREFIX = "deco-team-";
-const SERVICE_ACCOUNT_EMAIL_DOMAIN = "deco.cx";
+const SERVICE_ACCOUNT_EMAIL_DOMAIN = "service.deco.cx";
 
 function serviceAccountEmail(teamId: number): string {
   return `${SERVICE_ACCOUNT_EMAIL_PREFIX}${teamId}@${SERVICE_ACCOUNT_EMAIL_DOMAIN}`;
