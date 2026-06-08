@@ -8,8 +8,8 @@ import {
 } from "./agent-options";
 
 describe("agentOptionFor", () => {
-  test("maps decopilot harness with cluster sandbox to decopilot option", () => {
-    expect(agentOptionFor("decopilot", "cluster")).toBe("decopilot");
+  test("maps decopilot harness with agent-sandbox sandbox to decopilot option", () => {
+    expect(agentOptionFor("decopilot", "agent-sandbox")).toBe("decopilot");
   });
 
   test("maps decopilot harness with user-desktop sandbox to decopilot-desktop option", () => {

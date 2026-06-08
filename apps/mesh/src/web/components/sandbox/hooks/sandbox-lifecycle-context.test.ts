@@ -25,7 +25,7 @@ describe("selectVmEntry", () => {
   test("prefers a non-user-desktop entry over a user-desktop entry", () => {
     const result = selectVmEntry({
       a: entry("user-desktop", "desk"),
-      b: entry("cluster", "vm"),
+      b: entry("agent-sandbox", "vm"),
     });
     expect(result?.sandboxHandle).toBe("vm");
   });
@@ -39,9 +39,9 @@ describe("selectVmEntry", () => {
   });
 
   test("returns the only entry when one is present", () => {
-    expect(selectVmEntry({ a: entry("cluster", "solo") })?.sandboxHandle).toBe(
-      "solo",
-    );
+    expect(
+      selectVmEntry({ a: entry("agent-sandbox", "solo") })?.sandboxHandle,
+    ).toBe("solo");
   });
 });
 
@@ -78,7 +78,7 @@ describe("shouldAutoStart", () => {
     expect(
       shouldAutoStart({
         ...base,
-        vmEntry: entry("cluster"),
+        vmEntry: entry("agent-sandbox"),
       }),
     ).toBe(false);
   });

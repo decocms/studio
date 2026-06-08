@@ -19,7 +19,7 @@ export interface AgentPins {
  * not drift.
  */
 export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
-  decopilot: { harness: "decopilot", sandbox: "cluster" },
+  decopilot: { harness: "decopilot", sandbox: "agent-sandbox" },
   "decopilot-desktop": { harness: "decopilot", sandbox: "user-desktop" },
   "claude-code-desktop": { harness: "claude-code", sandbox: "user-desktop" },
   "codex-desktop": { harness: "codex", sandbox: "user-desktop" },

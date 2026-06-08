@@ -12,6 +12,7 @@ import { z } from "zod";
 import type { SandboxRecord } from "@decocms/mesh-sdk";
 import {
   composeSandboxRef,
+  normalizeSandboxProviderKind,
   type SandboxProvider,
   type SandboxProviderKind,
   type Workload,
@@ -62,6 +63,10 @@ type GithubRepoMeta = {
   githubRepo?: GithubRepo | null;
 };
 
+const sandboxProviderKindInputSchema = z
+  .enum(["agent-sandbox", "user-desktop", "cluster"])
+  .transform((kind) => normalizeSandboxProviderKind(kind));
+
 export const SANDBOX_START = defineTool({
   name: "SANDBOX_START",
   description: "Start a sandbox with the connected GitHub repo and dev server.",
@@ -82,13 +87,10 @@ export const SANDBOX_START = defineTool({
       .describe(
         "Optional git branch to check out. When omitted the handler generates `deco/<adjective>-<noun>` and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
-    // Canonical-only. Migrations 092/097 swept persisted legacy values;
-    // clients ship canonical strings after the SDK narrowed its union.
-    sandboxProviderKind: z
-      .enum(["cluster", "user-desktop"])
+    sandboxProviderKind: sandboxProviderKindInputSchema
       .optional()
       .describe(
-        "Explicit runtime choice. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the cluster env kind.",
+        "Explicit runtime choice. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the env kind.",
       ),
   }),
   outputSchema: z.object({
@@ -96,7 +98,7 @@ export const SANDBOX_START = defineTool({
     sandboxHandle: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    sandboxProviderKind: z.enum(["cluster", "user-desktop"]),
+    sandboxProviderKind: z.enum(["agent-sandbox", "user-desktop"]),
   }),
 
   handler: async (input, ctx) => {
@@ -114,12 +116,15 @@ export const SANDBOX_START = defineTool({
     // otherwise applies the link-or-env default policy. We bind the
     // provider here so the kind we record in sandboxMap matches the runner
     // that actually `ensure`d the sandbox.
+    const explicitKind = input.sandboxProviderKind
+      ? normalizeSandboxProviderKind(input.sandboxProviderKind)
+      : undefined;
     const { provider: runner, kind: providerKind } =
       await resolveSandboxProvider(ctx, {
         userId: earlyUserId,
         branch: resolvedBranch,
         virtualMcpMetadata: null,
-        explicitKind: input.sandboxProviderKind,
+        explicitKind,
       });
 
     const {
@@ -211,7 +216,7 @@ export async function ensureSandbox(
     explicitKind: providerKind,
   });
 
-  // Fast path: trust a cluster entry directly. For user-desktop, probe the
+  // Fast path: trust an agent-sandbox entry directly. For user-desktop, probe the
   // daemon first — a relinked daemon has an empty sandbox map and answers the
   // liveness probe with 404, which means we must reap the stale entry and
   // re-provision (runner.ensure spawns a fresh sandbox on the new daemon).
@@ -393,11 +398,11 @@ async function provisionSandbox(
   });
 
   // Message-offload SSRF allowlist. The user-desktop daemon fails closed
-  // (empty allowlist) unless the cluster pushes the object-storage host it
-  // mints presigned offload URLs against. Derive it from the cluster's OWN
-  // trusted S3 config (never a request frame) and pass it through the ensure
-  // control channel so it lands in the spawned daemon's boot env. Only
-  // relevant for `user-desktop`; the cluster daemon reads its own S3 env.
+  // (empty allowlist) unless the control plane pushes the object-storage host
+  // it mints presigned offload URLs against. Derive it from the control
+  // plane's OWN trusted S3 config (never a request frame) and pass it through
+  // the ensure control channel so it lands in the spawned daemon's boot env.
+  // Only relevant for `user-desktop`; hosted execution reads its own S3 env.
   const offload =
     runner.kind === "user-desktop"
       ? await deriveOffloadAllowlist(ctx.objectStorage, {

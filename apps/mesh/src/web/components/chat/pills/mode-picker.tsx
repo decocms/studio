@@ -376,7 +376,9 @@ export function ModePicker({
         virtualMcpId,
         branch: currentBranch,
         sandboxProviderKind:
-          next === "cloud-decopilot" ? ("cluster" as const) : "user-desktop",
+          next === "cloud-decopilot"
+            ? ("agent-sandbox" as const)
+            : "user-desktop",
       });
     }
   };

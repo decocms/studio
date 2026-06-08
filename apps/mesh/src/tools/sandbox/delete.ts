@@ -5,10 +5,15 @@
  */
 
 import { z } from "zod";
+import { normalizeSandboxProviderKind } from "@decocms/sandbox/provider";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
 import { getSandboxProviderByKind } from "../../sandbox/lifecycle";
 import { removeSandboxMapEntry } from "./sandbox-map";
+
+const sandboxProviderKindInputSchema = z
+  .enum(["agent-sandbox", "user-desktop", "cluster"])
+  .transform((kind) => normalizeSandboxProviderKind(kind));
 
 export const SANDBOX_DELETE = defineTool({
   name: "SANDBOX_DELETE",
@@ -29,23 +34,25 @@ export const SANDBOX_DELETE = defineTool({
       .describe(
         "Branch whose vm should be deleted (sandboxMap[userId][branch])",
       ),
-    sandboxProviderKind: z
-      .enum(["cluster", "user-desktop"])
-      .describe(
-        "Kind of sandbox provider the VM was started with. Used to locate the correct 3-level sandboxMap entry.",
-      ),
+    sandboxProviderKind: sandboxProviderKindInputSchema.describe(
+      "Kind of sandbox provider the VM was started with. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. Used to locate the correct 3-level sandboxMap entry.",
+    ),
   }),
   outputSchema: z.object({
     success: z.boolean(),
   }),
 
   handler: async (input, ctx) => {
-    // Schema enum already constrained input to the canonical cluster/user-desktop kinds.
-    const kind = input.sandboxProviderKind;
+    // Normalize here too because direct unit tests call handler() without
+    // going through schema parsing.
+    const kind = normalizeSandboxProviderKind(input.sandboxProviderKind);
 
     let vmEntry: Awaited<ReturnType<typeof requireVmEntry>>;
     try {
-      vmEntry = await requireVmEntry(input, ctx);
+      vmEntry = await requireVmEntry(
+        { ...input, sandboxProviderKind: kind },
+        ctx,
+      );
     } catch (err) {
       if (err instanceof Error && err.message === "Virtual MCP not found") {
         return { success: true };

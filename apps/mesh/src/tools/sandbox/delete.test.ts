@@ -41,10 +41,10 @@ const { SANDBOX_DELETE } = await import("./delete");
 
 const BRANCH = "feat/example";
 
-const CLUSTER_ENTRY: SandboxRecord = {
+const HOSTED_ENTRY: SandboxRecord = {
   sandboxHandle: "f9e2fadeb813e08eb00eef6f962be2b2",
   previewUrl: "https://f9e2fadeb813e08eb00eef6f962be2b2.sandboxes.example.com/",
-  sandboxProviderKind: "cluster",
+  sandboxProviderKind: "agent-sandbox",
 };
 
 /**
@@ -158,7 +158,12 @@ describe("SANDBOX_DELETE", () => {
 
   it("calls runner.delete with the entry's handle and removes sandboxMap entry", async () => {
     const metadata: Metadata = {
-      sandboxMap: makeSandboxMap("user-1", BRANCH, "cluster", CLUSTER_ENTRY),
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "agent-sandbox",
+        HOSTED_ENTRY,
+      ),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});
@@ -168,15 +173,15 @@ describe("SANDBOX_DELETE", () => {
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "cluster",
+        sandboxProviderKind: "agent-sandbox",
       },
       ctx,
     );
 
     expect(result).toEqual({ success: true });
     expect(mockDelete).toHaveBeenCalledTimes(1);
-    expect(mockDelete).toHaveBeenCalledWith(CLUSTER_ENTRY.sandboxHandle);
-    expect(lastRequestedKind.value).toBe("cluster");
+    expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
+    expect(lastRequestedKind.value).toBe("agent-sandbox");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -186,9 +191,14 @@ describe("SANDBOX_DELETE", () => {
     expect(updated.sandboxMap["user-1"]).toBeUndefined();
   });
 
-  it("dispatches to the cluster runner when input.sandboxProviderKind is 'cluster'", async () => {
+  it("dispatches to the agent-sandbox runner when input.sandboxProviderKind is 'agent-sandbox'", async () => {
     const metadata: Metadata = {
-      sandboxMap: makeSandboxMap("user-1", BRANCH, "cluster", CLUSTER_ENTRY),
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "agent-sandbox",
+        HOSTED_ENTRY,
+      ),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -197,13 +207,40 @@ describe("SANDBOX_DELETE", () => {
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "cluster",
+        sandboxProviderKind: "agent-sandbox",
       },
       ctx,
     );
 
-    expect(mockDelete).toHaveBeenCalledWith(CLUSTER_ENTRY.sandboxHandle);
-    expect(lastRequestedKind.value).toBe("cluster");
+    expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
+    expect(lastRequestedKind.value).toBe("agent-sandbox");
+  });
+
+  it("normalizes legacy cluster input before lookup and provider dispatch", async () => {
+    const metadata: Metadata = {
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "agent-sandbox",
+        HOSTED_ENTRY,
+      ),
+    };
+    const virtualMcp = makeVirtualMcp("org_1", metadata);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy });
+
+    await SANDBOX_DELETE.handler(
+      {
+        virtualMcpId: "vmcp_1",
+        branch: BRANCH,
+        sandboxProviderKind: "cluster",
+      } as unknown as Parameters<typeof SANDBOX_DELETE.handler>[0],
+      ctx,
+    );
+
+    expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
+    expect(lastRequestedKind.value).toBe("agent-sandbox");
+    expect(updateSpy).toHaveBeenCalledTimes(1);
   });
 
   // Regression guard: a pod that flipped STUDIO_SANDBOX_PROVIDER between start
@@ -211,11 +248,16 @@ describe("SANDBOX_DELETE", () => {
   // The kind is now caller-supplied, so the env value is irrelevant.
   it("dispatches on input.sandboxProviderKind even when STUDIO_SANDBOX_PROVIDER env disagrees", async () => {
     const original = process.env.STUDIO_SANDBOX_PROVIDER;
-    // Env says user-desktop, but the entry was created against cluster.
+    // Env says user-desktop, but the entry was created against agent-sandbox.
     process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
     try {
       const metadata: Metadata = {
-        sandboxMap: makeSandboxMap("user-1", BRANCH, "cluster", CLUSTER_ENTRY),
+        sandboxMap: makeSandboxMap(
+          "user-1",
+          BRANCH,
+          "agent-sandbox",
+          HOSTED_ENTRY,
+        ),
       };
       const virtualMcp = makeVirtualMcp("org_1", metadata);
       const ctx = makeCtx({ virtualMcp });
@@ -224,13 +266,13 @@ describe("SANDBOX_DELETE", () => {
         {
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
-          sandboxProviderKind: "cluster",
+          sandboxProviderKind: "agent-sandbox",
         },
         ctx,
       );
 
-      expect(mockDelete).toHaveBeenCalledWith(CLUSTER_ENTRY.sandboxHandle);
-      expect(lastRequestedKind.value).toBe("cluster");
+      expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
+      expect(lastRequestedKind.value).toBe("agent-sandbox");
     } finally {
       if (original === undefined) delete process.env.STUDIO_SANDBOX_PROVIDER;
       else process.env.STUDIO_SANDBOX_PROVIDER = original;
@@ -243,8 +285,8 @@ describe("SANDBOX_DELETE", () => {
       sandboxMap: makeSandboxMap(
         "other-user",
         BRANCH,
-        "cluster",
-        CLUSTER_ENTRY,
+        "agent-sandbox",
+        HOSTED_ENTRY,
       ),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
@@ -255,7 +297,7 @@ describe("SANDBOX_DELETE", () => {
       {
         virtualMcpId: "vmcp_1",
         branch: BRANCH,
-        sandboxProviderKind: "cluster",
+        sandboxProviderKind: "agent-sandbox",
       },
       ctx,
     );
@@ -272,7 +314,7 @@ describe("SANDBOX_DELETE", () => {
       {
         virtualMcpId: "vmcp_missing",
         branch: BRANCH,
-        sandboxProviderKind: "cluster",
+        sandboxProviderKind: "agent-sandbox",
       },
       ctx,
     );
@@ -294,7 +336,7 @@ describe("SANDBOX_DELETE", () => {
         {
           virtualMcpId: "vmcp_1",
           branch: BRANCH,
-          sandboxProviderKind: "cluster",
+          sandboxProviderKind: "agent-sandbox",
         },
         ctx,
       ),

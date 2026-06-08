@@ -11,6 +11,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { callSandboxTool } from "./call-sandbox-tool";
 
@@ -32,7 +33,7 @@ export interface SandboxStartArgs {
    * via resolveDefaultSandboxProviderKind (link-online ⇒ user-desktop, else
    * the env kind). Used by the v2 RunnerPill to materialize a specific kind.
    */
-  sandboxProviderKind?: "cluster" | "user-desktop";
+  sandboxProviderKind?: SandboxProviderKind;
 }
 
 export interface SandboxStartResult {
@@ -40,7 +41,7 @@ export interface SandboxStartResult {
   sandboxHandle: string;
   branch: string;
   isNewVm: boolean;
-  sandboxProviderKind?: "cluster" | "user-desktop";
+  sandboxProviderKind?: SandboxProviderKind;
 }
 
 const inflightStarts = new Map<string, Promise<SandboxStartResult>>();

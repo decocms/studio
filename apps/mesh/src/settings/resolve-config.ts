@@ -32,19 +32,21 @@ function externalUrlOrNull(url: string | undefined): string | null {
 }
 
 const SANDBOX_PROVIDER_KINDS = new Set<SandboxProviderKind>([
-  "cluster",
+  "agent-sandbox",
   "user-desktop",
 ]);
+type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
 
 function resolveSandboxProviderKind(
   raw: string | undefined,
 ): SandboxProviderKind {
   const kind = (raw && raw.length > 0 ? raw : "user-desktop") as
-    | SandboxProviderKind
+    | LegacySandboxProviderKind
     | string;
+  if (kind === "cluster") return "agent-sandbox";
   if (!SANDBOX_PROVIDER_KINDS.has(kind as SandboxProviderKind)) {
     throw new Error(
-      `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "cluster" or "user-desktop".`,
+      `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "agent-sandbox", legacy "cluster", or "user-desktop".`,
     );
   }
   return kind as SandboxProviderKind;

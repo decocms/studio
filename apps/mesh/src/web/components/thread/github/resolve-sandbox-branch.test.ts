@@ -20,10 +20,10 @@ const sandboxMapFixture = {
 const fallbackMapFixture = {
   user1: {
     "deco/other": {
-      cluster: {
+      "agent-sandbox": {
         sandboxHandle: "h2",
         previewUrl: "http://localhost:2",
-        sandboxProviderKind: "cluster" as const,
+        sandboxProviderKind: "agent-sandbox" as const,
       },
     },
   },
