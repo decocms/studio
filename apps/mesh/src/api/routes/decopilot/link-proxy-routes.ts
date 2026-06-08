@@ -846,7 +846,7 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
             if (done || firstFrameSeen) return;
             markFirstFrame();
             error = new Error(
-              "proxy_no_first_frame: no reply frame within first-frame timeout (request likely dropped — no daemon subscribed)",
+              "proxy_no_first_frame: no reply frame within first-frame timeout (sandbox unreachable or no daemon subscribed)",
             );
             logDiagnostic({
               event: "first_frame_timeout",
