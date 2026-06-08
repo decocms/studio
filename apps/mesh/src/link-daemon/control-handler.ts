@@ -225,13 +225,25 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
             // freed). Return without an error frame.
             if (signal?.aborted) return;
             // Connection refused / reset: the spawned sandbox daemon died or
-            // never bound its port. Surface it — otherwise the cluster only
-            // sees a dropped dispatch and reports `decopilot.finish: failed`.
+            // respawned onto a different port (the cached proxy port is stale).
+            // Yield a real 503 first frame — mirroring the `port == null → 404`
+            // path above — so the cluster's first-frame timer disarms and the
+            // user sees a fast, honest "restarting" error instead of a 15s
+            // `proxy_no_first_frame (no daemon subscribed)` stall.
             console.error(
-              `[control] proxy ${req.method} ${rest} handle=${handle} port=${port} fetch failed:`,
+              `[control] proxy ${req.method} ${rest} handle=${handle} port=${port} fetch failed (yielding 503):`,
               err,
             );
-            throw err;
+            yield {
+              type: "headers" as const,
+              status: 503,
+              headers: { "content-type": "text/plain" },
+            };
+            yield {
+              type: "raw-chunk" as const,
+              data: textBytes("sandbox not reachable (restarting)"),
+            };
+            return;
           }
           if (verbose && (res.status < 200 || res.status >= 300)) {
             console.warn(

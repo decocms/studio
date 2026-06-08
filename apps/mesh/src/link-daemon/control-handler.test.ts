@@ -96,4 +96,58 @@ describe("control-handler", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  test("handleStream yields 503 headers frame when sandbox connect fails", async () => {
+    const throwingFetch = (async () => {
+      throw new Error("connect ECONNREFUSED 127.0.0.1:51812");
+    }) as unknown as typeof fetch;
+    const handler = createControlHandler({
+      provider: fakeProvider(),
+      fetchImpl: throwingFetch,
+    });
+
+    const frames: Array<{ type: string; status?: number }> = [];
+    let bodyText = "";
+    for await (const ev of handler.handleStream({
+      type: "request",
+      reqId: "r",
+      method: "GET",
+      path: "/_sandbox/test-handle/dispatch",
+      headers: {},
+    })) {
+      frames.push(ev as { type: string; status?: number });
+      if (ev.type === "raw-chunk") {
+        bodyText += new TextDecoder().decode(ev.data);
+      }
+    }
+
+    expect(frames[0]).toEqual({
+      type: "headers",
+      status: 503,
+      headers: { "content-type": "text/plain" },
+    });
+    expect(bodyText).toContain("sandbox not reachable");
+  });
+
+  test("handleStream does NOT throw on sandbox connect failure", async () => {
+    const throwingFetch = (async () => {
+      throw new Error("connect ECONNREFUSED 127.0.0.1:51812");
+    }) as unknown as typeof fetch;
+    const handler = createControlHandler({
+      provider: fakeProvider(),
+      fetchImpl: throwingFetch,
+    });
+    const run = (async () => {
+      for await (const _ of handler.handleStream({
+        type: "request",
+        reqId: "r",
+        method: "GET",
+        path: "/_sandbox/test-handle/dispatch",
+        headers: {},
+      })) {
+        /* drain */
+      }
+    })();
+    await expect(run).resolves.toBeUndefined();
+  });
 });
