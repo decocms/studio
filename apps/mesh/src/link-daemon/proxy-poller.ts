@@ -3,10 +3,10 @@
  *
  * The desktop daemon is outbound-only, so the cluster cannot push the sandbox
  * control/events/vm-tools traffic to it. Instead the daemon long-polls
- * `GET /api/:org/links/proxy`; the cluster publishes one `RequestFrame` per
+ * `GET /api/links/proxy`; the cluster publishes one `RequestFrame` per
  * call (queue-group `link-proxy`). The daemon runs the request locally and
  * streams the framed reply back to the cluster as a `duplex:"half"` upload to
- * `POST /api/:org/links/proxy/:reqId/stream`.
+ * `POST /api/links/proxy/:reqId/stream`.
  *
  * Path routing (S3): the proxy channel serves ALL provider ops, not just the
  * `/_sandbox` streaming family. `buildReplyBody` dispatches `/api/sandboxes*`
@@ -55,8 +55,6 @@ const DEFAULT_PROXY_CONCURRENCY = 2;
 export interface ProxyPollerDeps {
   /** Fully-qualified base URL, e.g. "https://studio.deco.cx". */
   baseUrl: string;
-  /** Org slug for the org-scoped routes /api/:org/links/proxy[/...]. */
-  orgSlug: string;
   /**
    * Bearer token resolver. Called before each GET / reply-POST so a refreshed
    * token reaches every request (mirrors work-poller.ts's getAccessToken).
@@ -262,7 +260,7 @@ async function handleProxyRequest(
   frame: RequestFrame,
   deps: Pick<
     ProxyPollerDeps,
-    "baseUrl" | "orgSlug" | "getAccessToken" | "controlHandler" | "fetchImpl"
+    "baseUrl" | "getAccessToken" | "controlHandler" | "fetchImpl"
   > & { signal: AbortSignal },
 ): Promise<void> {
   const fetcher = deps.fetchImpl ?? fetch;
@@ -286,7 +284,7 @@ async function handleProxyRequest(
     }
 
     const body = buildReplyBody(deps.controlHandler, frame, combined);
-    const url = `${deps.baseUrl}/api/${deps.orgSlug}/links/proxy/${reqId}/stream`;
+    const url = `${deps.baseUrl}/api/links/proxy/${reqId}/stream`;
 
     try {
       const res = await fetcher(url, {
@@ -405,13 +403,13 @@ export async function runOverlapScheduler(
  * Run the proxy-poll loop with continuous overlap. Resolves when `signal` is
  * aborted and all in-flight polls have settled.
  *
- * Wires the real HTTP `pollOnce` (GET /api/:org/links/proxy) and the detached
+ * Wires the real HTTP `pollOnce` (GET /api/links/proxy) and the detached
  * `handle` (handleProxyRequest) into `runOverlapScheduler`.
  */
 export async function runProxyPollLoop(deps: ProxyPollerDeps): Promise<void> {
   const fetcher = deps.fetchImpl ?? fetch;
   const concurrency = deps.concurrency ?? DEFAULT_PROXY_CONCURRENCY;
-  const url = `${deps.baseUrl}/api/${deps.orgSlug}/links/proxy`;
+  const url = `${deps.baseUrl}/api/links/proxy`;
 
   const pollOnce = async (): Promise<RequestFrame | null> => {
     const token = await deps.getAccessToken();
@@ -446,7 +444,6 @@ export async function runProxyPollLoop(deps: ProxyPollerDeps): Promise<void> {
     // Detached — fire-and-forget. handleProxyRequest never throws.
     void handleProxyRequest(frame, {
       baseUrl: deps.baseUrl,
-      orgSlug: deps.orgSlug,
       getAccessToken: deps.getAccessToken,
       controlHandler: deps.controlHandler,
       fetchImpl: deps.fetchImpl,
