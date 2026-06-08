@@ -75,7 +75,7 @@ function makeLink(): LinkClaim {
 function stubCtx(
   link: LinkClaim | null,
   hints?: {
-    sandboxPreference?: "cluster-default" | "user-desktop";
+    sandboxPreference?: "agent-sandbox" | "cluster-default" | "user-desktop";
     linkForCurrentRun?: LinkClaim;
   },
 ): StudioContext {
@@ -237,6 +237,23 @@ describe("resolveSandboxProvider", () => {
       });
       expect(kind).toBe("user-desktop");
       expect(provider).toBe(stubDesktop);
+    } finally {
+      process.env.STUDIO_SANDBOX_PROVIDER = prev;
+    }
+  });
+
+  test("sandboxPreference=agent-sandbox + env=user-desktop still binds hosted provider", async () => {
+    const prev = process.env.STUDIO_SANDBOX_PROVIDER;
+    process.env.STUDIO_SANDBOX_PROVIDER = "user-desktop";
+    try {
+      const ctx = stubCtx(makeLink(), { sandboxPreference: "agent-sandbox" });
+      const { kind, provider } = await resolveSandboxProvider(ctx, {
+        userId: "u-1",
+        branch: "deco/foo",
+        virtualMcpMetadata: null,
+      });
+      expect(kind).toBe("agent-sandbox");
+      expect(provider).toBe(stubAgentSandbox);
     } finally {
       process.env.STUDIO_SANDBOX_PROVIDER = prev;
     }

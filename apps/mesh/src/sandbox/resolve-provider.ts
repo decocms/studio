@@ -73,9 +73,14 @@ export async function resolveSandboxProvider(
   }
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
-  //    without touching sandboxMap. `user-desktop` carries its link inline;
-  //    `cluster-default` means "use the provider the env/default policy
-  //    points to" (usually hosted `agent-sandbox` outside local dev).
+  //    without touching sandboxMap. `agent-sandbox` is explicit hosted
+  //    execution; `user-desktop` carries its link inline; `cluster-default`
+  //    means "use the provider the env/default policy points to" (legacy
+  //    automation/default behavior).
+  if (ctx.sandboxPreference === "agent-sandbox") {
+    const provider = await bindProviderForKind(ctx, userId, "agent-sandbox");
+    return { provider, kind: "agent-sandbox" };
+  }
   if (ctx.sandboxPreference === "user-desktop" && ctx.linkForCurrentRun) {
     const provider = await buildDesktopProvider(ctx, userId);
     return { provider, kind: "user-desktop" };

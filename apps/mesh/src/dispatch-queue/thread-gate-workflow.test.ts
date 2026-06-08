@@ -36,41 +36,39 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
         messageStorageVersion: 2,
       }),
     ).toBe(true);
   });
 
-  it("routes a cluster target to the in-cluster ws path (NOT pull)", () => {
-    // The reverted cutover (40562b383) wrongly sent these to pull. Cloud /
-    // cluster threads have no desktop daemon to drain the work queue.
+  it("routes an agent-sandbox target to the hosted ws path (NOT pull)", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "cluster",
+        sandboxProviderKind: "agent-sandbox",
         messageStorageVersion: 2,
       }),
     ).toBe(false);
   });
 
-  it("routes an undefined target (legacy path) to the in-cluster ws path", () => {
+  it("routes an undefined target (legacy path) to the hosted ws path", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: undefined,
+        sandboxProviderKind: undefined,
         messageStorageVersion: 2,
       }),
     ).toBe(false);
   });
 
-  it("routes a user-desktop target on a v1 thread to the ws path (v2 conjunct)", () => {
+  it("routes a user-desktop target on a v1 thread to the push path (v2 conjunct)", () => {
     // Belt-and-suspenders: a v1 user-desktop thread has no v2 ingest path, so
     // pull would silently corrupt. The version conjunct forces ws fallback.
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
         messageStorageVersion: 1,
       }),
     ).toBe(false);
@@ -80,7 +78,7 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
     expect(
       decidePullDispatch({
         isPullCapable: false,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
         messageStorageVersion: 2,
       }),
     ).toBe(false);
@@ -90,14 +88,14 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
         messageStorageVersion: null,
       }),
     ).toBe(false);
     expect(
       decidePullDispatch({
         isPullCapable: true,
-        targetRunsIn: "user-desktop",
+        sandboxProviderKind: "user-desktop",
         messageStorageVersion: undefined,
       }),
     ).toBe(false);

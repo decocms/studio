@@ -93,28 +93,28 @@ export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
  *
  * Pull fires only when ALL of:
  *   1. the runtime is pull-capable (NATS work queue + pullDispatchFn wired);
- *   2. the dispatch target's `runsIn === 'user-desktop'` — i.e. POST-time
- *      `resolveDispatchTarget` found a LIVE desktop link (the gate trusts the
- *      pre-resolved target and never re-probes `linkClaimRegistry`, which would
- *      drift on replay if the link went offline);
+ *   2. the dispatch target's `sandboxProviderKind === 'user-desktop'` — i.e.
+ *      POST-time `resolveDispatchTarget` found a LIVE desktop link (the gate
+ *      trusts the pre-resolved target and never re-probes `linkClaimRegistry`,
+ *      which would drift on replay if the link went offline);
  *   3. the thread is message_storage_version 2 — the only ingest path that can
  *      consume a pull round-trip. A v1 user-desktop thread routed to pull would
  *      have no v2 ingest → silent corruption; the conjunct prevents that.
  *
- * Cloud/cluster threads (`runsIn === 'cluster'`) and undefined targets (legacy
- * paths) all yield `false` → in-cluster ws fallback. This is the fix for the
- * reverted NATS-gated cutover (40562b383), which keyed only on pull-capability
- * and routed EVERY chat to a pull work-queue nobody drains.
+ * Hosted agent-sandbox threads and undefined targets (legacy paths) all yield
+ * `false` → hosted ws fallback. This is the fix for the reverted NATS-gated
+ * cutover (40562b383), which keyed only on pull-capability and routed EVERY
+ * chat to a pull work-queue nobody drains.
  */
-export function decidePullDispatch(args: {
+export function decidePullDispatch(input: {
   isPullCapable: boolean;
-  targetRunsIn: DispatchTarget["runsIn"] | undefined;
+  sandboxProviderKind?: DispatchTarget["sandboxProviderKind"];
   messageStorageVersion: number | null | undefined;
 }): boolean {
   return (
-    args.isPullCapable &&
-    args.targetRunsIn === "user-desktop" &&
-    args.messageStorageVersion === 2
+    input.isPullCapable &&
+    input.sandboxProviderKind === "user-desktop" &&
+    input.messageStorageVersion === 2
   );
 }
 
@@ -177,7 +177,7 @@ export interface ThreadGateRuntime {
   runTimeoutMs?: number;
   /**
    * Pull-transport dependencies (Phase B). When present and the dispatch
-   * target's `runsIn === 'user-desktop'` AND the thread's
+   * target's `sandboxProviderKind === 'user-desktop'` AND the thread's
    * message_storage_version === 2 (Phase C-bis S6 target-gate), the gate uses
    * these instead of dispatchRunFn.
    */
@@ -243,33 +243,36 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
   // (routes.ts `resolveDispatchTarget`) and forwarded on `request.target`; we
   // key off it here instead of re-probing `linkClaimRegistry` — re-resolving at
   // replay time would drift if the link went offline between enqueue and
-  // dispatch. Cloud/cluster threads (no desktop daemon) yield
-  // `runsIn === "cluster"` → in-cluster fallback; an undefined target (legacy
-  // paths) also falls back. This is the fix for the reverted NATS-gated cutover
-  // (40562b383), which routed EVERY chat to a pull work-queue nobody drains.
+  // dispatch. Hosted agent-sandbox threads (no desktop daemon) yield
+  // `sandboxProviderKind === "agent-sandbox"` → hosted fallback; an undefined
+  // target (legacy paths) also falls back. This is the fix for the reverted
+  // NATS-gated cutover (40562b383), which routed EVERY chat to a pull
+  // work-queue nobody drains.
   //
   // The v2 conjunct stays as belt-and-suspenders: a v1 user-desktop thread
   // routed to pull would have no v2 ingest path → silent corruption. We only
   // need the DB fetch to read `message_storage_version`, so skip it entirely
   // when pull isn't wired (no-NATS/test branch).
   const isPullCapable = rt.pullDispatchFn != null && rt.workQueue != null;
-  const isUserDesktopTarget = request.target?.runsIn === "user-desktop";
+  const isUserDesktopTarget =
+    request.target?.sandboxProviderKind === "user-desktop";
   const thread =
     isPullCapable && isUserDesktopTarget
       ? await meshCtx.storage.threads.get(request.taskId ?? ctx.threadId)
       : null;
   const isPull = decidePullDispatch({
     isPullCapable,
-    targetRunsIn: request.target?.runsIn,
+    sandboxProviderKind: request.target?.sandboxProviderKind,
     messageStorageVersion: thread?.message_storage_version,
   });
 
-  // Observability: a user-desktop target on a non-v2 thread is a config gap —
-  // it would silently fall back to the in-cluster path (correct, but masks the
-  // v1 thread that should have been migrated). Log it so the mismatch surfaces.
+  // Observability: a user-desktop target on a non-v2 thread is a config gap.
+  // It falls back from pull to the push dispatch path, still using the
+  // user-desktop target, but masks the v1 thread that should have been
+  // migrated. Log it so the mismatch surfaces.
   if (isPullCapable && isUserDesktopTarget && !isPull) {
     console.warn(
-      "[threadGate] user-desktop target on non-v2 thread — falling back to in-cluster dispatch",
+      "[threadGate] user-desktop target on non-v2 thread — falling back to push dispatch",
       {
         threadId: request.taskId ?? ctx.threadId,
         messageStorageVersion: thread?.message_storage_version ?? null,

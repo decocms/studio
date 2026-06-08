@@ -163,7 +163,7 @@ export interface HarnessProcessLocal {
 
   /** Cluster-side cwd resolver for github-linked agents. Returns the
    *  per-branch sandbox workdir; CLI harnesses use this when running
-   *  in-cluster. When undefined (or returns undefined), the harness
+   *  in hosted execution. When undefined (or returns undefined), the harness
    *  falls back to `process.cwd()`. */
   resolveCwd?: () => Promise<string | undefined>;
 
@@ -203,7 +203,7 @@ export interface HarnessStreamInput {
     /**
      * Injected main chat-model secret for desktop decopilot activation.
      *
-     * Only present when `target.runsIn === "user-desktop"` AND
+     * Only present when `sandboxProviderKind === "user-desktop"` AND
      * `harnessId === "decopilot"`. The desktop activates its MeshProvider
      * from this field instead of reading from vault (which is cluster-only).
      * Sub-provider keys (image, deep-research) are NEVER included here —

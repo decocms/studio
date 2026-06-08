@@ -283,7 +283,7 @@ describe("handleLocalDispatch", () => {
 
   // ── Test: harnessId embedded in harnessInput takes priority over agent.id
 
-  it("reads harnessId from harnessInput when present", async () => {
+  it("reads harnessId from harnessInput when agent.id is a virtual MCP id", async () => {
     let capturedHarnessId: string | null = null;
 
     const fetchImpl = async (
@@ -318,7 +318,8 @@ describe("handleLocalDispatch", () => {
       ...validWorkItem,
       harnessInput: {
         ...validWorkItem.harnessInput,
-        harnessId: "codex", // embedded in the record
+        agent: { id: "vmcp_123" },
+        harnessId: "decopilot",
       },
     };
 
@@ -334,7 +335,7 @@ describe("handleLocalDispatch", () => {
     await handleLocalDispatch(workWithEmbeddedHarnessId, deps);
     // capturedHarnessId is mutated inside the async fetchImpl closure —
     // TypeScript does not narrow it; assert non-null explicitly.
-    expect(capturedHarnessId!).toBe("codex");
+    expect(capturedHarnessId!).toBe("decopilot");
   });
 
   // ── Test: messagesRef forwarded to sandbox dispatch ────────────────────
