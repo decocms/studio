@@ -87,10 +87,17 @@ function logProxyPoller(
   event: string,
   fields: Record<string, unknown> = {},
 ): void {
-  console.log(`[proxy-poller] ${event}`, {
+  console.log(formatProxyPollerLogLine(event, fields));
+}
+
+export function formatProxyPollerLogLine(
+  event: string,
+  fields: Record<string, unknown> = {},
+): string {
+  return `[proxy-poller] ${event} ${JSON.stringify({
     event,
     ...fields,
-  });
+  })}`;
 }
 
 interface ReplyBodyDiagnosticEvent {
