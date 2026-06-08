@@ -1779,11 +1779,25 @@ export async function createApp(options: CreateAppOptions = {}) {
   if (natsProvider != null) {
     const proxyNatsAdapter: ProxyNatsAdapter = {
       publish(subject, data) {
-        natsProvider?.getConnection()?.publish(subject, data);
+        const nc = natsProvider?.getConnection();
+        if (!nc) {
+          console.warn("[link-proxy.nats] publish skipped: nats unavailable", {
+            subject,
+            bytes: data.byteLength,
+          });
+          return;
+        }
+        nc.publish(subject, data);
       },
       subscribe(subject, onMessage) {
         const nc = natsProvider?.getConnection();
-        if (!nc) return () => {};
+        if (!nc) {
+          console.warn(
+            "[link-proxy.nats] subscribe skipped: nats unavailable",
+            { subject },
+          );
+          return () => {};
+        }
         const sub = nc.subscribe(subject);
         void (async () => {
           for await (const m of sub) {

@@ -108,6 +108,37 @@ export interface ProxyNatsAdapter {
   subscribe(subject: string, onMessage: (data: Uint8Array) => void): () => void;
 }
 
+export interface ProxyDispatchDiagnosticEvent {
+  event: string;
+  reqId: string;
+  userSub: string;
+  method: string;
+  path: string;
+  elapsedMs?: number;
+  subject?: string;
+  frameType?: string;
+  status?: number;
+  publishCount?: number;
+  queueDepth?: number;
+  error?: string;
+}
+
+function defaultProxyDispatchDiagnosticLog(
+  event: ProxyDispatchDiagnosticEvent,
+): void {
+  console.log(`[link-proxy.dispatch] ${event.event}`, event);
+}
+
+function logProxyRoute(
+  event: string,
+  fields: Record<string, unknown> = {},
+): void {
+  console.log(`[link-proxy.route] ${event}`, {
+    event,
+    ...fields,
+  });
+}
+
 export interface LinkProxyDeps {
   /** Native NATS connection getter (queue-group subscriptions need it). */
   getConnection: () => NatsConnection | null;
@@ -137,9 +168,14 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
     }
 
     const nc = deps.getConnection();
-    if (!nc) return c.json({ error: "proxy channel unavailable" }, 503);
+    if (!nc) {
+      logProxyRoute("poll_nats_unavailable", { userId });
+      return c.json({ error: "proxy channel unavailable" }, 503);
+    }
 
     const subject = buildRequestSubject(userId);
+    const startedAt = Date.now();
+    logProxyRoute("poll_subscribe", { userId, subject });
     // Queue group + max:1 — each published RequestFrame goes to exactly ONE of
     // the daemon's overlapping GETs (landmine #5).
     const sub = nc.subscribe(subject, {
@@ -148,6 +184,11 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
     });
 
     const abortListener = () => {
+      logProxyRoute("poll_client_aborted", {
+        userId,
+        subject,
+        elapsedMs: Date.now() - startedAt,
+      });
       try {
         sub.unsubscribe();
       } catch {
@@ -186,10 +227,32 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
       ]);
 
       if (result !== null) {
+        try {
+          const frame = JSON.parse(result) as RequestFrame;
+          logProxyRoute("poll_delivered", {
+            userId,
+            subject,
+            reqId: frame.reqId,
+            method: frame.method,
+            path: frame.path,
+            elapsedMs: Date.now() - startedAt,
+          });
+        } catch {
+          logProxyRoute("poll_delivered_malformed", {
+            userId,
+            subject,
+            elapsedMs: Date.now() - startedAt,
+          });
+        }
         // Re-emit as JSON. Parse-then-stringify would re-validate but also lose
         // forward-compatible fields; the daemon owns validation, so pass through.
         return c.body(result, 200, { "content-type": "application/json" });
       }
+      logProxyRoute("poll_timeout", {
+        userId,
+        subject,
+        elapsedMs: Date.now() - startedAt,
+      });
       return c.body(null, 204);
     } finally {
       if (reqSignal && !reqSignal.aborted) {
@@ -215,12 +278,24 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
     }
 
     const nc = deps.getConnection();
-    if (!nc) return c.json({ error: "proxy channel unavailable" }, 503);
+    if (!nc) {
+      logProxyRoute("reply_nats_unavailable", { userId, reqId });
+      return c.json({ error: "proxy channel unavailable" }, 503);
+    }
 
     const body = c.req.raw.body;
     if (!body) return c.json({ error: "missing body" }, 400);
 
     const replySubject = buildReplySubject(reqId);
+    const startedAt = Date.now();
+    let frameCount = 0;
+    let byteCount = 0;
+    let firstFrameType: string | null = null;
+    logProxyRoute("reply_stream_start", {
+      userId,
+      reqId,
+      replySubject,
+    });
 
     // Stream-consume the NDJSON body frame-by-frame WITHOUT buffering (landmine
     // #1) and core-NATS-publish each decoded frame to the reply subject. NEVER
@@ -229,12 +304,23 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
     // it first and we publish in arrival order.
     try {
       for await (const line of splitNdjsonLines(body)) {
+        frameCount++;
+        byteCount += Buffer.byteLength(line, "utf8");
         let frame: ProxyReplyFrame;
         try {
           frame = decodeProxyReplyFrame(line);
         } catch (err) {
           // A malformed frame is fatal for this reply: surface an error frame
           // to the awaiter rather than silently dropping it.
+          logProxyRoute("reply_bad_frame", {
+            userId,
+            reqId,
+            replySubject,
+            frameCount,
+            byteCount,
+            elapsedMs: Date.now() - startedAt,
+            error: err instanceof Error ? err.message : String(err),
+          });
           publishReplyFrame(nc, replySubject, {
             type: "error",
             code: "bad_frame",
@@ -242,17 +328,47 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
           });
           return c.json({ error: "bad frame" }, 400);
         }
+        if (firstFrameType === null) {
+          firstFrameType = frame.type;
+          logProxyRoute("reply_first_frame", {
+            userId,
+            reqId,
+            replySubject,
+            frameType: frame.type,
+            ...(frame.type === "headers" ? { status: frame.status } : {}),
+            elapsedMs: Date.now() - startedAt,
+          });
+        }
         publishReplyFrame(nc, replySubject, frame);
       }
       // Clean body end. The daemon is expected to send its own terminal
       // `end`/`error` frame; if it didn't (e.g. truncated stream that still
       // closed cleanly without a terminal), we don't synthesize one here —
       // S5's presence-expiry fanout is the backstop for a vanished daemon.
+      logProxyRoute("reply_stream_complete", {
+        userId,
+        reqId,
+        replySubject,
+        frameCount,
+        byteCount,
+        firstFrameType,
+        elapsedMs: Date.now() - startedAt,
+      });
       return c.body(null, 204);
     } catch (err) {
       // Landmine #8 (POST-drop half): the upload connection broke mid-stream.
       // Publish an error frame so the awaiting DispatchFn throws instead of
       // hanging forever (full presence-expiry 502 fanout is S5).
+      logProxyRoute("reply_stream_dropped", {
+        userId,
+        reqId,
+        replySubject,
+        frameCount,
+        byteCount,
+        firstFrameType,
+        elapsedMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      });
       publishReplyFrame(nc, replySubject, {
         type: "error",
         code: "reply_stream_dropped",
@@ -456,6 +572,11 @@ export interface CreateProxyDispatchDeps {
    * unit tests can use a tiny value.
    */
   republishIntervalMs?: number;
+  /**
+   * Diagnostic sink for request/reply correlation. Defaults to console logging
+   * in production; tests inject an array-backed sink.
+   */
+  diagnosticLog?: (event: ProxyDispatchDiagnosticEvent) => void;
 }
 
 /**
@@ -497,6 +618,28 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
 
         const reqId = crypto.randomUUID();
         const replySubject = buildReplySubject(reqId);
+        const startedAt = Date.now();
+        const diagnosticLog =
+          deps.diagnosticLog ?? defaultProxyDispatchDiagnosticLog;
+        const logDiagnostic = (
+          event: Omit<
+            ProxyDispatchDiagnosticEvent,
+            "reqId" | "userSub" | "method" | "path" | "elapsedMs"
+          >,
+        ): void => {
+          try {
+            diagnosticLog({
+              reqId,
+              userSub,
+              method: req.method,
+              path: req.path,
+              elapsedMs: Date.now() - startedAt,
+              ...event,
+            });
+          } catch {
+            // Diagnostics must never affect dispatch.
+          }
+        };
 
         const queue: ProxyReplyFrame[] = [];
         let resolve: (() => void) | null = null;
@@ -546,11 +689,33 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
           // A real frame landed: disable the first-frame bound. SSE replies
           // legitimately have long gaps between subsequent frames, so we do NOT
           // re-arm or add a per-frame idle timeout.
+          const isFirstReplyFrame = !firstFrameSeen;
+          if (isFirstReplyFrame) {
+            logDiagnostic({
+              event: "first_reply_frame",
+              subject: replySubject,
+              queueDepth: queue.length,
+            });
+          }
           markFirstFrame();
           try {
-            queue.push(decodeProxyReplyFrame(decoder.decode(data)));
+            const frame = decodeProxyReplyFrame(decoder.decode(data));
+            queue.push(frame);
+            if (isFirstReplyFrame) {
+              logDiagnostic({
+                event: "first_reply_frame_decoded",
+                subject: replySubject,
+                frameType: frame.type,
+                ...(frame.type === "headers" ? { status: frame.status } : {}),
+              });
+            }
           } catch (err) {
             error = err instanceof Error ? err : new Error(String(err));
+            logDiagnostic({
+              event: "reply_frame_decode_error",
+              subject: replySubject,
+              error: error.message,
+            });
             done = true;
           }
           wake();
@@ -579,6 +744,10 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
               error = new Error(
                 "link_unavailable: daemon presence lost (claim expired or disappeared)",
               );
+              logDiagnostic({
+                event: "presence_lost",
+                error: error.message,
+              });
               done = true;
               wake();
             }
@@ -618,6 +787,11 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
             encoder.encode(encodeControlFrame({ type: "cancel_req", reqId })),
           );
           error = new Error("dispatch aborted");
+          logDiagnostic({
+            event: "caller_aborted",
+            subject: buildControlSubject(userSub),
+            error: error.message,
+          });
           cleanup();
           wake();
         };
@@ -637,15 +811,29 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
         // absent, skip the publish (the subject has no subscriber — core NATS
         // would drop it) and let the loop below throw the fail-fast error.
         if (!done) {
+          let publishCount = 1;
           try {
             deps.nats.publish(
               buildRequestSubject(userSub),
               encoder.encode(JSON.stringify(requestFrame)),
             );
+            logDiagnostic({
+              event: "request_published",
+              subject: buildRequestSubject(userSub),
+              publishCount,
+            });
           } catch (err) {
+            const publishError =
+              err instanceof Error ? err : new Error(String(err));
+            logDiagnostic({
+              event: "request_publish_failed",
+              subject: buildRequestSubject(userSub),
+              publishCount,
+              error: publishError.message,
+            });
             opts?.signal?.removeEventListener("abort", onAbort);
             cleanup();
-            throw err instanceof Error ? err : new Error(String(err));
+            throw publishError;
           }
 
           // ARM the first-frame timeout AFTER the publish. Core NATS drops a
@@ -660,6 +848,12 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
             error = new Error(
               "proxy_no_first_frame: no reply frame within first-frame timeout (request likely dropped — no daemon subscribed)",
             );
+            logDiagnostic({
+              event: "first_frame_timeout",
+              subject: replySubject,
+              publishCount,
+              error: error.message,
+            });
             done = true;
             wake();
           }, firstFrameTimeoutMs);
@@ -684,11 +878,23 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
                 return;
               }
               try {
+                publishCount++;
                 deps.nats.publish(
                   buildRequestSubject(userSub),
                   encoder.encode(JSON.stringify(requestFrame)),
                 );
-              } catch {
+                logDiagnostic({
+                  event: "request_republished",
+                  subject: buildRequestSubject(userSub),
+                  publishCount,
+                });
+              } catch (err) {
+                logDiagnostic({
+                  event: "request_republish_failed",
+                  subject: buildRequestSubject(userSub),
+                  publishCount,
+                  error: err instanceof Error ? err.message : String(err),
+                });
                 // Best-effort — presence-loss and the first-frame timeout cover
                 // a genuinely dead channel.
               }
@@ -710,12 +916,23 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
             if (frame.type === "chunk") {
               yield { data: frame.data };
             } else if (frame.type === "headers") {
+              logDiagnostic({
+                event: "headers_frame_yielded",
+                frameType: frame.type,
+                status: frame.status,
+              });
               yield {
                 headers: { status: frame.status, headers: frame.headers },
               };
             } else if (frame.type === "end") {
+              logDiagnostic({ event: "terminal_end", frameType: frame.type });
               return;
             } else if (frame.type === "error") {
+              logDiagnostic({
+                event: "terminal_error",
+                frameType: frame.type,
+                error: `${frame.code}: ${frame.message}`,
+              });
               throw new Error(`${frame.code}: ${frame.message}`);
             }
           }

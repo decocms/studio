@@ -326,6 +326,67 @@ describe("createProxyDispatch — daemon-vanished fail-fast (S5, landmine #8)", 
 });
 
 describe("createProxyDispatch — first-frame timeout (no-subscriber fail-fast)", () => {
+  test("logs publish and first-frame timeout diagnostics with reqId correlation", async () => {
+    const f = makeFakeNats();
+    const diagnostics: Array<{ event: string; reqId?: string }> = [];
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      firstFrameTimeoutMs: 30,
+      diagnosticLog: (event) => diagnostics.push(event),
+    });
+
+    const run = (async () => {
+      for await (const _ev of dispatch("user-1", baseReq)) {
+        /* drain */
+      }
+    })();
+
+    await expect(run).rejects.toThrow(/proxy_no_first_frame/);
+
+    const published = diagnostics.find(
+      (event) => event.event === "request_published",
+    );
+    const timedOut = diagnostics.find(
+      (event) => event.event === "first_frame_timeout",
+    );
+
+    expect(published?.reqId).toBeDefined();
+    expect(timedOut?.reqId).toBe(published?.reqId);
+  });
+
+  test("logs the first reply frame once and includes the same reqId", async () => {
+    const f = makeFakeNats();
+    const diagnostics: Array<{ event: string; reqId?: string }> = [];
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      firstFrameTimeoutMs: 1_000,
+      diagnosticLog: (event) => diagnostics.push(event),
+    });
+
+    const run = (async () => {
+      for await (const _ev of dispatch("user-1", baseReq)) {
+        /* drain */
+      }
+    })();
+    await Promise.resolve();
+
+    const replySubject = f.ops.find((o) => o.kind === "subscribe")!.subject;
+    f.deliver(replySubject, { type: "headers", status: 200, headers: {} });
+    f.deliver(replySubject, { type: "chunk", data: "QQ==" });
+    f.deliver(replySubject, { type: "end" });
+    await run;
+
+    const published = diagnostics.find(
+      (event) => event.event === "request_published",
+    );
+    const firstFrames = diagnostics.filter(
+      (event) => event.event === "first_reply_frame",
+    );
+
+    expect(firstFrames).toHaveLength(1);
+    expect(firstFrames[0]?.reqId).toBe(published?.reqId);
+  });
+
   test("rejects with proxy_no_first_frame when NO reply frame ever arrives", async () => {
     const f = makeFakeNats();
     // Tiny injected timeout so the test is fast — never sleep the real 15 s.
