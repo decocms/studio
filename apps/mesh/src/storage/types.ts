@@ -330,6 +330,36 @@ export interface OrgFileConfigTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
+/**
+ * Org filesystem manifest row. Indexes the org-prefixed object-storage
+ * keyspace under `_fs/{volume}/...` with path/tree semantics. Bytes live in
+ * object storage; this carries metadata + the change-feed cursor (`seq`) and
+ * conflict oracle (`content_hash`). See `.context/org-filesystem-proposal.md`.
+ */
+export interface OrgFsEntryTable {
+  organization_id: string;
+  volume: string;
+  /** Normalized path, no leading/trailing slash. "" is the volume root. */
+  path: string;
+  /** Parent directory path ("" for top-level). Drives listDir. */
+  parent: string;
+  kind: "file" | "dir";
+  /** sha256 of the bytes for files; null for dirs. */
+  content_hash: string | null;
+  // bigint columns come back from pg as strings; coerce in the storage layer.
+  size: ColumnType<string, string | number | undefined, string | number>;
+  seq: ColumnType<string, string | number | undefined, string | number>;
+  deleted_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 /** Public DTO for a file config — never exposes access key / secret key. */
 export interface FileConfigInfo {
   id: string;
@@ -1398,6 +1428,9 @@ export interface Database {
 
   // Org-scoped S3 bucket configurations
   org_file_configs: OrgFileConfigTable;
+
+  // Org filesystem manifest (indexes the `_fs/{volume}/...` keyspace)
+  org_fs_entry: OrgFsEntryTable;
 
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;

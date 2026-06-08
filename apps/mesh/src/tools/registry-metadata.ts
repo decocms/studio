@@ -1368,10 +1368,17 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
  * older bake-in model. They are now redundant but harmless — the runtime
  * grant supersedes them. No new backfill migrations are needed.)
  */
-export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set(
-  PERMISSION_CAPABILITIES.find((c) => c.id === BASIC_USAGE_CAPABILITY_ID)
-    ?.tools ?? [],
-);
+export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set([
+  ...(PERMISSION_CAPABILITIES.find((c) => c.id === BASIC_USAGE_CAPABILITY_ID)
+    ?.tools ?? []),
+  // Organization filesystem HTTP-API resource keys (NOT MCP tools, so they
+  // can't live in the typed capability `tools` list). Decision A: every org
+  // member may read+write every volume. Moving to per-volume ACL later =
+  // drop these from the basic set and gate by role/permission, no route
+  // changes. See `.context/org-filesystem-proposal.md`.
+  "ORG_FS_READ",
+  "ORG_FS_WRITE",
+]);
 
 /**
  * Gated capability ids additionally granted to the built-in `user` role, beyond

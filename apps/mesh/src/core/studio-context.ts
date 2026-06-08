@@ -268,6 +268,8 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
+import type { OrgFsEntryStorage } from "@/storage/org-fs";
+import type { OrgFs } from "@/file-storage/org-fs";
 import type { KVStorage } from "@/storage/kv";
 import type { InterestsStorage } from "@/storage/interests";
 import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
@@ -300,6 +302,7 @@ export interface MeshStorage {
   aiProviderKeys: AIProviderKeyStorage;
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
+  orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   automations: AutomationsStorage;
   triggerCallbackTokens: TriggerCallbackTokenStorage;
@@ -394,6 +397,10 @@ export interface StudioContext extends HarnessContext {
 
   // Object storage (S3-compatible) — null when S3 isn't configured or no org scope
   objectStorage: BoundObjectStorage | null;
+
+  // Org filesystem (path/tree view over object storage) — null when there's no
+  // object storage or no org scope. See `.context/org-filesystem-proposal.md`.
+  orgFs: OrgFs | null;
 
   // External API keys (optional, from settings)
   firecrawlApiKey?: string;

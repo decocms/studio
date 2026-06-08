@@ -459,6 +459,8 @@ import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
+import { OrgFsEntryStorage } from "@/storage/org-fs";
+import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { ModelListCache } from "@/ai-providers/model-list-cache";
@@ -1168,6 +1170,7 @@ export async function createStudioContextFactory(
     ),
     secrets: new SecretStorage(config.db, vault),
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
+    orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     automations: createAutomationsStorage(config.db),
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
@@ -1307,6 +1310,13 @@ export async function createStudioContextFactory(
         ? createBoundObjectStorage(s3Service, organization.id)
         : new DevObjectStorage(organization.id, baseUrl);
 
+    // Org filesystem: path/tree view over the org-prefixed keyspace. Needs both
+    // object storage and an org scope.
+    const orgFs =
+      organization && objectStorage
+        ? new OrgFs(objectStorage, storage.orgFsEntries, organization.id)
+        : null;
+
     // Hoist inline data: media to object storage on connection/virtual-MCP
     // writes (and out of thread message parts) so base64 blobs never land on a
     // row or get re-inlined into COLLECTION_*_LIST results. Decorate here — not
@@ -1333,6 +1343,7 @@ export async function createStudioContextFactory(
       meter: config.observability.meter,
       baseUrl,
       objectStorage,
+      orgFs,
       metadata: {
         requestId: crypto.randomUUID(),
         timestamp: new Date(),
