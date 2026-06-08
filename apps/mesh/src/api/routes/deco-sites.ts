@@ -22,6 +22,7 @@ interface SupabaseSite {
   name: string;
   domains: { domain: string; production: boolean }[] | null;
   thumb_url: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 async function supabaseGet<T>(
@@ -545,7 +546,7 @@ export const createDecoSitesOrgRoutes = () => {
       const sites = await supabaseGet<SupabaseSite>(
         supabaseUrl,
         serviceKey,
-        `sites?team=in.(${teamIds.join(",")})&select=name,domains,thumb_url&order=id`,
+        `sites?team=in.(${teamIds.join(",")})&select=name,domains,thumb_url,metadata&order=id`,
       );
 
       return c.json({ sites });

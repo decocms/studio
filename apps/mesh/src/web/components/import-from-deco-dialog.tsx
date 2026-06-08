@@ -10,10 +10,7 @@ import {
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useCanPinAgentsForOrg } from "@/web/hooks/use-can-pin-agents-for-org";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
-import {
-  DECO_SITES_GITHUB_OWNER,
-  decoSiteGithubRepo,
-} from "@/shared/deco-sites-github";
+import { resolveDecoSiteGithubRepo } from "@/shared/deco-sites-github";
 import {
   fetchGithubInstallations,
   findGithubInstallation,
@@ -39,6 +36,7 @@ interface DecoSite {
   name: string;
   domains: { domain: string; production: boolean }[] | null;
   thumb_url: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 interface DecoSitesResponse {
@@ -155,20 +153,25 @@ export function ImportFromDecoDialog({
         (req) => client.callTool(req),
         githubConnection.id,
       );
-      const decoSitesInstallation = findGithubInstallation(
+      const site = sites.find((s) => s.name === siteName);
+      if (!site) {
+        throw new Error("Selected site is no longer available");
+      }
+
+      const githubRepo = resolveDecoSiteGithubRepo(siteName, site.metadata);
+
+      const githubInstallation = findGithubInstallation(
         installations,
-        DECO_SITES_GITHUB_OWNER,
+        githubRepo.owner,
       );
-      if (!decoSitesInstallation) {
+      if (!githubInstallation) {
         const installUrl = appSlug
           ? `https://github.com/apps/${appSlug}/installations/new`
           : "https://github.com/settings/installations";
         throw new Error(
-          `Install the GitHub App on the "${DECO_SITES_GITHUB_OWNER}" organization to import this site. ${installUrl}`,
+          `Install the GitHub App on the "${githubRepo.owner}" organization to import this site. ${installUrl}`,
         );
       }
-
-      const githubRepo = decoSiteGithubRepo(siteName);
       let decoConnId: string | null = null;
       let githubChildConnId: string | null = null;
       let createdAgentId: string | null = null;
@@ -229,7 +232,7 @@ export function ImportFromDecoDialog({
           {
             orgSlug: org.slug,
             sourceConnection: githubConnection,
-            installationId: decoSitesInstallation.installationId,
+            installationId: githubInstallation.installationId,
             owner: githubRepo.owner,
             repo: githubRepo.name,
             githubCallTool: (req) => githubClient.callTool(req),
@@ -258,7 +261,7 @@ export function ImportFromDecoDialog({
                   owner: githubRepo.owner,
                   name: githubRepo.name,
                   url: githubRepo.url,
-                  installationId: decoSitesInstallation.installationId,
+                  installationId: githubInstallation.installationId,
                   connectionId: childConnectionId,
                 },
                 ui: {
