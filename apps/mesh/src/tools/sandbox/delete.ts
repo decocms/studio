@@ -8,8 +8,8 @@ import { z } from "zod";
 import { normalizeSandboxProviderKind } from "@decocms/sandbox/provider";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
-import { getSandboxProviderByKind } from "../../sandbox/lifecycle";
 import { removeSandboxMapEntry } from "./sandbox-map";
+import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 
 const sandboxProviderKindInputSchema = z
   .enum(["agent-sandbox", "user-desktop", "cluster"])
@@ -65,6 +65,13 @@ export const SANDBOX_DELETE = defineTool({
       return { success: true };
     }
 
+    const { provider: runner } = await resolveSandboxProvider(ctx, {
+      userId,
+      branch: input.branch,
+      virtualMcpMetadata: vmEntry.metadata,
+      explicitKind: kind,
+    });
+
     // Clear first so the UI returns to idle regardless of teardown outcome.
     await removeSandboxMapEntry(
       ctx.storage.virtualMcps,
@@ -75,7 +82,6 @@ export const SANDBOX_DELETE = defineTool({
       kind,
     );
 
-    const runner = await getSandboxProviderByKind(ctx, kind);
     await runner
       .delete(entry.sandboxHandle)
       .catch((err) =>

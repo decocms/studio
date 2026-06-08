@@ -24,11 +24,7 @@ import {
   requireOrganization,
   type StudioContext,
 } from "../../core/studio-context";
-import {
-  requireVmEntry,
-  resolveRuntimeConfig,
-  type RuntimeConfigMeta,
-} from "./helpers";
+import { resolveRuntimeConfig, type RuntimeConfigMeta } from "./helpers";
 import { resolveAndPushEnv } from "./resolve-env";
 import {
   readSandboxMap,
@@ -103,12 +99,22 @@ export const SANDBOX_START = defineTool({
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
+    const organization = requireOrganization(ctx);
+    await ctx.access.check();
     const resolvedBranch = input.branch ?? generateBranchName();
 
-    // Resolve kind before requireVmEntry so the 3-level lookup uses the right key.
-    // getUserId may return null here; requireVmEntry will throw if so.
-    const earlyUserId = getUserId(ctx);
-    if (!earlyUserId) throw new Error("User ID required");
+    // Resolve kind after loading metadata so recorded sandboxMap entries can
+    // pin the provider when the caller did not pass an explicit kind.
+    const userId = getUserId(ctx);
+    if (!userId) throw new Error("User ID required");
+
+    const virtualMcp = await ctx.storage.virtualMcps.findById(
+      input.virtualMcpId,
+    );
+    if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
+      throw new Error("Virtual MCP not found");
+    }
+    const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
 
     // Resolve the runner once. `resolveSandboxProvider` returns the
     // existing kind when sandboxMap already has an entry for (user, branch),
@@ -121,24 +127,17 @@ export const SANDBOX_START = defineTool({
       : undefined;
     const { provider: runner, kind: providerKind } =
       await resolveSandboxProvider(ctx, {
-        userId: earlyUserId,
+        userId,
         branch: resolvedBranch,
-        virtualMcpMetadata: null,
+        virtualMcpMetadata: metadata,
         explicitKind,
       });
 
-    const {
-      metadata,
+    const existing: SandboxRecord | null = resolveVm(
+      readSandboxMap(metadata),
       userId,
-      organization,
-      entry: existing,
-    } = await requireVmEntry(
-      {
-        virtualMcpId: input.virtualMcpId,
-        branch: resolvedBranch,
-        sandboxProviderKind: providerKind,
-      },
-      ctx,
+      resolvedBranch,
+      providerKind,
     );
 
     const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;

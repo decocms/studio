@@ -12,6 +12,10 @@ describe("agentOptionFor", () => {
     expect(agentOptionFor("decopilot", "agent-sandbox")).toBe("decopilot");
   });
 
+  test("normalizes legacy cluster sandbox to decopilot option", () => {
+    expect(agentOptionFor("decopilot", "cluster")).toBe("decopilot");
+  });
+
   test("maps decopilot harness with user-desktop sandbox to decopilot-desktop option", () => {
     expect(agentOptionFor("decopilot", "user-desktop")).toBe(
       "decopilot-desktop",

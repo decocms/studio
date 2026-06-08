@@ -5,6 +5,7 @@ import type {
   SandboxProvider,
   SandboxProviderKind,
 } from "@decocms/sandbox/provider";
+import type { LinkClaimRegistry } from "../../links/link-claim-registry";
 
 // Mock per-kind runner lookup BEFORE importing SANDBOX_DELETE.
 const mockDelete = mock(async (_handle: string): Promise<void> => {});
@@ -35,6 +36,10 @@ mock.module("../../sandbox/lifecycle", () => ({
     lastRequestedKind.value = kind;
     return makeMockRunner(kind);
   },
+  buildDesktopProvider: async () => {
+    lastRequestedKind.value = "user-desktop";
+    return makeMockRunner("user-desktop");
+  },
 }));
 
 const { SANDBOX_DELETE } = await import("./delete");
@@ -45,6 +50,12 @@ const HOSTED_ENTRY: SandboxRecord = {
   sandboxHandle: "f9e2fadeb813e08eb00eef6f962be2b2",
   previewUrl: "https://f9e2fadeb813e08eb00eef6f962be2b2.sandboxes.example.com/",
   sandboxProviderKind: "agent-sandbox",
+};
+
+const DESKTOP_ENTRY: SandboxRecord = {
+  sandboxHandle: "desktop-handle",
+  previewUrl: "http://desktop-handle.localhost:5174/",
+  sandboxProviderKind: "user-desktop",
 };
 
 /**
@@ -85,12 +96,14 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
+  linkClaimRegistry?: LinkClaimRegistry;
 }): StudioContext {
   const {
     orgId = "org_1",
     userId = "user-1",
     virtualMcp,
     updateSpy = mock(async () => {}),
+    linkClaimRegistry,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -146,6 +159,7 @@ function makeCtx(overrides: {
     getOrCreateClient: null as never,
     pendingRevalidations: [],
     monitoring: null as never,
+    linkClaimRegistry,
   } as unknown as StudioContext;
 }
 
@@ -214,6 +228,85 @@ describe("SANDBOX_DELETE", () => {
 
     expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
     expect(lastRequestedKind.value).toBe("agent-sandbox");
+  });
+
+  it("binds the user-desktop provider before removing metadata", async () => {
+    const metadata: Metadata = {
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "user-desktop",
+        DESKTOP_ENTRY,
+      ),
+    };
+    const virtualMcp = makeVirtualMcp("org_1", metadata);
+    const updateSpy = mock(async () => {});
+    const linkClaimRegistry: LinkClaimRegistry = {
+      get: async () => ({
+        podId: "pod_1",
+        machineId: "machine_1",
+        cliVersion: "1.0.0",
+        previewPort: 5174,
+        connectedAt: Date.now(),
+        capabilities: [],
+      }),
+      put: async () => {},
+      delete: async () => {},
+      watch: () => () => {},
+    };
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
+
+    const result = await SANDBOX_DELETE.handler(
+      {
+        virtualMcpId: "vmcp_1",
+        branch: BRANCH,
+        sandboxProviderKind: "user-desktop",
+      },
+      ctx,
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(lastRequestedKind.value).toBe("user-desktop");
+    expect(mockDelete).toHaveBeenCalledWith(DESKTOP_ENTRY.sandboxHandle);
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
+    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
+    expect(updated.sandboxMap["user-1"]).toBeUndefined();
+  });
+
+  it("does not remove metadata when user-desktop provider binding fails", async () => {
+    const metadata: Metadata = {
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "user-desktop",
+        DESKTOP_ENTRY,
+      ),
+    };
+    const virtualMcp = makeVirtualMcp("org_1", metadata);
+    const updateSpy = mock(async () => {});
+    const linkClaimRegistry: LinkClaimRegistry = {
+      get: async () => null,
+      put: async () => {},
+      delete: async () => {},
+      watch: () => () => {},
+    };
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
+
+    await expect(
+      SANDBOX_DELETE.handler(
+        {
+          virtualMcpId: "vmcp_1",
+          branch: BRANCH,
+          sandboxProviderKind: "user-desktop",
+        },
+        ctx,
+      ),
+    ).rejects.toThrow("No link daemon registered");
+
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
   it("normalizes legacy cluster input before lookup and provider dispatch", async () => {

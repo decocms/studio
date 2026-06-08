@@ -586,7 +586,7 @@ describe("SANDBOX_START", () => {
     expect(opts.repo?.cloneUrl).not.toContain("ghu_stale_token");
   });
 
-  it("provisions a new desktop VM even when an agent-sandbox entry exists under the same branch — kinds are siblings", async () => {
+  it("provisions a new desktop VM when user-desktop is explicit even when an agent-sandbox entry exists", async () => {
     // With kind-in-key, different kinds coexist — no teardown occurs.
     const agentSandboxEntry: SandboxRecord = {
       sandboxHandle: "vm_agent-sandbox_existing",
@@ -619,9 +619,13 @@ describe("SANDBOX_START", () => {
     };
     const ctx = makeCtx({ virtualMcp, linkClaimRegistry });
 
-    // Link is online → kind resolves to desktop; no desktop entry → provision a new one
+    // Explicit user-desktop override wins over the recorded hosted entry.
     const result = await SANDBOX_START.handler(
-      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      {
+        virtualMcpId: VMCP_ID,
+        branch: BRANCH,
+        sandboxProviderKind: "user-desktop",
+      },
       ctx,
     );
 
@@ -630,6 +634,72 @@ describe("SANDBOX_START", () => {
     expect(mockEnsure).toHaveBeenCalledTimes(1);
     expect(result.sandboxProviderKind).toBe("user-desktop");
     expect(result.isNewVm).toBe(true);
+  });
+
+  it("SANDBOX_START with no sandboxProviderKind honors an existing recorded kind even when link is online", async () => {
+    const agentSandboxEntry: SandboxRecord = {
+      sandboxHandle: "vm_agent-sandbox_existing",
+      previewUrl: "https://agent-sandbox.preview/",
+      sandboxProviderKind: "agent-sandbox",
+      createdAt: 123,
+    };
+    mockEnsure.mockImplementation(async () => ({
+      handle: agentSandboxEntry.sandboxHandle,
+      workdir: "/app",
+      previewUrl: agentSandboxEntry.previewUrl,
+    }));
+    const metadata: Metadata = {
+      ...BASE_METADATA,
+      sandboxMap: {
+        [USER_ID]: {
+          [BRANCH]: { "agent-sandbox": agentSandboxEntry },
+        },
+      },
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
+    const linkClaimRegistry: LinkClaimRegistry = {
+      get: async (_userId: string) => ({
+        podId: "pod_1",
+        machineId: "machine_1",
+        cliVersion: "1.0.0",
+        previewPort: 5174,
+        connectedAt: Date.now(),
+        capabilities: [],
+      }),
+      put: async () => {},
+      delete: async () => {},
+      watch: () => () => {},
+    };
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
+
+    const result = await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      ctx,
+    );
+
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result.isNewVm).toBe(false);
+    expect(mockDesktopDelete).not.toHaveBeenCalled();
+    const sandboxMapCall = (updateSpy.mock.calls as unknown[][]).find(
+      (call) => {
+        const meta = (call[2] as { metadata?: { sandboxMap?: SandboxMap } })
+          .metadata;
+        return meta?.sandboxMap?.[USER_ID]?.[BRANCH] !== undefined;
+      },
+    );
+    expect(sandboxMapCall).toBeDefined();
+    const updated = (
+      sandboxMapCall![2] as { metadata: { sandboxMap: SandboxMap } }
+    ).metadata;
+    const branchMap = updated.sandboxMap[USER_ID]?.[BRANCH] as
+      | Record<string, unknown>
+      | undefined;
+    expect(branchMap?.["agent-sandbox"]).toMatchObject({
+      sandboxHandle: agentSandboxEntry.sandboxHandle,
+      sandboxProviderKind: "agent-sandbox",
+    });
+    expect(branchMap?.["user-desktop"]).toBeUndefined();
   });
 
   it("does not tear down anything when the existing entry is on the same runner", async () => {
