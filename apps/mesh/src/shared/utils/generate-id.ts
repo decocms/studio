@@ -9,7 +9,6 @@ type IdPrefixes =
   | "agg"
   | "dtok"
   | "thrd"
-  | "obs"
   | "msg"
   | "tag"
   | "mtag"

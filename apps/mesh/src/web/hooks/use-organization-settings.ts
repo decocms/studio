@@ -38,21 +38,6 @@ export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
 
-export interface ObserverConfig {
-  /** Stable id (watermark key). Server-assigned; "" when the client adds a new observer. */
-  id: string;
-  agentId: string;
-  scopeMode: "all" | "only";
-  scopeAgentIds: string[];
-  model: ModelSlot | null;
-  /** Set server-side on (re)enable; observation is forward-only from this instant. */
-  configuredAt: string | null;
-}
-
-export interface ObservationalConfig {
-  observers: ObserverConfig[];
-}
-
 export interface OrganizationSettings {
   organizationId: string;
   sidebar_items: unknown[] | null;
@@ -371,73 +356,6 @@ export function useHomeAgentsWriter(): HomeAgentsWriter {
   };
 
   return { currentIds, apply };
-}
-
-// Observation config lives behind its own observation:manage-gated tools, not
-// the shared org-settings row — so it has its own query key + read/write hooks.
-interface ObservationConfigEnvelope {
-  observational_config: ObservationalConfig | null;
-}
-
-export function useObservationalConfig(): ObservationalConfig | null {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-
-  const { data } = useQuery({
-    queryKey: KEYS.observationalConfig(org.id),
-    queryFn: async (): Promise<ObservationalConfig | null> => {
-      const result = (await client.callTool({
-        name: "OBSERVATION_CONFIG_GET",
-        arguments: {},
-      })) as {
-        structuredContent?: ObservationConfigEnvelope;
-        isError?: boolean;
-      };
-      if (result?.isError) return null;
-      return result.structuredContent?.observational_config ?? null;
-    },
-    staleTime: 60_000,
-  });
-
-  return data ?? null;
-}
-
-export function useUpdateObservationalConfig(): UseMutationResult<
-  ObservationalConfig | null,
-  Error,
-  ObservationalConfig
-> {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (config: ObservationalConfig) => {
-      const result = (await client.callTool({
-        name: "OBSERVATION_CONFIG_UPDATE",
-        arguments: { organizationId: org.id, observational_config: config },
-      })) as {
-        structuredContent?: ObservationConfigEnvelope;
-      } & ToolErrorEnvelope;
-      if (result?.isError) {
-        throw new Error(
-          result.content?.[0]?.text ?? "Failed to update observation config",
-        );
-      }
-      return result.structuredContent?.observational_config ?? null;
-    },
-    onSuccess: (config) => {
-      queryClient.setQueryData(KEYS.observationalConfig(org.id), config);
-    },
-  });
 }
 
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {

@@ -63,9 +63,6 @@ export const KEYS = {
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
 
-  observationalConfig: (organizationId: string) =>
-    ["observational-config", organizationId] as const,
-
   // Active organization
   activeOrganization: (org: string | undefined) =>
     ["activeOrganization", org] as const,
