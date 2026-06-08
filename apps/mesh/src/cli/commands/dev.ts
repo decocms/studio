@@ -7,7 +7,6 @@
  */
 import { tmpdir } from "node:os";
 import { join } from "path";
-import { sleep } from "@decocms/std";
 import type { Subprocess } from "bun";
 import { buildSettings } from "../../settings/pipeline";
 import {
@@ -129,7 +128,13 @@ export async function startDevServer(
     process.env.WORKTREE_SLUG ??
     process.env.CONDUCTOR_WORKSPACE_NAME ??
     "default";
-  const linkDataDir = join(tmpdir(), `decocms-dev-link-${slug}`);
+  // Local mode mints an API-key session into an isolated tmpdir so sandbox
+  // clones never nest inside the mesh repo's .git. Non-local mode reuses
+  // DECOCMS_HOME so the auto-spawned link registers as the same OAuth user
+  // logged into the browser (e.g. tavano@deco.cx).
+  const linkDataDir = options.localMode
+    ? join(tmpdir(), `decocms-dev-link-${slug}`)
+    : settings.dataDir;
 
   // When TUI is active, pipe stdout/stderr so child output doesn't corrupt
   // Ink's cursor-based rendering. Lines are fed into the CLI store instead.
@@ -159,10 +164,10 @@ export async function startDevServer(
             S3_FORCE_PATH_STYLE: String(settings.s3ForcePathStyle),
           }
         : {}),
-      // Tell the cluster where to write the dev-link session file when
-      // local-sandbox-provider is on, so the auto-spawned link daemon
-      // finds session.json under its DATA_DIR.
-      ...(options.localSandboxProvider
+      // Local mode only: tell the cluster to mint an API-key session for the
+      // auto-spawned link. Non-local mode uses the developer's OAuth session
+      // from DECOCMS_HOME instead (see ensureDevLinkSession).
+      ...(options.localSandboxProvider && options.localMode
         ? { DEV_LINK_SESSION_PATH: join(linkDataDir, "session.json") }
         : {}),
       ...(settings.baseUrl ? { BASE_URL: settings.baseUrl } : {}),
@@ -229,21 +234,17 @@ export async function startDevServer(
             pipeToLogStore(proc.stderr as ReadableStream<Uint8Array>);
           },
           beforeSpawn: async () => {
-            // Wait for the cluster's HTTP port before spawning the link
-            // daemon so it can immediately reach the WS gateway.
             await waitForPort(Number(settings.port), { intervalMs: 500 });
-            // Then wait for the cluster's `bootstrapDevLinkSession` to drop
-            // session.json into linkDataDir, since the link CLI's
-            // `ensureSession` errors out (non-TTY auto-spawn) if it's missing.
-            const sessionPath = join(linkDataDir, "session.json");
-            const deadline = Date.now() + 30_000;
-            while (Date.now() < deadline) {
-              if (await Bun.file(sessionPath).exists()) return;
-              await sleep(250);
-            }
-            throw new Error(
-              `[dev-link] session.json not minted at ${sessionPath} after 30s — check cluster logs for [dev-link] errors`,
+            const { ensureDevLinkSession } = await import(
+              "../lib/ensure-dev-link-session"
             );
+            await ensureDevLinkSession({
+              localMode: options.localMode,
+              linkDataDir,
+              studioDataDir: settings.dataDir,
+              serverUrl,
+              isInteractive: Boolean(process.stdin.isTTY),
+            });
           },
           // Drive Sandbox status from real liveness: "ready" when the daemon's
           // HTTP port answers, "pending" (spinner) while it's down/respawning
