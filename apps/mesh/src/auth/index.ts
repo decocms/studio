@@ -10,7 +10,7 @@
  */
 
 import { getSettings } from "../settings";
-import { getToolsByCategory } from "@/tools/registry-metadata";
+import { getToolsByCategory, USER_ROLE_TOOLS } from "@/tools/registry-metadata";
 import { sso } from "@better-auth/sso";
 import { organization } from "@decocms/better-auth/plugins";
 import { betterAuth, BetterAuthOptions } from "better-auth";
@@ -31,6 +31,7 @@ import {
 import {
   adminAc,
   defaultStatements,
+  memberAc,
 } from "@decocms/better-auth/plugins/organization/access";
 
 import { getConfig } from "@/core/config";
@@ -102,21 +103,32 @@ const ac = createAccessControl(statement);
 // The role-creating built-in roles (owner/admin) must enumerate every `self`
 // tool, not just `["*"]`. Better Auth's access-control `authorize()` matches
 // actions literally — `["*"]` authorizes only a request for the literal action
-// "*", NOT specific tools. Runtime checks bypass this for built-in roles, but
+// "*", NOT specific tools. Runtime checks bypass this for owner/admin, but
 // `create-role` gates the *creator* on whether they hold each permission they
 // grant; with `self: ["*"]` an owner is reported as "missing self:SOME_TOOL"
 // and can't create a capability-scoped custom role at all. Enumerating the full
 // tool list fixes that.
 //
-// `user` is intentionally left as-is: it can't create roles
-// (allowedRolesToCreateResources = ADMIN_ROLES), and its `self` is never
-// consulted at runtime (the built-in-role bypass short-circuits first). Giving
-// it the full tool list would only mis-signal that "user" holds full access.
+// `user`'s `self` is exactly USER_ROLE_TOOLS — the gated tools granted to every
+// member beyond basic-usage (empty by default; see registry-metadata). It is
+// enforced at runtime: only owner/admin bypass (see ADMIN_ROLES), so this grant
+// IS consulted. It must NEVER contain `"*"` — `createBoundAuthClient` falls back
+// to a `{ self: ["*"] }` wildcard probe when the exact check misses, and a `"*"`
+// here would satisfy it and hand every member full access (the bypass we removed).
+// Specific tool names match only via the exact check. A member otherwise gets
+// only basic-usage (granted out-of-band in AccessControl) plus connection-scoped
+// grants, and can't create roles (allowedRolesToCreateResources = ADMIN_ROLES).
 const creatorSelf = ["*", ...allTools];
 
+// `user` spreads `memberAc` (the org plugin's member role), NOT `adminAc`. These
+// org statements (organization/member/invitation/team/ac) gate Better Auth's
+// native org-plugin endpoints — not MCP tools, which our AccessControl checks on
+// `self`/connection buckets. `adminAc` grants org:update + member/invitation/team
+// management; spreading it here would let a plain member manage the org via those
+// endpoints. `memberAc` grants only `ac: ["read"]` (read roles for the UI).
 const user = ac.newRole({
-  self: ["*"],
-  ...adminAc.statements,
+  self: [...USER_ROLE_TOOLS],
+  ...memberAc.statements,
 }) as Role;
 
 const admin = ac.newRole({

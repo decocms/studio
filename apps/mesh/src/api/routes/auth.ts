@@ -28,6 +28,7 @@ import {
 import {
   allCapabilitiesGranted,
   resolveCapabilities,
+  USER_ROLE_TOOLS,
 } from "@/tools/registry-metadata";
 
 const app = new Hono();
@@ -237,9 +238,18 @@ app.get("/my-capabilities/:slug", async (c) => {
     return c.json({ role, capabilities: allCapabilitiesGranted() });
   }
 
-  // Any other role (built-in "user" or a custom role) is resolved from its
-  // stored permission. Built-in "user" has no organizationRole row, so its
-  // permission is empty and it resolves to no gated capabilities.
+  // The built-in "user" role has no organizationRole row; its gated grants are
+  // baked into code (USER_ROLE_TOOLS, empty by default), NOT stored in the DB.
+  // Resolve from that set so UI gating matches the role's `self` grant in the
+  // auth config. Empty set → no gated capabilities, same as before.
+  if (role === "user") {
+    return c.json({
+      role,
+      capabilities: resolveCapabilities({ self: [...USER_ROLE_TOOLS] }),
+    });
+  }
+
+  // A custom role is resolved from its stored permission.
   const customRole = await db
     .selectFrom("organizationRole")
     .select(["permission"])

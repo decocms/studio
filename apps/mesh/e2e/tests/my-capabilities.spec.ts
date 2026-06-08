@@ -98,9 +98,16 @@ test.describe("GET /api/auth/custom/my-capabilities/:slug", () => {
     const body = (await res.json()) as CapabilitiesResponse;
 
     expect(body.role).toBe("user");
-    const values = Object.values(body.capabilities);
-    expect(values.length).toBeGreaterThan(0);
-    expect(values.every((v) => v === false)).toBe(true);
+    // The built-in user role is granted agents:manage + connections:manage via
+    // USER_ROLE_CAPABILITY_IDS; every other gated capability stays false.
+    expect(body.capabilities["agents:manage"]).toBe(true);
+    expect(body.capabilities["connections:manage"]).toBe(true);
+    const granted = new Set(["agents:manage", "connections:manage"]);
+    const others = Object.entries(body.capabilities)
+      .filter(([id]) => !granted.has(id))
+      .map(([, isGranted]) => isGranted);
+    expect(others.length).toBeGreaterThan(0);
+    expect(others.every((isGranted) => isGranted === false)).toBe(true);
 
     await ownerCtx.dispose();
     await memberCtx.dispose();
