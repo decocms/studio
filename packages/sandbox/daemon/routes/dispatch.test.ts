@@ -71,6 +71,46 @@ describe("POST /_sandbox/dispatch", () => {
     expect(events.at(-1)).toBe('{"type":"done"}');
   });
 
+  it("emits an immediate SSE prelude before the first harness chunk", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const deps = makeDeps({
+      lookupHarness: () => ({
+        async *stream() {
+          await gate;
+          yield { type: "start", id: "m1" } as const;
+        },
+      }),
+    });
+    const body = JSON.stringify({
+      harnessId: "fake",
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId: "run-prelude" },
+    });
+
+    const res = await handleDispatchRequest(authedDispatch(body), deps);
+    expect(res.status).toBe(200);
+
+    const reader = res.body!.getReader();
+    const first = await Promise.race([
+      reader.read(),
+      new Promise<"timeout">((resolve) =>
+        setTimeout(() => resolve("timeout"), 25),
+      ),
+    ]);
+
+    expect(first).not.toBe("timeout");
+    if (first !== "timeout") {
+      expect(new TextDecoder().decode(first.value)).toBe(
+        ": dispatch accepted\n\n",
+      );
+    }
+
+    release();
+    await reader.cancel();
+  });
+
   it("rejects a request with no bearer token", async () => {
     const req = new Request("http://x/_sandbox/dispatch", {
       method: "POST",

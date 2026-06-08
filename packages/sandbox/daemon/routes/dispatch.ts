@@ -92,6 +92,21 @@ const SSE_HEADERS = {
   connection: "keep-alive",
 } as const;
 
+const DISPATCH_ACCEPTED_SSE_COMMENT = ": dispatch accepted\n\n";
+
+function writeDispatchAcceptedPrelude(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+  state: { closed: boolean },
+): void {
+  if (state.closed) return;
+  try {
+    controller.enqueue(encoder.encode(DISPATCH_ACCEPTED_SSE_COMMENT));
+  } catch {
+    state.closed = true;
+  }
+}
+
 /** Drive a harness's stream into an SSE controller. Reused verbatim by both
  *  paths so chunk relaying / abort handling / error wrapping / `done` framing
  *  stay identical. Always emits `done` and closes the controller; never hangs.
@@ -189,6 +204,7 @@ export async function handleDispatchRequest(
     const ctrl = new AbortController();
     const sseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
+        writeDispatchAcceptedPrelude(controller, encoder, streamState);
         // write captures controller — cannot hoist above the stream
         const write = (event: DispatchSSEEvent): void => {
           if (streamState.closed || ctrl.signal.aborted) return;
@@ -379,6 +395,7 @@ export async function handleDispatchRequest(
   const streamState = { closed: false };
   const sseStream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      writeDispatchAcceptedPrelude(controller, encoder, streamState);
       // write captures controller — cannot hoist above the stream
       const write = (event: DispatchSSEEvent): void => {
         if (streamState.closed || ctrl.signal.aborted) return;
