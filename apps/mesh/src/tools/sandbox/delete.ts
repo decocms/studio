@@ -11,9 +11,11 @@ import { requireVmEntry } from "./helpers";
 import { removeSandboxMapEntry } from "./sandbox-map";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 
-const sandboxProviderKindInputSchema = z
-  .enum(["agent-sandbox", "user-desktop", "cluster"])
-  .transform((kind) => normalizeSandboxProviderKind(kind));
+const sandboxProviderKindInputSchema = z.enum([
+  "agent-sandbox",
+  "user-desktop",
+  "cluster",
+]);
 
 export const SANDBOX_DELETE = defineTool({
   name: "SANDBOX_DELETE",

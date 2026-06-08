@@ -8,6 +8,7 @@ import {
   SandboxRecordSchema,
   parseSandboxRecord,
   parseBranchMap,
+  normalizeSandboxMap,
 } from "./virtual-mcp";
 
 describe("VirtualMcpUILayoutSchema tabs", () => {
@@ -261,20 +262,22 @@ const sandboxRecord = {
   sandboxProviderKind: "cluster",
 } as const;
 
+const canonicalSandboxRecord = {
+  sandboxHandle: "v1",
+  previewUrl: null,
+  sandboxProviderKind: "agent-sandbox",
+} as const;
+
 function expectSandboxMapHasOnlyCanonicalProviderKind(
   sandboxMap: Record<string, Record<string, Record<string, unknown>>>,
 ) {
   expect(sandboxMap.u?.b?.cluster).toBeUndefined();
-  expect(sandboxMap.u?.b?.["agent-sandbox"]).toEqual({
-    sandboxHandle: "v1",
-    previewUrl: null,
-    sandboxProviderKind: "agent-sandbox",
-  });
+  expect(sandboxMap.u?.b?.["agent-sandbox"]).toEqual(canonicalSandboxRecord);
 }
 
-describe("SandboxMapSchema provider kind normalization", () => {
-  test("normalizes legacy cluster keys and record kinds", () => {
-    const parsed = SandboxMapSchema.parse({
+describe("Sandbox map provider kind normalization", () => {
+  test("normalizeSandboxMap normalizes legacy cluster keys and record kinds", () => {
+    const parsed = normalizeSandboxMap({
       u: {
         b: {
           cluster: sandboxRecord,
@@ -285,7 +288,19 @@ describe("SandboxMapSchema provider kind normalization", () => {
     expectSandboxMapHasOnlyCanonicalProviderKind(parsed);
   });
 
-  test("VirtualMCPEntitySchema normalizes embedded sandbox maps", () => {
+  test("SandboxMapSchema accepts canonical provider maps", () => {
+    const parsed = SandboxMapSchema.parse({
+      u: {
+        b: {
+          "agent-sandbox": canonicalSandboxRecord,
+        },
+      },
+    });
+
+    expectSandboxMapHasOnlyCanonicalProviderKind(parsed);
+  });
+
+  test("VirtualMCPEntitySchema accepts canonical embedded sandbox maps", () => {
     const parsed = VirtualMCPEntitySchema.parse({
       id: "x",
       title: "x",
@@ -299,7 +314,7 @@ describe("SandboxMapSchema provider kind normalization", () => {
       pinned: false,
       metadata: {
         instructions: null,
-        sandboxMap: { u: { b: { cluster: sandboxRecord } } },
+        sandboxMap: { u: { b: { "agent-sandbox": canonicalSandboxRecord } } },
       },
       connections: [],
     });
@@ -307,11 +322,11 @@ describe("SandboxMapSchema provider kind normalization", () => {
     expectSandboxMapHasOnlyCanonicalProviderKind(parsed.metadata.sandboxMap!);
   });
 
-  test("VirtualMCPCreateDataSchema normalizes embedded sandbox maps", () => {
+  test("VirtualMCPCreateDataSchema accepts canonical embedded sandbox maps", () => {
     const parsed = VirtualMCPCreateDataSchema.parse({
       title: "x",
       metadata: {
-        sandboxMap: { u: { b: { cluster: sandboxRecord } } },
+        sandboxMap: { u: { b: { "agent-sandbox": canonicalSandboxRecord } } },
       },
       connections: [],
     });
@@ -319,10 +334,10 @@ describe("SandboxMapSchema provider kind normalization", () => {
     expectSandboxMapHasOnlyCanonicalProviderKind(parsed.metadata!.sandboxMap!);
   });
 
-  test("VirtualMCPUpdateDataSchema normalizes embedded sandbox maps", () => {
+  test("VirtualMCPUpdateDataSchema accepts canonical embedded sandbox maps", () => {
     const parsed = VirtualMCPUpdateDataSchema.parse({
       metadata: {
-        sandboxMap: { u: { b: { cluster: sandboxRecord } } },
+        sandboxMap: { u: { b: { "agent-sandbox": canonicalSandboxRecord } } },
       },
     });
 

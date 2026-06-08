@@ -281,6 +281,23 @@ const GithubRepoSchema = z.object({
 
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
+/** The active sandbox provider kinds. */
+export type SandboxProviderKind = "agent-sandbox" | "user-desktop";
+export type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
+
+const sandboxProviderKindSchema = z.enum(["agent-sandbox", "user-desktop"]);
+const legacySandboxProviderKindSchema = z.enum([
+  "agent-sandbox",
+  "user-desktop",
+  "cluster",
+]);
+
+export function normalizeSandboxProviderKind(
+  kind: LegacySandboxProviderKind,
+): SandboxProviderKind {
+  return kind === "cluster" ? "agent-sandbox" : kind;
+}
+
 /**
  * A single sandbox record in the per-(user, branch, kind) sandbox map — the
  * provider-issued handle plus the preview URL the UI renders.
@@ -294,7 +311,7 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
  * server) have nothing to render. UI code MUST check before constructing
  * an iframe URL.
  */
-export const SandboxRecordSchema = z.object({
+const SandboxRecordShape = {
   sandboxHandle: z.string().describe("Provider-specific handle"),
   previewUrl: z
     .string()
@@ -309,12 +326,7 @@ export const SandboxRecordSchema = z.object({
     .describe(
       "Daemon's public URL — what cluster→daemon RPCs target. Equal to previewUrl for user-desktop; null/absent for the agent-sandbox provider (routes through hosted ingress).",
     ),
-  sandboxProviderKind: z
-    // Accept the canonical set plus legacy "cluster"; other retired strings
-    // are still rejected at parse time.
-    .enum(["agent-sandbox", "user-desktop", "cluster"])
-    .transform(normalizeSandboxProviderKind)
-    .optional(),
+  sandboxProviderKind: sandboxProviderKindSchema.optional(),
   createdAt: z
     .number()
     .optional()
@@ -343,27 +355,30 @@ export const SandboxRecordSchema = z.object({
     .describe(
       "Snapshot of metadata.runtime fields (selected/port/path) used at SANDBOX_START. The Preview tab compares the live metadata.runtime against this to decide if a restart is required to apply changes.",
     ),
+} satisfies z.ZodRawShape;
+
+export const SandboxRecordSchema = z.object(SandboxRecordShape);
+
+const LegacySandboxRecordSchema = z.object({
+  ...SandboxRecordShape,
+  sandboxProviderKind: legacySandboxProviderKindSchema.optional(),
 });
 
 export type SandboxRecord = z.infer<typeof SandboxRecordSchema>;
 
 /**
- * Strict parser for a single sandbox record. Migration 091 rewrote every
- * persisted legacy value (`runnerKind`, `vmId`, legacy kind names), so
- * readers no longer accept those shapes — Zod throws on any leftover.
+ * Parser for a single sandbox record. The public schema stays JSON-schema-safe
+ * for MCP tools/list, so legacy provider values are normalized here instead of
+ * with Zod transforms.
  */
 export function parseSandboxRecord(raw: unknown): SandboxRecord {
-  return SandboxRecordSchema.parse(raw);
-}
-
-/** The active sandbox provider kinds. */
-export type SandboxProviderKind = "agent-sandbox" | "user-desktop";
-export type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
-
-export function normalizeSandboxProviderKind(
-  kind: LegacySandboxProviderKind,
-): SandboxProviderKind {
-  return kind === "cluster" ? "agent-sandbox" : kind;
+  const parsed = LegacySandboxRecordSchema.parse(raw);
+  return SandboxRecordSchema.parse({
+    ...parsed,
+    sandboxProviderKind: parsed.sandboxProviderKind
+      ? normalizeSandboxProviderKind(parsed.sandboxProviderKind)
+      : undefined,
+  });
 }
 
 /**
@@ -391,7 +406,7 @@ export function parseBranchMap(
       if (k === "cluster" && out[kind]) {
         continue;
       }
-      out[kind] = SandboxRecordSchema.parse(v);
+      out[kind] = parseSandboxRecord(v);
     } catch {
       // Skip malformed entries rather than throw — readers stay forgiving
       // about unexpected shapes within a known-key cell.
@@ -405,18 +420,17 @@ export function parseBranchMap(
  * Lookup: sandboxMap[userId][branch][sandboxProviderKind] -> SandboxRecord
  *
  * Multiple threads on the same (userId, branch, kind) share one sandbox.
- * Cloud and local sandboxes can coexist on the same branch as siblings.
+ * Hosted and desktop sandboxes can coexist on the same branch as siblings.
  *
- * The schema accepts the v2 shape plus legacy "cluster" provider-kind keys
- * and values, then normalizes parsed output to canonical provider kinds.
+ * This exported schema intentionally has no transforms so it can be represented
+ * in JSON Schema for MCP tools/list. Use `normalizeSandboxMap` when reading
+ * persisted or legacy-shaped sandbox maps.
  */
 export const SandboxMapSchema = z.record(
   z.string().describe("userId"),
   z.record(
     z.string().describe("branch"),
-    z
-      .record(z.string().describe("sandboxProviderKind"), SandboxRecordSchema)
-      .transform(parseBranchMap),
+    z.record(z.string().describe("sandboxProviderKind"), SandboxRecordSchema),
   ),
 );
 

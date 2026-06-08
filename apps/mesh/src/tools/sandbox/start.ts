@@ -59,9 +59,11 @@ type GithubRepoMeta = {
   githubRepo?: GithubRepo | null;
 };
 
-const sandboxProviderKindInputSchema = z
-  .enum(["agent-sandbox", "user-desktop", "cluster"])
-  .transform((kind) => normalizeSandboxProviderKind(kind));
+const sandboxProviderKindInputSchema = z.enum([
+  "agent-sandbox",
+  "user-desktop",
+  "cluster",
+]);
 
 export const SANDBOX_START = defineTool({
   name: "SANDBOX_START",
