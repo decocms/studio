@@ -9,7 +9,7 @@
  * and yielding a single structured result for toModelOutput.
  */
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { UIMessageStreamWriter } from "ai";
 import { tool, zodSchema } from "ai";
@@ -67,7 +67,7 @@ const SUBTASK_ANNOTATIONS = {
 export function createSubtaskTool(
   writer: UIMessageStreamWriter,
   params: SubtaskParams,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ) {
   const { provider, organization, models, needsApproval } = params;
 

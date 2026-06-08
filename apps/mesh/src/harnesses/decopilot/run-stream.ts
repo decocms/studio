@@ -38,7 +38,7 @@
  * `toUIMessageStream` output.
  */
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import {
@@ -370,7 +370,7 @@ function makeChunkQueue(): {
  */
 export async function* runDecopilotStream(
   input: HarnessStreamInput,
-  ctx: MeshContext,
+  ctx: StudioContext,
   tools: AssembledTools,
   prompt: AssembledPrompt,
   extras: RunDecopilotStreamExtras,

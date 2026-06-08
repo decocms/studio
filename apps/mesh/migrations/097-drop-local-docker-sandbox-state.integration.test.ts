@@ -20,7 +20,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../src/database/test-db-pg";
-import type { MeshDatabase } from "../src/database";
+import type { StudioDatabase } from "../src/database";
 import { up as up097 } from "./097-drop-local-docker-sandbox-state";
 
 const USER = "user_test";
@@ -36,7 +36,7 @@ interface RunnerStateRow {
 }
 
 async function getMetadata(
-  database: MeshDatabase,
+  database: StudioDatabase,
   id: string,
 ): Promise<Record<string, unknown>> {
   const row = (await sql<ConnectionRow>`
@@ -48,7 +48,7 @@ async function getMetadata(
 }
 
 async function insertVirtualConnection(
-  database: MeshDatabase,
+  database: StudioDatabase,
   id: string,
   metadata: Record<string, unknown>,
 ): Promise<void> {
@@ -66,7 +66,7 @@ async function insertVirtualConnection(
 }
 
 async function listRunnerState(
-  database: MeshDatabase,
+  database: StudioDatabase,
 ): Promise<RunnerStateRow[]> {
   const res = (await sql<RunnerStateRow>`
     SELECT sandbox_provider_kind, handle
@@ -77,7 +77,7 @@ async function listRunnerState(
 }
 
 async function insertRunnerState(
-  database: MeshDatabase,
+  database: StudioDatabase,
   handle: string,
   sandboxProviderKind: string,
 ): Promise<void> {
@@ -91,7 +91,7 @@ async function insertRunnerState(
 }
 
 describe("migration 097 — drop local-docker sandbox state", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();

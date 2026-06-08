@@ -19,7 +19,7 @@
 
 import { retry, RetryError } from "@decocms/std";
 import type { NatsConnectionProvider } from "../nats/connection";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import { createEventBusStorage } from "../storage/event-bus";
 import { EventBus as EventBusImpl } from "./event-bus";
 import {
@@ -83,13 +83,13 @@ async function startWithRetry(
  * fan-out). A PollingStrategy is always composed alongside NATS as a safety
  * net for scheduled/cron event delivery.
  *
- * @param database - MeshDatabase instance
+ * @param database - StudioDatabase instance
  * @param natsProvider - Shared NATS connection provider (required)
  * @param config - Optional event bus configuration
  * @returns EventBus instance
  */
 export function createEventBus(
-  database: MeshDatabase,
+  database: StudioDatabase,
   natsProvider: NatsConnectionProvider,
   config?: EventBusConfig,
 ): EventBus {

@@ -34,6 +34,8 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     run_config: null,
     run_started_at: null,
     metadata: {},
+    message_storage_version: 1,
+    link_transport: null,
     ...overrides,
   };
 }
@@ -54,7 +56,7 @@ describe("onTitleUpdated callback", () => {
           get: getThread,
         },
       },
-    } as unknown as import("@/core/mesh-context").MeshContext;
+    } as unknown as import("@/core/studio-context").StudioContext;
 
     const onTitleUpdated = buildOnTitleUpdated({
       ctx,
@@ -96,7 +98,7 @@ describe("onTitleUpdated callback", () => {
           get: getThread,
         },
       },
-    } as unknown as import("@/core/mesh-context").MeshContext;
+    } as unknown as import("@/core/studio-context").StudioContext;
 
     const onTitleUpdated = buildOnTitleUpdated({
       ctx,
@@ -132,7 +134,7 @@ describe("onTitleUpdated callback", () => {
           get: getThread,
         },
       },
-    } as unknown as import("@/core/mesh-context").MeshContext;
+    } as unknown as import("@/core/studio-context").StudioContext;
 
     const onTitleUpdated = buildOnTitleUpdated({
       ctx,
@@ -164,7 +166,7 @@ describe("onTitleUpdated callback", () => {
           get: getThread,
         },
       },
-    } as unknown as import("@/core/mesh-context").MeshContext;
+    } as unknown as import("@/core/studio-context").StudioContext;
 
     const onTitleUpdated = buildOnTitleUpdated({
       ctx,

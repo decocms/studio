@@ -1,6 +1,6 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import type {
   LinkClaimRegistry,
   LinkClaim,
@@ -204,7 +204,7 @@ function makeCtx(overrides: {
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
   linkClaimRegistry?: LinkClaimRegistry;
-}): MeshContext {
+}): StudioContext {
   const {
     orgId = ORG_ID,
     userId = USER_ID,
@@ -233,6 +233,13 @@ function makeCtx(overrides: {
     },
     storage: {
       virtualMcps: { findById, update: updateSpy },
+      // Non-repo-scoped org connection: getRepoScope() returns null, so the
+      // repo-scoped mint path in provisionSandbox is skipped and these tests
+      // exercise the clone/token path unchanged. (Minting is covered by the
+      // e2e suite, github-import-repo-scope.spec.ts.)
+      connections: {
+        findById: mock(async (_id: string) => ({ metadata: null })),
+      },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
@@ -267,7 +274,7 @@ function makeCtx(overrides: {
     pendingRevalidations: [],
     monitoring: null as never,
     linkClaimRegistry,
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 }
 
 describe("SANDBOX_START", () => {

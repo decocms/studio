@@ -3,7 +3,7 @@ import { openrouterAdapter } from "./openrouter";
 import { getSettings } from "../../settings";
 
 function getBase(): string {
-  return getSettings().aiGatewayUrl ?? "https://ai-site.decocache.com";
+  return getSettings().aiGatewayUrl ?? "https://ai-site.deco.site";
 }
 
 export const decoAiGatewayAdapter: ProviderAdapter = {

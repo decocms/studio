@@ -5,7 +5,7 @@
  * Tracks in-flight requests to correlate requests with responses.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { trace, context, type Context } from "@opentelemetry/api";
 import type { Span } from "@opentelemetry/api";
 import type {
@@ -26,7 +26,7 @@ import {
 } from "@/api/routes/proxy-monitoring";
 
 interface MonitoringTransportOptions {
-  ctx: MeshContext;
+  ctx: StudioContext;
   connectionId: string;
   virtualMcpId?: string;
 }

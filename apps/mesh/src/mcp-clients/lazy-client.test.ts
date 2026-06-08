@@ -16,7 +16,7 @@ import { createBridgeTransportPair } from "@decocms/mesh-sdk";
 import { CircuitOpenError, resetAll } from "./circuit-breaker";
 import { createLazyClient } from "./lazy-client";
 import type { ConnectionEntity } from "../tools/connection/schema";
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 
 // Mock clientFromConnection — we control when it succeeds/fails
 const clientFromConnectionMock = mock(() =>
@@ -34,7 +34,7 @@ const fakeConnection = {
 
 const fakeCtx = {
   pendingRevalidations: [],
-} as unknown as MeshContext;
+} as unknown as StudioContext;
 
 /**
  * Helper: create a real MCP server with a tool, connect a client to it via bridge,

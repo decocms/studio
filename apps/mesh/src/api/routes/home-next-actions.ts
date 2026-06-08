@@ -17,7 +17,7 @@ import { Hono } from "hono";
 import { slugify } from "@decocms/mcp-utils/aggregate";
 import { getHomeTiles, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { getPrompts } from "@/tools/guides";
 import {
@@ -31,7 +31,7 @@ const MAX_PROMPTS_PER_AGENT = 10;
 const LIST_PROMPTS_TIMEOUT_MS = 5000;
 
 type Variables = {
-  meshContext: MeshContext;
+  meshContext: StudioContext;
 };
 interface PromptEntry {
   agentId: string;
@@ -87,7 +87,7 @@ function indexPromptsByName() {
  */
 async function defaultHomeAgentNextActions(
   orgId: string,
-  ctx: MeshContext,
+  ctx: StudioContext,
   skipAgentIds: Set<string>,
 ): Promise<{ prompts: PromptEntry[]; tiles: TileEntry[] }> {
   const settings = await ctx.storage.organizationSettings.get(orgId);

@@ -27,6 +27,8 @@ const BASE_THREAD: Thread = {
   sandbox_provider_kind: null,
   harness_id: null,
   metadata: {},
+  message_storage_version: 1,
+  link_transport: null,
 };
 
 const NOW = new Date("2025-01-01T01:00:00.000Z").getTime(); // 1hr after base

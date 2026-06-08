@@ -20,7 +20,7 @@ import type {
 import type { z } from "zod";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { serverPlugins } from "../server-plugins";
-import type { MeshContext } from "./mesh-context";
+import type { StudioContext } from "./studio-context";
 import type { Tool, ToolDefinition } from "./define-tool";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { CloudEvent } from "@decocms/bindings";
@@ -39,7 +39,7 @@ const pluginToolMap = new Map<string, string>();
  * Checks both org settings (legacy) and all virtual MCPs.
  */
 async function isPluginEnabledForOrg(
-  ctx: MeshContext,
+  ctx: StudioContext,
   orgId: string,
   pluginId: string,
 ): Promise<boolean> {
@@ -68,7 +68,7 @@ async function isPluginEnabledForOrg(
  * Subsequent calls for the same org are no-ops (cached).
  */
 async function ensureSubscriptionsForOrg(
-  ctx: MeshContext,
+  ctx: StudioContext,
   orgId: string,
 ): Promise<void> {
   if (!hasPluginEventHandlers()) return;
@@ -184,12 +184,12 @@ export function collectPluginTools(): ToolDefinition<
 
     for (const toolDef of plugin.tools) {
       // Convert ServerPluginToolDefinition to Tool and wrap with gating.
-      // MeshContext is a superset of ServerPluginToolContext so the cast is safe.
-      // MeshContext is a superset of ServerPluginToolContext; the Kysely
+      // StudioContext is a superset of ServerPluginToolContext so the cast is safe.
+      // StudioContext is a superset of ServerPluginToolContext; the Kysely
       // generic parameter differs (Database vs unknown) so we go through unknown.
       const handler = toolDef.handler as unknown as (
         input: unknown,
-        ctx: MeshContext,
+        ctx: StudioContext,
       ) => Promise<unknown>;
       const tool = {
         name: toolDef.name,

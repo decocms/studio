@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { HarnessContext } from "./harness-context";
-import type { MeshContext } from "./mesh-context";
+import type { StudioContext } from "./studio-context";
 
 describe("HarnessContext", () => {
-  it("MeshContext is assignable to HarnessContext (narrowing)", () => {
-    const mesh: MeshContext = null as never;
+  it("StudioContext is assignable to HarnessContext (narrowing)", () => {
+    const mesh: StudioContext = null as never;
     const harness: HarnessContext = mesh;
     expect(harness).toBe(mesh);
   });

@@ -6,7 +6,7 @@
  */
 
 import { defineTool } from "../../core/define-tool";
-import { getUserId, requireAuth } from "../../core/mesh-context";
+import { getUserId, requireAuth } from "../../core/studio-context";
 import { ApiKeyUpdateInputSchema, ApiKeyUpdateOutputSchema } from "./schema";
 
 // Type for API key metadata with organization

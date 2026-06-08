@@ -4,7 +4,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import { trace, context } from "@opentelemetry/api";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { emitMonitoringLog } from "../../monitoring/emit";
 import { recordToolExecutionMetrics } from "../../monitoring/record-tool-execution-metrics";
 import { MONITORING_SPAN_NAME } from "@/monitoring/schema";
@@ -107,7 +107,7 @@ function formatMonitoringOutput(value: unknown): Record<string, unknown> {
 }
 
 async function emitMonitoringSpan(args: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   enabled: boolean;
   organizationId?: string;
   connectionId: string;
@@ -180,7 +180,7 @@ async function emitMonitoringSpan(args: {
 }
 
 export interface ProxyMonitoringMiddlewareParams {
-  ctx: MeshContext;
+  ctx: StudioContext;
   enabled: boolean;
   connectionId: string;
   virtualMcpId?: string; // Virtual MCP (Agent) ID if routed through an agent

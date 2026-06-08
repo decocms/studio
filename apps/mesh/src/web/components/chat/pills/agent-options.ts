@@ -19,3 +19,28 @@ export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
   "claude-code-desktop": { harness: "claude-code", sandbox: "user-desktop" },
   "codex-desktop": { harness: "codex", sandbox: "user-desktop" },
 };
+
+/**
+ * Inverse of `AGENT_OPTION_PINS`. Maps a (harness, sandbox) tuple — typically
+ * sourced from `threads.harness_id` + `threads.sandbox_provider_kind` on a
+ * locked thread — back to the canonical `AgentOption`.
+ *
+ * Returns `null` when the pair does not correspond to any known option (which
+ * can happen for legacy or trigger-created rows that wrote a harness without
+ * going through this picker).
+ */
+export function agentOptionFor(
+  harness: HarnessId | null,
+  sandbox: SandboxProviderKind | null,
+): AgentOption | null {
+  if (!harness) return null;
+  for (const [option, pins] of Object.entries(AGENT_OPTION_PINS) as [
+    AgentOption,
+    AgentPins,
+  ][]) {
+    if (pins.harness === harness && pins.sandbox === sandbox) {
+      return option;
+    }
+  }
+  return null;
+}

@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 import { resolveTier } from "../core/resolve-tier";
 
 export interface CommitSuggestion {
@@ -13,6 +13,19 @@ export interface GitStatusLike {
   created: string[];
   deleted: string[];
   not_added: string[];
+}
+
+export function isGitStatusLike(value: unknown): value is GitStatusLike {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.modified) &&
+    Array.isArray(record.created) &&
+    Array.isArray(record.deleted) &&
+    Array.isArray(record.not_added)
+  );
 }
 
 export interface GitDiffLike {
@@ -262,7 +275,7 @@ export function parseCommitSuggestionJson(
 }
 
 export async function suggestCommitMessageWithLlm(
-  ctx: MeshContext,
+  ctx: StudioContext,
   status: GitStatusLike,
   diff: GitDiffLike,
 ): Promise<CommitSuggestion> {

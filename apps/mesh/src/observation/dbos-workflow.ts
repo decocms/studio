@@ -12,8 +12,8 @@
  * at once and exhaust the pg pool. Multi-pod safety is automatic:
  * `registerScheduled` with ExactlyOncePerIntervalWhenActive row-locks the tick.
  *
- * Reuses the automation machinery: the same `meshContextFactory` (background
- * MeshContext), `resolveTier` (model resolution without an HTTP request), and
+ * Reuses the automation machinery: the same context factory (background
+ * StudioContext), `resolveTier` (model resolution without an HTTP request), and
  * `awaitThreadRun` (durable dispatch). Runtime deps are stashed via
  * `setObservationalRuntime` at app boot BEFORE `DBOS.launch()`.
  */
@@ -30,7 +30,7 @@ import {
   resolveTier,
   TierUnavailableError,
 } from "@/core/resolve-tier";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import type {
   Database,
   ObservationalConfig,
@@ -62,15 +62,15 @@ const MAX_THREADS_PER_TICK = 200;
 export const OBSERVATION_GLOBAL_QUEUE = "observation-global";
 export const OBSERVATION_GLOBAL_CONCURRENCY = 5;
 
-type MeshContextFactory = (
+type StudioContextFactory = (
   orgId: string,
   userId: string,
-) => Promise<MeshContext | null>;
+) => Promise<StudioContext | null>;
 
 export interface ObservationalRuntime {
   db: Kysely<Database>;
   threadStorage: SqlThreadStorage;
-  meshContextFactory: MeshContextFactory;
+  meshContextFactory: StudioContextFactory;
   /**
    * Minutes a thread must be idle before it is observed. Deployment-level
    * (OBSERVATION_INACTIVE_MINUTES) — it governs how much of the thread table the

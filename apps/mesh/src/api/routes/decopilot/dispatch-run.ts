@@ -22,16 +22,31 @@
  * the drain reader consumes the result.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
 import type { MeshProvider } from "@/ai-providers/types";
 import { tryResolveTier, type ResolvedTier } from "@/core/resolve-tier";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
-import { offloadKey, sha256Hex } from "@/harnesses/offload-messages";
+import {
+  offloadKey,
+  sha256Hex,
+  shouldOffload,
+  type MessagesRef,
+} from "@/harnesses/offload-messages";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { buildDesktopProvider } from "@/sandbox/lifecycle";
+import { computeClaimHandle } from "@/sandbox/claim-handle";
+import { composeSandboxRef } from "@decocms/sandbox/provider";
+import {
+  buildAnonymousCloneInfo,
+  buildCloneInfo,
+} from "@/shared/github-clone-info";
+import { resolveRuntimeConfig } from "@/tools/sandbox/helpers";
+import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
+import { getSettings } from "@/settings";
+import type { WorkItemSandbox } from "./link-work-queue";
 import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
@@ -45,6 +60,8 @@ import {
 } from "@/harnesses/decopilot/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { loadAndMergeMessages } from "./conversation";
+import { PartEmitter } from "./part-emitter";
+import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import type { ToolApprovalLevel } from "./helpers";
 import { type ChatMode } from "./mode-config";
@@ -67,9 +84,58 @@ import type { CancelBroadcast } from "./cancel-broadcast";
 import type { ThreadMessage } from "@/storage/types";
 import type { PendingImage } from "@/harnesses/decopilot/built-in-tools";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
-import { traced } from "@/observability";
+import { meter, traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
+
+// B5/I1: counter for message-save failures — tagged by org.id (low cardinality).
+// Incremented at every save .catch site inside dispatch-run.ts so the frequency
+// of DB write failures is visible in OTEL without log scraping.
+const saveErrorsCounter = meter.createCounter("decopilot.save.errors", {
+  description:
+    "Number of message-save failures during decopilot run dispatch (v1 and v2 paths)",
+  unit: "{errors}",
+});
+
+/**
+ * Process-wide progress-bump throttle (Task 9, A1/A2). One instance shared by
+ * every run on this pod — it dedupes `last_progress_at` writes to ≤1 per ~3s
+ * per task. Lives at module scope (not per-run) so its per-task last-bump map
+ * survives across the multiple `prepareRun` invocations a thread may see.
+ */
+const progressThrottle = new ProgressBumpThrottle();
+
+/**
+ * Tap a UI stream so each chunk drives a THROTTLED `last_progress_at` bump.
+ * Pure pass-through: every chunk is forwarded unchanged; the bump is a
+ * fire-and-forget side effect that never blocks or fails the stream. This is
+ * the run's liveness heartbeat — the reaper reads `last_progress_at` to decide
+ * whether a run is stuck.
+ */
+function tapProgress(
+  stream: ReadableStream<unknown>,
+  ctx: StudioContext,
+  taskId: string,
+): ReadableStream<unknown> {
+  return stream.pipeThrough(
+    new TransformStream<unknown, unknown>({
+      transform(chunk, controller) {
+        if (progressThrottle.shouldBump(taskId)) {
+          ctx.storage.threads.bumpProgress(taskId).catch(() => {
+            // Heartbeat is best-effort; a failed bump just means the reaper
+            // may rely on an older timestamp. Never surface to the stream.
+          });
+        }
+        controller.enqueue(chunk);
+      },
+      flush() {
+        // Run ended — drop this task's throttle state so the map can't grow
+        // unbounded across many short-lived threads.
+        progressThrottle.clear(taskId);
+      },
+    }),
+  );
+}
 
 /**
  * Classify a stream error into a small, stable taxonomy for analytics.
@@ -218,7 +284,7 @@ function modelInfoFromResolvedTier(
 }
 
 async function resolveDecopilotTitleConfig(
-  ctx: MeshContext,
+  ctx: StudioContext,
   organizationId: string,
 ): Promise<{ provider: MeshProvider; model: ModelsConfig["thinking"] } | null> {
   const resolved = await tryResolveTier(ctx, "fast");
@@ -267,7 +333,7 @@ async function resolveDecopilotTitleConfig(
 const MCP_KEY_TTL_SECONDS = 3600;
 
 async function mintMcpEndpoint(
-  ctx: MeshContext,
+  ctx: StudioContext,
   agentId: string,
   organization: { id: string; slug?: string; name?: string },
   apiKeyName: string,
@@ -400,7 +466,7 @@ function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
  */
 export async function dispatchRunAndWait(
   input: DispatchRunInput,
-  ctx: MeshContext,
+  ctx: StudioContext,
   deps: DispatchRunDeps,
 ): Promise<DispatchRunResult> {
   return traced(
@@ -429,7 +495,7 @@ export async function dispatchRunAndWait(
         : null;
 
       if (buffer && tail) {
-        buffer.pump(uiStream, taskId, registrySignal);
+        buffer.pump(uiStream, taskId, registrySignal, input.organizationId);
         const reader = tail.getReader();
         try {
           while (true) {
@@ -461,10 +527,37 @@ export async function dispatchRunAndWait(
   );
 }
 
+/**
+ * The fully-assembled, JSON-serializable wire shape of a run's harness
+ * input — everything `HarnessStreamInput` carries EXCEPT the two
+ * non-serializable in-process fields (`signal`, `processLocal`). This is
+ * exactly what the desktop daemon validates against
+ * `harnessStreamInputSchema` and what the pull-transport work item carries.
+ *
+ * Built eagerly in `prepareRun`'s main body (mcp mint + message
+ * materialization + field assembly) so it's available without consuming
+ * `uiStream`. The in-cluster dispatch path layers the in-process extras on
+ * top inside the lazy `createUIMessageStream` execute callback:
+ * `{ ...wireHarnessInput, signal: registrySignal, processLocal }`.
+ */
+export type WireHarnessInput = Omit<
+  HarnessStreamInput,
+  "signal" | "processLocal"
+>;
+
 interface PreparedRun {
   taskId: string;
   uiStream: ReadableStream<unknown>;
   registrySignal: AbortSignal;
+  /** Minted by prepareRun for pull-transport threads (spec §3.5). */
+  runFenceToken: string;
+  /**
+   * Fully-assembled wire harness input (mcp minted, messages materialized,
+   * fence token attached). `dispatchRunAndWait` ignores this (it consumes
+   * `uiStream`); `pullDispatch` returns it so the gate can publish it as the
+   * pull work item's `harnessInput` (Phase D daemon pull loop consumes it).
+   */
+  wireHarnessInput: WireHarnessInput;
 }
 
 /**
@@ -481,7 +574,7 @@ interface PreparedRun {
  */
 async function prepareRun(
   input: DispatchRunInput,
-  ctx: MeshContext,
+  ctx: StudioContext,
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
 ): Promise<PreparedRun> {
@@ -679,9 +772,32 @@ async function prepareRun(
         }));
       if (messagesToSave.length === 0) return;
       await mem.save(messagesToSave as ThreadMessage[]).catch((error) => {
+        // B5/I1: count DB save failures so the metric fires even when logs
+        // aren't being watched. Tagged by org.id (low cardinality).
+        saveErrorsCounter.add(1, { "org.id": input.organizationId });
         console.error("[decopilot:stream] Error saving messages", error);
       });
     };
+
+    // ── Stream-of-record v2 write path (canary-gated; OFF by default) ───────
+    // `isV2` is read straight off the thread row's pinned
+    // `message_storage_version`. When 1 (the default for every existing
+    // thread), `partEmitter` is null and the v1 `saveMessagesToThread` path
+    // below runs byte-for-byte unchanged. When 2 (only ever set on a
+    // brand-new thread by the canary at the first-message pin site in
+    // routes.ts), parts are emitted via the PartEmitter at the same hooks
+    // INSTEAD of `saveMessagesToThread`. The two paths are mutually exclusive
+    // — no thread is ever written through both.
+    const isV2 = mem.thread.message_storage_version === 2;
+    const partEmitter = isV2
+      ? new PartEmitter({
+          storage: ctx.storage.threads.messageParts(),
+          orgId: input.organizationId,
+          threadId: mem.thread.id,
+          // RunRegistry keys runs by taskId; the thread id is the run id.
+          runId: mem.thread.id,
+        })
+      : null;
 
     if (!virtualMcp) {
       throw new Error("Agent not found");
@@ -717,6 +833,17 @@ async function prepareRun(
       });
     }
     runStarted = true;
+
+    // Mint the single-writer fence token for this run. The token is
+    // included in HarnessStreamInput so the daemon presents it on every
+    // ingest append. Minting after START ensures the run is claimed before
+    // the token exists; clearing on FINISH is the gate's responsibility.
+    // On DBOS replay this re-mints a new token while a queued work item carries the old one —
+    // reconcile when Phase D wires the publish off the persisted column.
+    // Note: a failed pull run leaves run_fence_token set until Task 7 clears it
+    // (harmless: next run overwrites; ws/cloud never read it).
+    const runFenceToken = crypto.randomUUID();
+    await ctx.storage.threads.setRunFence(mem.thread.id, runFenceToken);
 
     const registrySignal = runRegistry.getAbortSignal(mem.thread.id);
     if (!registrySignal) {
@@ -771,7 +898,20 @@ async function prepareRun(
           "No user message found in input — expected at least one non-system message",
         );
       }
-      await saveMessagesToThread(materializedRequestMessage);
+      if (partEmitter) {
+        // v2: persist the user message's parts + a finish anchor so the
+        // message is immediately complete in the parts read path.
+        await partEmitter
+          .emitUserMessage(materializedRequestMessage)
+          .catch((error) => {
+            console.error(
+              "[decopilot:stream] v2 user-message emit failed",
+              error,
+            );
+          });
+      } else {
+        await saveMessagesToThread(materializedRequestMessage);
+      }
     }
 
     let streamFinished = false;
@@ -802,45 +942,131 @@ async function prepareRun(
       totalTokens: number;
     } = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
+    // ── Build the wire HarnessStreamInput EAGERLY ───────────────────────────
+    // Everything the daemon's `harnessStreamInputSchema` needs (mcp endpoint,
+    // materialized messages, virtualMcp, fence token, …) is assembled here,
+    // before the lazy stream-execute callback runs. Two consumers read it:
+    //   - in-cluster dispatch (the `execute` callback below) layers the
+    //     non-serializable in-process extras on top:
+    //     `{ ...wireHarnessInput, signal: registrySignal, processLocal }`.
+    //   - `pullDispatch` returns it verbatim so the thread gate can publish
+    //     it as the pull work item's `harnessInput` (Phase D daemon loop).
+    // Moving the mcp mint + message materialization out of `execute` means
+    // they now run slightly earlier (eagerly) for the in-cluster path too —
+    // acceptable per the hard-break; behavior is otherwise identical.
+
+    // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
+    // Also handles legacy data: URLs from threads predating this pipeline.
+    // `processConversation` (which depends on the harness-owned tool set for
+    // `toModelOutput` handlers) runs inside the decopilot harness itself; we
+    // forward materialized UIMessages so each harness decides how to convert
+    // them.
+    const materializedMessages = await resolveStorageRefs(allMessages, ctx);
+
+    ensureModelCompatibility(input.models, materializedMessages);
+
+    // Build the MCP endpoint for CLI harnesses. In-cluster decopilot uses an
+    // in-process passthrough client (no HTTP MCP connection needed), so we
+    // use a sentinel for that path. Desktop decopilot requires a real endpoint
+    // so the daemon can reach cluster-side MCP tools.
+    const mcpBase =
+      harnessId === "decopilot" && target.runsIn !== "user-desktop"
+        ? {
+            url: "",
+            headers: {} as Record<string, string>,
+            // Sentinel for the in-process decopilot path — its passthrough
+            // client doesn't consume mcp.* but the shared HarnessStreamInput
+            // type requires the field.
+            expiresAt: 0,
+          }
+        : await mintMcpEndpoint(
+            ctx,
+            input.agent.id,
+            organization,
+            harnessId === "claude-code"
+              ? "claude-code-session"
+              : harnessId === "decopilot"
+                ? "decopilot-session"
+                : "codex-session",
+            target.runsIn,
+          );
+
+    // ⚠️ SECURITY: Inject the main chat-model API key into the wire input for
+    // user-desktop decopilot. The key transits to the desktop daemon over HTTPS
+    // so it can activate the MeshProvider locally without vault access.
+    // Scoped to the single main chat-completion credential only — sub-provider
+    // keys (image, deep-research) are never included; those built-ins stay
+    // cluster-side. Hardening follow-up: cluster model-proxy (spec §3.9).
+    //
+    // DORMANT: decopilot is not yet routed to user-desktop (it is absent from
+    // the daemon registry and resolveDispatchTarget never produces
+    // runsIn === "user-desktop" for decopilot). This condition is never true
+    // today — it is wired now so the wire contract exists before the daemon
+    // factory is registered in a later task.
+    let modelSecret: HarnessStreamInput["mcp"]["modelSecret"];
+    if (target.runsIn === "user-desktop" && harnessId === "decopilot") {
+      // Read the raw credential from storage (vault-backed) — the same path
+      // AIProviderFactory.activate() uses internally. Never log this variable.
+      const resolved = await ctx.storage.aiProviderKeys
+        .resolve(chatCredId, input.organizationId)
+        .catch(() => null);
+      if (resolved) {
+        const { keyInfo, apiKey } = resolved;
+        // openai-compatible stores a JSON blob { baseUrl, apiKey }; unpack it.
+        if (keyInfo.providerId === "openai-compatible") {
+          try {
+            const parsed = JSON.parse(apiKey) as {
+              baseUrl?: string;
+              apiKey?: string;
+            };
+            modelSecret = {
+              providerId: keyInfo.providerId,
+              apiKey: parsed.apiKey ?? "",
+              ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}),
+            };
+          } catch {
+            modelSecret = { providerId: keyInfo.providerId, apiKey };
+          }
+        } else {
+          modelSecret = { providerId: keyInfo.providerId, apiKey };
+        }
+      }
+    }
+
+    const mcp: HarnessStreamInput["mcp"] = modelSecret
+      ? { ...mcpBase, modelSecret }
+      : mcpBase;
+
+    const wireHarnessInput: WireHarnessInput = {
+      threadId: mem.thread.id,
+      runId: mem.thread.id, // RunRegistry keys runs by taskId today
+      resumeSessionRef,
+      messages: materializedMessages,
+      models: input.models,
+      mcp,
+      mode: input.mode,
+      temperature: input.temperature,
+      toolApprovalLevel: input.toolApprovalLevel,
+      user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
+      organizationId: input.organizationId,
+      projectSlug: organization.slug,
+      virtualMcp,
+      agent: { id: input.agent.id },
+      branch: input.branch,
+      taskId: input.taskId,
+      triggerId: input.triggerId,
+      currentThreadTitle: mem.thread.title,
+      runFenceToken,
+    };
+
     const uiStream = createUIMessageStream({
       originalMessages: allMessages,
       execute: async ({ writer }) => {
-        // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
-        // Also handles legacy data: URLs from threads predating this pipeline.
-        // `processConversation` (which depends on the harness-owned tool
-        // set for `toModelOutput` handlers) runs inside the decopilot
-        // harness itself; we forward materialized UIMessages so each
-        // harness decides how to convert them.
-        const materializedMessages = await resolveStorageRefs(allMessages, ctx);
-
-        ensureModelCompatibility(input.models, materializedMessages);
-
-        // Build the MCP endpoint for CLI harnesses. Decopilot doesn't
-        // open an HTTP MCP connection (its passthrough client works
-        // in-process), so we skip the API-key mint for that path.
-        const mcp =
-          harnessId === "decopilot"
-            ? {
-                url: "",
-                headers: {} as Record<string, string>,
-                // Sentinel for the in-process decopilot path — its
-                // passthrough client doesn't consume mcp.* but the
-                // shared HarnessStreamInput type requires the field.
-                expiresAt: 0,
-              }
-            : await mintMcpEndpoint(
-                ctx,
-                input.agent.id,
-                organization,
-                harnessId === "claude-code"
-                  ? "claude-code-session"
-                  : "codex-session",
-                target.runsIn,
-              );
-
-        // Build the in-process extras that decopilot needs to participate
-        // in the surrounding `createUIMessageStream` scope. CLI harnesses
-        // ignore this field.
+        // The wire input (mcp endpoint + materialized messages + all
+        // serializable fields) was already assembled eagerly above. Here we
+        // only build the non-serializable in-process extras that decopilot
+        // needs to participate in the surrounding `createUIMessageStream`
+        // scope. CLI harnesses ignore this field.
         const toolOutputMap = new Map<string, string>();
         const pendingImages: PendingImage[] = [];
         // Per-turn buffer for coalesced HTML-page mirrors. The VM `write`/
@@ -889,25 +1115,12 @@ async function prepareRun(
             : undefined,
         };
 
+        // Layer the in-process extras onto the eagerly-built wire input.
+        // `signal` and `processLocal` are the only non-serializable members;
+        // everything else (mcp, materialized messages, fence token, …) was
+        // assembled above and is shared verbatim with the pull work item.
         const harnessInput: HarnessStreamInput = {
-          threadId: mem.thread.id,
-          runId: mem.thread.id, // RunRegistry keys runs by taskId today
-          resumeSessionRef,
-          messages: materializedMessages,
-          models: input.models,
-          mcp,
-          mode: input.mode,
-          temperature: input.temperature,
-          toolApprovalLevel: input.toolApprovalLevel,
-          user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
-          organizationId: input.organizationId,
-          projectSlug: organization.slug,
-          virtualMcp,
-          agent: { id: input.agent.id },
-          branch: input.branch,
-          taskId: input.taskId,
-          triggerId: input.triggerId,
-          currentThreadTitle: mem.thread.title,
+          ...wireHarnessInput,
           signal: registrySignal,
           processLocal,
         };
@@ -944,14 +1157,17 @@ async function prepareRun(
         //     to the user's link daemon; the harness still runs here.
         let rawHarnessChunks;
         if (target.runsIn === "user-desktop") {
-          // Unify with SANDBOX_START: resolve the sandbox via `ensureSandbox` so
-          // claude-code/codex runs share the workdir SANDBOX_START already
-          // provisioned (cloned repo + env + lockfile probe). Falls
-          // through to a blank sandbox for ephemeral threads. See
-          // `resolveRemoteCliSandboxUrl` below for why the helper
-          // exists.
-          const { sandboxHandle } = await resolveRemoteCliSandboxHandle(
-            { agent: input.agent, branch: mem.thread.branch ?? input.branch },
+          // PUSH path (remoteDispatch): the control handler has NO daemon
+          // self-ensure backstop — it just `proxyPort(handle)`s and 404s
+          // "unknown handle" for a sandbox that was never spawned
+          // (control-handler.ts:172-193). So ENSURE the sandbox here before
+          // dispatching, and dispatch the handle ensureSandbox actually
+          // provisioned so the two can never drift. (The pull site keeps the
+          // pure computeDesktopSandboxHandle — its daemon self-ensures.)
+          const sandboxHandle = await ensurePushDispatchSandboxHandle(
+            input.agent,
+            mem.thread.branch,
+            input.branch,
             ctx,
           );
           // Route through the unified `proxyDaemonRequest` seam: the desktop
@@ -1046,7 +1262,15 @@ async function prepareRun(
         streamFinished = true;
 
         await Promise.allSettled(pendingOps);
-        await saveMessagesToThread(responseMessage);
+        if (partEmitter) {
+          // v2: persist any remaining final parts + close the assistant
+          // message with a finish anchor.
+          await partEmitter.emitFinal(responseMessage).catch((error) => {
+            console.error("[decopilot:stream] v2 onFinish emit failed", error);
+          });
+        } else {
+          await saveMessagesToThread(responseMessage);
+        }
 
         if (registrySignal.aborted) return;
 
@@ -1113,17 +1337,34 @@ async function prepareRun(
             }),
           );
         }
-        const stepEvent = transitions[0]?.event;
-        const shouldSave = input.isResume
-          ? stepEvent?.type === "STEP_COMPLETED"
-          : stepEvent?.type === "STEP_COMPLETED" &&
-            stepEvent.stepCount % 5 === 0;
-        if (shouldSave) {
+        if (partEmitter) {
+          // v2: a finished step's parts are FINAL — persist any newly-final
+          // parts every step (the durable incremental write). No finish
+          // anchor yet; the assistant message may continue in later steps.
           pendingOps.push(
-            saveMessagesToThread(responseMessage).catch((e) => {
-              console.error("[decopilot:stream] onStepFinish save failed", e);
+            partEmitter.emitStepParts(responseMessage).catch((e) => {
+              console.error(
+                "[decopilot:stream] v2 onStepFinish emit failed",
+                e,
+              );
             }),
           );
+        } else {
+          // v1 (unchanged): coarse whole-message checkpoints — every step on
+          // resume, every 5th step otherwise.
+          const stepEvent = transitions[0]?.event;
+          const shouldSave = input.isResume
+            ? stepEvent?.type === "STEP_COMPLETED"
+            : stepEvent?.type === "STEP_COMPLETED" &&
+              stepEvent.stepCount % 5 === 0;
+          if (shouldSave) {
+            pendingOps.push(
+              saveMessagesToThread(responseMessage).catch((e) => {
+                saveErrorsCounter.add(1, { "org.id": input.organizationId });
+                console.error("[decopilot:stream] onStepFinish save failed", e);
+              }),
+            );
+          }
         }
       },
       onError: (error) => {
@@ -1173,14 +1414,23 @@ async function prepareRun(
         // pairs user/assistant by created_at and drops orphan assistants.
         // Particularly important for background runs (cron/webhook/event
         // automations) where the user has no console to read the error from.
-        saveMessagesToThread({
-          id: crypto.randomUUID(),
-          role: "assistant",
-          parts: [{ type: "text", text: `Error: ${sanitized}` }],
-          metadata: { errorCategory: classifyStreamError(error) },
-        } as ChatMessage).catch((e) => {
-          console.error("[decopilot:stream] error-message save failed", e);
-        });
+        if (partEmitter) {
+          // v2: emit an `error` part + finish anchor for a fresh assistant
+          // message id.
+          partEmitter.emitError(generateMessageId(), sanitized).catch((e) => {
+            console.error("[decopilot:stream] v2 error emit failed", e);
+          });
+        } else {
+          saveMessagesToThread({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            parts: [{ type: "text", text: `Error: ${sanitized}` }],
+            metadata: { errorCategory: classifyStreamError(error) },
+          } as ChatMessage).catch((e) => {
+            saveErrorsCounter.add(1, { "org.id": input.organizationId });
+            console.error("[decopilot:stream] error-message save failed", e);
+          });
+        }
 
         runRegistry
           .execute({
@@ -1200,10 +1450,18 @@ async function prepareRun(
     // which drains it with a reader loop and resolves when the run
     // finishes. When a streamBuffer is configured the run also pumps into
     // JetStream so `/stream` tails see chunks live across runs and tabs.
+    //
+    // Wrap the stream with a throttled progress tap (Task 9): every chunk
+    // that flows out is "progress", collapsed to ≤1 `last_progress_at` write
+    // per ~3s per run. The single consumer downstream (pump or direct drain)
+    // pulls through this tap, so the heartbeat fires regardless of which
+    // consumption path runs.
     return {
       taskId: mem.thread.id,
-      uiStream,
+      uiStream: tapProgress(uiStream, ctx, mem.thread.id),
       registrySignal,
+      runFenceToken,
+      wireHarnessInput,
     };
   } catch (err) {
     if (runStarted && taskId) {
@@ -1220,6 +1478,296 @@ async function prepareRun(
 
     throw err;
   }
+}
+
+/**
+ * Resolve the sandbox provisioning config for a pull-transport work item.
+ *
+ * Mirrors the logic in `provisionSandbox` but returns the resolved config
+ * instead of calling `runner.ensure`. Called from `pullDispatch` for CLI
+ * harnesses (claude-code, codex) targeting user-desktop so the daemon can
+ * spawn the sandbox cold without a prior WS-path ensure call.
+ *
+ * Returns `null` when no sandbox config can be derived (e.g. decopilot
+ * harness, non-user-desktop target, or unresolvable metadata).
+ */
+async function resolvePullSandboxConfig(
+  input: DispatchRunInput,
+  ctx: StudioContext,
+  sandboxHandle: string,
+): Promise<WorkItemSandbox | null> {
+  const harnessId: HarnessId = input.harnessId ?? resolveHarnessId(undefined); // default fallback
+  if (harnessId === "decopilot") return null;
+  if (!input.target || input.target.runsIn !== "user-desktop") return null;
+
+  const virtualMcp = await ctx.storage.virtualMcps
+    .findById(input.agent.id, input.organizationId)
+    .catch(() => null);
+  if (!virtualMcp) return null;
+
+  const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
+  const githubRepo =
+    (
+      metadata as {
+        githubRepo?: {
+          owner: string;
+          name: string;
+          connectionId?: string;
+        } | null;
+      }
+    ).githubRepo ?? null;
+
+  // Resolve the clone URL cluster-side so the daemon has it without vault access.
+  let repo: WorkItemSandbox["repo"];
+  if (githubRepo) {
+    try {
+      const { cloneUrl, gitUserName, gitUserEmail } = githubRepo.connectionId
+        ? await buildCloneInfo(
+            githubRepo.connectionId,
+            githubRepo.owner,
+            githubRepo.name,
+            ctx.db,
+            ctx.vault,
+          )
+        : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
+      repo = {
+        cloneUrl,
+        branch: input.branch ?? undefined,
+        userName: gitUserName,
+        userEmail: gitUserEmail,
+      };
+    } catch (err) {
+      // Log but don't fail the dispatch — the daemon may have a running sandbox.
+      console.warn(
+        `[pullDispatch] failed to resolve clone info for agent=${input.agent.id}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // Resolve workload from metadata.runtime (same logic as provisionSandbox).
+  const { runtime, packageManager, packageManagerPath } =
+    resolveRuntimeConfig(metadata);
+  let workload: WorkItemSandbox["workload"];
+  if (
+    runtime &&
+    packageManager &&
+    (runtime === "node" || runtime === "bun" || runtime === "deno") &&
+    (packageManager === "npm" ||
+      packageManager === "pnpm" ||
+      packageManager === "yarn" ||
+      packageManager === "bun" ||
+      packageManager === "deno")
+  ) {
+    workload = {
+      runtime,
+      packageManager,
+      ...(packageManagerPath ? { packageManagerPath } : {}),
+    };
+  }
+
+  // Derive the message-offload SSRF allowlist from the cluster's own S3 config.
+  let offloadAllowedHosts: string[] | undefined;
+  let offloadAllowSameHostDev: boolean | undefined;
+  try {
+    if (ctx.objectStorage) {
+      const offload = await deriveOffloadAllowlist(ctx.objectStorage, {
+        isProduction: getSettings().nodeEnv === "production",
+      });
+      offloadAllowedHosts = offload.hosts;
+      offloadAllowSameHostDev = offload.allowSameHostDev;
+    }
+  } catch (err) {
+    console.warn(
+      `[pullDispatch] failed to derive offload allowlist for agent=${input.agent.id}:`,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  return {
+    handle: sandboxHandle,
+    ...(repo ? { repo } : {}),
+    ...(workload ? { workload } : {}),
+    ...(offloadAllowedHosts !== undefined ? { offloadAllowedHosts } : {}),
+    ...(offloadAllowSameHostDev !== undefined
+      ? { offloadAllowSameHostDev }
+      : {}),
+  };
+}
+
+/**
+ * Pull-transport variant of `dispatchRunAndWait` (Phase B, spec §3.4).
+ *
+ * Claims the run and mints the fence (via prepareRun), then returns the
+ * fence token, task id, AND the fully-assembled wire `HarnessStreamInput`
+ * for the gate step to thread into the work item published to the JetStream
+ * WorkQueue.
+ *
+ * IMPORTANT: `uiStream` from prepareRun is never consumed here — the
+ * local harness does NOT run for pull-transport threads (the daemon runs
+ * remotely). The uiStream will be garbage-collected naturally; the run
+ * transitions to terminal when the ingest finish handler fires FINISH.
+ *
+ * The work item's `harnessInput` is the complete `wireHarnessInput` that
+ * prepareRun now builds eagerly (mcp endpoint minted, messages
+ * materialized, virtualMcp + fence token attached) — exactly the shape the
+ * daemon validates against `harnessStreamInputSchema`. The non-serializable
+ * `signal`/`processLocal` members are intentionally absent (they only exist
+ * for the in-cluster dispatch path). This closes the prior work-item gap;
+ * the item is consumed by the Phase D daemon pull loop.
+ *
+ * Also resolves the sandbox provisioning config (handle, repo clone URL,
+ * workload runtime) for CLI harnesses targeting user-desktop, so the daemon
+ * can spawn the sandbox cold without a prior WS-path ensure. Carries
+ * `orgSlug` so the daemon ingest path can construct the URL without a DB
+ * lookup.
+ */
+export async function pullDispatch(
+  input: DispatchRunInput,
+  ctx: StudioContext,
+  deps: DispatchRunDeps,
+): Promise<{
+  taskId: string;
+  runFenceToken: string;
+  harnessInput: WireHarnessInput;
+  messagesRef: MessagesRef | null;
+  sandboxConfig: WorkItemSandbox | null;
+  orgSlug: string;
+}> {
+  return traced(
+    "decopilot.pullDispatch",
+    async (_rootSpan) => {
+      const { taskId, runFenceToken, wireHarnessInput } = await prepareRun(
+        input,
+        ctx,
+        deps,
+        _rootSpan,
+      );
+
+      // ── Message offload (mirrors the WS path in remoteDispatch) ─────────
+      // The work item is published to the JetStream WorkQueue as a NATS
+      // message; NATS rejects payloads exceeding MAX_PUBLISH_BYTES. The
+      // conversation `messages` array is the dominant large part — when the
+      // encoded harnessInput exceeds the budget, offload it to object storage
+      // exactly as `remoteDispatch` does, then carry the ref on the work item
+      // so the daemon can forward it to the sandbox daemon's /_sandbox/dispatch
+      // (which already re-inflates from messagesRef on the WS path).
+      let effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
+      let messagesRef: MessagesRef | null = null;
+      const encodedInput = JSON.stringify(wireHarnessInput);
+      if (shouldOffload(Buffer.byteLength(encodedInput, "utf8"))) {
+        if (ctx.objectStorage) {
+          try {
+            const reqId = crypto.randomUUID();
+            const messagesJson = JSON.stringify(wireHarnessInput.messages);
+            const bytes = new TextEncoder().encode(messagesJson);
+            const key = offloadKey(reqId);
+            await ctx.objectStorage.put(key, bytes, {
+              contentType: "application/json",
+            });
+            const url = await ctx.objectStorage.presignedGetUrl(key, 600, {
+              requireFetchable: true,
+            });
+            messagesRef = {
+              url,
+              bytes: bytes.byteLength,
+              sha256: await sha256Hex(bytes),
+            };
+            // Replace messages inline with [] — the real messages live at the ref.
+            effectiveHarnessInput = { ...wireHarnessInput, messages: [] };
+            console.log(
+              `[pullDispatch] offloaded messages to object storage key=${key} bytes=${bytes.byteLength} runId=${taskId}`,
+            );
+          } catch (err) {
+            // Offload failed — fall through with the full payload and let
+            // NATS reject it with MAX_PAYLOAD_EXCEEDED rather than silently
+            // dropping the ref. The publish will throw and the gate will
+            // surface the error.
+            console.error(
+              `[pullDispatch] message offload failed, work item may exceed NATS limit runId=${taskId}:`,
+              err instanceof Error ? err.message : String(err),
+            );
+          }
+        } else {
+          // No object storage — fall through with the full payload. Same
+          // "fail loudly at publish time" approach: better a clear NATS
+          // MAX_PAYLOAD_EXCEEDED than a silent truncation.
+          console.warn(
+            `[pullDispatch] harnessInput exceeds NATS limit but no object storage configured — work item may be rejected runId=${taskId}`,
+          );
+        }
+      }
+
+      // Resolve the sandbox handle for the pull work item.
+      // Pure derivation — no ensure round-trip. The daemon self-ensures
+      // the sandbox from `WorkItem.sandbox` when it dequeues the item
+      // (cluster-connection-pull.ts:214: `input.provider.ensureSandbox(ensureInput)`),
+      // so the warm-ensure that `resolveRemoteCliSandboxHandle` performed here
+      // is redundant (C-bis S4). The handle formula is identical to what
+      // `ensureSandbox`/`provisionSandbox` would compute. See `computeDesktopSandboxHandle`.
+      let sandboxConfig: WorkItemSandbox | null = null;
+      const harnessId: HarnessId =
+        input.harnessId ?? resolveHarnessId(undefined);
+      if (
+        harnessId !== "decopilot" &&
+        input.target?.runsIn === "user-desktop"
+      ) {
+        try {
+          const sandboxHandle = computeDesktopSandboxHandle({
+            agentId: input.agent.id,
+            userId: input.userId,
+            organizationId: input.organizationId,
+            branch: input.branch ?? "ephemeral",
+          });
+          sandboxConfig = await resolvePullSandboxConfig(
+            input,
+            ctx,
+            sandboxHandle,
+          );
+        } catch (err) {
+          // Log but don't fail pullDispatch — the daemon falls back to
+          // ensureSandbox({ handle }) for a running sandbox, and cold spawn
+          // will fail loudly on the daemon side if the config is missing.
+          console.warn(
+            `[pullDispatch] failed to resolve sandbox config agent=${input.agent.id}:`,
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      }
+
+      // The pull daemon is user-scoped and no longer carries a startup org, so
+      // the work item MUST carry the org slug for the ingest URL. Prefer the
+      // request-resolved org; fall back to a slug lookup by org id so it can
+      // never be missing (the daemon has no DB access to resolve it).
+      // ctx.organization is normally populated by the org-scoped route middleware
+      // (/api/:org/...); the DB lookup is only a safety net for internal callers
+      // that bypass that middleware (e.g. background automation).
+      let orgSlug = ctx.organization?.slug ?? null;
+      if (!orgSlug) {
+        const orgRow = await ctx.db
+          .selectFrom("organization")
+          .select("slug")
+          .where("id", "=", input.organizationId)
+          .executeTakeFirst();
+        orgSlug = orgRow?.slug ?? null;
+      }
+      if (!orgSlug) {
+        throw new Error(
+          `pullDispatch: could not resolve org slug for organization ${input.organizationId}`,
+        );
+      }
+
+      return {
+        taskId,
+        runFenceToken,
+        harnessInput: effectiveHarnessInput,
+        messagesRef,
+        sandboxConfig,
+        orgSlug,
+      };
+    },
+    dispatchRunSpanAttrs(input),
+  );
 }
 
 /**
@@ -1241,10 +1789,48 @@ async function prepareRun(
  */
 export async function resolveRemoteCliSandboxUrl(
   input: { agent: { id: string }; branch?: string | null },
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<string> {
   const { previewUrl } = await resolveRemoteCliSandboxHandle(input, ctx);
   return previewUrl;
+}
+
+/**
+ * Pure, synchronous handle derivation — no I/O, no ensure round-trip.
+ *
+ * Mirrors the formula used by `ensureSandbox` / `provisionSandbox`:
+ *   projectRef = composeSandboxRef({ orgId, virtualMcpId: agentId, branch })
+ *   handle     = computeClaimHandle({ userId, projectRef }, branch)
+ *
+ * This is the SAME handle the daemon receives in `WorkItem.sandbox.handle`
+ * (set by `resolvePullSandboxConfig`) and that the daemon derives via
+ * `deriveHandle(item)`. Both sides agree by construction.
+ *
+ * Safe to call at dispatch-run sites where the daemon will self-ensure the
+ * sandbox from the work item (cluster-connection-pull.ts:214 —
+ * `input.provider.ensureSandbox(ensureInput)`). The warm-ensure
+ * round-trip at those sites is therefore redundant and is replaced by this
+ * pure call (C-bis S4 landmine #7).
+ *
+ * NOT a substitute at sites that return a preview URL outside the work-queue
+ * path — `resolveRemoteCliSandboxUrl` must keep calling
+ * `resolveRemoteCliSandboxHandle` (which runs the full ensure) because there
+ * is no daemon self-ensure backstop for the preview-URL path.
+ *
+ * Exported for unit tests.
+ */
+export function computeDesktopSandboxHandle(input: {
+  agentId: string;
+  userId: string;
+  organizationId: string;
+  branch: string;
+}): string {
+  const projectRef = composeSandboxRef({
+    orgId: input.organizationId,
+    virtualMcpId: input.agentId,
+    branch: input.branch,
+  });
+  return computeClaimHandle({ userId: input.userId, projectRef }, input.branch);
 }
 
 /**
@@ -1255,7 +1841,7 @@ export async function resolveRemoteCliSandboxUrl(
  */
 async function resolveRemoteCliSandboxHandle(
   input: { agent: { id: string }; branch?: string | null },
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<{ sandboxHandle: string; previewUrl: string }> {
   const entry = await ensureSandbox(
     {
@@ -1271,4 +1857,41 @@ async function resolveRemoteCliSandboxHandle(
     );
   }
   return { sandboxHandle: entry.sandboxHandle, previewUrl: entry.previewUrl };
+}
+
+/**
+ * Resolve the desktop sandbox handle for the PUSH (`remoteDispatch`) dispatch
+ * path, ENSURING the sandbox is spawned first.
+ *
+ * Unlike the pull/work-queue path, the push path has NO daemon self-ensure
+ * backstop: `proxyDaemonRequest(handle, "/dispatch")` is rewritten to
+ * `/_sandbox/<handle>/dispatch` and reaches the link daemon's
+ * `control-handler.handleStream`, which just `proxyPort(handle)`s and returns
+ * `404 "unknown handle"` for a sandbox that was never spawned
+ * (`control-handler.ts:172-193`). So we run the full `ensureSandbox` here and
+ * return the handle it PROVISIONED — guaranteeing the dispatched handle equals
+ * the spawned one.
+ *
+ * `effectiveBranch` mirrors the dispatch-site formula (thread pin → request
+ * branch → synthetic "ephemeral"). Threading the SAME value into the ensure
+ * closes the handle-drift bug: `resolveRemoteCliSandboxHandle`'s internal
+ * `input.branch ?? "ephemeral"` would otherwise drop a thread-pinned branch.
+ *
+ * The pull site keeps the pure `computeDesktopSandboxHandle` — its daemon
+ * self-ensures from `WorkItem.sandbox` (`cluster-connection-pull.ts:214`).
+ *
+ * Exported for unit tests.
+ */
+export async function ensurePushDispatchSandboxHandle(
+  agent: { id: string },
+  threadBranch: string | null | undefined,
+  inputBranch: string | null | undefined,
+  ctx: StudioContext,
+): Promise<string> {
+  const effectiveBranch = threadBranch ?? inputBranch ?? "ephemeral";
+  const { sandboxHandle } = await resolveRemoteCliSandboxHandle(
+    { agent, branch: effectiveBranch },
+    ctx,
+  );
+  return sandboxHandle;
 }

@@ -1,6 +1,6 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { providerKeyOutputSchema } from "./key-create";
 
 export const AI_PROVIDER_KEY_UPDATE = defineTool({

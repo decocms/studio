@@ -31,10 +31,20 @@ COPY decocms.tgz /tmp/decocms.tgz
 RUN bun add /tmp/decocms.tgz
 
 # Drop the build toolchain now that native modules have been compiled.
+# Also create the DuckDB extension dir (owned by bunuser) where httpfs is baked.
 USER root
 RUN apt-get purge -y --auto-remove python3 build-essential && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /opt/duckdb/extensions && \
+    chown -R bunuser:bunapp /opt/duckdb
 USER bunuser
+
+# Bake the DuckDB httpfs extension into the image so the GCS monitoring read
+# path never reaches the DuckDB extension CDN at runtime (strict-outbound
+# self-hosters). At runtime DuckDBEngine sets autoinstall/autoload off and
+# LOADs from this directory. Network is available here at build time.
+ENV DUCKDB_EXTENSION_DIRECTORY=/opt/duckdb/extensions
+RUN bun -e "const {DuckDBInstance}=await import('@duckdb/node-api'); const c=await (await DuckDBInstance.create('',{threads:'1'})).connect(); await c.run(\"SET extension_directory='/opt/duckdb/extensions'; INSTALL httpfs;\");"
 
 # Expose the default port
 EXPOSE 3000

@@ -9,7 +9,7 @@
  * validation / MCP-client creation (subagent-wrapper concerns).
  */
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import type { MeshProvider } from "@/ai-providers/types";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
@@ -43,7 +43,7 @@ import type { SubtaskParams } from "./built-in-tools/subtask";
 import type { ConnectionsBlockTool } from "./connections-block";
 
 export interface RunAgentLoopOptions {
-  ctx: MeshContext;
+  ctx: StudioContext;
   organization: OrganizationScope;
   virtualMcp: {
     id: string;

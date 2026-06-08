@@ -2,11 +2,16 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { DuckDBEngine } from "../monitoring/query-engine";
+import {
+  DuckDBEngine,
+  buildOtlpFlatSourceFromGlob,
+} from "../monitoring/query-engine";
 import type { MetricRow } from "../monitoring/schema";
 import {
   makeTestMonitoringRow,
   writeTestNDJSON,
+  makeTestOtlpLogRecord,
+  writeTestOtlpJson,
 } from "../monitoring/test-utils";
 import { SqlMonitoringStorage } from "./monitoring-sql";
 
@@ -669,3 +674,115 @@ describe.skipIf(!duckdbAvailable)("SqlMonitoringStorage", () => {
     });
   });
 });
+
+// The existing suite above (metricsFromLogs=false, histogram MetricRow files)
+// is the regression control for the local-NDJSON metric path.
+describe.skipIf(!duckdbAvailable)(
+  "SqlMonitoringStorage (OTLP flat-log source, metricsFromLogs=true)",
+  () => {
+    let tmpDir: string;
+    let engine: DuckDBEngine;
+    let storage: SqlMonitoringStorage;
+
+    beforeAll(async () => {
+      tmpDir = await mkdtemp(join(tmpdir(), "monitoring-otlp-test-"));
+      await writeTestOtlpJson(tmpDir, [
+        makeTestOtlpLogRecord({
+          id: "span_1",
+          tool_name: "TOOL_A",
+          duration_ms: 100,
+          is_error: 0,
+          connection_id: "conn_1",
+          output: '{"tokens":42}',
+          timestamp: "2026-03-05T12:00:00.000Z",
+        }),
+        makeTestOtlpLogRecord({
+          id: "span_2",
+          tool_name: "TOOL_A",
+          duration_ms: 300,
+          is_error: 1,
+          error_message: "timeout",
+          connection_id: "conn_1",
+          timestamp: "2026-03-05T12:01:00.000Z",
+        }),
+        makeTestOtlpLogRecord({
+          id: "span_3",
+          tool_name: "TOOL_B",
+          duration_ms: 50,
+          is_error: 0,
+          connection_id: "conn_2",
+          timestamp: "2026-03-05T12:02:00.000Z",
+        }),
+      ]);
+
+      engine = new DuckDBEngine();
+      const otlpSource = buildOtlpFlatSourceFromGlob(`${tmpDir}/**/*.json`);
+      storage = new SqlMonitoringStorage(
+        engine,
+        () => otlpSource,
+        engine,
+        () => otlpSource,
+        "duckdb",
+        true, // metricsFromLogs
+      );
+    });
+
+    afterAll(async () => {
+      await engine.destroy();
+      await rm(tmpDir, { recursive: true, force: true });
+    });
+
+    test("query returns flattened log rows", async () => {
+      const result = await storage.query({ organizationId: "org_test" });
+      expect(result.total).toBe(3);
+      expect(result.logs.map((l) => l.id).sort()).toEqual([
+        "span_1",
+        "span_2",
+        "span_3",
+      ]);
+      const errored = result.logs.find((l) => l.id === "span_2")!;
+      expect(errored.isError).toBe(true);
+      expect(errored.errorMessage).toBe("timeout");
+    });
+
+    test("getById returns a single flattened row", async () => {
+      const log = await storage.getById("org_test", "span_1");
+      expect(log?.toolName).toBe("TOOL_A");
+      expect(log?.durationMs).toBe(100);
+    });
+
+    test("getStats aggregates over flat rows", async () => {
+      const stats = await storage.getStats({ organizationId: "org_test" });
+      expect(stats.totalCalls).toBe(3);
+      expect(stats.errorRate).toBeCloseTo(1 / 3, 5);
+      expect(stats.avgDurationMs).toBeCloseTo(150, 5);
+    });
+
+    test("queryMetricTimeseries derives metrics from log rows", async () => {
+      const result = await storage.queryMetricTimeseries({
+        organizationId: "org_test",
+        interval: "1d",
+        startDate: new Date("2026-03-01T00:00:00.000Z"),
+        endDate: new Date("2026-03-10T00:00:00.000Z"),
+      });
+      expect(result.totalCalls).toBe(3);
+      expect(result.totalErrors).toBe(1);
+      expect(result.avgDurationMs).toBeCloseTo(150, 5);
+      expect(result.p95DurationMs).toBeGreaterThan(0);
+      expect(result.connectionBreakdown.length).toBe(2);
+    });
+
+    test("queryMetricTopToolsTimeseries derives top tools from log rows", async () => {
+      const result = await storage.queryMetricTopToolsTimeseries({
+        organizationId: "org_test",
+        interval: "1d",
+        startDate: new Date("2026-03-01T00:00:00.000Z"),
+        endDate: new Date("2026-03-10T00:00:00.000Z"),
+      });
+      expect(result.topTools.length).toBe(2);
+      // TOOL_A has 2 calls, TOOL_B has 1 → TOOL_A ranks first
+      expect(result.topTools[0]!.toolName).toBe("TOOL_A");
+      expect(result.topTools[0]!.calls).toBe(2);
+    });
+  },
+);

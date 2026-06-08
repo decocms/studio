@@ -21,8 +21,8 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-  type MeshContext,
-} from "../../core/mesh-context";
+  type StudioContext,
+} from "../../core/studio-context";
 import {
   requireVmEntry,
   resolveRuntimeConfig,
@@ -43,6 +43,8 @@ import {
   detectRepoRuntimeAnonymous,
 } from "../../shared/github-runtime-detect";
 import { generateBranchName } from "../../shared/branch-name";
+import { ensureRepoScopedToken } from "@/oauth/github-mint";
+import { getRepoScope } from "@/shared/github-repo-scope";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
@@ -173,7 +175,7 @@ export async function ensureSandbox(
     branch: string;
     sandboxProviderKind: SandboxProviderKind;
   },
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<SandboxRecord> {
   // Inline auth + lookup; the standard `requireVmEntry` runs
   // `ctx.access.check()`, which expects resource scoping that the
@@ -249,7 +251,7 @@ export async function ensureSandbox(
 }
 
 type StartParams = {
-  ctx: MeshContext;
+  ctx: StudioContext;
   userId: string;
   orgId: string;
   virtualMcpId: string;
@@ -292,6 +294,29 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
+    // Repo-scoped child connections carry a minted token with no refresh path,
+    // so re-mint it now if expired before it gets baked into the clone URL or
+    // used for the lockfile probe. No-op for org connections and public repos.
+    if (githubRepo.connectionId) {
+      const repoConn = await ctx.storage.connections.findById(
+        githubRepo.connectionId,
+        orgId,
+      );
+      if (repoConn && getRepoScope(repoConn)) {
+        try {
+          await ensureRepoScopedToken(ctx, repoConn);
+        } catch (err) {
+          // Swallow + log: a failed mint intentionally falls through to
+          // buildCloneInfo's own "No GitHub token found" throw below (sandbox
+          // start fails loudly — never an unauthenticated clone).
+          console.error("[provisionSandbox] repo-scoped token mint failed", {
+            connectionId: githubRepo.connectionId,
+            error: (err as Error).message,
+          });
+        }
+      }
+    }
+
     // Connection-backed (authenticated) vs public-clone (anonymous). The
     // daemon's clone behavior is identical — only the URL and identity
     // change. Push-back fails in the anonymous case; that's the documented
@@ -460,7 +485,7 @@ async function provisionSandbox(
  * readers (resolveRuntimeConfig, any client inspectors) keep working.
  */
 async function persistDetectedRuntime(
-  ctx: MeshContext,
+  ctx: StudioContext,
   virtualMcpId: string,
   actingUserId: string,
   packageManager: string,

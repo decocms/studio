@@ -65,11 +65,11 @@ describe("logRecordToMonitoringRow", () => {
   }
 
   it("should define MONITORING_LOG_ATTR constants", () => {
-    expect(MONITORING_LOG_ATTR.TYPE).toBe("mesh.monitoring.type");
+    expect(MONITORING_LOG_ATTR.TYPE).toBe("studio.monitoring.type");
     expect(MONITORING_LOG_ATTR.ORGANIZATION_ID).toBe(
-      "mesh.monitoring.organization_id",
+      "studio.monitoring.organization_id",
     );
-    expect(MONITORING_LOG_ATTR.TOOL_NAME).toBe("mesh.monitoring.tool_name");
+    expect(MONITORING_LOG_ATTR.TOOL_NAME).toBe("studio.monitoring.tool_name");
     expect(MONITORING_LOG_TYPE_VALUE).toBe("tool_call");
   });
 

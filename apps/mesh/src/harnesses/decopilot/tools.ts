@@ -21,7 +21,7 @@
 
 import type { ToolSet, UIMessageStreamWriter } from "ai";
 import type { GithubRepo } from "@decocms/mesh-sdk";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
 import type { MeshProvider } from "@/ai-providers/types";
@@ -122,7 +122,7 @@ export interface AssembleDecopilotToolsExtras {
  */
 export async function assembleDecopilotTools(
   input: HarnessStreamInput,
-  ctx: MeshContext,
+  ctx: StudioContext,
   extras: AssembleDecopilotToolsExtras,
 ): Promise<AssembledTools> {
   const organization = ctx.organization!;

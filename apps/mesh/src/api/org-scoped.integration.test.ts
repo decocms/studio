@@ -26,7 +26,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import type { EventBus } from "../event-bus";
 import { createApp } from "./app";
 
@@ -81,7 +81,7 @@ function mockApiKey(userId: string, orgId: string, orgSlug: string) {
 }
 
 describe("org-scoped API coexistence", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
   let logSpy: ReturnType<typeof spyOn> | undefined;
 

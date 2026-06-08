@@ -96,8 +96,11 @@ import * as migration094orgfileconfigs from "./094-org-file-configs.ts";
 import * as migration095removeautomationtoolcallkind from "./095-remove-automation-tool-call-kind.ts";
 import * as migration096orgfileconfigspublicurlbase from "./096-org-file-configs-public-url-base.ts";
 import * as migration097droplocaldockersandboxstate from "./097-drop-local-docker-sandbox-state.ts";
-import * as migration098observationalagent from "./098-observational-agent.ts";
-import * as migration099observationalmulti from "./099-observational-multi.ts";
+import * as migration098threadmessageparts from "./098-thread-message-parts.ts";
+import * as migration099runfence from "./099-run-fence.ts";
+import * as migration100linktransport from "./100-link-transport.ts";
+import * as migration101cancelrequestedat from "./101-cancel-requested-at.ts";
+import * as migration102observationalagent from "./102-observational-agent.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -216,8 +219,11 @@ const migrations: Record<string, Migration> = {
     migration096orgfileconfigspublicurlbase,
   "097-drop-local-docker-sandbox-state":
     migration097droplocaldockersandboxstate,
-  "098-observational-agent": migration098observationalagent,
-  "099-observational-multi": migration099observationalmulti,
+  "098-thread-message-parts": migration098threadmessageparts,
+  "099-run-fence": migration099runfence,
+  "100-link-transport": migration100linktransport,
+  "101-cancel-requested-at": migration101cancelrequestedat,
+  "102-observational-agent": migration102observationalagent,
 };
 
 export default migrations;

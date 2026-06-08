@@ -7,7 +7,7 @@
 
 import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
-import { getUserId, requireAuth } from "../../core/mesh-context";
+import { getUserId, requireAuth } from "../../core/studio-context";
 import { ApiKeyCreateInputSchema, ApiKeyCreateOutputSchema } from "./schema";
 
 export const API_KEY_CREATE = defineTool({

@@ -6,7 +6,7 @@ import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import {
   useOptionalChatStream,
   useOptionalChatPrefs,
-  useChatTask,
+  useOptionalChatTask,
 } from "@/web/components/chat/context.tsx";
 import { useTaskExpandedTools } from "@/web/hooks/use-task-expanded-tools";
 import { formatPinnedViewTabId } from "@/web/layouts/main-panel-tabs/tab-id";
@@ -230,7 +230,9 @@ export function GenericToolCallPart({
   const { org } = useProjectContext();
 
   const { setChatOpen } = usePanelActions();
-  const { taskId } = useChatTask();
+  // Optional: the tool-call part is also rendered read-only in the Monitor
+  // threads view, which has no ChatContextProvider / ThreadManagerProvider.
+  const taskId = useOptionalChatTask()?.taskId ?? null;
   const { addOrReplaceEager } = useTaskExpandedTools(taskId);
   const navigate = useNavigate();
 
@@ -263,7 +265,8 @@ export function GenericToolCallPart({
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
   const sourceId = connectionId ? `${connectionId}:${rawToolName}` : null;
   const isDestructive = !!annotations?.destructiveHint;
-  const canOpenInPanel = hasMCPApp && !!connectionId && !isDestructive;
+  const canOpenInPanel =
+    hasMCPApp && !!connectionId && !isDestructive && !!taskId;
 
   const handleOpenInPanel = () => {
     if (!connectionId) return;

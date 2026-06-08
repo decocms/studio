@@ -27,7 +27,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { createApp } from "../app";
 import type { EventBus } from "../../event-bus";
 import { auth } from "../../auth";
@@ -52,7 +52,7 @@ const E2E_TIMEOUT = 15_000;
 /** MCP servers that support OAuth - all should pass OAuth discovery tests */
 const MCP_SERVERS = [
   { url: "https://mcp.stripe.com/", name: "Stripe" },
-  { url: "https://sites-openrouter.decocache.com/mcp", name: "OpenRouter" },
+  { url: "https://sites-openrouter.deco.site/mcp", name: "OpenRouter" },
   { url: "https://api.decocms.com/apps/deco/github/mcp", name: "Deco GitHub" },
   {
     url: "https://server.smithery.ai/@exa-labs/exa-code-mcp/mcp",
@@ -108,7 +108,7 @@ function createMockEventBus(): EventBus {
   };
 }
 
-let database: MeshDatabase;
+let database: StudioDatabase;
 let app: Awaited<ReturnType<typeof createApp>>;
 const connectionMap = new Map<string, string>();
 

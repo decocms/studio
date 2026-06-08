@@ -42,14 +42,9 @@ export function computeBranchDivergence(
   const refExists = (ref: string) =>
     tryGit(["rev-parse", "--verify", "--quiet", ref]) !== null;
 
-  const branchRef = refExists(`origin/${branch}`) ? `origin/${branch}` : "HEAD";
-
-  let unpushed = 0;
-  if (branch && branchRef === `origin/${branch}`) {
-    unpushed = Number(
-      tryGit(["rev-list", "--count", `${branchRef}..HEAD`]) ?? "0",
-    );
-  }
+  const remoteBranchRef = `origin/${branch}`;
+  const hasRemoteBranch = refExists(remoteBranchRef);
+  const branchRef = hasRemoteBranch ? remoteBranchRef : "HEAD";
 
   let aheadOfBase = 0;
   let behindBase = 0;
@@ -65,6 +60,16 @@ export function computeBranchDivergence(
       behindBase = Number(m[1]);
       aheadOfBase = Number(m[2]);
     }
+  }
+
+  let unpushed = 0;
+  if (branch && hasRemoteBranch) {
+    unpushed = Number(
+      tryGit(["rev-list", "--count", `${remoteBranchRef}..HEAD`]) ?? "0",
+    );
+  } else if (branch && !hasRemoteBranch) {
+    // Branch never pushed (or removed on origin): local commits vs base need push.
+    unpushed = aheadOfBase;
   }
 
   const headSha = tryGit(["rev-parse", branchRef]) ?? "";

@@ -1,7 +1,7 @@
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 
 export async function hasAnyObject(
-  ctx: MeshContext,
+  ctx: StudioContext,
   prefix: string,
 ): Promise<boolean> {
   const storage = ctx.objectStorage;

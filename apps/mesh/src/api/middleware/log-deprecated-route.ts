@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 
-type Variables = { meshContext: MeshContext };
+type Variables = { meshContext: StudioContext };
 
 /**
  * Permanent (non-deprecated) routes that any legacy deprecation middleware

@@ -13,7 +13,7 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { fetchToolsFromMCP } from "./fetch-tools";
 import {

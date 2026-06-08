@@ -20,7 +20,7 @@ import {
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 
 // ============================================================================
 // Types & Schemas
@@ -408,7 +408,7 @@ function convertFinishReason(
 // Route Handler
 // ============================================================================
 
-const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
+const app = new Hono<{ Variables: { meshContext: StudioContext } }>();
 
 app.post("/:org/v1/chat/completions", async (c) => {
   const ctx = c.get("meshContext");

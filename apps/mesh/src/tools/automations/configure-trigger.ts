@@ -6,7 +6,7 @@
  * so the external MCP can call back to Mesh when the trigger fires.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { clientFromConnection } from "@/mcp-clients";
 import { toServerClient } from "@/api/routes/proxy";
 import type { AutomationTrigger } from "@/storage/types";
@@ -14,7 +14,7 @@ import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tok
 import { TriggerBinding } from "@decocms/bindings/trigger";
 
 export async function configureTriggerOnMcp(
-  ctx: MeshContext,
+  ctx: StudioContext,
   trigger: AutomationTrigger,
   enabled: boolean,
   tokenStorage?: TriggerCallbackTokenStorage,

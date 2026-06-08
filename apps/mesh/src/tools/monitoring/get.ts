@@ -4,7 +4,7 @@
  * Fetches a single monitoring log by ID with full input/output data.
  */
 
-import { requireOrganization } from "@/core/mesh-context";
+import { requireOrganization } from "@/core/studio-context";
 import { flushMonitoringData } from "@/observability";
 import { defineTool } from "../../core/define-tool";
 import { z } from "zod";

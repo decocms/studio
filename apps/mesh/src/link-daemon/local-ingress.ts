@@ -53,6 +53,15 @@ export async function startLocalIngress(
   const server = Bun.serve<WsData>({
     port: input.port,
     hostname: "127.0.0.1",
+    // Disable Bun's default 10s idle timeout: the ingress proxies long-lived
+    // requests to the sandbox dev server (SSE/streaming chat previews, Vite
+    // HMR, cold-starting servers) that legitimately produce no I/O for >10s.
+    // Without this, Bun aborts those connections at 10s and logs
+    //   "[Bun.serve]: request timed out after 10 seconds."
+    // dropping the preview mid-stream. Mirrors apps/mesh/src/index.ts and the
+    // sandbox daemon (packages/sandbox/daemon/entry.ts), which set this for the
+    // same SSE reason.
+    idleTimeout: 0,
     async fetch(req, srv) {
       const host = req.headers.get("host");
       const handle = parseHandleFromHost(host);

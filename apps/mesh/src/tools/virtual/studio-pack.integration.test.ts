@@ -6,14 +6,14 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { CredentialVault } from "../../encryption/credential-vault";
 import { ConnectionStorage } from "../../storage/connection";
 import { VirtualMCPStorage } from "../../storage/virtual";
 import { installStudioPack } from "./studio-pack";
 
 describe("installStudioPack", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let virtualMcpStorage: VirtualMCPStorage;
   let connectionStorage: ConnectionStorage;
   const orgId = "org_studio_pack_test";

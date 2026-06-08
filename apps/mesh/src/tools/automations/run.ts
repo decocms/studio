@@ -11,7 +11,7 @@ import {
   requireAuth,
   requireOrganization,
   getUserId,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 
 export const AUTOMATION_RUN = defineTool({
   name: "AUTOMATION_RUN",

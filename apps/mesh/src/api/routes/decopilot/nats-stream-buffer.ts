@@ -28,6 +28,19 @@ import {
 } from "nats";
 import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
 import type { StreamBuffer } from "./stream-buffer";
+import { meter } from "@/observability";
+
+// B5: counter for JetStream publish errors — tagged by org.id (low cardinality).
+// Increment happens inside createPublishTracker's catch where publish failures
+// are already sampled-logged; the counter lets alerting fire without log scraping.
+const publishErrorsCounter = meter.createCounter(
+  "decopilot.stream.publish_errors",
+  {
+    description:
+      "Number of JetStream publish failures for decopilot stream chunks",
+    unit: "{errors}",
+  },
+);
 
 const STREAM_NAME = "DECOPILOT_STREAMS";
 const SUBJECT_PREFIX = "decopilot.stream";
@@ -51,7 +64,7 @@ function streamSubject(taskId: string): string {
   return `${SUBJECT_PREFIX}.${taskId}`;
 }
 
-function createPublishTracker(taskId: string) {
+function createPublishTracker(taskId: string, orgId?: string) {
   let errors = 0;
   return {
     publish(
@@ -63,6 +76,11 @@ function createPublishTracker(taskId: string) {
       js.publish(subj, data, hdrs ? { headers: hdrs } : undefined).catch(
         (err) => {
           errors++;
+          // B5: increment OTEL counter on every publish failure so alerting can
+          // fire without log scraping. Tag by org.id (low cardinality); fall
+          // back to "unknown" when the org context isn't available at this
+          // call site (e.g. standalone test harness without a dispatch context).
+          publishErrorsCounter.add(1, { "org.id": orgId ?? "unknown" });
           if (errors === 1 || errors % 100 === 0) {
             console.warn(
               `[Decopilot] JetStream publish failed for thread ${taskId} (${errors} total):`,
@@ -128,12 +146,13 @@ export class NatsStreamBuffer implements StreamBuffer {
     stream: ReadableStream,
     taskId: string,
     registrySignal: AbortSignal,
+    orgId?: string,
   ): void {
     const js = this.js;
     if (!js) return;
 
     const subj = streamSubject(taskId);
-    const tracker = createPublishTracker(taskId);
+    const tracker = createPublishTracker(taskId, orgId);
     const encoder = this.encoder;
 
     let terminated = false;

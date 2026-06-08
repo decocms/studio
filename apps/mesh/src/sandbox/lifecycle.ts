@@ -4,7 +4,7 @@
  * between start and stop still tears down the right kind of sandbox.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import {
   resolveSandboxProviderKindFromEnv,
   type SandboxProviderKind,
@@ -188,27 +188,32 @@ async function instantiate(
  * a different user).
  */
 export async function buildDesktopProvider(
-  _ctx: MeshContext,
+  _ctx: StudioContext,
   userSub: string,
 ): Promise<SandboxProvider> {
   const { DesktopSandboxProvider } = await import(
     "@decocms/sandbox/provider/desktop"
   );
-  const { getDispatch } = await import("../api/app");
+  const { getProxyDispatch } = await import("../api/app");
   const stateStore = new KyselySandboxProviderStateStore(_ctx.db);
   if (!userSub) {
     throw new Error("buildDesktopProvider: userSub must be a non-empty string");
   }
+  // Phase C-bis S8: the pull reverse-proxy `DispatchFn` (the daemon long-polls
+  // `/links/proxy`) is the only desktop transport — the reverse-WS dispatcher
+  // was deleted. The provider (runner.ts) is transport-agnostic; it decodes the
+  // base64 `DispatchChunk.data` the proxy dispatch yields.
+  const dispatch = getProxyDispatch();
   return new DesktopSandboxProvider({
     userSub,
-    dispatch: getDispatch(),
+    dispatch,
     stateStore,
   });
 }
 
 /** SANDBOX_DELETE uses this so teardown follows the entry's recorded sandboxProviderKind. */
 export function getSandboxProviderByKind(
-  ctx: MeshContext,
+  ctx: StudioContext,
   kind: SandboxProviderKind,
 ): Promise<SandboxProvider> {
   return resolveOnce(kind, () => instantiate(kind, ctx.db));
@@ -218,7 +223,7 @@ export function getSandboxProviderByKind(
  * Eager provider accessor for paths that need the provider before any user
  * request — preview-host proxying at the Bun.serve layer is the only caller
  * today. Reads the provider kind from env and constructs without a
- * MeshContext (the state store only needs a Kysely instance). Returns null
+ * StudioContext (the state store only needs a Kysely instance). Returns null
  * when no provider kind is configured.
  *
  * `instantiate()` only ever yields the cluster `AgentSandboxProvider` (the

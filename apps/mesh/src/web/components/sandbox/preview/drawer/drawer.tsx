@@ -255,27 +255,3 @@ function DrawerBody({
     </div>
   );
 }
-
-const STORAGE_KEY = (id: string) => `preview-drawer:${id}`;
-
-export function readPersistedDrawerOpen(virtualMcpId: string): boolean {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY(virtualMcpId));
-    if (!raw) return false;
-    const p = JSON.parse(raw);
-    return !!p.open;
-  } catch {
-    return false;
-  }
-}
-
-export function writePersistedDrawerOpen(
-  virtualMcpId: string,
-  open: boolean,
-): void {
-  try {
-    localStorage.setItem(STORAGE_KEY(virtualMcpId), JSON.stringify({ open }));
-  } catch {
-    /* ignore */
-  }
-}

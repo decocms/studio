@@ -45,7 +45,11 @@ function makeDispatch(
         headers: { "content-type": "application/json" },
       },
     };
-    yield { data: JSON.stringify(resp.body) };
+    // `DispatchChunk.data` is base64 on both transports (landmine #9); the
+    // provider's `dispatchJson` decodes base64 → bytes → UTF-8 before JSON.parse.
+    yield {
+      data: Buffer.from(JSON.stringify(resp.body), "utf8").toString("base64"),
+    };
   };
 }
 

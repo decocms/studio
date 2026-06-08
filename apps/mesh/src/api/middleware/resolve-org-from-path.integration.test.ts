@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Hono } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { resolveOrgFromPath } from "./resolve-org-from-path";
 
-type Variables = { meshContext: MeshContext };
+type Variables = { meshContext: StudioContext };
 
 interface FakeAuth {
   user?: { id: string };
@@ -22,7 +22,7 @@ interface BuildAppOptions {
 }
 
 const buildApp = (
-  db: MeshDatabase,
+  db: StudioDatabase,
   auth: FakeAuth,
   opts: BuildAppOptions = {},
 ) => {
@@ -60,7 +60,7 @@ const buildApp = (
         asyncResearchJobs: { setOrganizationId: () => {} },
       },
       objectStorage: opts.preboundObjectStorage ?? null,
-    } as unknown as MeshContext);
+    } as unknown as StudioContext);
     await next();
   });
   app.use("/api/:org/*", resolveOrgFromPath);
@@ -83,7 +83,7 @@ const buildApp = (
 };
 
 describe("resolveOrgFromPath", () => {
-  let db: MeshDatabase;
+  let db: StudioDatabase;
 
   beforeEach(async () => {
     db = await connectTestPgDatabase();
@@ -212,7 +212,7 @@ describe("resolveOrgFromPath", () => {
           asyncResearchJobs: { setOrganizationId: () => {} },
         },
         objectStorage: null,
-      } as unknown as MeshContext);
+      } as unknown as StudioContext);
       await next();
     });
     app.use("/api/:org/*", resolveOrgFromPath);

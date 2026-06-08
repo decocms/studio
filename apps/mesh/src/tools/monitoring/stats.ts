@@ -5,7 +5,7 @@
  * Supports both summary stats (backward-compatible) and timeseries queries.
  */
 
-import { requireOrganization } from "@/core/mesh-context";
+import { requireOrganization } from "@/core/studio-context";
 import { flushMonitoringData } from "@/observability";
 import { defineTool } from "../../core/define-tool";
 import { z } from "zod";

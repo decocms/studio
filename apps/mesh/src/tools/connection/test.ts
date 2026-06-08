@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireOrganization } from "../../core/mesh-context";
+import { requireOrganization } from "../../core/studio-context";
 
 export const CONNECTION_TEST = defineTool({
   name: "CONNECTION_TEST",

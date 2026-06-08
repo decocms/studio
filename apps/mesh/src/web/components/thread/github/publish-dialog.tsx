@@ -167,16 +167,22 @@ function PublishDialogBody({
       setSubmitForReviewError(undefined);
       setSaveChangesError(undefined);
       try {
-        const diffOpts = openPrFromCommits
+        const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
+        const needsBaseDiff =
+          openPrFromCommits ||
+          (!commitToOpenPr && (status.aheadOfBase ?? 0) > 0);
+        const diffOpts = needsBaseDiff
           ? {
               base: baseBranch,
               ...(headSha ? { headSha } : {}),
             }
           : undefined;
-        const [status, diff] = await Promise.all([
-          fetchGitStatus(orgSlug, virtualMcpId, branch),
-          fetchGitDiff(orgSlug, virtualMcpId, branch, diffOpts),
-        ]);
+        const diff = await fetchGitDiff(
+          orgSlug,
+          virtualMcpId,
+          branch,
+          diffOpts,
+        );
         setGitStatus(status);
         setGitDiff(diff);
         setPublishTitle(`Changes from ${status.current ?? branch}`);
@@ -241,6 +247,14 @@ function PublishDialogBody({
       ? PUBLISH_REQUIRES_SUBMIT_TOOLTIP
       : null;
 
+  /** Push + open PR — open-pr dialog, or save dialog with commits vs base. */
+  const showSubmitForReviewButton =
+    openPrFromCommits || (!commitToOpenPr && (gitStatus?.aheadOfBase ?? 0) > 0);
+  const canSubmitForReview =
+    !isLoadingGitDiff &&
+    (showSubmitForReviewButton || hasLocalUnpublished) &&
+    (diffCount > 0 || hasLocalUnpublished);
+
   const commitMessage = () =>
     [publishTitle.trim(), publishBody.trim()].filter(Boolean).join("\n\n");
 
@@ -283,15 +297,13 @@ function PublishDialogBody({
       const prBody = publishBody.trim() || undefined;
       const message = commitMessage() || prTitle;
 
-      if (hasLocalUnpublished) {
-        try {
-          await publishGitChanges(orgSlug, virtualMcpId, branch, message);
-        } catch (error) {
-          throw new PublishFlowError(
-            error instanceof Error ? error.message : "Failed to push changes",
-            "push",
-          );
-        }
+      try {
+        await publishGitChanges(orgSlug, virtualMcpId, branch, message);
+      } catch (error) {
+        throw new PublishFlowError(
+          error instanceof Error ? error.message : "Failed to push changes",
+          "push",
+        );
       }
 
       try {
@@ -420,9 +432,9 @@ function PublishDialogBody({
       const prBody = publishBody.trim() || undefined;
       const message = commitMessage() || prTitle;
 
-      if (hasLocalUnpublished) {
-        await publishGitChanges(orgSlug, virtualMcpId, branch, message);
-      }
+      // GitHub requires head on the remote; push even when commits are already
+      // local-only (unpushed can read 0 until origin/<branch> exists).
+      await publishGitChanges(orgSlug, virtualMcpId, branch, message);
 
       const pr = await openPullRequestForBranch(githubClient, {
         owner,
@@ -663,7 +675,7 @@ function PublishDialogBody({
         </div>
 
         <div className="shrink-0 border-t px-6 py-3">
-          {isSaveChangesFlow ? (
+          {isSaveChangesFlow && !showSubmitForReviewButton ? (
             <>
               <Button
                 type="button"
@@ -682,6 +694,52 @@ function PublishDialogBody({
                 </p>
               )}
             </>
+          ) : isSaveChangesFlow ? (
+            <>
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleSaveChanges}
+                  disabled={
+                    !canSubmit || isSavingChanges || isSubmittingForReview
+                  }
+                >
+                  {isSavingChanges ? (
+                    <Loading01 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Save changes
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1"
+                  onClick={handleSubmitForReview}
+                  disabled={
+                    !canSubmitForReview ||
+                    isSubmittingForReview ||
+                    isSavingChanges
+                  }
+                >
+                  {isSubmittingForReview ? (
+                    <Loading01 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <GitBranch01 className="h-4 w-4" />
+                  )}
+                  Submit for review
+                </Button>
+              </div>
+              {saveChangesError && (
+                <p className="mt-2 text-xs text-destructive">
+                  {saveChangesError}
+                </p>
+              )}
+              {submitForReviewError && (
+                <p className="mt-2 text-xs text-destructive">
+                  {submitForReviewError}
+                </p>
+              )}
+            </>
           ) : (
             <>
               <div className="flex items-center gap-3">
@@ -690,7 +748,9 @@ function PublishDialogBody({
                   variant="outline"
                   className="flex-1"
                   onClick={handleSubmitForReview}
-                  disabled={!canSubmit || isSubmittingForReview || isPublishing}
+                  disabled={
+                    !canSubmitForReview || isSubmittingForReview || isPublishing
+                  }
                 >
                   {isSubmittingForReview ? (
                     <Loading01 className="h-4 w-4 animate-spin" />

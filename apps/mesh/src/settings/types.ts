@@ -26,7 +26,15 @@ export interface Settings {
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
 
   // Observability
+  // HTTP URL of the ClickHouse instance holding the OTel-native `otel_logs`
+  // table. When set, the monitoring dashboard queries it (logs AND metrics are
+  // derived from those rows) instead of the local NDJSON files via DuckDB.
+  // Traces/metrics tables are not read.
   clickhouseUrl: string | undefined;
+  // Dedicated OTLP collector base URL for monitoring/audit logs. Falls back to
+  // OTEL_EXPORTER_OTLP_ENDPOINT (shared with infra logs) when unset. The "/v1/logs"
+  // signal path is appended automatically.
+  monitoringOtlpEndpoint: string | undefined;
   otelServiceName: string;
 
   // Event Bus & Networking
@@ -53,6 +61,20 @@ export interface Settings {
   s3AccessKeyId: string | undefined;
   s3SecretAccessKey: string | undefined;
   s3ForcePathStyle: boolean;
+
+  // Monitoring object storage (OTLP-JSON over GCS S3-compatible endpoint).
+  // When monitoringS3Bucket is set and clickhouseUrl is not, the dashboard reads
+  // OTLP-JSON log files from this bucket via embedded DuckDB + httpfs. Endpoint /
+  // region / credentials fall back to the matching s3* value when unset.
+  monitoringS3Bucket: string | undefined;
+  monitoringS3Endpoint: string | undefined;
+  monitoringS3Region: string | undefined;
+  monitoringS3AccessKeyId: string | undefined;
+  monitoringS3SecretAccessKey: string | undefined;
+  monitoringS3Prefix: string | undefined;
+  // Absolute path to the DuckDB extension directory baked into the image
+  // (contains httpfs). Required for the GCS OTLP monitoring path.
+  duckdbExtensionDirectory: string | undefined;
 
   // Runtime flags (set by CLI)
   isCli: boolean;

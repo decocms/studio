@@ -11,7 +11,7 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 import { normalizeThreadForResponse } from "./helpers";
 import { ThreadEntitySchema, ThreadUpdateDataSchema } from "./schema";
 

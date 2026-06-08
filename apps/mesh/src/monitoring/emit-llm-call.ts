@@ -11,7 +11,7 @@
 
 import { context, trace } from "@opentelemetry/api";
 import type { Tracer } from "@opentelemetry/api";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { emitMonitoringLog } from "./emit";
 import {
   DECOPILOT_CONNECTION_ID,
@@ -63,7 +63,7 @@ export interface EmitLlmCallLogParams {
  * recordLlmCallMetrics so that metrics reflect the actual LLM outcome.
  */
 export function monitorLlmCall(
-  params: Omit<EmitLlmCallLogParams, "tracer"> & { ctx: MeshContext },
+  params: Omit<EmitLlmCallLogParams, "tracer"> & { ctx: StudioContext },
 ): void {
   emitLlmCallLog({ ...params, tracer: params.ctx.tracer });
 }

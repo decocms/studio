@@ -11,12 +11,12 @@
  */
 
 import { Hono } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
-import { getUserId } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
+import { getUserId } from "../../core/studio-context";
 import { generatePrefixedId } from "../../shared/utils/generate-id";
 import { fetchToolsFromMCP } from "../../tools/connection/fetch-tools";
 
-type Variables = { meshContext: MeshContext };
+type Variables = { meshContext: StudioContext };
 
 interface SupabaseSite {
   name: string;
@@ -282,7 +282,7 @@ const requireAuth = async (
   return next();
 };
 
-const ADMIN_MCP = "https://sites-admin-mcp.decocache.com/api/mcp";
+const ADMIN_MCP = "https://sites-admin-mcp.deco.site/api/mcp";
 const ADMIN_API = "https://admin.deco.cx";
 
 /**
@@ -362,7 +362,7 @@ export async function provisionDecoAssetsCredentials(
  * the user. Caller treats this as best-effort.
  */
 export async function provisionDecoAssetsFileConfig(params: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   orgId: string;
   userId: string;
   siteName: string;

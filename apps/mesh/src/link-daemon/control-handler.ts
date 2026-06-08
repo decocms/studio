@@ -12,7 +12,7 @@
  *   *      /_sandbox/<handle>/<rest>      → reverse-proxy to the spawned
  *                                            sandbox daemon's local port
  */
-import type { RequestFrame } from "../links/dispatch-frames";
+import type { RequestFrame } from "../links/link-control-types";
 import type {
   DesktopSandboxProvider,
   RepoRef,
@@ -45,7 +45,15 @@ interface EnsureSandboxBody {
 
 export type StreamEvent =
   | { type: "headers"; status: number; headers: Record<string, string> }
-  | { type: "raw-chunk"; data: string };
+  /**
+   * A body chunk carrying the RAW upstream bytes — NOT TextDecoder-decoded
+   * (landmine #9). The WS path stringifies these via TextDecoder for its
+   * `chunk.data` (UTF-8 text, the WS protocol's historical shape); the pull
+   * reverse-proxy channel base64-encodes them so binary vm-tools file reads are
+   * byte-exact end-to-end. Keeping the raw bytes here lets each transport pick
+   * its own encoding without a lossy UTF-8 round-trip in between.
+   */
+  | { type: "raw-chunk"; data: Uint8Array };
 
 export interface ControlHandler {
   /** Single-response lifecycle routes (`/api/sandboxes` POST/DELETE). */
@@ -53,11 +61,25 @@ export interface ControlHandler {
   /**
    * Reverse-proxy routes (`/_sandbox/<handle>/<...>`). Yields exactly one
    * `headers` event (carrying the upstream status) followed by zero or more
-   * `raw-chunk` events with body text. Cluster-connection encodes each as
-   * the matching dispatch frame so the caller sees the real upstream status.
+   * `raw-chunk` events with the raw upstream body bytes. Cluster-connection
+   * (WS) and the pull proxy loop each encode those bytes into the matching
+   * dispatch/reply frame so the caller sees the real upstream status + body.
+   *
+   * `signal` (optional) aborts the upstream fetch + read. This is what frees a
+   * long-lived `/events` SSE slot on cancel: aborting makes `reader.read()`
+   * reject, which runs the `finally` → `acquireDispatch`'s `release()` — the
+   * ONLY thing that frees a daemon SSE slot, since `/events` never ends on its
+   * own (landmine #3). Without it, a cancel only takes effect at the next
+   * upstream byte, which for an idle SSE never arrives.
    */
-  handleStream(req: RequestFrame): AsyncIterable<StreamEvent>;
+  handleStream(
+    req: RequestFrame,
+    signal?: AbortSignal,
+  ): AsyncIterable<StreamEvent>;
 }
+
+/** Encode a short ASCII status-text body as raw bytes for a `raw-chunk`. */
+const textBytes = (s: string): Uint8Array => new TextEncoder().encode(s);
 
 const SANDBOX_PATH = /^\/_sandbox\/([^/]+)(\/.*)?$/;
 
@@ -132,7 +154,7 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
       return { status: 404, body: "not found" };
     },
 
-    handleStream(req) {
+    handleStream(req, signal) {
       const sm = SANDBOX_PATH.exec(req.path);
       if (!sm) {
         console.warn(`[control] handleStream no path match path=${req.path}`);
@@ -142,7 +164,7 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
             status: 404,
             headers: { "content-type": "text/plain" },
           };
-          yield { type: "raw-chunk" as const, data: "not found" };
+          yield { type: "raw-chunk" as const, data: textBytes("not found") };
         })();
       }
       const handle = sm[1] ?? "";
@@ -164,7 +186,10 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
             status: 404,
             headers: { "content-type": "text/plain" },
           };
-          yield { type: "raw-chunk" as const, data: "unknown handle" };
+          yield {
+            type: "raw-chunk" as const,
+            data: textBytes("unknown handle"),
+          };
         })();
       }
       const token = deps.provider.getDaemonToken(handle);
@@ -189,8 +214,16 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
               headers: streamHeaders,
               ...(req.body !== undefined ? { body: req.body } : {}),
               redirect: "manual",
+              // Aborting cancels the upstream fetch AND a blocked
+              // `reader.read()` below, so the `finally` runs `release()` even
+              // when an idle `/events` SSE is the thing being cancelled
+              // (landmine #3). Omitted when no signal is supplied (e.g. tests).
+              ...(signal ? { signal } : {}),
             });
           } catch (err) {
+            // Cancel/abort while connecting: quiet, expected (the slot is being
+            // freed). Return without an error frame.
+            if (signal?.aborted) return;
             // Connection refused / reset: the spawned sandbox daemon died or
             // never bound its port. Surface it — otherwise the cluster only
             // sees a dropped dispatch and reports `decopilot.finish: failed`.
@@ -212,30 +245,26 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
           };
           if (!res.body) return;
           const reader = res.body.getReader();
-          const decoder = new TextDecoder();
           try {
             while (true) {
               const { value, done } = await reader.read();
-              if (done) {
-                // Flush any pending multi-byte sequence held by the decoder.
-                const tail = decoder.decode();
-                if (tail.length > 0) {
-                  yield { type: "raw-chunk" as const, data: tail };
-                }
-                break;
-              }
+              if (done) break;
               if (value && value.length) {
-                yield {
-                  type: "raw-chunk" as const,
-                  data: decoder.decode(value, { stream: true }),
-                };
+                // Yield the RAW bytes — no TextDecoder (landmine #9). The
+                // transport (WS / pull proxy) chooses its own encoding so a
+                // binary vm-tools file read survives byte-exact.
+                yield { type: "raw-chunk" as const, data: value };
               }
             }
           } catch (err) {
+            // Cancel/abort mid-stream (e.g. an `/events` SSE being cancelled to
+            // free the slot): quiet, expected. The `finally` still runs
+            // `release()` (below), which is the whole point.
+            if (signal?.aborted) return;
             // Connect succeeded but the upstream body stream broke mid-flight
             // (e.g. the spawned daemon crashed its SSE writer). Distinct from
             // the connect-failure log above; this re-throw surfaces as a
-            // `handler_error` frame (see cluster-connection.ts sendErrorFrame).
+            // `handler_error` frame sent back via the pull reply channel.
             console.error(
               `[control] proxy ${req.method} ${rest} handle=${handle} port=${port} body stream error: ${
                 err instanceof Error ? err.message : String(err)

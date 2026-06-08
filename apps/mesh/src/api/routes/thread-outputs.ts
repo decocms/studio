@@ -15,9 +15,9 @@
 
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 
-type Variables = { meshContext: MeshContext };
+type Variables = { meshContext: StudioContext };
 
 export const createThreadOutputsRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();

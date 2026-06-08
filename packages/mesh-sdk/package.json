@@ -1,6 +1,6 @@
 {
   "name": "@decocms/mesh-sdk",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "SDK for building external apps that integrate with Mesh MCP servers",
   "type": "module",
   "scripts": {

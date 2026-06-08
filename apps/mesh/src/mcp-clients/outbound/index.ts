@@ -6,7 +6,7 @@
  */
 
 import { getSettings } from "../../settings";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import {
   type ConnectionEntity,
   isStdioParameters,
@@ -25,7 +25,7 @@ import {
 } from "./transports";
 
 // Singleton pool for STDIO connections — child processes must persist across requests.
-// Separate from the per-request pool on MeshContext (used by HTTP/SSE).
+// Separate from the per-request pool on StudioContext (used by HTTP/SSE).
 const stdioPool = createClientPool();
 
 /**
@@ -38,7 +38,7 @@ const stdioPool = createClientPool();
  */
 export async function createOutboundClient(
   connection: ConnectionEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
   superUser = false,
 ): Promise<Client> {
   const connectionId = connection.id;

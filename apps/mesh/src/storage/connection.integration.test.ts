@@ -5,12 +5,12 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import { ConnectionStorage } from "./connection";
 import { CredentialVault } from "../encryption/credential-vault";
 
 describe("ConnectionStorage", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let storage: ConnectionStorage;
   let vault: CredentialVault;
 

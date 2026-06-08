@@ -36,8 +36,19 @@ export interface TestMcpTool {
    */
   inputSchema?: Record<string, z.ZodTypeAny>;
   /**
+   * Optional Zod *raw shape* for the tool's output. When present, the
+   * handler's (object) return value is ALSO surfaced as `structuredContent`
+   * on the MCP result — the SDK only emits/validates structuredContent for
+   * tools that declare an outputSchema. Consumers that read
+   * `result.structuredContent` (e.g. mesh's MINT_REPO_TOKEN caller) need
+   * this; plain text-only tools can omit it.
+   */
+  outputSchema?: Record<string, z.ZodTypeAny>;
+  /**
    * Whatever this returns is wrapped into a `content: [{type: "text", text}]`
-   * MCP response. If omitted, the tool returns `{ ok: true }`.
+   * MCP response. If omitted, the tool returns `{ ok: true }`. When the tool
+   * declares an `outputSchema`, an object return is additionally emitted as
+   * `structuredContent`.
    */
   handler?: ToolHandler;
 }
@@ -113,17 +124,24 @@ export async function startTestMcpServer(
         {
           description: tool.description,
           inputSchema: tool.inputSchema ?? {},
+          ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
         },
         async (args: Record<string, unknown>) => {
           const result = tool.handler ? await tool.handler(args) : { ok: true };
+          const text =
+            typeof result === "string" ? result : JSON.stringify(result);
+          // Only emit structuredContent when the tool declares an
+          // outputSchema. The MCP SDK enforces outputSchema⟺structuredContent
+          // parity (and clients re-validate structuredContent against the
+          // schema with Ajv), so emitting it without a declared schema would
+          // break consumers. Object results back both channels.
+          const structured =
+            tool.outputSchema && typeof result === "object" && result !== null
+              ? (result as Record<string, unknown>)
+              : undefined;
           return {
-            content: [
-              {
-                type: "text" as const,
-                text:
-                  typeof result === "string" ? result : JSON.stringify(result),
-              },
-            ],
+            content: [{ type: "text" as const, text }],
+            ...(structured ? { structuredContent: structured } : {}),
           };
         },
       );

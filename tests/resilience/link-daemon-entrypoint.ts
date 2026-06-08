@@ -4,9 +4,17 @@
  * Runs inside the `link-daemon` container. Authenticates with a pre-minted
  * Better Auth API key (injected as DAEMON_API_KEY by the test that mints it),
  * dials studio through the Toxiproxy `studio_ws` proxy (MESH_CLUSTER_URL), and
- * spawns real sandboxes on demand. No OAuth, no session file.
+ * spawns real sandboxes on demand. No OAuth.
+ *
+ * The session is persisted to disk under `DATA_DIR` before the daemon starts.
+ * The daemon resolves the bearer for every (re)connect via `getValidSession`,
+ * which reads `dataDir/session.<host>.json`. Production's `deco link` command
+ * writes this file via `ensureSession` before invoking `startLinkDaemon`; the
+ * resilience harness must mirror that or the first connect fails fatally with
+ * `Session for ${clusterUrl} is no longer valid`.
  */
 import { startLinkDaemon } from "../../apps/mesh/src/link-daemon/index";
+import { writeSession } from "../../apps/mesh/src/cli/lib/session";
 import type { Session } from "../../apps/mesh/src/cli/lib/session";
 
 export function buildDaemonSession(input: {
@@ -37,6 +45,13 @@ async function main(): Promise<void> {
     clusterUrl,
     nowIso: new Date().toISOString(),
   });
+
+  // Persist the API-key session to disk so the daemon's `getAccessToken`
+  // callback (which calls `getValidSession({ dataDir, target })`) finds it on
+  // first connect. Without this, `getValidSession` returns null, the daemon
+  // throws `{ fatal: true }`, and the reconnect loop exits before opening
+  // the WebSocket — see resilience CI failure on commit a83e96e.
+  await writeSession(dataDir, session);
 
   console.log(
     `[resilience-link-daemon] starting; cluster=${clusterUrl} port=${port}`,

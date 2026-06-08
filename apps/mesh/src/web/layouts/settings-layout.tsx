@@ -133,9 +133,6 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
     {
       label: "Build",
       items: [
-        // connections + agents stay visible to every member — viewing them is
-        // basic-usage. The create/update/delete affordances inside those pages
-        // are gated in-page by connections:manage / agents:manage.
         {
           key: "connections",
           label: "Connections",

@@ -270,11 +270,12 @@ export async function startDevServer(
     // also prevents orphaning a process spawned right as we shut down.
     linkAbort.abort();
     await linkSupervisor.catch(() => null);
-    // Stop the link next — it talks to the cluster on shutdown
-    // (DELETE /api/links/me), so giving it a window before we tear down
-    // the API server reduces orphaned registry entries. stopLink reads
-    // the state file written by ensureLink, signals the daemon, waits
-    // for exit, then removes the state file.
+    // Stop the link next — signal the daemon process (stopLink reads the
+    // state file written by ensureLink, signals the daemon, waits for
+    // exit, then removes the state file). There is no HTTP DELETE endpoint;
+    // the link-claim entry expires via the 60 s NATS-KV TTL after the
+    // process exits. Stopping before the API server reduces the window
+    // where polls arrive but NATS is already gone.
     if (options.localSandboxProvider) {
       const { stopLink } = await import("../../services/ensure-services");
       try {

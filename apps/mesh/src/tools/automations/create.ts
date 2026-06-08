@@ -11,7 +11,7 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 import { ChatTierSchema } from "../organization/schema";
 import { normalizeMessages } from "./normalize-messages";
 

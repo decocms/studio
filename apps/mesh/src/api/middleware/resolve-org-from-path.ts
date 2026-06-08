@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { isOrgArchived } from "../../core/org-archived";
 import { createBoundObjectStorage } from "../../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../../object-storage/dev-object-storage";
@@ -9,7 +9,7 @@ import { getObjectStorageS3Service } from "../../object-storage/factory";
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
 export const resolveOrgFromPath: MiddlewareHandler<{
-  Variables: { meshContext: MeshContext };
+  Variables: { meshContext: StudioContext };
 }> = async (c, next) => {
   const slug = c.req.param("org");
   if (!slug) {

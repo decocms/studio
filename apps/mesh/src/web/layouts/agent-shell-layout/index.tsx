@@ -22,8 +22,9 @@
  *
  * Mobile layout:
  *   Chat.Provider
- *   └── Chat.ActiveTaskProvider
- *       └── MainPanelContent OR ActiveTaskBoundary (sheet-based)
+ *   └── VmEventsBridge
+ *       └── Chat.ActiveTaskProvider
+ *           └── MainPanelWithDrawer OR ActiveTaskBoundary (sheet-based)
  */
 
 import {
@@ -53,18 +54,13 @@ import {
 import { cn } from "@deco/ui/lib/utils.js";
 import {
   getWellKnownDecopilotVirtualMCP,
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
   useProjectContext,
   useVirtualMCP,
   parseBranchMap,
 } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/mesh-sdk/types";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import {
-  useSandboxStart,
-  useIsSandboxStartPending,
-} from "@/web/components/sandbox/hooks/use-sandbox-start";
+import { useIsSandboxStartPending } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -74,10 +70,11 @@ import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { Toolbar } from "./toolbar";
 import { ChatMainPanelGroup } from "./chat-main-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
-import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
+import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
+import { SandboxLifecycleProvider } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 
 // ---------------------------------------------------------------------------
@@ -195,11 +192,11 @@ function MobileToolbar({
 }
 
 // ---------------------------------------------------------------------------
-// VmEventsBridge — passes (virtualMcpId, branch) to the unified VM events
-// SSE provider and runs auto-start. Lives inside Chat.Provider so it can
-// read useChatTask, which keeps the SSE connection in sync with the active
-// task as the user navigates between tasks (different tasks may pin
-// different branches).
+// VmEventsBridge — thin branch resolver. Derives (branch, shouldConnect) and
+// mounts SandboxEventsProvider + SandboxLifecycleProvider. Lives inside
+// Chat.Provider so it can read useChatTask, which keeps the SSE connection
+// and the lifecycle provider in sync with the active task as the user
+// navigates between tasks (different tasks may pin different branches).
 // ---------------------------------------------------------------------------
 
 function VmEventsBridge({
@@ -213,66 +210,16 @@ function VmEventsBridge({
   sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
-  const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
-  // Auto-start the VM when the active task points at a branch without any
-  // registered sandboxMap entry (regardless of kind). Routed through useSandboxStart so
-  // concurrent mounts (preview, env, this bridge) for the same
-  // (virtualMcpId, branch) collapse onto one in-flight upstream call.
-  // The server's resolveDefaultSandboxProviderKind decides the kind when
-  // sandboxProviderKind is omitted — this is intentional for implicit auto-start.
-  const autoStartClient = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-  const { mutate: triggerAutoStart } = useSandboxStart(autoStartClient);
-  // Attempt at most one auto-start per (branch, mount). A user SANDBOX_DELETE
-  // removes the sandboxMap entry — without a permanent guard the effect would
-  // re-fire and resurrect the sandbox the user just stopped.
-  const autoStartAttemptedRef = useRef<Set<string>>(new Set());
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — fires SANDBOX_START when sandboxMap is missing an entry for (user, branch); ref guard dedupes within this mount, module-level map dedupes across components
-  useEffect(() => {
-    if (!hasActiveGithubRepo) return;
-    if (!userId) return;
-    if (!currentBranch) return;
-    // Use parseBranchMap to handle both legacy 2-level and current 3-level shapes.
-    // If any entry exists for this (user, branch) — regardless of kind — a VM is
-    // already running; don't auto-start.
-    const branchMap = parseBranchMap(sandboxMap?.[userId]?.[currentBranch]);
-    if (Object.keys(branchMap).length > 0) {
-      // VM is already running — record the branch so a user stop won't
-      // re-trigger auto-start within this mount.
-      autoStartAttemptedRef.current.add(currentBranch);
-      return;
-    }
-    if (autoStartAttemptedRef.current.has(currentBranch)) return;
-    autoStartAttemptedRef.current.add(currentBranch);
-    triggerAutoStart(
-      { virtualMcpId, branch: currentBranch },
-      {
-        onError: (err) => {
-          console.error("[auto-start-vm] failed:", err);
-        },
-      },
-    );
-  }, [
-    hasActiveGithubRepo,
-    userId,
-    currentBranch,
-    sandboxMap,
-    virtualMcpId,
-    triggerAutoStart,
-  ]);
-
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
   // Gate instead on a registered sandboxMap entry, or an in-flight
-  // SANDBOX_START (covers the booting window; the auto-start above shares this
-  // mutation key, so `useIsSandboxStartPending` observes it).
+  // SANDBOX_START (covers the booting window; SandboxLifecycleProvider's
+  // auto-start shares this mutation key, so `useIsSandboxStartPending`
+  // observes it).
   const isStartPending = useIsSandboxStartPending(
     virtualMcpId,
     currentBranch ?? undefined,
@@ -289,7 +236,15 @@ function VmEventsBridge({
       branch={currentBranch ?? null}
       enabled={shouldConnect}
     >
-      {children}
+      <SandboxLifecycleProvider
+        virtualMcpId={virtualMcpId}
+        branch={currentBranch ?? null}
+        userId={userId ?? null}
+        hasActiveGithubRepo={hasActiveGithubRepo}
+        sandboxMap={sandboxMap}
+      >
+        {children}
+      </SandboxLifecycleProvider>
     </SandboxEventsProvider>
   );
 }
@@ -499,7 +454,7 @@ function AgentInsetProvider() {
                             </div>
                           }
                         >
-                          <MainPanelContent
+                          <MainPanelWithDrawer
                             taskId={layout.taskId}
                             virtualMcpId={chatVirtualMcpId}
                           />

@@ -1,6 +1,6 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 
 export const FILE_CONFIG_DELETE = defineTool({
   name: "FILE_CONFIG_DELETE",

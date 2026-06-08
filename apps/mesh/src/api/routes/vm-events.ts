@@ -50,8 +50,8 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-  type MeshContext,
-} from "../../core/mesh-context";
+  type StudioContext,
+} from "../../core/studio-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import { readSandboxMap, resolveVm } from "../../tools/sandbox/sandbox-map";
 import type { Env } from "../hono-env";
@@ -282,7 +282,7 @@ async function isStaleHandle(
  * browser self-heal) is what matters; this is a fast-path optimisation.
  */
 async function cleanupStaleEntry(args: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   runner: SandboxProvider;
   claimName: string;
   userId: string;

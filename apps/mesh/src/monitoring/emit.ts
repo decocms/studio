@@ -14,7 +14,8 @@
  */
 
 import type { Context } from "@opentelemetry/api";
-import { SeverityNumber, logs } from "@opentelemetry/api-logs";
+import { SeverityNumber } from "@opentelemetry/api-logs";
+import { getMonitoringLogger } from "./logger";
 import { RegexRedactor } from "./redactor";
 import { MONITORING_LOG_ATTR, MONITORING_LOG_TYPE_VALUE } from "./schema";
 import { truncateString } from "./truncate-string";
@@ -35,7 +36,7 @@ export interface EmitMonitoringLogParams {
   userAgent: string | null;
   virtualMcpId: string | null;
   properties: Record<string, unknown> | null;
-  /** Override the mesh.monitoring.type attribute. Defaults to "tool_call". */
+  /** Override the studio.monitoring.type attribute. Defaults to "tool_call". */
   type?: string;
 }
 
@@ -59,7 +60,7 @@ export function emitMonitoringLog(
       ? redactor.redactString(params.errorMessage)
       : "";
 
-    logs.getLogger("mesh.monitoring", "1.0.0").emit({
+    getMonitoringLogger().emit({
       severityNumber: params.isError
         ? SeverityNumber.ERROR
         : SeverityNumber.INFO,

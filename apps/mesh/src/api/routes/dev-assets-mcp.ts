@@ -32,8 +32,8 @@ import { join, relative } from "node:path";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { MeshContext } from "../../core/mesh-context";
-import { requireOrganization } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
+import { requireOrganization } from "../../core/studio-context";
 import { getContentType } from "./dev-assets";
 
 // Local tool definition type
@@ -65,7 +65,7 @@ interface FileObject {
 
 // Define Hono variables type
 type Variables = {
-  meshContext: MeshContext;
+  meshContext: StudioContext;
 };
 
 const app = new Hono<{ Variables: Variables }>();
@@ -227,7 +227,7 @@ async function listFilesRecursive(
 // ============================================================================
 
 function createDevAssetsTools(
-  ctx: MeshContext,
+  ctx: StudioContext,
   baseUrl: string,
 ): ToolDefinition[] {
   const org = requireOrganization(ctx);
@@ -482,7 +482,7 @@ function createDevAssetsTools(
  */
 export async function handleDevAssetsMcpRequest(
   req: Request,
-  ctx: MeshContext,
+  ctx: StudioContext,
   baseUrl: string,
 ): Promise<Response> {
   const tools = createDevAssetsTools(ctx, baseUrl);
@@ -547,7 +547,7 @@ export async function handleDevAssetsMcpRequest(
 export async function callDevAssetsTool(
   toolName: string,
   args: Record<string, unknown>,
-  ctx: MeshContext,
+  ctx: StudioContext,
   baseUrl: string,
 ): Promise<{ content: unknown; isError?: boolean }> {
   const tools = createDevAssetsTools(ctx, baseUrl);

@@ -9,13 +9,13 @@
  * `data-thread-title` chunk while the stream is still open.
  */
 import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import type { HarnessProcessLocal } from "@/harnesses/types";
 import { isTitleInputChunk, isTitleResultChunk } from "@/harnesses/title-chunk";
 import { DEFAULT_THREAD_TITLE } from "./constants";
 
 export interface TitleInterceptorDeps {
-  ctx: MeshContext;
+  ctx: StudioContext;
   processLocal: HarnessProcessLocal;
   currentThreadTitle: string | null | undefined;
   threadId: string;

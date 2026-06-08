@@ -1589,7 +1589,6 @@ Define step-by-step how the agent should handle requests.
                     size="md"
                     className="shrink-0"
                     avatarClassName="[&_svg]:w-1/2 [&_svg]:h-1/2"
-                    disabled={hasGithubRepo}
                   />
                 )}
               />

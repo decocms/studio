@@ -6,7 +6,7 @@ import type { UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
  * These types intentionally avoid importing from cluster-only paths
  * (`@/core/*`, `@/storage/*`, `@/api/*`, etc.) so this file stays portable
  * into the desktop daemon's bundle. The cluster-side shapes (`ChatMessage`
- * with metadata + tools, full `MeshContext`, decopilot-only
+ * with metadata + tools, full `StudioContext`, decopilot-only
  * `HarnessProcessLocal` internals) flow in via structural compatibility:
  * the cluster passes its richer types where the harness expects a
  * UIMessage / HarnessContext / unknown-extras-bag, and TS accepts the
@@ -200,6 +200,33 @@ export interface HarnessStreamInput {
     url: string;
     headers: Record<string, string>;
     expiresAt: number;
+    /**
+     * Injected main chat-model secret for desktop decopilot activation.
+     *
+     * Only present when `target.runsIn === "user-desktop"` AND
+     * `harnessId === "decopilot"`. The desktop activates its MeshProvider
+     * from this field instead of reading from vault (which is cluster-only).
+     * Sub-provider keys (image, deep-research) are NEVER included here —
+     * those built-ins run cluster-side.
+     *
+     * ⚠️ SECURITY: This field carries an org provider API key in plaintext
+     * over HTTPS. Accepted scope: single main chat-completion key, scoped to
+     * one run. Hardening follow-up: cluster model-proxy (spec §3.9) — the
+     * desktop calls the proxy with the daemon token; no provider key ever
+     * transits to the desktop.
+     *
+     * Never log this field — it contains a provider API key.
+     */
+    modelSecret?: {
+      /** Provider identifier, e.g. "anthropic", "openai", "gemini". */
+      providerId: string;
+      /** The resolved API key (or credential secret). Plaintext over HTTPS. */
+      apiKey: string;
+      /** Optional endpoint override for self-hosted/LiteLLM deployments. */
+      baseUrl?: string;
+      /** Additional request headers the provider adapter requires. */
+      extraHeaders?: Record<string, string>;
+    };
   };
 
   // ===== Mode (forwarded; each harness interprets independently) =====
@@ -239,6 +266,13 @@ export interface HarnessStreamInput {
   // ===== Trace propagation =====
   traceparent?: string;
 
+  /**
+   * Single-writer fence token for this run (spec §3.5). Minted by
+   * prepareRun (Phase B) and included in every ingest append by the
+   * desktop daemon. Absent on ws-path runs.
+   */
+  runFenceToken?: string;
+
   /** Non-serializable extras for in-process dispatch. Remote dispatch
    *  strips this field — see `HarnessProcessLocal`. The decopilot
    *  harness REQUIRES this to be set and throws if missing; CLI harnesses
@@ -263,7 +297,7 @@ export interface Harness {
 
 /** Narrow context interface every Harness factory takes. Cluster-specific
  *  surface (DB, vault, auth, MCP gateway internals) lives on the wider
- *  MeshContext and is only safe to read inside a harness that gates its
+ *  StudioContext and is only safe to read inside a harness that gates its
  *  cluster-side code path on `HarnessStreamInput.processLocal` (today,
  *  only decopilot does this).
  *
@@ -272,7 +306,7 @@ export interface Harness {
  *  without depending on cluster-only modules.
  *
  *  Re-declared here (mirroring `apps/mesh/src/core/harness-context.ts`) so
- *  the package stays portable. The cluster's richer `MeshContext` is
+ *  the package stays portable. The cluster's richer `StudioContext` is
  *  structurally assignable to this shape. */
 export interface HarnessContext {
   tracer: import("@opentelemetry/api").Tracer;

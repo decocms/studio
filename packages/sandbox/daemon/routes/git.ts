@@ -15,6 +15,8 @@ import { jsonResponse, parseJsonBody } from "./body-parser";
 export interface GitDeps {
   appRoot: string;
   repoDir: string;
+  /** Authenticated clone URL from daemon config (may embed OAuth token). */
+  getCloneUrl?: () => string | null | undefined;
 }
 
 function gitEnv(repoDir: string): Record<string, string> {
@@ -325,6 +327,44 @@ function resolveRepoRelativePath(deps: GitDeps, userPath: string): string {
   return rel;
 }
 
+function cloneUrlHasCredentials(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.username.length > 0 || u.password.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function syncOriginRemote(repoDir: string, cloneUrl: string): void {
+  if (!cloneUrlHasCredentials(cloneUrl)) return;
+  runGit(repoDir, ["remote", "set-url", "origin", cloneUrl]);
+}
+
+function pushBranch(repoDir: string, branch: string): void {
+  runGit(
+    repoDir,
+    [
+      "-c",
+      "credential.helper=",
+      "-c",
+      "safe.directory=*",
+      "push",
+      "-u",
+      "origin",
+      branch,
+    ],
+    {
+      env: {
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_ASKPASS: "true",
+        LEFTHOOK: "0",
+        HUSKY: "0",
+      },
+    },
+  );
+}
+
 function publish(deps: GitDeps, message: string): { pushed: boolean } {
   const repoDir = deps.repoDir;
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
@@ -362,7 +402,22 @@ function publish(deps: GitDeps, message: string): { pushed: boolean } {
     );
   }
 
-  runGit(repoDir, ["push", "origin", branch]);
+  const cloneUrl = deps.getCloneUrl?.();
+  if (typeof cloneUrl === "string" && cloneUrl.length > 0) {
+    syncOriginRemote(repoDir, cloneUrl);
+  } else {
+    const originUrl = tryGit(repoDir, ["remote", "get-url", "origin"]) ?? "";
+    if (
+      originUrl.includes("github.com") &&
+      !cloneUrlHasCredentials(originUrl)
+    ) {
+      throw new Error(
+        "GitHub push requires an authenticated clone URL. Connect GitHub for this project and restart the sandbox.",
+      );
+    }
+  }
+
+  pushBranch(repoDir, branch);
   return { pushed: true };
 }
 

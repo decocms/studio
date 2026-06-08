@@ -33,6 +33,7 @@ import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
+import { useCapability } from "@/web/hooks/use-capability";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -178,6 +179,7 @@ export function useMainPanelTabs(ctx: {
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   const hasClonableSource = agentHasClonableSource(entity?.metadata);
+  const { granted: canManageAgents } = useCapability("agents:manage");
   const connections = useConnections({ includeVirtual: true });
 
   // Show "Content" only when decofile/meta confirm editable pages or sections
@@ -247,7 +249,9 @@ export function useMainPanelTabs(ctx: {
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
   }
-  systemTabs.push({ id: "settings", title: "Settings" });
+  if (canManageAgents) {
+    systemTabs.push({ id: "settings", title: "Settings" });
+  }
   systemTabs.push({ id: "automations", title: "Automations" });
 
   // Merge pinned views + per-task expanded tools into a single list keyed

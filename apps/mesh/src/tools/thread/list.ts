@@ -10,7 +10,7 @@ import {
   createCollectionListOutputSchema,
 } from "@decocms/bindings/collections";
 import { defineTool } from "../../core/define-tool";
-import { requireOrganization } from "../../core/mesh-context";
+import { requireOrganization } from "../../core/studio-context";
 import { normalizeThreadForResponse } from "./helpers";
 import { ThreadEntitySchema } from "./schema";
 import { z } from "zod";

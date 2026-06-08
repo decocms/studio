@@ -1,4 +1,4 @@
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { PLUGIN_ID } from "./shared";
 
 export interface PrivateRegistryPluginSettings {
@@ -24,7 +24,7 @@ function parsePluginSettings(raw: unknown): PrivateRegistryPluginSettings {
 }
 
 export async function getRegistryPluginSettings(
-  ctx: MeshContext,
+  ctx: StudioContext,
   organizationId: string,
 ): Promise<PrivateRegistryPluginSettings> {
   const rows = await (ctx.db as any)

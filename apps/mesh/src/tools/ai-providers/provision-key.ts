@@ -4,7 +4,7 @@ import {
   requireAuth,
   requireOrganization,
   getUserId,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 import { PROVIDER_IDS } from "../../ai-providers/provider-ids";
 import { getProviders } from "../../ai-providers/registry";
 import { mintGatewayJwt } from "../../auth/jwt";

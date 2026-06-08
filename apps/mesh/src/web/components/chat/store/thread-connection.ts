@@ -43,6 +43,7 @@ import {
   type UIMessage,
   type UIMessageChunk,
 } from "ai";
+import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
 import type { SimpleModeTier } from "@/tools/organization/schema";
@@ -125,6 +126,9 @@ export interface ThreadObserver {
 const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
 const CLEAN_RECONNECT_DELAY_MS = 50;
+/** G1: Maximum time (ms) to wait for the POST /messages response. The POST is
+ *  idempotency-keyed (workflowID), so a timeout-then-retry is safe. */
+const POST_TIMEOUT_MS = 60_000;
 
 // Browser uses rAF for chunk-coalescing; tests run under Bun where rAF is absent.
 const scheduleFrame: (cb: () => void) => number =
@@ -424,6 +428,13 @@ export class ThreadConnection {
       this.drainChunkBuffer();
     } catch (err) {
       this.failTo(err instanceof Error ? err : new Error(String(err)));
+      // G3: drain the chunk buffer even on failure so live SSE chunks that
+      // arrived while the initial page was in-flight aren't stuck forever.
+      // Without this, chunkBuffer stays non-null after the catch branch and
+      // handleChunk keeps buffering indefinitely — the thread is stuck.
+      // Subsequent successful SSE chunks fold live; dedupe-by-id handles
+      // any overlap with rows from a later successful loadInitialPage.
+      this.drainChunkBuffer();
     } finally {
       this.resolveReady();
     }
@@ -549,15 +560,31 @@ export class ThreadConnection {
     const messages = systemMessage ? [systemMessage, message] : [message];
     const body = { messages, ...rest };
     const url = `/api/${encodeURIComponent(this.orgSlug)}/decopilot/threads/${encodeURIComponent(this.threadId)}/messages`;
-    const resp = await fetch(url, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal,
-    });
+    // G1: combine the caller's stop() abort signal with a generous timeout so
+    // a stalled server never hangs the chat indefinitely. The POST is
+    // idempotency-keyed (workflowID), so a timeout-then-retry is safe.
+    const timeoutSignal = AbortSignal.timeout(POST_TIMEOUT_MS);
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, timeoutSignal])
+      : timeoutSignal;
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: combinedSignal,
+      });
+    } catch (err) {
+      // Surface timeout as a clear, user-actionable error message.
+      if (timeoutSignal.aborted && !signal?.aborted) {
+        throw new Error("request timed out — retry");
+      }
+      throw err;
+    }
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
       throw new Error(text || `POST /messages failed (${resp.status})`);
@@ -618,22 +645,25 @@ export class ThreadConnection {
       }
 
       if (this.abort.signal.aborted) return;
+      // G2: use @decocms/std exponential backoff with jitter (CLAUDE.md bans
+      // hand-rolled backoff). Clean exits use the fast-path const; error
+      // exits get jittered backoff so thundering-herd on server restarts is
+      // spread out.
       const delay = cleanExit
         ? CLEAN_RECONNECT_DELAY_MS
-        : Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
+        : exponentialBackoffWithJitter(
+            MAX_DELAY_MS,
+            BASE_DELAY_MS,
+            attempt,
+            2,
+            0.5,
+          );
       attempt++;
       if (delay > 0) {
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, delay);
-          this.abort.signal.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(timer);
-              resolve();
-            },
-            { once: true },
-          );
-        });
+        // G2: use @decocms/std sleep (CLAUDE.md bans hand-rolled setTimeout
+        // promises). sleep() resolves (not rejects) on abort by default, which
+        // matches the previous "resolve on abort" semantics.
+        await sleep(delay, { signal: this.abort.signal }).catch(() => {});
       }
     }
   }

@@ -16,7 +16,7 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import type { EventBus } from "../../event-bus";
 import { setGlobalSettings, getSettings } from "../../settings";
 import { createApp } from "../app";
@@ -55,7 +55,7 @@ function createMockEventBus(): EventBus {
 }
 
 describe("MCP Proxy null-org bypass", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
 
   const attackerUserId = "user_attacker";

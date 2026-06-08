@@ -30,7 +30,7 @@
 
 import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
 import type { HarnessContext } from "../../core/harness-context";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
 import type { MeshProvider } from "../../ai-providers/types";
 import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
@@ -101,21 +101,17 @@ export const decopilotHarnessFactory: HarnessFactory = {
   id: "decopilot",
   create(harnessCtx: HarnessContext): Harness {
     // `stream()` refuses to run without processLocal, so any cluster-only
-    // ctx field reads only happen on a real MeshContext value. The widening
+    // ctx field reads only happen on a real StudioContext value. The widening
     // cast here is a TS-level erasure; the defensive check below catches a
     // narrow HarnessContext smuggled in via misuse (e.g. a non-decopilot
     // caller mistakenly invoking this factory on the desktop).
     //
-    // `storage` and `db` are required fields on MeshContext but absent
-    // from HarnessContext, so their presence reliably distinguishes the
-    // two at runtime.
-    if (!("storage" in harnessCtx) || !("db" in harnessCtx)) {
-      throw new Error(
-        "decopilot harness requires MeshContext (cluster-side only); " +
-          "got narrow HarnessContext",
-      );
-    }
-    const ctx = harnessCtx as MeshContext;
+    // `storage` and `db` are required fields on StudioContext but absent
+    // from HarnessContext. The desktop daemon runs decopilot via the
+    // import-isolated `decopilotDesktopHarnessFactory`
+    // (`harnesses/decopilot-desktop/`), registered directly in the daemon —
+    // it never calls THIS cluster factory, so there's no desktop branch here.
+    const ctx = harnessCtx as StudioContext;
     return {
       id: "decopilot",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {

@@ -39,6 +39,39 @@ describe("git routes", () => {
     expect(body.modified).toContain("README.md");
   });
 
+  it("status reports unpushed when feature branch has no remote ref", async () => {
+    const { appRoot, repoDir } = initRepo();
+    gitSync(["checkout", "-b", "deco/thin-crane"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    writeFileSync(join(repoDir, "feature.txt"), "x\n");
+    gitSync(["add", "feature.txt"], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "feature"], { cwd: repoDir, asUser: false });
+    const mainSha = gitSync(["rev-parse", "main"], {
+      cwd: repoDir,
+      asUser: false,
+    }).trim();
+    gitSync(["update-ref", "refs/remotes/origin/main", mainSha], {
+      cwd: repoDir,
+      asUser: false,
+    });
+
+    const handler = makeGitStatusHandler({ appRoot, repoDir });
+    const res = await handler(new Request("http://x/git/status"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      aheadOfBase: number;
+      unpushed: number;
+      tracking: string | null;
+      current: string | null;
+    };
+    expect(body.current).toBe("deco/thin-crane");
+    expect(body.tracking).toBeNull();
+    expect(body.aheadOfBase).toBe(1);
+    expect(body.unpushed).toBe(1);
+  });
+
   it("status reports aheadOfBase on a feature branch", async () => {
     const { appRoot, repoDir } = initRepo();
     gitSync(["checkout", "-b", "feat/test"], { cwd: repoDir, asUser: false });

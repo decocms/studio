@@ -17,8 +17,8 @@ import {
   requireAuth,
   requireOrganization,
   getUserId,
-  type MeshContext,
-} from "../../core/mesh-context";
+  type StudioContext,
+} from "../../core/studio-context";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import type { PackageManager } from "../../shared/runtime-defaults";
 import { readSandboxMap, resolveVm } from "./sandbox-map";
@@ -80,7 +80,7 @@ export async function requireVmEntry(
     branch: string;
     sandboxProviderKind: SandboxProviderKind;
   },
-  ctx: MeshContext,
+  ctx: StudioContext,
 ) {
   requireAuth(ctx);
   const organization = requireOrganization(ctx);

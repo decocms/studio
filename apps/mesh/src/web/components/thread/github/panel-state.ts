@@ -162,13 +162,29 @@ export function selectHeaderButton(
   }
   const ready = branch;
 
-  const hasLocalWork = ready.workingTreeDirty || ready.unpushed > 0;
-  if (hasLocalWork) {
+  if (ready.workingTreeDirty) {
     return {
       label: "Save changes",
       action: "commit-and-push",
       variant: "default",
       tooltip: "Commit and push local changes",
+    };
+  }
+
+  if (ready.unpushed > 0) {
+    if (!pr) {
+      return {
+        label: "Submit for review",
+        action: "create-pr",
+        variant: "default",
+        tooltip: `Push and open a PR for ${ready.branch} → ${ready.base}`,
+      };
+    }
+    return {
+      label: "Save changes",
+      action: "commit-and-push",
+      variant: "default",
+      tooltip: "Push local commits",
     };
   }
 

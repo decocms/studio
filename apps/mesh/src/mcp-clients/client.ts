@@ -5,7 +5,7 @@
  * Routes to appropriate factory based on connection type.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { createOutboundClient } from "./outbound";
@@ -25,7 +25,7 @@ import { createVirtualClient } from "./virtual-mcp";
  */
 export async function clientFromConnection(
   connection: ConnectionEntity,
-  ctx: MeshContext,
+  ctx: StudioContext,
   superUser = false,
 ): Promise<Client> {
   if (connection.connection_type === "VIRTUAL") {

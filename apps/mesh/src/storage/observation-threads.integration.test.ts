@@ -19,7 +19,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import { SqlThreadStorage } from "./threads";
 import type { ThreadMessage } from "./types";
 
@@ -30,7 +30,7 @@ const OBSERVER_ID = "obs_1"; // observer config id (watermark key)
 const FAR_FUTURE = "2999-01-01T00:00:00.000Z";
 
 describe("SqlThreadStorage — observational sweep", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let storage: SqlThreadStorage;
 
   beforeAll(async () => {

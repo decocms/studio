@@ -40,6 +40,10 @@ function inertDeps(): RunReactorDeps {
       listOrphanedRuns: async () => [],
       listOrphanedRunsByPod: async () => [],
       orphanRunsByPod: async () => [],
+      bumpProgress: noop,
+      // null → reaper falls back to the run's in-memory startedAt baseline,
+      // which is exactly the timing these pure tests exercise.
+      getProgress: async () => null,
     } as unknown as RunReactorDeps["storage"],
     streamBuffer: { purge() {} } as unknown as StreamBuffer,
     sseHub: { emit() {} },
@@ -334,33 +338,40 @@ describe("RunRegistry (in-memory state machine)", () => {
   // covered against real Postgres in run-registry.integration.test.ts)
   // -------------------------------------------------------------------------
   describe("reapStaleRuns (timing)", () => {
-    const MAX_RUN_AGE_MS = 30 * 60 * 1000;
+    // Progress-based idle timeout (run-registry.ts RUN_IDLE_TIMEOUT_MS). With
+    // getProgress() → null in inertDeps, the reaper baselines off the run's
+    // in-memory startedAt, so these timing tests reduce to "idle since start".
+    const RUN_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
-    it("does not reap a run just under MAX_RUN_AGE_MS", () => {
+    it("does not reap a run just under the idle timeout", async () => {
       let now = new Date("2024-01-01T00:00:00Z");
       const registry = createRegistry(() => now);
 
       startThread(registry, "t1", "org1", "u1");
 
       // Advance time to just under the threshold
-      now = new Date(now.getTime() + MAX_RUN_AGE_MS - 1);
+      now = new Date(now.getTime() + RUN_IDLE_TIMEOUT_MS - 1);
 
-      (registry as unknown as { reapStaleRuns(): void }).reapStaleRuns();
+      await (
+        registry as unknown as { reapStaleRuns(): Promise<void> }
+      ).reapStaleRuns();
 
       expect(registry.isRunning("t1")).toBe(true);
     });
 
-    it("reaps only stale runs when multiple threads are present", () => {
+    it("reaps only stuck runs when multiple threads are present", async () => {
       let now = new Date("2024-01-01T00:00:00Z");
       const registry = createRegistry(() => now);
 
       startThread(registry, "old", "org1", "u1");
 
       // Advance clock, then start a fresh run
-      now = new Date(now.getTime() + MAX_RUN_AGE_MS + 1);
+      now = new Date(now.getTime() + RUN_IDLE_TIMEOUT_MS + 1);
       startThread(registry, "fresh", "org1", "u2");
 
-      (registry as unknown as { reapStaleRuns(): void }).reapStaleRuns();
+      await (
+        registry as unknown as { reapStaleRuns(): Promise<void> }
+      ).reapStaleRuns();
 
       expect(registry.isRunning("old")).toBe(false);
       expect(registry.isRunning("fresh")).toBe(true);

@@ -199,9 +199,11 @@ export function SandboxEventsProvider({
         setPhase(next);
         // A fresh non-terminal phase means the lifecycle is making progress
         // again — clear notFound from a prior `gone` so the self-heal UI
-        // settles back into the booting overlay.
+        // settles back into the booting overlay, and treat it as a healthy
+        // connection so the reconnect backoff resets.
         if (next.kind !== "failed") {
           setNotFound(false);
+          reconnectAttempt = 0;
         }
       } catch (err) {
         console.warn("[vm-events] bad phase payload", err);
@@ -226,6 +228,8 @@ export function SandboxEventsProvider({
       try {
         const data = JSON.parse(e.data) as { source: string; data: string };
         if (typeof data.data !== "string") return;
+        // Real daemon output → the sandbox is alive; reset reconnect backoff.
+        reconnectAttempt = 0;
         // xterm.js reads bare `\n` as "cursor down, keep column" — normalize.
         const normalized = data.data.replace(/\r?\n/g, "\r\n");
         getOrCreateBuffer(data.source).append(normalized);
@@ -246,6 +250,8 @@ export function SandboxEventsProvider({
       const name = e.type as DaemonEventName;
       try {
         const payload = JSON.parse(e.data);
+        // Any daemon event proves the sandbox is reachable; reset backoff.
+        reconnectAttempt = 0;
         switch (name) {
           case "lifecycle": {
             const lp = payload as DaemonEventPayload<"lifecycle">;
@@ -316,9 +322,14 @@ export function SandboxEventsProvider({
 
       es = new EventSource(sseUrl);
 
-      es.onopen = () => {
-        reconnectAttempt = 0;
-      };
+      // NOTE: deliberately do NOT reset `reconnectAttempt` here. A connection
+      // that opens, immediately receives `gone` (handle evicted), and closes
+      // still fires `onopen` — resetting on open made that case tight-loop at
+      // the 1s floor forever. The backoff is reset only once real daemon
+      // data/phase progress arrives (see handleLog/handleDaemonEvent/
+      // handleClaimPhase), so repeated `gone`-only reconnects ramp toward the
+      // 30s cap instead of hammering.
+      es.onopen = () => {};
 
       es.onerror = () => {
         if (es?.readyState !== EventSource.CLOSED) return;

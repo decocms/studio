@@ -15,7 +15,7 @@ import migrations from "../../migrations";
 import { runSeed, type SeedName } from "../../migrations/seeds";
 import { migrateBetterAuth } from "../auth/migrate";
 import { collectPluginMigrations } from "../core/plugin-loader";
-import { closeDatabase, getDb, type MeshDatabase } from "./index";
+import { closeDatabase, getDb, type StudioDatabase } from "./index";
 import type { Database } from "../storage/types";
 
 export { runSeed, type SeedName };
@@ -232,7 +232,7 @@ export interface MigrateOptions {
    * If not provided, uses the global database from getDb().
    * When provided, Better Auth migrations are skipped (they use their own connection).
    */
-  database?: MeshDatabase;
+  database?: StudioDatabase;
 
   /**
    * Skip Better Auth migrations.

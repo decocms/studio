@@ -26,7 +26,7 @@ import type {
   SandboxId,
   SandboxProvider,
 } from "../types";
-import type { DispatchFn } from "../../../../../apps/mesh/src/links/dispatcher";
+import type { DispatchFn } from "../../../../../apps/mesh/src/links/link-dispatch-types";
 
 const RUNNER_KIND = "user-desktop" as const;
 
@@ -244,13 +244,20 @@ export class DesktopSandboxProvider implements SandboxProvider {
     );
     const iterator = iter[Symbol.asyncIterator]();
 
+    // `DispatchChunk.data` is base64 on BOTH transports (WS + pull reverse-proxy
+    // channel) — the uniform binary-safe shape (landmine #9). Decode incrementally
+    // via a 4-char carry buffer so a single upstream chunk whose base64 was split
+    // across NATS messages (ws-gateway's payload-chunking) still reassembles into
+    // the exact original bytes.
+    const b64 = createBase64StreamDecoder();
+
     let status = 200;
     let respHeaders: Record<string, string> = {
       "content-type": "application/octet-stream",
     };
-    // Buffer for any body chunks that arrived in the same loop tick as the
+    // Buffer for any body bytes that arrived in the same loop tick as the
     // headers frame (the dispatcher can deliver several frames back-to-back).
-    const initialChunks: string[] = [];
+    const initialChunks: Uint8Array[] = [];
     try {
       while (true) {
         const next = await iterator.next();
@@ -261,7 +268,10 @@ export class DesktopSandboxProvider implements SandboxProvider {
           respHeaders = chunk.headers.headers;
           break;
         }
-        if (chunk.data != null) initialChunks.push(chunk.data);
+        if (chunk.data != null) {
+          const bytes = b64.push(chunk.data);
+          if (bytes.length) initialChunks.push(bytes);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "dispatch error";
@@ -275,23 +285,35 @@ export class DesktopSandboxProvider implements SandboxProvider {
     // (in-flight `iterator.next()` resolves after `cancel()` fires) doesn't
     // try to enqueue on an already-closed controller.
     let canceled = false;
-    const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       async start(controller) {
-        for (const data of initialChunks)
-          controller.enqueue(encoder.encode(data));
+        for (const bytes of initialChunks) controller.enqueue(bytes);
       },
       async pull(controller) {
+        // Loop until we enqueue at least one byte or the iterator ends. A base64
+        // fragment shorter than a 4-char group decodes to ZERO bytes (the carry
+        // buffer holds it), so a single `iterator.next()` may yield nothing — we
+        // must keep reading rather than resolve `pull` empty (an empty resolve
+        // can stall a backpressured consumer that's awaiting bytes).
         try {
-          const next = await iterator.next();
-          if (canceled) return;
-          if (next.done) {
-            controller.close();
-            return;
+          while (true) {
+            const next = await iterator.next();
+            if (canceled) return;
+            if (next.done) {
+              const tail = b64.flush();
+              if (tail.length) controller.enqueue(tail);
+              controller.close();
+              return;
+            }
+            const chunk = next.value;
+            if (chunk.data != null) {
+              const bytes = b64.push(chunk.data);
+              if (bytes.length) {
+                controller.enqueue(bytes);
+                return;
+              }
+            }
           }
-          const chunk = next.value;
-          if (chunk.data != null)
-            controller.enqueue(encoder.encode(chunk.data));
         } catch (err) {
           if (!canceled) controller.error(err);
         }
@@ -321,12 +343,20 @@ export class DesktopSandboxProvider implements SandboxProvider {
    * window, and vm-events translates 404 into `event: gone` + state-store
    * cleanup, which would tear down the sandbox the user is mid-start.
    *
-   * 1500 ms cap (same as the old HMAC-HTTP path) so a slow NATS channel
-   * doesn't block every `ensure`.
+   * Cap (landmine #4): with the pull reverse-proxy transport the round-trip is
+   * publish → daemon dequeue (near-zero-gap: the daemon holds ≥2 overlapping
+   * GETs open, so the request lands on a waiting queue-group subscriber
+   * immediately) → `handle()` (a synchronous in-memory `hasHandle` check, NO
+   * upstream fetch) → reply-POST → NATS republish. The only added latency over
+   * the old persistent-socket path is establishing ONE reply POST per probe, so
+   * we keep `probeHealth` on the dispatch fast path (no presence-claim
+   * round-trip needed) but raise the cap 1500→3000 ms to absorb that
+   * connection-establishment cost without flapping a healthy-but-slow link into
+   * a needless respawn. The WS transport stays well within it too.
    */
   private async probeHealth(handle: string): Promise<boolean> {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 1500);
+    const timer = setTimeout(() => ac.abort(), 3000);
     try {
       await this.dispatchJson(
         "GET",
@@ -454,14 +484,19 @@ export class DesktopSandboxProvider implements SandboxProvider {
     );
 
     let status: number | null = null;
-    let collected = "";
+    // `DispatchChunk.data` is base64 (uniform across transports, landmine #9).
+    // Concatenate the raw base64 first, then decode ONCE — concatenated base64
+    // fragments (the WS payload-chunking splitter can split mid-string) decode
+    // to the exact bytes, and a single trailing decode handles any padding.
+    let collectedB64 = "";
     for await (const chunk of iter) {
       if (chunk.headers) {
         status = chunk.headers.status;
       } else if (chunk.data != null) {
-        collected += chunk.data;
+        collectedB64 += chunk.data;
       }
     }
+    const collected = Buffer.from(collectedB64, "base64").toString("utf8");
     if (status != null && (status < 200 || status >= 300)) {
       throw new Error(`daemon returned ${status}: ${collected}`);
     }
@@ -479,6 +514,43 @@ export function createDesktopProvider(
 }
 
 // ---- Module-private helpers --------------------------------------------------
+
+const EMPTY_BYTES = new Uint8Array(0);
+
+/**
+ * Incremental base64 → bytes decoder for the streaming response body.
+ *
+ * `DispatchChunk.data` is base64 on both transports (landmine #9). A single
+ * upstream body chunk's base64 may be split across several `DispatchChunk`s by
+ * the WS NATS payload-chunking splitter (`splitChunkData`), which slices the
+ * base64 STRING at an arbitrary (non-4-aligned) offset. Decoding each fragment
+ * independently would corrupt the bytes, so we buffer the unaligned tail (< 4
+ * chars) and only decode complete 4-char base64 groups, carrying the remainder
+ * to the next push. `flush()` decodes the final (padded) group at stream end.
+ */
+function createBase64StreamDecoder(): {
+  push(b64: string): Uint8Array;
+  flush(): Uint8Array;
+} {
+  let carry = "";
+  return {
+    push(b64: string): Uint8Array {
+      if (b64.length === 0) return EMPTY_BYTES;
+      carry += b64;
+      const aligned = carry.length - (carry.length % 4);
+      if (aligned === 0) return EMPTY_BYTES;
+      const chunk = carry.slice(0, aligned);
+      carry = carry.slice(aligned);
+      return new Uint8Array(Buffer.from(chunk, "base64"));
+    },
+    flush(): Uint8Array {
+      if (carry.length === 0) return EMPTY_BYTES;
+      const chunk = carry;
+      carry = "";
+      return new Uint8Array(Buffer.from(chunk, "base64"));
+    },
+  };
+}
 
 /**
  * Reduce a `ProxyRequestInit.body` (BodyInit | null) to a string.
