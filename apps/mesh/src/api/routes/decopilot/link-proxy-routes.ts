@@ -139,6 +139,32 @@ function logProxyRoute(
   });
 }
 
+function collectReplyUploadDiagnostics(
+  headers: Headers,
+): Record<string, string> {
+  const names = [
+    "cache-control",
+    "content-length",
+    "content-type",
+    "expect",
+    "pragma",
+    "transfer-encoding",
+    "user-agent",
+    "via",
+    "x-accel-buffering",
+    "x-amzn-trace-id",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "x-request-id",
+  ];
+  const out: Record<string, string> = {};
+  for (const name of names) {
+    const value = headers.get(name);
+    if (value != null && value.length > 0) out[name] = value;
+  }
+  return out;
+}
+
 export interface LinkProxyDeps {
   /** Native NATS connection getter (queue-group subscriptions need it). */
   getConnection: () => NatsConnection | null;
@@ -291,10 +317,14 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
     let frameCount = 0;
     let byteCount = 0;
     let firstFrameType: string | null = null;
+    let firstRawLineSeen = false;
     logProxyRoute("reply_stream_start", {
       userId,
       reqId,
       replySubject,
+      headers: collectReplyUploadDiagnostics(c.req.raw.headers),
+      bodyPresent: true,
+      signalAborted: c.req.raw.signal.aborted,
     });
 
     // Stream-consume the NDJSON body frame-by-frame WITHOUT buffering (landmine
@@ -302,79 +332,126 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
     // `await c.req.text()` — the `/events` SSE reply never ends and would hang.
     // The headers frame is published before any chunk because the daemon emits
     // it first and we publish in arrival order.
+    const reqSignal = c.req.raw.signal;
+    const abortListener = () => {
+      logProxyRoute("reply_stream_client_aborted", {
+        userId,
+        reqId,
+        replySubject,
+        frameCount,
+        byteCount,
+        firstFrameType,
+        firstRawLineSeen,
+        elapsedMs: Date.now() - startedAt,
+      });
+    };
+    reqSignal.addEventListener("abort", abortListener, { once: true });
     try {
-      for await (const line of splitNdjsonLines(body)) {
-        frameCount++;
-        byteCount += Buffer.byteLength(line, "utf8");
-        let frame: ProxyReplyFrame;
-        try {
-          frame = decodeProxyReplyFrame(line);
-        } catch (err) {
-          // A malformed frame is fatal for this reply: surface an error frame
-          // to the awaiter rather than silently dropping it.
-          logProxyRoute("reply_bad_frame", {
-            userId,
-            reqId,
-            replySubject,
-            frameCount,
-            byteCount,
-            elapsedMs: Date.now() - startedAt,
-            error: err instanceof Error ? err.message : String(err),
-          });
-          publishReplyFrame(nc, replySubject, {
-            type: "error",
-            code: "bad_frame",
-            message: err instanceof Error ? err.message : String(err),
-          });
-          return c.json({ error: "bad frame" }, 400);
+      try {
+        logProxyRoute("reply_stream_read_start", {
+          userId,
+          reqId,
+          replySubject,
+          elapsedMs: Date.now() - startedAt,
+        });
+        for await (const line of splitNdjsonLines(body)) {
+          if (!firstRawLineSeen) {
+            firstRawLineSeen = true;
+            logProxyRoute("reply_first_raw_line", {
+              userId,
+              reqId,
+              replySubject,
+              lineBytes: Buffer.byteLength(line, "utf8"),
+              elapsedMs: Date.now() - startedAt,
+            });
+          }
+          frameCount++;
+          byteCount += Buffer.byteLength(line, "utf8");
+          let frame: ProxyReplyFrame;
+          try {
+            frame = decodeProxyReplyFrame(line);
+          } catch (err) {
+            // A malformed frame is fatal for this reply: surface an error frame
+            // to the awaiter rather than silently dropping it.
+            logProxyRoute("reply_bad_frame", {
+              userId,
+              reqId,
+              replySubject,
+              frameCount,
+              byteCount,
+              elapsedMs: Date.now() - startedAt,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            publishReplyFrame(nc, replySubject, {
+              type: "error",
+              code: "bad_frame",
+              message: err instanceof Error ? err.message : String(err),
+            });
+            return c.json({ error: "bad frame" }, 400);
+          }
+          if (firstFrameType === null) {
+            firstFrameType = frame.type;
+            logProxyRoute("reply_first_frame", {
+              userId,
+              reqId,
+              replySubject,
+              frameType: frame.type,
+              ...(frame.type === "headers" ? { status: frame.status } : {}),
+              elapsedMs: Date.now() - startedAt,
+            });
+          }
+          publishReplyFrame(nc, replySubject, frame);
         }
-        if (firstFrameType === null) {
-          firstFrameType = frame.type;
-          logProxyRoute("reply_first_frame", {
-            userId,
-            reqId,
-            replySubject,
-            frameType: frame.type,
-            ...(frame.type === "headers" ? { status: frame.status } : {}),
-            elapsedMs: Date.now() - startedAt,
-          });
-        }
-        publishReplyFrame(nc, replySubject, frame);
+        // Clean body end. The daemon is expected to send its own terminal
+        // `end`/`error` frame; if it didn't (e.g. truncated stream that still
+        // closed cleanly without a terminal), we don't synthesize one here —
+        // S5's presence-expiry fanout is the backstop for a vanished daemon.
+        logProxyRoute("reply_stream_complete", {
+          userId,
+          reqId,
+          replySubject,
+          frameCount,
+          byteCount,
+          firstFrameType,
+          elapsedMs: Date.now() - startedAt,
+        });
+        return c.body(null, 204);
+      } catch (err) {
+        // Landmine #8 (POST-drop half): the upload connection broke mid-stream.
+        // Publish an error frame so the awaiting DispatchFn throws instead of
+        // hanging forever (full presence-expiry 502 fanout is S5).
+        logProxyRoute("reply_stream_dropped", {
+          userId,
+          reqId,
+          replySubject,
+          frameCount,
+          byteCount,
+          firstFrameType,
+          firstRawLineSeen,
+          elapsedMs: Date.now() - startedAt,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        publishReplyFrame(nc, replySubject, {
+          type: "error",
+          code: "reply_stream_dropped",
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return c.json({ error: "reply stream dropped" }, 500);
       }
-      // Clean body end. The daemon is expected to send its own terminal
-      // `end`/`error` frame; if it didn't (e.g. truncated stream that still
-      // closed cleanly without a terminal), we don't synthesize one here —
-      // S5's presence-expiry fanout is the backstop for a vanished daemon.
-      logProxyRoute("reply_stream_complete", {
-        userId,
-        reqId,
-        replySubject,
-        frameCount,
-        byteCount,
-        firstFrameType,
-        elapsedMs: Date.now() - startedAt,
-      });
-      return c.body(null, 204);
-    } catch (err) {
-      // Landmine #8 (POST-drop half): the upload connection broke mid-stream.
-      // Publish an error frame so the awaiting DispatchFn throws instead of
-      // hanging forever (full presence-expiry 502 fanout is S5).
-      logProxyRoute("reply_stream_dropped", {
-        userId,
-        reqId,
-        replySubject,
-        frameCount,
-        byteCount,
-        firstFrameType,
-        elapsedMs: Date.now() - startedAt,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      publishReplyFrame(nc, replySubject, {
-        type: "error",
-        code: "reply_stream_dropped",
-        message: err instanceof Error ? err.message : String(err),
-      });
-      return c.json({ error: "reply stream dropped" }, 500);
+    } finally {
+      reqSignal.removeEventListener("abort", abortListener);
+      if (!firstRawLineSeen) {
+        logProxyRoute("reply_stream_closed_without_line", {
+          userId,
+          reqId,
+          replySubject,
+          frameCount,
+          byteCount,
+          firstFrameType,
+          signalAborted: reqSignal.aborted,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
     }
   });
 
