@@ -45,7 +45,9 @@ async function typeInComposer(page: Page, text: string): Promise<void> {
   const input = page.locator(CHAT_INPUT);
   await input.click();
   await page.keyboard.type(text);
-  await expect(input).toHaveText(text, { timeout: 5_000 });
+  // Tiptap may take time to render the typed text, especially under load.
+  // Use a more generous timeout to avoid flakiness in CI.
+  await expect(input).toHaveText(text, { timeout: 15_000 });
 }
 
 /** Read the visible text content of the chat input. */

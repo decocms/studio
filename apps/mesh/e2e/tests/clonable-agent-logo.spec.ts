@@ -15,11 +15,12 @@ test.describe("clonable agent logo (settings tab)", () => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
-    // Create a placeholder connection. The URL doesn't have to resolve;
-    // the UI only needs its id to make `agentHasConnectedGithub` true.
+    // Create a placeholder connection. Use the test studio server as a dummy URL
+    // since tool validation now requires a reachable endpoint. We only need the
+    // connection ID to populate `agentHasConnectedGithub`; the URL itself is unused.
     const conn = await createHttpConnection(api, orgSlug, {
       title: "github-placeholder",
-      url: "http://127.0.0.1:1/unused",
+      url: "http://127.0.0.1:3000/",
     });
 
     // Create the clonable agent: connections[] AND metadata.githubRepo
