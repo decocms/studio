@@ -47,8 +47,11 @@ const nextEnsureSandboxReturn: { previewUrl: string | null } = {
   previewUrl: "http://sleek-flint-0000000000000000.localhost:5174",
 };
 
-const { resolveRemoteCliSandboxUrl, computeDesktopSandboxHandle } =
-  await import("./dispatch-run");
+const {
+  resolveRemoteCliSandboxUrl,
+  computeDesktopSandboxHandle,
+  ensurePushDispatchSandboxHandle,
+} = await import("./dispatch-run");
 
 describe("resolveRemoteCliSandboxUrl", () => {
   it("calls ensureSandbox with the agent id, branch, and user-desktop kind", async () => {
@@ -152,5 +155,61 @@ describe("computeDesktopSandboxHandle", () => {
     // "deco/sleek-flint" → last segment "sleek-flint" → slug prefix in handle.
     const handle = computeDesktopSandboxHandle(BASE);
     expect(handle).toMatch(/sleek-flint/);
+  });
+});
+
+describe("ensurePushDispatchSandboxHandle", () => {
+  it("ENSURES (spawns) the sandbox — the push path has no daemon self-ensure backstop", async () => {
+    ensureSandboxCalls.length = 0;
+    const handle = await ensurePushDispatchSandboxHandle(
+      { id: "vm-1" },
+      "deco/sleek-flint", // thread branch
+      null, // input branch
+      {} as never,
+    );
+    // It MUST run the full ensure (not a pure handle derivation).
+    expect(ensureSandboxCalls).toEqual([
+      {
+        virtualMcpId: "vm-1",
+        branch: "deco/sleek-flint",
+        sandboxProviderKind: "user-desktop",
+      },
+    ]);
+    // It returns the handle ensureSandbox actually provisioned, so the
+    // dispatched handle can never drift from the spawned one.
+    expect(handle).toBe("sleek-flint-0000000000000000");
+  });
+
+  it("prefers the thread branch over the request branch (handle-drift fix)", async () => {
+    ensureSandboxCalls.length = 0;
+    await ensurePushDispatchSandboxHandle(
+      { id: "vm-2" },
+      "deco/pinned",
+      "deco/from-request",
+      {} as never,
+    );
+    expect(ensureSandboxCalls[0]?.branch).toBe("deco/pinned");
+  });
+
+  it("falls back to the request branch when the thread has none", async () => {
+    ensureSandboxCalls.length = 0;
+    await ensurePushDispatchSandboxHandle(
+      { id: "vm-3" },
+      null,
+      "deco/from-request",
+      {} as never,
+    );
+    expect(ensureSandboxCalls[0]?.branch).toBe("deco/from-request");
+  });
+
+  it("falls back to 'ephemeral' when neither branch is set", async () => {
+    ensureSandboxCalls.length = 0;
+    await ensurePushDispatchSandboxHandle(
+      { id: "vm-4" },
+      null,
+      null,
+      {} as never,
+    );
+    expect(ensureSandboxCalls[0]?.branch).toBe("ephemeral");
   });
 });
