@@ -144,10 +144,9 @@ export interface ThreadGateContext {
   /**
    * Where the enqueue came from. Drives whether `chat_message_started`
    * fires: only user-initiated POSTs count as messages — automation fires
-   * and observation runs use the same gate but shouldn't pollute message-send
-   * analytics.
+   * use the same gate but shouldn't pollute message-send analytics.
    */
-  source: "user-message" | "automation" | "observation";
+  source: "user-message" | "automation";
 }
 
 export type ThreadGateOutcome = { taskId: string };

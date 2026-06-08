@@ -300,7 +300,6 @@ export interface OrganizationSettingsStoragePort {
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
-        | "observational_config"
       >
     >,
   ): Promise<OrganizationSettings>;
