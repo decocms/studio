@@ -158,6 +158,12 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
+
+    // Hosted deco-sites GitHub
+    githubAppId: envVars.GITHUB_APP_ID,
+    githubAppPrivateKey: envVars.GITHUB_APP_PRIVATE_KEY,
+    octokitToken: envVars.OCTOKIT_TOKEN,
+    mcpGithubConnectionUrl: envVars.MCP_GITHUB_CONNECTION_URL,
   };
 
   return {

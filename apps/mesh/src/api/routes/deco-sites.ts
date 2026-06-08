@@ -74,6 +74,7 @@ async function supabasePost<T>(
 }
 
 import { getSettings } from "../../settings";
+import { provisionDecoSiteGithubConnection } from "../../shared/provision-deco-site-github-connection";
 
 function getSupabaseConfig(): {
   supabaseUrl: string;
@@ -668,7 +669,36 @@ export const createDecoSitesOrgRoutes = () => {
         );
       });
 
-      return c.json({ connId: connection.id, icon: faviconIcon });
+      let githubConnId: string;
+      let installationId: number | null;
+      try {
+        const github = await provisionDecoSiteGithubConnection({
+          ctx,
+          orgId,
+          userId,
+          siteName,
+        });
+        githubConnId = github.githubConnId;
+        installationId = github.installationId;
+      } catch (githubErr) {
+        await ctx.storage.connections.delete(connection.id).catch(() => {});
+        const message =
+          githubErr instanceof Error
+            ? githubErr.message
+            : "Failed to provision GitHub connection";
+        console.error(
+          `[deco-sites] GitHub provisioning failed for site=${siteName}:`,
+          githubErr,
+        );
+        return c.json({ error: message }, 503);
+      }
+
+      return c.json({
+        connId: connection.id,
+        githubConnId,
+        installationId,
+        icon: faviconIcon,
+      });
     } catch (err) {
       console.error("[deco-sites] POST /connection error:", err);
       return c.json({ error: "Failed to create connection" }, 500);

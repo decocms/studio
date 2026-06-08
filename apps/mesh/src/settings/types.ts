@@ -86,6 +86,12 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
+
+  // Hosted deco-sites GitHub (server-side mint, no user OAuth on deco.cx import)
+  githubAppId: string | undefined;
+  githubAppPrivateKey: string | undefined;
+  octokitToken: string | undefined;
+  mcpGithubConnectionUrl: string | undefined;
 }
 
 export interface CliFlags {
