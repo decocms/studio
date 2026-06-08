@@ -2,9 +2,13 @@
  * Unit tests for:
  *   - `resolveRemoteCliSandboxUrl` — the ensure-backed preview-URL helper.
  *   - `computeDesktopSandboxHandle` — the pure, I/O-free handle derivation
- *     introduced in C-bis S4 to replace the warm-ensure round-trip at the
- *     two dispatch sites (prepareRun + pullDispatch). The preview-URL site
- *     (`resolveRemoteCliSandboxUrl`) keeps the full ensure path.
+ *     introduced in C-bis S4. It is still used at the pull/work-queue dispatch
+ *     site (`pullDispatch`), where the daemon self-ensures the sandbox from the
+ *     work item.
+ *   - `ensurePushDispatchSandboxHandle` — the push (`remoteDispatch`) dispatch
+ *     site's ensure-backed handle resolver. The push path has no daemon
+ *     self-ensure backstop, so it runs the full ensure (like the preview-URL
+ *     site) and dispatches the provisioned handle.
  */
 import { describe, expect, it, mock } from "bun:test";
 
@@ -47,8 +51,11 @@ const nextEnsureSandboxReturn: { previewUrl: string | null } = {
   previewUrl: "http://sleek-flint-0000000000000000.localhost:5174",
 };
 
-const { resolveRemoteCliSandboxUrl, computeDesktopSandboxHandle } =
-  await import("./dispatch-run");
+const {
+  resolveRemoteCliSandboxUrl,
+  computeDesktopSandboxHandle,
+  ensurePushDispatchSandboxHandle,
+} = await import("./dispatch-run");
 
 describe("resolveRemoteCliSandboxUrl", () => {
   it("calls ensureSandbox with the agent id, branch, and user-desktop kind", async () => {
@@ -152,5 +159,61 @@ describe("computeDesktopSandboxHandle", () => {
     // "deco/sleek-flint" → last segment "sleek-flint" → slug prefix in handle.
     const handle = computeDesktopSandboxHandle(BASE);
     expect(handle).toMatch(/sleek-flint/);
+  });
+});
+
+describe("ensurePushDispatchSandboxHandle", () => {
+  it("ENSURES (spawns) the sandbox — the push path has no daemon self-ensure backstop", async () => {
+    ensureSandboxCalls.length = 0;
+    const handle = await ensurePushDispatchSandboxHandle(
+      { id: "vm-1" },
+      "deco/sleek-flint", // thread branch
+      null, // input branch
+      {} as never,
+    );
+    // It MUST run the full ensure (not a pure handle derivation).
+    expect(ensureSandboxCalls).toEqual([
+      {
+        virtualMcpId: "vm-1",
+        branch: "deco/sleek-flint",
+        sandboxProviderKind: "user-desktop",
+      },
+    ]);
+    // It returns the handle ensureSandbox actually provisioned, so the
+    // dispatched handle can never drift from the spawned one.
+    expect(handle).toBe("sleek-flint-0000000000000000");
+  });
+
+  it("prefers the thread branch over the request branch (handle-drift fix)", async () => {
+    ensureSandboxCalls.length = 0;
+    await ensurePushDispatchSandboxHandle(
+      { id: "vm-2" },
+      "deco/pinned",
+      "deco/from-request",
+      {} as never,
+    );
+    expect(ensureSandboxCalls[0]?.branch).toBe("deco/pinned");
+  });
+
+  it("falls back to the request branch when the thread has none", async () => {
+    ensureSandboxCalls.length = 0;
+    await ensurePushDispatchSandboxHandle(
+      { id: "vm-3" },
+      null,
+      "deco/from-request",
+      {} as never,
+    );
+    expect(ensureSandboxCalls[0]?.branch).toBe("deco/from-request");
+  });
+
+  it("falls back to 'ephemeral' when neither branch is set", async () => {
+    ensureSandboxCalls.length = 0;
+    await ensurePushDispatchSandboxHandle(
+      { id: "vm-4" },
+      null,
+      null,
+      {} as never,
+    );
+    expect(ensureSandboxCalls[0]?.branch).toBe("ephemeral");
   });
 });

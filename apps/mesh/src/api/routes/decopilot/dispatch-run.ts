@@ -1157,21 +1157,19 @@ async function prepareRun(
         //     to the user's link daemon; the harness still runs here.
         let rawHarnessChunks;
         if (target.runsIn === "user-desktop") {
-          // Pure handle derivation — no ensure round-trip. The daemon self-ensures
-          // the sandbox from `WorkItem.sandbox` when it dequeues the item
-          // (cluster-connection-pull.ts:214: `input.provider.ensureSandbox(ensureInput)`),
-          // so the warm-ensure that `resolveRemoteCliSandboxHandle` performed here
-          // is redundant on the pull path (C-bis S4). The handle formula is
-          // identical to what `ensureSandbox`/`provisionSandbox` would compute:
-          // composeSandboxRef → computeClaimHandle. See `computeDesktopSandboxHandle`.
-          const effectiveBranch =
-            mem.thread.branch ?? input.branch ?? "ephemeral";
-          const sandboxHandle = computeDesktopSandboxHandle({
-            agentId: input.agent.id,
-            userId: input.userId,
-            organizationId: input.organizationId,
-            branch: effectiveBranch,
-          });
+          // PUSH path (remoteDispatch): the control handler has NO daemon
+          // self-ensure backstop — it just `proxyPort(handle)`s and 404s
+          // "unknown handle" for a sandbox that was never spawned
+          // (control-handler.ts:172-193). So ENSURE the sandbox here before
+          // dispatching, and dispatch the handle ensureSandbox actually
+          // provisioned so the two can never drift. (The pull site keeps the
+          // pure computeDesktopSandboxHandle — its daemon self-ensures.)
+          const sandboxHandle = await ensurePushDispatchSandboxHandle(
+            input.agent,
+            mem.thread.branch,
+            input.branch,
+            ctx,
+          );
           // Route through the unified `proxyDaemonRequest` seam: the desktop
           // provider tunnels `/dispatch` over the same WS+NATS link transport
           // the old raw `dispatch` dep used, but now consumes the returned
@@ -1859,4 +1857,41 @@ async function resolveRemoteCliSandboxHandle(
     );
   }
   return { sandboxHandle: entry.sandboxHandle, previewUrl: entry.previewUrl };
+}
+
+/**
+ * Resolve the desktop sandbox handle for the PUSH (`remoteDispatch`) dispatch
+ * path, ENSURING the sandbox is spawned first.
+ *
+ * Unlike the pull/work-queue path, the push path has NO daemon self-ensure
+ * backstop: `proxyDaemonRequest(handle, "/dispatch")` is rewritten to
+ * `/_sandbox/<handle>/dispatch` and reaches the link daemon's
+ * `control-handler.handleStream`, which just `proxyPort(handle)`s and returns
+ * `404 "unknown handle"` for a sandbox that was never spawned
+ * (`control-handler.ts:172-193`). So we run the full `ensureSandbox` here and
+ * return the handle it PROVISIONED — guaranteeing the dispatched handle equals
+ * the spawned one.
+ *
+ * `effectiveBranch` mirrors the dispatch-site formula (thread pin → request
+ * branch → synthetic "ephemeral"). Threading the SAME value into the ensure
+ * closes the handle-drift bug: `resolveRemoteCliSandboxHandle`'s internal
+ * `input.branch ?? "ephemeral"` would otherwise drop a thread-pinned branch.
+ *
+ * The pull site keeps the pure `computeDesktopSandboxHandle` — its daemon
+ * self-ensures from `WorkItem.sandbox` (`cluster-connection-pull.ts:214`).
+ *
+ * Exported for unit tests.
+ */
+export async function ensurePushDispatchSandboxHandle(
+  agent: { id: string },
+  threadBranch: string | null | undefined,
+  inputBranch: string | null | undefined,
+  ctx: StudioContext,
+): Promise<string> {
+  const effectiveBranch = threadBranch ?? inputBranch ?? "ephemeral";
+  const { sandboxHandle } = await resolveRemoteCliSandboxHandle(
+    { agent, branch: effectiveBranch },
+    ctx,
+  );
+  return sandboxHandle;
 }
