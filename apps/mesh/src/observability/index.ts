@@ -111,6 +111,19 @@ class TruncateMonitoringOutputProcessor implements LogRecordProcessor {
     const output = record.attributes?.[outputKey];
     if (typeof output === "string" && output.length > this.maxBytes) {
       const truncated = truncateString(output, this.maxBytes);
+      // Surface the data loss — truncation is otherwise silent. Identifiers +
+      // sizes only; never the payload (PII/volume). Captured by the infra
+      // logger provider (different provider → no emit loop) and subject to
+      // INFRA_LOG_SAMPLE_RATIO.
+      console.warn("[monitoring] output truncated to OTLP cap — data lost", {
+        tool_name: record.attributes?.[MONITORING_LOG_ATTR.TOOL_NAME],
+        organization_id:
+          record.attributes?.[MONITORING_LOG_ATTR.ORGANIZATION_ID],
+        connection_id: record.attributes?.[MONITORING_LOG_ATTR.CONNECTION_ID],
+        request_id: record.attributes?.[MONITORING_LOG_ATTR.REQUEST_ID],
+        originalBytes: Buffer.byteLength(output, "utf8"),
+        maxBytes: this.maxBytes,
+      });
       this.inner.onEmit(
         {
           ...record,
