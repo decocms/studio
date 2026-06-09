@@ -3,12 +3,27 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
+  type InvalidatorFactory,
   type Mounter,
   MountManager,
   type OrgFsMountConfig,
   resolveMountPath,
 } from "./mount-manager";
 import { parseOrgFsConfig } from "./config";
+
+/**
+ * Records invalidator start/stop per volume; never polls or touches rclone rc
+ * (keeps these unit tests network-free).
+ */
+function fakeInvalidators() {
+  const started: { volume: string; rcUrl: string }[] = [];
+  const stopped: string[] = [];
+  const factory: InvalidatorFactory = ({ volume, rcUrl }) => {
+    started.push({ volume, rcUrl });
+    return { stop: () => stopped.push(volume) };
+  };
+  return { factory, started, stopped };
+}
 
 describe("parseOrgFsConfig", () => {
   const valid = JSON.stringify({
@@ -105,7 +120,8 @@ describe("MountManager", () => {
 
   it("serves + mounts each volume, then unmounts + stops on stop()", async () => {
     const { mounter, calls, unmounted } = fakeMounter();
-    const mm = new MountManager(mounter, () => {});
+    const inv = fakeInvalidators();
+    const mm = new MountManager(mounter, () => {}, inv.factory);
     await mm.start(
       config([
         { volume: "skills", path: "skills" },
@@ -128,9 +144,18 @@ describe("MountManager", () => {
         .map((m) => m.volume)
         .sort(),
     ).toEqual(["skills", "things"]);
+    // an invalidator was started per mounted volume, each pointed at a
+    // loopback rclone rc URL
+    expect(inv.started.map((s) => s.volume).sort()).toEqual([
+      "skills",
+      "things",
+    ]);
+    for (const s of inv.started)
+      expect(s.rcUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
 
     await mm.stop();
     expect(unmounted.length).toBe(2);
+    expect(inv.stopped.sort()).toEqual(["skills", "things"]);
     expect(mm.list()).toEqual([]);
   });
 
@@ -138,7 +163,8 @@ describe("MountManager", () => {
     const { mounter, unmounted } = fakeMounter({
       failVolumes: new Set(["bad"]),
     });
-    const mm = new MountManager(mounter, () => {});
+    const inv = fakeInvalidators();
+    const mm = new MountManager(mounter, () => {}, inv.factory);
     await mm.start(
       config([
         { volume: "good", path: "good" },
@@ -148,15 +174,19 @@ describe("MountManager", () => {
     );
     // only the good one is active; the failed one's server was torn down
     expect(mm.list().map((m) => m.volume)).toEqual(["good"]);
+    // no invalidator for the failed mount
+    expect(inv.started.map((s) => s.volume)).toEqual(["good"]);
     await mm.stop();
     expect(unmounted).toEqual([join(appRoot, "org/good")]);
   });
 
   it("skips a mount whose path escapes appRoot without mounting it", async () => {
     const { mounter, calls } = fakeMounter();
-    const mm = new MountManager(mounter, () => {});
+    const inv = fakeInvalidators();
+    const mm = new MountManager(mounter, () => {}, inv.factory);
     await mm.start(config([{ volume: "evil", path: "../../etc" }]), appRoot);
     expect(calls.length).toBe(0);
+    expect(inv.started).toEqual([]);
     expect(mm.list()).toEqual([]);
   });
 });
