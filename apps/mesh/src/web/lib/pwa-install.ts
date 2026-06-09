@@ -71,7 +71,7 @@ function getServerSnapshot(): null {
   return null;
 }
 
-export function isStandalone(): boolean {
+function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
   const standaloneMedia =
     typeof window.matchMedia === "function" &&
@@ -81,7 +81,7 @@ export function isStandalone(): boolean {
   return standaloneMedia || iosStandalone;
 }
 
-export function isIos(): boolean {
+function isIos(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
   if (/iPad|iPhone|iPod/.test(ua)) return true;
