@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { UIMessageChunk } from "ai";
+import { makeTitleResultChunk } from "@/harnesses/title-chunk";
 import { consumePartStream, type PartEmitterLike } from "./consume-part-stream";
 
 function chunkStream(chunks: UIMessageChunk[]): AsyncIterable<UIMessageChunk> {
@@ -98,5 +99,38 @@ describe("consumePartStream", () => {
     expect(emitter.errors).toHaveLength(1);
     expect(emitter.errors[0]).toContain("boom");
     expect(emitter.finals).toEqual([]);
+  });
+
+  it("swallows title result chunks through the shared consumer", async () => {
+    const persisted: Array<[string, string]> = [];
+    const emitter = new CollectorEmitter();
+    const chunks = (async function* () {
+      yield makeTitleResultChunk("Desktop title") as UIMessageChunk;
+      yield { type: "start" } as UIMessageChunk;
+      yield { type: "text-start", id: "txt" } as UIMessageChunk;
+      yield { type: "text-delta", id: "txt", delta: "hello" } as UIMessageChunk;
+      yield { type: "text-end", id: "txt" } as UIMessageChunk;
+      yield {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      } as UIMessageChunk;
+    })();
+
+    const { uiStream, whenComplete } = consumePartStream(chunks, emitter, {
+      title: {
+        currentThreadTitle: "New chat",
+        threadId: "thread-1",
+        persistTitle: async (threadId, title) => {
+          persisted.push([threadId, title]);
+        },
+      },
+    });
+
+    await drain(uiStream);
+    await whenComplete;
+
+    expect(persisted).toEqual([["thread-1", "Desktop title"]]);
+    expect(emitter.finals).toHaveLength(1);
   });
 });

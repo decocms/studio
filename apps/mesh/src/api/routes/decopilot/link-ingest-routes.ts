@@ -240,7 +240,16 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     });
 
     const chunks = parseDispatchSSEStream(body);
-    const { uiStream, whenComplete } = consumePartStream(chunks, partEmitter);
+    const thread = await ctx.storage.threads.get(runId);
+    const { uiStream, whenComplete } = consumePartStream(chunks, partEmitter, {
+      title: {
+        currentThreadTitle: thread?.title,
+        threadId: runId,
+        persistTitle: async (threadId, title) => {
+          await ctx.storage.threads.update(threadId, { title });
+        },
+      },
+    });
 
     // `pump` is the SOLE consumer of `uiStream` (never tee it). Mirror
     // dispatch-run: a non-null tail means JetStream is live (pump consumes

@@ -10,7 +10,11 @@
  * (which is unsound on the error path, since the SDK invokes `onError`
  * synchronously, outside the stream's flush).
  */
-import { type UIMessageChunk, createUIMessageStream } from "ai";
+import type { UIMessageChunk } from "ai";
+import {
+  consumeHarnessStream,
+  type HarnessStreamTitleOptions,
+} from "./consume-harness-stream";
 
 /**
  * The slice of `PartEmitter` this consumer needs (so it stays unit-testable).
@@ -32,28 +36,11 @@ export interface PartEmitterLike {
   emitError(messageId: string, errorText: string): Promise<void>;
 }
 
-function asReadableStream<T>(it: AsyncIterable<T>): ReadableStream<T> {
-  const iter = it[Symbol.asyncIterator]();
-  return new ReadableStream<T>({
-    async pull(controller) {
-      try {
-        const { value, done } = await iter.next();
-        if (done) controller.close();
-        else controller.enqueue(value);
-      } catch (err) {
-        controller.error(err);
-      }
-    },
-    async cancel(reason) {
-      await iter.return?.(reason);
-    },
-  });
-}
-
 export interface ConsumePartStreamHooks {
   onStep?: () => void;
   onFinish?: () => void;
   onError?: (error: unknown) => void;
+  title?: HarnessStreamTitleOptions;
 }
 
 export interface ConsumePartStreamResult {
@@ -70,65 +57,26 @@ export interface ConsumePartStreamResult {
   whenComplete: Promise<void>;
 }
 
+const inertTitle: HarnessStreamTitleOptions = {
+  currentThreadTitle: null,
+  threadId: "",
+  persistTitle: async () => {},
+};
+
 export function consumePartStream(
   chunks: AsyncIterable<UIMessageChunk>,
   emitter: PartEmitterLike,
   hooks: ConsumePartStreamHooks = {},
 ): ConsumePartStreamResult {
-  const pending: Promise<void>[] = [];
-  // One desktop error surfaces `onError` MORE THAN ONCE (writer.merge's catch
-  // formats the error, AND the resulting error chunk re-enters the transform).
-  // Guard so exactly one error part is written, under one stable message id.
-  let errored = false;
-  const errorMessageId = crypto.randomUUID();
-  let resolveComplete!: () => void;
-  const whenComplete = new Promise<void>((resolve) => {
-    resolveComplete = resolve;
-  });
-
-  const uiStream = createUIMessageStream({
-    execute: ({ writer }) => {
-      writer.merge(
-        asReadableStream(chunks) as Parameters<typeof writer.merge>[0],
-      );
-    },
-    onStepFinish: ({ responseMessage }) => {
-      pending.push(
-        emitter
-          .emitStepParts(responseMessage)
-          .catch((e) => console.error("[link-ingest] emitStepParts failed", e)),
-      );
-      hooks.onStep?.();
-    },
-    // onFinish runs inside the stream's flush() — the SDK awaits it before the
-    // readable closes — so awaiting the terminal emits here makes `whenComplete`
-    // a sound "all parts committed" signal. onFinish runs even on the error
-    // path, so `whenComplete` always resolves once the stream is consumed.
-    onFinish: async ({ responseMessage }) => {
-      await Promise.allSettled(pending);
-      if (!errored) {
-        await emitter
-          .emitFinal(responseMessage)
-          .catch((e) => console.error("[link-ingest] emitFinal failed", e));
-      }
-      hooks.onFinish?.();
-      resolveComplete();
-    },
-    onError: (error) => {
-      const text = error instanceof Error ? error.message : String(error);
-      if (!errored) {
-        errored = true;
-        // NOT awaited here (the SDK calls onError synchronously); pushed into
-        // `pending` so onFinish's `Promise.allSettled(pending)` waits for the
-        // error part to commit before `whenComplete` resolves (fixes C1).
-        pending.push(
-          emitter
-            .emitError(errorMessageId, text)
-            .catch((e) => console.error("[link-ingest] emitError failed", e)),
-        );
-        hooks.onError?.(error);
-      }
-      return text;
+  const { uiStream, whenComplete } = consumeHarnessStream({
+    chunks,
+    originalMessages: [],
+    title: hooks.title ?? inertTitle,
+    persistence: emitter,
+    hooks: {
+      onStep: () => hooks.onStep?.(),
+      onFinish: () => hooks.onFinish?.(),
+      onError: hooks.onError,
     },
   });
 
