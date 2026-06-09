@@ -128,6 +128,7 @@ export function GitHubRepoPicker({
             }
           >
             <PickerContent
+              open={open}
               onComplete={() => onOpenChange(false)}
               selectedInstallation={selectedInstallation}
               onSelectInstallation={setSelectedInstallation}
@@ -142,12 +143,14 @@ export function GitHubRepoPicker({
 }
 
 function PickerContent({
+  open,
   onComplete,
   selectedInstallation,
   onSelectInstallation,
   hideAutoRespondCheckbox,
   onImportComplete,
 }: {
+  open: boolean;
   onComplete: () => void;
   selectedInstallation: GitHubInstallation | null;
   onSelectInstallation: (inst: GitHubInstallation | null) => void;
@@ -183,7 +186,7 @@ function PickerContent({
   const orgGithubConnections = getOrgGithubConnections(allGithubConnections);
 
   const autoInstall = useAutoInstallGitHub({
-    enabled: orgGithubConnections.length === 0,
+    enabled: open && orgGithubConnections.length === 0,
   });
 
   const effectiveConnection =
