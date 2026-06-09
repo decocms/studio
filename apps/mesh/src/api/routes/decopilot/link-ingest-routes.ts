@@ -319,19 +319,26 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
       return c.json({ error: "row run mismatch" }, 400);
     }
 
-    await ctx.storage.threads.messageParts().appendParts(rows);
-    if (rows.length > 0) {
+    const threadBeforeDone = parsed.data.done
+      ? await ctx.storage.threads.get(runId)
+      : null;
+    const shouldComplete =
+      parsed.data.done && threadBeforeDone?.status !== "completed";
+    const insertedRows = await ctx.storage.threads
+      .messageParts()
+      .appendParts(rows);
+    if (insertedRows.length > 0) {
       ctx.storage.threads.bumpProgress(runId).catch(() => {});
     }
     await publishLiveChunks(
       deps,
       runId,
       orgId,
-      liveChunksForRows(rows, parsed.data.done),
+      liveChunksForRows(insertedRows, shouldComplete),
       c.req.raw.signal,
     );
 
-    if (parsed.data.done) {
+    if (shouldComplete) {
       await ctx.storage.threads.update(runId, {
         status: "completed",
         run_owner_pod: null,
@@ -340,7 +347,7 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
       });
       deps.streamBuffer.purge(runId);
       if (deps.sseHub) {
-        const thread = await ctx.storage.threads.get(runId);
+        const thread = threadBeforeDone;
         deps.sseHub.emit(
           orgId,
           createDecopilotThreadStatusEvent(runId, "completed", {

@@ -10,13 +10,28 @@ export class SqlThreadMessagePartStorage {
   constructor(private db: Kysely<Database>) {}
 
   /** Idempotent append; rows are immutable (ON CONFLICT (id) DO NOTHING). */
-  async appendParts(parts: ThreadMessagePart[]): Promise<void> {
-    if (parts.length === 0) return;
+  async appendParts(parts: ThreadMessagePart[]): Promise<ThreadMessagePart[]> {
+    if (parts.length === 0) return [];
     const seen = new Set<string>();
-    const rows = [];
+    const rows: Array<{
+      id: string;
+      seq: number;
+      org_id: string;
+      thread_id: string;
+      run_id: string;
+      message_id: string;
+      role: ThreadMessagePart["role"];
+      kind: ThreadMessagePart["kind"];
+      payload: string;
+      payload_ref: string | null;
+      metadata: string | null;
+      created_at: string;
+    }> = [];
+    const partsById = new Map<string, ThreadMessagePart>();
     for (const p of parts) {
       if (seen.has(p.id)) continue; // can't affect same row twice in one INSERT
       seen.add(p.id);
+      partsById.set(p.id, p);
       rows.push({
         id: p.id,
         seq: p.seq,
@@ -32,11 +47,15 @@ export class SqlThreadMessagePartStorage {
         created_at: p.created_at,
       });
     }
-    await this.db
+    const inserted = await this.db
       .insertInto("thread_message_parts")
       .values(rows)
       .onConflict((oc) => oc.column("id").doNothing())
+      .returning("id")
       .execute();
+    return inserted
+      .map((row) => partsById.get(row.id))
+      .filter((part): part is ThreadMessagePart => part !== undefined);
   }
 
   /**

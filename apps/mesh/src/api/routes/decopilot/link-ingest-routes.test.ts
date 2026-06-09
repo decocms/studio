@@ -33,6 +33,8 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
   const pumped: UIMessageChunk[][] = [];
   const pumpPromises: Promise<void>[] = [];
   const sseEvents: Array<{ orgId: string; event: SSEEvent }> = [];
+  const insertedIds = new Set<string>();
+  let threadStatus = "in_progress";
   const app = new Hono<Env>();
   app.use("*", async (c, next) => {
     c.set("meshContext", {
@@ -45,6 +47,7 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
           bumpProgress: async () => undefined,
           get: async () => ({
             id: "run_1",
+            status: threadStatus,
             virtual_mcp_id: "vmcp_1",
             created_by: "user_1",
             trigger_id: null,
@@ -55,10 +58,21 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
           }),
           update: async (_id: string, data: unknown) => {
             updates.push(data);
+            if (
+              typeof data === "object" &&
+              data !== null &&
+              "status" in data &&
+              typeof data.status === "string"
+            ) {
+              threadStatus = data.status;
+            }
           },
           messageParts: () => ({
             appendParts: async (rows: ThreadMessagePart[]) => {
-              appended.push(rows);
+              const inserted = rows.filter((row) => !insertedIds.has(row.id));
+              for (const row of inserted) insertedIds.add(row.id);
+              appended.push(inserted);
+              return inserted;
             },
           }),
         },
@@ -218,6 +232,28 @@ describe("link ingest parts route", () => {
         { type: "finish-step" },
         { type: "finish" },
       ],
+    ]);
+  });
+
+  test("does not republish live chunks for a retried batch", async () => {
+    const { app, pumped, pumpPromises, updates, sseEvents } = appWithContext();
+    const body = {
+      batchId: "batch_1",
+      rows: [makeRow()],
+      done: true,
+    };
+
+    const first = await postParts(app, body);
+    const second = await postParts(app, body);
+    await Promise.all(pumpPromises);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(pumped).toHaveLength(1);
+    expect(updates).toHaveLength(1);
+    expect(sseEvents.map(({ event }) => event.type)).toEqual([
+      "decopilot.thread.status",
+      "decopilot.finish",
     ]);
   });
 
