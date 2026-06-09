@@ -1,3 +1,5 @@
+import type { OrgFsMountConfig } from "./org-fs/config";
+
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun" | "deno";
 export type RuntimeName = "node" | "bun" | "deno";
 
@@ -61,6 +63,12 @@ export interface TenantConfig {
   readonly git?: GitConfig;
   readonly application?: Application;
   readonly env?: Readonly<Record<string, string>>;
+  /**
+   * Org-filesystem volumes to mount into the workspace (mesh-pushed; present
+   * only for desktop links, whose machine can mount kext-free). Absent → no
+   * mounting. See `./org-fs/mount-manager`.
+   */
+  readonly orgFs?: OrgFsMountConfig;
 }
 
 /** In-memory enriched view: TenantConfig + derivations. */

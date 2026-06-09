@@ -12,6 +12,8 @@ import { gitSync } from "./git/git-sync";
 import { InstallState } from "./install/install-state";
 import { LifecycleManager } from "./lifecycle/manager";
 import { readConfig } from "./persistence";
+import { MountManager } from "./org-fs/mount-manager";
+import { createRcloneMounter } from "./org-fs/mounter";
 import { createPortSniffer } from "./process/port-sniffer";
 import { TaskManager } from "./process/task-manager";
 import { PhaseManager } from "./process/phase-manager";
@@ -691,9 +693,33 @@ Bun.serve<WsProxyData, never>({
   },
 });
 
-process.on("SIGTERM", () => {
+// --- Org-filesystem mounts (desktop links only) ----------------------------
+// Mesh pushes `orgFs` config + sets ORGFS_RCLONE_PATH for sandboxes whose host
+// can mount kext-free; it's absent in cluster pods (locked-down securityContext)
+// and until the provisioning side ships — so this is inert by default. The
+// start is fire-and-forget and fully guarded (see MountManager): a mount
+// failure logs and never affects the daemon, dev server, fs routes, or
+// harnesses. A volume's bytes still reach harnesses via the mesh API regardless.
+let mountManager: MountManager | null = null;
+{
+  const orgFs = store.read()?.orgFs;
+  const rclonePath = process.env.ORGFS_RCLONE_PATH;
+  if (orgFs?.mounts?.length && rclonePath) {
+    mountManager = new MountManager(createRcloneMounter(rclonePath));
+    void mountManager
+      .start(orgFs, bootConfig.appRoot)
+      .catch((err) => console.warn("[org-fs] mount start failed", err));
+  }
+}
+
+process.on("SIGTERM", async () => {
   taskManager.shutdown();
   branchStatus.stop();
+  // Best-effort unmount before exit (rclone --daemon detaches, so it would
+  // otherwise outlive us). Abrupt SIGKILL/pod-delete skips this — tolerated.
+  if (mountManager) {
+    await mountManager.stop().catch(() => {});
+  }
   const branch = store.read()?.git?.repository?.branch;
   if (branch) {
     try {
