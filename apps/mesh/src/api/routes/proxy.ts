@@ -262,10 +262,6 @@ export const createProxyRoutes = () => {
         arguments: await c.req.json(),
       });
 
-      if (result instanceof Response) {
-        return result;
-      }
-
       if (result.isError) {
         return new Response(JSON.stringify(result.content), {
           headers: {
