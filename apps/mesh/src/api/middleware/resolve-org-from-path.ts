@@ -5,6 +5,7 @@ import { createBoundObjectStorage } from "../../object-storage/bound-object-stor
 import { DevObjectStorage } from "../../object-storage/dev-object-storage";
 import { decorateStorageWithAssetHoisting } from "../../object-storage/asset-hoister";
 import { getObjectStorageS3Service } from "../../object-storage/factory";
+import { OrgFs } from "../../file-storage/org-fs";
 
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
@@ -113,6 +114,11 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   ctx.objectStorage = s3Service
     ? createBoundObjectStorage(s3Service, org.id)
     : new DevObjectStorage(org.id, ctx.baseUrl);
+  // orgFs was likewise built from the session's active org at context creation
+  // (and is null when there was no active org). Rebind it to the path-resolved
+  // org so /api/:org/fs/* reads/writes the URL org's manifest + keyspace, never
+  // the session-active org's. Mirrors the objectStorage rebind above.
+  ctx.orgFs = new OrgFs(ctx.objectStorage, ctx.storage.orgFsEntries, org.id);
   // Asset hoisters close over object storage and org slug. Context creation can
   // happen before path-org resolution, so refresh the wrappers after rebinding
   // object storage to avoid writing files into the session-active org.

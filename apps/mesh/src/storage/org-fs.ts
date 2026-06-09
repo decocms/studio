@@ -1,0 +1,361 @@
+import type { Kysely } from "kysely";
+import { sql } from "kysely";
+import type { Database, OrgFsEntryTable } from "./types";
+
+/** A manifest row in public form — bigint columns coerced to numbers/strings. */
+export interface OrgFsEntry {
+  organizationId: string;
+  volume: string;
+  path: string;
+  parent: string;
+  kind: "file" | "dir";
+  contentHash: string | null;
+  size: number;
+  /** Change-feed cursor for this row. Strings preserve bigint precision. */
+  seq: string;
+  deletedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+type OrgFsEntryRow = {
+  organization_id: string;
+  volume: string;
+  path: string;
+  parent: string;
+  kind: "file" | "dir";
+  content_hash: string | null;
+  size: string | number;
+  seq: string | number;
+  deleted_at: Date | string | null;
+  created_by: string;
+  created_at: Date | string;
+  updated_by: string;
+  updated_at: Date | string;
+};
+
+function toIso(value: Date | string | null): string | null {
+  if (value === null) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
+function rowToEntry(row: OrgFsEntryRow): OrgFsEntry {
+  return {
+    organizationId: row.organization_id,
+    volume: row.volume,
+    path: row.path,
+    parent: row.parent,
+    kind: row.kind,
+    contentHash: row.content_hash,
+    size: Number(row.size),
+    seq: String(row.seq),
+    deletedAt: toIso(row.deleted_at),
+    createdBy: row.created_by,
+    createdAt: toIso(row.created_at) ?? "",
+    updatedBy: row.updated_by,
+    updatedAt: toIso(row.updated_at) ?? "",
+  };
+}
+
+const COLUMNS = [
+  "organization_id",
+  "volume",
+  "path",
+  "parent",
+  "kind",
+  "content_hash",
+  "size",
+  "seq",
+  "deleted_at",
+  "created_by",
+  "created_at",
+  "updated_by",
+  "updated_at",
+] as const satisfies readonly (keyof OrgFsEntryTable)[];
+
+/** Bump `seq` to the next value of the global sequence on every write. */
+const NEXT_SEQ = sql<string>`nextval('org_fs_entry_seq')`;
+
+/**
+ * Kysely operations over the org filesystem manifest (`org_fs_entry`). Pure
+ * metadata + change-feed bookkeeping — bytes are handled by the `OrgFs`
+ * service over object storage. Org-agnostic: the org id is passed per call.
+ */
+export class OrgFsEntryStorage {
+  constructor(private db: Kysely<Database>) {}
+
+  /** Upsert a file entry, bumping `seq`. Clears any prior tombstone. */
+  async putFile(params: {
+    organizationId: string;
+    volume: string;
+    path: string;
+    parent: string;
+    contentHash: string;
+    size: number;
+    actor: string;
+  }): Promise<OrgFsEntry> {
+    const now = new Date();
+    const row = await this.db
+      .insertInto("org_fs_entry")
+      .values({
+        organization_id: params.organizationId,
+        volume: params.volume,
+        path: params.path,
+        parent: params.parent,
+        kind: "file",
+        content_hash: params.contentHash,
+        size: params.size,
+        deleted_at: null,
+        created_by: params.actor,
+        created_at: now,
+        updated_by: params.actor,
+        updated_at: now,
+      })
+      .onConflict((oc) =>
+        oc.columns(["organization_id", "volume", "path"]).doUpdateSet({
+          kind: "file",
+          content_hash: params.contentHash,
+          size: params.size,
+          deleted_at: null,
+          updated_by: params.actor,
+          updated_at: now,
+          seq: NEXT_SEQ,
+        }),
+      )
+      .returning(COLUMNS)
+      .executeTakeFirstOrThrow();
+    return rowToEntry(row as OrgFsEntryRow);
+  }
+
+  /**
+   * Ensure a directory entry exists. Idempotent: an existing live dir is left
+   * untouched (no `seq` bump) so the change feed stays meaningful.
+   */
+  async putDir(params: {
+    organizationId: string;
+    volume: string;
+    path: string;
+    parent: string;
+    actor: string;
+  }): Promise<void> {
+    const now = new Date();
+    await this.db
+      .insertInto("org_fs_entry")
+      .values({
+        organization_id: params.organizationId,
+        volume: params.volume,
+        path: params.path,
+        parent: params.parent,
+        kind: "dir",
+        content_hash: null,
+        size: 0,
+        deleted_at: null,
+        created_by: params.actor,
+        created_at: now,
+        updated_by: params.actor,
+        updated_at: now,
+      })
+      .onConflict((oc) =>
+        // Only revive a tombstoned dir; otherwise no-op (don't bump seq).
+        oc
+          .columns(["organization_id", "volume", "path"])
+          .where("org_fs_entry.deleted_at", "is not", null)
+          .doUpdateSet({
+            kind: "dir",
+            // Reset file-only fields: the revived row may have been a tombstoned
+            // file, whose stale sha256/size must not linger on a directory.
+            content_hash: null,
+            size: 0,
+            deleted_at: null,
+            updated_by: params.actor,
+            updated_at: now,
+            seq: NEXT_SEQ,
+          }),
+      )
+      .execute();
+  }
+
+  async get(
+    organizationId: string,
+    volume: string,
+    path: string,
+  ): Promise<OrgFsEntry | null> {
+    const row = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("path", "=", path)
+      .where("deleted_at", "is", null)
+      .select(COLUMNS)
+      .executeTakeFirst();
+    return row ? rowToEntry(row as OrgFsEntryRow) : null;
+  }
+
+  /** Immediate live children of a directory. */
+  async listDir(
+    organizationId: string,
+    volume: string,
+    parent: string,
+  ): Promise<OrgFsEntry[]> {
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("parent", "=", parent)
+      .where("deleted_at", "is", null)
+      .select(COLUMNS)
+      .orderBy("path", "asc")
+      .execute();
+    return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
+  }
+
+  /**
+   * All live file entries under a directory path (recursive). Used for
+   * recursive delete/move. `dirPath` must be normalized (no trailing slash).
+   */
+  async listSubtreeFiles(
+    organizationId: string,
+    volume: string,
+    dirPath: string,
+  ): Promise<OrgFsEntry[]> {
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("kind", "=", "file")
+      .where("deleted_at", "is", null)
+      .where("path", "like", `${escapeLike(dirPath)}/%`)
+      .select(COLUMNS)
+      .execute();
+    return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
+  }
+
+  /**
+   * All live directory entries under a directory path (recursive). Used by
+   * move() to recreate empty subdirectories that the file-only copy misses.
+   * `dirPath` must be normalized (no trailing slash).
+   */
+  async listSubtreeDirs(
+    organizationId: string,
+    volume: string,
+    dirPath: string,
+  ): Promise<OrgFsEntry[]> {
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("kind", "=", "dir")
+      .where("deleted_at", "is", null)
+      .where("path", "like", `${escapeLike(dirPath)}/%`)
+      .select(COLUMNS)
+      .execute();
+    return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
+  }
+
+  /** Tombstone a single entry, bumping `seq`. No-op if already gone. */
+  async tombstone(
+    organizationId: string,
+    volume: string,
+    path: string,
+    actor: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("org_fs_entry")
+      .set({
+        deleted_at: new Date(),
+        updated_by: actor,
+        updated_at: new Date(),
+        seq: NEXT_SEQ,
+      })
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("path", "=", path)
+      .where("deleted_at", "is", null)
+      .execute();
+  }
+
+  /**
+   * Tombstone a directory and everything under it, bumping `seq` on each
+   * affected row.
+   */
+  async tombstoneSubtree(
+    organizationId: string,
+    volume: string,
+    dirPath: string,
+    actor: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("org_fs_entry")
+      .set({
+        deleted_at: new Date(),
+        updated_by: actor,
+        updated_at: new Date(),
+        seq: NEXT_SEQ,
+      })
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("deleted_at", "is", null)
+      .where((eb) =>
+        eb.or([
+          eb("path", "=", dirPath),
+          eb("path", "like", `${escapeLike(dirPath)}/%`),
+        ]),
+      )
+      .execute();
+  }
+
+  /** Live file count + total bytes for a volume (for quota / usage display). */
+  async usage(
+    organizationId: string,
+    volume: string,
+  ): Promise<{ files: number; bytes: number }> {
+    const row = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("kind", "=", "file")
+      .where("deleted_at", "is", null)
+      .select((eb) => [
+        eb.fn.countAll<string>().as("files"),
+        eb.fn.coalesce(eb.fn.sum<string>("size"), sql<string>`0`).as("bytes"),
+      ])
+      .executeTakeFirst();
+    return {
+      files: Number(row?.files ?? 0),
+      bytes: Number(row?.bytes ?? 0),
+    };
+  }
+
+  /**
+   * Change feed: entries (including tombstones) with `seq` greater than the
+   * cursor, oldest first. Consumers invalidate/delete locally and advance the
+   * cursor to the last `seq` returned.
+   */
+  async changesSince(params: {
+    organizationId: string;
+    volume: string;
+    sinceSeq: string;
+    limit: number;
+  }): Promise<OrgFsEntry[]> {
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", params.organizationId)
+      .where("volume", "=", params.volume)
+      // `seq` is bigint; cast the string cursor explicitly so the comparison
+      // is numeric (and unambiguous) regardless of how the driver types the
+      // parameter, rather than relying on implicit text→bigint coercion.
+      .where("seq", ">", sql<string>`cast(${params.sinceSeq} as bigint)`)
+      .select(COLUMNS)
+      .orderBy("seq", "asc")
+      .limit(params.limit)
+      .execute();
+    return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
+  }
+}
+
+/** Escape LIKE wildcards in a literal path prefix. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
