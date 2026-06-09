@@ -35,8 +35,10 @@ import {
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import {
   buildFilledStatsData,
+  formatCompactNumber,
   formatDuration,
   formatMetricValue,
+  formatUsd,
   getIntervalFromRange,
   getMetricValue,
   type ConnectionMetric,
@@ -158,20 +160,63 @@ function ConnectionLeaderboardTable({
 
 // ── Model leaderboard ───────────────────────────────────────────────────────
 
+type ModelMetric = {
+  toolName: string;
+  calls: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+};
+
+// Stable per-model color so the same model reads the same hue across every card.
+const MODEL_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
+function modelColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) {
+    h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return MODEL_COLORS[h % MODEL_COLORS.length]!;
+}
+
 function ModelLeaderboardTable({
   models,
-  total,
+  mode = "calls",
 }: {
-  models: Array<{ toolName: string; calls: number }>;
-  total: number;
+  models: ModelMetric[];
+  mode?: "calls" | "tokens" | "cost";
 }) {
   if (models.length === 0) return null;
 
+  const valueOf = (m: ModelMetric) =>
+    mode === "tokens"
+      ? (m.inputTokens ?? 0) + (m.outputTokens ?? 0)
+      : mode === "cost"
+        ? (m.costUsd ?? 0)
+        : m.calls;
+  const formatValue = (v: number) =>
+    mode === "cost"
+      ? formatUsd(v)
+      : mode === "tokens"
+        ? formatCompactNumber(v)
+        : v.toLocaleString();
+
+  const total = models.reduce((sum, m) => sum + valueOf(m), 0);
+  const ranked = [...models]
+    .sort((a, b) => valueOf(b) - valueOf(a))
+    .slice(0, 4);
+
   return (
     <div className="flex flex-col">
-      {models.slice(0, 4).map((model, idx, arr) => {
-        const pct =
-          total > 0 ? ((model.calls / total) * 100).toFixed(1) : "0.0";
+      {ranked.map((model, idx, arr) => {
+        const value = valueOf(model);
+        const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
         const isLast = idx === arr.length - 1;
         return (
           <div
@@ -182,8 +227,16 @@ function ModelLeaderboardTable({
             )}
           >
             <div className="flex flex-1 items-center gap-2 min-w-0">
-              <div className="size-6 rounded-md border border-border/10 bg-background shadow-sm flex items-center justify-center shrink-0">
-                <Container size={14} className="text-muted-foreground" />
+              <div
+                className="size-6 rounded-md border border-border/10 shadow-sm flex items-center justify-center shrink-0"
+                style={{
+                  backgroundColor: `color-mix(in oklch, ${modelColor(model.toolName)} 18%, transparent)`,
+                }}
+              >
+                <Container
+                  size={14}
+                  style={{ color: modelColor(model.toolName) }}
+                />
               </div>
               <span className="text-sm text-muted-foreground flex-1 truncate">
                 {model.toolName}
@@ -194,7 +247,7 @@ function ModelLeaderboardTable({
                 {pct}%
               </span>
               <span className="text-sm text-foreground tabular-nums">
-                {model.calls.toLocaleString()}
+                {formatValue(value)}
               </span>
             </div>
           </div>
@@ -218,6 +271,8 @@ interface MonitoringStatsProps {
 
 export interface OverviewTabProps extends MonitoringStatsProps {
   streamingRefetchInterval: number;
+  /** Member (user) IDs to scope AI usage by. Empty = all members. */
+  llmUserIds?: string[];
 }
 
 // ── Main overview tab ───────────────────────────────────────────────────────
@@ -231,6 +286,7 @@ export function OverviewTabContent({
   connections,
   isStreaming,
   streamingRefetchInterval,
+  llmUserIds,
 }: OverviewTabProps) {
   const interval = getIntervalFromRange(displayDateRange);
   const refetchInterval = isStreaming ? streamingRefetchInterval : false;
@@ -253,6 +309,7 @@ export function OverviewTabContent({
       interval,
       startDate: displayDateRange.startDate.toISOString(),
       endDate: displayDateRange.endDate.toISOString(),
+      userIds: llmUserIds?.length ? llmUserIds : undefined,
     },
     { refetchInterval },
   );
@@ -300,6 +357,10 @@ export function OverviewTabContent({
       };
 
   const llmModels = llmStats?.topTools ?? [];
+  const totalInputTokens = llmStats?.totalInputTokens ?? 0;
+  const totalOutputTokens = llmStats?.totalOutputTokens ?? 0;
+  const totalTokens = llmStats?.totalTokens ?? 0;
+  const totalCostUsd = llmStats?.totalCostUsd ?? 0;
   const connectionBreakdown = serverStats?.connectionBreakdown ?? [];
 
   const [latencyMetric, setLatencyMetric] = useState<"avg" | "p95">("avg");
@@ -409,7 +470,7 @@ export function OverviewTabContent({
         <div className="h-px flex-1 bg-border" />
       </div>
 
-      {/* AI Usage — 3 cards in a row */}
+      {/* AI Usage — Calls, Tokens, Cost */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <MonitoringMetricCard
           title="AI Calls"
@@ -421,12 +482,58 @@ export function OverviewTabContent({
             colorNum={1}
             chartHeight="h-[80px] md:h-[120px]"
           />
-          <ModelLeaderboardTable
-            models={llmModels}
-            total={llmStatsData.totalCalls}
-          />
+          <ModelLeaderboardTable models={llmModels} mode="calls" />
         </MonitoringMetricCard>
 
+        <MonitoringMetricCard
+          title="Tokens"
+          value={formatCompactNumber(totalTokens)}
+          action={
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {formatCompactNumber(totalInputTokens)} in ·{" "}
+              {formatCompactNumber(totalOutputTokens)} out
+            </span>
+          }
+        >
+          <KPIChart
+            data={llmStatsData.data}
+            dataKey="totalTokens"
+            colorNum={2}
+            chartHeight="h-[80px] md:h-[120px]"
+          />
+          <ModelLeaderboardTable models={llmModels} mode="tokens" />
+        </MonitoringMetricCard>
+
+        <MonitoringMetricCard
+          title="Cost"
+          value={totalCostUsd > 0 ? formatUsd(totalCostUsd) : "—"}
+          action={
+            totalCostUsd === 0 ? (
+              <span className="text-xs text-muted-foreground">
+                No provider cost data
+              </span>
+            ) : undefined
+          }
+        >
+          <KPIChart
+            data={llmStatsData.data}
+            dataKey="costUsd"
+            colorNum={5}
+            chartHeight="h-[80px] md:h-[120px]"
+          />
+          {totalCostUsd > 0 ? (
+            <ModelLeaderboardTable models={llmModels} mode="cost" />
+          ) : (
+            <div className="flex items-center justify-center h-20 text-center text-xs text-muted-foreground px-4">
+              Cost is reported only for the deco AI Gateway and OpenRouter
+              providers.
+            </div>
+          )}
+        </MonitoringMetricCard>
+      </div>
+
+      {/* AI Usage — Latency + Errors */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MonitoringMetricCard
           title="AI Latency"
           value={formatDuration(llmStatsData.avgDurationMs)}
@@ -442,10 +549,7 @@ export function OverviewTabContent({
             colorNum={4}
             chartHeight="h-[80px] md:h-[120px]"
           />
-          <ModelLeaderboardTable
-            models={llmModels}
-            total={llmStatsData.totalCalls}
-          />
+          <ModelLeaderboardTable models={llmModels} mode="calls" />
         </MonitoringMetricCard>
 
         <MonitoringMetricCard
@@ -458,10 +562,13 @@ export function OverviewTabContent({
             colorNum={3}
             chartHeight="h-[80px] md:h-[120px]"
           />
-          <ModelLeaderboardTable
-            models={llmModels}
-            total={llmStatsData.totalCalls}
-          />
+          {llmStatsData.totalErrors === 0 ? (
+            <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+              No AI errors in this period
+            </div>
+          ) : (
+            <ModelLeaderboardTable models={llmModels} mode="calls" />
+          )}
         </MonitoringMetricCard>
       </div>
     </div>

@@ -23,6 +23,7 @@ const MONITORING_TOOLS = [
   "MONITORING_LOG_GET",
   "MONITORING_LOGS_LIST",
   "MONITORING_STATS",
+  "MONITORING_THREAD_USAGE",
 ];
 
 async function orgIdForSlug(db: Client, slug: string): Promise<string> {

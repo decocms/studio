@@ -91,6 +91,11 @@ interface FiltersPopoverProps {
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   connectionSearchTerm?: string;
   onConnectionSearchChange?: (term: string) => void;
+  /** Member options + AI-usage member filter (overview tab only). */
+  memberOptions?: Array<{ value: string; label: string }>;
+  llmUserIds?: string[];
+  onLlmUserIdsChange?: (values: string[]) => void;
+  showMemberFilter?: boolean;
 }
 
 const OPERATOR_OPTIONS: Array<{
@@ -115,6 +120,10 @@ function FiltersPopover({
   activeFiltersCount,
   onUpdateFilters,
   onConnectionSearchChange,
+  memberOptions,
+  llmUserIds = [],
+  onLlmUserIdsChange,
+  showMemberFilter,
 }: FiltersPopoverProps) {
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const [propertyFilterMode, setPropertyFilterMode] = useState<"raw" | "form">(
@@ -286,6 +295,26 @@ function FiltersPopover({
                 maxCount={2}
               />
             </div>
+
+            {showMemberFilter && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  Members
+                </label>
+                <MultiSelect
+                  options={memberOptions ?? []}
+                  defaultValue={llmUserIds}
+                  onValueChange={(values) => onLlmUserIdsChange?.(values)}
+                  placeholder="All members"
+                  variant="secondary"
+                  className="w-full"
+                  maxCount={2}
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Filters AI usage (calls, tokens, cost) only.
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
@@ -619,6 +648,9 @@ function MonitoringDashboardContent({
     ? [WellKnownOrgMCPId.SELF(org.id)]
     : undefined;
 
+  // AI-usage member filter (overview tab only; local state like thread filters)
+  const [llmUserIds, setLlmUserIds] = useState<string[]>([]);
+
   // Threads-specific filter state
   const [threadFilterAgentIds, setThreadFilterAgentIds] = useState<string[]>(
     [],
@@ -710,6 +742,10 @@ function MonitoringDashboardContent({
                     onUpdateFilters={onUpdateFilters}
                     connectionSearchTerm={connectionSearch}
                     onConnectionSearchChange={setConnectionSearch}
+                    memberOptions={memberOptions}
+                    llmUserIds={llmUserIds}
+                    onLlmUserIdsChange={setLlmUserIds}
+                    showMemberFilter={tab === "overview"}
                   />
                 </>
               )}
@@ -811,6 +847,7 @@ function MonitoringDashboardContent({
             connections={allConnections}
             isStreaming={isStreaming}
             streamingRefetchInterval={streamingRefetchInterval}
+            llmUserIds={llmUserIds}
           />
         </div>
       )}

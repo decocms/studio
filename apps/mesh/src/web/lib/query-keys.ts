@@ -156,6 +156,8 @@ export const KEYS = {
     ["MONITORING_STATS", orgId, "tool-calls", paramsKey] as const,
   monitoringStatsLlm: (orgId: string, paramsKey: string) =>
     ["MONITORING_STATS", orgId, "llm", paramsKey] as const,
+  monitoringThreadUsage: (locator: string, paramsKey: string) =>
+    ["MONITORING_THREAD_USAGE", locator, paramsKey] as const,
   monitoringLogs: (filters: {
     connectionId?: string;
     toolName?: string;

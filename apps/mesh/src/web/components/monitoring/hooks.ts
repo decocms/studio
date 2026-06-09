@@ -112,14 +112,31 @@ interface MonitoringLlmStatsParams {
   interval: string;
   startDate: string;
   endDate: string;
+  /** Restrict AI usage to specific members (user IDs). */
+  userIds?: string[];
 }
 
 interface MonitoringLlmStatsResult extends MonitoringStatsResult {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalCostUsd: number;
   topTools: Array<{
     toolName: string;
     connectionId: string | null;
     calls: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    costUsd?: number;
   }>;
+  timeseries: Array<
+    MonitoringStatsResult["timeseries"][number] & {
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+      costUsd?: number;
+    }
+  >;
 }
 
 /**
@@ -144,6 +161,8 @@ export function useMonitoringLlmStats(
     ...params,
     connectionIds: [DECOPILOT_CONNECTION_ID],
     topN: 5,
+    llmUsage: true,
+    userIds: params.userIds?.length ? params.userIds : undefined,
   };
 
   return useQuery<MonitoringLlmStatsResult, Error>({

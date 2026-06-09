@@ -89,6 +89,7 @@ const CORE_TOOLS = [
   MonitoringTools.MONITORING_LOG_GET,
   MonitoringTools.MONITORING_LOGS_LIST,
   MonitoringTools.MONITORING_STATS,
+  MonitoringTools.MONITORING_THREAD_USAGE,
 
   // API Key tools
   ApiKeyTools.API_KEY_CREATE,

@@ -75,6 +75,20 @@ export function formatDuration(ms: number): string {
   return `${Math.round(ms)}ms`;
 }
 
+/** Compact token/number formatting: 1234 → 1.2K, 1_500_000 → 1.5M. */
+export function formatCompactNumber(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return Math.round(n).toLocaleString();
+}
+
+/** USD cost formatting: sub-dollar gets 4 decimals, otherwise 2. */
+export function formatUsd(n: number): string {
+  if (!Number.isFinite(n)) return "$0.00";
+  return `$${n.toFixed(n < 1 ? 4 : 2)}`;
+}
+
 /**
  * Build display-ready timeseries from server points.
  *
@@ -91,6 +105,10 @@ export function buildFilledStatsData(
     avg: number;
     p50: number;
     p95: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    costUsd?: number;
   }>,
   range: DateRange,
   interval: string,
@@ -120,6 +138,10 @@ export function buildFilledStatsData(
       avg: point?.avg ?? 0,
       p50: point?.p50 ?? 0,
       p95: point?.p95 ?? 0,
+      inputTokens: point?.inputTokens ?? 0,
+      outputTokens: point?.outputTokens ?? 0,
+      totalTokens: point?.totalTokens ?? 0,
+      costUsd: point?.costUsd ?? 0,
     });
   }
 
