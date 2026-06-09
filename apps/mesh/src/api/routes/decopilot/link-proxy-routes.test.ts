@@ -326,6 +326,51 @@ describe("createProxyDispatch — daemon-vanished fail-fast (S5, landmine #8)", 
 });
 
 describe("createProxyDispatch — first-frame timeout (no-subscriber fail-fast)", () => {
+  test("an ack frame stops first-frame timeout and republish without yielding to caller", async () => {
+    const f = makeFakeNats();
+    const diagnostics: Array<{ event: string; reqId?: string }> = [];
+    const dispatch = createProxyDispatch({
+      nats: f.nats,
+      republishIntervalMs: 10,
+      firstFrameTimeoutMs: 30,
+      diagnosticLog: (event) => diagnostics.push(event),
+    });
+    const reqSubject = buildRequestSubject("user-1");
+    const out: { data?: string; status?: number }[] = [];
+
+    const run = (async () => {
+      for await (const ev of dispatch("user-1", baseReq)) {
+        out.push({ data: ev.data, status: ev.headers?.status });
+      }
+    })();
+
+    await Promise.resolve();
+    const replySubject = f.ops.find((o) => o.kind === "subscribe")!.subject;
+    f.deliver(replySubject, { type: "ack" });
+    const publishCountAtAck = f.published.filter(
+      (p) => p.subject === reqSubject,
+    ).length;
+
+    await new Promise((r) => setTimeout(r, 80));
+    expect(f.published.filter((p) => p.subject === reqSubject).length).toBe(
+      publishCountAtAck,
+    );
+    expect(out).toEqual([]);
+
+    f.deliver(replySubject, { type: "headers", status: 200, headers: {} });
+    f.deliver(replySubject, { type: "chunk", data: "QQ==" });
+    f.deliver(replySubject, { type: "end" });
+    await run;
+
+    expect(out).toEqual([
+      { data: undefined, status: 200 },
+      { data: "QQ==", status: undefined },
+    ]);
+    expect(diagnostics.some((event) => event.event === "first_reply_ack")).toBe(
+      true,
+    );
+  });
+
   test("logs publish and first-frame timeout diagnostics with reqId correlation", async () => {
     const f = makeFakeNats();
     const diagnostics: Array<{ event: string; reqId?: string }> = [];

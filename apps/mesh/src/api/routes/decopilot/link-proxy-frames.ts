@@ -17,7 +17,16 @@
  * REPLY leg (daemon → cluster), POST body of
  *   `POST /api/links/proxy/:reqId/stream` as a `duplex:"half"` upload:
  *   A STREAM of NDJSON `ProxyReplyFrame` lines, consumed frame-by-frame WITHOUT
- *   buffering and each republished to `links.proxy.reply.<reqId>`. Ordering:
+ *   buffering and each republished to `links.proxy.reply.<reqId>`.
+ *
+ * ACK leg (daemon → cluster), POST
+ *   `POST /api/links/proxy/:reqId/ack` publishes `{ type:"ack" }` to
+ *   `links.proxy.reply.<reqId>`. This is a fast, bodyless acknowledgement that
+ *   the daemon dequeued the request. It stops request-leg re-publishing and the
+ *   first-frame timeout, but it is not yielded to the caller; the stream upload
+ *   still carries the actual response frames.
+ *
+ * Reply stream ordering:
  *     1. AT MOST ONE `headers` frame, FIRST (before any `chunk`). The awaiting
  *        `DispatchFn` surfaces it as `{ headers }`; `runner.ts` depends on it
  *        arriving before body bytes.
@@ -66,7 +75,12 @@ const errorReplyFrame = z.object({
   message: z.string(),
 });
 
+const ackReplyFrame = z.object({
+  type: z.literal("ack"),
+});
+
 export const proxyReplyFrameSchema = z.discriminatedUnion("type", [
+  ackReplyFrame,
   headersReplyFrame,
   chunkReplyFrame,
   endReplyFrame,

@@ -109,6 +109,64 @@ interface ReplyBodyDiagnosticEvent {
   error?: string;
 }
 
+async function postProxyAck(
+  fetcher: typeof fetch,
+  baseUrl: string,
+  token: string,
+  frame: RequestFrame,
+  signal: AbortSignal,
+  startedAt: number,
+): Promise<void> {
+  const url = `${baseUrl}/api/links/proxy/${frame.reqId}/ack`;
+  logProxyPoller("reply_ack_post_start", {
+    reqId: frame.reqId,
+    method: frame.method,
+    path: frame.path,
+    url,
+    elapsedMs: Date.now() - startedAt,
+  });
+  try {
+    const res = await fetcher(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+      signal,
+    });
+    if (!res.ok && res.status !== 204) {
+      console.warn(
+        `[proxy-poller] reply ack POST reqId=${frame.reqId} → ${res.status}`,
+      );
+    }
+    logProxyPoller("reply_ack_post_complete", {
+      reqId: frame.reqId,
+      method: frame.method,
+      path: frame.path,
+      status: res.status,
+      ok: res.ok,
+      elapsedMs: Date.now() - startedAt,
+    });
+  } catch (err) {
+    if (signal.aborted) {
+      logProxyPoller("reply_ack_post_aborted", {
+        reqId: frame.reqId,
+        method: frame.method,
+        path: frame.path,
+        elapsedMs: Date.now() - startedAt,
+      });
+      return;
+    }
+    console.warn(`[proxy-poller] reply ack POST failed reqId=${frame.reqId}`);
+    logProxyPoller("reply_ack_post_failed", {
+      reqId: frame.reqId,
+      method: frame.method,
+      path: frame.path,
+      elapsedMs: Date.now() - startedAt,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 /**
  * A `RequestFrame.path` routes to the one-shot `controlHandler.handle` (lifecycle
  * + liveness: `POST/DELETE/GET /api/sandboxes[...]`) rather than the streaming
@@ -361,6 +419,8 @@ async function handleProxyRequest(
       });
       return;
     }
+
+    void postProxyAck(fetcher, deps.baseUrl, token, frame, combined, startedAt);
 
     const body = buildReplyBody(deps.controlHandler, frame, combined, (ev) => {
       logProxyPoller(ev.event, {
