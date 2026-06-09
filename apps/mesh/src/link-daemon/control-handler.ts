@@ -41,6 +41,8 @@ interface EnsureSandboxBody {
   offloadAllowedHosts?: string[];
   /** Permit http:// loopback offload refs (dev MinIO). */
   offloadAllowSameHostDev?: boolean;
+  /** org-fs mount config (JSON OrgFsMountConfig) → daemon ORGFS_CONFIG env. */
+  orgFsConfigJson?: string;
 }
 
 export type StreamEvent =

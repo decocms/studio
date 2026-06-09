@@ -87,6 +87,8 @@ const workItemSandboxSchema = z.object({
   offloadAllowedHosts: z.array(z.string()).optional(),
   /** Allow http:// loopback offload refs (dev MinIO). */
   offloadAllowSameHostDev: z.boolean().optional(),
+  /** org-fs mount config (JSON OrgFsMountConfig) → daemon ORGFS_CONFIG env. */
+  orgFsConfigJson: z.string().optional(),
 });
 
 export type WorkItemSandbox = z.infer<typeof workItemSandboxSchema>;

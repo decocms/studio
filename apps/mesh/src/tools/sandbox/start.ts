@@ -46,6 +46,8 @@ import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
 import { getSettings } from "../../settings";
+import { getPublicUrl } from "../../core/server-constants";
+import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
@@ -411,6 +413,19 @@ async function provisionSandbox(
         })
       : null;
 
+  // Org-fs mounts: mint an fs-scoped token + build the daemon's ORGFS_CONFIG.
+  // Desktop-only — hosted pods can't mount (the privileged-sidecar path is
+  // separate). Guarded inside the helper: a mint failure → undefined → no
+  // mounting, never breaks provisioning.
+  const orgFsConfigJson =
+    runner.kind === "user-desktop" && ctx.organization?.slug
+      ? await mintOrgFsConfigJson(ctx, {
+          orgSlug: ctx.organization.slug,
+          orgId,
+          baseUrl: getPublicUrl(),
+        })
+      : undefined;
+
   const sandbox = await runner.ensure(
     { userId, projectRef },
     {
@@ -429,6 +444,7 @@ async function provisionSandbox(
             offloadAllowSameHostDev: offload.allowSameHostDev,
           }
         : {}),
+      ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
     },
   );
 

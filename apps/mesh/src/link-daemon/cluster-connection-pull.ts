@@ -187,6 +187,9 @@ export async function connectToClusterPull(
                   offloadAllowSameHostDev: item.sandbox.offloadAllowSameHostDev,
                 }
               : {}),
+            ...(item.sandbox.orgFsConfigJson !== undefined
+              ? { orgFsConfigJson: item.sandbox.orgFsConfigJson }
+              : {}),
           }
         : { handle };
       let sandboxApiUrl: string;

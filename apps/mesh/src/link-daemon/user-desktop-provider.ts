@@ -91,6 +91,9 @@ export interface EnsureSandboxInput {
   /** Permit http:// loopback offload refs (dev MinIO over localhost). Maps to
    *  the daemon's `OFFLOAD_ALLOW_SAME_HOST_DEV=1`. */
   offloadAllowSameHostDev?: boolean;
+  /** org-fs mount config (JSON OrgFsMountConfig) → daemon `ORGFS_CONFIG` boot
+   *  env so it mounts the configured volumes kext-free. Absent → no mounting. */
+  orgFsConfigJson?: string;
 }
 
 export interface SandboxState {
@@ -145,6 +148,8 @@ export interface DesktopSandboxProviderDeps {
     offloadAllowedHosts: string[];
     /** Maps to the daemon's `OFFLOAD_ALLOW_SAME_HOST_DEV=1`. */
     offloadAllowSameHostDev: boolean;
+    /** org-fs mount config (JSON) → daemon `ORGFS_CONFIG`. undefined = no mount. */
+    orgFsConfigJson?: string;
   }) => SpawnResult | Promise<SpawnResult>;
   postConfig: (
     port: number,
@@ -348,6 +353,8 @@ export function createDesktopSandboxProvider(
         // by an older cluster that doesn't push these stays safe.
         offloadAllowedHosts: input.offloadAllowedHosts ?? [],
         offloadAllowSameHostDev: input.offloadAllowSameHostDev ?? false,
+        // org-fs mount config (desktop-only); undefined → daemon skips mounting.
+        orgFsConfigJson: input.orgFsConfigJson,
       }),
     );
     try {

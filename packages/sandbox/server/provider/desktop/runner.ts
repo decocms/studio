@@ -145,6 +145,11 @@ export class DesktopSandboxProvider implements SandboxProvider {
       ...(opts.offloadAllowSameHostDev !== undefined
         ? { offloadAllowSameHostDev: opts.offloadAllowSameHostDev }
         : {}),
+      // org-fs mount config (JSON OrgFsMountConfig) → daemon's ORGFS_CONFIG
+      // boot env. Desktop-only; absent → no mounting.
+      ...(opts.orgFsConfigJson
+        ? { orgFsConfigJson: opts.orgFsConfigJson }
+        : {}),
     });
     const responseText = await this.dispatchJson(
       "POST",
