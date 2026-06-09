@@ -129,8 +129,8 @@ export function getArrayItemLabel(
     }
     const resolveType = obj.__resolveType;
     if (typeof resolveType === "string" && resolveType) {
-      const parts = resolveType.split("/");
-      return parts[parts.length - 1].replace(/\.tsx?$/, "");
+      const lastPart = resolveType.split("/").at(-1);
+      if (lastPart) return lastPart.replace(/\.tsx?$/, "");
     }
   }
   return `Item ${index + 1}`;
