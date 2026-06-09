@@ -18,6 +18,10 @@ const requiredUnknownSchema = z
     message: "Required",
   });
 
+const payloadSchema = requiredUnknownSchema.refine((value) => value !== null, {
+  message: "Required",
+});
+
 export const linkIngestPartRowSchema = z.object({
   id: z.string().min(1),
   seq: z.number().int().nonnegative(),
@@ -27,7 +31,7 @@ export const linkIngestPartRowSchema = z.object({
   message_id: z.string().min(1),
   role: roleSchema,
   kind: partKindSchema,
-  payload: requiredUnknownSchema,
+  payload: payloadSchema,
   payload_ref: z.string().nullable(),
   metadata: requiredUnknownSchema.nullable(),
   created_at: z.string().datetime(),

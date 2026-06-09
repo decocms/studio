@@ -68,6 +68,15 @@ describe("linkIngestBatchSchema", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("rejects rows with null payload", () => {
+    const parsed = linkIngestBatchSchema.safeParse({
+      batchId: "batch_null_payload",
+      rows: [{ ...row, payload: null }],
+      done: false,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects rows with invalid kind", () => {
     const parsed = linkIngestBatchSchema.safeParse({
       batchId: "batch_invalid_kind",
