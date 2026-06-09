@@ -16,6 +16,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildReplyBody,
   formatProxyPollerLogLine,
+  runProxyPollLoop,
   runOverlapScheduler,
   type OverlapSchedulerDeps,
 } from "./proxy-poller";
@@ -47,6 +48,91 @@ describe("formatProxyPollerLogLine", () => {
       elapsedMs: 123,
       error: "TimeoutError: The operation timed out.",
     });
+  });
+});
+
+describe("runProxyPollLoop — request ack", () => {
+  it("POSTs an ack as soon as a request is dequeued, before the reply stream upload", async () => {
+    const ac = new AbortController();
+    const calls: string[] = [];
+    const frame = reqFrame("r-ack");
+    let pollCount = 0;
+
+    const fetchImpl = (async (input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+
+      if (method === "GET") {
+        pollCount++;
+        calls.push("poll");
+        if (pollCount === 1) return Response.json(frame);
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      }
+
+      if (method === "POST" && url.endsWith("/ack")) {
+        calls.push("ack");
+        return new Response(null, { status: 204 });
+      }
+
+      if (method === "POST" && url.endsWith("/stream")) {
+        calls.push("stream");
+        return await new Promise<Response>((resolve) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => resolve(new Response(null, { status: 499 })),
+            { once: true },
+          );
+        });
+      }
+
+      throw new Error(`unexpected fetch ${method} ${url}`);
+    }) as typeof fetch;
+
+    const done = runProxyPollLoop({
+      baseUrl: "https://studio.test",
+      getAccessToken: () => "token",
+      controlHandler: {
+        handle: async () => ({ status: 404 }),
+        handleStream: async function* () {
+          yield { type: "headers", status: 200, headers: {} };
+          await new Promise<void>((resolve) => {
+            ac.signal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+          });
+        },
+      },
+      signal: ac.signal,
+      fetchImpl,
+      concurrency: 1,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const deadline = setTimeout(
+        () => reject(new Error(`ack was not posted; calls=${calls.join(",")}`)),
+        100,
+      );
+      const tick = () => {
+        if (calls.includes("ack")) {
+          clearTimeout(deadline);
+          resolve();
+          return;
+        }
+        setTimeout(tick, 0);
+      };
+      tick();
+    }).finally(() => ac.abort());
+
+    await done;
+    expect(calls.indexOf("ack")).toBeGreaterThan(-1);
+    expect(calls.indexOf("stream")).toBeGreaterThan(-1);
+    expect(calls.indexOf("ack")).toBeLessThan(calls.indexOf("stream"));
   });
 });
 

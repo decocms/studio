@@ -29,6 +29,7 @@
  *
  * Routes:
  *   GET /api/links/proxy            — Request leg long-poll
+ *   POST /api/links/proxy/:reqId/ack — Fast request receipt ack
  *   POST /api/links/proxy/:reqId/stream — Reply leg upload
  */
 import { Hono } from "hono";
@@ -290,6 +291,33 @@ export function createLinkProxyRoutes(deps: LinkProxyDeps) {
         // ignore double-unsubscribe
       }
     }
+  });
+
+  // ── ACK leg: bodyless request receipt ack ────────────────────────────────
+  app.post("/links/proxy/:reqId/ack", async (c) => {
+    const ctx = c.get("meshContext");
+    const userId = ctx.auth?.user?.id;
+    if (!userId) return c.json({ error: "unauthorized" }, 401);
+
+    const reqId = c.req.param("reqId");
+    if (!isSafeSubjectToken(reqId)) {
+      return c.json({ error: "invalid reqId" }, 400);
+    }
+
+    const nc = deps.getConnection();
+    if (!nc) {
+      logProxyRoute("reply_ack_nats_unavailable", { userId, reqId });
+      return c.json({ error: "proxy channel unavailable" }, 503);
+    }
+
+    const replySubject = buildReplySubject(reqId);
+    publishReplyFrame(nc, replySubject, { type: "ack" });
+    logProxyRoute("reply_ack_published", {
+      userId,
+      reqId,
+      replySubject,
+    });
+    return c.body(null, 204);
   });
 
   // ── REPLY leg: streaming NDJSON upload, republished frame-by-frame ────────
@@ -763,20 +791,31 @@ export function createProxyDispatch(deps: CreateProxyDispatchDeps): DispatchFn {
         // SUBSCRIBE BEFORE PUBLISH — guarantees we don't miss the first frame.
         const unsubscribe = deps.nats.subscribe(replySubject, (data) => {
           if (done) return;
-          // A real frame landed: disable the first-frame bound. SSE replies
-          // legitimately have long gaps between subsequent frames, so we do NOT
-          // re-arm or add a per-frame idle timeout.
-          const isFirstReplyFrame = !firstFrameSeen;
-          if (isFirstReplyFrame) {
-            logDiagnostic({
-              event: "first_reply_frame",
-              subject: replySubject,
-              queueDepth: queue.length,
-            });
-          }
-          markFirstFrame();
           try {
             const frame = decodeProxyReplyFrame(decoder.decode(data));
+            if (frame.type === "ack") {
+              const isFirstAck = !firstFrameSeen;
+              markFirstFrame();
+              logDiagnostic({
+                event: isFirstAck ? "first_reply_ack" : "reply_ack",
+                subject: replySubject,
+              });
+              wake();
+              return;
+            }
+
+            // A real response frame landed: disable the first-frame bound. SSE
+            // replies legitimately have long gaps between subsequent frames, so
+            // we do NOT re-arm or add a per-frame idle timeout.
+            const isFirstReplyFrame = !firstFrameSeen;
+            if (isFirstReplyFrame) {
+              logDiagnostic({
+                event: "first_reply_frame",
+                subject: replySubject,
+                queueDepth: queue.length,
+              });
+            }
+            markFirstFrame();
             queue.push(frame);
             if (isFirstReplyFrame) {
               logDiagnostic({

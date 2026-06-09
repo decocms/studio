@@ -34,6 +34,10 @@ describe("link-proxy-frames codec", () => {
     ).toEqual({ type: "error", code: "x", message: "boom" });
   });
 
+  test("round-trips an ack frame", () => {
+    expect(decodeProxyReplyFrame('{"type":"ack"}')).toEqual({ type: "ack" });
+  });
+
   test("throws on malformed JSON", () => {
     expect(() => decodeProxyReplyFrame("{not json")).toThrow(/malformed JSON/);
   });
