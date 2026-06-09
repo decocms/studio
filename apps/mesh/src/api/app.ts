@@ -2057,6 +2057,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     kvStorage,
     runRegistry,
     streamBuffer,
+    sseHub,
     cancelBroadcast,
     tokenStorage: triggerCallbackTokenStorage,
     automationEventDispatcher,

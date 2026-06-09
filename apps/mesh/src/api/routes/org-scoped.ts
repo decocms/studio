@@ -4,6 +4,7 @@ import type { AutomationEventDispatcher } from "@/automations/automation-event-d
 import type { CancelBroadcast } from "@/api/routes/decopilot/cancel-broadcast";
 import type { RunRegistry } from "@/api/routes/decopilot/run-registry";
 import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
+import type { SSEEvent } from "@/event-bus";
 import type { KVStorage } from "@/storage/kv";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
@@ -38,6 +39,7 @@ interface OrgScopedDeps {
    */
   runRegistry: RunRegistry;
   streamBuffer: StreamBuffer;
+  sseHub: { emit(orgId: string, event: SSEEvent): void };
   cancelBroadcast: CancelBroadcast;
   tokenStorage: TriggerCallbackTokenStorage;
   automationEventDispatcher: AutomationEventDispatcher;
@@ -93,7 +95,13 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     }),
   ); // /api/:org/trigger-callback
   app.route("/webhooks", createAutomationWebhookRoutes()); // /api/:org/webhooks/:triggerId[/:token]
-  app.route("/", createLinkIngestRoutes({ streamBuffer: deps.streamBuffer })); // /api/:org/links/runs/:runId/stream
+  app.route(
+    "/",
+    createLinkIngestRoutes({
+      streamBuffer: deps.streamBuffer,
+      sseHub: deps.sseHub,
+    }),
+  ); // /api/:org/links/runs/:runId/stream
 
   if (deps.mountDevAssets) {
     app.route("/dev-assets", createDevAssetsRoutes({ orgFromPath: true }));

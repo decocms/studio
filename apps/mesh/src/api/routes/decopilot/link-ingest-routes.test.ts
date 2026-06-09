@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+import type { UIMessageChunk } from "ai";
+import type { SSEEvent } from "@/event-bus";
 import type { ThreadMessagePart } from "@/storage/fold-parts";
 import type { Env } from "../../hono-env";
 import { createLinkIngestRoutes } from "./link-ingest-routes";
@@ -28,6 +30,9 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
   const appended: ThreadMessagePart[][] = [];
   const updates: unknown[] = [];
   const purged: string[] = [];
+  const pumped: UIMessageChunk[][] = [];
+  const pumpPromises: Promise<void>[] = [];
+  const sseEvents: Array<{ orgId: string; event: SSEEvent }> = [];
   const app = new Hono<Env>();
   app.use("*", async (c, next) => {
     c.set("meshContext", {
@@ -38,6 +43,16 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
           getCancelRequestedAt: async () => null,
           getRunFence: async () => "fence_1",
           bumpProgress: async () => undefined,
+          get: async () => ({
+            id: "run_1",
+            virtual_mcp_id: "vmcp_1",
+            created_by: "user_1",
+            trigger_id: null,
+            title: "Test thread",
+            branch: null,
+            created_at: "2026-06-09T00:00:00.000Z",
+            updated_at: "2026-06-09T00:00:01.000Z",
+          }),
           update: async (_id: string, data: unknown) => {
             updates.push(data);
           },
@@ -57,16 +72,37 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
     createLinkIngestRoutes({
       streamBuffer: {
         init: async () => undefined,
-        pump: () => undefined,
+        pump: (stream: ReadableStream) => {
+          const promise = (async () => {
+            const reader = stream.getReader();
+            const chunks: UIMessageChunk[] = [];
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value as UIMessageChunk);
+              }
+            } finally {
+              reader.releaseLock();
+            }
+            pumped.push(chunks);
+          })();
+          pumpPromises.push(promise);
+        },
         createTailStream: async () => null,
         purge: (taskId: string) => {
           purged.push(taskId);
         },
         teardown: () => undefined,
       },
+      sseHub: {
+        emit: (orgId: string, event: SSEEvent) => {
+          sseEvents.push({ orgId, event });
+        },
+      },
     }),
   );
-  return { app, appended, updates, purged };
+  return { app, appended, updates, purged, pumped, pumpPromises, sseEvents };
 }
 
 async function postParts(
@@ -132,7 +168,7 @@ describe("link ingest parts route", () => {
   });
 
   test("marks the run completed on done true", async () => {
-    const { app, updates, purged } = appWithContext();
+    const { app, updates, purged, sseEvents } = appWithContext();
 
     const res = await postParts(app, {
       batchId: "batch_1",
@@ -155,6 +191,34 @@ describe("link ingest parts route", () => {
       },
     ]);
     expect(purged).toEqual(["run_1"]);
+    expect(sseEvents.map(({ event }) => event.type)).toEqual([
+      "decopilot.thread.status",
+      "decopilot.finish",
+    ]);
+  });
+
+  test("publishes appended rows and finish to the live stream buffer", async () => {
+    const { app, pumped, pumpPromises } = appWithContext();
+
+    const res = await postParts(app, {
+      batchId: "batch_1",
+      rows: [makeRow()],
+      done: true,
+    });
+    await Promise.all(pumpPromises);
+
+    expect(res.status).toBe(200);
+    expect(pumped).toEqual([
+      [
+        { type: "start", messageId: "assistant_1" },
+        { type: "start-step" },
+        { type: "text-start", id: "run_1:0" },
+        { type: "text-delta", id: "run_1:0", delta: "hello" },
+        { type: "text-end", id: "run_1:0" },
+        { type: "finish-step" },
+        { type: "finish" },
+      ],
+    ]);
   });
 
   test("rejects cancelled runs before fence check", async () => {

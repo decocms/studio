@@ -15,9 +15,16 @@
  * any thread id) and enforce thread ownership.
  */
 import { Hono, type Context } from "hono";
+import type { UIMessageChunk } from "ai";
+import type { SSEEvent } from "@/event-bus";
 import { parseDispatchSSEStream } from "@/harnesses/parse-dispatch-sse";
 import { fenceMatches } from "@/storage/run-fence";
 import { isCancelRequested } from "@/storage/cancel-flag";
+import type { ThreadMessagePart } from "@/storage/fold-parts";
+import {
+  createDecopilotFinishEvent,
+  createDecopilotThreadStatusEvent,
+} from "@decocms/mesh-sdk";
 import { PartEmitter } from "./part-emitter";
 import { consumePartStream } from "./consume-part-stream";
 import { linkIngestBatchSchema } from "./link-ingest-batch-schema";
@@ -26,6 +33,144 @@ import type { Env } from "../../hono-env";
 
 export interface LinkIngestDeps {
   streamBuffer: StreamBuffer;
+  sseHub?: { emit(orgId: string, event: SSEEvent): void };
+}
+
+type PartPayload = Record<string, unknown> & { type?: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringField(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function chunksForPartRow(row: ThreadMessagePart): UIMessageChunk[] {
+  if (row.kind === "finish" || !isRecord(row.payload)) return [];
+
+  const part = row.payload as PartPayload;
+  const type = stringField(part.type);
+  if (!type) return [];
+
+  if (type === "text") {
+    return [
+      { type: "text-start", id: row.id } as UIMessageChunk,
+      {
+        type: "text-delta",
+        id: row.id,
+        delta: typeof part.text === "string" ? part.text : "",
+      } as UIMessageChunk,
+      { type: "text-end", id: row.id } as UIMessageChunk,
+    ];
+  }
+
+  if (type === "reasoning") {
+    return [
+      { type: "reasoning-start", id: row.id } as UIMessageChunk,
+      {
+        type: "reasoning-delta",
+        id: row.id,
+        delta: typeof part.text === "string" ? part.text : "",
+      } as UIMessageChunk,
+      { type: "reasoning-end", id: row.id } as UIMessageChunk,
+    ];
+  }
+
+  if (type.startsWith("tool-") || type === "dynamic-tool") {
+    const toolCallId = stringField(part.toolCallId) ?? row.id;
+    const toolName =
+      stringField(part.toolName) ??
+      (type.startsWith("tool-") ? type.slice("tool-".length) : "dynamic");
+    const chunks: UIMessageChunk[] = [];
+    if ("input" in part) {
+      chunks.push({
+        type: "tool-input-available",
+        toolCallId,
+        toolName,
+        input: part.input,
+      } as UIMessageChunk);
+    }
+    if (part.state === "output-available") {
+      chunks.push({
+        type: "tool-output-available",
+        toolCallId,
+        output: part.output,
+      } as UIMessageChunk);
+    } else if (
+      part.state === "output-error" ||
+      part.state === "output-denied"
+    ) {
+      chunks.push({
+        type: "tool-output-error",
+        toolCallId,
+        errorText:
+          typeof part.errorText === "string"
+            ? part.errorText
+            : part.state === "output-denied"
+              ? "Tool output denied"
+              : "Tool output error",
+      } as UIMessageChunk);
+    }
+    return chunks;
+  }
+
+  return [part as UIMessageChunk];
+}
+
+function liveChunksForRows(
+  rows: ThreadMessagePart[],
+  done: boolean,
+): UIMessageChunk[] {
+  const chunks: UIMessageChunk[] = [];
+  const byMessage = new Map<string, ThreadMessagePart[]>();
+  for (const row of rows) {
+    if (row.role !== "assistant" || row.kind === "finish") continue;
+    const group = byMessage.get(row.message_id) ?? [];
+    group.push(row);
+    byMessage.set(row.message_id, group);
+  }
+
+  for (const [messageId, messageRows] of byMessage) {
+    chunks.push({ type: "start", messageId } as UIMessageChunk);
+    chunks.push({ type: "start-step" } as UIMessageChunk);
+    for (const row of messageRows.sort((a, b) => a.seq - b.seq)) {
+      chunks.push(...chunksForPartRow(row));
+    }
+    chunks.push({ type: "finish-step" } as UIMessageChunk);
+  }
+
+  if (done) {
+    chunks.push({ type: "finish" } as UIMessageChunk);
+  }
+  return chunks;
+}
+
+function streamFromChunks(chunks: UIMessageChunk[]): ReadableStream {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+}
+
+async function publishLiveChunks(
+  deps: LinkIngestDeps,
+  runId: string,
+  orgId: string,
+  chunks: UIMessageChunk[],
+  signal: AbortSignal,
+): Promise<void> {
+  if (chunks.length === 0) return;
+  const tail = await deps.streamBuffer.createTailStream(runId, signal, {
+    deliverPolicy: "new",
+    closeOnDone: true,
+  });
+  deps.streamBuffer.pump(streamFromChunks(chunks), runId, signal, orgId);
+  if (tail) {
+    await drain(tail).catch(() => {});
+  }
 }
 
 async function drain(stream: ReadableStream): Promise<void> {
@@ -178,6 +323,13 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     if (rows.length > 0) {
       ctx.storage.threads.bumpProgress(runId).catch(() => {});
     }
+    await publishLiveChunks(
+      deps,
+      runId,
+      orgId,
+      liveChunksForRows(rows, parsed.data.done),
+      c.req.raw.signal,
+    );
 
     if (parsed.data.done) {
       await ctx.storage.threads.update(runId, {
@@ -187,6 +339,22 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
         run_started_at: null,
       });
       deps.streamBuffer.purge(runId);
+      if (deps.sseHub) {
+        const thread = await ctx.storage.threads.get(runId);
+        deps.sseHub.emit(
+          orgId,
+          createDecopilotThreadStatusEvent(runId, "completed", {
+            virtualMcpId: thread?.virtual_mcp_id ?? undefined,
+            createdBy: thread?.created_by,
+            triggerId: thread?.trigger_id,
+            title: thread?.title,
+            branch: thread?.branch ?? null,
+            createdAt: thread?.created_at,
+            updatedAt: thread?.updated_at,
+          }),
+        );
+        deps.sseHub.emit(orgId, createDecopilotFinishEvent(runId, "completed"));
+      }
     }
 
     return c.json({
