@@ -28,6 +28,7 @@ export async function configureTriggerOnMcp(
   if (!connection) return { success: true }; // Connection may have been deleted
 
   const organizationId = ctx.organization?.id;
+  const organizationSlug = ctx.organization?.slug;
 
   try {
     const mcpClient = await clientFromConnection(connection, ctx, true);
@@ -41,7 +42,11 @@ export async function configureTriggerOnMcp(
       const pair = await tokenStorage.generateTokenPair();
       callbackToken = pair.plaintext;
       tokenHash = pair.hash;
-      callbackUrl = `${ctx.baseUrl}/api/trigger-callback`;
+      // Prefer the org-scoped path; fall back to the legacy unscoped route
+      // only if the org slug is unavailable.
+      callbackUrl = organizationSlug
+        ? `${ctx.baseUrl}/api/${organizationSlug}/trigger-callback`
+        : `${ctx.baseUrl}/api/trigger-callback`;
     }
 
     const TIMEOUT_MS = 5000;

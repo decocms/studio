@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { AutomationEventDispatcher } from "@/automations/automation-event-dispatcher";
+import type { DeprecatedRouteAttribution } from "@/api/middleware/log-deprecated-route";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
 
 const TriggerCallbackBodySchema = z.object({
@@ -27,7 +28,9 @@ interface TriggerCallbackDeps {
 const MAX_BODY_SIZE = 1_048_576; // 1MB
 
 export function createTriggerCallbackRoutes(deps: TriggerCallbackDeps) {
-  const app = new Hono();
+  const app = new Hono<{
+    Variables: { deprecatedRouteAttribution?: DeprecatedRouteAttribution };
+  }>();
 
   app.post(
     "/trigger-callback",
@@ -51,6 +54,13 @@ export function createTriggerCallbackRoutes(deps: TriggerCallbackDeps) {
       if (!context) {
         return c.json({ error: "Invalid callback token" }, 401);
       }
+
+      // Attribute the legacy-route deprecation log to the token's
+      // org/connection — this route has no session-based meshContext.
+      c.set("deprecatedRouteAttribution", {
+        organizationId: context.organizationId,
+        connectionId: context.connectionId,
+      });
 
       // Parse and validate body
       const parsed = TriggerCallbackBodySchema.safeParse(
