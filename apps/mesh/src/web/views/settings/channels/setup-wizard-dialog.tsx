@@ -83,7 +83,7 @@ export function SetupWizardDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Set up {platform?.name ?? "channel"}</DialogTitle>
           <DialogDescription>
@@ -91,7 +91,7 @@ export function SetupWizardDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-1">
+        <div className="flex justify-center overflow-x-auto py-1">
           <StepIndicator steps={WIZARD_STEPS} currentStep={stepIndex(state)} />
         </div>
 

@@ -81,7 +81,7 @@ export function reducer(state: WizardState, action: WizardAction): WizardState {
 }
 
 export const WIZARD_STEPS = [
-  { id: "create", label: "Create app" },
+  { id: "create", label: "Create" },
   { id: "endpoint", label: "Endpoint" },
   { id: "credentials", label: "Credentials" },
   { id: "test", label: "Test" },
