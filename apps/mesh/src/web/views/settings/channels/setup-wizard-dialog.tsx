@@ -28,12 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import {
-  SettingsCard,
-  SettingsCardItem,
-} from "@/web/components/settings/settings-section";
 import { StepIndicator } from "@deco/ui/components/step-indicator.tsx";
 import {
   invalidateChannels,
@@ -42,80 +37,46 @@ import {
   useChannelPlatforms,
   type ChannelPlatform,
   type ChannelSetupStep,
-  type ChannelType,
 } from "@/web/hooks/collections/use-channels";
 import {
-  initialState,
   reducer,
   stepIndex,
   WIZARD_STEPS,
   type WizardState,
 } from "./wizard-state";
+import type { WizardTarget } from "./connected-channels-section";
 
-interface ResumeTarget {
-  platform: ChannelType;
-  channelId: string;
-  webhookUrl: string;
-  step: "instructions" | "endpoint" | "credentials" | "testing";
-}
-
+/**
+ * Guided setup wizard for a single channel. The channel draft is created by the
+ * caller (page-level per-platform buttons) before the wizard opens, so the
+ * wizard always starts at a concrete step with a known channel id + webhook
+ * URL — no in-dialog platform grid.
+ */
 export function SetupWizardDialog({
   open,
   onOpenChange,
-  resume,
+  target,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  resume?: ResumeTarget;
+  target: WizardTarget;
 }) {
   const platforms = useChannelPlatforms();
   const agentOptions = useAgentOptions();
-  const { org, client } = useChannelClient();
+  const { org } = useChannelClient();
   const queryClient = useQueryClient();
 
-  // Lazy init from `resume` so reopening at a draft's step needs no effect.
-  const [state, dispatch] = useReducer(
-    reducer,
-    resume
-      ? ({
-          kind: resume.step,
-          platform: resume.platform,
-          channelId: resume.channelId,
-          webhookUrl: resume.webhookUrl,
-        } as WizardState)
-      : initialState,
-  );
+  // Lazy init from the target step so reopening at a draft's step needs no effect.
+  const [state, dispatch] = useReducer(reducer, {
+    kind: target.step,
+    platform: target.platform,
+    channelId: target.channelId,
+    webhookUrl: target.webhookUrl,
+  } as WizardState);
 
-  const createDraft = useMutation({
-    mutationFn: async (platform: ChannelType) => {
-      const result = (await client.callTool({
-        name: "CHANNEL_CREATE",
-        arguments: { channelType: platform },
-      })) as { structuredContent?: { id: string; webhookUrl: string } };
-      if (!result.structuredContent)
-        throw new Error("Failed to create channel");
-      return result.structuredContent;
-    },
-    onSuccess: (data, platform) => {
-      invalidateChannels(queryClient, org.id);
-      dispatch({
-        type: "draft-created",
-        platform,
-        channelId: data.id,
-        webhookUrl: data.webhookUrl,
-      });
-    },
-    onError: (err) => {
-      toast.error(`Failed to start setup: ${err.message}`);
-      dispatch({ type: "draft-failed" });
-    },
-  });
+  const close = () => onOpenChange(false);
 
-  const close = () => {
-    onOpenChange(false);
-  };
-
-  const platform =
+  const platform: ChannelPlatform | undefined =
     "platform" in state
       ? platforms.find((p) => p.id === state.platform)
       : undefined;
@@ -124,43 +85,15 @@ export function SetupWizardDialog({
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            {state.kind === "grid"
-              ? "Add a channel"
-              : `Set up ${platform?.name ?? "channel"}`}
-          </DialogTitle>
+          <DialogTitle>Set up {platform?.name ?? "channel"}</DialogTitle>
           <DialogDescription>
-            {state.kind === "grid"
-              ? "Connect a chat platform so a bot can run a Decopilot agent in this organization."
-              : "Follow the steps to register your bot and connect it."}
+            Follow the steps to register your bot and connect it.
           </DialogDescription>
         </DialogHeader>
 
-        {state.kind !== "grid" && state.kind !== "creating-draft" && (
-          <div className="py-1">
-            <StepIndicator
-              steps={WIZARD_STEPS}
-              currentStep={stepIndex(state)}
-            />
-          </div>
-        )}
-
-        {state.kind === "grid" && (
-          <PlatformGrid
-            platforms={platforms}
-            disabled={createDraft.isPending}
-            onSelect={(p) => {
-              dispatch({ type: "select-platform", platform: p });
-              createDraft.mutate(p);
-            }}
-          />
-        )}
-
-        {state.kind === "creating-draft" && (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Spinner size="sm" /> Preparing setup…
-          </div>
-        )}
+        <div className="py-1">
+          <StepIndicator steps={WIZARD_STEPS} currentStep={stepIndex(state)} />
+        </div>
 
         {state.kind === "instructions" && platform && (
           <InstructionsStep
@@ -216,35 +149,6 @@ export function SetupWizardDialog({
   );
 }
 
-function PlatformGrid({
-  platforms,
-  onSelect,
-  disabled,
-}: {
-  platforms: ChannelPlatform[];
-  onSelect: (p: ChannelType) => void;
-  disabled: boolean;
-}) {
-  return (
-    <SettingsCard>
-      {platforms.map((p) => (
-        <SettingsCardItem
-          key={p.id}
-          onClick={disabled ? undefined : () => onSelect(p.id)}
-          icon={
-            <Avatar
-              fallback={p.name.charAt(0)}
-              className="size-8 bg-primary/10 text-primary"
-            />
-          }
-          title={p.name}
-          description={p.description}
-        />
-      ))}
-    </SettingsCard>
-  );
-}
-
 function InstructionsStep({
   platform,
   onNext,
@@ -252,10 +156,9 @@ function InstructionsStep({
   platform: ChannelPlatform;
   onNext: () => void;
 }) {
-  const step = platform.setupInstructions[0];
   return (
     <div className="space-y-4">
-      <StepBody step={step} />
+      <StepBody step={platform.setupInstructions[0]} />
       <DialogFooter>
         <Button size="sm" onClick={onNext}>
           Next
@@ -276,10 +179,11 @@ function EndpointStep({
   onBack: () => void;
   onNext: () => void;
 }) {
-  const step = platform.setupInstructions[1] ?? platform.setupInstructions[0];
   return (
     <div className="space-y-4">
-      <StepBody step={step} />
+      <StepBody
+        step={platform.setupInstructions[1] ?? platform.setupInstructions[0]}
+      />
       <div className="space-y-1">
         <Label className="text-xs text-muted-foreground">Endpoint URL</Label>
         <CopyableValue value={webhookUrl} />

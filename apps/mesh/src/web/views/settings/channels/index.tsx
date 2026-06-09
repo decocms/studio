@@ -1,14 +1,21 @@
 import { Suspense, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { AlertCircle, MessageTextSquare01 } from "@untitledui/icons";
 import { Page } from "@/web/components/page";
-import { Button } from "@deco/ui/components/button.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { SettingsPage } from "@/web/components/settings/settings-section";
 import { ErrorBoundary } from "@/web/components/error-boundary";
-import { useOrgChannels } from "@/web/hooks/collections/use-channels";
+import {
+  invalidateChannels,
+  useChannelClient,
+  useOrgChannels,
+  type ChannelType,
+} from "@/web/hooks/collections/use-channels";
 import {
   ConnectedChannelsSection,
-  type ResumeTarget,
+  PlatformAddButtons,
+  type WizardTarget,
 } from "./connected-channels-section";
 import { SetupWizardDialog } from "./setup-wizard-dialog";
 
@@ -23,7 +30,13 @@ function ErrorFallback({ error }: { error: Error }) {
   );
 }
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function EmptyState({
+  onAdd,
+  busy,
+}: {
+  onAdd: (platform: ChannelType) => void;
+  busy: boolean;
+}) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-12 text-center">
       <MessageTextSquare01 size={28} className="text-muted-foreground" />
@@ -34,36 +47,64 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
           agent in this organization.
         </p>
       </div>
-      <Button size="sm" onClick={onAdd}>
-        Add channel
-      </Button>
+      <PlatformAddButtons onAdd={onAdd} busy={busy} />
     </div>
   );
 }
 
 function OrgChannelsContent() {
   const channels = useOrgChannels();
-  // null = closed; otherwise { resume? } describes the open wizard.
-  const [wizard, setWizard] = useState<{ resume?: ResumeTarget } | null>(null);
+  const { org, client } = useChannelClient();
+  const queryClient = useQueryClient();
+  const [target, setTarget] = useState<WizardTarget | null>(null);
+
+  // Create the draft channel (+ its bot) on click, then open the wizard at the
+  // first step. Done here (not in the dialog) so platform selection is a plain
+  // button rather than an in-dialog grid.
+  const createDraft = useMutation({
+    mutationFn: async (platform: ChannelType) => {
+      const result = (await client.callTool({
+        name: "CHANNEL_CREATE",
+        arguments: { channelType: platform },
+      })) as { structuredContent?: { id: string; webhookUrl: string } };
+      if (!result.structuredContent)
+        throw new Error("Failed to create channel");
+      return { platform, ...result.structuredContent };
+    },
+    onSuccess: (data) => {
+      invalidateChannels(queryClient, org.id);
+      setTarget({
+        platform: data.platform,
+        channelId: data.id,
+        webhookUrl: data.webhookUrl,
+        step: "instructions",
+      });
+    },
+    onError: (err) => toast.error(`Failed to start setup: ${err.message}`),
+  });
 
   return (
     <>
       {channels.length === 0 ? (
-        <EmptyState onAdd={() => setWizard({})} />
+        <EmptyState
+          onAdd={(p) => createDraft.mutate(p)}
+          busy={createDraft.isPending}
+        />
       ) : (
         <ConnectedChannelsSection
           channels={channels}
-          onAdd={() => setWizard({})}
-          onResume={(resume) => setWizard({ resume })}
+          onAdd={(p) => createDraft.mutate(p)}
+          onResume={setTarget}
+          busy={createDraft.isPending}
         />
       )}
 
-      {wizard !== null && (
+      {target && (
         <SetupWizardDialog
-          key={wizard.resume?.channelId ?? "new"}
+          key={target.channelId}
           open
-          onOpenChange={(o) => !o && setWizard(null)}
-          resume={wizard.resume}
+          target={target}
+          onOpenChange={(o) => !o && setTarget(null)}
         />
       )}
     </>

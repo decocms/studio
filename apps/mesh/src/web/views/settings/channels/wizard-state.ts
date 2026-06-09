@@ -1,67 +1,28 @@
 import type { ChannelType } from "@/web/hooks/collections/use-channels";
 
 /**
- * Setup wizard state machine (discriminated union + reducer), mirroring the
- * AI-providers connect-dialog. Linear lifecycle:
- *   grid → (creating-draft) → instructions → endpoint → credentials → testing → active
- * with `test-error` re-entry. Draft-first: the channel id (and webhook URL) is
- * created up front so the platform portal can be configured before testing.
+ * Setup wizard state machine (discriminated union + reducer). The channel draft
+ * is created before the wizard opens, so every state carries a concrete
+ * channelId + webhookUrl and the flow is purely linear:
+ *   instructions → endpoint → credentials → testing → active
+ * with `test-error` re-entry. Mirrors the AI-providers connect-dialog reducer.
  */
 
+interface Base {
+  platform: ChannelType;
+  channelId: string;
+  webhookUrl: string;
+}
+
 export type WizardState =
-  | { kind: "closed" }
-  | { kind: "grid" }
-  | { kind: "creating-draft"; platform: ChannelType }
-  | {
-      kind: "instructions";
-      platform: ChannelType;
-      channelId: string;
-      webhookUrl: string;
-    }
-  | {
-      kind: "endpoint";
-      platform: ChannelType;
-      channelId: string;
-      webhookUrl: string;
-    }
-  | {
-      kind: "credentials";
-      platform: ChannelType;
-      channelId: string;
-      webhookUrl: string;
-    }
-  | {
-      kind: "testing";
-      platform: ChannelType;
-      channelId: string;
-      webhookUrl: string;
-    }
-  | {
-      kind: "test-error";
-      platform: ChannelType;
-      channelId: string;
-      webhookUrl: string;
-      error: string;
-    }
-  | {
-      kind: "active";
-      platform: ChannelType;
-      channelId: string;
-      webhookUrl: string;
-      botDisplayName?: string;
-    };
+  | ({ kind: "instructions" } & Base)
+  | ({ kind: "endpoint" } & Base)
+  | ({ kind: "credentials" } & Base)
+  | ({ kind: "testing" } & Base)
+  | ({ kind: "test-error"; error: string } & Base)
+  | ({ kind: "active"; botDisplayName?: string } & Base);
 
 export type WizardAction =
-  | { type: "open" }
-  | { type: "close" }
-  | { type: "select-platform"; platform: ChannelType }
-  | {
-      type: "draft-created";
-      platform: ChannelType;
-      channelId: string;
-      webhookUrl: string;
-    }
-  | { type: "draft-failed" }
   | { type: "to-endpoint" }
   | { type: "to-credentials" }
   | { type: "back-to-instructions" }
@@ -69,16 +30,7 @@ export type WizardAction =
   | { type: "creds-saved" }
   | { type: "test-passed"; botDisplayName?: string }
   | { type: "test-failed"; error: string }
-  | { type: "retry-test" }
-  | {
-      type: "resume";
-      platform: ChannelType;
-      channelId: string;
-      webhookUrl: string;
-      step: "instructions" | "endpoint" | "credentials" | "testing";
-    };
-
-export const initialState: WizardState = { kind: "closed" };
+  | { type: "retry-test" };
 
 /** Index of the active step for the StepIndicator header. */
 export function stepIndex(s: WizardState): number {
@@ -89,98 +41,40 @@ export function stepIndex(s: WizardState): number {
       return 1;
     case "credentials":
       return 2;
-    case "testing":
-    case "test-error":
-    case "active":
-      return 3;
     default:
-      return 0;
+      return 3;
   }
 }
 
 export function reducer(state: WizardState, action: WizardAction): WizardState {
+  const base: Base = {
+    platform: state.platform,
+    channelId: state.channelId,
+    webhookUrl: state.webhookUrl,
+  };
   switch (action.type) {
-    case "open":
-      return { kind: "grid" };
-    case "close":
-      return { kind: "closed" };
-    case "select-platform":
-      return { kind: "creating-draft", platform: action.platform };
-    case "draft-created":
-      return {
-        kind: "instructions",
-        platform: action.platform,
-        channelId: action.channelId,
-        webhookUrl: action.webhookUrl,
-      };
-    case "draft-failed":
-      return { kind: "grid" };
     case "to-endpoint":
       return state.kind === "instructions"
-        ? { ...state, kind: "endpoint" }
+        ? { ...base, kind: "endpoint" }
         : state;
     case "to-credentials":
       return state.kind === "endpoint"
-        ? { ...state, kind: "credentials" }
+        ? { ...base, kind: "credentials" }
         : state;
     case "back-to-instructions":
-      return "channelId" in state
-        ? {
-            kind: "instructions",
-            platform: state.platform,
-            channelId: state.channelId,
-            webhookUrl: state.webhookUrl,
-          }
-        : state;
+      return { ...base, kind: "instructions" };
     case "back-to-endpoint":
-      return "channelId" in state
-        ? {
-            kind: "endpoint",
-            platform: state.platform,
-            channelId: state.channelId,
-            webhookUrl: state.webhookUrl,
-          }
-        : state;
+      return { ...base, kind: "endpoint" };
     case "creds-saved":
       return state.kind === "credentials"
-        ? { ...state, kind: "testing" }
+        ? { ...base, kind: "testing" }
         : state;
     case "test-passed":
-      return "channelId" in state
-        ? {
-            kind: "active",
-            platform: state.platform,
-            channelId: state.channelId,
-            webhookUrl: state.webhookUrl,
-            botDisplayName: action.botDisplayName,
-          }
-        : state;
+      return { ...base, kind: "active", botDisplayName: action.botDisplayName };
     case "test-failed":
-      return "channelId" in state
-        ? {
-            kind: "test-error",
-            platform: state.platform,
-            channelId: state.channelId,
-            webhookUrl: state.webhookUrl,
-            error: action.error,
-          }
-        : state;
+      return { ...base, kind: "test-error", error: action.error };
     case "retry-test":
-      return state.kind === "test-error"
-        ? {
-            kind: "testing",
-            platform: state.platform,
-            channelId: state.channelId,
-            webhookUrl: state.webhookUrl,
-          }
-        : state;
-    case "resume":
-      return {
-        kind: action.step,
-        platform: action.platform,
-        channelId: action.channelId,
-        webhookUrl: action.webhookUrl,
-      };
+      return state.kind === "test-error" ? { ...base, kind: "testing" } : state;
     default:
       return state;
   }

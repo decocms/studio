@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Edit01, PlayCircle, Trash01 } from "@untitledui/icons";
+import { Edit01, Plus, PlayCircle, Trash01 } from "@untitledui/icons";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -26,6 +26,7 @@ import {
   useChannelPlatforms,
   type ChannelInstance,
   type ChannelStatus,
+  type ChannelType,
 } from "@/web/hooks/collections/use-channels";
 
 const STATUS_VARIANT: Record<
@@ -38,21 +39,50 @@ const STATUS_VARIANT: Record<
   disabled: "outline",
 };
 
-export interface ResumeTarget {
-  platform: ChannelInstance["channelType"];
+/** Where the setup wizard should open. */
+export interface WizardTarget {
+  platform: ChannelType;
   channelId: string;
   webhookUrl: string;
   step: "instructions" | "endpoint" | "credentials" | "testing";
+}
+
+/** One "Add <platform>" button per supported platform. */
+export function PlatformAddButtons({
+  onAdd,
+  busy,
+}: {
+  onAdd: (platform: ChannelType) => void;
+  busy: boolean;
+}) {
+  const platforms = useChannelPlatforms();
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      {platforms.map((p) => (
+        <Button
+          key={p.id}
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => onAdd(p.id)}
+        >
+          <Plus size={14} /> Add {p.name}
+        </Button>
+      ))}
+    </div>
+  );
 }
 
 export function ConnectedChannelsSection({
   channels,
   onAdd,
   onResume,
+  busy,
 }: {
   channels: ChannelInstance[];
-  onAdd: () => void;
-  onResume: (target: ResumeTarget) => void;
+  onAdd: (platform: ChannelType) => void;
+  onResume: (target: WizardTarget) => void;
+  busy: boolean;
 }) {
   const platforms = useChannelPlatforms();
   const platformName = (id: string) =>
@@ -62,9 +92,7 @@ export function ConnectedChannelsSection({
     <SettingsSection>
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Connected channels</h3>
-        <Button size="sm" variant="outline" onClick={onAdd}>
-          Add channel
-        </Button>
+        <PlatformAddButtons onAdd={onAdd} busy={busy} />
       </div>
       <SettingsCard>
         {channels.map((channel) => (
@@ -87,7 +115,7 @@ function ChannelRow({
 }: {
   channel: ChannelInstance;
   platformName: string;
-  onResume: (target: ResumeTarget) => void;
+  onResume: (target: WizardTarget) => void;
 }) {
   const { org, client } = useChannelClient();
   const queryClient = useQueryClient();
@@ -108,7 +136,7 @@ function ChannelRow({
     onError: (err) => toast.error(`Failed to delete: ${err.message}`),
   });
 
-  const resumeTo = (step: ResumeTarget["step"]) =>
+  const resumeTo = (step: WizardTarget["step"]) =>
     onResume({
       platform: channel.channelType,
       channelId: channel.id,
