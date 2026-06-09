@@ -43,4 +43,68 @@ describe("linkIngestBatchSchema", () => {
     });
     expect(parsed.success).toBe(true);
   });
+
+  it("rejects rows without payload", () => {
+    const { payload, ...rowWithoutPayload } = row;
+    void payload;
+
+    const parsed = linkIngestBatchSchema.safeParse({
+      batchId: "batch_missing_payload",
+      rows: [rowWithoutPayload],
+      done: false,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects rows without metadata", () => {
+    const { metadata, ...rowWithoutMetadata } = row;
+    void metadata;
+
+    const parsed = linkIngestBatchSchema.safeParse({
+      batchId: "batch_missing_metadata",
+      rows: [rowWithoutMetadata],
+      done: false,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects rows with invalid kind", () => {
+    const parsed = linkIngestBatchSchema.safeParse({
+      batchId: "batch_invalid_kind",
+      rows: [{ ...row, kind: "unknown" }],
+      done: false,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects rows with invalid role", () => {
+    const parsed = linkIngestBatchSchema.safeParse({
+      batchId: "batch_invalid_role",
+      rows: [{ ...row, role: "tool" }],
+      done: false,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects rows with invalid created_at", () => {
+    const parsed = linkIngestBatchSchema.safeParse({
+      batchId: "batch_invalid_created_at",
+      rows: [{ ...row, created_at: "not-a-date" }],
+      done: false,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects batches with more than 512 rows", () => {
+    const parsed = linkIngestBatchSchema.safeParse({
+      batchId: "batch_too_large",
+      rows: Array.from({ length: 513 }, (_, seq) => ({
+        ...row,
+        id: `run_1:${seq}`,
+        seq,
+      })),
+      done: false,
+    });
+    expect(parsed.success).toBe(false);
+  });
 });

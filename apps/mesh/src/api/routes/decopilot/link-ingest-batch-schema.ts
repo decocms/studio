@@ -12,6 +12,12 @@ const partKindSchema = z.enum([
 
 const roleSchema = z.enum(["user", "assistant", "system"]);
 
+const requiredUnknownSchema = z
+  .unknown()
+  .refine((value) => value !== undefined, {
+    message: "Required",
+  });
+
 export const linkIngestPartRowSchema = z.object({
   id: z.string().min(1),
   seq: z.number().int().nonnegative(),
@@ -21,9 +27,9 @@ export const linkIngestPartRowSchema = z.object({
   message_id: z.string().min(1),
   role: roleSchema,
   kind: partKindSchema,
-  payload: z.unknown(),
+  payload: requiredUnknownSchema,
   payload_ref: z.string().nullable(),
-  metadata: z.unknown().nullable(),
+  metadata: requiredUnknownSchema.nullable(),
   created_at: z.string().datetime(),
 });
 
