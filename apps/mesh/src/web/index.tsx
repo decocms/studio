@@ -19,7 +19,6 @@ import type { ReactNode } from "react";
 import "../../index.css";
 
 import { listOrganizationsCached } from "@/web/lib/auth-client";
-import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 
 import { sourcePlugins } from "./plugins.ts";
 import type {
@@ -114,42 +113,13 @@ const shellLayout = createRoute({
   component: lazyRouteComponent(() => import("./layouts/shell-layout.tsx")),
 });
 
-// Home route (landing, redirects to last or only org)
+// Home route (landing) — redesign: you land in your personal space (/me),
+// above any org (like chatgpt.com). Entering an Agent from there goes to /$org.
 const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
-  beforeLoad: async () => {
-    // Fast path: redirect returning users immediately from the cached slug,
-    // WITHOUT awaiting the org-list network call. This is what keeps a cold
-    // load from blocking on a round-trip (the previous blank/white screen).
-    // The org layout validates membership via getFullOrganization, and a stale
-    // slug self-heals in OrgAccessGate (clears the slug + bounces back to "/").
-    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
-    if (lastOrgSlug) {
-      throw redirect({
-        to: "/$org",
-        params: { org: lastOrgSlug },
-      });
-    }
-
-    // No cached slug — fetch the list (cached) to pick a destination.
-    const { data: orgs } = await listOrganizationsCached();
-
-    // If the list call failed, skip redirect logic to avoid a misfire on a
-    // transient API failure. Archived orgs are already filtered by the helper.
-    if (!orgs) return;
-
-    // Redirect to first available org (every user gets a default org on signup)
-    const firstOrg = orgs[0];
-    if (firstOrg) {
-      throw redirect({
-        to: "/$org",
-        params: { org: firstOrg.slug },
-      });
-    }
-
-    // No orgs at all — send to onboarding
-    throw redirect({ to: "/onboarding" });
+  beforeLoad: () => {
+    throw redirect({ to: "/me" });
   },
 });
 
@@ -267,6 +237,20 @@ const inboxRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/inbox",
   component: lazyRouteComponent(() => import("./routes/orgs/inbox.tsx")),
+});
+
+// Redesign: a live preview of the storefront (/$org/preview) — inside the shell.
+const previewRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/preview",
+  component: lazyRouteComponent(() => import("./routes/orgs/preview.tsx")),
+});
+
+// Redesign: the storefront content / CMS (/$org/content) — inside the shell.
+const contentRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/content",
+  component: lazyRouteComponent(() => import("./routes/orgs/content.tsx")),
 });
 
 // Redesign: a goal's closed-loop detail (/$org/goal?g=<id>) — inside the org
@@ -700,6 +684,8 @@ const agentShellWithChildren = agentShellLayout.addChildren([
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
   inboxRoute,
+  previewRoute,
+  contentRoute,
   goalRoute,
   agentShellWithChildren,
 ]);

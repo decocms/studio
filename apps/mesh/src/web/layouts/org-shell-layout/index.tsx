@@ -22,9 +22,16 @@ import {
   SidebarLayout,
   SidebarProvider,
 } from "@deco/ui/components/sidebar.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { Loading01 } from "@untitledui/icons";
-import { Outlet } from "@tanstack/react-router";
+import { Loading01, Monitor04 } from "@untitledui/icons";
+import {
+  Outlet,
+  useNavigate,
+  useParams,
+  useRouterState,
+} from "@tanstack/react-router";
 import { SidebarResizeHandle } from "@/web/components/sidebar/sidebar-resize-handle";
 import { useSidebarResize } from "@/web/hooks/use-sidebar-resize";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
@@ -39,6 +46,26 @@ import {
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
+
+/** Top-right entry to the storefront preview. */
+function PreviewButton() {
+  const { org } = useParams({ from: "/shell/$org" });
+  const navigate = useNavigate();
+  const active = useRouterState({
+    select: (s) => s.location.pathname === `/${org}/preview`,
+  });
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => navigate({ to: "/$org/preview", params: { org } })}
+      className={cn("shrink-0 gap-1.5", active && "bg-muted text-foreground")}
+    >
+      <Monitor04 size={14} />
+      Preview
+    </Button>
+  );
+}
 
 function RouteFallback() {
   return (
@@ -78,6 +105,7 @@ export default function OrgShellLayout() {
                   <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end">
                     <Toolbar.TabsSlot />
                   </div>
+                  <PreviewButton />
                   <Toolbar.RightSlot />
                 </Toolbar.RightColumn>
               </Toolbar.Header>

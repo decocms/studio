@@ -4,7 +4,7 @@ import type {
   SidebarSection,
 } from "@/web/components/sidebar/types";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Home01, Inbox01, Target04 } from "@untitledui/icons";
+import { Home01, Inbox01, LayoutAlt01, Target04 } from "@untitledui/icons";
 
 export function useProjectSidebarItems(): SidebarSection[] {
   const { org } = useProjectContext();
@@ -43,5 +43,17 @@ export function useProjectSidebarItems(): SidebarSection[] {
     },
   };
 
-  return [{ type: "items", items: [homeItem, goalsItem, inboxItem] }];
+  const contentItem: NavigationSidebarItem = {
+    key: "content",
+    label: "Content",
+    icon: <LayoutAlt01 className="size-4!" />,
+    isActive: pathname === `/${slug}/content`,
+    onClick: () => {
+      navigate({ to: "/$org/content", params: { org: slug } });
+    },
+  };
+
+  return [
+    { type: "items", items: [homeItem, goalsItem, inboxItem, contentItem] },
+  ];
 }

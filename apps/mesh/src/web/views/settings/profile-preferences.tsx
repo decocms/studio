@@ -396,7 +396,7 @@ export function ProfilePreferencesPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Body maxWidth="max-w-[760px]">
           <SettingsPage>
             <Page.Title>Profile & Preferences</Page.Title>
             <ProfileSection />

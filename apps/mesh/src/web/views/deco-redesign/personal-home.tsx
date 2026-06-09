@@ -29,10 +29,17 @@ import {
   LayoutAlt01,
   Plus,
   SearchSm,
+  ShoppingBag03,
   Stars02,
   Users03,
   Zap,
 } from "@untitledui/icons";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
 import { toast } from "sonner";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { IntegrationIcon } from "@/web/components/integration-icon";
@@ -154,14 +161,56 @@ function AgentsList({ onEnter }: { onEnter: (agent: UserAgent) => void }) {
         <span className="text-xs font-medium text-muted-foreground">
           Teammates
         </span>
-        <button
-          type="button"
-          aria-label="Add a teammate"
-          onClick={() => toast.message("Add a teammate")}
-          className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-        >
-          <Plus size={14} />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Add a teammate"
+              className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            >
+              <Plus size={14} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="right"
+            align="start"
+            sideOffset={8}
+            className="w-72 p-1.5"
+          >
+            <DropdownMenuItem
+              className="items-start gap-3 rounded-lg p-2.5"
+              onClick={() => toast.message("New storefront agent")}
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                <ShoppingBag03 size={16} />
+              </span>
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium leading-none text-foreground">
+                  Storefront
+                </span>
+                <span className="text-xs leading-snug text-muted-foreground">
+                  Operates your store, managed by Deco
+                </span>
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="items-start gap-3 rounded-lg p-2.5"
+              onClick={() => toast.message("New agent")}
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-600">
+                <Stars02 size={16} />
+              </span>
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium leading-none text-foreground">
+                  New
+                </span>
+                <span className="text-xs leading-snug text-muted-foreground">
+                  Start from scratch and build it yourself
+                </span>
+              </span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <SidebarMenu className="gap-1.5 overflow-y-auto">
         {USER_AGENTS.map((a) => (
@@ -326,6 +375,12 @@ function Highlights({ reviewTotal }: { reviewTotal: number }) {
   );
 }
 
+const UPDATE_TILES = [
+  "bg-violet-100 text-violet-600",
+  "bg-blue-100 text-blue-600",
+  "bg-amber-100 text-amber-600",
+];
+
 function AgentUpdatesGroup({
   agent,
   onEnter,
@@ -334,11 +389,12 @@ function AgentUpdatesGroup({
   onEnter: () => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div className="flex flex-col gap-1.5">
+      {/* Group header — grey block */}
       <button
         type="button"
         onClick={onEnter}
-        className="flex w-full items-center gap-2 border-b border-border px-4 py-2.5 text-left hover:bg-accent/40"
+        className="flex w-full items-center gap-2 rounded-xl bg-muted/50 px-4 py-2.5 text-left transition-colors hover:bg-muted/70"
       >
         <IntegrationIcon
           icon={agent.icon}
@@ -358,14 +414,20 @@ function AgentUpdatesGroup({
         />
       </button>
 
-      <div className="flex flex-col p-1">
-        {agent.updates.map((u) => (
-          <UpdateRow key={u.id} update={u} onReview={onEnter} />
+      {/* Updates — white card */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card card-shadow">
+        {agent.updates.map((u, i) => (
+          <UpdateRow
+            key={u.id}
+            update={u}
+            tile={UPDATE_TILES[i % UPDATE_TILES.length]!}
+            onReview={onEnter}
+          />
         ))}
         <button
           type="button"
           onClick={onEnter}
-          className="flex items-center gap-1 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+          className="flex w-full items-center gap-1 px-4 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
         >
           See all
           <ChevronRight size={14} className="ml-auto" />
@@ -377,14 +439,23 @@ function AgentUpdatesGroup({
 
 function UpdateRow({
   update,
+  tile,
   onReview,
 }: {
   update: AgentUpdate;
+  tile: string;
   onReview: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-accent/40">
-      <LayoutAlt01 size={16} className="shrink-0 text-muted-foreground" />
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span
+        className={cn(
+          "flex size-8 shrink-0 items-center justify-center rounded-lg",
+          tile,
+        )}
+      >
+        <LayoutAlt01 size={16} />
+      </span>
       <span className="min-w-0 flex-1 truncate text-sm text-foreground">
         {update.title}
       </span>
@@ -405,6 +476,9 @@ function UpdateRow({
         </Button>
       ) : (
         <span className="shrink-0 text-xs text-success">Done</span>
+      )}
+      {update.needsReview && (
+        <span className="size-1.5 shrink-0 rounded-full bg-orange-500" />
       )}
     </div>
   );

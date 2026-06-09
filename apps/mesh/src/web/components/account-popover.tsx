@@ -45,6 +45,7 @@ import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
 import { usePreferences, type ThemeMode } from "@/web/hooks/use-preferences.ts";
 import { toast } from "@deco/ui/components/sonner.js";
+import { USER_AGENTS } from "@/web/views/deco-redesign/mock-user";
 
 function getOrgColorStyle(name: string): {
   backgroundColor: string;
@@ -184,12 +185,12 @@ function OrganizationsPanel({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && toggleSearch()}
-            placeholder="Search organizations..."
+            placeholder="Search agents..."
             className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
           />
         ) : (
           <span className="text-sm font-medium text-muted-foreground/60">
-            Your Organizations
+            Your Agents
           </span>
         )}
         <div className="flex items-center gap-1 shrink-0">
@@ -204,9 +205,7 @@ function OrganizationsPanel({
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5 flex flex-col gap-1">
         {filtered.length === 0 && (
           <p className="px-3 py-4 text-sm text-muted-foreground/60 text-center">
-            {query
-              ? `No organizations match "${query}"`
-              : "No organizations available"}
+            {query ? `No agents match "${query}"` : "No agents available"}
           </p>
         )}
         {filtered.map((org) => (
@@ -538,22 +537,30 @@ export function AccountPopover() {
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
 
-  const currentOrg = organizations?.find(
-    (o: { slug: string }) => o.slug === orgParam,
-  );
-
   const sortedOrgs = [...(organizations ?? [])].sort((a, b) => {
     if (a.slug === orgParam) return -1;
     if (b.slug === orgParam) return 1;
     return a.name.localeCompare(b.name);
   });
 
+  // The switcher lists the user's agents: their real orgs (each an agent) plus
+  // the mock teammates (Deco, Farm Rio, Monte Carlo).
+  const agentList = [
+    ...sortedOrgs,
+    ...USER_AGENTS.map((a) => ({
+      id: a.id,
+      name: a.name,
+      slug: a.id,
+      logo: a.icon ?? null,
+    })),
+  ];
+
   const handleSelectOrg = (orgSlug: string) => {
     setOpen(false);
-    navigate({
-      to: "/$org",
-      params: { org: orgSlug },
-    });
+    // Only real orgs are navigable; mock agents are illustrative.
+    if (organizations?.some((o: { slug: string }) => o.slug === orgSlug)) {
+      navigate({ to: "/$org", params: { org: orgSlug } });
+    }
   };
 
   const close = () => setOpen(false);
@@ -636,7 +643,7 @@ export function AccountPopover() {
     themeOptions,
     preferences,
     setPreferences,
-    sortedOrgs,
+    sortedOrgs: agentList,
     orgParam,
     onSelectOrg: handleSelectOrg,
     onCreateOrg: () => {
@@ -658,26 +665,22 @@ export function AccountPopover() {
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <div
-              className="shrink-0 size-5 rounded-md flex items-center justify-center border border-border/50 overflow-hidden"
-              style={
-                currentOrg?.logo
-                  ? undefined
-                  : getOrgColorStyle(currentOrg?.name ?? "")
-              }
+              className="shrink-0 size-5 rounded-full flex items-center justify-center border border-border/50 overflow-hidden"
+              style={userImage ? undefined : getOrgColorStyle(user?.name ?? "")}
             >
-              {currentOrg?.logo ? (
+              {userImage ? (
                 <img
-                  src={currentOrg.logo}
+                  src={userImage}
                   alt=""
                   className="size-full object-cover"
                 />
               ) : (
                 <span className="font-semibold leading-none text-[8px]">
-                  {(currentOrg?.name ?? "?").slice(0, 2).toUpperCase()}
+                  {(user?.name ?? "?").slice(0, 2).toUpperCase()}
                 </span>
               )}
             </div>
-            <span className="truncate">{currentOrg?.name ?? "Account"}</span>
+            <span className="truncate">{user?.name ?? "Account"}</span>
           </button>
           <DrawerContent className="h-[80dvh] p-0">
             <DrawerTitle className="sr-only">Account</DrawerTitle>
@@ -688,30 +691,28 @@ export function AccountPopover() {
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <SidebarMenuButton
-              tooltip={currentOrg?.name ?? "Account"}
+              tooltip={user?.name ?? "Account"}
               className="rounded-md"
             >
               <div
-                className="shrink-0 size-6 rounded-md flex items-center justify-center border border-border/50 overflow-hidden"
+                className="shrink-0 size-6 rounded-full flex items-center justify-center border border-border/50 overflow-hidden"
                 style={
-                  currentOrg?.logo
-                    ? undefined
-                    : getOrgColorStyle(currentOrg?.name ?? "")
+                  userImage ? undefined : getOrgColorStyle(user?.name ?? "")
                 }
               >
-                {currentOrg?.logo ? (
+                {userImage ? (
                   <img
-                    src={currentOrg.logo}
+                    src={userImage}
                     alt=""
                     className="size-full object-cover"
                   />
                 ) : (
                   <span className="font-semibold leading-none text-[9px]">
-                    {(currentOrg?.name ?? "?").slice(0, 2).toUpperCase()}
+                    {(user?.name ?? "?").slice(0, 2).toUpperCase()}
                   </span>
                 )}
               </div>
-              <span className="truncate">{currentOrg?.name ?? "Account"}</span>
+              <span className="truncate">{user?.name ?? "Account"}</span>
             </SidebarMenuButton>
           </PopoverTrigger>
 
