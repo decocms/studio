@@ -1,6 +1,6 @@
 /**
  * handleLocalDispatch — relay a pulled work item to the local sandbox and
- * stream the SSE result back to the cluster ingest (Phase D, Task 7).
+ * append the SSE result back to the cluster ingest as short JSON batches.
  *
  * Flow:
  *   1. POST ${sandboxDispatchUrl}/_sandbox/dispatch with a JSON body whose
@@ -10,12 +10,11 @@
  *      `sandboxDaemonToken` and returns a `text/event-stream` SSE body of
  *      `ui-message-chunk` / `error` / `done` events.
  *
- *   2. Relay the SSE response body — WITHOUT buffering — as a chunked
- *      POST to the cluster ingest endpoint:
- *        POST ${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/stream
+ *   2. Convert the SSE response body to durable part batches and POST each
+ *      batch to the cluster ingest endpoint:
+ *        POST ${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/parts
  *      with `x-fence-token: ${runFenceToken}` and `Authorization: Bearer
- *      <cluster token>`. This is the Phase-A ingest endpoint
- *      (link-ingest-routes.ts) which commits parts to durable storage.
+ *      <cluster token>`.
  *
  * ⚠️ ORG SLUG vs ID NOTE:
  *   WorkItem carries `orgId` (the DB UUID) and `orgSlug` (the URL-safe slug).
@@ -38,6 +37,7 @@
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
+import { relayDispatchSSEAsPartBatches } from "./link-part-batcher";
 
 export interface LocalDispatchDeps {
   /**
@@ -52,8 +52,8 @@ export interface LocalDispatchDeps {
    */
   sandboxDaemonToken: string;
   /**
-   * Cluster origin, e.g. "https://studio.deco.cx". The ingest POST is sent
-   * to `${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/stream`.
+   * Cluster origin, e.g. "https://studio.deco.cx". The ingest POSTs are sent
+   * to `${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/parts`.
    */
   clusterBaseUrl: string;
   /**
@@ -107,12 +107,11 @@ function deriveHarnessId(work: WorkItem, depsHarnessId?: string): string {
 }
 
 /**
- * Run a pulled work item against the local sandbox and stream the SSE result
- * to the cluster ingest. Resolves when the ingest POST completes (i.e. the
- * full SSE body has been relayed). Throws on:
+ * Run a pulled work item against the local sandbox and append the SSE result
+ * to the cluster ingest. Resolves when all batch POSTs complete. Throws on:
  *   - A non-2xx response from the sandbox dispatch (JSON error is extracted
  *     and included in the thrown Error, mirroring remote-dispatch.ts).
- *   - A non-2xx response from the cluster ingest.
+ *   - A non-2xx response from any cluster append.
  *   - Any network error from either fetch.
  */
 export async function handleLocalDispatch(
@@ -174,39 +173,38 @@ export async function handleLocalDispatch(
     throw new Error("[handleLocalDispatch] dispatch response body is null");
   }
 
-  // ── Step 2: relay the SSE body to the cluster ingest (no buffering) ────
-  // The SSE stream is piped directly as the ingest POST body using the
-  // Fetch streaming upload API (`body: ReadableStream, duplex: "half"`).
-  // This avoids buffering the entire run output in memory.
+  // ── Step 2: append parsed part batches to the cluster ingest ───────────
   const clusterToken = await deps.getClusterToken();
-  const ingestUrl = `${deps.clusterBaseUrl}/api/${deps.orgSlug}/links/runs/${work.runId}/stream`;
+  const ingestUrl = `${deps.clusterBaseUrl}/api/${deps.orgSlug}/links/runs/${work.runId}/parts`;
 
-  const ingestRes = await fetcher(ingestUrl, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${clusterToken}`,
-      "x-fence-token": work.runFenceToken,
-      "content-type": "text/event-stream",
-    },
-    body: dispatchRes.body,
-    // @ts-expect-error — `duplex: "half"` is required by the Fetch spec for
-    // streaming request bodies. Not yet in all TypeScript DOM typings but
-    // supported by Node/Bun/undici. See:
-    // https://fetch.spec.whatwg.org/#dom-requestinit-duplex
-    duplex: "half",
-    signal: deps.signal,
-  });
+  await relayDispatchSSEAsPartBatches({
+    dispatchBody: dispatchRes.body,
+    runId: work.runId,
+    orgId: work.orgId,
+    postBatch: async (batch) => {
+      const ingestRes = await fetcher(ingestUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${clusterToken}`,
+          "x-fence-token": work.runFenceToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(batch),
+        signal: deps.signal,
+      });
 
-  if (!ingestRes.ok) {
-    let detail = `ingest failed (${ingestRes.status})`;
-    try {
-      const j = (await ingestRes.json()) as Record<string, unknown>;
-      if (j && typeof j.error === "string" && j.error) {
-        detail = j.error;
+      if (!ingestRes.ok) {
+        let detail = `ingest failed (${ingestRes.status})`;
+        try {
+          const j = (await ingestRes.json()) as Record<string, unknown>;
+          if (j && typeof j.error === "string" && j.error) {
+            detail = j.error;
+          }
+        } catch {
+          // JSON parse failed — keep the status-code detail.
+        }
+        throw new Error(`[handleLocalDispatch] ${detail}`);
       }
-    } catch {
-      // JSON parse failed — keep the status-code detail.
-    }
-    throw new Error(`[handleLocalDispatch] ${detail}`);
-  }
+    },
+  });
 }
