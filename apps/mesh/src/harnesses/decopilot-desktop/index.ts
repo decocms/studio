@@ -43,6 +43,7 @@ import { runDesktopAgentLoop } from "./local-agent-loop";
 import { DEFAULT_WINDOW_SIZE } from "./local-prompt";
 import type { ConnectionsBlockTool } from "../decopilot/connections-block";
 import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
+import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
 import type { DesktopToolCtx } from "./types";
 
 const LOCALLY_WRAPPED_RELAY_TOOLS = new Set<string>(["SUBTASK_MCP"]);
@@ -113,6 +114,7 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
         const mcpClient = openedMcp.client as Client;
         try {
           const toolOutputMap = new Map<string, string>();
+          const pendingImages: PendingImage[] = [];
 
           // 3. Build passthrough tools from the MCP endpoint.
           const { tools: passthroughTools, nameMap } = await toolsFromMCP(
@@ -176,6 +178,9 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
             mcpClient,
             models: input.models,
             selfAgentId: input.agent.id,
+            pendingImages,
+            threadId: input.threadId,
+            virtualMcpId: input.agent.id,
           });
 
           // 6. Process the conversation with the REAL tool set so prior-turn
@@ -220,6 +225,7 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
             connectionsBlockTools,
             connectionTitleMap: new Map(),
             toolAnnotations,
+            pendingImages,
             abortSignal: input.signal,
             threadId: input.threadId,
             currentThreadTitle: input.currentThreadTitle ?? "",

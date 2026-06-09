@@ -45,9 +45,9 @@ import type { ChatMode, ModelsConfig } from "../types";
 import {
   createAgentPrepareStep,
   reconstructEnabledTools,
-  type AgentLoopPendingImage,
 } from "../decopilot/agent-loop-state";
 import { runNativeAgentLoopCore } from "../decopilot/native-agent-loop-core";
+import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
 
 export interface RunDesktopAgentLoopOptions {
   /** The provider built from `modelSource(kind="secret")`. */
@@ -81,6 +81,7 @@ export interface RunDesktopAgentLoopOptions {
   connectionTitleMap: Map<string, string>;
   /** Read-only hints per safe tool name, for plan-mode gating. */
   toolAnnotations: Map<string, { readOnlyHint?: boolean }>;
+  pendingImages: PendingImage[];
 
   /** Aborts when the consumer disconnects or the user cancels. */
   abortSignal: AbortSignal;
@@ -169,14 +170,13 @@ export async function* runDesktopAgentLoop(
     ...(enabledToolsSystemMessage ? [enabledToolsSystemMessage] : []),
   ];
 
-  const pendingImages: AgentLoopPendingImage[] = [];
   const prepareStep = createAgentPrepareStep({
     modeConfig,
     streamTools,
     builtInToolNames,
     enabledTools,
     toolAnnotations,
-    pendingImages,
+    pendingImages: opts.pendingImages,
     hasEnableTool,
   });
 

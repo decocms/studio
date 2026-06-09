@@ -1,7 +1,30 @@
 import type { SandboxProvider } from "@decocms/sandbox/provider";
-import type { StudioContext } from "@/core/studio-context";
-import type { PendingImage } from "../take-screenshot";
-import type { HtmlPageBuffer } from "./html-page-buffer";
+
+export interface VmToolObjectStorage {
+  presignedGetUrl(key: string): Promise<string>;
+  presignedPutUrl(key: string): Promise<string>;
+}
+
+export interface VmToolContext {
+  objectStorage?: VmToolObjectStorage | null;
+  organization?: { slug?: string | null } | null;
+  baseUrl: string;
+}
+
+export interface PendingImage {
+  url: string;
+  mediaType: string;
+  pageUrl?: string;
+  label?: string;
+}
+
+export interface HtmlPageBuffer {
+  enqueue(
+    rawPath: string,
+    content: string,
+  ): { slug: string; key: string; url: string; bytes: number } | null;
+  flush(): Promise<void>;
+}
 
 export interface VmToolsParams {
   readonly runner: SandboxProvider;
@@ -45,7 +68,7 @@ export interface VmToolsParams {
    * org's object storage (`copy_to_sandbox`, `share_with_user`) or
    * resolve the org id for stable file URLs.
    */
-  readonly ctx: StudioContext;
+  readonly ctx: VmToolContext;
   /**
    * Current chat thread id. `share_with_user` writes artifacts under
    * `model-outputs/<threadId>/<filename>` so the chat UI can list them.
