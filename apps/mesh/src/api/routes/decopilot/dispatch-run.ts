@@ -84,6 +84,7 @@ import type { CancelBroadcast } from "./cancel-broadcast";
 import type { ThreadMessage } from "@/storage/types";
 import type { PendingImage } from "@/harnesses/decopilot/built-in-tools";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
+import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
@@ -1579,6 +1580,17 @@ async function resolvePullSandboxConfig(
     );
   }
 
+  // Org-fs mounts (desktop dispatch path; this fn already returned null for
+  // non-user-desktop). Mint an fs token + build ORGFS_CONFIG; guarded → no
+  // mounting on failure. Mirrors SANDBOX_START's provisionSandbox.
+  const orgFsConfigJson = ctx.organization?.slug
+    ? await mintOrgFsConfigJson(ctx, {
+        orgSlug: ctx.organization.slug,
+        orgId: input.organizationId,
+        baseUrl: getPublicUrl(),
+      })
+    : undefined;
+
   return {
     handle: sandboxHandle,
     ...(repo ? { repo } : {}),
@@ -1587,6 +1599,7 @@ async function resolvePullSandboxConfig(
     ...(offloadAllowSameHostDev !== undefined
       ? { offloadAllowSameHostDev }
       : {}),
+    ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
   };
 }
 

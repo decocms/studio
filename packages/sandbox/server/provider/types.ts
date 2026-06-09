@@ -103,6 +103,13 @@ export interface EnsureOptions {
   offloadAllowedHosts?: string[];
   /** Permit http:// loopback offload refs (dev MinIO). false in production. */
   offloadAllowSameHostDev?: boolean;
+  /**
+   * org-fs mount config (a JSON `OrgFsMountConfig`) for the spawned daemon, set
+   * as its `ORGFS_CONFIG` boot env so it mounts the configured volumes
+   * kext-free. Only the `user-desktop` runner consumes it (hosted pods can't
+   * mount — that's the privileged-sidecar path). Absent → no mounting.
+   */
+  orgFsConfigJson?: string;
 }
 
 export interface ProxyRequestInit {

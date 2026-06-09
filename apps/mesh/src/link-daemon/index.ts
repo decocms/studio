@@ -18,6 +18,7 @@ import {
   waitForDaemonReady,
 } from "@decocms/sandbox/daemon-client";
 import { createDefaultDaemonSpawn } from "@decocms/sandbox/daemon-spawn";
+import { ensureRclone } from "./ensure-rclone";
 import { createControlHandler } from "./control-handler";
 import { connectToClusterPull } from "./cluster-connection-pull";
 import { startLocalIngress } from "./local-ingress";
@@ -87,7 +88,7 @@ export async function startLinkDaemon(
       ingressPort > 0
         ? `http://${handle}.localhost:${ingressPort}`
         : `http://127.0.0.1:${port}`,
-    spawnDaemon: (args): Promise<SpawnResult> => {
+    spawnDaemon: async (args): Promise<SpawnResult> => {
       const env: Record<string, string> = {
         DAEMON_BOOT_ID: randomUUID(),
         APP_ROOT: args.workdir,
@@ -102,15 +103,26 @@ export async function startLinkDaemon(
           ? { OFFLOAD_ALLOW_SAME_HOST_DEV: "1" }
           : {}),
       };
-      return innerSpawn({
+      // org-fs mounting needs BOTH the config and a real rclone binary. Ensure
+      // rclone (downloaded + cached once) only when a mount is requested; if it
+      // can't be obtained, leave both unset so the daemon skips mounting.
+      if (args.orgFsConfigJson) {
+        const rclonePath = await ensureRclone(opts.dataDir);
+        if (rclonePath) {
+          env.ORGFS_CONFIG = args.orgFsConfigJson;
+          env.ORGFS_RCLONE_PATH = rclonePath;
+        }
+      }
+      const proc = await innerSpawn({
         workdir: args.workdir,
         env,
         daemonPort: args.port,
-      }).then((proc) => ({
+      });
+      return {
         port: args.port,
         kill: (sig) => proc.kill(sig),
         exited: proc.exited.then(() => undefined),
-      }));
+      };
     },
     postConfig: async (port, devPort, config, daemonToken) => {
       // Daemon's TenantConfig wire shape is `{ git, application }`. We
