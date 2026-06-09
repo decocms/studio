@@ -27,6 +27,8 @@ import type { UIMessageChunk } from "ai";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type {
+  DecopilotHttpMcpSource,
+  DecopilotSecretModelSource,
   Harness,
   HarnessContext,
   HarnessFactory,
@@ -58,6 +60,32 @@ function isDesktopToolVisible(tool: {
   return true;
 }
 
+export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
+  modelSource: DecopilotSecretModelSource;
+  mcpSource: DecopilotHttpMcpSource;
+} {
+  const modelSource =
+    input.modelSource?.kind === "secret" ? input.modelSource : null;
+  if (!modelSource) {
+    throw new Error(
+      "decopilot-desktop requires a secret modelSource. The cluster must inject " +
+        "the chat-model credential when routing decopilot to user-desktop.",
+    );
+  }
+
+  const mcpSource =
+    input.mcpSource?.kind === "http"
+      ? input.mcpSource
+      : {
+          kind: "http" as const,
+          url: input.mcp.url,
+          headers: input.mcp.headers,
+          expiresAt: input.mcp.expiresAt,
+        };
+
+  return { modelSource, mcpSource };
+}
+
 export const decopilotDesktopHarnessFactory: HarnessFactory = {
   id: "decopilot",
   create(_ctx: HarnessContext): Harness {
@@ -65,14 +93,7 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
       id: "decopilot",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
         const { mcp } = input;
-        const modelSource =
-          input.modelSource?.kind === "secret" ? input.modelSource : null;
-        if (!modelSource) {
-          throw new Error(
-            "decopilot-desktop requires a secret modelSource. The cluster must inject " +
-              "the chat-model credential when routing decopilot to user-desktop.",
-          );
-        }
+        const { modelSource, mcpSource } = resolveDesktopRuntimeSources(input);
 
         // 1. Activate the chat provider locally from the injected secret. Never
         //    log modelSource — it carries a provider API key.
@@ -86,15 +107,6 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
         );
 
         // 2. Open the MCP client to the cluster's virtual-mcp endpoint.
-        const mcpSource =
-          input.mcpSource?.kind === "http"
-            ? input.mcpSource
-            : {
-                kind: "http" as const,
-                url: mcp.url,
-                headers: mcp.headers,
-                expiresAt: mcp.expiresAt,
-              };
         const openedMcp = await openMcpSource(mcpSource, {
           clientInfo: { name: "decopilot-desktop", version: "1" },
         });

@@ -52,6 +52,7 @@ import { createWebSearchTool } from "./web-search";
 import { createTakeScreenshotTool, type PendingImage } from "./take-screenshot";
 import { createScrapeUrlTool } from "./scrape-url";
 import { createInspectPageTool } from "./inspect-page";
+import { buildPortableBuiltInTools } from "./portable-built-ins";
 import type { ModelsConfig } from "../../../api/routes/decopilot/types";
 import type { MeshProvider } from "@/ai-providers/types";
 
@@ -154,33 +155,22 @@ async function buildAllTools(
   } = params;
   const approvalOpts = { isPlanMode };
   const userId = ctx.auth?.user?.id;
-  const tools: Record<string, unknown> = {
-    user_ask: userAskTool,
-    todo_write: todoWriteTool,
-    propose_plan: proposePlanTool,
-    ...(userId
-      ? {
-          update_interests: createUpdateInterestsTool({
-            ctx,
-            orgId: organization.id,
-            agentId,
-            userId,
-          }),
-        }
-      : {}),
-    read_tool_output: createReadToolOutputTool({
-      toolOutputMap,
-    }),
-    read_resource: createReadResourceTool({
-      passthroughClient,
-      toolOutputMap,
+  const tools: Record<string, unknown> = buildPortableBuiltInTools({
+    writer,
+    toolOutputMap,
+    passthroughClient,
+    toolApprovalLevel,
+    isPlanMode,
+    objectStorage: ctx.objectStorage,
+  });
+  if (userId) {
+    tools.update_interests = createUpdateInterestsTool({
       ctx,
-    }),
-    read_prompt: createReadPromptTool({
-      passthroughClient,
-      toolOutputMap,
-    }),
-  };
+      orgId: organization.id,
+      agentId,
+      userId,
+    });
+  }
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses

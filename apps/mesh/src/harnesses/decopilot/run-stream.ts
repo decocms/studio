@@ -66,47 +66,14 @@ import type { AssembledPrompt } from "./prompt";
 import { sanitizeStreamError, stringifyError } from "./stream-error";
 import { runAgentLoop } from "./run-agent-loop";
 import { isDecopilot } from "@decocms/mesh-sdk";
+import {
+  createAgentPrepareStep,
+  reconstructEnabledTools,
+} from "./agent-loop-state";
 
 // ─────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────
-
-/**
- * Reconstruct the set of enabled tools from conversation history.
- * Scans for prior `enable_tools` calls and re-adds their tool names.
- */
-function reconstructEnabledTools(
-  messages: ChatMessage[],
-  availableToolNames: Set<string>,
-): Set<string> {
-  const enabled = new Set<string>();
-  for (const msg of messages) {
-    if (msg.role !== "assistant") continue;
-    for (const part of msg.parts) {
-      if (
-        "toolName" in part &&
-        (part.toolName === "enable_tool" || part.toolName === "enable_tools") &&
-        "result" in part &&
-        part.result
-      ) {
-        const result = part.result as { enabled?: string[] };
-        if (Array.isArray(result.enabled)) {
-          for (const name of result.enabled) {
-            // Normalize stored names: old threads may have hyphenated names
-            // (e.g. conn-togsm0..._tool) while current safe names use underscores.
-            const normalized = name.replace(/[^a-zA-Z0-9_]/g, "_");
-            if (availableToolNames.has(normalized)) {
-              enabled.add(normalized);
-            } else if (availableToolNames.has(name)) {
-              enabled.add(name);
-            }
-          }
-        }
-      }
-    }
-  }
-  return enabled;
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Extras shape
@@ -465,108 +432,15 @@ export async function* runDecopilotStream(
       : {}),
   };
 
-  // ── Build the prepareStep callback (parent-only image injection +
-  //    plan-mode tool filtering). Stays here in Stage 1; moves into
-  //    runAgentLoop in Stage 2 once we have the shared assembler.
-  const parentPrepareStep = (() => {
-    const forcedFirstStepToolName =
-      modeConfig.forcedFirstStepTool &&
-      modeConfig.forcedFirstStepTool in streamTools
-        ? modeConfig.forcedFirstStepTool
-        : null;
-    let stepIndex = 0;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (stepArgs: any) => {
-      const stepMessages = stepArgs.messages;
-      const isFirstStep = stepIndex === 0;
-      stepIndex++;
-
-      // Inject pending screenshot images as a user message.
-      // Images in tool result messages aren't supported by all
-      // providers (e.g. OpenRouter), so we append them as user
-      // content which is universally supported.
-      // biome-ignore lint: complex AI SDK generic types
-      let withImages: any = stepMessages;
-      const pendingImages = extras.pendingImages;
-      if (pendingImages.length > 0) {
-        const imageParts = pendingImages.splice(0, pendingImages.length);
-        const content: unknown[] = [];
-        for (const img of imageParts) {
-          content.push({
-            type: "text",
-            text:
-              img.label ??
-              (img.pageUrl ? `[Screenshot of ${img.pageUrl}]` : "[Image]"),
-          });
-          if (img.url.startsWith("data:")) {
-            // data URI → send as inline image
-            const match = img.url.match(/^data:([^;]+);base64,(.+)$/s);
-            if (match) {
-              content.push({
-                type: "image",
-                image: match[2],
-                mimeType: match[1],
-              });
-            }
-          } else {
-            // Presigned URL → send as image URL
-            content.push({
-              type: "image",
-              image: new URL(img.url),
-            });
-          }
-        }
-        withImages = [...stepMessages, { role: "user", content }];
-      }
-
-      // Intra-loop todo_write strip + inject has been removed. The
-      // agent sees its own todo_write tool calls live inside the
-      // agent loop. Cross-turn pruning to keep only the most recent
-      // todo_write call/result pair happens once at HTTP entry via
-      // `processConversation` → `keepLastTodoWrite`. The step
-      // messages here are the raw post-image-injection stream.
-      const messagesForStep = withImages;
-
-      const hasEnableTool = tools.connectionsBlockTools.length > 0;
-      let activeToolNames = [
-        ...builtInToolNames,
-        ...(hasEnableTool ? ["enable_tool"] : []),
-        ...enabledTools,
-      ];
-
-      // Layer 2: In plan mode, filter out any non-read-only tools that
-      // somehow got enabled (safety net for Layer 1 in enable_tool)
-      if (modeConfig.isPlanMode) {
-        activeToolNames = activeToolNames.filter((name) => {
-          // Built-in tools and enable_tool are always allowed
-          if (
-            builtInToolNames.includes(name) ||
-            (hasEnableTool && name === "enable_tool")
-          ) {
-            return true;
-          }
-          // Only allow passthrough tools with readOnlyHint
-          const annotations = tools.toolAnnotations.get(name);
-          return annotations?.readOnlyHint === true;
-        });
-      }
-
-      const forcedToolName =
-        forcedFirstStepToolName && isFirstStep ? forcedFirstStepToolName : null;
-
-      return {
-        activeTools: activeToolNames as (keyof typeof streamTools)[],
-        messages: messagesForStep,
-        ...(forcedToolName && {
-          toolChoice: {
-            type: "tool" as const,
-            toolName: forcedToolName as never,
-          },
-        }),
-      };
-    };
-  })();
+  const parentPrepareStep = createAgentPrepareStep({
+    modeConfig,
+    streamTools,
+    builtInToolNames,
+    enabledTools,
+    toolAnnotations: tools.toolAnnotations,
+    pendingImages: extras.pendingImages,
+    hasEnableTool: tools.connectionsBlockTools.length > 0,
+  });
 
   // Non-cached system tail telling the model exactly which tools it has
   // already enabled this thread. Lives outside the cached prefix so it
