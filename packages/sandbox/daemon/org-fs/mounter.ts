@@ -9,7 +9,7 @@
  * connection-string form breaks on the URL's colons — and `--vfs-cache-mode
  * full` gives the lazy per-file fetch + write-back. When an `rcAddr` is given,
  * rclone also exposes its control API there so the invalidator can drive
- * `vfs/forget` for near-realtime freshness.
+ * `vfs/refresh` for near-realtime freshness.
  *
  * rclone runs in the FOREGROUND (not `--daemon`): `mount --rc --daemon` is
  * broken in rclone (the launcher hangs and never attaches the mount), so we
@@ -34,7 +34,10 @@ export function createRcloneMounter(rclonePath: string): Mounter {
   return {
     async mount({ webdavUrl, mountPath, rcAddr }) {
       const args = isMac
-        ? ["nfsmount", "wd:", mountPath]
+        ? // actimeo=1: the macOS NFS client caches dir/file attributes ~5s by
+          // default, which would mask the invalidator's freshness; 1s is cheap
+          // against a loopback server.
+          ["nfsmount", "wd:", mountPath, "--option", "actimeo=1"]
         : ["mount", "wd:", mountPath];
       const rcArgs = rcAddr
         ? ["--rc", "--rc-addr", rcAddr, "--rc-no-auth"]
@@ -46,7 +49,7 @@ export function createRcloneMounter(rclonePath: string): Mounter {
           "--vfs-cache-mode",
           "full",
           // Safety-net TTL if the invalidator isn't running or misses a change;
-          // the change-feed-driven vfs/forget (invalidator.ts) is what makes
+          // the change-feed-driven vfs/refresh (invalidator.ts) is what makes
           // external writes show up in ~1s.
           "--dir-cache-time",
           "10s",

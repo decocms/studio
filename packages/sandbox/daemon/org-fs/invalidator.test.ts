@@ -5,11 +5,11 @@ type Page = { entries: { parent: string }[]; cursor: string; hasMore: boolean };
 
 /**
  * Drives runInvalidator over a scripted sequence of change-feed pages, then
- * aborts once the script is exhausted. Returns the dirs passed to forget().
+ * aborts once the script is exhausted. Returns the dirs passed to refresh().
  */
 async function drive(pages: Page[]) {
   const ac = new AbortController();
-  const forgotten: string[] = [];
+  const refreshed: string[] = [];
   const seen: string[] = []; // cursors requested, in order
   let i = 0;
   await runInvalidator({
@@ -19,32 +19,32 @@ async function drive(pages: Page[]) {
       ac.abort(); // script done — stop the loop after this empty tail
       return { entries: [], cursor: since, hasMore: false };
     },
-    forget: async (dir) => {
-      forgotten.push(dir);
+    refresh: async (dir) => {
+      refreshed.push(dir);
     },
     signal: ac.signal,
     pollMs: 0,
   });
-  return { forgotten, seen };
+  return { refreshed, seen };
 }
 
 describe("runInvalidator", () => {
-  it("primes to head without forgetting, then forgets parents of new changes", async () => {
-    const { forgotten } = await drive([
-      // priming drain (hasMore=false ends priming) — must NOT forget
+  it("primes to head without refreshing, then refreshes parents of new changes", async () => {
+    const { refreshed } = await drive([
+      // priming drain (hasMore=false ends priming) — must NOT refresh
       {
         entries: [{ parent: "" }, { parent: "a" }],
         cursor: "2",
         hasMore: false,
       },
-      // a real post-prime change → forget its parent dir
+      // a real post-prime change → refresh its parent dir
       { entries: [{ parent: "a/b" }], cursor: "3", hasMore: false },
     ]);
-    expect(forgotten).toEqual(["a/b"]);
+    expect(refreshed).toEqual(["a/b"]);
   });
 
-  it("dedupes multiple changes in the same dir to one forget", async () => {
-    const { forgotten } = await drive([
+  it("dedupes multiple changes in the same dir to one refresh", async () => {
+    const { refreshed } = await drive([
       { entries: [], cursor: "0", hasMore: false }, // prime (empty)
       {
         entries: [{ parent: "x" }, { parent: "x" }, { parent: "y" }],
@@ -52,7 +52,7 @@ describe("runInvalidator", () => {
         hasMore: false,
       },
     ]);
-    expect(forgotten.sort()).toEqual(["x", "y"]);
+    expect(refreshed.sort()).toEqual(["x", "y"]);
   });
 
   it("advances the cursor across pages (no re-reading from 0)", async () => {
@@ -64,14 +64,14 @@ describe("runInvalidator", () => {
     expect(seen.slice(0, 3)).toEqual(["0", "10", "11"]);
   });
 
-  it("drains a multi-page backlog (hasMore) before forgetting new changes", async () => {
-    const { forgotten } = await drive([
+  it("drains a multi-page backlog (hasMore) before refreshing new changes", async () => {
+    const { refreshed } = await drive([
       // priming spans two pages (hasMore on the first)
       { entries: [{ parent: "old1" }], cursor: "1", hasMore: true },
       { entries: [{ parent: "old2" }], cursor: "2", hasMore: false },
-      // only this post-prime change is forgotten
+      // only this post-prime change is refreshed
       { entries: [{ parent: "new" }], cursor: "3", hasMore: false },
     ]);
-    expect(forgotten).toEqual(["new"]);
+    expect(refreshed).toEqual(["new"]);
   });
 });

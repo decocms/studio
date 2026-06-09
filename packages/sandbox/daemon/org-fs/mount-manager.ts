@@ -25,7 +25,7 @@ import { safePath } from "../paths";
 import { OrgFsClient } from "../../../../apps/mesh/src/file-storage/mount/client";
 import { createWebdavHandler } from "../../../../apps/mesh/src/file-storage/mount/webdav";
 import type { OrgFsMountConfig } from "./config";
-import { makeRcForget, runInvalidator } from "./invalidator";
+import { makeRcRefresh, runInvalidator } from "./invalidator";
 
 export type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
 
@@ -37,7 +37,7 @@ export interface MountHandle {
 /**
  * Has the OS mount the loopback WebDAV URL at `mountPath` (impl in mounter.ts).
  * `rcAddr`, when set, is where rclone should expose its control API so the
- * invalidator can drive `vfs/forget`.
+ * invalidator can drive `vfs/refresh`.
  */
 export interface Mounter {
   mount(opts: {
@@ -64,7 +64,7 @@ export type InvalidatorFactory = (opts: {
   log: (msg: string, err?: unknown) => void;
 }) => VolumeInvalidator;
 
-/** Real factory: poll the change feed → rclone `vfs/forget` (see invalidator.ts). */
+/** Real factory: poll the change feed → rclone `vfs/refresh` (see invalidator.ts). */
 const defaultInvalidatorFactory: InvalidatorFactory = ({
   client,
   rcUrl,
@@ -73,7 +73,7 @@ const defaultInvalidatorFactory: InvalidatorFactory = ({
   const ac = new AbortController();
   void runInvalidator({
     changes: (since) => client.changes(since),
-    forget: makeRcForget(rcUrl),
+    refresh: makeRcRefresh(rcUrl),
     signal: ac.signal,
     log,
   });
@@ -158,7 +158,7 @@ export class MountManager {
             mountPath,
             rcAddr,
           });
-          // Near-realtime freshness: feed-driven vfs/forget against rclone's rc.
+          // Near-realtime freshness: feed-driven vfs/refresh against rclone's rc.
           const invalidator = this.startInvalidator({
             client,
             rcUrl: `http://${rcAddr}`,

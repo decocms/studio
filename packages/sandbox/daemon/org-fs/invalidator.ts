@@ -5,14 +5,20 @@
  * its own — its only lever is the dir-cache TTL (a blunt time bound). This
  * closes that gap: poll the mesh change feed (`/api/:org/fs/:volume/changes`,
  * a single indexed query — NOT a directory re-listing) and, for every changed
- * path, tell rclone via its rc API to `vfs/forget` that path's parent dir. The
- * next access re-lists only that dir, picking up adds/deletes and (via the
- * refreshed modtime) modified content.
+ * path, tell rclone via its rc API to `vfs/refresh` that path's parent dir.
+ * That re-lists only that dir, picking up adds/deletes and (via the refreshed
+ * modtime) modified content.
+ *
+ * `vfs/refresh`, NOT `vfs/forget`: forget drops VFS nodes (it's a memory
+ * reclaim), which kills handles open on them — and the mount's own writes echo
+ * through the change feed, so forget would sever a file mid-write (observed on
+ * macOS NFS: hung writer + an empty flushed file). Refresh re-lists in place;
+ * open handles and dirty cache entries survive.
  *
  * Result: external changes surface in ~1 poll interval instead of a dir-cache
  * TTL. The poll is the interim trigger; a NATS nudge can later wake this loop
  * instantly (the codebase's NatsNotify + polling-safety-net pattern), removing
- * the steady-state poll without changing the forget logic.
+ * the steady-state poll without changing the refresh logic.
  *
  * Deps are injected so the loop is unit-testable without a real mesh or rclone.
  */
@@ -26,8 +32,8 @@ export interface InvalidatorDeps {
     cursor: string;
     hasMore: boolean;
   }>;
-  /** Invalidate one directory's cached listing (rclone `vfs/forget dir=`). */
-  forget: (dir: string) => Promise<void>;
+  /** Re-list one directory's cached entries (rclone `vfs/refresh dir=`). */
+  refresh: (dir: string) => Promise<void>;
   /** Aborts the loop (mount teardown). */
   signal: AbortSignal;
   /** Idle poll interval; default 1s. */
@@ -39,8 +45,8 @@ const DEFAULT_POLL_MS = 1000;
 
 /**
  * Run until `signal` aborts. First drains the feed to its head WITHOUT
- * forgetting (the mount's initial listing already reflects that state), then
- * forgets the parent dir of every subsequent change. Never throws.
+ * refreshing (the mount's initial listing already reflects that state), then
+ * refreshes the parent dir of every subsequent change. Never throws.
  */
 export async function runInvalidator(deps: InvalidatorDeps): Promise<void> {
   const pollMs = deps.pollMs ?? DEFAULT_POLL_MS;
@@ -60,14 +66,14 @@ export async function runInvalidator(deps: InvalidatorDeps): Promise<void> {
     }
 
     if (primed && page.entries.length > 0) {
-      // Dedupe: many changes in one dir collapse to a single forget.
+      // Dedupe: many changes in one dir collapse to a single refresh.
       const dirs = new Set(page.entries.map((e) => e.parent));
       for (const dir of dirs) {
         if (deps.signal.aborted) break;
         try {
-          await deps.forget(dir);
+          await deps.refresh(dir);
         } catch (err) {
-          log(`vfs/forget failed for "${dir}"`, err);
+          log(`vfs/refresh failed for "${dir}"`, err);
         }
       }
     }
@@ -82,20 +88,19 @@ export async function runInvalidator(deps: InvalidatorDeps): Promise<void> {
 }
 
 /**
- * The real `forget`: POST rclone's rc `vfs/forget`. Loopback + `--rc-no-auth`
+ * The real `refresh`: POST rclone's rc `vfs/refresh`. Loopback + `--rc-no-auth`
  * (same trust boundary as the loopback WebDAV server). An empty `dir` (a
- * root-level change) forgets the whole VFS, which re-lists the root on next
- * access — rare and cheap enough.
+ * root-level change) refreshes the root listing.
  */
-export function makeRcForget(rcUrl: string) {
+export function makeRcRefresh(rcUrl: string) {
   return async (dir: string): Promise<void> => {
-    const res = await fetch(`${rcUrl}/vfs/forget`, {
+    const res = await fetch(`${rcUrl}/vfs/refresh`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(dir ? { dir } : {}),
     });
     if (!res.ok) {
-      throw new Error(`vfs/forget ${res.status}: ${await res.text()}`);
+      throw new Error(`vfs/refresh ${res.status}: ${await res.text()}`);
     }
   };
 }
