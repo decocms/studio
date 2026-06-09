@@ -37,7 +37,11 @@ export function createRcloneMounter(rclonePath: string): Mounter {
         ? // actimeo=1: the macOS NFS client caches dir/file attributes ~5s by
           // default, which would mask the invalidator's freshness; 1s is cheap
           // against a loopback server.
-          ["nfsmount", "wd:", mountPath, "--option", "actimeo=1"]
+          // locallocks: rclone's NFS server has no lock daemon (NLM), so apps
+          // that take file locks (sqlite, editors) would hang against it. The
+          // mount is strictly single-client (loopback), so client-local lock
+          // semantics are exact.
+          ["nfsmount", "wd:", mountPath, "--option", "actimeo=1,locallocks"]
         : ["mount", "wd:", mountPath];
       const rcArgs = rcAddr
         ? ["--rc", "--rc-addr", rcAddr, "--rc-no-auth"]
