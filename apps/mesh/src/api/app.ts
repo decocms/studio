@@ -2163,6 +2163,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
     await reconcileAutomationSchedules(automationsStorage);
 
+    // One-time cleanup of the retired per-automation/global gate queues.
+    // Fires now run directly on the per-org queue, so these rows are orphaned;
+    // deleteQueue is a no-op once they're gone. Stale gate workflows still
+    // ENQUEUED from a previous version are cancelled by the reconciler.
+    await Promise.allSettled(
+      ["automations-gate", "automations-global"].map((q) =>
+        DBOS.deleteQueue(q),
+      ),
+    );
+
     // Fire-and-forget backfill of studio pack agents for every org. Safe
     // to skip awaiting — the workflow IDs are deterministic per-org, so
     // replicas/workers all enqueueing in parallel collapse via OAOO.
