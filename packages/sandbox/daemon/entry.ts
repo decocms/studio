@@ -12,6 +12,9 @@ import { gitSync } from "./git/git-sync";
 import { InstallState } from "./install/install-state";
 import { LifecycleManager } from "./lifecycle/manager";
 import { readConfig } from "./persistence";
+import { MountManager } from "./org-fs/mount-manager";
+import { createRcloneMounter } from "./org-fs/mounter";
+import { parseOrgFsConfig } from "./org-fs/config";
 import { createPortSniffer } from "./process/port-sniffer";
 import { TaskManager } from "./process/task-manager";
 import { PhaseManager } from "./process/phase-manager";
@@ -691,9 +694,36 @@ Bun.serve<WsProxyData, never>({
   },
 });
 
-process.on("SIGTERM", () => {
+// --- Org-filesystem mounts (desktop links only) ----------------------------
+// The mesh sets ORGFS_CONFIG (a JSON OrgFsMountConfig) + ORGFS_RCLONE_PATH at
+// spawn — as boot env, like OFFLOAD_ALLOWED_HOSTS, so it's available here at
+// boot (config pushed via /_sandbox/config arrives only AFTER boot, so it
+// can't drive the mount). Both are absent for cluster pods (locked-down
+// securityContext can't mount) and until the provisioning side ships — so this
+// is inert by default. The start is fire-and-forget and fully guarded (see
+// MountManager): a mount failure logs and never affects the daemon, dev
+// server, fs routes, or harnesses. A volume's bytes still reach harnesses via
+// the mesh API regardless.
+let mountManager: MountManager | null = null;
+{
+  const orgFs = parseOrgFsConfig(process.env.ORGFS_CONFIG);
+  const rclonePath = process.env.ORGFS_RCLONE_PATH;
+  if (orgFs && rclonePath) {
+    mountManager = new MountManager(createRcloneMounter(rclonePath));
+    void mountManager
+      .start(orgFs, bootConfig.appRoot)
+      .catch((err) => console.warn("[org-fs] mount start failed", err));
+  }
+}
+
+process.on("SIGTERM", async () => {
   taskManager.shutdown();
   branchStatus.stop();
+  // Best-effort unmount before exit (rclone --daemon detaches, so it would
+  // otherwise outlive us). Abrupt SIGKILL/pod-delete skips this — tolerated.
+  if (mountManager) {
+    await mountManager.stop().catch(() => {});
+  }
   const branch = store.read()?.git?.repository?.branch;
   if (branch) {
     try {
