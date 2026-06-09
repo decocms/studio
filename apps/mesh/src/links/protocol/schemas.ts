@@ -32,17 +32,29 @@ export type DispatchSSEEvent = z.infer<typeof dispatchSSEEventSchema>;
 
 const chatMessageSchema = z.record(z.string(), z.unknown()); // opaque to link-protocol
 
+const modelSelectionSchema = z.object({
+  id: z.string(),
+  title: z.string().optional(),
+  provider: z.string().nullable().optional(),
+  limits: z
+    .object({
+      contextWindow: z.number().int().positive().optional(),
+      maxOutputTokens: z.number().int().positive().optional(),
+    })
+    .optional(),
+});
+
+const modelSelectionWithCredentialSchema = modelSelectionSchema.extend({
+  credentialId: z.string().optional(),
+});
+
 const modelsConfigSchema = z.object({
   credentialId: z.string(),
-  thinking: z.object({
-    id: z.string(),
-    title: z.string(),
-    provider: z.string().optional(),
-  }),
-  coding: z.object({ id: z.string(), title: z.string() }).optional(),
-  fast: z.object({ id: z.string(), title: z.string() }).optional(),
-  image: z.object({ id: z.string(), title: z.string() }).optional(),
-  deepResearch: z.object({ id: z.string(), title: z.string() }).optional(),
+  thinking: modelSelectionSchema.extend({ title: z.string() }),
+  coding: modelSelectionSchema.optional(),
+  fast: modelSelectionSchema.optional(),
+  image: modelSelectionWithCredentialSchema.optional(),
+  deepResearch: modelSelectionWithCredentialSchema.optional(),
 });
 
 const secretModelSourceSchema = z.object({
@@ -97,9 +109,9 @@ export const harnessStreamInputSchema = z
         expiresAt: z.number().int().positive(),
       })
       .strict(),
-    mode: z.string(),
+    mode: z.enum(["default", "plan", "web-search", "gen-image"]),
     temperature: z.number(),
-    toolApprovalLevel: z.string(),
+    toolApprovalLevel: z.enum(["auto", "readonly"]),
     // Per-run tool allowlist (model-facing names). null/absent = full toolset.
     toolAllowlist: z.array(z.string()).nullable().optional(),
     user: z.object({ id: z.string(), email: z.string() }),

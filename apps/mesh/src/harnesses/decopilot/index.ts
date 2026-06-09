@@ -40,8 +40,6 @@ import type {
 } from "../types";
 import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
 import type { ChatMessage, ModelInfo } from "../../api/routes/decopilot/types";
-import type { ChatMode } from "../../api/routes/decopilot/mode-config";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 import { processConversation } from "../../api/routes/decopilot/conversation";
 import { DEFAULT_WINDOW_SIZE } from "../../api/routes/decopilot/constants";
 import { assembleDecopilotTools } from "./tools";
@@ -49,15 +47,10 @@ import { assembleDecopilotPrompt } from "./prompt";
 import { runDecopilotStream } from "./run-stream";
 import type { PendingImage } from "./built-in-tools";
 import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
-import {
-  findStudioPackAgentByMcpId,
-  resolveStudioPackRuntime,
-} from "../../tools/virtual/studio-pack";
 import { createProviderFromSecret } from "./provider-from-secret";
 import type { DecopilotSecretModelSource } from "../types";
 
 type ClusterDecopilotRuntime = DecopilotRuntime & {
-  pendingImages: PendingImage[];
   runRegistry: RunRegistry;
   titleModel?: ModelInfo | null;
   htmlPageBuffer: HtmlPageBuffer;
@@ -67,8 +60,6 @@ type ClusterDecopilotRuntime = DecopilotRuntime & {
  *  `dispatch-run.ts` actually builds. */
 interface ClusterInputView {
   messages: ChatMessage[];
-  mode: ChatMode;
-  virtualMcp: VirtualMCPEntity;
 }
 
 function resolveSecretModelSource(
@@ -140,45 +131,14 @@ export const decopilotHarnessFactory: HarnessFactory = {
         const titleProvider = createProviderFromSecret(
           optionalSecretModelSource(input.modelSources?.title) ?? modelSource,
         );
+        const toolOutputMap = new Map<string, string>();
+        const pendingImages: PendingImage[] = [];
 
-        // Studio pack agents (Brand Manager, etc.) resolve their prompt
-        // and tool allowlist at request time based on org state — e.g. Brand
-        // Manager exposes a bootstrap toolset before any brand context
-        // exists and a manage toolset after. The resolver overrides
-        // `metadata.instructions` and `connections[].selected_tools`, which
-        // the passthrough client honors transparently.
-        const studioPackAgent = findStudioPackAgentByMcpId(input.agent.id);
-        let effectiveInput: HarnessStreamInput = input;
-        if (studioPackAgent) {
-          const resolved = await resolveStudioPackRuntime(studioPackAgent, {
-            orgId: ctx.organization!.id,
-            ctx,
-          });
-          const baseVm = clusterInput.virtualMcp;
-          const selectedTools = resolved.selectedTools
-            ? [...resolved.selectedTools]
-            : null;
-          effectiveInput = {
-            ...input,
-            virtualMcp: {
-              ...baseVm,
-              metadata: {
-                ...((baseVm.metadata as Record<string, unknown>) ?? {}),
-                instructions: resolved.instructions,
-              },
-              connections: baseVm.connections.map((c) => ({
-                ...c,
-                selected_tools: selectedTools,
-              })),
-            },
-          };
-        }
-
-        const tools = await assembleDecopilotTools(effectiveInput, ctx, {
+        const tools = await assembleDecopilotTools(input, ctx, {
           writer: runtime.writer,
-          toolOutputMap: runtime.toolOutputMap,
-          pendingImages: runtime.pendingImages,
-          threadId: runtime.threadId,
+          toolOutputMap,
+          pendingImages,
+          threadId: input.threadId,
           provider,
           imageProvider,
           deepResearchProvider,
@@ -214,13 +174,9 @@ export const decopilotHarnessFactory: HarnessFactory = {
             typeof runDecopilotStream
           >[4]["processedMessages"];
 
-          const prompt = await assembleDecopilotPrompt(
-            effectiveInput,
-            ctx,
-            tools,
-          );
+          const prompt = await assembleDecopilotPrompt(input, ctx, tools);
 
-          yield* runDecopilotStream(effectiveInput, ctx, tools, prompt, {
+          yield* runDecopilotStream(input, ctx, tools, prompt, {
             provider,
             titleProvider,
             titleModel:
@@ -230,12 +186,12 @@ export const decopilotHarnessFactory: HarnessFactory = {
             processedSystemMessages,
             processedMessages: narrowedMessages,
             originalMessages,
-            threadId: runtime.threadId,
-            currentThreadTitle: runtime.currentThreadTitle,
+            threadId: input.threadId,
+            currentThreadTitle: input.currentThreadTitle ?? "",
             registerPendingOp: runtime.registerPendingOp,
             isStreamFinished: runtime.isStreamFinished,
             onUsageAggregated: runtime.onUsageAggregated,
-            pendingImages: runtime.pendingImages,
+            pendingImages,
             onTitleUpdated: runtime.onTitleUpdated,
             writer: runtime.writer,
           });

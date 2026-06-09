@@ -40,6 +40,7 @@ import { streamText, type UIMessageChunk } from "ai";
 import { createCodexModel, resolveCodexModelId } from "./model";
 import { resolveCliCwd } from "../cli-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
+import { createCliMessageMetadata } from "../cli-stream-metadata";
 import { makeTitleResultChunk } from "../title-chunk";
 import { genTitle } from "../decopilot/title-generator";
 import { stringifyError } from "../decopilot/stream-error";
@@ -49,7 +50,6 @@ import type {
   HarnessFactory,
   HarnessStreamInput,
 } from "../types";
-import { createUsageAccumulator } from "../usage-accumulator";
 
 async function* mergeTitleResult(
   uiStream: AsyncIterable<UIMessageChunk>,
@@ -230,60 +230,17 @@ export const codexHarnessFactory: HarnessFactory = {
           //    here keeps the UI's token-count tooltip working for
           //    Codex threads. Without this, the UI sees raw per-step
           //    usage and loses cache-read/write detail.
-          const usageAcc = createUsageAccumulator();
-          let codingAgentSessionId: string | undefined;
+          const cliMetadata = createCliMessageMetadata({
+            input,
+            providerName: "codex",
+            providerMetadataKey: "codex-app-server",
+            extractSessionId: (metadata) =>
+              typeof (metadata as { threadId?: unknown })?.threadId === "string"
+                ? (metadata as { threadId: string }).threadId
+                : undefined,
+          });
           const uiStream = result.toUIMessageStream({
-            messageMetadata: ({ part }) => {
-              // Mirror the decopilot harness's start-chunk metadata
-              // (run-stream.ts:879–906). The frontend's `onFinish`
-              // reads `thread_id` from the assistant message metadata
-              // to commit the locally-streamed copy to its store;
-              // without it the UI logs `[chat] onFinish: no thread_id
-              // in server metadata, messages not persisted` and drops
-              // the message on next re-render (visible on custom-agent
-              // / task-style threads that don't auto-refetch from the
-              // server).
-              if (part.type === "start") {
-                return {
-                  agent: { id: input.agent.id ?? null },
-                  models: {
-                    credentialId: input.models.credentialId,
-                    thinking: {
-                      ...input.models.thinking,
-                      title:
-                        input.models.thinking.title ?? input.models.thinking.id,
-                      provider: input.models.thinking.provider ?? undefined,
-                    },
-                  },
-                  created_at: new Date(),
-                  thread_id: input.threadId,
-                };
-              }
-              if (part.type === "finish-step") {
-                const cx = part.providerMetadata?.["codex-app-server"] as
-                  | { threadId?: string }
-                  | undefined;
-                if (cx?.threadId) {
-                  codingAgentSessionId = cx.threadId;
-                }
-                usageAcc.addStep(part.usage, part.providerMetadata);
-                return { usage: usageAcc.buildStepUsage() };
-              }
-              if (part.type === "finish") {
-                const usage = usageAcc.buildFinalUsage({
-                  totalUsage: part.totalUsage,
-                  providerKey: input.models.thinking.provider,
-                });
-                return {
-                  ...(usage && { usage }),
-                  ...(codingAgentSessionId && {
-                    codingAgentSessionId,
-                    codingAgentProvider: "codex",
-                  }),
-                };
-              }
-              return undefined;
-            },
+            messageMetadata: cliMetadata,
           });
 
           try {
@@ -300,7 +257,7 @@ export const codexHarnessFactory: HarnessFactory = {
             // zeroed token counts for CLI threads. CLI harnesses may be
             // invoked without `processLocal` (e.g., from a remote
             // runner), so the call is conditional.
-            const totals = usageAcc.totalTokens();
+            const totals = cliMetadata.totalTokens();
             input.processLocal?.onUsageAggregated?.(totals);
           }
         } finally {

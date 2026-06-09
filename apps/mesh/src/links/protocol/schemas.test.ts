@@ -64,6 +64,78 @@ describe("harnessStreamInputSchema", () => {
     }
   });
 
+  it("round-trips full model slot metadata", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      models: {
+        credentialId: "cred-chat",
+        thinking: {
+          id: "anthropic/claude-sonnet",
+          title: "Sonnet",
+          provider: null,
+          limits: { contextWindow: 200000, maxOutputTokens: 32768 },
+        },
+        image: {
+          credentialId: "cred-image",
+          id: "google/imagen",
+          title: "Imagen",
+          provider: "google",
+          limits: { maxOutputTokens: 4096 },
+        },
+        deepResearch: {
+          credentialId: "cred-research",
+          id: "google/gemini-deep-research",
+          title: "Deep Research",
+          provider: "google",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.models).toEqual({
+        credentialId: "cred-chat",
+        thinking: {
+          id: "anthropic/claude-sonnet",
+          title: "Sonnet",
+          provider: null,
+          limits: { contextWindow: 200000, maxOutputTokens: 32768 },
+        },
+        image: {
+          credentialId: "cred-image",
+          id: "google/imagen",
+          title: "Imagen",
+          provider: "google",
+          limits: { maxOutputTokens: 4096 },
+        },
+        deepResearch: {
+          credentialId: "cred-research",
+          id: "google/gemini-deep-research",
+          title: "Deep Research",
+          provider: "google",
+        },
+      });
+    }
+  });
+
+  it("rejects unknown harness modes", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      mode: "made-up",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects unknown tool approval levels", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      toolApprovalLevel: "danger",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("strips signal and processLocal fields", () => {
     const withExtras = {
       ...minimalInput,

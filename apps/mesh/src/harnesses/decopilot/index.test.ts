@@ -5,10 +5,6 @@ import type { DecopilotRuntime, HarnessStreamInput } from "../types";
 function makeInput(overrides: Partial<HarnessStreamInput>): HarnessStreamInput {
   const runtime = {
     writer: {} as never,
-    toolOutputMap: new Map<string, string>(),
-    pendingImages: [],
-    threadId: "thread-1",
-    currentThreadTitle: "New chat",
     registrySignal: new AbortController().signal,
     runRegistry: {},
     registerPendingOp: () => {},

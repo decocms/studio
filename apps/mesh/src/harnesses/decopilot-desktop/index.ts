@@ -34,14 +34,13 @@ import type {
   HarnessFactory,
   HarnessStreamInput,
 } from "../types";
-import { openMcpSource } from "../sources";
+import { openMcpSource, openObjectStorageSource } from "../sources";
 import { createProviderFromSecret } from "../decopilot/provider-from-secret";
 import { toolsFromMCP } from "../decopilot/mcp-tools";
 import { buildLocalTools } from "./local-tools";
 import { processConversation } from "../decopilot/conversation";
 import { runDesktopAgentLoop } from "./local-agent-loop";
 import { DEFAULT_WINDOW_SIZE } from "./local-prompt";
-import { createRemoteObjectStorage } from "./object-storage";
 import type { ConnectionsBlockTool } from "../decopilot/connections-block";
 import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
 import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
@@ -235,13 +234,9 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
           }
 
           // 5. Build the LOCAL-OK built-in tools.
-          const objectStorage =
-            input.objectStorageSource?.kind === "http"
-              ? createRemoteObjectStorage({
-                  baseUrl: input.objectStorageSource.baseUrl,
-                  headers: input.objectStorageSource.headers,
-                })
-              : null;
+          const objectStorage = await openObjectStorageSource(
+            input.objectStorageSource,
+          );
           const orgSlug = input.organizationSlug ?? input.projectSlug;
           const baseUrl = input.objectStorageSource
             ? new URL(input.objectStorageSource.baseUrl).origin

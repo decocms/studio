@@ -35,6 +35,10 @@ import {
   type MessagesRef,
 } from "@/harnesses/offload-messages";
 import { ensureSandbox } from "@/tools/sandbox/start";
+import {
+  findStudioPackAgentByMcpId,
+  resolveStudioPackRuntime,
+} from "@/tools/virtual/studio-pack";
 import { buildDesktopProvider } from "@/sandbox/lifecycle";
 import { computeClaimHandle } from "@/sandbox/claim-handle";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
@@ -49,6 +53,7 @@ import { getSettings } from "@/settings";
 import type { WorkItemSandbox } from "./link-work-queue";
 import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 import type {
   DecopilotRuntime,
   DecopilotSecretModelSource,
@@ -87,7 +92,6 @@ import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
 import type { ThreadMessage } from "@/storage/types";
-import type { PendingImage } from "@/harnesses/decopilot/built-in-tools";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
 import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
@@ -596,6 +600,41 @@ interface PreparedRun {
   wireHarnessInput: WireHarnessInput;
 }
 
+export async function resolveEffectiveVirtualMcpForHarness({
+  virtualMcp,
+  agentId,
+  organizationId,
+  ctx,
+}: {
+  virtualMcp: VirtualMCPEntity;
+  agentId: string;
+  organizationId: string;
+  ctx: StudioContext;
+}): Promise<VirtualMCPEntity> {
+  const studioPackAgent = findStudioPackAgentByMcpId(agentId);
+  if (!studioPackAgent) return virtualMcp;
+
+  const resolved = await resolveStudioPackRuntime(studioPackAgent, {
+    orgId: organizationId,
+    ctx,
+  });
+  const selectedTools = resolved.selectedTools
+    ? [...resolved.selectedTools]
+    : null;
+
+  return {
+    ...virtualMcp,
+    metadata: {
+      ...((virtualMcp.metadata as Record<string, unknown>) ?? {}),
+      instructions: resolved.instructions,
+    },
+    connections: virtualMcp.connections.map((connection) => ({
+      ...connection,
+      selected_tools: selectedTools,
+    })),
+  };
+}
+
 /**
  * Setup phase shared by both dispatch variants. Claims the run, loads
  * conversation history, dispatches through the harness registry, and
@@ -868,6 +907,12 @@ async function prepareRun(
     if (!virtualMcp) {
       throw new Error("Agent not found");
     }
+    const effectiveVirtualMcp = await resolveEffectiveVirtualMcpForHarness({
+      virtualMcp,
+      agentId: input.agent.id,
+      organizationId: input.organizationId,
+      ctx,
+    });
 
     // 3. Dispatch START or RESUME
     if (input.isResume) {
@@ -1103,7 +1148,7 @@ async function prepareRun(
       organizationId: input.organizationId,
       organizationSlug: organization.slug,
       projectSlug: organization.slug,
-      virtualMcp,
+      virtualMcp: effectiveVirtualMcp,
       agent: { id: input.agent.id },
       branch: input.branch,
       taskId: input.taskId,
@@ -1120,8 +1165,6 @@ async function prepareRun(
         // only build the non-serializable in-process extras that decopilot
         // needs to participate in the surrounding `createUIMessageStream`
         // scope. CLI harnesses ignore this field.
-        const toolOutputMap = new Map<string, string>();
-        const pendingImages: PendingImage[] = [];
         // Per-turn buffer for coalesced HTML-page mirrors. The VM `write`/
         // `edit` tools enqueue here; `onStepFinish` below schedules a
         // single `flush()` per step (pushed to `pendingOps`, awaited at
@@ -1151,10 +1194,6 @@ async function prepareRun(
           : undefined;
         const decopilotRuntime: DecopilotRuntime = {
           writer,
-          toolOutputMap,
-          pendingImages,
-          threadId: mem.thread.id,
-          currentThreadTitle: mem.thread.title,
           registrySignal,
           runRegistry,
           titleModel:

@@ -88,29 +88,6 @@ export interface DecopilotRuntime {
    *  output via `writer.merge(...)`. */
   writer: UIMessageStreamWriter;
 
-  /** Maps tool callId → tool output JSON. Mutated in place by the
-   *  passthrough MCP layer (`toolsFromMCP`) as tools execute, then read
-   *  back later. Shared between `assembleDecopilotTools` (which seeds it
-   *  for the passthrough tools) and the built-in tools layer. */
-  toolOutputMap: Map<string, string>;
-
-  /** Screenshot images captured by `take_screenshot` during tool
-   *  execution. Mutated in place by the built-in tool and by
-   *  `prepareStep` inside `runDecopilotStream` (which splices images out
-   *  to embed in the next user message). MUST be the same array
-   *  reference passed to `assembleDecopilotTools` and `runDecopilotStream`. */
-  pendingImages: unknown[];
-
-  /** Thread id (equals `mem.thread.id`). Also lives on
-   *  `HarnessStreamInput.threadId`; kept duplicated here so the harness
-   *  doesn't have to assert that equivalence. */
-  threadId: string;
-
-  /** Initial value of `mem.thread.title` at request entry. Title
-   *  generation only kicks off when this equals `DEFAULT_THREAD_TITLE`
-   *  ("New chat") — the convention for an unrenamed thread. */
-  currentThreadTitle: string;
-
   /** Run-registry abort signal for this run. Listened to by streamText
    *  (`abortSignal`), by genTitle (`abortSignal`), and queried from
    *  `onFinish`/`onAbort` callbacks to distinguish a real model finish

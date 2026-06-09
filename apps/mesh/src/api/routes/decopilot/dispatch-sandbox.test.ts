@@ -55,6 +55,7 @@ const {
   resolveRemoteCliSandboxUrl,
   computeDesktopSandboxHandle,
   ensurePushDispatchSandboxHandle,
+  resolveEffectiveVirtualMcpForHarness,
 } = await import("./dispatch-run");
 
 describe("resolveRemoteCliSandboxUrl", () => {
@@ -215,5 +216,59 @@ describe("ensurePushDispatchSandboxHandle", () => {
       {} as never,
     );
     expect(ensureSandboxCalls[0]?.branch).toBe("ephemeral");
+  });
+});
+
+describe("resolveEffectiveVirtualMcpForHarness", () => {
+  it("resolves studio-pack instructions and selected tools before harness dispatch", async () => {
+    const virtualMcp = {
+      id: "studio-brand-manager_org-1",
+      title: "Brand Manager",
+      description: "Manage brand contexts",
+      icon: null,
+      created_at: "2026-06-09T00:00:00.000Z",
+      updated_at: "2026-06-09T00:00:00.000Z",
+      created_by: "user-1",
+      organization_id: "org-1",
+      status: "active" as const,
+      pinned: false,
+      metadata: { instructions: "persisted instructions", keep: true },
+      connections: [
+        {
+          connection_id: "org-1_self",
+          selected_tools: ["BRAND_CONTEXT_LIST"],
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+    };
+    const ctx = {
+      storage: {
+        brandContext: {
+          list: async () => [],
+        },
+      },
+    };
+
+    const resolved = await resolveEffectiveVirtualMcpForHarness({
+      virtualMcp,
+      agentId: virtualMcp.id,
+      organizationId: "org-1",
+      ctx: ctx as never,
+    });
+
+    expect(resolved).not.toBe(virtualMcp);
+    expect(resolved.metadata).toMatchObject({ keep: true });
+    expect(
+      String((resolved.metadata as { instructions?: unknown }).instructions),
+    ).toContain("does not have a brand context yet");
+    expect(resolved.connections).toEqual([
+      {
+        connection_id: "org-1_self",
+        selected_tools: ["BRAND_CONTEXT_CREATE", "BRAND_CONTEXT_EXTRACT"],
+        selected_resources: null,
+        selected_prompts: null,
+      },
+    ]);
   });
 });
