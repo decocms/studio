@@ -20,6 +20,7 @@ import "../../index.css";
 
 import { listOrganizationsCached } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { initPwaInstallCapture } from "@/web/lib/pwa-install";
 
 import { sourcePlugins } from "./plugins.ts";
 import type {
@@ -151,6 +152,14 @@ const homeRoute = createRoute({
     // No orgs at all — send to onboarding
     throw redirect({ to: "/onboarding" });
   },
+});
+
+// Install route — neutral page (outside the org shell) for installing deco
+// Studio itself as a PWA. See routes/install.tsx and lib/pwa-install.ts.
+const installRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/install",
+  component: lazyRouteComponent(() => import("./routes/install.tsx")),
 });
 
 // Onboarding route (for users with no orgs)
@@ -589,6 +598,7 @@ const shellRouteTree = shellLayout.addChildren([
 
 const routeTree = rootRoute.addChildren([
   shellRouteTree,
+  installRoute,
   onboardingRoute,
   loginRoute,
   cliAuthSuccessRoute,
@@ -629,6 +639,10 @@ declare module "@tanstack/react-router" {
     router: typeof router;
   }
 }
+
+// Capture the Chromium install prompt as early as possible so the /install
+// page can offer a one-click install. Fires once shortly after load.
+initPwaInstallCapture();
 
 const rootElement = document.getElementById("root")!;
 

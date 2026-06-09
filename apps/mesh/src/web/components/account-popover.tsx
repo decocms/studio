@@ -22,6 +22,7 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import {
   Check,
   Copy01,
+  Download01,
   File06,
   Globe01,
   LogOut01,
@@ -568,6 +569,14 @@ export function AccountPopover() {
           to: "/$org/settings/profile",
           params: { org: orgParam ?? "" },
         });
+      },
+    },
+    {
+      key: "install-app",
+      label: "Install deco Studio app",
+      icon: <Download01 size={16} />,
+      onClick: () => {
+        navigate({ to: "/install" });
       },
     },
     {
