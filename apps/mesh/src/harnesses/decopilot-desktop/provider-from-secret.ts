@@ -1,13 +1,14 @@
 /**
  * provider-from-secret — build an AI-SDK language-model provider directly from
- * the injected `mcp.modelSecret`, importing ONLY `@ai-sdk/*` provider packages.
+ * the injected `modelSource(kind="secret")`, importing ONLY `@ai-sdk/*`
+ * provider packages.
  *
  * ⚠️ This is the import-isolation linchpin. The cluster activates its chat
  * model via `ctx.aiProviders.activate(credentialId, orgId)` → vault lookup →
  * `MeshProvider` (`@/ai-providers/*`). That whole chain reaches into
  * `StudioContext`, the vault, and storage — none of which exist (or are safe)
  * on the desktop daemon. Instead, the cluster injects a single, pre-resolved
- * chat-completion secret (`HarnessStreamInput.mcp.modelSecret`) and the desktop
+ * chat-completion secret (`HarnessStreamInput.modelSource`) and the desktop
  * constructs the provider locally from the matching `@ai-sdk/*` factory.
  *
  * NEVER import `@/ai-providers/*`, the vault, or `MeshProvider` here. The only
@@ -30,18 +31,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
-
-/** The injected secret shape (mirrors `HarnessStreamInput.mcp.modelSecret`). */
-export interface ModelSecret {
-  /** Provider identifier, e.g. "anthropic", "openai-compatible", "openrouter". */
-  providerId: string;
-  /** Resolved API key (or credential secret). Plaintext over HTTPS. */
-  apiKey: string;
-  /** Optional endpoint override for self-hosted/LiteLLM deployments. */
-  baseUrl?: string;
-  /** Additional request headers the provider adapter requires. */
-  extraHeaders?: Record<string, string>;
-}
+import type { DecopilotSecretModelSource } from "../types";
 
 /** The minimal provider shape the lean loop consumes. Structurally a subset of
  *  the cluster's `MeshProvider` (`provider.aiSdk.languageModel(id, opts?)`). */
@@ -61,7 +51,9 @@ export interface DesktopProvider {
  * for a provider it itself supports, so an unknown id means a wiring bug, not a
  * recoverable runtime state.
  */
-export function createProviderFromSecret(secret: ModelSecret): DesktopProvider {
+export function createProviderFromSecret(
+  secret: DecopilotSecretModelSource,
+): DesktopProvider {
   const { providerId, apiKey, baseUrl, extraHeaders } = secret;
 
   switch (providerId) {
@@ -132,7 +124,7 @@ export function createProviderFromSecret(secret: ModelSecret): DesktopProvider {
 
     default:
       throw new Error(
-        `decopilot-desktop: unsupported modelSecret.providerId '${providerId}'. ` +
+        `decopilot-desktop: unsupported modelSource.providerId '${providerId}'. ` +
           "Supported: anthropic, google, openrouter, deco, openai-compatible.",
       );
   }

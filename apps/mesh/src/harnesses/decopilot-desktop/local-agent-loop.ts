@@ -95,7 +95,7 @@ function reconstructEnabledTools(
 }
 
 export interface RunDesktopAgentLoopOptions {
-  /** The provider built from `mcp.modelSecret`. */
+  /** The provider built from `modelSource(kind="secret")`. */
   provider: LanguageModelProvider;
   models: ModelsConfig;
   mode: ChatMode;

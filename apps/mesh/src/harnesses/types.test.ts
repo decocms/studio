@@ -36,49 +36,41 @@ describe("Harness types", () => {
   });
 });
 
-/**
- * Verify the mcp.modelSecret field is structurally optional — a
- * HarnessStreamInput WITHOUT it (cluster path) and one WITH it (desktop path)
- * must both satisfy the type. This test prevents regressions where a required
- * field is accidentally added.
- */
-describe("HarnessStreamInput.mcp.modelSecret", () => {
-  test("accepts mcp without modelSecret (cluster path)", () => {
-    const mcp: HarnessStreamInput["mcp"] = {
-      url: "https://cluster/mcp",
-      headers: { Authorization: "Bearer tok" },
-      expiresAt: Date.now() + 3_600_000,
-    };
-    expect(mcp.modelSecret).toBeUndefined();
-  });
-
-  test("accepts mcp with modelSecret (desktop decopilot path)", () => {
-    const mcp: HarnessStreamInput["mcp"] = {
-      url: "https://cluster/mcp",
-      headers: { Authorization: "Bearer tok" },
-      expiresAt: Date.now() + 3_600_000,
-      modelSecret: {
+describe("HarnessStreamInput sources", () => {
+  test("accepts mcp without embedded model secrets", () => {
+    const input: Pick<HarnessStreamInput, "mcp" | "modelSource"> = {
+      modelSource: {
+        kind: "secret",
         providerId: "anthropic",
         apiKey: "sk-ant-test",
+        modelId: "claude-3-5-sonnet",
+      },
+      mcp: {
+        url: "https://cluster/mcp",
+        headers: { Authorization: "Bearer tok" },
+        expiresAt: Date.now() + 3_600_000,
       },
     };
-    expect(mcp.modelSecret?.providerId).toBe("anthropic");
-    expect(mcp.modelSecret?.apiKey).toBe("sk-ant-test");
+    expect(input.modelSource?.kind).toBe("secret");
+    expect(input.mcp.url).toBe("https://cluster/mcp");
   });
 
-  test("modelSecret may carry baseUrl and extraHeaders", () => {
-    const mcp: HarnessStreamInput["mcp"] = {
-      url: "",
-      headers: {},
-      expiresAt: 0,
-      modelSecret: {
-        providerId: "openai-compatible",
-        apiKey: "sk-test",
-        baseUrl: "https://litellm.example.com/v1",
-        extraHeaders: { "x-custom": "value" },
+  test("accepts an explicit HTTP MCP source", () => {
+    const input: Pick<HarnessStreamInput, "mcp" | "mcpSource"> = {
+      mcp: {
+        url: "https://cluster/mcp",
+        headers: { Authorization: "Bearer tok" },
+        expiresAt: Date.now() + 3_600_000,
+      },
+      mcpSource: {
+        kind: "http",
+        url: "https://cluster/mcp",
+        headers: { Authorization: "Bearer tok" },
+        expiresAt: Date.now() + 3_600_000,
       },
     };
-    expect(mcp.modelSecret?.baseUrl).toBe("https://litellm.example.com/v1");
-    expect(mcp.modelSecret?.extraHeaders?.["x-custom"]).toBe("value");
+    expect(input.mcpSource).toBeDefined();
+    if (!input.mcpSource) throw new Error("missing mcpSource");
+    expect(input.mcpSource.kind).toBe("http");
   });
 });

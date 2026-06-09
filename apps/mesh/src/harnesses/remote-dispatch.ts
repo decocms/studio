@@ -50,7 +50,17 @@ export function remoteDispatch(
   sandboxHandle: string,
   deps: RemoteDispatchDeps,
 ): AsyncIterable<UIMessageChunk> {
-  const { signal, processLocal: _processLocal, ...wireInput } = input;
+  const {
+    signal,
+    processLocal: _processLocal,
+    decopilotRuntime: _decopilotRuntime,
+    mcpSource,
+    ...baseWireInput
+  } = input;
+  const wireInput =
+    mcpSource?.kind === "http"
+      ? { ...baseWireInput, mcpSource }
+      : baseWireInput;
   return {
     async *[Symbol.asyncIterator]() {
       // Best-effort delete of the offloaded payload fires ONLY after the

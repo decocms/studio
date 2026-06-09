@@ -26,9 +26,12 @@ registerHarnessFactory(codexHarnessFactory);
 void decopilotDesktopHarnessFactory;
 
 export { localDispatch } from "./local-dispatch";
+export { createSecretModelSource } from "./types";
 export type {
   ChatMessage,
   ChatMode,
+  DecopilotRuntime,
+  DecopilotSecretModelSource,
   Harness,
   HarnessContext,
   HarnessFactory,

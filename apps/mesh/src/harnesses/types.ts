@@ -1,4 +1,17 @@
 import type { UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { DecopilotMcpSource, DecopilotModelSource } from "./sources";
+
+export { createSecretModelSource } from "./sources";
+export type {
+  DecopilotMcpSource,
+  DecopilotModelSource,
+  DecopilotSandboxSource,
+  DecopilotHttpMcpSource,
+  DecopilotSecretModelSource,
+  McpClientLike,
+  OpenMcpSourceOptions,
+  OpenedMcpSource,
+} from "./sources";
 
 /**
  * Harness types — minimal definitions shared by every harness.
@@ -53,19 +66,14 @@ export interface ModelsConfig {
  *  the AI SDK's generic `UIMessage` already provides. */
 export type ChatMessage = UIMessage;
 
-/** In-process-only extras that don't survive remote-dispatch serialization.
- *
- *  Decopilot consumes these; CLI harnesses ignore them entirely. The fields
- *  are produced by `prepareRun`'s outer scope on the cluster side (the
- *  `createUIMessageStream` execute callback's `writer`, the `RunRegistry`
- *  instance, etc.) and forwarded into the decopilot harness so the
- *  streamText loop can wire into the surrounding request-level state.
- *
- *  Strongly-typed members live on the cluster side. To keep the package
- *  portable, we type the structurally-deep cluster fields as `unknown` and
- *  let the cluster cast at the call site. CLI harnesses MUST NOT depend on
- *  any of these fields. */
-export interface HarnessProcessLocal {
+export interface UsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+/** Decopilot-only in-process runtime. This never crosses remote dispatch. */
+export interface DecopilotRuntime {
   /** UI message stream writer from the surrounding
    *  `createUIMessageStream({ execute: ({ writer }) => ... })`. Built-in
    *  tools push data chunks onto it; the decopilot stream merges its
@@ -148,11 +156,7 @@ export interface HarnessProcessLocal {
    *  totalUsage of the LLM call. The outer scope uses this to populate
    *  posthog's `chat_message_completed` event with input/output/total
    *  token counts. */
-  onUsageAggregated: (totalUsage: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  }) => void;
+  onUsageAggregated: (totalUsage: UsageTotals) => void;
 
   /** Called after the auto-titler commits a new title to the DB.
    *  Implementations emit a `decopilot.thread.status` SSE event so tabs
@@ -161,17 +165,24 @@ export interface HarnessProcessLocal {
    *  path without a buffer) may omit it; the omission is safe and silent. */
   onTitleUpdated?: (title: string) => void | Promise<void>;
 
+  /** Per-turn buffer for coalescing `pages/<slug>.html` mirrors. The VM
+   *  `write`/`edit` tools enqueue, the dispatch layer flushes once per
+   *  step (via `pendingOps`). Cluster-only type; narrowed at the harness
+   *  boundary. */
+  htmlPageBuffer: unknown;
+}
+
+/** Generic in-process hooks used by CLI harnesses. Decopilot runtime state
+ *  lives in `decopilotRuntime`, not here. */
+export interface HarnessProcessLocal {
   /** Cluster-side cwd resolver for github-linked agents. Returns the
    *  per-branch sandbox workdir; CLI harnesses use this when running
    *  in hosted execution. When undefined (or returns undefined), the harness
    *  falls back to `process.cwd()`. */
   resolveCwd?: () => Promise<string | undefined>;
 
-  /** Per-turn buffer for coalescing `pages/<slug>.html` mirrors. The VM
-   *  `write`/`edit` tools enqueue, the dispatch layer flushes once per
-   *  step (via `pendingOps`). Cluster-only type; narrowed at the harness
-   *  boundary. */
-  htmlPageBuffer?: unknown;
+  /** Called once per model completion to report cumulative usage totals. */
+  onUsageAggregated?: (totalUsage: UsageTotals) => void;
 }
 
 /** Input passed to every Harness.stream() call. Fully serializable except
@@ -189,44 +200,27 @@ export interface HarnessStreamInput {
 
   // ===== Models (already resolved: credential → key/headers, permissions checked) =====
   models: ModelsConfig;
+  /** Resolved main model source for runtimes that cannot access the cluster
+   *  vault/aiProviders. Secret sources are serializable and may cross the link
+   *  protocol; in-process model sources are local-only and must not cross it. */
+  modelSource?: DecopilotModelSource;
+  /** Resolved MCP source. HTTP sources are serializable; in-process clients are
+   *  local-only and stripped before remote dispatch. */
+  mcpSource?: DecopilotMcpSource;
+  /** Decopilot-only in-process runtime, local to cluster execution. */
+  decopilotRuntime?: DecopilotRuntime;
 
   // ===== Tool gateway =====
-  /** MCP endpoint the harness should connect to. In-process (decopilot,
-   *  cluster-side claude-code/codex) uses `getInternalUrl()/mcp/virtual-mcp/<agentId>`;
-   *  remote-cli (desktop daemon dispatch) uses the cluster's public URL.
-   *  The Bearer token is a 1h-TTL temp key — `expiresAt` carries its
-   *  absolute deadline so remote daemons can refresh proactively. */
+  /** Serializable HTTP MCP endpoint the harness should connect to.
+   *  In-process Decopilot may use DecopilotMcpSource(kind="in-process")
+   *  outside the wire schema; such values must never cross the link
+   *  protocol boundary. The Bearer token is a 1h-TTL temp key —
+   *  `expiresAt` carries its absolute deadline so remote daemons can
+   *  refresh proactively. */
   mcp: {
     url: string;
     headers: Record<string, string>;
     expiresAt: number;
-    /**
-     * Injected main chat-model secret for desktop decopilot activation.
-     *
-     * Only present when `sandboxProviderKind === "user-desktop"` AND
-     * `harnessId === "decopilot"`. The desktop activates its MeshProvider
-     * from this field instead of reading from vault (which is cluster-only).
-     * Sub-provider keys (image, deep-research) are NEVER included here —
-     * those built-ins run cluster-side.
-     *
-     * ⚠️ SECURITY: This field carries an org provider API key in plaintext
-     * over HTTPS. Accepted scope: single main chat-completion key, scoped to
-     * one run. Hardening follow-up: cluster model-proxy (spec §3.9) — the
-     * desktop calls the proxy with the daemon token; no provider key ever
-     * transits to the desktop.
-     *
-     * Never log this field — it contains a provider API key.
-     */
-    modelSecret?: {
-      /** Provider identifier, e.g. "anthropic", "openai", "gemini". */
-      providerId: string;
-      /** The resolved API key (or credential secret). Plaintext over HTTPS. */
-      apiKey: string;
-      /** Optional endpoint override for self-hosted/LiteLLM deployments. */
-      baseUrl?: string;
-      /** Additional request headers the provider adapter requires. */
-      extraHeaders?: Record<string, string>;
-    };
   };
 
   // ===== Mode (forwarded; each harness interprets independently) =====
@@ -280,10 +274,9 @@ export interface HarnessStreamInput {
    */
   runFenceToken?: string;
 
-  /** Non-serializable extras for in-process dispatch. Remote dispatch
-   *  strips this field — see `HarnessProcessLocal`. The decopilot
-   *  harness REQUIRES this to be set and throws if missing; CLI harnesses
-   *  ignore it. */
+  /** Non-serializable generic extras for in-process dispatch. Remote dispatch
+   *  strips this field. Decopilot-specific runtime state lives in
+   *  `decopilotRuntime`; CLI harnesses read the generic hooks here. */
   processLocal?: HarnessProcessLocal;
 }
 

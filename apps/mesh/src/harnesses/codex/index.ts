@@ -301,7 +301,7 @@ export const codexHarnessFactory: HarnessFactory = {
             // invoked without `processLocal` (e.g., from a remote
             // runner), so the call is conditional.
             const totals = usageAcc.totalTokens();
-            input.processLocal?.onUsageAggregated(totals);
+            input.processLocal?.onUsageAggregated?.(totals);
           }
         } finally {
           // CRITICAL: codex app-server is a per-request child process.

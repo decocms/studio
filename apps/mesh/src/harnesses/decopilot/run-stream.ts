@@ -158,8 +158,8 @@ export interface RunDecopilotStreamExtras {
   /**
    * The run-registry itself. Today this is unused inside `runDecopilotStream`
    * but is forwarded from the outer dispatch in case future deferred-finish
-   * recovery paths need it. Kept to preserve a single shape for
-   * `HarnessProcessLocal` across in-tree consumers.
+   * recovery paths need it. Kept on `DecopilotRuntime` so the cluster
+   * dispatch layer owns run lifecycle state.
    *
    * Source: passed in through `dispatchRun`'s `deps.runRegistry`.
    */

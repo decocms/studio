@@ -77,6 +77,94 @@ describe("harnessStreamInputSchema", () => {
       expect("processLocal" in result.data).toBe(false);
     }
   });
+
+  it("rejects in-process MCP sources at the wire boundary", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      mcpSource: {
+        kind: "in-process",
+        client: {},
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("round-trips an HTTP MCP source", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      mcpSource: {
+        kind: "http",
+        url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
+        headers: { Authorization: "Bearer fixture" },
+        expiresAt: 9999999999000,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mcpSource).toEqual({
+        kind: "http",
+        url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
+        headers: { Authorization: "Bearer fixture" },
+        expiresAt: 9999999999000,
+      });
+    }
+  });
+
+  it("round-trips a resolved secret model source", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      modelSource: {
+        kind: "secret",
+        providerId: "openai-compatible",
+        apiKey: "sk-test",
+        modelId: "gpt-4.1",
+        baseUrl: "https://litellm.example.com/v1",
+        extraHeaders: { "x-provider": "mesh" },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.modelSource).toEqual({
+        kind: "secret",
+        providerId: "openai-compatible",
+        apiKey: "sk-test",
+        modelId: "gpt-4.1",
+        baseUrl: "https://litellm.example.com/v1",
+        extraHeaders: { "x-provider": "mesh" },
+      });
+    }
+  });
+
+  it("rejects legacy nested mcp model secrets", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      mcp: {
+        ...minimalInput.mcp,
+        modelSecret: {
+          providerId: "anthropic",
+          apiKey: "sk-ant",
+        },
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects in-process model sources at the wire boundary", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      modelSource: {
+        kind: "in-process",
+        model: {},
+        modelId: "claude-sonnet-4",
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("capabilitySchema", () => {

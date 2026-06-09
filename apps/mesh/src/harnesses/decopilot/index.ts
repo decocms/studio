@@ -14,7 +14,7 @@
  * `ctx` so the `HarnessStreamInput` shape stays serializable for a
  * future remote transport.
  *
- * REQUIRES `input.processLocal` — decopilot reads the writer, runRegistry,
+ * REQUIRES `input.decopilotRuntime` — decopilot reads the writer, runRegistry,
  * processedMessages, mutable-state bridges, and other in-process extras
  * out of that field. Remote dispatch will need a different bridge; today
  * the harness throws if processLocal is missing.
@@ -28,10 +28,15 @@
  * leaking raw JSON into every subsequent turn.
  */
 
-import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { UIMessageChunk } from "ai";
 import type { HarnessContext } from "../../core/harness-context";
 import type { StudioContext } from "../../core/studio-context";
-import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
+import type {
+  DecopilotRuntime,
+  Harness,
+  HarnessFactory,
+  HarnessStreamInput,
+} from "../types";
 import type { MeshProvider } from "../../ai-providers/types";
 import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
 import type { ChatMessage, ModelInfo } from "../../api/routes/decopilot/types";
@@ -49,45 +54,16 @@ import {
   resolveStudioPackRuntime,
 } from "../../tools/virtual/studio-pack";
 
-/** Narrowed view of `HarnessStreamInput.processLocal` for the cluster
- *  decopilot harness. The package types those structurally-deep fields
- *  as `unknown` so the package stays portable to the desktop daemon; the
- *  cluster knows it builds richer values and narrows here at the
- *  harness boundary. */
-interface ClusterProcessLocal {
-  writer: UIMessageStreamWriter;
-  toolOutputMap: Map<string, string>;
+type ClusterDecopilotRuntime = DecopilotRuntime & {
   pendingImages: PendingImage[];
-  threadId: string;
-  currentThreadTitle: string;
-  registrySignal: AbortSignal;
   runRegistry: RunRegistry;
   provider: MeshProvider | null;
-  /** Provider used for `generate_image`. Aliases `provider` when the org
-   *  `image` tier shares the chat credential (or no tier is configured). */
   imageProvider: MeshProvider | null;
-  /** Provider used for `web_search`'s deep research path. Aliases
-   *  `provider` when the org `web_research` tier shares the chat
-   *  credential (or no tier is configured). Decoupling lets web_search
-   *  keep working when the chat model is routed via LiteLLM/OpenRouter
-   *  but the deep research tier is still Gemini. */
   deepResearchProvider: MeshProvider | null;
-  /** Provider/model used only for title generation. May differ from the
-   *  main chat provider when the org fast tier uses a different credential. */
   titleProvider?: MeshProvider | null;
   titleModel?: ModelInfo | null;
-  registerPendingOp: (op: Promise<void>) => void;
-  isStreamFinished: () => boolean;
-  onUsageAggregated: (totalUsage: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  }) => void;
-  onTitleUpdated?: (title: string) => void | Promise<void>;
-  /** Per-turn HTML-page coalescing buffer. Built in dispatch-run.ts so the
-   *  flush hook can be scheduled alongside the other `pendingOps`. */
   htmlPageBuffer: HtmlPageBuffer;
-}
+};
 
 /** Narrowed view of the cluster's richer input fields, mirroring what
  *  `dispatch-run.ts` actually builds. */
@@ -100,7 +76,7 @@ interface ClusterInputView {
 export const decopilotHarnessFactory: HarnessFactory = {
   id: "decopilot",
   create(harnessCtx: HarnessContext): Harness {
-    // `stream()` refuses to run without processLocal, so any cluster-only
+    // `stream()` refuses to run without decopilotRuntime, so any cluster-only
     // ctx field reads only happen on a real StudioContext value. The widening
     // cast here is a TS-level erasure; the defensive check below catches a
     // narrow HarnessContext smuggled in via misuse (e.g. a non-decopilot
@@ -117,17 +93,19 @@ export const decopilotHarnessFactory: HarnessFactory = {
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
         // Package types are intentionally loose so the harness package
         // is daemon-portable; narrow back to cluster-rich types here.
-        const pl = input.processLocal as ClusterProcessLocal | undefined;
+        const runtime = input.decopilotRuntime as
+          | ClusterDecopilotRuntime
+          | undefined;
         const clusterInput = input as HarnessStreamInput & ClusterInputView;
-        if (!pl) {
+        if (!runtime) {
           throw new Error(
-            "Decopilot harness requires HarnessStreamInput.processLocal in this build. " +
+            "Decopilot harness requires HarnessStreamInput.decopilotRuntime in this build. " +
               "Remote dispatch is not yet supported.",
           );
         }
-        if (!pl.provider) {
+        if (!runtime.provider) {
           throw new Error(
-            "Decopilot harness requires processLocal.provider to be activated.",
+            "Decopilot harness requires decopilotRuntime.provider to be activated.",
           );
         }
 
@@ -165,14 +143,15 @@ export const decopilotHarnessFactory: HarnessFactory = {
         }
 
         const tools = await assembleDecopilotTools(effectiveInput, ctx, {
-          writer: pl.writer,
-          toolOutputMap: pl.toolOutputMap,
-          pendingImages: pl.pendingImages,
-          threadId: pl.threadId,
-          provider: pl.provider,
-          imageProvider: pl.imageProvider ?? pl.provider,
-          deepResearchProvider: pl.deepResearchProvider ?? pl.provider,
-          htmlPageBuffer: pl.htmlPageBuffer,
+          writer: runtime.writer,
+          toolOutputMap: runtime.toolOutputMap,
+          pendingImages: runtime.pendingImages,
+          threadId: runtime.threadId,
+          provider: runtime.provider,
+          imageProvider: runtime.imageProvider ?? runtime.provider,
+          deepResearchProvider:
+            runtime.deepResearchProvider ?? runtime.provider,
+          htmlPageBuffer: runtime.htmlPageBuffer,
         });
 
         try {
@@ -211,23 +190,23 @@ export const decopilotHarnessFactory: HarnessFactory = {
           );
 
           yield* runDecopilotStream(effectiveInput, ctx, tools, prompt, {
-            provider: pl.provider,
-            titleProvider: pl.titleProvider ?? pl.provider,
+            provider: runtime.provider,
+            titleProvider: runtime.titleProvider ?? runtime.provider,
             titleModel:
-              pl.titleModel ?? input.models.fast ?? input.models.thinking,
-            registrySignal: pl.registrySignal,
-            runRegistry: pl.runRegistry,
+              runtime.titleModel ?? input.models.fast ?? input.models.thinking,
+            registrySignal: runtime.registrySignal,
+            runRegistry: runtime.runRegistry,
             processedSystemMessages,
             processedMessages: narrowedMessages,
             originalMessages,
-            threadId: pl.threadId,
-            currentThreadTitle: pl.currentThreadTitle,
-            registerPendingOp: pl.registerPendingOp,
-            isStreamFinished: pl.isStreamFinished,
-            onUsageAggregated: pl.onUsageAggregated,
-            pendingImages: pl.pendingImages,
-            onTitleUpdated: pl.onTitleUpdated,
-            writer: pl.writer,
+            threadId: runtime.threadId,
+            currentThreadTitle: runtime.currentThreadTitle,
+            registerPendingOp: runtime.registerPendingOp,
+            isStreamFinished: runtime.isStreamFinished,
+            onUsageAggregated: runtime.onUsageAggregated,
+            pendingImages: runtime.pendingImages,
+            onTitleUpdated: runtime.onTitleUpdated,
+            writer: runtime.writer,
           });
         } finally {
           await tools.close().catch(() => {});

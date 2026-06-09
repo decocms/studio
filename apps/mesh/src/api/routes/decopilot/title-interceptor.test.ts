@@ -38,18 +38,7 @@ function buildStubDeps(currentThreadTitle: string = "New chat"): {
 
   const deps: TitleInterceptorDeps = {
     ctx: {} as never,
-    processLocal: {
-      isStreamFinished,
-      onUsageAggregated: () => {},
-      writer: writerWrite as never,
-      toolOutputMap: new Map(),
-      pendingImages: [],
-      threadId: "thread-1",
-      currentThreadTitle,
-      registrySignal: new AbortController().signal,
-      runRegistry: null,
-      htmlPageBuffer: null,
-    } as never,
+    isStreamFinished,
     currentThreadTitle,
     threadId: "thread-1",
     writer: { write: writerWrite } as never,

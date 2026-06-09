@@ -5,7 +5,7 @@
  * Registered in the daemon's `dispatchHarnessRegistry` under the id "decopilot".
  * Unlike the cluster `decopilotHarnessFactory` (which threads the full
  * `StudioContext`, vault, storage, and run-registry), this factory:
- *   - activates the chat provider from the injected `mcp.modelSecret`
+ *   - activates the chat provider from the injected `modelSource`
  *     (`provider-from-secret`) instead of `ctx.aiProviders.activate` + vault;
  *   - opens an HTTP MCP `Client` to `mcp.url` and exposes its tools as
  *     passthrough tools (`toolsFromMCP`);
@@ -18,14 +18,13 @@
  * specifier and no `StudioContext` ever enters this graph, so the daemon bundles
  * it and `tsc` does not overflow.
  *
- * ⚠️ SECURITY: `mcp.modelSecret` carries an org chat-completion API key in
+ * ⚠️ SECURITY: `modelSource(kind="secret")` carries an org chat-completion API key in
  * plaintext over HTTPS. Never log it. Hardening (cluster model-proxy, spec §3.9)
  * is deferred.
  */
 
 import type { UIMessageChunk } from "ai";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type {
   Harness,
@@ -33,6 +32,7 @@ import type {
   HarnessFactory,
   HarnessStreamInput,
 } from "../types";
+import { openMcpSource } from "../sources";
 import { createProviderFromSecret } from "./provider-from-secret";
 import { toolsFromMCP } from "./local-helpers";
 import { buildLocalTools } from "./local-tools";
@@ -43,20 +43,6 @@ import type { ConnectionsBlockTool } from "../decopilot/connections-block";
 import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
 import type { DesktopToolCtx } from "./types";
 
-/** Open an HTTP MCP client to the cluster's virtual-mcp endpoint. The caller
- *  must `client.close()`. */
-async function openMcpClient(mcp: HarnessStreamInput["mcp"]): Promise<Client> {
-  const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
-    requestInit: { headers: mcp.headers },
-  });
-  const client = new Client(
-    { name: "decopilot-desktop", version: "1" },
-    { capabilities: {} },
-  );
-  await client.connect(transport);
-  return client;
-}
-
 export const decopilotDesktopHarnessFactory: HarnessFactory = {
   id: "decopilot",
   create(_ctx: HarnessContext): Harness {
@@ -64,26 +50,40 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
       id: "decopilot",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
         const { mcp } = input;
-        if (!mcp.modelSecret) {
+        const modelSource =
+          input.modelSource?.kind === "secret" ? input.modelSource : null;
+        if (!modelSource) {
           throw new Error(
-            "decopilot-desktop requires mcp.modelSecret. The cluster must inject " +
+            "decopilot-desktop requires a secret modelSource. The cluster must inject " +
               "the chat-model credential when routing decopilot to user-desktop.",
           );
         }
 
         // 1. Activate the chat provider locally from the injected secret. Never
-        //    log mcp.modelSecret — it carries a provider API key.
-        const provider = createProviderFromSecret(mcp.modelSecret);
+        //    log modelSource — it carries a provider API key.
+        const provider = createProviderFromSecret(modelSource);
 
         // Diagnostics (provider id only, never the key). On the desktop this
         // runs inside the spawned daemon, so it surfaces in the link terminal.
         console.log(
-          `[decopilot-desktop] stream start provider=${mcp.modelSecret.providerId} ` +
+          `[decopilot-desktop] stream start provider=${modelSource.providerId} ` +
             `model=${input.models.thinking.id} mcpUrl=${mcp.url} mode=${input.mode}`,
         );
 
         // 2. Open the MCP client to the cluster's virtual-mcp endpoint.
-        const mcpClient = await openMcpClient(mcp);
+        const mcpSource =
+          input.mcpSource?.kind === "http"
+            ? input.mcpSource
+            : {
+                kind: "http" as const,
+                url: mcp.url,
+                headers: mcp.headers,
+                expiresAt: mcp.expiresAt,
+              };
+        const openedMcp = await openMcpSource(mcpSource, {
+          clientInfo: { name: "decopilot-desktop", version: "1" },
+        });
+        const mcpClient = openedMcp.client as Client;
         try {
           const toolOutputMap = new Map<string, string>();
 
@@ -196,7 +196,7 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
             agentIdForMetadata: input.agent.id,
           });
         } finally {
-          await mcpClient.close().catch(() => {});
+          await openedMcp.close();
         }
       },
     };

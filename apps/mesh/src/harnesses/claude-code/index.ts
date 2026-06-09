@@ -288,7 +288,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
           // `processLocal` (e.g., from a remote runner), so the call is
           // conditional.
           const totals = usageAcc.totalTokens();
-          input.processLocal?.onUsageAggregated(totals);
+          input.processLocal?.onUsageAggregated?.(totals);
         }
       },
     };

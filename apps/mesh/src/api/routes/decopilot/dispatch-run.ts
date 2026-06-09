@@ -51,10 +51,13 @@ import type { WorkItemSandbox } from "./link-work-queue";
 import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
+  DecopilotRuntime,
+  DecopilotSecretModelSource,
   HarnessId,
   HarnessProcessLocal,
   HarnessStreamInput,
 } from "@/harnesses";
+import { createSecretModelSource } from "@/harnesses";
 import {
   sanitizeStreamError,
   stringifyError,
@@ -551,7 +554,7 @@ export async function dispatchRunAndWait(
  */
 export type WireHarnessInput = Omit<
   HarnessStreamInput,
-  "signal" | "processLocal"
+  "signal" | "processLocal" | "decopilotRuntime"
 > & { harnessId: HarnessId };
 
 interface PreparedRun {
@@ -997,14 +1000,13 @@ async function prepareRun(
             target.sandboxProviderKind,
           );
 
-    // ⚠️ SECURITY: Inject the main chat-model API key into the wire input for
-    // user-desktop decopilot. The key transits to the desktop daemon over HTTPS
-    // so it can activate the MeshProvider locally without vault access.
-    // Scoped to the single main chat-completion credential only — sub-provider
-    // keys (image, deep-research) are never included; those built-ins stay
-    // cluster-side. Hardening follow-up: cluster model-proxy (spec §3.9).
-    //
-    let modelSecret: HarnessStreamInput["mcp"]["modelSecret"];
+    // ⚠️ SECURITY: Inject the resolved main chat-model source into the wire
+    // input for user-desktop decopilot. Secret sources transit to the desktop
+    // daemon over HTTPS so it can activate the provider locally without vault
+    // access. Scoped to the single main chat-completion credential only —
+    // sub-provider keys (image, deep-research) are never included; those
+    // built-ins stay cluster-side. Hardening follow-up: cluster model-proxy.
+    let modelSource: DecopilotSecretModelSource | undefined;
     if (
       target.sandboxProviderKind === "user-desktop" &&
       harnessId === "decopilot"
@@ -1016,30 +1018,24 @@ async function prepareRun(
         .catch(() => null);
       if (resolved) {
         const { keyInfo, apiKey } = resolved;
-        // openai-compatible stores a JSON blob { baseUrl, apiKey }; unpack it.
-        if (keyInfo.providerId === "openai-compatible") {
-          try {
-            const parsed = JSON.parse(apiKey) as {
-              baseUrl?: string;
-              apiKey?: string;
-            };
-            modelSecret = {
-              providerId: keyInfo.providerId,
-              apiKey: parsed.apiKey ?? "",
-              ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}),
-            };
-          } catch {
-            modelSecret = { providerId: keyInfo.providerId, apiKey };
-          }
-        } else {
-          modelSecret = { providerId: keyInfo.providerId, apiKey };
-        }
+        modelSource = createSecretModelSource({
+          providerId: keyInfo.providerId,
+          apiKey,
+          modelId: input.models.thinking.id,
+        });
       }
     }
 
-    const mcp: HarnessStreamInput["mcp"] = modelSecret
-      ? { ...mcpBase, modelSecret }
-      : mcpBase;
+    const mcp: HarnessStreamInput["mcp"] = mcpBase;
+    const mcpSource: HarnessStreamInput["mcpSource"] =
+      mcp.expiresAt > 0
+        ? {
+            kind: "http",
+            url: mcp.url,
+            headers: mcp.headers,
+            expiresAt: mcp.expiresAt,
+          }
+        : undefined;
 
     const wireHarnessInput: WireHarnessInput = {
       harnessId,
@@ -1048,6 +1044,8 @@ async function prepareRun(
       resumeSessionRef,
       messages: materializedMessages,
       models: input.models,
+      modelSource,
+      mcpSource,
       mcp,
       mode: input.mode,
       temperature: input.temperature,
@@ -1082,7 +1080,27 @@ async function prepareRun(
         // outer-scope `htmlPageBufferRef` so `onStepFinish` can see it.
         const htmlPageBuffer = createHtmlPageBuffer(ctx, writer);
         htmlPageBufferRef = htmlPageBuffer;
-        const processLocal: HarnessProcessLocal = {
+        const onUsageAggregated = (totalUsage: {
+          inputTokens: number;
+          outputTokens: number;
+          totalTokens: number;
+        }) => {
+          aggregatedUsage = {
+            inputTokens: aggregatedUsage.inputTokens + totalUsage.inputTokens,
+            outputTokens:
+              aggregatedUsage.outputTokens + totalUsage.outputTokens,
+            totalTokens: aggregatedUsage.totalTokens + totalUsage.totalTokens,
+          };
+        };
+        const onTitleUpdated = sseHub
+          ? buildOnTitleUpdated({
+              ctx,
+              sseHub,
+              threadId: mem.thread.id,
+              organizationId: input.organizationId,
+            })
+          : undefined;
+        const decopilotRuntime: DecopilotRuntime = {
           writer,
           toolOutputMap,
           pendingImages,
@@ -1103,22 +1121,11 @@ async function prepareRun(
             pendingOps.push(op);
           },
           isStreamFinished: () => streamFinished,
-          onUsageAggregated: (totalUsage) => {
-            aggregatedUsage = {
-              inputTokens: aggregatedUsage.inputTokens + totalUsage.inputTokens,
-              outputTokens:
-                aggregatedUsage.outputTokens + totalUsage.outputTokens,
-              totalTokens: aggregatedUsage.totalTokens + totalUsage.totalTokens,
-            };
-          },
-          onTitleUpdated: sseHub
-            ? buildOnTitleUpdated({
-                ctx,
-                sseHub,
-                threadId: mem.thread.id,
-                organizationId: input.organizationId,
-              })
-            : undefined,
+          onUsageAggregated,
+          onTitleUpdated,
+        };
+        const processLocal: HarnessProcessLocal = {
+          onUsageAggregated,
         };
 
         // Layer the in-process extras onto the eagerly-built wire input.
@@ -1129,6 +1136,7 @@ async function prepareRun(
           ...wireHarnessInput,
           signal: registrySignal,
           processLocal,
+          decopilotRuntime,
         };
 
         // claude-code cwd resolution: with the `host` runner gone, the
@@ -1245,11 +1253,11 @@ async function prepareRun(
         // persistence/SSE ownership while each harness owns title generation.
         const harnessChunks = interceptTitleChunks(rawHarnessChunks, {
           ctx,
-          processLocal,
+          isStreamFinished: decopilotRuntime.isStreamFinished,
           currentThreadTitle: mem.thread.title,
           threadId: mem.thread.id,
           writer,
-          onTitleUpdated: processLocal.onTitleUpdated,
+          onTitleUpdated,
         });
         const harnessStream = asReadableStream(harnessChunks);
 

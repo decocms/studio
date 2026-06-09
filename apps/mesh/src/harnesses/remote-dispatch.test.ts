@@ -126,6 +126,39 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
     expect(env.input.messages).toEqual([{ role: "user", content: "hi" }]);
   });
 
+  it("strips local-only runtime fields before dispatching to a daemon", async () => {
+    const captured: { body?: string } = {};
+    const proxy = async (_h: string, _p: string, init: { body?: string }) => {
+      captured.body = init.body;
+      return resFromSse([JSON.stringify({ type: "done" })]);
+    };
+
+    for await (const _ of remoteDispatch(
+      "decopilot",
+      {
+        runId: "r",
+        messages: [],
+        processLocal: { onUsageAggregated: () => {} },
+        decopilotRuntime: { writer: {}, provider: {} },
+        mcpSource: { kind: "in-process", client: {} },
+        mcp: {
+          url: "https://mesh.example.com/mcp",
+          headers: {},
+          expiresAt: Date.now() + 60_000,
+        },
+      } as never,
+      "h",
+      { proxyDaemonRequest: proxy } as never,
+    )) {
+      /* */
+    }
+
+    const env = JSON.parse(captured.body!);
+    expect("processLocal" in env.input).toBe(false);
+    expect("decopilotRuntime" in env.input).toBe(false);
+    expect("mcpSource" in env.input).toBe(false);
+  });
+
   it("calls offload cleanup after a clean completion", async () => {
     let cleanupKey: string | null = null;
     const proxy = async () => resFromSse([JSON.stringify({ type: "done" })]);
