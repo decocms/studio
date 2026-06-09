@@ -24,7 +24,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("path", "text", (col) => col.notNull())
     // Parent directory path ("" for top-level entries). Drives listDir.
     .addColumn("parent", "text", (col) => col.notNull())
-    .addColumn("kind", "text", (col) => col.notNull())
+    .addColumn("kind", "text", (col) =>
+      col.notNull().check(sql`kind in ('file', 'dir')`),
+    )
     // sha256 of the bytes for files; null for dirs.
     .addColumn("content_hash", "text")
     .addColumn("size", "bigint", (col) => col.notNull().defaultTo(0))
