@@ -133,6 +133,7 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
     toolApprovalLevel: params.toolApprovalLevel,
     isPlanMode: params.isPlanMode,
     objectStorage: params.ctx.objectStorage,
+    includeUnavailableClusterOnlyTools: true,
     pendingImages: params.pendingImages,
     imageTool:
       params.imageProvider && params.imageModelInfo

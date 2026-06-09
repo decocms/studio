@@ -61,6 +61,7 @@ export interface BuildPortableBuiltInToolsParams {
     provider: PortableImageProvider;
     imageModelInfo: PortableImageModelInfo;
   };
+  includeUnavailableClusterOnlyTools?: boolean;
   subtaskRelay?: {
     mcpClient: Client;
     models: PortableSubtaskModels;
@@ -410,6 +411,62 @@ function createSubtaskRelayTool(params: {
   });
 }
 
+const UnavailableWebSearchInputSchema = z.object({
+  query: z
+    .string()
+    .max(10_000)
+    .describe(
+      "The research query. Be specific about what information you need.",
+    ),
+});
+
+const UnavailableUpdateInterestsInputSchema = z.object({
+  interests: z
+    .array(
+      z.object({
+        title: z
+          .string()
+          .max(120)
+          .describe("Short noun phrase, e.g. 'Learning Rust'"),
+        summary: z
+          .string()
+          .max(500)
+          .describe("One or two sentences of context, including any progress"),
+      }),
+    )
+    .max(10),
+});
+
+function createUnavailableWebSearchTool() {
+  return tool({
+    description:
+      "Search the web and synthesize a comprehensive research report. " +
+      "This tool is only available in cluster Decopilot.",
+    inputSchema: zodSchema(UnavailableWebSearchInputSchema),
+    execute: async (
+      _input: z.infer<typeof UnavailableWebSearchInputSchema>,
+    ): Promise<{ unavailable: true }> => {
+      throw new Error("web_search is only available in cluster Decopilot.");
+    },
+  });
+}
+
+function createUnavailableUpdateInterestsTool() {
+  return tool({
+    description:
+      "Record what the user is durably working toward (their goals/interests). " +
+      "This tool is only available in cluster Decopilot.",
+    inputSchema: zodSchema(UnavailableUpdateInterestsInputSchema),
+    execute: async (
+      _input: z.infer<typeof UnavailableUpdateInterestsInputSchema>,
+    ): Promise<{ unavailable: true }> => {
+      throw new Error(
+        "update_interests is only available in cluster Decopilot.",
+      );
+    },
+  });
+}
+
 export function buildPortableBuiltInTools(
   params: BuildPortableBuiltInToolsParams,
 ): ToolSet {
@@ -422,6 +479,7 @@ export function buildPortableBuiltInTools(
     objectStorage,
     pendingImages,
     imageTool,
+    includeUnavailableClusterOnlyTools,
     subtaskRelay,
   } = params;
   const sandboxNeedsApproval = isPlanMode || toolApprovalLevel !== "auto";
@@ -449,6 +507,11 @@ export function buildPortableBuiltInTools(
       ...subtaskRelay,
       needsApproval: sandboxNeedsApproval,
     });
+  }
+
+  if (includeUnavailableClusterOnlyTools) {
+    tools.web_search = createUnavailableWebSearchTool();
+    tools.update_interests = createUnavailableUpdateInterestsTool();
   }
 
   if (imageTool) {
