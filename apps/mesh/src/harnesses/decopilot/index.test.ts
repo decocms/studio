@@ -4,13 +4,11 @@ import type { DecopilotRuntime, HarnessStreamInput } from "../types";
 
 function makeInput(overrides: Partial<HarnessStreamInput>): HarnessStreamInput {
   const runtime = {
-    writer: {} as never,
     registrySignal: new AbortController().signal,
     runRegistry: {},
     registerPendingOp: () => {},
     isStreamFinished: () => false,
     onUsageAggregated: () => {},
-    htmlPageBuffer: {},
   } satisfies DecopilotRuntime;
 
   return {

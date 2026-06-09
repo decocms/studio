@@ -14,10 +14,10 @@
  * `ctx` so the `HarnessStreamInput` shape stays serializable for a
  * future remote transport.
  *
- * REQUIRES `input.decopilotRuntime` — decopilot reads the writer, runRegistry,
- * processedMessages, mutable-state bridges, and other in-process extras
- * out of that field. Remote dispatch will need a different bridge; today
- * the harness throws if processLocal is missing.
+ * REQUIRES `input.decopilotRuntime` — decopilot reads runRegistry, title
+ * model selection, mutable-state bridges, and other in-process extras out of
+ * that field. Remote dispatch will need a different bridge; today the harness
+ * throws if processLocal is missing.
  *
  * Owns `processConversation` itself (rather than receiving its outputs
  * through processLocal) because `convertToModelMessages` needs the real
@@ -46,7 +46,7 @@ import { assembleDecopilotTools } from "./tools";
 import { assembleDecopilotPrompt } from "./prompt";
 import { runDecopilotStream } from "./run-stream";
 import type { PendingImage } from "./built-in-tools";
-import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
+import { createHtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import { createProviderFromSecret } from "./provider-from-secret";
 import type { DecopilotSecretModelSource } from "../types";
 import { createSideChannelWriter } from "../side-channel-writer";
@@ -54,7 +54,6 @@ import { createSideChannelWriter } from "../side-channel-writer";
 type ClusterDecopilotRuntime = DecopilotRuntime & {
   runRegistry: RunRegistry;
   titleModel?: ModelInfo | null;
-  htmlPageBuffer: HtmlPageBuffer;
 };
 
 /** Narrowed view of the cluster's richer input fields, mirroring what
@@ -135,6 +134,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
         const toolOutputMap = new Map<string, string>();
         const pendingImages: PendingImage[] = [];
         const sideChannel = createSideChannelWriter();
+        const htmlPageBuffer = createHtmlPageBuffer(ctx, sideChannel.writer);
         let tools: Awaited<ReturnType<typeof assembleDecopilotTools>> | null =
           null;
 
@@ -147,7 +147,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
             provider,
             imageProvider,
             deepResearchProvider,
-            htmlPageBuffer: runtime.htmlPageBuffer,
+            htmlPageBuffer,
           });
 
           // Run `processConversation` with the REAL tool set — the AI SDK's
@@ -200,7 +200,11 @@ export const decopilotHarnessFactory: HarnessFactory = {
             writer: sideChannel.writer,
             sideChunks: sideChannel.stream,
             closeSideChunks: sideChannel.close,
-            onStepFinish: async () => {},
+            onStepFinish: async () => {
+              await htmlPageBuffer.flush().catch((err) => {
+                console.error("[decopilot] html-page flush failed", err);
+              });
+            },
           });
         } finally {
           sideChannel.close();

@@ -1,4 +1,4 @@
-import type { UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 import type {
   DecopilotMcpSource,
   DecopilotModelSource,
@@ -82,12 +82,6 @@ export interface UsageTotals {
 
 /** Decopilot-only in-process runtime. This never crosses remote dispatch. */
 export interface DecopilotRuntime {
-  /** UI message stream writer from the surrounding
-   *  `createUIMessageStream({ execute: ({ writer }) => ... })`. Built-in
-   *  tools push data chunks onto it; the decopilot stream merges its
-   *  output via `writer.merge(...)`. */
-  writer: UIMessageStreamWriter;
-
   /** Run-registry abort signal for this run. Listened to by streamText
    *  (`abortSignal`), by genTitle (`abortSignal`), and queried from
    *  `onFinish`/`onAbort` callbacks to distinguish a real model finish
@@ -125,12 +119,6 @@ export interface DecopilotRuntime {
    *  Optional — callers that cannot supply sseHub (e.g. orphan-recovery
    *  path without a buffer) may omit it; the omission is safe and silent. */
   onTitleUpdated?: (title: string) => void | Promise<void>;
-
-  /** Per-turn buffer for coalescing `pages/<slug>.html` mirrors. The VM
-   *  `write`/`edit` tools enqueue, the dispatch layer flushes once per
-   *  step (via `pendingOps`). Cluster-only type; narrowed at the harness
-   *  boundary. */
-  htmlPageBuffer: unknown;
 }
 
 /** Generic in-process hooks used by CLI harnesses. Decopilot runtime state

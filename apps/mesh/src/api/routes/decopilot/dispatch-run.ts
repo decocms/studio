@@ -51,7 +51,6 @@ import { resolveRuntimeConfig } from "@/tools/sandbox/helpers";
 import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
 import { getSettings } from "@/settings";
 import type { WorkItemSandbox } from "./link-work-queue";
-import { createHtmlPageBuffer } from "@/harnesses/decopilot/built-in-tools/vm-tools/html-page-buffer";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 import type {
@@ -996,11 +995,6 @@ async function prepareRun(
 
     let streamFinished = false;
     const pendingOps: Promise<void>[] = [];
-    // Reference assigned inside `execute` once the writer is available;
-    // `onStepFinish` (a sibling callback to `execute`) closes over this
-    // variable and reads it after the first step has been dispatched.
-    let htmlPageBufferRef: ReturnType<typeof createHtmlPageBuffer> | null =
-      null;
 
     // Pre-load conversation (no system messages — those are built separately)
     // When resuming, requestMessage is undefined — conversation loads entirely
@@ -1134,13 +1128,6 @@ async function prepareRun(
         // only build the non-serializable in-process extras that decopilot
         // needs to participate in the surrounding `createUIMessageStream`
         // scope. CLI harnesses ignore this field.
-        // Per-turn buffer for coalesced HTML-page mirrors. The VM `write`/
-        // `edit` tools enqueue here; `onStepFinish` below schedules a
-        // single `flush()` per step (pushed to `pendingOps`, awaited at
-        // `onFinish` before the stream closes). Assigned to the
-        // outer-scope `htmlPageBufferRef` so `onStepFinish` can see it.
-        const htmlPageBuffer = createHtmlPageBuffer(ctx, writer);
-        htmlPageBufferRef = htmlPageBuffer;
         const onUsageAggregated = (totalUsage: {
           inputTokens: number;
           outputTokens: number;
@@ -1162,14 +1149,12 @@ async function prepareRun(
             })
           : undefined;
         const decopilotRuntime: DecopilotRuntime = {
-          writer,
           registrySignal,
           runRegistry,
           titleModel:
             decopilotTitleConfig?.model ??
             input.models.fast ??
             input.models.thinking,
-          htmlPageBuffer,
           registerPendingOp: (op) => {
             pendingOps.push(op);
           },
@@ -1406,23 +1391,6 @@ async function prepareRun(
             console.error("[decopilot:stream] onStepFinish reactor failed", e);
           }),
         );
-        // Flush coalesced `pages/<slug>.html` mirrors once per step. The
-        // promise is awaited at `onFinish` (Promise.allSettled(pendingOps)
-        // a few lines above), so the stream stays open until every PUT
-        // lands and the `data-html-page-published` UI signals fire. The
-        // ref is null until `execute` constructs the buffer — onStepFinish
-        // can fire before then in unusual edge cases (e.g. a malformed
-        // chunk surfacing as a finished step before execute runs).
-        if (htmlPageBufferRef) {
-          pendingOps.push(
-            htmlPageBufferRef.flush().catch((e: unknown) => {
-              console.error(
-                "[decopilot:stream] onStepFinish html-page flush failed",
-                e,
-              );
-            }),
-          );
-        }
         if (!partEmitter) {
           // v1 (unchanged): coarse whole-message checkpoints — every step on
           // resume, every 5th step otherwise.
