@@ -43,6 +43,7 @@ import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import {
   type ModelMessage,
+  type StreamTextOnStepFinishCallback,
   type SystemModelMessage,
   type ToolSet,
   type UIMessageChunk,
@@ -260,6 +261,15 @@ export interface RunDecopilotStreamExtras {
    * can own tool assembly internally.
    */
   writer: UIMessageStreamWriter;
+
+  /**
+   * Tool side-channel chunks emitted by the harness-owned writer. Cluster and
+   * desktop Decopilot both expose built-in tool metadata this way, while Studio
+   * consumes the resulting UIMessageChunk stream uniformly.
+   */
+  sideChunks?: AsyncIterable<UIMessageChunk>;
+  closeSideChunks?: () => void;
+  onStepFinish?: StreamTextOnStepFinishCallback<ToolSet>;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -491,6 +501,7 @@ export async function* runDecopilotStream(
       models: input.models,
     },
     prepareStep: parentPrepareStep,
+    onStepFinish: extras.onStepFinish,
     passthroughClient: tools.passthroughClient as never,
     connectionsData: {
       tools: tools.connectionsBlockTools,
@@ -518,7 +529,7 @@ export async function* runDecopilotStream(
   //    These were previously inline in the streamText({...}) callbacks.
   //    Now they're Promise-based, attached to result.finishReason /
   //    handle.error.
-  Promise.resolve(result.finishReason)
+  const finishMetricsPromise = Promise.resolve(result.finishReason)
     .then(async (finishReason) => {
       const [totalUsage, usage, request, response] = await Promise.all([
         result.totalUsage,
@@ -640,20 +651,24 @@ export async function* runDecopilotStream(
         });
       }
     });
+  const finishMetricsDonePromise = finishMetricsPromise.catch((err) => {
+    console.error("[decopilot:stream] finish metrics failed", err);
+  });
 
   // onAbort path: the old code's onAbort fires when steps.length > 0
   // and llmCallLogged is false. We re-implement this by watching
   // handle.error AND registrySignal.aborted.
   // The SDK's onAbort fires synchronously before the stream drains, so
-  // we must register this watcher before we start draining the stream
-  // below. We do NOT await it here — we just attach the handler so it
-  // fires whenever the abort resolves.
-  handle.error.then(async (_errMsg) => {
+  // we must register this watcher before we start draining the stream below.
+  // It resolves to an optional metadata chunk that is merged alongside title
+  // and side-channel chunks so abort usage is not lost after the main stream
+  // closes.
+  const abortMetadataPromise = handle.error.then(async (_errMsg) => {
     // Only fire the abort metrics path if the signal was aborted AND
     // we haven't already logged metrics via the onFinish path.
-    if (!registrySignal.aborted || llmCallLogged) return;
+    if (!registrySignal.aborted || llmCallLogged) return null;
     const steps = await result.steps;
-    if (!steps.length || llmCallLogged) return;
+    if (!steps.length || llmCallLogged) return null;
     llmCallLogged = true;
     const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
     const abortTotalUsage = steps.reduce(
@@ -705,36 +720,43 @@ export async function* runDecopilotStream(
     // Re-push accumulated usage to the client. On abort the SDK
     // resets message.metadata to its pre-stream state, so we
     // explicitly emit it here before the stream closes.
-    if (abortTotalUsage.totalTokens > 0) {
-      const cost = usageAcc.cost();
-      chunkQueue.push({
-        type: "message-metadata",
-        messageMetadata: {
-          usage: {
-            inputTokens: abortTotalUsage.inputTokens,
-            outputTokens: abortTotalUsage.outputTokens,
-            totalTokens: abortTotalUsage.totalTokens,
-            cachedInputTokens: cacheTotalsOnAbort.read,
-            inputTokenDetails: {
-              cacheReadTokens: cacheTotalsOnAbort.read,
-              cacheWriteTokens: cacheTotalsOnAbort.write,
-              noCacheTokens:
-                abortTotalUsage.inputTokens -
-                cacheTotalsOnAbort.read -
-                cacheTotalsOnAbort.write,
-            },
-            ...(cost > 0 && {
-              providerMetadata: {
-                openrouter: {
-                  usage: { cost },
-                },
-              },
-            }),
+    if (abortTotalUsage.totalTokens <= 0) return null;
+
+    const cost = usageAcc.cost();
+    return {
+      type: "message-metadata",
+      messageMetadata: {
+        usage: {
+          inputTokens: abortTotalUsage.inputTokens,
+          outputTokens: abortTotalUsage.outputTokens,
+          totalTokens: abortTotalUsage.totalTokens,
+          cachedInputTokens: cacheTotalsOnAbort.read,
+          inputTokenDetails: {
+            cacheReadTokens: cacheTotalsOnAbort.read,
+            cacheWriteTokens: cacheTotalsOnAbort.write,
+            noCacheTokens:
+              abortTotalUsage.inputTokens -
+              cacheTotalsOnAbort.read -
+              cacheTotalsOnAbort.write,
           },
+          ...(cost > 0 && {
+            providerMetadata: {
+              openrouter: {
+                usage: { cost },
+              },
+            },
+          }),
         },
-      });
-    }
+      },
+    } satisfies UIMessageChunk;
   });
+
+  const abortMetadataResultPromise = abortMetadataPromise
+    .then((chunk) => chunk)
+    .catch((err) => {
+      console.error("[decopilot:stream] abort metadata failed", err);
+      return null;
+    });
 
   // Posthog: emit `chat_message_completed`/`chat_message_aborted`/
   // `chat_message_failed` is the caller's responsibility (it lives in
@@ -812,7 +834,7 @@ export async function* runDecopilotStream(
     },
   });
 
-  // Drain the uiMessageStream and the side-channel queue concurrently.
+  // Drain the uiMessageStream and side-channel queues concurrently.
   // Both `mainPromise` and `queuePromise` are held across loop
   // iterations — re-armed only after the corresponding source produces
   // a value — so we never lose chunks. The queue is a strict single-
@@ -825,38 +847,72 @@ export async function* runDecopilotStream(
         kind: "queue";
         value: { done: false; value: UIMessageChunk } | { done: true };
       }
+    | { kind: "side"; value: IteratorResult<UIMessageChunk> }
+    | { kind: "finish-metrics" }
+    | { kind: "abort-metadata"; value: UIMessageChunk | null }
     | { kind: "title"; value: UIMessageChunk | null };
   const iter = uiMessageStream[Symbol.asyncIterator]();
+  const sideIter = extras.sideChunks?.[Symbol.asyncIterator]();
   let mainDone = false;
   let titleDone = false;
+  let finishMetricsDone = false;
+  let abortMetadataDone = false;
+  let queueDone = false;
+  let sideDone = sideIter === undefined;
+  let sideCloseRequested = false;
   let mainPromise: Promise<Settled> = iter
     .next()
     .then((v) => ({ kind: "main" as const, value: v }));
   let queuePromise: Promise<Settled> = chunkQueue
     .next()
     .then((v) => ({ kind: "queue" as const, value: v }));
+  let sidePromise: Promise<Settled> | null = sideIter
+    ? sideIter.next().then((value) => ({ kind: "side" as const, value }))
+    : null;
   const titleResultPromise: Promise<Settled> = titlePromise.then((value) => ({
     kind: "title" as const,
     value,
   }));
+  const finishMetricsSettledPromise: Promise<Settled> =
+    finishMetricsDonePromise.then(() => ({ kind: "finish-metrics" as const }));
+  const abortMetadataSettledPromise: Promise<Settled> =
+    abortMetadataResultPromise.then((value) => ({
+      kind: "abort-metadata" as const,
+      value,
+    }));
   try {
-    while (true) {
-      if (mainDone && titleDone) {
-        // Main stream and title generation are both settled. Close the queue
-        // so the outstanding queue waiter resolves, then drain anything
-        // buffered by side-channel callbacks.
+    while (
+      !mainDone ||
+      !titleDone ||
+      !finishMetricsDone ||
+      !abortMetadataDone ||
+      !queueDone ||
+      !sideDone
+    ) {
+      if (
+        mainDone &&
+        titleDone &&
+        finishMetricsDone &&
+        abortMetadataDone &&
+        !sideCloseRequested
+      ) {
+        // Main stream and title generation are both settled. Close the
+        // side-channel producers, then keep servicing the already-outstanding
+        // queue/side promises until both report done. Reusing those promises is
+        // important: a resolved-but-not-yet-raced promise may already hold a
+        // chunk that a fresh next() call would skip.
+        extras.closeSideChunks?.();
         chunkQueue.close();
-        while (true) {
-          const remaining = await chunkQueue.next();
-          if (remaining.done) break;
-          yield remaining.value;
-        }
-        break;
+        sideCloseRequested = true;
       }
 
-      const pending = [queuePromise];
+      const pending: Promise<Settled>[] = [];
+      if (!queueDone) pending.push(queuePromise);
       if (!mainDone) pending.push(mainPromise);
       if (!titleDone) pending.push(titleResultPromise);
+      if (!finishMetricsDone) pending.push(finishMetricsSettledPromise);
+      if (!abortMetadataDone) pending.push(abortMetadataSettledPromise);
+      if (!sideDone && sidePromise) pending.push(sidePromise);
 
       const settled = await Promise.race(pending);
       if (settled.kind === "main") {
@@ -874,14 +930,27 @@ export async function* runDecopilotStream(
       } else if (settled.kind === "title") {
         titleDone = true;
         if (settled.value) yield settled.value;
-      } else {
-        // Queue-side resolution. The queue is only closed by us
-        // (inside the main-done branch above), so a `done: true`
-        // here is unreachable during the main loop — the loop has
-        // already broken in that case.
-        if (!settled.value.done) {
-          yield settled.value.value;
+      } else if (settled.kind === "finish-metrics") {
+        finishMetricsDone = true;
+      } else if (settled.kind === "abort-metadata") {
+        abortMetadataDone = true;
+        if (settled.value) yield settled.value;
+      } else if (settled.kind === "side") {
+        if (settled.value.done) {
+          sideDone = true;
+          continue;
         }
+        yield settled.value.value;
+        sidePromise =
+          sideIter
+            ?.next()
+            .then((value) => ({ kind: "side" as const, value })) ?? null;
+      } else {
+        if (settled.value.done) {
+          queueDone = true;
+          continue;
+        }
+        yield settled.value.value;
         queuePromise = chunkQueue
           .next()
           .then((v) => ({ kind: "queue" as const, value: v }));
@@ -891,6 +960,9 @@ export async function* runDecopilotStream(
     // Defensive: make sure the queue is closed so any callback fired
     // after we exit can't hang the consumer.
     if (!titleDone) titleHandle.finish();
+    extras.closeSideChunks?.();
+    await iter.return?.().catch(() => {});
+    await sideIter?.return?.().catch(() => {});
     chunkQueue.close();
   }
 

@@ -49,6 +49,7 @@ import type { PendingImage } from "./built-in-tools";
 import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import { createProviderFromSecret } from "./provider-from-secret";
 import type { DecopilotSecretModelSource } from "../types";
+import { createSideChannelWriter } from "../side-channel-writer";
 
 type ClusterDecopilotRuntime = DecopilotRuntime & {
   runRegistry: RunRegistry;
@@ -133,19 +134,22 @@ export const decopilotHarnessFactory: HarnessFactory = {
         );
         const toolOutputMap = new Map<string, string>();
         const pendingImages: PendingImage[] = [];
-
-        const tools = await assembleDecopilotTools(input, ctx, {
-          writer: runtime.writer,
-          toolOutputMap,
-          pendingImages,
-          threadId: input.threadId,
-          provider,
-          imageProvider,
-          deepResearchProvider,
-          htmlPageBuffer: runtime.htmlPageBuffer,
-        });
+        const sideChannel = createSideChannelWriter();
+        let tools: Awaited<ReturnType<typeof assembleDecopilotTools>> | null =
+          null;
 
         try {
+          tools = await assembleDecopilotTools(input, ctx, {
+            writer: sideChannel.writer,
+            toolOutputMap,
+            pendingImages,
+            threadId: input.threadId,
+            provider,
+            imageProvider,
+            deepResearchProvider,
+            htmlPageBuffer: runtime.htmlPageBuffer,
+          });
+
           // Run `processConversation` with the REAL tool set — the AI SDK's
           // `convertToModelMessages` calls `tools[name].toModelOutput()` to
           // transform prior-turn tool results. Three decopilot tools
@@ -193,10 +197,14 @@ export const decopilotHarnessFactory: HarnessFactory = {
             onUsageAggregated: runtime.onUsageAggregated,
             pendingImages,
             onTitleUpdated: runtime.onTitleUpdated,
-            writer: runtime.writer,
+            writer: sideChannel.writer,
+            sideChunks: sideChannel.stream,
+            closeSideChunks: sideChannel.close,
+            onStepFinish: async () => {},
           });
         } finally {
-          await tools.close().catch(() => {});
+          sideChannel.close();
+          await tools?.close().catch(() => {});
         }
       },
     };
