@@ -126,7 +126,7 @@ export class OrgFs {
     volume: string,
     path: string,
     body: string | Uint8Array,
-    opts: { actor: string; contentType?: string },
+    opts: { actor: string; contentType?: string; skipVolumeQuota?: boolean },
   ): Promise<OrgFsEntry> {
     assertValidVolume(volume);
     const normalized = normalizeFsPath(path);
@@ -149,8 +149,15 @@ export class OrgFs {
     // limit — making it strict would require threading a DB transaction
     // through both the usage read and the manifest write. Revisit if quotas
     // become billing-hard.
+    //
+    // `skipVolumeQuota` is set by move() for its copy leg: a same-volume rename
+    // has a net delta of ≤0, but the source still counts toward usage until the
+    // trailing delete, so charging it would make a rename of a file larger than
+    // the remaining headroom spuriously fail (or half-apply a directory move).
     const [usage, existing] = await Promise.all([
-      this.manifest.usage(this.organizationId, volume),
+      opts.skipVolumeQuota
+        ? Promise.resolve(null)
+        : this.manifest.usage(this.organizationId, volume),
       this.manifest.get(this.organizationId, volume, normalized),
     ]);
     if (existing?.kind === "dir") {
@@ -158,11 +165,13 @@ export class OrgFs {
         `Cannot write a file at ${normalized}: a directory exists there`,
       );
     }
-    const prior = existing?.kind === "file" ? existing.size : 0;
-    if (usage.bytes - prior + bytes.byteLength > this.volumeQuotaBytes) {
-      throw new OrgFsQuotaError(
-        `Write would exceed the volume quota of ${this.volumeQuotaBytes} bytes`,
-      );
+    if (usage) {
+      const prior = existing?.kind === "file" ? existing.size : 0;
+      if (usage.bytes - prior + bytes.byteLength > this.volumeQuotaBytes) {
+        throw new OrgFsQuotaError(
+          `Write would exceed the volume quota of ${this.volumeQuotaBytes} bytes`,
+        );
+      }
     }
 
     await this.ensureDirs(volume, normalized, opts.actor);
@@ -296,21 +305,32 @@ export class OrgFs {
 
     if (entry.kind === "file") {
       const bytes = await this.storage.getBytes(fsObjectKey(volume, src));
-      await this.write(volume, dst, bytes, opts);
+      await this.write(volume, dst, bytes, { ...opts, skipVolumeQuota: true });
       await this.delete(volume, src, opts);
       return;
     }
 
-    const files = await this.manifest.listSubtreeFiles(
-      this.organizationId,
-      volume,
-      src,
-    );
+    const [files, dirs] = await Promise.all([
+      this.manifest.listSubtreeFiles(this.organizationId, volume, src),
+      this.manifest.listSubtreeDirs(this.organizationId, volume, src),
+    ]);
     await this.mkdir(volume, dst, opts);
     for (const f of files) {
       const rel = f.path.slice(src.length + 1);
       const bytes = await this.storage.getBytes(fsObjectKey(volume, f.path));
-      await this.write(volume, `${dst}/${rel}`, bytes, opts);
+      await this.write(volume, `${dst}/${rel}`, bytes, {
+        ...opts,
+        skipVolumeQuota: true,
+      });
+    }
+    // Recreate every subdirectory at the destination, not just the ones that
+    // are ancestors of a moved file — otherwise an empty subdir (a live `dir`
+    // entry with no descendant files) would be tombstoned by the delete below
+    // and never reappear at `dst`. mkdir is idempotent, so dirs already created
+    // as file ancestors are no-ops.
+    for (const d of dirs) {
+      const rel = d.path.slice(src.length + 1);
+      await this.mkdir(volume, `${dst}/${rel}`, opts);
     }
     await this.delete(volume, src, opts);
   }
@@ -327,10 +347,16 @@ export class OrgFs {
     limit = DEFAULT_CHANGES_LIMIT,
   ): Promise<{ entries: OrgFsEntry[]; cursor: string; hasMore: boolean }> {
     assertValidVolume(volume);
+    const since = sinceSeq || "0";
+    // The cursor is cast to bigint in SQL; a non-numeric value would otherwise
+    // surface as a raw Postgres parse error → 500. Reject it as a 400 instead.
+    if (!/^\d+$/.test(since)) {
+      throw new OrgFsValidationError(`Invalid cursor: ${sinceSeq}`);
+    }
     const entries = await this.manifest.changesSince({
       organizationId: this.organizationId,
       volume,
-      sinceSeq: sinceSeq || "0",
+      sinceSeq: since,
       limit,
     });
     const last = entries.at(-1);

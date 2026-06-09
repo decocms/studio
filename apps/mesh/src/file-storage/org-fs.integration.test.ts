@@ -148,6 +148,42 @@ describe("OrgFs service (integration)", () => {
     ).toBe("B");
   });
 
+  it("preserves empty subdirectories when moving a directory", async () => {
+    await fs.write("skills", "src/a.txt", "A", { actor: ACTOR });
+    await fs.mkdir("skills", "src/empty", { actor: ACTOR });
+    await fs.mkdir("skills", "src/empty/deeper", { actor: ACTOR });
+    await fs.move("skills", "src", "dst", { actor: ACTOR });
+    // The file moved...
+    expect(new TextDecoder().decode(await fs.read("skills", "dst/a.txt"))).toBe(
+      "A",
+    );
+    // ...and the empty subdirs (no descendant files) survive the move.
+    expect((await fs.stat("skills", "dst/empty"))?.kind).toBe("dir");
+    expect((await fs.stat("skills", "dst/empty/deeper"))?.kind).toBe("dir");
+    expect(await fs.stat("skills", "src/empty")).toBeNull();
+  });
+
+  it("allows a same-volume rename even when the volume is near quota", async () => {
+    // A rename's net size delta is ≤0, so it must not trip the volume quota
+    // just because the source still counts until the trailing delete.
+    const small = buildFs(db, { volumeQuotaBytes: 10 });
+    await small.write("skills", "big.txt", "1234567", { actor: ACTOR }); // 7/10
+    // Renaming the 7-byte file would momentarily "need" 14 bytes if the source
+    // were double-counted; the move-copy leg must skip the volume-quota check.
+    await small.move("skills", "big.txt", "renamed.txt", { actor: ACTOR });
+    expect(await small.stat("skills", "big.txt")).toBeNull();
+    expect(
+      new TextDecoder().decode(await small.read("skills", "renamed.txt")),
+    ).toBe("1234567");
+    expect(await small.usage("skills")).toEqual({ files: 1, bytes: 7 });
+  });
+
+  it("rejects a non-numeric changes cursor with a validation error", async () => {
+    expect(fs.changes("skills", "not-a-number")).rejects.toBeInstanceOf(
+      OrgFsValidationError,
+    );
+  });
+
   it("rejects moving a path onto itself or into its own subtree (no data loss)", async () => {
     await fs.write("skills", "keep.txt", "precious", { actor: ACTOR });
     expect(

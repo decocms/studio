@@ -45,6 +45,8 @@ type Ctx = Context<{ Variables: Variables }>;
 
 /** Hard ceiling on a single uploaded body (matches the per-file quota). */
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+/** Ceiling on the tiny JSON control bodies (e.g. /move's `{from,to}`). */
+const MAX_JSON_BODY_BYTES = 64 * 1024;
 const MAX_CHANGES_LIMIT = 1000;
 const DEFAULT_CHANGES_LIMIT = 500;
 
@@ -253,29 +255,40 @@ export const createOrgFsRoutes = () => {
   });
 
   // Move/rename a file or directory. Body: { from, to }.
-  app.post("/:volume/move", async (c) => {
-    const volume = c.req.param("volume");
-    const r = await resolve(c, volume, "ORG_FS_WRITE");
-    if (!r.ok) return r.res;
-    const body = (await c.req.json().catch(() => null)) as {
-      from?: unknown;
-      to?: unknown;
-    } | null;
-    if (!body || typeof body.from !== "string" || typeof body.to !== "string") {
-      return c.json(
-        { error: "Body must be { from: string, to: string }" },
-        400,
-      );
-    }
-    try {
-      await r.fs.move(volume, body.from, body.to, {
-        actor: r.ctx.auth!.user!.id,
-      });
-      return c.json({ ok: true });
-    } catch (err) {
-      return fsErrorResponse(c, err);
-    }
-  });
+  app.post(
+    "/:volume/move",
+    bodyLimit({
+      maxSize: MAX_JSON_BODY_BYTES,
+      onError: (c) => c.json({ error: "Request body too large" }, 413),
+    }),
+    async (c) => {
+      const volume = c.req.param("volume");
+      const r = await resolve(c, volume, "ORG_FS_WRITE");
+      if (!r.ok) return r.res;
+      const body = (await c.req.json().catch(() => null)) as {
+        from?: unknown;
+        to?: unknown;
+      } | null;
+      if (
+        !body ||
+        typeof body.from !== "string" ||
+        typeof body.to !== "string"
+      ) {
+        return c.json(
+          { error: "Body must be { from: string, to: string }" },
+          400,
+        );
+      }
+      try {
+        await r.fs.move(volume, body.from, body.to, {
+          actor: r.ctx.auth!.user!.id,
+        });
+        return c.json({ ok: true });
+      } catch (err) {
+        return fsErrorResponse(c, err);
+      }
+    },
+  );
 
   return app;
 };

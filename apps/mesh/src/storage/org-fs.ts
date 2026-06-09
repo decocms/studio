@@ -164,6 +164,10 @@ export class OrgFsEntryStorage {
           .where("org_fs_entry.deleted_at", "is not", null)
           .doUpdateSet({
             kind: "dir",
+            // Reset file-only fields: the revived row may have been a tombstoned
+            // file, whose stale sha256/size must not linger on a directory.
+            content_hash: null,
+            size: 0,
             deleted_at: null,
             updated_by: params.actor,
             updated_at: now,
@@ -221,6 +225,28 @@ export class OrgFsEntryStorage {
       .where("organization_id", "=", organizationId)
       .where("volume", "=", volume)
       .where("kind", "=", "file")
+      .where("deleted_at", "is", null)
+      .where("path", "like", `${escapeLike(dirPath)}/%`)
+      .select(COLUMNS)
+      .execute();
+    return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
+  }
+
+  /**
+   * All live directory entries under a directory path (recursive). Used by
+   * move() to recreate empty subdirectories that the file-only copy misses.
+   * `dirPath` must be normalized (no trailing slash).
+   */
+  async listSubtreeDirs(
+    organizationId: string,
+    volume: string,
+    dirPath: string,
+  ): Promise<OrgFsEntry[]> {
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("kind", "=", "dir")
       .where("deleted_at", "is", null)
       .where("path", "like", `${escapeLike(dirPath)}/%`)
       .select(COLUMNS)
