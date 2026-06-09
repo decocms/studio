@@ -36,6 +36,7 @@
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
+import { retry } from "@decocms/std";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
 import { relayDispatchSSEAsPartBatches } from "./link-part-batcher";
 
@@ -182,29 +183,45 @@ export async function handleLocalDispatch(
     runId: work.runId,
     orgId: work.orgId,
     postBatch: async (batch) => {
-      const ingestRes = await fetcher(ingestUrl, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${clusterToken}`,
-          "x-fence-token": work.runFenceToken,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(batch),
-        signal: deps.signal,
-      });
+      await retry(
+        async () => {
+          const ingestRes = await fetcher(ingestUrl, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${clusterToken}`,
+              "x-fence-token": work.runFenceToken,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(batch),
+            signal: deps.signal,
+          });
 
-      if (!ingestRes.ok) {
-        let detail = `ingest failed (${ingestRes.status})`;
-        try {
-          const j = (await ingestRes.json()) as Record<string, unknown>;
-          if (j && typeof j.error === "string" && j.error) {
-            detail = j.error;
+          if (!ingestRes.ok) {
+            let detail = `ingest failed (${ingestRes.status})`;
+            try {
+              const j = (await ingestRes.json()) as Record<string, unknown>;
+              if (j && typeof j.error === "string" && j.error) {
+                detail = j.error;
+              }
+            } catch {
+              // JSON parse failed — keep the status-code detail.
+            }
+            const err = new Error(`[handleLocalDispatch] ${detail}`);
+            (err as { status?: number }).status = ingestRes.status;
+            throw err;
           }
-        } catch {
-          // JSON parse failed — keep the status-code detail.
-        }
-        throw new Error(`[handleLocalDispatch] ${detail}`);
-      }
+        },
+        {
+          maxAttempts: 5,
+          minTimeout: 250,
+          maxTimeout: 5_000,
+          signal: deps.signal,
+          isRetriable: (err) => {
+            const status = (err as { status?: number }).status;
+            return status === undefined || status >= 500;
+          },
+        },
+      );
     },
   });
 }

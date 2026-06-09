@@ -260,6 +260,47 @@ describe("handleLocalDispatch", () => {
     await expect(handleLocalDispatch(validWorkItem, deps)).rejects.toThrow(
       "[handleLocalDispatch] fenced",
     );
+    expect(appendCount).toBe(2);
+  });
+
+  it("retries a transient failed part append", async () => {
+    let appendAttempts = 0;
+
+    const fetchImpl = async (url: string): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        return new Response(makeBodyStream(dispatchSSE(TEXT_CHUNKS)), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      if (url.endsWith("/parts")) {
+        appendAttempts++;
+        if (appendAttempts === 1) {
+          return new Response(JSON.stringify({ error: "temporary" }), {
+            status: 503,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    };
+
+    const deps: LocalDispatchDeps = {
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      clusterBaseUrl: CLUSTER_BASE,
+      orgSlug: ORG_SLUG,
+      getClusterToken: async () => CLUSTER_TOKEN,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    };
+
+    await handleLocalDispatch(validWorkItem, deps);
+
+    expect(appendAttempts).toBeGreaterThan(1);
   });
 
   // ── Test: harnessId from explicit deps override ─────────────────────────
