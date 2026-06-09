@@ -786,3 +786,329 @@ describe.skipIf(!duckdbAvailable)(
     });
   },
 );
+
+// ============================================================================
+// queryLlmUsageStats — token + cost aggregation from log rows
+// ============================================================================
+
+describe.skipIf(!duckdbAvailable)(
+  "SqlMonitoringStorage.queryLlmUsageStats",
+  () => {
+    let tmpDir: string;
+    let engine: DuckDBEngine;
+    let storage: SqlMonitoringStorage;
+
+    const range = {
+      startDate: new Date("2026-03-01T00:00:00.000Z"),
+      endDate: new Date("2026-03-10T00:00:00.000Z"),
+    };
+
+    beforeAll(async () => {
+      tmpDir = await mkdtemp(join(tmpdir(), "monitoring-llm-test-"));
+      const dataDir = join(tmpDir, "2026", "03", "06", "12");
+      await mkdir(dataDir, { recursive: true });
+      engine = new DuckDBEngine();
+      const sourceFactory = (_orgId: string) =>
+        `read_ndjson('${dataDir}/*.ndjson', auto_detect=true)`;
+      storage = new SqlMonitoringStorage(
+        engine,
+        sourceFactory,
+        engine,
+        sourceFactory,
+        "duckdb",
+      );
+
+      // Usage/cost are read from `properties` (strings), not `output`.
+      const llmRow = (
+        id: string,
+        model: string,
+        userId: string,
+        usage: { in: number; out: number; total: number; cost?: number },
+        durationMs: number,
+        isError: 0 | 1,
+        ts: string,
+      ) =>
+        makeTestMonitoringRow({
+          id,
+          tool_name: model,
+          duration_ms: durationMs,
+          is_error: isError,
+          organization_id: "org_test",
+          connection_id: "decopilot",
+          connection_title: "Decopilot",
+          properties: JSON.stringify({
+            log_type: "llm_call",
+            input_tokens: String(usage.in),
+            output_tokens: String(usage.out),
+            total_tokens: String(usage.total),
+            ...(usage.cost !== undefined ? { cost: String(usage.cost) } : {}),
+          }),
+          timestamp: ts,
+          request_id: id,
+          user_id: userId,
+        });
+
+      await writeTestNDJSON(dataDir, [
+        llmRow(
+          "llm_1",
+          "model-a",
+          "user_1",
+          { in: 10, out: 5, total: 15, cost: 0.01 },
+          100,
+          0,
+          "2026-03-05T12:00:00.000Z",
+        ),
+        llmRow(
+          "llm_2",
+          "model-a",
+          "user_1",
+          { in: 20, out: 10, total: 30, cost: 0.02 },
+          200,
+          0,
+          "2026-03-05T12:01:00.000Z",
+        ),
+        llmRow(
+          "llm_3",
+          "model-b",
+          "user_2",
+          { in: 4, out: 2, total: 6, cost: 0.005 },
+          50,
+          1,
+          "2026-03-05T12:02:00.000Z",
+        ),
+        // Row without cost (provider didn't report it) — cost contributes 0.
+        llmRow(
+          "llm_legacy",
+          "model-a",
+          "user_1",
+          { in: 7, out: 3, total: 10 },
+          80,
+          0,
+          "2026-03-05T12:03:00.000Z",
+        ),
+      ]);
+      // Non-LLM noise: different connection, must be excluded from LLM usage.
+      await writeFile(
+        join(dataDir, "noise.ndjson"),
+        JSON.stringify(
+          makeTestMonitoringRow({
+            id: "noise_2",
+            tool_name: "TOOL_X",
+            duration_ms: 10,
+            is_error: 0,
+            organization_id: "org_test",
+            connection_id: "conn_other",
+            connection_title: "Other",
+            properties: JSON.stringify({
+              input_tokens: "500",
+              output_tokens: "500",
+              total_tokens: "1000",
+              cost: "5",
+            }),
+            timestamp: "2026-03-05T12:05:00.000Z",
+            request_id: "noise_2",
+            user_id: "user_1",
+          }),
+        ) + "\n",
+        { mode: 0o600 },
+      );
+    });
+
+    afterAll(async () => {
+      await engine.destroy();
+      await rm(tmpDir, { recursive: true, force: true });
+    });
+
+    test("aggregates tokens and cost across all members", async () => {
+      const result = await storage.queryLlmUsageStats({
+        organizationId: "org_test",
+        interval: "1d",
+        connectionId: "decopilot",
+        ...range,
+      });
+
+      // 4 decopilot rows (llm_1, llm_2, llm_3, llm_legacy); conn_other excluded.
+      expect(result.totalCalls).toBe(4);
+      expect(result.totalErrors).toBe(1);
+      // input: 10 + 20 + 4 + 7
+      expect(result.totalInputTokens).toBe(41);
+      // output: 5 + 10 + 2 + 3
+      expect(result.totalOutputTokens).toBe(20);
+      // total: 15 + 30 + 6 + 10
+      expect(result.totalTokens).toBe(61);
+      // cost: 0.01 + 0.02 + 0.005 + 0 (legacy)
+      expect(result.totalCostUsd).toBeCloseTo(0.035, 5);
+      expect(result.timeseries.length).toBeGreaterThan(0);
+    });
+
+    test("filters by member (userIds)", async () => {
+      const result = await storage.queryLlmUsageStats({
+        organizationId: "org_test",
+        interval: "1d",
+        connectionId: "decopilot",
+        userIds: ["user_2"],
+        ...range,
+      });
+      // Only llm_3 belongs to user_2.
+      expect(result.totalCalls).toBe(1);
+      expect(result.totalInputTokens).toBe(4);
+      expect(result.totalOutputTokens).toBe(2);
+      expect(result.totalCostUsd).toBeCloseTo(0.005, 6);
+    });
+
+    test("ranks top models by calls with per-model token/cost", async () => {
+      const result = await storage.queryLlmUsageStats({
+        organizationId: "org_test",
+        interval: "1d",
+        connectionId: "decopilot",
+        topN: 5,
+        ...range,
+      });
+      // model-a: llm_1, llm_2, llm_legacy → 3 calls; ranks first.
+      expect(result.topTools[0]!.toolName).toBe("model-a");
+      expect(result.topTools[0]!.calls).toBe(3);
+      // model-a tokens: in 10+20+7 = 37, out 5+10+3 = 18, cost 0.01+0.02 = 0.03
+      expect(result.topTools[0]!.inputTokens).toBe(37);
+      expect(result.topTools[0]!.outputTokens).toBe(18);
+      expect(result.topTools[0]!.costUsd).toBeCloseTo(0.03, 6);
+      expect(result.topTools[0]!.connectionId).toBe("decopilot");
+    });
+
+    test("rows without provider cost still count tokens (cost = 0)", async () => {
+      const result = await storage.queryLlmUsageStats({
+        organizationId: "org_test",
+        interval: "1d",
+        connectionId: "decopilot",
+        userIds: ["user_1"],
+        ...range,
+      });
+      // user_1: llm_1, llm_2, llm_legacy.
+      // input: 10 + 20 + 7 = 37
+      expect(result.totalInputTokens).toBe(37);
+      // cost: 0.01 + 0.02 + 0 (legacy) = 0.03
+      expect(result.totalCostUsd).toBeCloseTo(0.03, 5);
+    });
+  },
+);
+
+// ============================================================================
+// queryThreadUsage — per-thread token + cost from properties.thread_id
+// ============================================================================
+
+describe.skipIf(!duckdbAvailable)(
+  "SqlMonitoringStorage.queryThreadUsage",
+  () => {
+    let tmpDir: string;
+    let engine: DuckDBEngine;
+    let storage: SqlMonitoringStorage;
+
+    beforeAll(async () => {
+      tmpDir = await mkdtemp(join(tmpdir(), "monitoring-thr-test-"));
+      const dataDir = join(tmpDir, "2026", "03", "06", "12");
+      await mkdir(dataDir, { recursive: true });
+      engine = new DuckDBEngine();
+      const sourceFactory = (_orgId: string) =>
+        `read_ndjson('${dataDir}/*.ndjson', auto_detect=true)`;
+      storage = new SqlMonitoringStorage(
+        engine,
+        sourceFactory,
+        engine,
+        sourceFactory,
+        "duckdb",
+      );
+
+      const row = (
+        id: string,
+        threadId: string,
+        usage: { in: number; out: number; total: number; cost: number },
+        ts: string,
+      ) =>
+        makeTestMonitoringRow({
+          id,
+          tool_name: "model-a",
+          duration_ms: 100,
+          is_error: 0,
+          organization_id: "org_test",
+          connection_id: "decopilot",
+          connection_title: "Decopilot",
+          properties: JSON.stringify({
+            thread_id: threadId,
+            input_tokens: String(usage.in),
+            output_tokens: String(usage.out),
+            total_tokens: String(usage.total),
+            cost: String(usage.cost),
+          }),
+          timestamp: ts,
+          request_id: id,
+          user_id: "user_1",
+        });
+
+      await writeTestNDJSON(dataDir, [
+        row(
+          "c1",
+          "thread_a",
+          { in: 10, out: 5, total: 15, cost: 0.01 },
+          "2026-03-05T12:00:00.000Z",
+        ),
+        row(
+          "c2",
+          "thread_a",
+          { in: 20, out: 10, total: 30, cost: 0.02 },
+          "2026-03-05T12:01:00.000Z",
+        ),
+        row(
+          "c3",
+          "thread_b",
+          { in: 4, out: 2, total: 6, cost: 0.005 },
+          "2026-03-05T12:02:00.000Z",
+        ),
+      ]);
+    });
+
+    afterAll(async () => {
+      await engine.destroy();
+      await rm(tmpDir, { recursive: true, force: true });
+    });
+
+    test("aggregates tokens + cost per thread for requested ids", async () => {
+      const rows = await storage.queryThreadUsage({
+        organizationId: "org_test",
+        connectionId: "decopilot",
+        threadIds: ["thread_a", "thread_b"],
+        startDate: new Date("2026-03-01T00:00:00.000Z"),
+        endDate: new Date("2026-03-10T00:00:00.000Z"),
+      });
+      const byThread = new Map(rows.map((r) => [r.threadId, r]));
+
+      const a = byThread.get("thread_a")!;
+      expect(a.calls).toBe(2);
+      expect(a.totalTokens).toBe(45); // 15 + 30
+      expect(a.inputTokens).toBe(30); // 10 + 20
+      expect(a.costUsd).toBeCloseTo(0.03, 6);
+
+      const b = byThread.get("thread_b")!;
+      expect(b.calls).toBe(1);
+      expect(b.totalTokens).toBe(6);
+      expect(b.costUsd).toBeCloseTo(0.005, 6);
+    });
+
+    test("excludes threads not in the requested id list", async () => {
+      const rows = await storage.queryThreadUsage({
+        organizationId: "org_test",
+        connectionId: "decopilot",
+        threadIds: ["thread_a"],
+      });
+      expect(rows.length).toBe(1);
+      expect(rows[0]!.threadId).toBe("thread_a");
+    });
+
+    test("returns empty for empty id list", async () => {
+      const rows = await storage.queryThreadUsage({
+        organizationId: "org_test",
+        connectionId: "decopilot",
+        threadIds: [],
+      });
+      expect(rows).toEqual([]);
+    });
+  },
+);

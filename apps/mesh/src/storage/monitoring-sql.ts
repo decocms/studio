@@ -171,6 +171,22 @@ function jsonExtractFloat(
   return `JSONExtractFloat(${col}, ${chKeys})`;
 }
 
+/**
+ * Extract a number stored as a JSON *string* (e.g. properties values, which are
+ * always strings). Returns NULL/0 when absent or unparseable — never throws.
+ */
+function jsonExtractNumericString(
+  col: string,
+  jsonPath: string,
+  dialect: SqlDialect,
+): string {
+  if (dialect === "duckdb") {
+    return `TRY_CAST(json_extract_string(${col}, '${jsonPath}') AS DOUBLE)`;
+  }
+  const chKeys = jsonPathToChKeys(jsonPath);
+  return `toFloat64OrZero(JSONExtractString(${col}, ${chKeys}))`;
+}
+
 // ---------------------------------------------------------------------------
 // Row mapping
 // ---------------------------------------------------------------------------
@@ -547,6 +563,285 @@ export class SqlMonitoringStorage implements MonitoringStorage {
       errorRate: Number(row.error_rate ?? 0),
       avgDurationMs: Number(row.avg_duration_ms ?? 0),
     };
+  }
+
+  /**
+   * Aggregate LLM-call usage (tokens + USD cost) from the raw log rows.
+   *
+   * Each LLM completion is a single log row whose `output` JSON holds the
+   * token usage and (for ai-gateway / OpenRouter) cost. Reading from the log
+   * source — rather than the pre-aggregated metric histograms — lets us SUM
+   * those JSON values and filter by `user_id`. Works for both dialects since
+   * the log source carries `output` + `user_id` in either case.
+   */
+  async queryLlmUsageStats(params: {
+    organizationId: string;
+    interval: string;
+    connectionId: string;
+    startDate?: Date;
+    endDate?: Date;
+    userIds?: string[];
+    topN?: number;
+  }): Promise<{
+    totalCalls: number;
+    totalErrors: number;
+    avgDurationMs: number;
+    p50DurationMs: number;
+    p95DurationMs: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalTokens: number;
+    totalCostUsd: number;
+    topTools: Array<{
+      toolName: string;
+      connectionId: string | null;
+      calls: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+    }>;
+    timeseries: Array<{
+      timestamp: string;
+      calls: number;
+      errors: number;
+      errorRate: number;
+      avg: number;
+      p50: number;
+      p95: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      costUsd: number;
+    }>;
+  }> {
+    const emptyResult = {
+      totalCalls: 0,
+      totalErrors: 0,
+      avgDurationMs: 0,
+      p50DurationMs: 0,
+      p95DurationMs: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalTokens: 0,
+      totalCostUsd: 0,
+      topTools: [] as Array<{
+        toolName: string;
+        connectionId: string | null;
+        calls: number;
+        inputTokens: number;
+        outputTokens: number;
+        costUsd: number;
+      }>,
+      timeseries: [] as Array<{
+        timestamp: string;
+        calls: number;
+        errors: number;
+        errorRate: number;
+        avg: number;
+        p50: number;
+        p95: number;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        costUsd: number;
+      }>,
+    };
+
+    if (!params.organizationId || !params.connectionId) return emptyResult;
+
+    const dialect = this.dialect;
+    const isCh = dialect === "clickhouse";
+    const source = this.sourceFactory(params.organizationId);
+    const bucketExpr = intervalToSQL(params.interval, dialect, "timestamp");
+
+    // Tokens/cost are read from `properties` (small, never truncated) rather
+    // than `output` (capped at 64KB → malformed JSON on large responses).
+    const num = (key: string) =>
+      `coalesce(${jsonExtractNumericString("properties", `$.${key}`, dialect)}, 0)`;
+    const callsExpr = isCh ? "count()" : "count(*)";
+    const errExpr = isCh
+      ? "countIf(is_error = 1)"
+      : "count(*) FILTER (WHERE is_error = 1)";
+    const pExpr = (q: number) =>
+      isCh ? `quantile(${q})(duration_ms)` : `quantile_cont(duration_ms, ${q})`;
+
+    const where: string[] = [
+      `organization_id = '${esc(params.organizationId)}'`,
+      `connection_id = '${esc(params.connectionId)}'`,
+    ];
+    applyStartDateBound(where, params.startDate, dialect);
+    if (params.endDate) {
+      where.push(tsLte(params.endDate, dialect));
+    }
+    if (params.userIds?.length) {
+      const ids = params.userIds
+        .slice(0, 100)
+        .map((id) => `'${esc(id)}'`)
+        .join(",");
+      where.push(`user_id IN (${ids})`);
+    }
+    const whereClause = where.join(" AND ");
+    const topN = Math.min(Math.max(1, Math.floor(params.topN ?? 5)), 20);
+
+    const aggCols = `${callsExpr} AS calls,
+  ${errExpr} AS errors,
+  avg(duration_ms) AS avg,
+  sum(${num("input_tokens")}) AS in_tok,
+  sum(${num("output_tokens")}) AS out_tok,
+  sum(${num("total_tokens")}) AS tot_tok,
+  sum(${num("cost")}) AS cost`;
+
+    const totalsSql = `SELECT ${aggCols},
+  ${pExpr(0.5)} AS p50,
+  ${pExpr(0.95)} AS p95
+FROM ${source}
+WHERE ${whereClause}`;
+
+    const timeseriesSql = `SELECT ${bucketExpr} AS bucket,
+  ${aggCols},
+  ${pExpr(0.5)} AS p50,
+  ${pExpr(0.95)} AS p95
+FROM ${source}
+WHERE ${whereClause}
+GROUP BY bucket
+ORDER BY bucket ASC`;
+
+    const topToolsSql = `SELECT tool_name,
+  ${callsExpr} AS calls,
+  sum(${num("input_tokens")}) AS in_tok,
+  sum(${num("output_tokens")}) AS out_tok,
+  sum(${num("cost")}) AS cost
+FROM ${source}
+WHERE ${whereClause} AND tool_name != ''
+GROUP BY tool_name
+ORDER BY calls DESC
+LIMIT ${topN}`;
+
+    try {
+      const [totalsRows, tsRows, topToolRows] = await Promise.all([
+        this.engine.query(totalsSql),
+        this.engine.query(timeseriesSql),
+        this.engine.query(topToolsSql),
+      ]);
+
+      const totals = totalsRows[0] ?? {};
+
+      return {
+        totalCalls: Number(totals.calls ?? 0),
+        totalErrors: Number(totals.errors ?? 0),
+        avgDurationMs: finiteOrZero(totals.avg),
+        p50DurationMs: finiteOrZero(totals.p50),
+        p95DurationMs: finiteOrZero(totals.p95),
+        totalInputTokens: finiteOrZero(totals.in_tok),
+        totalOutputTokens: finiteOrZero(totals.out_tok),
+        totalTokens: finiteOrZero(totals.tot_tok),
+        totalCostUsd: finiteOrZero(totals.cost),
+        topTools: topToolRows.map((row) => ({
+          toolName: String(row.tool_name ?? ""),
+          connectionId: params.connectionId,
+          calls: Number(row.calls ?? 0),
+          inputTokens: finiteOrZero(row.in_tok),
+          outputTokens: finiteOrZero(row.out_tok),
+          costUsd: finiteOrZero(row.cost),
+        })),
+        timeseries: tsRows.map((row) => {
+          const calls = Number(row.calls ?? 0);
+          const errors = Number(row.errors ?? 0);
+          return {
+            timestamp: toISOBucket(row.bucket),
+            calls,
+            errors,
+            errorRate: calls > 0 ? errors / calls : 0,
+            avg: finiteOrZero(row.avg),
+            p50: finiteOrZero(row.p50),
+            p95: finiteOrZero(row.p95),
+            inputTokens: finiteOrZero(row.in_tok),
+            outputTokens: finiteOrZero(row.out_tok),
+            totalTokens: finiteOrZero(row.tot_tok),
+            costUsd: finiteOrZero(row.cost),
+          };
+        }),
+      };
+    } catch (err) {
+      console.error("queryLlmUsageStats failed:", err);
+      throw new Error("Monitoring stats unavailable", { cause: err });
+    }
+  }
+
+  async queryThreadUsage(params: {
+    organizationId: string;
+    connectionId: string;
+    threadIds: string[];
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<
+    Array<{
+      threadId: string;
+      calls: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      costUsd: number;
+    }>
+  > {
+    if (
+      !params.organizationId ||
+      !params.connectionId ||
+      params.threadIds.length === 0
+    ) {
+      return [];
+    }
+
+    const dialect = this.dialect;
+    const isCh = dialect === "clickhouse";
+    const source = this.sourceFactory(params.organizationId);
+    const threadExpr = jsonExtractString("properties", "$.thread_id", dialect);
+    // Tokens/cost from `properties` (never truncated), not `output` (64KB cap).
+    const num = (key: string) =>
+      `coalesce(${jsonExtractNumericString("properties", `$.${key}`, dialect)}, 0)`;
+    const callsExpr = isCh ? "count()" : "count(*)";
+
+    const ids = params.threadIds
+      .slice(0, 500)
+      .map((id) => `'${esc(id)}'`)
+      .join(",");
+
+    const where: string[] = [
+      `organization_id = '${esc(params.organizationId)}'`,
+      `connection_id = '${esc(params.connectionId)}'`,
+      `${threadExpr} IN (${ids})`,
+    ];
+    applyStartDateBound(where, params.startDate, dialect);
+    if (params.endDate) {
+      where.push(tsLte(params.endDate, dialect));
+    }
+
+    const sql = `SELECT ${threadExpr} AS thread_id,
+  ${callsExpr} AS calls,
+  sum(${num("input_tokens")}) AS in_tok,
+  sum(${num("output_tokens")}) AS out_tok,
+  sum(${num("total_tokens")}) AS tot_tok,
+  sum(${num("cost")}) AS cost
+FROM ${source}
+WHERE ${where.join(" AND ")}
+GROUP BY thread_id`;
+
+    try {
+      const rows = await this.engine.query(sql);
+      return rows
+        .filter((row) => row.thread_id)
+        .map((row) => ({
+          threadId: String(row.thread_id),
+          calls: Number(row.calls ?? 0),
+          inputTokens: finiteOrZero(row.in_tok),
+          outputTokens: finiteOrZero(row.out_tok),
+          totalTokens: finiteOrZero(row.tot_tok),
+          costUsd: finiteOrZero(row.cost),
+        }));
+    } catch (err) {
+      console.error("queryThreadUsage failed:", err);
+      throw new Error("Monitoring stats unavailable", { cause: err });
+    }
   }
 
   async aggregate(params: AggregationParams): Promise<AggregationResult> {

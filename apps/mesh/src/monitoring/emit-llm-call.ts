@@ -41,6 +41,12 @@ export interface EmitLlmCallLogParams {
   usage?: LlmCallUsage;
   /** Aggregated usage across all steps (multi-step generations). */
   totalUsage?: LlmCallUsage;
+  /**
+   * Aggregated USD cost for the generation. Only available when the provider
+   * reports it (deco ai-gateway / OpenRouter via providerMetadata.openrouter.usage.cost);
+   * 0 / undefined for providers that don't return cost.
+   */
+  cost?: number;
   /** Raw request body sent to the provider. */
   request?: { body?: unknown };
   /** Response metadata + messages returned by the provider. */
@@ -79,6 +85,8 @@ function emitLlmCallLog(params: EmitLlmCallLogParams): void {
     const span = params.tracer.startSpan(MONITORING_SPAN_NAME);
     const spanCtx = trace.setSpan(context.active(), span);
 
+    const usageForProps = params.totalUsage ?? params.usage;
+
     emitMonitoringLog(
       {
         type: MONITORING_LOG_TYPE_LLM_CALL,
@@ -96,6 +104,7 @@ function emitLlmCallLog(params: EmitLlmCallLogParams): void {
         result: {
           ...(params.usage ?? {}),
           ...(params.totalUsage ? { totalUsage: params.totalUsage } : {}),
+          ...(params.cost !== undefined ? { cost: params.cost } : {}),
           ...(params.finishReason ? { finishReason: params.finishReason } : {}),
           ...(params.response
             ? {
@@ -120,6 +129,17 @@ function emitLlmCallLog(params: EmitLlmCallLogParams): void {
           thread_id: params.taskId,
           log_type: MONITORING_LOG_TYPE_LLM_CALL,
           ...(params.response ? { response_id: params.response.id } : {}),
+          // Usage/cost mirrored here as strings: `properties` is never truncated
+          // (unlike `output`, which is capped at 64KB and breaks JSON parsing on
+          // large responses), so aggregation queries read tokens/cost from here.
+          ...(usageForProps
+            ? {
+                input_tokens: String(usageForProps.inputTokens),
+                output_tokens: String(usageForProps.outputTokens),
+                total_tokens: String(usageForProps.totalTokens),
+              }
+            : {}),
+          ...(params.cost !== undefined ? { cost: String(params.cost) } : {}),
         },
       },
       spanCtx,

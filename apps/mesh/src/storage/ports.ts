@@ -464,6 +464,78 @@ export interface MonitoringStorage {
       p95: number;
     }>;
   }>;
+
+  /**
+   * Aggregate LLM-call usage (tokens + USD cost) for the AI Usage dashboard.
+   *
+   * Unlike queryMetricTimeseries (which reads pre-aggregated metric histograms),
+   * this reads the raw log rows — one row per LLM completion — so it can SUM the
+   * token/cost values stored in the `output` JSON and filter by `user_id`.
+   * Cost is only populated for providers that report it (deco ai-gateway /
+   * OpenRouter); it is 0 otherwise and for rows logged before cost capture shipped.
+   */
+  queryLlmUsageStats(params: {
+    organizationId: string;
+    interval: string;
+    connectionId: string;
+    startDate?: Date;
+    endDate?: Date;
+    userIds?: string[];
+    topN?: number;
+  }): Promise<{
+    totalCalls: number;
+    totalErrors: number;
+    avgDurationMs: number;
+    p50DurationMs: number;
+    p95DurationMs: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalTokens: number;
+    totalCostUsd: number;
+    topTools: Array<{
+      toolName: string;
+      connectionId: string | null;
+      calls: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+    }>;
+    timeseries: Array<{
+      timestamp: string;
+      calls: number;
+      errors: number;
+      errorRate: number;
+      avg: number;
+      p50: number;
+      p95: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      costUsd: number;
+    }>;
+  }>;
+
+  /**
+   * Per-thread LLM usage (tokens + USD cost), aggregated from llm_call logs
+   * grouped by `properties.thread_id`. Used to decorate the Threads monitoring
+   * tab. Filtered to the given thread IDs to keep the scan bounded.
+   */
+  queryThreadUsage(params: {
+    organizationId: string;
+    connectionId: string;
+    threadIds: string[];
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<
+    Array<{
+      threadId: string;
+      calls: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      costUsd: number;
+    }>
+  >;
 }
 
 // ============================================================================

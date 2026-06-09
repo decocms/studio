@@ -86,6 +86,7 @@ const ALL_TOOL_NAMES = [
   "MONITORING_LOG_GET",
   "MONITORING_LOGS_LIST",
   "MONITORING_STATS",
+  "MONITORING_THREAD_USAGE",
   // API Key tools
   "API_KEY_CREATE",
   "API_KEY_LIST",
@@ -457,6 +458,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "MONITORING_STATS",
     description: "View monitoring statistics",
+    category: "Monitoring",
+  },
+  {
+    name: "MONITORING_THREAD_USAGE",
+    description: "View per-thread token usage and cost",
     category: "Monitoring",
   },
   {
@@ -1192,7 +1198,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     label: "View monitoring",
     description: "Access logs and usage statistics",
     section: "Monitoring",
-    tools: ["MONITORING_LOG_GET", "MONITORING_LOGS_LIST", "MONITORING_STATS"],
+    tools: [
+      "MONITORING_LOG_GET",
+      "MONITORING_LOGS_LIST",
+      "MONITORING_STATS",
+      "MONITORING_THREAD_USAGE",
+    ],
   },
   // Secrets
   {
