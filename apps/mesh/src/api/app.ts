@@ -122,10 +122,6 @@ import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
 import {
-  AUTOMATIONS_GATE_QUEUE,
-  AUTOMATIONS_GATE_PARTITION_CONCURRENCY,
-  AUTOMATIONS_GLOBAL_CONCURRENCY,
-  AUTOMATIONS_GLOBAL_QUEUE,
   AutomationEventDispatcher,
   enqueueAutomationFire,
   fireAutomationNow,
@@ -2151,22 +2147,12 @@ export async function createApp(options: CreateAppOptions = {}) {
    * — they don't need any setup here.
    */
   const initDbos = async () => {
-    // Three-level queue: per-org cap (lazily created per-org via
-    // `ensureOrgQueue` at fire time, mutable at runtime via UI/tools) →
-    // per-automation cap (shared partitioned queue) → global cap
-    // (pg-pool protection). All three caps apply to both cron and
-    // event-triggered fires since both paths enter via orgGateWorkflow.
+    // Automation fires run directly on the per-org queue
+    // `automations-org-<orgId>` — the queue's concurrency IS the per-org
+    // tenant-fairness cap. Those queues are NOT registered here: they are
+    // created on demand by `ensureOrgQueue` and auto-discovered by every
+    // replica's dispatcher via `wfQueueRunner.discoverAndLaunchDbQueues`.
     //
-    // The per-org queues are NOT registered here — they are created on
-    // demand by `ensureOrgQueue` and auto-discovered by every replica's
-    // dispatcher via `wfQueueRunner.discoverAndLaunchDbQueues`.
-    await DBOS.registerQueue(AUTOMATIONS_GATE_QUEUE, {
-      partitionQueue: true,
-      concurrency: AUTOMATIONS_GATE_PARTITION_CONCURRENCY,
-    });
-    await DBOS.registerQueue(AUTOMATIONS_GLOBAL_QUEUE, {
-      concurrency: AUTOMATIONS_GLOBAL_CONCURRENCY,
-    });
     // Per-thread agent-run gate. Partition key = threadId, concurrency=1,
     // so messages on the same thread serialize behind the active run while
     // different threads progress in parallel. Used by user-message POSTs

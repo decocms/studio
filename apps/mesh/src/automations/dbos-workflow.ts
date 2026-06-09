@@ -1,37 +1,26 @@
 /**
  * DBOS workflow definitions for automation fires.
  *
- * Three-level queueing (tenant isolation → per-automation isolation → global
- * resource cap):
+ * Single cap — per-org tenant fairness:
  * - `automations-org-<orgId>` — one queue per organization, lazily created
  *   on first fire via `ensureOrgQueue`. Per-org `concurrency` is mutable at
  *   runtime through `WorkflowQueue.setConcurrency`, so users/admins can
  *   self-tune the cap from a settings UI without redeploying. The
  *   `dbos.queues` row is the source of truth for the limit — mesh keeps
  *   no copy.
- * - `AUTOMATIONS_GATE_QUEUE` — partitioned by automationId,
- *   concurrency=`AUTOMATIONS_GATE_PARTITION_CONCURRENCY`. Caps per-automation
- *   concurrent fires.
- * - `AUTOMATIONS_GLOBAL_QUEUE` — flat queue,
- *   concurrency=`AUTOMATIONS_GLOBAL_CONCURRENCY`. Caps total in-flight fires
- *   across the whole cluster (protects the pg pool from exhaustion under
- *   burst load).
  *
- * Four workflows:
- * - `fireAutomationWorkflow` — runs on the global queue, split into recorded
+ * `fireAutomationWorkflow` runs *directly* on the per-org queue, so the
+ * queue's concurrency IS the cap — no dedicated gate workflow holds a slot
+ * just to enforce it. A queue caps whatever runs on it; one org saturating
+ * its slots only blocks its own fires, never another org's.
+ *
+ * Two workflows:
+ * - `fireAutomationWorkflow` — runs on the per-org queue, split into recorded
  *   steps (prepare → createRunThread → updateTriggerTiming → dispatchRunAndWait).
- * - `gateWorkflow` — enqueued on the per-automation gate queue with
- *   partitionKey=automationId, awaits a fire on the global queue. Holding
- *   the partition slot until the child returns is what enforces the
- *   per-automation cap.
- * - `orgGateWorkflow` — top-level entry for both cron and event paths.
- *   Enqueued on the org gate queue with partitionKey=organizationId, awaits
- *   the per-automation gate. Holding the org slot until the chain returns is
- *   what enforces the per-org cap.
  * - `cronEntryWorkflow` — bound to `DBOS.createSchedule`. The Schedule API
- *   can't carry a partition key, so this wrapper re-enqueues `orgGateWorkflow`
- *   on the org gate with the partition key. Returns without awaiting so the
- *   scheduler tick is never blocked.
+ *   can't target a dynamic per-org queue name, so this fire-and-forget shim
+ *   re-enqueues `fireAutomationWorkflow` on the org queue and returns without
+ *   awaiting so the scheduler tick is never blocked.
  *
  * Exactly-once semantics:
  * Cron is intrinsically exactly-once: `DBOS.createSchedule` assigns each tick
@@ -62,9 +51,6 @@ import {
 } from "./build-stream-request";
 import { computeNextRunAt, type StudioContextFactory } from "./fire";
 
-export const AUTOMATIONS_GATE_QUEUE = "automations-gate";
-export const AUTOMATIONS_GLOBAL_QUEUE = "automations-global";
-
 /**
  * Per-org queueing uses one DB-backed queue per organization, named
  * `automations-org-<orgId>`. The `dbos.queues` row IS the per-org config:
@@ -79,14 +65,6 @@ export const AUTOMATIONS_GLOBAL_QUEUE = "automations-global";
 const AUTOMATIONS_ORG_QUEUE_PREFIX = "automations-org-";
 /** Concurrency a new org's queue starts at. Updatable per-org afterwards. */
 const DEFAULT_ORG_CONCURRENCY = 10;
-/** Per-automation concurrent fire cap (partition cap on the gate queue). */
-export const AUTOMATIONS_GATE_PARTITION_CONCURRENCY = 5;
-/**
- * Global concurrent fire cap across the entire cluster. Set conservatively to
- * keep the pg pool from being exhausted by tool fan-out inside each fire's
- * dispatchRunAndWait call. Bump when `databasePoolMax` is bumped.
- */
-export const AUTOMATIONS_GLOBAL_CONCURRENCY = 50;
 const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;
 export function orgQueueName(orgId: string): string {
   return `${AUTOMATIONS_ORG_QUEUE_PREFIX}${orgId}`;
@@ -394,69 +372,22 @@ async function fireAutomationWorkflowFn(
   return { taskId };
 }
 
-const fireAutomationWorkflow = DBOS.registerWorkflow(fireAutomationWorkflowFn, {
-  name: "fireAutomationWorkflow",
-});
-
-/**
- * Per-automation gate. Runs on the partitioned gate queue; holds its
- * partition slot until the inner fire on the global queue returns. That hold
- * is what enforces per-automation concurrency.
- *
- * Replays are safe: DBOS records the child workflow's ID via OAOO, so on
- * recovery `startWorkflow` returns the same handle and `getResult` waits on
- * the in-flight child rather than spawning a duplicate.
- */
-async function gateWorkflowFn(
-  ctx: FireAutomationContext,
-): Promise<FireAutomationOutcome> {
-  const handle = await DBOS.startWorkflow(fireAutomationWorkflow, {
-    queueName: AUTOMATIONS_GLOBAL_QUEUE,
-  })(ctx);
-  return await handle.getResult();
-}
-
-const gateWorkflow = DBOS.registerWorkflow(gateWorkflowFn, {
-  name: "automationGateWorkflow",
-});
-
-/**
- * Per-org gate. Top-level entry for both cron and event-triggered fires.
- * The workflow itself runs on the per-org queue `automations-org-<orgId>`
- * (set at enqueue time, not here); it holds that slot until the nested
- * per-automation gate returns. That hold is what enforces per-org
- * concurrency and prevents a single tenant from monopolising the global
- * queue's slot pool.
- *
- * Replays are safe: DBOS records the child workflow's ID via OAOO, so on
- * recovery `startWorkflow` returns the same handle and `getResult` waits on
- * the in-flight child rather than spawning a duplicate.
- */
-async function orgGateWorkflowFn(
-  ctx: FireAutomationContext,
-): Promise<FireAutomationOutcome> {
-  const handle = await DBOS.startWorkflow(gateWorkflow, {
-    queueName: AUTOMATIONS_GATE_QUEUE,
-    enqueueOptions: { queuePartitionKey: ctx.automationId },
-  })(ctx);
-  return await handle.getResult();
-}
-
-export const orgGateWorkflow = DBOS.registerWorkflow(orgGateWorkflowFn, {
-  name: "automationOrgGateWorkflow",
-});
+export const fireAutomationWorkflow = DBOS.registerWorkflow(
+  fireAutomationWorkflowFn,
+  { name: "fireAutomationWorkflow" },
+);
 
 /**
  * Scheduled-fire entry. Bound to DBOS schedules created per cron trigger.
- * Ensures the org queue exists, then re-enqueues `orgGateWorkflow` on it.
- * Returns without awaiting so the scheduler tick stays fast.
+ * Ensures the org queue exists, then re-enqueues `fireAutomationWorkflow` on
+ * it. Returns without awaiting so the scheduler tick stays fast.
  */
 async function cronEntryWorkflowFn(
   _scheduledTime: Date,
   ctx: FireAutomationContext,
 ): Promise<void> {
   await ensureOrgQueue(ctx.organizationId);
-  await DBOS.startWorkflow(orgGateWorkflow, {
+  await DBOS.startWorkflow(fireAutomationWorkflow, {
     queueName: orgQueueName(ctx.organizationId),
   })(ctx);
 }

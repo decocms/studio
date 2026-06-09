@@ -14,7 +14,7 @@ import type { Automation, AutomationTrigger } from "@/storage/types";
 import {
   cronEntryWorkflow,
   ensureOrgQueue,
-  orgGateWorkflow,
+  fireAutomationWorkflow,
   orgQueueName,
   type FireAutomationContext,
   type FireAutomationOutcome,
@@ -124,7 +124,7 @@ export async function fireAutomationNow(
 ): Promise<FireAutomationOutcome> {
   await ensureOrgQueue(ctx.organizationId);
   const workflowID = workflowIdFromIdempotencyKey(ctx, opts?.idempotencyKey);
-  const handle = await DBOS.startWorkflow(orgGateWorkflow, {
+  const handle = await DBOS.startWorkflow(fireAutomationWorkflow, {
     workflowID,
     queueName: orgQueueName(ctx.organizationId),
   })(ctx);
@@ -138,7 +138,7 @@ export async function enqueueAutomationFire(
 ): Promise<void> {
   await ensureOrgQueue(ctx.organizationId);
   const workflowID = workflowIdFromIdempotencyKey(ctx, opts?.idempotencyKey);
-  await DBOS.startWorkflow(orgGateWorkflow, {
+  await DBOS.startWorkflow(fireAutomationWorkflow, {
     workflowID,
     queueName: orgQueueName(ctx.organizationId),
   })(ctx);
