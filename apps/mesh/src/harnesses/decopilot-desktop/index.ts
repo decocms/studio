@@ -174,6 +174,11 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
         // 1. Activate the chat provider locally from the injected secret. Never
         //    log modelSource — it carries a provider API key.
         const provider = createProviderFromSecret(modelSource);
+        const imageModelSource =
+          input.modelSources?.image?.kind === "secret"
+            ? input.modelSources.image
+            : modelSource;
+        const imageProvider = createProviderFromSecret(imageModelSource);
 
         // Diagnostics (provider id only, never the key). On the desktop this
         // runs inside the spawned daemon, so it surfaces in the link terminal.
@@ -267,6 +272,8 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
             mcpClient,
             models: input.models,
             selfAgentId: input.agent.id,
+            imageProvider,
+            imageModelInfo: input.models.image,
             pendingImages,
             threadId: input.threadId,
             virtualMcpId: input.agent.id,

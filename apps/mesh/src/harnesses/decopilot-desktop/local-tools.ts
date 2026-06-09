@@ -13,6 +13,10 @@ import {
   buildPortableBuiltInTools,
   type PortableSubtaskModels,
 } from "../decopilot/built-in-tools/portable-built-ins";
+import type {
+  PortableImageModelInfo,
+  PortableImageProvider,
+} from "../decopilot/built-in-tools/portable-media-tools";
 import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
 import { createVmTools } from "../decopilot/built-in-tools/vm-tools";
 import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
@@ -36,6 +40,8 @@ export interface BuildLocalToolsParams {
   mcpClient?: Client;
   models?: DesktopSubtaskModels;
   selfAgentId?: string;
+  imageProvider?: PortableImageProvider;
+  imageModelInfo?: PortableImageModelInfo;
   runner?: SandboxProvider;
   htmlPageBuffer?: HtmlPageBuffer;
 }
@@ -127,6 +133,14 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
     toolApprovalLevel: params.toolApprovalLevel,
     isPlanMode: params.isPlanMode,
     objectStorage: params.ctx.objectStorage,
+    pendingImages: params.pendingImages,
+    imageTool:
+      params.imageProvider && params.imageModelInfo
+        ? {
+            provider: params.imageProvider,
+            imageModelInfo: params.imageModelInfo,
+          }
+        : undefined,
     subtaskRelay:
       params.mcpClient && params.models && params.selfAgentId
         ? {

@@ -18,8 +18,17 @@ import { createReadPromptTool } from "./prompts";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { BROWSERLESS_BASE_URL } from "./constants";
 import type { ToolApprovalLevel } from "../mcp-tools";
+import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
+import {
+  createPortableGenerateImageTool,
+  createPortableTakeScreenshotTool,
+  type PortableImageModelInfo,
+  type PortableImageProvider,
+  type PortableMediaObjectStorage,
+} from "./portable-media-tools";
+import type { PendingImage } from "./vm-tools/types";
 
-interface PortableObjectStorage {
+interface PortableObjectStorage extends PortableMediaObjectStorage {
   getBytesOrPresign?: (
     key: string,
     options: { presignWhenLargerThan: number },
@@ -47,6 +56,11 @@ export interface BuildPortableBuiltInToolsParams {
   toolApprovalLevel: ToolApprovalLevel;
   isPlanMode: boolean;
   objectStorage?: PortableObjectStorage | null;
+  pendingImages?: PendingImage[];
+  imageTool?: {
+    provider: PortableImageProvider;
+    imageModelInfo: PortableImageModelInfo;
+  };
   subtaskRelay?: {
     mcpClient: Client;
     models: PortableSubtaskModels;
@@ -154,10 +168,11 @@ function createPortableBrowserlessTool(
   writer: UIMessageStreamWriter,
   params: {
     toolOutputMap: Map<string, string>;
+    objectStorage?: PortableObjectStorage | null;
     kind: "scrape" | "inspect";
   },
 ) {
-  const { toolOutputMap, kind } = params;
+  const { toolOutputMap, objectStorage, kind } = params;
   const inputSchema =
     kind === "scrape"
       ? z.object({
@@ -213,11 +228,25 @@ function createPortableBrowserlessTool(
           }
           const htmlText = await response.text();
           toolOutputMap.set(options.toolCallId, htmlText);
+          const tokenCount = estimateJsonTokens(htmlText);
+          if (tokenCount > MAX_RESULT_TOKENS && objectStorage) {
+            const key = `scraped-pages/${crypto.randomUUID()}.html`;
+            await objectStorage.put(key, new TextEncoder().encode(htmlText), {
+              contentType: "text/html",
+            });
+            return {
+              success: true,
+              uri: toMeshStorageUri(key),
+              preview: createOutputPreview(htmlText),
+              url: input.url,
+              tokenCount,
+            };
+          }
           return {
             success: true,
             content: htmlText,
             url: input.url,
-            tokenCount: estimateJsonTokens(htmlText),
+            tokenCount,
           };
         }
 
@@ -270,11 +299,34 @@ function createPortableBrowserlessTool(
         });
         const resultJson = JSON.stringify(result, null, 2);
         toolOutputMap.set(options.toolCallId, resultJson);
+        const tokenCount = estimateJsonTokens(resultJson);
+        if (
+          !("error" in result) &&
+          tokenCount > MAX_RESULT_TOKENS &&
+          objectStorage
+        ) {
+          const key = `inspect-pages/${crypto.randomUUID()}.json`;
+          await objectStorage.put(key, new TextEncoder().encode(resultJson), {
+            contentType: "application/json",
+          });
+          return {
+            success: true,
+            uri: toMeshStorageUri(key),
+            preview: createOutputPreview(resultJson),
+            url: inspectInput.url,
+            tokenCount,
+            consoleLogCount:
+              (result as { consoleLogs?: unknown[] }).consoleLogs?.length ?? 0,
+            errorCount: (result as { errors?: unknown[] }).errors?.length ?? 0,
+            hasEvaluateResult:
+              (result as { evaluateResult?: unknown }).evaluateResult != null,
+          };
+        }
         return {
           success: !("error" in result),
           ...result,
           url: inspectInput.url,
-          tokenCount: estimateJsonTokens(resultJson),
+          tokenCount,
         };
       } finally {
         writer.write({
@@ -368,6 +420,8 @@ export function buildPortableBuiltInTools(
     toolApprovalLevel,
     isPlanMode,
     objectStorage,
+    pendingImages,
+    imageTool,
     subtaskRelay,
   } = params;
   const sandboxNeedsApproval = isPlanMode || toolApprovalLevel !== "auto";
@@ -397,15 +451,31 @@ export function buildPortableBuiltInTools(
     });
   }
 
+  if (imageTool) {
+    tools.generate_image = createPortableGenerateImageTool(writer, {
+      ...imageTool,
+      objectStorage,
+    });
+  }
+
   if (process.env.BROWSERLESS_TOKEN) {
     tools.scrape_url = createPortableBrowserlessTool(writer, {
       toolOutputMap,
+      objectStorage,
       kind: "scrape",
     });
     tools.inspect_page = createPortableBrowserlessTool(writer, {
       toolOutputMap,
+      objectStorage,
       kind: "inspect",
     });
+    if (pendingImages) {
+      tools.take_screenshot = createPortableTakeScreenshotTool(writer, {
+        objectStorage,
+        toolOutputMap,
+        pendingImages,
+      });
+    }
   }
 
   return tools as ToolSet;
