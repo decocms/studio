@@ -23,7 +23,7 @@
  * is deferred.
  */
 
-import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { UIMessageChunk } from "ai";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type {
@@ -46,6 +46,7 @@ import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
 import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
 import type { DesktopToolCtx } from "./types";
 import { createHtmlPageBufferFromStorage } from "../decopilot/built-in-tools/vm-tools/html-page-buffer-core";
+import { createSideChannelWriter } from "../side-channel-writer";
 
 const LOCALLY_WRAPPED_RELAY_TOOLS = new Set<string>(["SUBTASK_MCP"]);
 
@@ -60,75 +61,6 @@ function isDesktopToolVisible(tool: {
   if (typeof visibility === "string") return visibility === "model";
   if (Array.isArray(visibility)) return visibility.includes("model");
   return true;
-}
-
-function createSideChannelWriter(): {
-  writer: UIMessageStreamWriter;
-  stream: AsyncIterable<UIMessageChunk>;
-  close: () => void;
-} {
-  const queue: UIMessageChunk[] = [];
-  let closed = false;
-  let wake: (() => void) | null = null;
-  const notify = () => {
-    const current = wake;
-    wake = null;
-    current?.();
-  };
-  const push = (chunk: UIMessageChunk) => {
-    if (closed) return;
-    queue.push(chunk);
-    notify();
-  };
-  const stream = (async function* () {
-    try {
-      while (!closed || queue.length > 0) {
-        const chunk = queue.shift();
-        if (chunk) {
-          yield chunk;
-          continue;
-        }
-        await new Promise<void>((resolve) => {
-          wake = resolve;
-        });
-      }
-    } finally {
-      closed = true;
-      notify();
-    }
-  })();
-
-  return {
-    writer: {
-      write: (chunk) => push(chunk as UIMessageChunk),
-      merge: async (source) => {
-        const maybeIterable =
-          source as unknown as AsyncIterable<UIMessageChunk>;
-        if (typeof maybeIterable[Symbol.asyncIterator] === "function") {
-          for await (const chunk of maybeIterable) {
-            push(chunk);
-          }
-          return;
-        }
-        const reader = (source as ReadableStream<UIMessageChunk>).getReader();
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) return;
-            push(value);
-          }
-        } finally {
-          reader.releaseLock();
-        }
-      },
-      onError: () => {},
-    } as UIMessageStreamWriter,
-    stream,
-    close: () => {
-      closed = true;
-      notify();
-    },
-  };
 }
 
 export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {

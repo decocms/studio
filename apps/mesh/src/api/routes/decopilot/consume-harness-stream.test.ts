@@ -1,0 +1,105 @@
+import type { UIMessageChunk } from "ai";
+import { describe, expect, test } from "bun:test";
+import { makeTitleResultChunk } from "@/harnesses/title-chunk";
+import { consumeHarnessStream } from "./consume-harness-stream";
+
+async function drain(stream: ReadableStream) {
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done } = await reader.read();
+      if (done) return;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function textChunks(): AsyncIterable<UIMessageChunk> {
+  return (async function* () {
+    yield { type: "start" } as UIMessageChunk;
+    yield { type: "text-start", id: "txt" } as UIMessageChunk;
+    yield { type: "text-delta", id: "txt", delta: "hello" } as UIMessageChunk;
+    yield { type: "text-end", id: "txt" } as UIMessageChunk;
+    yield {
+      type: "finish",
+      finishReason: "stop",
+      totalUsage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+    } as UIMessageChunk;
+  })();
+}
+
+describe("consumeHarnessStream", () => {
+  test("persists final assistant message after consuming chunks", async () => {
+    const finals: Array<{ id: string; parts?: unknown[] }> = [];
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: textChunks(),
+      originalMessages: [],
+      title: {
+        currentThreadTitle: "Existing title",
+        threadId: "thread-1",
+        persistTitle: async () => {
+          throw new Error("title should not persist");
+        },
+      },
+      persistence: {
+        emitFinal: async (message) => {
+          finals.push(message);
+        },
+        emitStepParts: async () => {},
+        emitError: async () => {},
+      },
+      hooks: {},
+    });
+
+    await drain(uiStream);
+    await whenComplete;
+
+    expect(finals).toHaveLength(1);
+    expect(finals[0]!.parts?.length).toBeGreaterThan(0);
+  });
+
+  test("intercepts title result, persists title, and does not expose title chunk", async () => {
+    const persisted: Array<[string, string]> = [];
+    const exposed: UIMessageChunk[] = [];
+    const chunks = (async function* () {
+      yield makeTitleResultChunk("Generated title") as UIMessageChunk;
+      yield* textChunks();
+    })();
+
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks,
+      originalMessages: [],
+      title: {
+        currentThreadTitle: "New chat",
+        threadId: "thread-1",
+        persistTitle: async (threadId, title) => {
+          persisted.push([threadId, title]);
+        },
+      },
+      persistence: {
+        emitFinal: async () => {},
+        emitStepParts: async () => {},
+        emitError: async () => {},
+      },
+      hooks: {},
+    });
+
+    const reader = uiStream.getReader();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        exposed.push(value as UIMessageChunk);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    await whenComplete;
+
+    expect(persisted).toEqual([["thread-1", "Generated title"]]);
+    expect(exposed.some((chunk) => chunk.type === "data-title-result")).toBe(
+      false,
+    );
+  });
+});
